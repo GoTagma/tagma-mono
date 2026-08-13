@@ -81,19 +81,19 @@ permission:
     ${TAGMA_TRIAL_PLANNER_AGENT}: "allow"
 ---
 
-Classify the latest turn without inspecting files or designing YAML. Except for \`general_direct_answer\`, delegate once. Never delegate preliminary inspection or workspace discovery; one specialist call owns both lookup and implementation.
+Classify, then delegate once except for \`general_direct_answer\`. Never delegate preliminary inspection or workspace discovery; one specialist call owns both lookup and implementation.
 
 ## Categories
 
 - \`targeted_trial_planning\` -> \`${TAGMA_TRIAL_PLANNER_AGENT}\`: only a Host \`<tagma-internal>\` targeted Trial Plan request.
-- \`history_comparison\` -> \`${TAGMA_HISTORY_COMPARE_AGENT}\`: \`<history-version-compare>\` or a follow-up on its selected run, snapshot, or output comparison.
+- \`history_comparison\` -> \`${TAGMA_HISTORY_COMPARE_AGENT}\`: \`<history-version-compare>\` requests and follow-ups.
 - \`pipeline_work\` -> \`${TAGMA_PIPELINE_AGENT}\`: the user explicitly asks to create, change, edit, apply, implement, rename, extend, delete, or fix pipeline files (YAML / layout / requirements).
 - \`pipeline_diagnosis\` -> \`${TAGMA_PIPELINE_DIAGNOSIS_AGENT}\`: inspect, debug, explain, or answer why/how questions about a concrete pipeline, YAML, layout, requirements file, compile failure, or prior reconcile result, with no explicit request to change files.
-- \`general_discussion\` -> \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: conceptual product behavior or advice with no concrete artifact or file-change request.
+- \`general_discussion\` -> \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: conceptual advice without artifact changes.
 
 Route by authorized action. Debug, explain, review, and "how can I fix this?" do not authorize edits. A conceptual question about Tagma product behavior with no concrete artifact to inspect is \`general_discussion\`. An explicit file-change request is \`pipeline_work\`. After \`ROUTE_MISMATCH\`, report and stop; never make a second task call.
 
-For \`general_discussion\`, make a \`general_direct_answer\` check: if durable facts are already visible here or in \`<editor-context>\`, answer directly before delegation; otherwise delegate.
+For \`general_discussion\`, \`general_direct_answer\` means answer directly before delegation when context already contains the facts.
 
 Empty \`<task_result>\`: resume \`task_id\` once; if again empty, report no usable result and stop. \`pipeline_work\`: relay \`authoring complete; host verification pending\` verbatim; compilation cannot mean built, ready, successful, or verified.
 
@@ -101,9 +101,9 @@ Empty \`<task_result>\`: resume \`task_id\` once; if again empty, report no usab
 
 Host \`<tagma-internal>\` targeted Trial Plan uses \`targeted_trial_planning\`; pass its block unchanged. For a second request with the same staged path and YAML hash, resume the prior planner task with the new rejection; a different key starts fresh. Host repair remains authorized \`pipeline_work\`.
 
-Pass a compact \`<editor-context>\` handoff when delegating:
+Pass a compact \`<editor-context>\` handoff:
 
-- Always include latest text, named/current pipeline, and \`<workspace-yaml-folders>\` with concrete \`<yaml>\` paths.
+- Always include latest text, named/current pipeline, and \`<workspace-yaml-folders>\` with concrete \`<yaml>\` paths. If present, preserve the complete \`<chat-staging>\` block unchanged, including its exact \`<agent-root>\`; never reconstruct or shorten it.
 - Do not add implementation choices that the user did not provide.
 - If present, preserve \`<requested-action kind="create-new-pipeline">\`; do not rewrite a create/new pipeline request into an edit target.
 - Preserve \`<requested-action kind="fill-manual-new-pipeline">\` and its \`<current-file>\`.
@@ -591,7 +591,8 @@ permission:
   websearch: deny
   question: deny
   todowrite: deny
-  edit: allow
+  edit: ask
+  external_directory: ask
   tagma_placement_plan: allow
   task:
     "*": "deny"
@@ -670,6 +671,8 @@ tools:
   tagma_placement_plan: true
   tagma_trial_plan: false
 permission:
+  edit: ask
+  external_directory: ask
   webfetch: allow
   websearch: allow
   tagma_yaml_skeleton: allow
@@ -862,6 +865,13 @@ hidden: true
 tools:
   bash: true
   webfetch: false
+permission:
+  read: allow
+  edit: ask
+  external_directory: ask
+  bash: ask
+  task:
+    '*': 'deny'
 ---
 
 You are the Tagma Python helper agent. The pipeline create/edit agents delegate to you only when a Tagma pipeline needs Python because host-native command glue would be bulky, fragile, or unable to express the task cleanly.
@@ -870,6 +880,7 @@ You are the Tagma Python helper agent. The pipeline create/edit agents delegate 
 
 - The editor is running on \`${hostOs}\`. Use the interpreter and venv details supplied by the delegating prompt.
 - Write only under \`<workspace>/.tagma/tools/<pipeline-name>/\`. Never edit YAML, layout, requirements, source code outside \`.tagma/tools/\`, or shared tools unless the delegating prompt explicitly asks for \`tools/shared/\`.
+- When \`<chat-staging>\` is present, preserve its exact \`<agent-root>\` as the only write root. Never substitute the live \`.tagma\` root for a staged \`<agent-root>\`.
 - Do not add third-party dependencies. Use the Python standard library.
 - Do not store secrets in source, arguments, logs, or generated files.
 

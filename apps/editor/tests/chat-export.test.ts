@@ -938,4 +938,97 @@ describe('chat conversation export', () => {
     expect(conversationExportFilename('Feature / Q&A?', 'md')).toBe('tagma-chat-feature-q-a.md');
     expect(conversationExportFilename('', 'txt')).toBe('tagma-chat-conversation.txt');
   });
+
+  test('exports multiple host results at their exact assistant-message anchors', () => {
+    const result = (
+      resultId: string,
+      messageId: string,
+      pipelineName: string,
+      outcome: 'created' | 'adopted' | 'forked',
+      status: 'ready' | 'blocked' | 'failed',
+    ) =>
+      ({
+        ...hostVerification(),
+        resultId,
+        messageId,
+        turnId: `turn-${messageId}`,
+        workspaceKey: 'D:/repo',
+        pipelineName,
+        name: `${resultId}.yaml`,
+        path: `D:/repo/.tagma/${resultId}/${resultId}.yaml`,
+        status,
+        compile: {
+          success: status !== 'failed',
+          summary: status === 'failed' ? 'Compile failed.' : 'Compile passed.',
+          validation: { errors: [], warnings: [] },
+        },
+        reconcile: {
+          outcome,
+          conflicts: outcome === 'forked' ? ['local-branch-changed'] : [],
+          localBranchPersisted: outcome === 'forked',
+          resultPath: `D:/repo/.tagma/${resultId}/${resultId}.yaml`,
+          compileSuccess: status !== 'failed',
+        },
+      }) as ChatYamlSessionResult;
+    const exported = buildConversationExport({
+      format: 'md',
+      title: 'Anchored pipeline results',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        entry('assistant', 'a1', [textPart('a1p1', 'First answer.')]),
+        entry('user', 'u2', [textPart('u2p1', 'Continue.')]),
+        entry('assistant', 'a2', [textPart('a2p1', 'Second answer.')]),
+      ],
+      pipelineResultsByMessageId: {
+        a1: [
+          result('alpha', 'a1', 'Alpha', 'created', 'ready'),
+          result('beta', 'a1', 'Beta', 'forked', 'failed'),
+        ],
+        a2: [result('gamma', 'a2', 'Gamma', 'adopted', 'blocked')],
+      },
+    });
+
+    const firstAnswer = exported.content.indexOf('First answer.');
+    const alpha = exported.content.indexOf('Target: Alpha');
+    const beta = exported.content.indexOf('Target: Beta');
+    const continuePrompt = exported.content.indexOf('Continue.');
+    const secondAnswer = exported.content.indexOf('Second answer.');
+    const gamma = exported.content.indexOf('Target: Gamma');
+
+    expect(firstAnswer).toBeGreaterThan(-1);
+    expect(alpha).toBeGreaterThan(firstAnswer);
+    expect(beta).toBeGreaterThan(alpha);
+    expect(continuePrompt).toBeGreaterThan(beta);
+    expect(secondAnswer).toBeGreaterThan(continuePrompt);
+    expect(gamma).toBeGreaterThan(secondAnswer);
+    expect(exported.content.match(/## Pipeline Verification/g)?.length).toBe(3);
+    expect(exported.content).toContain('Host result: forked');
+    expect(exported.content).toContain('Final status: failed');
+    expect(exported.content).toContain('Conflicts: local-branch-changed');
+    expect(exported.content).toContain('Result path: D:/repo/.tagma/beta/beta.yaml');
+  });
+
+  test('does not expose an internal staging path as an exported final target', () => {
+    const stagedResult = {
+      ...hostVerification(),
+      resultId: 'staged-result',
+      messageId: 'a1',
+      turnId: 'turn-a1',
+      reconcile: {
+        outcome: 'created',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: 'D:/repo/.tagma/.chat-staging/stage-1/agent/demo/demo.yaml',
+        compileSuccess: true,
+      },
+    } as ChatYamlSessionResult;
+    const exported = buildConversationExport({
+      format: 'md',
+      messages: [entry('assistant', 'a1', [textPart('a1p1', 'Done.')])],
+      pipelineResultsByMessageId: { a1: [stagedResult] },
+    });
+
+    expect(exported.content).toContain('Result path: invalid internal staging target');
+    expect(exported.content).not.toContain('.chat-staging');
+  });
 });

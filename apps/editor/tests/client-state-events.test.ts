@@ -58,6 +58,25 @@ afterEach(async () => {
 });
 
 describe('state event revision adoption', () => {
+  test('does not accept a chat-finalize revision before the canvas adopts its state', async () => {
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
+    const client = await import('../src/api/client');
+    client.setClientWorkspace('E:/repo');
+    client.setClientRevision(3);
+
+    const seen: unknown[] = [];
+    const unsubscribe = client.api.subscribeStateEvents((event) => seen.push(event));
+    MockEventSource.instances.at(-1)!.emit('state_event', {
+      type: 'external-change',
+      origin: 'chat-yaml-finalize',
+      newState: { workDir: 'E:/repo', revision: 7 },
+    });
+    unsubscribe();
+
+    expect(client.getClientRevision()).toBe(3);
+    expect(seen).toHaveLength(1);
+  });
+
   test('ignores external-change revisions from a stale workspace stream', async () => {
     globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
     const client = await import('../src/api/client');
@@ -95,7 +114,7 @@ describe('state event revision adoption', () => {
     expect(seen).toHaveLength(1);
   });
 
-  test('adopts the top-level revision returned by staged YAML finalize', async () => {
+  test('keeps the pre-finalize revision until the result state is explicitly adopted', async () => {
     const client = await import('../src/api/client');
     client.setClientWorkspace('E:/repo');
     client.setClientRevision(3);
@@ -122,10 +141,10 @@ describe('state event revision adoption', () => {
     });
 
     expect(sentIfMatch as string | null).toBe('3');
-    expect(client.getClientRevision()).toBe(7);
+    expect(client.getClientRevision()).toBe(3);
   });
 
-  test('serializes a staged YAML finalize before the next revision-guarded edit', async () => {
+  test('serializes finalize and makes a stale canvas edit fail revision validation', async () => {
     const client = await import('../src/api/client');
     client.setClientWorkspace('E:/repo');
     client.setClientRevision(3);
@@ -142,6 +161,17 @@ describe('state event revision adoption', () => {
         return finalizeResponse.promise;
       }
       const expectedRevision = Number(new Headers(init?.headers).get('If-Match'));
+      if (expectedRevision === 3) {
+        return new Response(
+          JSON.stringify({
+            error: 'Revision conflict',
+            expected: 3,
+            current: 7,
+            currentState: { workDir: 'E:/repo', revision: 7 },
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        );
+      }
       return new Response(JSON.stringify({ workDir: 'E:/repo', revision: expectedRevision + 1 }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -179,14 +209,14 @@ describe('state event revision adoption', () => {
       await Promise.allSettled([finalize, firstEdit, replace, latestEdit]);
     }
 
-    expect(requests.map((request) => request.ifMatch)).toEqual(['3', '7', '8', '9']);
+    expect(requests.map((request) => request.ifMatch)).toEqual(['3', '3', '7', '8']);
     expect(requests.map((request) => request.path)).toEqual([
       '/api/workspace/chat-yaml-stage/finalize',
       '/api/tasks/track/task',
       '/api/config/replace',
       '/api/tasks/track/task',
     ]);
-    expect(client.getClientRevision()).toBe(10);
+    expect(client.getClientRevision()).toBe(9);
   });
 
   test('preserves the YAML lock token captured by each queued mutation', async () => {

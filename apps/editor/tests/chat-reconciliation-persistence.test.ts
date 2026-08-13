@@ -31,11 +31,16 @@ Object.defineProperty(globalThis, 'localStorage', {
 
 const { setClientWorkspace } = await import('../src/api/client');
 const { resetOpencodeClient } = await import('../src/api/opencode-chat');
-const { loadPersistedChatYamlReconciliationQueue, savePersistedChatYamlReconciliationQueue } =
-  await import('../src/store/chat-persist');
+const {
+  loadPersistedChatYamlReconciliationQueue,
+  loadPersistedChatYamlResults,
+  savePersistedChatYamlReconciliationQueue,
+  savePersistedChatYamlResults,
+} = await import('../src/store/chat-persist');
 const { applySseEvent, useChatStore } = await import('../src/store/chat-store');
 type ChatState = ReturnType<typeof useChatStore.getState>;
 type ChatFinishedTurn = ChatState['finishedTurnQueue'][number];
+type ChatYamlSessionResult = ChatState['sessionYamlResults'][string];
 
 function stagedTurn(id = 'finished-stage-1', workspace = 'C:/repo'): ChatFinishedTurn {
   return {
@@ -103,6 +108,46 @@ function hiddenRuntime(turn: ChatFinishedTurn): ChatState['sessionStates'][strin
   };
 }
 
+function pipelineResult(input: {
+  resultId: string;
+  turnId: string;
+  messageId: string;
+  sessionId?: string;
+  workspace?: string;
+  path?: string;
+  finalYamlMtimeMs?: number;
+  completedAt?: number;
+}): ChatYamlSessionResult {
+  const workspace = input.workspace ?? 'C:/repo';
+  const path = input.path ?? workspace + '/.tagma/build/build.yaml';
+  return {
+    resultId: input.resultId,
+    turnId: input.turnId,
+    messageId: input.messageId,
+    sessionId: input.sessionId ?? 'session-1',
+    workspaceKey: workspace,
+    kind: 'refresh-current',
+    path,
+    name: 'build.yaml',
+    pipelineName: 'Build',
+    status: 'ready',
+    compile: {
+      success: true,
+      summary: 'Compiled.',
+      validation: { errors: [], warnings: [] },
+    },
+    reconcile: {
+      outcome: 'adopted',
+      conflicts: [],
+      localBranchPersisted: false,
+      resultPath: path,
+      compileSuccess: true,
+    },
+    ...(input.finalYamlMtimeMs === undefined ? {} : { finalYamlMtimeMs: input.finalYamlMtimeMs }),
+    completedAt: input.completedAt ?? 2_000,
+  };
+}
+
 function resetChatState(): void {
   useChatStore.setState({
     bootstrapStatus: 'idle',
@@ -120,7 +165,10 @@ function resetChatState(): void {
     turnStartedAt: null,
     lastFinishedTurn: null,
     finishedTurnQueue: [],
+    sessionYamlResults: {},
+    turnYamlResults: {},
     yamlSnapshotBeforeSend: null,
+    completionWarning: null,
   } as Partial<ChatState>);
 }
 
@@ -148,6 +196,367 @@ afterAll(() => {
 });
 
 describe('unfinished Chat YAML reconciliation persistence', () => {
+  test('round-trips a versioned message result ledger and rejects staging or malformed targets', () => {
+    const valid = pipelineResult({
+      resultId: 'result-1',
+      turnId: 'turn-1',
+      messageId: 'assistant-1',
+    });
+    const staging = pipelineResult({
+      resultId: 'result-staging',
+      turnId: 'turn-staging',
+      messageId: 'assistant-staging',
+      path: 'C:/repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma/build/build.yaml',
+    });
+    const outside = pipelineResult({
+      resultId: 'result-outside',
+      turnId: 'turn-outside',
+      messageId: 'assistant-outside',
+      path: 'C:/other/.tagma/build/build.yaml',
+    });
+    const mismatchedReconcile = {
+      ...pipelineResult({
+        resultId: 'result-mismatch',
+        turnId: 'turn-mismatch',
+        messageId: 'assistant-mismatch',
+      }),
+      reconcile: {
+        ...valid.reconcile!,
+        resultPath: 'C:/repo/.tagma/other/other.yaml',
+      },
+    };
+    const malformed = { ...valid, resultId: '', messageId: 'assistant-malformed' };
+
+    savePersistedChatYamlResults('C:/repo', {
+      'assistant-1': [valid],
+      'assistant-staging': [staging],
+      'assistant-outside': [outside],
+      'assistant-mismatch': [mismatchedReconcile],
+      'assistant-malformed': [malformed],
+    });
+
+    expect(loadPersistedChatYamlResults('C:/repo')).toMatchObject({
+      'assistant-1': [valid],
+    });
+    expect(storage.getItem('tagma.chat.v2')).toContain('pipelineResults');
+    expect(storage.getItem('tagma.chat.v2')).not.toContain('.chat-staging');
+    expect(storage.getItem('tagma.chat.v2')).not.toContain('result-outside');
+    expect(storage.getItem('tagma.chat.v2')).not.toContain('result-mismatch');
+  });
+
+  test('hydrates a legacy message-anchored result by assigning stable identities', () => {
+    const legacy = pipelineResult({
+      resultId: 'discarded',
+      turnId: 'discarded',
+      messageId: 'assistant-legacy',
+    }) as Record<string, unknown>;
+    delete legacy.resultId;
+    delete legacy.turnId;
+    delete legacy.workspaceKey;
+    storage.setItem(
+      'tagma.chat.v2',
+      JSON.stringify({
+        workspaces: {
+          'C:/repo': {
+            pipelineResults: { version: 1, results: [legacy] },
+          },
+        },
+      }),
+    );
+
+    const first = loadPersistedChatYamlResults('C:/repo')['assistant-legacy']?.[0];
+    const second = loadPersistedChatYamlResults('C:/repo')['assistant-legacy']?.[0];
+    expect(first).toMatchObject({
+      turnId: 'assistant-legacy',
+      messageId: 'assistant-legacy',
+      workspaceKey: 'C:/repo',
+    });
+    expect(first?.resultId).toMatch(/^legacy_/);
+    expect(second?.resultId).toBe(first?.resultId);
+  });
+
+  test('drops an unanchored legacy result with an actionable compatibility diagnostic', () => {
+    const legacy = pipelineResult({
+      resultId: 'legacy-result',
+      turnId: 'legacy-turn',
+      messageId: 'assistant-legacy',
+    }) as Record<string, unknown>;
+    delete legacy.messageId;
+    delete legacy.turnId;
+    storage.setItem(
+      'tagma.chat.v2',
+      JSON.stringify({
+        workspaces: {
+          'C:/repo': { pipelineResults: { version: 1, results: [legacy] } },
+        },
+      }),
+    );
+    const issues: Array<{ kind: string; message: string }> = [];
+
+    const loaded = loadPersistedChatYamlResults('C:/repo', (issue) => issues.push(issue));
+
+    expect(loaded).toEqual({});
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.kind).toBe('legacy-unanchored-result');
+    expect(issues[0]?.message).toContain('cannot be restored safely');
+    expect(issues[0]?.message).toContain('workspace pipeline list');
+    expect(issues[0]?.message).toContain('assistant text');
+  });
+
+  test('keeps the newest 500 results and records a durable truncation diagnostic', () => {
+    const results: Record<string, ChatYamlSessionResult[]> = {};
+    for (let index = 0; index <= 500; index += 1) {
+      const messageId = `assistant-${index}`;
+      results[messageId] = [
+        pipelineResult({
+          resultId: `result-${index}`,
+          turnId: `turn-${index}`,
+          messageId,
+          completedAt: index,
+        }),
+      ];
+    }
+    const issues: Array<{ kind: string; message: string }> = [];
+
+    savePersistedChatYamlResults('C:/repo', results, (issue) => issues.push(issue));
+
+    const loaded = loadPersistedChatYamlResults('C:/repo');
+    expect(Object.values(loaded).flat()).toHaveLength(500);
+    expect(loaded['assistant-0']).toBeUndefined();
+    expect(loaded['assistant-500']?.[0]?.resultId).toBe('result-500');
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.kind).toBe('ledger-truncated');
+    expect(issues[0]?.message).toContain('newest 500');
+    expect(issues[0]?.message).toContain('pipeline files were not deleted');
+    const raw = JSON.parse(storage.getItem('tagma.chat.v2')!);
+    expect(raw.workspaces['C:/repo'].pipelineResults.truncated).toBe(true);
+    const reloadIssues: Array<{ kind: string; message: string }> = [];
+    loadPersistedChatYamlResults('C:/repo', (issue) => reloadIssues.push(issue));
+    expect(reloadIssues.map((issue) => issue.kind)).toEqual(['ledger-truncated']);
+
+    setClientWorkspace('C:/repo');
+    const firstFiveHundred = Object.fromEntries(Object.entries(results).slice(0, 500));
+    useChatStore.setState({
+      turnYamlResults: firstFiveHundred,
+      completionWarning: null,
+    } as Partial<ChatState>);
+    useChatStore.getState().setTurnYamlResult(results['assistant-500']![0]!);
+    expect(useChatStore.getState().completionWarning).toContain('newest 500');
+  });
+
+  test('appends and deduplicates results per assistant message while keeping the latest session projection', () => {
+    setClientWorkspace('C:/repo');
+    const first = pipelineResult({
+      resultId: 'result-1',
+      turnId: 'turn-1',
+      messageId: 'assistant-1',
+      finalYamlMtimeMs: 1_234,
+      completedAt: 1_000,
+    });
+    const second = pipelineResult({
+      resultId: 'result-2',
+      turnId: 'turn-2',
+      messageId: 'assistant-2',
+      completedAt: 2_000,
+      path: 'C:/repo/.tagma/release/release.yaml',
+    });
+    const sibling = pipelineResult({
+      resultId: 'result-3',
+      turnId: 'turn-2',
+      messageId: 'assistant-2',
+      completedAt: 2_001,
+      path: 'C:/repo/.tagma/verify/verify.yaml',
+    });
+
+    useChatStore.getState().setTurnYamlResult(first);
+    useChatStore.getState().setTurnYamlResult(second);
+    useChatStore.getState().setTurnYamlResult(sibling);
+    useChatStore.getState().setTurnYamlResult({ ...second, status: 'blocked' });
+
+    expect(useChatStore.getState().turnYamlResults).toEqual({
+      'assistant-1': [first],
+      'assistant-2': [{ ...second, status: 'blocked' }, sibling],
+    });
+    expect(useChatStore.getState().sessionYamlResults['session-1']).toMatchObject({
+      resultId: 'result-3',
+      messageId: 'assistant-2',
+    });
+    expect(loadPersistedChatYamlResults('C:/repo')).toMatchObject(
+      useChatStore.getState().turnYamlResults,
+    );
+  });
+
+  test('records a verified live YAML mtime by exact result id without touching a same-path sibling', () => {
+    setClientWorkspace('C:/repo');
+    const older = pipelineResult({
+      resultId: 'result-older',
+      turnId: 'turn-older',
+      messageId: 'assistant-older',
+      completedAt: 1_000,
+    });
+    const latest = pipelineResult({
+      resultId: 'result-latest',
+      turnId: 'turn-latest',
+      messageId: 'assistant-latest',
+      completedAt: 2_000,
+      // Deliberately the same path: updates must never match by path.
+      path: older.path,
+    });
+    useChatStore.getState().setTurnYamlResult(older);
+    useChatStore.getState().setTurnYamlResult(latest);
+
+    useChatStore.getState().recordTurnYamlResultFinalMtime('result-older', 4_321);
+
+    expect(useChatStore.getState().turnYamlResults['assistant-older']?.[0]).toMatchObject({
+      resultId: 'result-older',
+      finalYamlMtimeMs: 4_321,
+    });
+    expect(
+      useChatStore.getState().turnYamlResults['assistant-latest']?.[0]?.finalYamlMtimeMs,
+    ).toBeUndefined();
+    expect(
+      useChatStore.getState().sessionYamlResults['session-1']?.finalYamlMtimeMs,
+    ).toBeUndefined();
+    expect(loadPersistedChatYamlResults('C:/repo')['assistant-older']?.[0]?.finalYamlMtimeMs).toBe(
+      4_321,
+    );
+    expect(
+      loadPersistedChatYamlResults('C:/repo')['assistant-latest']?.[0]?.finalYamlMtimeMs,
+    ).toBeUndefined();
+
+    useChatStore.getState().recordTurnYamlResultFinalMtime('result-latest', 5_678);
+    expect(useChatStore.getState().sessionYamlResults['session-1']).toMatchObject({
+      resultId: 'result-latest',
+      finalYamlMtimeMs: 5_678,
+    });
+  });
+
+  test('captures the final assistant message as the durable result anchor', () => {
+    const turn = stagedTurn();
+    setClientWorkspace('C:/repo');
+    useChatStore.setState({
+      currentSessionId: turn.sessionId,
+      sending: true,
+      pendingUserText: 'Update the pipeline.',
+      turnStartedAt: 900,
+      turnAssistantMessageIds: ['assistant-tool', 'assistant-final'],
+      messages: [
+        {
+          info: { id: 'assistant-tool', sessionID: turn.sessionId, role: 'assistant' },
+          parts: [],
+        },
+        {
+          info: { id: 'assistant-final', sessionID: turn.sessionId, role: 'assistant' },
+          parts: [],
+        },
+      ],
+      yamlSnapshotBeforeSend: turn.yamlSnapshotBeforeSend,
+      finishedTurnQueue: [],
+    } as never);
+
+    applySseEvent(
+      {
+        type: 'session.error',
+        properties: {
+          sessionID: turn.sessionId,
+          error: { name: 'ProviderError', data: { message: 'The model stopped.' } },
+        },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+
+    const finished = useChatStore.getState().finishedTurnQueue[0];
+    expect(finished?.assistantMessageId).toBe('assistant-final');
+    expect(finished?.yamlSnapshotBeforeSend?.resultMessageId).toBe('assistant-final');
+    expect(finished?.yamlSnapshotBeforeSend?.resultTurnId).toBe(finished?.id);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')[0]).toMatchObject({
+      assistantMessageId: 'assistant-final',
+      yamlSnapshotBeforeSend: {
+        resultMessageId: 'assistant-final',
+        resultTurnId: finished?.id,
+      },
+    });
+  });
+
+  test('keeps the visible result anchor when a hidden repair continuation finishes', () => {
+    const turn = stagedTurn();
+    const inheritedSnapshot = {
+      ...turn.yamlSnapshotBeforeSend!,
+      resultTurnId: 'visible-turn',
+      resultMessageId: 'assistant-visible',
+    };
+    setClientWorkspace('C:/repo');
+    useChatStore.setState({
+      currentSessionId: 'visible-session',
+      sessionStates: {
+        [turn.sessionId!]: {
+          ...hiddenRuntime({ ...turn, yamlSnapshotBeforeSend: inheritedSnapshot }),
+          messages: [
+            {
+              info: { id: 'assistant-repair', sessionID: turn.sessionId, role: 'assistant' },
+              parts: [],
+            },
+          ],
+          turnAssistantMessageIds: ['assistant-repair'],
+        },
+      },
+      finishedTurnQueue: [],
+    } as never);
+
+    applySseEvent(
+      {
+        type: 'session.error',
+        properties: {
+          sessionID: turn.sessionId,
+          error: { name: 'ProviderError', data: { message: 'The repair stopped.' } },
+        },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+
+    expect(useChatStore.getState().finishedTurnQueue[0]).toMatchObject({
+      assistantMessageId: 'assistant-visible',
+      yamlSnapshotBeforeSend: {
+        resultTurnId: 'visible-turn',
+        resultMessageId: 'assistant-visible',
+      },
+    });
+  });
+
+  test('persists completed staged targets without dropping the unfinished turn', () => {
+    const turn = stagedTurn();
+    setClientWorkspace('C:/repo');
+    useChatStore.setState({ finishedTurnQueue: [turn], lastFinishedTurn: turn } as never);
+    savePersistedChatYamlReconciliationQueue('C:/repo', [turn]);
+
+    useChatStore.getState().markFinishedTurnYamlTargetCompleted(turn.id, 'Build\\Build.yaml');
+    useChatStore.getState().markFinishedTurnYamlTargetCompleted(turn.id, 'build/build.yaml');
+
+    expect(useChatStore.getState().finishedTurnQueue[0]?.completedYamlRelativePaths).toEqual([
+      'Build/Build.yaml',
+    ]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')[0]).toMatchObject({
+      id: turn.id,
+      completedYamlRelativePaths: ['Build/Build.yaml'],
+    });
+  });
+
+  test('keeps relative-path case distinct for POSIX workspaces', () => {
+    const turn = stagedTurn('posix-turn', '/repo');
+    setClientWorkspace('/repo');
+    useChatStore.setState({ finishedTurnQueue: [turn], lastFinishedTurn: turn } as never);
+
+    useChatStore.getState().markFinishedTurnYamlTargetCompleted(turn.id, 'Build/Build.yaml');
+    useChatStore.getState().markFinishedTurnYamlTargetCompleted(turn.id, 'build/build.yaml');
+
+    expect(useChatStore.getState().finishedTurnQueue[0]?.completedYamlRelativePaths).toEqual([
+      'Build/Build.yaml',
+      'build/build.yaml',
+    ]);
+  });
+
   test('round-trips only valid stage-backed turns for the matching workspace', () => {
     const turn = stagedTurn();
     savePersistedChatYamlReconciliationQueue('C:/repo', [
@@ -267,11 +676,19 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
 
   test('session deletion removes its staged turn from persisted reconciliation', () => {
     const turn = stagedTurn();
+    const result = pipelineResult({
+      resultId: 'result-deleted',
+      turnId: turn.id,
+      messageId: 'assistant-deleted',
+    });
     setClientWorkspace('C:/repo');
     savePersistedChatYamlReconciliationQueue('C:/repo', [turn]);
+    savePersistedChatYamlResults('C:/repo', { 'assistant-deleted': [result] });
     useChatStore.setState({
-      sessions: [{ id: turn.sessionId, title: 'Deleted chat' }],
+      sessions: [{ id: turn.sessionId, title: 'Deleted chat' }] as never,
       sessionParentById: {},
+      sessionYamlResults: { [turn.sessionId!]: result },
+      turnYamlResults: { 'assistant-deleted': [result] },
       finishedTurnQueue: [turn],
       lastFinishedTurn: turn,
     } as Partial<ChatState>);
@@ -287,6 +704,8 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
 
     expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
     expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([]);
+    expect(useChatStore.getState().turnYamlResults).toEqual({});
+    expect(loadPersistedChatYamlResults('C:/repo')).toEqual({});
   });
 
   test('session deletion invalidates an abandoned reconciliation claim', () => {
@@ -463,7 +882,13 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
         failedAt: 2_000,
       },
     };
+    const result = pipelineResult({
+      resultId: 'result-reloaded',
+      turnId: failedTurn.id,
+      messageId: 'assistant-reloaded',
+    });
     savePersistedChatYamlReconciliationQueue('C:/repo', [failedTurn]);
+    savePersistedChatYamlResults('C:/repo', { 'assistant-reloaded': [result] });
     setClientWorkspace('C:/repo');
     globalThis.fetch = (() =>
       Promise.reject(
@@ -482,5 +907,46 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
 
     expect(useChatStore.getState().finishedTurnQueue).toEqual([failedTurn]);
     expect(useChatStore.getState().lastFinishedTurn).toEqual(failedTurn);
+    expect(useChatStore.getState().turnYamlResults).toEqual({
+      'assistant-reloaded': [result],
+    });
+    expect(useChatStore.getState().sessionYamlResults['session-1']).toEqual(result);
+  });
+
+  test('surfaces an unanchored legacy result diagnostic during workspace bootstrap', async () => {
+    const workspace = 'C:/legacy-repo';
+    const legacy = pipelineResult({
+      resultId: 'legacy-result',
+      turnId: 'legacy-turn',
+      messageId: 'assistant-legacy',
+      workspace,
+    }) as Record<string, unknown>;
+    delete legacy.messageId;
+    delete legacy.turnId;
+    storage.setItem(
+      'tagma.chat.v2',
+      JSON.stringify({
+        workspaces: {
+          [workspace]: { pipelineResults: { version: 1, results: [legacy] } },
+        },
+      }),
+    );
+    setClientWorkspace(workspace);
+    globalThis.fetch = (() =>
+      Promise.reject(
+        new Error('OpenCode is unavailable during reload'),
+      )) as unknown as typeof fetch;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    console.error = () => {};
+    console.warn = () => {};
+    try {
+      await useChatStore.getState().bootstrap();
+    } finally {
+      console.error = originalError;
+      console.warn = originalWarn;
+    }
+
+    expect(useChatStore.getState().completionWarning).toContain('cannot be restored safely');
   });
 });

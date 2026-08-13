@@ -118,6 +118,11 @@
   staged paths can resolve into the live `.tagma` tree even when the root prompt was redirected.
   Escape every dynamic editor-context value, including absolute paths, before embedding it in the
   XML-like prompt envelope.
+- Treat descendant writes as a host-enforced boundary: resolve the effective staged root through
+  the complete child-to-root session ancestry and server-authenticated stage metadata. Auto-allow
+  once only raw absolute `edit`/`write`/`external_directory` targets inside that root; reject
+  relative paths, display-only legacy permission titles, live paths, glob or symlink escapes, and
+  unscoped shell capabilities. Bind authorization to the YAML lock that created the stage.
 - Capture YAML/layout/requirements and support-tree hashes from the base copy in server-owned
   stage metadata. Supporting-file additions, edits, and deletions participate in the same
   three-way comparison and transactional publication as the core artifacts. Queued prompts and
@@ -134,24 +139,23 @@
 - Finalize under the active chat YAML lease with a server-side three-way comparison:
   base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
   agent branch. A global workspace revision is never a conflict signal for staged turns.
-- The post-turn stage list must report live source drift from server-owned base hashes even when
-  the staged agent branch is unchanged. Target selection must send that active existing pipeline
-  through lightweight finalize/reconcile instead of discarding the stage or running Trial against
-  the unchanged base branch. Adopt live-only drift and refresh the current workspace file version
-  only when it compiles and the Trial policy accepts evidence for that exact branch; otherwise
-  preserve it as an unverified numbered copy and restore the base/renderer branch. Three-way merge
-  renderer-only layout edits with a Chat branch at the smallest stable field: per-task `x`/`y`,
-  per-track height, and a whole folders value. Preserve Chat placement for new surviving ids,
-  preserve renderer placement for independently edited surviving ids, and prune layout for ids
-  removed by the final Chat topology. Fork only when both branches changed the same surviving
-  field differently or when an artifact cannot be compared safely. Quarantine invalid drift.
-- If an unchanged active source drifts while Chat also changes or creates a different staged
-  pipeline, reconcile both inside the same finalize transaction: publish the selected staged
-  target, preserve the escaped active branch as a numbered copy, and restore the active
-  base/renderer branch with a fresh optimistic-lock baseline. Never let target selection or stage
-  cleanup discard the active-source conflict. Treat deletion of that active source as a conflict:
-  restore the base/renderer branch, report source-deleted, and classify the Chat outcome as
-  unchanged rather than adopted.
+- The post-turn stage list may report live source drift from server-owned base hashes, but an
+  unchanged staged agent branch must not finalize, fork, run Trial, or publish a pipeline result.
+  No-op turns are discarded after diagnostics/bookkeeping. Only staged artifact mutations for a
+  concrete target may produce a persisted chat pipeline result.
+- Treat user navigation separately from pipeline identity. Switching canvases or selecting another
+  pipeline during chat is not a reconcile conflict and must not redirect the result to a different
+  live path. Only the staged target's own authoritative finalize/reconcile result determines the
+  persisted Open Pipeline destination.
+- Reject root and delegated-session write/edit/external-directory requests outside the
+  server-authenticated staged agent root at the host permission boundary. Descendants inherit the
+  visible turn's effective root through their parent chain; prompt policy is defense in depth, not
+  the write fence. A direct live `.tagma` write must fail with a diagnostic and must never be
+  converted into a reconcile result.
+- When one turn mutates multiple pipelines, finalize every changed relative path independently and
+  retain the authenticated stage until the last target. Persist an authenticated per-target
+  finalize record so response-loss retries are idempotent and skip already-published targets on
+  later passes.
 - Conflict forks preserve complete pipeline branches: YAML, layout, requirements, and support
   files. Restore the renderer branch from the server-owned base artifacts before applying its
   YAML/layout, and refresh the optimistic-lock baseline after every successful reconcile or
@@ -165,12 +169,11 @@
 - When reconciliation publishes a numbered copy, rebase only pipeline-local track/task `cwd`
   values and known built-in file paths from the source or staged pipeline folder to the copy
   folder. Preserve shared workspace paths, external trigger paths, and command-shaped fields.
-- If the agent branch and live source are unchanged, discard it. If the live and renderer branches
-  still match
-  base and the staged result compiles, adopt the agent result in place. Preserve any local,
-  external, path-move, or compile-failure branch and publish the agent result as one numbered
-  copy. A genuinely new staged pipeline is created normally unless its destination already
-  exists.
+- If the agent branch is unchanged, discard it regardless of live/local drift. For an actual
+  staged mutation, adopt in place when the live and renderer branches still match base; fork only
+  for a real conflicting branch or a compile-failure preservation path. Switching the visible
+  canvas is navigation, not a path-moved conflict. A genuinely new staged pipeline is created
+  normally unless its destination already exists.
 - Chat pipeline Trial is fail-closed and default-off. `opencodeChatTrialRunEnabled` plus its
   current server-stamped consent authorizes Sandbox Trial only. Live Smoke Test is a separate,
   default-off setting with its own current consent, and is effective only while Sandbox Trial is
@@ -406,13 +409,26 @@
   call is made, and never let a late read or state event roll the cached revision backward.
 - Keep global metadata and side-log writes such as recent workspaces, global settings, and chat
   usage outside live-workspace revision middleware; they neither mutate nor return pipeline state.
-- Preserve the host finalize outcome, conflicts, destination path, compile status, and local-branch
-  decision for the next real user turn in the same chat session and workspace. Do not inject or
-  consume that evidence in hidden repairs, logical-turn continuations, fresh sessions, or another
-  workspace.
-- Treat verified or prerequisite-blocked `adopted` and `created` finalize outcomes as live chat
-  deployments. Final chat navigation must use the authoritative reconcile result path; `forked`,
-  `unchanged`, and failed results may still be described but must not expose a live-pipeline link.
+- Persist chat pipeline results per finished assistant message/turn, not as a single mutable
+  session-level slot. Preserve the host finalize outcome, conflicts, destination path,
+  compile/trial status, and local-branch decision across session switches, exports, and reloads.
+  Hidden repairs and internal continuations keep the original visible turn/message anchor instead of
+  overwriting later turns.
+- Fail closed on authenticated pre-owner-hash stages with an actionable discard-and-resend
+  explanation; never resume them under a newly presented lock. Drop legacy results that lack both
+  message and turn anchors without guessing from assistant text, but surface a workspace-list
+  recovery explanation instead of silently losing them.
+- Keep at most the newest 500 valid unique Open Pipeline result entries per workspace. Persist
+  whether older history was truncated, explain that only ledger entries were removed, and keep the
+  warning available after reload; truncation must never delete pipeline files.
+- Treat `created`, `adopted`, and `forked` finalize outcomes as openable live chat results even
+  when compile or verification status is failed or blocked. Final chat navigation must always use
+  the authoritative reconcile result path; `unchanged` and no-op turns must not expose a pipeline
+  link.
+- Never derive that path from assistant text or expose `.chat-staging`. Revalidate workspace
+  containment and current YAML-list membership before enabling and again before opening; deleted,
+  moved, cross-workspace, or invalid targets remain disabled with a reason. Finalization must not
+  navigate to a different canvas; only an explicit Open Pipeline click opens the target.
 - After a verified live finalize, merge the returned live entry into the workspace pipeline list
   before publishing the completion result, then re-list with an explicit workspace key. Route SSE
   and ordinary list refreshes through the same sequence-guarded refresh path so a late response
@@ -452,7 +468,11 @@
   recognize the early flat `tagmaSurface`/`tagmaWorkspace` ownership shape, exclude
   foreign-workspace and platform-export markers, and admit SSE-created history rows only for
   marked desktop-chat or bot-bridge sessions.
-- OpenCode custom tools must resolve session-relative pipeline and companion paths from `ToolContext.directory`, never `process.cwd()`; staged chats depend on it to keep `.tagma/.chat-staging/<id>/.../agent-workspace/.tagma` as the authoritative root.
+- OpenCode custom tools must resolve session-relative pipeline and companion paths from
+  `ToolContext.directory`, never `process.cwd()`. Staged chats depend on it to keep
+  `.tagma/.chat-staging/<id>/.../agent-workspace/.tagma` as the authoritative root, and delegated
+  child sessions must inherit that effective root through host-validated permission routing rather
+  than prompt text alone.
 - Pipeline prompt tasks using the built-in `opencode` driver must resolve the executable through
   `resolveOpencodeBinary()`, using the same user-runtime, bundled, dev-staged, then PATH precedence
   as Chat. They must also use Chat's `buildOpencodeEnv()` isolation rooted at the workspace
@@ -511,18 +531,20 @@
   and legacy `permission.updated` / `permissionID` events before routing descendant permission
   prompts to the owning root runtime. Reply with the real child session id; clear exact
   workspace/session/permission tuples and prune/reset ancestry with session deletion and workspace
-  changes.
+  changes. For staged roots, resolve descendants to the first ancestor carrying the turn snapshot
+  and host-authorize write-capable permissions against that authenticated root; a child catalog
+  entry must never become a new write root.
 - Managed Windows command strings run under PowerShell by default. Author PowerShell syntax for
   plain command/shell tasks; invoke CMD-only syntax explicitly through argv with cmd.exe.
 - Treat YAML literal/folded command blocks as opaque scripts during requirements discovery even
   when their parsed value contains only one command plus the block scalar's terminal newline;
   PowerShell cmdlets in those blocks are not external binary requirements.
 - Conversation exports may continue to hide internal planning and repair turns, but must include
-  the durable current-session compile, redacted Trial Plan/case/rejection evidence, and final host
-  reconciliation result when those facts exist. Match that result to the visible provisional
-  assistant turn by session ownership and completion time, replace it at the same chronological
-  position, and preserve later conversation turns. Never detect provisional wording by matching
-  model-authored text.
+  every durable message-bound pipeline result with its final target, outcome, status, compile,
+  redacted Trial evidence, conflicts, and live result path. Insert all results after their
+  assistant message using the persisted message identity, preserve later turns, and never infer
+  ownership or paths from model-authored text. Keep the legacy single-session fallback only for
+  old in-memory results without a reliable message anchor.
 - A hung-turn force stop must finish the visible turn before waiting for restart health. Keep an
   exact workspace/session/turn recovery barrier so sends stay queued and runtime/session mutation
   stays blocked until the replacement is healthy; late recovery failures must not overwrite a new

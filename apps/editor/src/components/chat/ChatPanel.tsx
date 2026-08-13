@@ -44,8 +44,10 @@ import { modelVariantIds, reconcileModelVariant } from '../../store/chat-provide
 import {
   chatPipelineDeploymentTarget,
   chatPipelineDisplayName,
+  chatPipelineTargetInvalidReason,
   selectVisibleChatCompletionResults,
   type ChatPipelineLinkTarget,
+  useChatPipelineTargetAvailability,
   useOpenChatPipelineTarget,
 } from './chat-pipeline-link';
 import {
@@ -715,6 +717,7 @@ function ChatHeader() {
   const sessions = useChatStore((s) => s.sessions);
   const sessionStates = useChatStore((s) => s.sessionStates);
   const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
+  const turnYamlResults = useChatStore((s) => s.turnYamlResults);
   const hasMessages = useChatStore((s) => s.messages.length > 0);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const sending = useChatStore((s) => s.sending);
@@ -746,6 +749,18 @@ function ChatHeader() {
   const pipelineVerification = currentSessionId
     ? (sessionYamlResults[currentSessionId] ?? null)
     : null;
+  const pipelineResultsByMessageId = useMemo(() => {
+    if (!currentSessionId) return {};
+    return Object.fromEntries(
+      Object.entries(turnYamlResults)
+        .map(([messageId, results]) => [
+          messageId,
+          results.filter((result) => result.sessionId === currentSessionId),
+        ])
+        .filter(([, results]) => results.length > 0),
+    );
+  }, [currentSessionId, turnYamlResults]);
+  const hasPipelineResults = Object.keys(pipelineResultsByMessageId).length > 0;
 
   const handleHistory = () => {
     refreshSessions().catch(() => {
@@ -801,7 +816,8 @@ function ChatHeader() {
         <History size={14} />
       </button>
       <ConversationExportButton
-        disabled={!hasMessages && !pipelineVerification}
+        disabled={!hasMessages && !pipelineVerification && !hasPipelineResults}
+        pipelineResultsByMessageId={pipelineResultsByMessageId}
         pipelineVerification={pipelineVerification}
         title={currentSessionTitle}
       />
@@ -811,10 +827,12 @@ function ChatHeader() {
 
 function ConversationExportButton({
   disabled,
+  pipelineResultsByMessageId,
   pipelineVerification,
   title,
 }: {
   disabled: boolean;
+  pipelineResultsByMessageId: Record<string, ChatYamlSessionResult[]>;
   pipelineVerification: ChatYamlSessionResult | null;
   title: string | null;
 }) {
@@ -828,6 +846,7 @@ function ConversationExportButton({
     const exported = buildConversationExport({
       format,
       messages: useChatStore.getState().messages,
+      pipelineResultsByMessageId,
       pipelineVerification,
       title,
     });
@@ -981,6 +1000,19 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
   );
 }
 
+export function selectAssistantMessageYamlResults({
+  entry,
+  sessionId,
+  turnYamlResults,
+}: {
+  entry: OpencodeThreadEntry;
+  sessionId: string | null;
+  turnYamlResults: Record<string, ChatYamlSessionResult[]>;
+}): ChatYamlSessionResult[] {
+  if (entry.info.role !== 'assistant' || !sessionId) return [];
+  return (turnYamlResults[entry.info.id] ?? []).filter((result) => result.sessionId === sessionId);
+}
+
 function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
@@ -989,6 +1021,7 @@ function ChatMessages() {
   const queuedMessages = useChatStore((s) => s.queuedMessages);
   const sessionId = useChatStore((s) => s.currentSessionId);
   const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
+  const turnYamlResults = useChatStore((s) => s.turnYamlResults);
   const postChatYamlAction = useChatStore((s) => s.postChatYamlAction);
   const pendingPermissions = useChatStore((s) => s.pendingPermissions);
   const turnStartedAt = useChatStore((s) => s.turnStartedAt);
@@ -997,6 +1030,19 @@ function ChatMessages() {
   const contentRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const sessionYamlResult = sessionId ? (sessionYamlResults[sessionId] ?? null) : null;
+  const sessionYamlResultIsAnchored =
+    !!sessionYamlResult &&
+    Object.values(turnYamlResults).some((results) =>
+      results.some(
+        (result) =>
+          result.sessionId === sessionId &&
+          (result.resultId && sessionYamlResult.resultId
+            ? result.resultId === sessionYamlResult.resultId
+            : result.completedAt === sessionYamlResult.completedAt &&
+              (result.reconcile?.resultPath ?? result.path) ===
+                (sessionYamlResult.reconcile?.resultPath ?? sessionYamlResult.path)),
+      ),
+    );
 
   // Expanded-state for activity panels lives at this layer (not as
   // component-local useState in MessageBubble) so the '__pending__'
@@ -1142,6 +1188,11 @@ function ChatMessages() {
             </div>
           )}
           {messages.map((entry) => {
+            const messageYamlResults = selectAssistantMessageYamlResults({
+              entry,
+              sessionId,
+              turnYamlResults,
+            });
             const isCurrentTurnAssistant =
               entry.info.role === 'assistant' &&
               !isAbortErrorEntry(entry) &&
@@ -1159,6 +1210,7 @@ function ChatMessages() {
               // that have never been on screen. Bubbles stay mounted.
               <div
                 key={entry.info.id}
+                className={'flex flex-col gap-3'}
                 style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}
               >
                 <MessageBubble
@@ -1169,6 +1221,12 @@ function ChatMessages() {
                   isCurrentTurn={sending && isCurrentTurnAssistant}
                   surfaceActivitySummary={sending && entry.info.id === currentTurnAssistantId}
                 />
+                {messageYamlResults.map((result) => (
+                  <SessionYamlResultBubble
+                    key={result.resultId ?? result.completedAt}
+                    result={result}
+                  />
+                ))}
               </div>
             );
           })}
@@ -1186,7 +1244,7 @@ function ChatMessages() {
             <QueuedUserBubble key={item.id} id={item.id} text={item.text} position={idx + 1} />
           ))}
           {shouldShowSessionYamlResult({
-            hasResult: !!sessionYamlResult,
+            hasResult: !!sessionYamlResult && !sessionYamlResultIsAnchored,
             sending,
             reconciling,
             hasPostChatAction: !!postChatYamlAction,
@@ -1259,11 +1317,15 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
   }
 
   if (result.status === 'blocked') {
-    const verb = result.reconcile?.outcome === 'created' ? 'Created pipeline' : 'Updated pipeline';
+    const verb =
+      result.reconcile?.outcome === 'created'
+        ? 'Created pipeline'
+        : result.reconcile?.outcome === 'forked'
+          ? 'Saved pipeline copy'
+          : 'Updated pipeline';
     return {
       verb,
-      outcome:
-        'Pipeline compilation passed, but Trial could not start because runtime prerequisites are unavailable. The pipeline was kept in place without creating a copy; add the listed prerequisites and run it again.',
+      outcome: `Pipeline compilation passed, but Trial could not start because runtime prerequisites are unavailable. ${result.reconcile?.outcome === 'forked' ? 'The host kept the final copy in place' : 'The pipeline was kept in place without creating a copy'}; add the listed prerequisites and run it again.`,
       detail,
     };
   }
@@ -1279,6 +1341,14 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
       detail,
     };
   }
+  if (chatPipelineDeploymentTarget(result)) {
+    return {
+      verb:
+        result.reconcile?.outcome === 'created' ? 'Created failed draft' : 'Updated failed draft',
+      outcome: `${failed} The host kept the final pipeline at ${name} for inspection.`,
+      detail,
+    };
+  }
   return {
     verb: 'Pipeline verification failed',
     outcome: `${failed} No pipeline changes were published.`,
@@ -1290,6 +1360,12 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
   const openTarget = useOpenChatPipelineTarget();
   const name = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
+  const invalidTargetReason = chatPipelineTargetInvalidReason(result);
+  const { availability, revalidate } = useChatPipelineTargetAvailability(deploymentTarget);
+  const openableTarget = availability.available ? availability.target : null;
+  const unavailableReason =
+    invalidTargetReason ??
+    (deploymentTarget && !availability.available ? availability.reason : null);
   const ok = result.status === 'ready';
   const warning =
     result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
@@ -1323,11 +1399,14 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
         {result.planningTelemetry && (
           <TrialPlanningTelemetryDetails telemetry={result.planningTelemetry} />
         )}
-        {deploymentTarget && (
+        {(deploymentTarget || invalidTargetReason) && (
           <button
             type="button"
+            disabled={!openableTarget}
             onClick={() => {
-              void openTarget(deploymentTarget);
+              void revalidate().then((latest) => {
+                if (latest.available) void openTarget(latest.target);
+              });
             }}
             className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
             title={`Open ${name}`}
@@ -1335,6 +1414,11 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
             <FileText size={11} />
             <span>Open pipeline</span>
           </button>
+        )}
+        {unavailableReason && (
+          <div role={'status'} className={'select-text text-[9px] text-tagma-warning break-words'}>
+            {unavailableReason}
+          </div>
         )}
       </div>
     </div>
@@ -1391,6 +1475,12 @@ export function ChatCompletionToastCard({
 }) {
   const pipelineName = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
+  const invalidTargetReason = chatPipelineTargetInvalidReason(result);
+  const { availability, revalidate } = useChatPipelineTargetAvailability(deploymentTarget);
+  const openableTarget = availability.available ? availability.target : null;
+  const unavailableReason =
+    invalidTargetReason ??
+    (deploymentTarget && !availability.available ? availability.reason : null);
   const ok = result.status === 'ready';
   const warning =
     result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
@@ -1423,16 +1513,26 @@ export function ChatCompletionToastCard({
           <div className="mt-1 text-[9px] text-tagma-muted/80 break-words">
             {presentation.outcome}
           </div>
-          {deploymentTarget && (
+          {(deploymentTarget || invalidTargetReason) && (
             <button
               type="button"
-              onClick={() => onOpen?.(deploymentTarget)}
+              disabled={!openableTarget}
+              onClick={() => {
+                void revalidate().then((latest) => {
+                  if (latest.available) onOpen?.(latest.target);
+                });
+              }}
               className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
               title={`Open ${pipelineName}`}
             >
               <FileText size={11} />
               <span>Open pipeline</span>
             </button>
+          )}
+          {unavailableReason && (
+            <div role={'status'} className={'mt-1 text-[9px] text-tagma-warning break-words'}>
+              {unavailableReason}
+            </div>
           )}
         </div>
         <button

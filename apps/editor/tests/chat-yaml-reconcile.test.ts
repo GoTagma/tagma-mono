@@ -3,10 +3,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   detectChatStagedYamlTarget,
+  detectChatStagedYamlTargets,
   detectSnapshotlessChatYamlTarget,
   maxTrialPlanPromptsForLogicalTurn,
-  shouldAdoptFinalizedChatStateOnCurrentCanvas,
-  shouldAutoSyncFinalizedChatBindings,
   shouldAutoRepairCompileResult,
   shouldAutoRepairTrialResult,
   shouldReverifyChatPipelineAfterRepair,
@@ -15,12 +14,26 @@ import {
   chatPipelineVerificationSucceeded,
   applicableFinalizedChatTrialResult,
   chatYamlFinalizeForceForkReason,
+  chatYamlTargetTrialId,
   shouldTrialRunChatPipeline,
+  shouldPreserveCanvasForChatPipelineEvent,
   type ChatPipelineRepairArtifactState,
   type ChatYamlSnapshot,
   type ChatYamlStageSnapshotEntry,
   type WorkspaceYamlEntry,
 } from '../src/utils/chat-yaml-reconcile';
+
+describe('chatYamlTargetTrialId', () => {
+  test('keeps long punctuation-distinct targets unique within the server id bound', () => {
+    const sharedPrefix = 'nested/' + 'same-segment-'.repeat(20);
+    const first = chatYamlTargetTrialId('finished_turn', sharedPrefix + 'alpha.yaml');
+    const second = chatYamlTargetTrialId('finished_turn', sharedPrefix + 'beta.yaml');
+
+    expect(first).not.toBe(second);
+    expect(first).toMatch(/^[A-Za-z0-9_-]{1,160}$/);
+    expect(second).toMatch(/^[A-Za-z0-9_-]{1,160}$/);
+  });
+});
 
 const before: WorkspaceYamlEntry = {
   name: 'current.yaml',
@@ -151,21 +164,13 @@ describe('detectChatStagedYamlTarget', () => {
     expect(detectChatStagedYamlTarget(stagedSnapshot(), [stagedBefore])).toBeNull();
   });
 
-  test('reconciles an unchanged active stage when the live source drifted', () => {
+  test('does not reconcile an unchanged active stage when only the live source drifted', () => {
     const liveDrift = { ...stagedBefore, sourceChangedOnDisk: true };
 
-    expect(detectChatStagedYamlTarget(stagedSnapshot(), [liveDrift])).toEqual({
-      kind: 'refresh-current',
-      path: stagedBefore.stagedPath,
-      name: stagedBefore.name,
-      pipelineName: stagedBefore.pipelineName,
-      relativePath: stagedBefore.relativePath,
-      sourcePath: stagedBefore.sourcePath,
-      reconcileLiveSourceDrift: true,
-    });
+    expect(detectChatStagedYamlTarget(stagedSnapshot(), [liveDrift])).toBeNull();
   });
 
-  test('keeps active live-source reconciliation attached to a different created target', () => {
+  test('does not attach unrelated active live-source drift to a created target', () => {
     const liveDrift = { ...stagedBefore, sourceChangedOnDisk: true };
     const created: ChatYamlStageSnapshotEntry = {
       ...stagedBefore,
@@ -185,8 +190,34 @@ describe('detectChatStagedYamlTarget', () => {
       pipelineName: created.pipelineName,
       relativePath: created.relativePath,
       sourcePath: null,
-      reconcileActiveSourceDrift: true,
     });
+  });
+
+  test('returns every created and changed pipeline in one logical turn', () => {
+    const changed = { ...stagedBefore, contentHash: 'agent-result' };
+    const createdOne: ChatYamlStageSnapshotEntry = {
+      ...stagedBefore,
+      name: 'alpha.yaml',
+      stagedPath: 'C:/w/.tagma/.chat-staging/turn/agent-workspace/.tagma/alpha/alpha.yaml',
+      relativePath: 'alpha/alpha.yaml',
+      sourcePath: null,
+      pipelineName: 'Alpha',
+      contentHash: 'alpha',
+    };
+    const createdTwo: ChatYamlStageSnapshotEntry = {
+      ...createdOne,
+      name: 'beta.yaml',
+      stagedPath: 'C:/w/.tagma/.chat-staging/turn/agent-workspace/.tagma/beta/beta.yaml',
+      relativePath: 'beta\\beta.yaml',
+      pipelineName: 'Beta',
+      contentHash: 'beta',
+    };
+
+    expect(
+      detectChatStagedYamlTargets(stagedSnapshot(), [createdTwo, changed, createdOne]).map(
+        (target) => target.relativePath.replace(/\\/g, '/'),
+      ),
+    ).toEqual(['current/current.yaml', 'alpha/alpha.yaml', 'beta/beta.yaml']);
   });
 
   test('detects a requirements-only change on the isolated branch', () => {
@@ -445,65 +476,6 @@ describe('optional OpenCode Chat pipeline trial run', () => {
   });
 });
 
-describe('shouldAdoptFinalizedChatStateOnCurrentCanvas', () => {
-  test('adopts when the finalized state still targets the current canvas and no later local edit landed', () => {
-    expect(
-      shouldAdoptFinalizedChatStateOnCurrentCanvas({
-        currentPath: 'c:/w/.tagma/current.yaml',
-        finalizedStatePath: before.path,
-        finalEntryPath: before.path,
-        finalizedOutcome: 'adopted',
-        localBranchPersisted: false,
-        localEditRevisionBeforeFinalize: 11,
-        currentLocalEditRevision: 11,
-      }),
-    ).toBe(true);
-  });
-
-  test('blocks adoption when a newer same-window local edit landed while finalize was in flight', () => {
-    expect(
-      shouldAdoptFinalizedChatStateOnCurrentCanvas({
-        currentPath: before.path,
-        finalizedStatePath: before.path,
-        finalEntryPath: before.path,
-        finalizedOutcome: 'adopted',
-        localBranchPersisted: false,
-        localEditRevisionBeforeFinalize: 11,
-        currentLocalEditRevision: 12,
-      }),
-    ).toBe(false);
-  });
-});
-
-describe('shouldAutoSyncFinalizedChatBindings', () => {
-  test('syncs only the adopted pipeline whose verification was accepted', () => {
-    expect(
-      shouldAutoSyncFinalizedChatBindings({
-        currentPath: before.path,
-        finalEntryPath: before.path,
-        finalizedOutcome: 'adopted',
-        verificationAccepted: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldAutoSyncFinalizedChatBindings({
-        currentPath: 'C:/w/.tagma/active/active.yaml',
-        finalEntryPath: 'C:/w/.tagma/other/other.yaml',
-        finalizedOutcome: 'adopted',
-        verificationAccepted: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldAutoSyncFinalizedChatBindings({
-        currentPath: before.path,
-        finalEntryPath: before.path,
-        finalizedOutcome: 'adopted',
-        verificationAccepted: false,
-      }),
-    ).toBe(false);
-  });
-});
-
 describe('chatYamlFinalizeForceForkReason', () => {
   test('lets live-only drift reach server reconciliation even after the renderer switched paths', () => {
     expect(
@@ -530,6 +502,89 @@ describe('chatYamlFinalizeForceForkReason', () => {
         pathMoved: true,
       }),
     ).toBe('path-moved');
+  });
+});
+
+describe('shouldPreserveCanvasForChatPipelineEvent', () => {
+  test('preserves the canvas throughout an active reconcile and for delayed final-result events', () => {
+    expect(
+      shouldPreserveCanvasForChatPipelineEvent({
+        eventPath: 'c:\\w\\.tagma\\result\\result.yaml',
+        workspaceKey: 'C:/W',
+        activeLifecycleWorkspaceKey: 'c:\\w',
+        activeTargetPaths: ['C:/W/.tagma/result/result.yaml'],
+        acceptedCanvasMtimeMs: 900,
+        resultTargets: [],
+      }),
+    ).toBe(true);
+    expect(
+      shouldPreserveCanvasForChatPipelineEvent({
+        eventPath: 'C:/W/.tagma/result/result.yaml',
+        workspaceKey: 'c:\\w',
+        activeLifecycleWorkspaceKey: null,
+        activeTargetPaths: [],
+        acceptedCanvasPath: 'C:/W/.tagma/other/other.yaml',
+        acceptedCanvasMtimeMs: 10_000,
+        resultTargets: [
+          {
+            finalYamlMtimeMs: 1_000,
+            workspaceKey: 'C:/W',
+            path: 'c:\\w\\.tagma\\result\\result.yaml',
+          },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      shouldPreserveCanvasForChatPipelineEvent({
+        eventPath: 'C:/W/.tagma/result/result.yaml',
+        workspaceKey: 'C:/W',
+        activeLifecycleWorkspaceKey: null,
+        activeTargetPaths: [],
+        acceptedCanvasPath: 'c:\\w\\.tagma\\result\\result.yaml',
+        acceptedCanvasMtimeMs: 10_000,
+        resultTargets: [
+          {
+            workspaceKey: 'C:/W',
+            path: 'C:/W/.tagma/result/result.yaml',
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  test('does not relabel an unrelated external event as a finalized chat result', () => {
+    expect(
+      shouldPreserveCanvasForChatPipelineEvent({
+        eventPath: 'C:/W/.tagma/other/other.yaml',
+        workspaceKey: 'C:/W',
+        activeLifecycleWorkspaceKey: 'C:/W',
+        activeTargetPaths: ['C:/W/.tagma/result/result.yaml'],
+        acceptedCanvasMtimeMs: 900,
+        resultTargets: [
+          {
+            workspaceKey: 'C:/W',
+            path: 'C:/W/.tagma/result/result.yaml',
+          },
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      shouldPreserveCanvasForChatPipelineEvent({
+        eventPath: 'C:/W/.tagma/result/result.yaml',
+        workspaceKey: 'C:/W',
+        activeLifecycleWorkspaceKey: null,
+        activeTargetPaths: [],
+        acceptedCanvasPath: 'C:/W/.tagma/result/result.yaml',
+        acceptedCanvasMtimeMs: 1_100,
+        resultTargets: [
+          {
+            finalYamlMtimeMs: 1_000,
+            workspaceKey: 'C:/W',
+            path: 'C:/W/.tagma/result/result.yaml',
+          },
+        ],
+      }),
+    ).toBe(false);
   });
 });
 
@@ -561,60 +616,50 @@ describe('staged finalize adoption wiring', () => {
     expect(appSource).toContain('!skipUnchangedTrialRepair &&');
   });
 
-  test('captures the pre-finalize local edit revision and gates adoptDiskState on the helper', () => {
+  test('keeps finalized chat state off the canvas until the user explicitly opens it', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
 
-    expect(appSource).toMatch(
-      /const localEditRevisionBeforeFinalize = getLocalPipelineEditRevision\(\);[\s\S]*const finalizeOnce = \(\) =>/,
-    );
-    expect(appSource).toContain(
-      'const finalStateBelongsOnCanvas = shouldAdoptFinalizedChatStateOnCurrentCanvas({',
-    );
-    expect(appSource).toContain('localEditRevisionBeforeFinalize,');
-    expect(appSource).toContain('currentLocalEditRevision: getLocalPipelineEditRevision(),');
-    expect(appSource).toMatch(
-      /const finalStateBelongsOnCanvas = shouldAdoptFinalizedChatStateOnCurrentCanvas\([\s\S]*current\.adoptDiskState\(finalized\.state, 'chat'\);/,
-    );
+    expect(appSource).not.toContain(`adoptDiskState(finalized.state, 'chat')`);
+    expect(appSource).not.toContain('shouldAdoptFinalizedChatStateOnCurrentCanvas');
   });
 
-  test('auto-syncs adopted results only after accepted verification', () => {
+  test('protects finalized chat results from delayed SSE adoption and snapshotless reload', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
 
-    expect(appSource).toContain(
-      'const verificationAccepted = verificationSucceeded || verificationBlocked;',
-    );
-    expect(appSource).toContain('shouldAutoSyncFinalizedChatBindings({');
-    expect(appSource).toContain('currentPath: usePipelineStore.getState().yamlPath,');
-    expect(appSource).toContain('finalEntryPath: finalEntry.path,');
-    expect(appSource).toContain('verificationAccepted,');
+    expect(appSource.match(/shouldPreserveCanvasForChatPipelineEvent\(\{/g)?.length).toBe(3);
+    expect(appSource.match(/acceptedCanvasPath:/g)?.length).toBe(3);
+    expect(appSource.match(/finalYamlMtimeMs: result\.finalYamlMtimeMs/g)?.length).toBe(3);
+    expect(appSource.match(/finalYamlMtimeMs: finalEntry\.mtimeMs/g)?.length).toBe(2);
+    expect(appSource).toContain("event.origin === 'chat-yaml-finalize'");
+    expect(appSource).not.toContain("pipelineState.adoptDiskState(newState, 'chat')");
+    expect(appSource).not.toContain("pipelineState.autoSyncAllBindings('chat'");
   });
 
-  test('wires live-only drift through finalize without repairing or trial-running the base copy', () => {
+  test('does not auto-sync a finalized result before the user opens it', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+
+    expect(appSource).not.toContain('shouldAutoSyncFinalizedChatBindings');
+  });
+
+  test('discards live-only drift and finalizes only actual staged mutations', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
 
     expect(appSource).toContain(
-      'const reconcileLiveSourceDriftOnly = stagedTarget.reconcileLiveSourceDrift === true;',
+      'const stagedTargets = detectChatStagedYamlTargets(snapshot, stage.entries).filter(',
     );
-    expect(appSource).toContain('reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,');
-    expect(appSource).toContain('allowInvalid: reconcileLiveSourceDriftOnly || !compile.success,');
+    expect(appSource).toContain('const reconcileLiveSourceDriftOnly = false;');
+    expect(appSource).toContain('allowInvalid: !compile.success,');
     expect(appSource).toContain('const applicableTrialRun = applicableFinalizedChatTrialResult(');
     expect(appSource).not.toContain('...(trialRun ? { trial: trialRun } : {})');
   });
 
-  test('always captures the active renderer branch when a different staged target wins', () => {
+  test('keeps canvas navigation independent and drains every staged target', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
 
-    expect(appSource).toContain(
-      'const reconcileDifferentActiveSourceDrift =\n            stagedTarget.reconcileActiveSourceDrift === true;',
-    );
-    expect(appSource).toContain(
-      'const targetsDifferentPipeline =\n            reconcileDifferentActiveSourceDrift ||',
-    );
-    expect(appSource).toContain(
-      'const activeLocalBranch = targetsDifferentPipeline ? capturedActiveLocalBranch : null;',
-    );
-    expect(appSource).toMatch(
-      /relativePath: stagedTarget\.relativePath,[\s\S]*localBranch,[\s\S]*activeLocalBranch,/,
-    );
+    expect(appSource).toContain('pathMoved: false,');
+    expect(appSource).not.toContain('const targetsDifferentPipeline =');
+    expect(appSource).not.toContain('activeLocalBranch,');
+    expect(appSource).toContain('retainStage: retainStageForMoreTargets,');
+    expect(appSource).toContain('.markFinishedTurnYamlTargetCompleted(');
   });
 });

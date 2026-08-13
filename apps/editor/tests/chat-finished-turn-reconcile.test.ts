@@ -87,7 +87,9 @@ describe('finished chat turn reconciliation', () => {
 
     expect(reconcileBlock).toContain('if (!finishedTurn || finishedTurn.reconcileFailure) return;');
     expect(reconcileBlock).toContain('markFinishedTurnReconciliationFailed(');
-    expect(reconcileBlock).toContain('if (!reconciliationFailed && !cancelled)');
+    expect(reconcileBlock).toContain(
+      'if (!reconciliationFailed && !cancelled && !keepFinishedTurnForMoreTargets)',
+    );
 
     const ordinaryFailureStart = reconcileBlock.indexOf('post-chat YAML reconcile failed');
     const finallyStart = reconcileBlock.indexOf('} finally {', ordinaryFailureStart);
@@ -117,7 +119,7 @@ describe('finished chat turn reconciliation', () => {
       'shouldPreserveFinishedTurnReconciliationFailure(stagedFinalizeCommitted)',
       committedGuard,
     );
-    const committedResult = reconcileBlock.indexOf('setSessionYamlResult({', committedGuard);
+    const committedResult = reconcileBlock.indexOf('setTurnYamlResult({', committedGuard);
     const bestEffortRefresh = reconcileBlock.indexOf(
       'await refreshWorkspaceYamls({ preserveOnError: true });',
       committedResult,
@@ -234,7 +236,7 @@ describe('finished chat turn reconciliation', () => {
     expect(clientSource).toContain('finalizedResult?: ChatYamlStageFinalizeResult');
   });
 
-  test('refreshes finalized readback and adopts it only when the canvas stayed untouched', () => {
+  test('refreshes finalized readback without replacing the current canvas', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
     const cleanupStart = appSource.indexOf('const discardFailedChatReconciliation = useCallback(');
     const cleanupEnd = appSource.indexOf('const refreshWorkspaceYamls', cleanupStart);
@@ -242,14 +244,8 @@ describe('finished chat turn reconciliation', () => {
     const finalizedStart = cleanupBlock.indexOf("if (resolution.kind === 'finalized')");
     const finalizedBlock = cleanupBlock.slice(finalizedStart);
 
-    expect(finalizedBlock).toContain("finalized.outcome === 'adopted'");
-    expect(finalizedBlock).toContain('sameEditorPath(current.yamlPath, finalEntry.path)');
-    expect(finalizedBlock).toContain('!current.isDirty');
-    expect(finalizedBlock).toContain('!current.layoutDirty');
-    expect(finalizedBlock).toContain(
-      'getLocalPipelineEditRevision() === snapshot.localEditRevision',
-    );
-    expect(finalizedBlock).toContain("current.adoptDiskState(finalized.state, 'chat')");
+    expect(finalizedBlock).toContain('setTurnYamlResult({');
+    expect(finalizedBlock).not.toContain('adoptDiskState');
     expect(finalizedBlock).toContain('await api.listWorkspaceYamls(snapshot.workDir)');
   });
 
@@ -266,6 +262,7 @@ describe('finished chat turn reconciliation', () => {
       stageId: '',
       workspaceKey: null,
       hostTrialActive: false,
+      trialId: null,
       cancellationRequested: false,
     });
 
@@ -308,6 +305,7 @@ describe('finished chat turn reconciliation', () => {
         stageId: 'stage-1',
         workspaceKey: 'C:/repo',
         hostTrialActive: false,
+        trialId: null,
         cancellationRequested: false,
       },
     });
@@ -338,7 +336,7 @@ describe('finished chat turn reconciliation', () => {
     expect(finalizeStart).toBeGreaterThan(-1);
     expect(finalizeEnd).toBeGreaterThan(finalizeStart);
     const finalizeBlock = appSource.slice(finalizeStart, finalizeEnd);
-    expect(finalizeBlock).toContain('setChatYamlHostTrialActive(finishedTurn.id, true)');
+    expect(finalizeBlock).toContain('setChatYamlHostTrialActive(finishedTurn.id, true, null)');
     expect(finalizeBlock).toContain('setChatYamlHostTrialActive(finishedTurn.id, false)');
     expect(finalizeBlock).toContain('isChatYamlFinalizeWitnessFailure(err)');
   });

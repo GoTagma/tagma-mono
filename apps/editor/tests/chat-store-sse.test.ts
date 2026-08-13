@@ -700,6 +700,142 @@ test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID repli
   expect(state.pendingPermissions).toEqual([]);
 });
 
+test('staged descendant permissions inherit the root agent directory and are decided by the host', async () => {
+  const workspace = 'C:/staged-permission-repo';
+  const agentRoot =
+    'C:/staged-permission-repo/.tagma/.chat-staging/11111111-1111-4111-8111-111111111111/agent-workspace/.tagma';
+  const decisions: Array<{ permission: string; patterns: string[] }> = [];
+  const replies: Array<{ url: string; response: unknown }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const bodyText =
+      typeof init?.body === 'string' ? init.body : request ? await request.text() : '';
+    const body = bodyText ? (JSON.parse(bodyText) as Record<string, unknown>) : {};
+    if (url === '/api/workspace/chat-yaml-stage/authorize-paths') {
+      decisions.push({
+        permission: String(body.permission),
+        patterns: body.patterns as string[],
+      });
+      const patterns = body.patterns as string[];
+      const allowed =
+        patterns.length > 0 &&
+        patterns.every((path) =>
+          path.split('\\').join('/').toLowerCase().startsWith(agentRoot.toLowerCase()),
+        );
+      return jsonResponse({
+        allowed,
+        reason: allowed
+          ? null
+          : patterns.length === 0
+            ? 'The staged write request did not identify a target path.'
+            : 'Target is outside this turn staged agent root.',
+      });
+    }
+    if (url === '/api/opencode/chat/ensure') {
+      return jsonResponse({
+        baseUrl: 'http://opencode-stage-permission.test',
+        directory: `${workspace}/.tagma`,
+      });
+    }
+    if (url.includes('/permissions/')) {
+      replies.push({ url, response: body.response });
+      return jsonResponse({ ok: true });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+  setClientWorkspace(workspace);
+  resetOpencodeClient();
+  try {
+    useChatStore.setState({
+      currentSessionId: 'root',
+      sessions: [makeSession('root')],
+      sending: true,
+      pendingPermissions: [],
+      yamlSnapshotBeforeSend: {
+        workDir: workspace,
+        activePath: `${workspace}/.tagma/sample/sample.yaml`,
+        localEditRevision: 0,
+        yamlEditLockId: 'lock-stage-permission',
+        staging: {
+          id: '11111111-1111-4111-8111-111111111111',
+          agentTagmaDir: agentRoot,
+          activeRelativePath: 'sample/sample.yaml',
+          activeStagedPath: `${agentRoot}/sample/sample.yaml`,
+          entries: [],
+        },
+      },
+    } as never);
+    dispatch({ type: 'session.created', properties: { info: makeSession('child', 'root') } });
+    // Even if a child leaks into the session catalog, staging ownership must
+    // walk its real parent chain instead of treating the child as a root.
+    useChatStore.setState({
+      sessions: [makeSession('root'), makeSession('child', 'root')],
+    } as never);
+
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'inside-write',
+        sessionID: 'child',
+        permission: 'edit',
+        patterns: [`${agentRoot.toUpperCase().split('/').join('\\')}\\sample\\sample.yaml`],
+        metadata: {},
+        always: [],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(decisions[0]).toEqual({
+      permission: 'edit',
+      patterns: [`${agentRoot.toUpperCase().split('/').join('\\')}\\sample\\sample.yaml`],
+    });
+    expect(replies[0]?.url).toContain('/session/child/');
+    expect(replies[0]?.response).toBe('once');
+    expect(useChatStore.getState().pendingPermissions).toEqual([]);
+
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'live-write',
+        sessionID: 'child',
+        permission: 'external_directory',
+        patterns: [`${workspace}/.tagma/live/live.yaml`],
+        metadata: {},
+        always: [],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(replies[1]?.response).toBe('reject');
+    expect(useChatStore.getState().pendingPermissions).toEqual([]);
+    expect(useChatStore.getState().sendError).toContain('Staged write rejected');
+    expect(useChatStore.getState().sendError).toContain('outside this turn');
+
+    dispatch({
+      type: 'permission.updated',
+      properties: {
+        id: 'legacy-forged-title',
+        sessionID: 'child',
+        messageID: 'legacy-message',
+        type: 'edit',
+        title: `${agentRoot}/sample/forged.yaml`,
+        metadata: {},
+        time: { created: Date.now() },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(decisions[2]).toEqual({ permission: 'edit', patterns: [] });
+    expect(replies[2]?.response).toBe('reject');
+    expect(useChatStore.getState().sendError).toContain('did not identify a target path');
+  } finally {
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
 test('keeps staged child ancestry through bootstrap and refresh for permission routing', async () => {
   const workspace = 'C:/staged-ancestry-repo';
   const directory = `${workspace}/.tagma`;

@@ -131,7 +131,8 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('snapshotChatTrialPlanningTelemetry(planningAccumulator');
     expect(source).toContain('? { planningTelemetry }');
     expect(source).toContain('const finishedSessionCanContinue = canContinueChatSession(');
-    expect(source).toContain('trialId: finishedTurn.id');
+    expect(source).toContain('setChatYamlHostTrialActive(finishedTurn.id, true, targetTrialId)');
+    expect(source).toContain('const targetTrialId = chatYamlTargetTrialId(');
     expect(source).not.toContain('finishedSessionVisible');
     expect(source.match(/finishedSessionId [?][?] undefined/g)).toHaveLength(4);
     expect(source).toContain("trialRun.kind !== 'plan-required'");

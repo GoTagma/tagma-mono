@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildConversationFlowSteps,
@@ -10,6 +12,7 @@ import {
   selectConversationFlowActivity,
   PendingUserBubble,
   QueuedUserBubble,
+  selectAssistantMessageYamlResults,
   SessionYamlResultBubble,
   shouldShowChatCompletionToast,
   shouldShowSessionYamlResult,
@@ -17,6 +20,8 @@ import {
 import { useChatStore } from '../src/store/chat-store';
 import {
   chatPipelineDisplayName,
+  chatPipelineDeploymentTarget,
+  resolveChatPipelineTargetAvailability,
   isChatPipelineDeployed,
   selectVisibleChatCompletionResults,
 } from '../src/components/chat/chat-pipeline-link';
@@ -43,6 +48,7 @@ afterEach(() => {
     sessionStates: {},
     completedUnreadSessionIds: [],
     sessionYamlResults: {},
+    turnYamlResults: {},
     dismissedSessionYamlResultToastIds: [],
     lastFinishedTurn: null,
     finishedTurnQueue: [],
@@ -67,6 +73,23 @@ afterEach(() => {
 });
 
 describe('ChatPanel export affordance', () => {
+  test('explicit Open Pipeline reloads an already visible target from its verified live path', () => {
+    const source = readFileSync(
+      join(import.meta.dir, '..', 'src', 'components', 'chat', 'chat-pipeline-link.ts'),
+      'utf-8',
+    );
+    expect(source).not.toContain('if (current.yamlPath === verifiedTarget.path) return;');
+    const recordVerifiedMtime =
+      /recordTurnYamlResultFinalMtime\(\s*verifiedTarget\.resultId,\s*openedState\.yamlMtimeMs,?\s*\)/;
+    expect(source).toMatch(recordVerifiedMtime);
+    expect(source.search(recordVerifiedMtime)).toBeGreaterThan(
+      source.indexOf('await openFile(verifiedTarget.path);'),
+    );
+    expect(source).toContain('const openedState = usePipelineStore.getState();');
+    expect(source).toContain('if (openedState.errorMessage || !openedState.yamlPath) return;');
+    expect(source).toContain('await openFile(verifiedTarget.path);');
+  });
+
   test('renders indeterminate completion as a warning instead of an error', () => {
     const html = renderToStaticMarkup(
       <CompletionWarningBannerView
@@ -345,8 +368,8 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Pipeline repair did not succeed after 2 cycles.');
     expect(html).toContain('No live pipeline was overwritten.');
     expect(html).toContain('Trial run failed: main.test exited 7.');
-    expect(html).not.toContain('Open pipeline');
-    expect(isChatPipelineDeployed(result)).toBe(false);
+    expect(html).toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(true);
   });
 
   test('renders accepted trial risk as a warning without treating the pipeline as failed', () => {
@@ -511,7 +534,7 @@ describe('ChatPanel export affordance', () => {
     expect(isChatPipelineDeployed(result)).toBe(false);
   });
 
-  test('does not link a verified fork that was saved as a copy instead of deployed live', () => {
+  test('links a verified fork at the host final copy path', () => {
     const result: ChatYamlSessionResult = {
       sessionId: 's1',
       kind: 'open-created',
@@ -537,8 +560,8 @@ describe('ChatPanel export affordance', () => {
     const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
 
     expect(html).toContain('Saved pipeline copy');
-    expect(html).not.toContain('Open pipeline');
-    expect(isChatPipelineDeployed(result)).toBe(false);
+    expect(html).toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(true);
   });
 
   test('exposes a history link only for a deployed pipeline result', () => {
@@ -590,7 +613,7 @@ describe('ChatPanel export affordance', () => {
       />,
     );
 
-    expect(failedHtml).not.toContain('Open Failed Draft');
+    expect(failedHtml).toContain('Open Failed Draft');
     expect(deployedHtml).toContain('Open Deployed Pipeline');
     expect(disabledHtml).toContain('disabled=""');
   });
@@ -949,7 +972,7 @@ describe('ChatPanel export affordance', () => {
       <ChatCompletionToastCard result={deployed} sessionTitle="Completed chat" />,
     );
 
-    expect(failedHtml).not.toContain('Open pipeline');
+    expect(failedHtml).toContain('Open pipeline');
     expect(deployedHtml).toContain('Open pipeline');
   });
 
@@ -1206,5 +1229,181 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('is-complete');
     expect(html).not.toContain('is-error');
     expect(html).not.toContain('Needs attention');
+  });
+
+  test('renders every persisted pipeline result immediately after its assistant message', () => {
+    const makeResult = (
+      resultId: string,
+      messageId: string,
+      pipelineName: string,
+      completedAt: number,
+    ): ChatYamlSessionResult =>
+      ({
+        resultId,
+        messageId,
+        turnId: `turn-${messageId}`,
+        sessionId: 's1',
+        workspaceKey: 'C:\\workspace',
+        kind: 'open-created',
+        path: `C:\\workspace\\.tagma\\${resultId}\\${resultId}.yaml`,
+        name: `${resultId}.yaml`,
+        pipelineName,
+        status: 'ready',
+        compile: {
+          success: true,
+          summary: 'Compile succeeded.',
+          validation: { errors: [], warnings: [] },
+        },
+        reconcile: {
+          outcome: 'created',
+          conflicts: [],
+          localBranchPersisted: false,
+          resultPath: `C:\\workspace\\.tagma\\${resultId}\\${resultId}.yaml`,
+          compileSuccess: true,
+        },
+        completedAt,
+      }) as ChatYamlSessionResult;
+    const secondAssistant: OpencodeThreadEntry = {
+      info: { id: 'm2', sessionID: 's1', role: 'assistant' },
+      parts: [{ id: 'p2', sessionID: 's1', messageID: 'm2', type: 'text', text: 'Second answer' }],
+    } as OpencodeThreadEntry;
+    const turnYamlResults = {
+      m1: [
+        makeResult('alpha', 'm1', 'Alpha Pipeline', 1_000),
+        makeResult('beta', 'm1', 'Beta Pipeline', 1_001),
+      ],
+      m2: [makeResult('gamma', 'm2', 'Gamma Pipeline', 2_000)],
+    };
+    const firstResults = selectAssistantMessageYamlResults({
+      entry: visibleThread,
+      sessionId: 's1',
+      turnYamlResults,
+    });
+    const secondResults = selectAssistantMessageYamlResults({
+      entry: secondAssistant,
+      sessionId: 's1',
+      turnYamlResults,
+    });
+    expect(firstResults.map((result) => result.resultId)).toEqual(['alpha', 'beta']);
+    expect(secondResults.map((result) => result.resultId)).toEqual(['gamma']);
+
+    const html = renderToStaticMarkup(
+      <>
+        <span>{'Hello'}</span>
+        {firstResults.map((result) => (
+          <SessionYamlResultBubble key={result.resultId} result={result} />
+        ))}
+        <span>{'Second answer'}</span>
+        {secondResults.map((result) => (
+          <SessionYamlResultBubble key={result.resultId} result={result} />
+        ))}
+      </>,
+    );
+    const firstMessage = html.indexOf('Hello');
+    const alpha = html.indexOf('Alpha Pipeline');
+    const beta = html.indexOf('Beta Pipeline');
+    const secondMessage = html.indexOf('Second answer');
+    const gamma = html.indexOf('Gamma Pipeline');
+
+    expect(firstMessage).toBeGreaterThan(-1);
+    expect(alpha).toBeGreaterThan(firstMessage);
+    expect(beta).toBeGreaterThan(alpha);
+    expect(secondMessage).toBeGreaterThan(beta);
+    expect(gamma).toBeGreaterThan(secondMessage);
+    expect(html.match(/pipeline result/g)?.length).toBe(3);
+  });
+
+  test('links forked and compile-failed host results while rejecting staging targets', () => {
+    const result = {
+      sessionId: 's1',
+      workspaceKey: 'C:\\workspace',
+      kind: 'open-created',
+      path: 'C:\\workspace\\.tagma\\failed-draft\\failed-draft.yaml',
+      name: 'failed-draft.yaml',
+      pipelineName: 'Failed Draft',
+      status: 'failed',
+      compile: {
+        success: false,
+        summary: 'Compile failed: missing task input.',
+        validation: { errors: [{ path: 'tasks.main', message: 'missing input' }], warnings: [] },
+      },
+      reconcile: {
+        outcome: 'forked',
+        conflicts: ['compile-failed'],
+        localBranchPersisted: false,
+        resultPath: 'C:\\workspace\\.tagma\\failed-draft\\failed-draft.yaml',
+        compileSuccess: false,
+      },
+      completedAt: 1_000,
+    } as ChatYamlSessionResult;
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+    expect(html).toContain('Saved failed draft');
+    expect(html).toContain('Compile failed: missing task input.');
+    expect(html).toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(true);
+
+    const stagingResult = {
+      ...result,
+      reconcile: {
+        ...result.reconcile!,
+        resultPath: 'C:\\workspace\\.tagma\\.chat-staging\\stage-1\\agent\\draft.yaml',
+      },
+    };
+    expect(chatPipelineDeploymentTarget(stagingResult)).toBeNull();
+    const stagingHtml = renderToStaticMarkup(<SessionYamlResultBubble result={stagingResult} />);
+    expect(stagingHtml).toContain('Open pipeline');
+    expect(stagingHtml).toContain('internal staging path');
+    expect(stagingHtml).toContain('disabled="');
+  });
+
+  test('safely resolves Windows aliases and disables missing or outside live targets', () => {
+    const target = {
+      resultId: 'result-facts',
+      workspaceKey: 'C:\\Workspace',
+      path: 'c:/workspace/.TAGMA/facts/FACTS.yaml',
+      name: 'FACTS.yaml',
+      pipelineName: 'Facts',
+    };
+    expect(
+      resolveChatPipelineTargetAvailability({
+        target,
+        workspaceKey: target.workspaceKey,
+        entries: [
+          {
+            name: 'facts.yaml',
+            path: 'C:\\Workspace\\.tagma\\Facts\\facts.yaml',
+            pipelineName: 'Facts',
+            mtimeMs: 7_654,
+          },
+        ],
+      }),
+    ).toEqual({
+      available: true,
+      target: {
+        ...target,
+        path: 'C:\\Workspace\\.tagma\\Facts\\facts.yaml',
+        name: 'facts.yaml',
+        pipelineName: 'Facts',
+        verifiedYamlMtimeMs: 7_654,
+      },
+      reason: null,
+    });
+
+    const missing = resolveChatPipelineTargetAvailability({
+      target,
+      workspaceKey: target.workspaceKey,
+      entries: [],
+    });
+    expect(missing.available).toBe(false);
+    expect(missing.reason).toContain('no longer exists');
+
+    const outside = resolveChatPipelineTargetAvailability({
+      target: { ...target, path: 'C:\\other\\.tagma\\facts\\facts.yaml' },
+      workspaceKey: target.workspaceKey,
+      entries: [],
+    });
+    expect(outside.available).toBe(false);
+    expect(outside.reason).toContain('outside this workspace');
   });
 });

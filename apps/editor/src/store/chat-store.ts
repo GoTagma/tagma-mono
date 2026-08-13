@@ -114,9 +114,12 @@ import {
   isChatReasoningEffort,
   loadPersisted,
   loadPersistedChatYamlReconciliationQueue,
+  loadPersistedChatYamlResults,
   savePersisted,
   savePersistedChatYamlReconciliationQueue,
+  savePersistedChatYamlResults,
   sameModelPick,
+  validatePersistedChatYamlResult,
   type ChatReasoningEffort,
   type ModelPick,
 } from './chat-persist';
@@ -211,6 +214,12 @@ export interface ChatTrialPlanningTelemetry {
 }
 
 export type ChatYamlSessionResult = ChatYamlTarget & {
+  /** Stable host-issued result identity. Optional only for pre-ledger in-memory compatibility. */
+  resultId?: string;
+  /** Logical visible turn that owns this result. */
+  turnId?: string;
+  /** Assistant message after which this result must render. */
+  messageId?: string;
   sessionId: string;
   /** Workspace owning this result. Optional so older in-memory/persisted shapes stay readable. */
   workspaceKey?: string;
@@ -223,6 +232,8 @@ export type ChatYamlSessionResult = ChatYamlTarget & {
   planningTelemetry?: ChatTrialPlanningTelemetry;
   /** Host-side publish/fork facts made available to the next user turn in this session. */
   reconcile?: ChatYamlReconcileSummary;
+  /** Host-observed mtime of the final live YAML after publication. */
+  finalYamlMtimeMs?: number;
   completedAt: number;
 };
 
@@ -252,10 +263,12 @@ export function selectPreviousChatYamlReconcileForPrompt(input: {
 export interface ChatFinishedTurn {
   id: string;
   sessionId: string | null;
+  assistantMessageId?: string | null;
   endedAt: number;
   hidden: boolean;
   termination: 'completed' | 'user-stopped';
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
+  completedYamlRelativePaths?: string[];
   reconcileFailure?: {
     message: string;
     attempt: number;
@@ -276,6 +289,8 @@ export interface ActiveChatYamlLifecycle {
   stageId: string;
   workspaceKey: string | null;
   hostTrialActive: boolean;
+  trialId: string | null;
+  targetPaths?: string[];
   cancellationRequested: boolean;
 }
 
@@ -353,6 +368,7 @@ interface ChatStore {
   sessionStates: Record<string, ChatSessionRuntimeState>;
   completedUnreadSessionIds: string[];
   sessionYamlResults: Record<string, ChatYamlSessionResult>;
+  turnYamlResults: Record<string, ChatYamlSessionResult[]>;
   dismissedSessionYamlResultToastIds: string[];
   lastFinishedTurn: ChatFinishedTurn | null;
   finishedTurnQueue: ChatFinishedTurn[];
@@ -366,7 +382,8 @@ interface ChatStore {
   setReconciling: (value: boolean, sessionId: string | null) => void;
   activeChatYamlLifecycle: ActiveChatYamlLifecycle | null;
   beginChatYamlLifecycle: (lifecycle: ActiveChatYamlLifecycle) => void;
-  setChatYamlHostTrialActive: (turnId: string, active: boolean) => void;
+  setChatYamlLifecycleTargetPaths: (turnId: string, targetPaths: string[]) => void;
+  setChatYamlHostTrialActive: (turnId: string, active: boolean, trialId?: string | null) => void;
   requestChatYamlLifecycleCancellation: () => Promise<void>;
   completeChatYamlLifecycle: (turnId: string) => void;
   /**
@@ -454,8 +471,12 @@ interface ChatStore {
   setPostChatYamlAction: (action: ChatYamlPostAction | null, sessionId?: string | null) => void;
   clearPostChatYamlAction: (sessionId?: string | null) => void;
   setSessionYamlResult: (result: ChatYamlSessionResult) => void;
+  setTurnYamlResult: (result: ChatYamlSessionResult) => void;
+  /** Fill the verified live YAML mtime for one durable result identity after an explicit open. */
+  recordTurnYamlResultFinalMtime: (resultId: string, finalYamlMtimeMs: number) => void;
   dismissSessionYamlResultToast: (sessionId: string) => void;
   acknowledgeFinishedTurn: (turnId: string) => void;
+  markFinishedTurnYamlTargetCompleted: (turnId: string, relativePath: string) => void;
   markFinishedTurnReconciliationFailed: (turnId: string, message: string) => void;
   retryFinishedTurnReconciliation: (turnId: string) => void;
   abandonFinishedTurnReconciliation: (turnId: string) => ChatFinishedTurn | null;
@@ -671,6 +692,81 @@ const DEFAULT_BUG_INSTRUCTION = 'Fix this bug.';
 function makeFinishedTurn(input: Omit<ChatFinishedTurn, 'id'>): ChatFinishedTurn {
   finishedTurnSeq += 1;
   return { ...input, id: `finished_${input.endedAt}_${finishedTurnSeq}` };
+}
+
+function finalAssistantMessageId(
+  state: Pick<ChatSessionRuntimeState, 'messages' | 'turnAssistantMessageIds' | 'turnStartedAt'>,
+): string | null {
+  const tracked = new Set(state.turnAssistantMessageIds);
+  for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+    const entry = state.messages[index];
+    if (entry.info.role !== 'assistant' || isAbortErrorMessageInfo(entry.info)) continue;
+    if (tracked.has(entry.info.id) || isCurrentTurnEntry(entry, state.turnStartedAt)) {
+      return entry.info.id;
+    }
+  }
+  return state.turnAssistantMessageIds[state.turnAssistantMessageIds.length - 1] ?? null;
+}
+
+function bindFinishedTurnResultIdentity(
+  turn: ChatFinishedTurn,
+  messageId: string | null,
+): ChatFinishedTurn {
+  if (!turn.yamlSnapshotBeforeSend) {
+    return messageId ? { ...turn, assistantMessageId: messageId } : turn;
+  }
+  const anchoredMessageId = turn.yamlSnapshotBeforeSend.resultMessageId ?? messageId;
+  return {
+    ...turn,
+    assistantMessageId: anchoredMessageId,
+    yamlSnapshotBeforeSend: {
+      ...turn.yamlSnapshotBeforeSend,
+      resultTurnId: turn.yamlSnapshotBeforeSend.resultTurnId ?? turn.id,
+      ...(anchoredMessageId ? { resultMessageId: anchoredMessageId } : {}),
+    },
+  };
+}
+
+function normalizeFinishedTurnRelativePath(value: string): string | null {
+  const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '');
+  const segments = normalized.split('/');
+  if (
+    !normalized ||
+    normalized.startsWith('/') ||
+    /^[a-z]:\//i.test(normalized) ||
+    !/\.ya?ml$/i.test(normalized) ||
+    segments.some(
+      (segment) => segment === '..' || segment === '.' || segment.toLowerCase() === '.chat-staging',
+    )
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+function sameFinishedTurnRelativePath(
+  left: string,
+  right: string,
+  workspaceKey: string | null | undefined,
+): boolean {
+  const normalizedLeft = left.replace(/\\/g, '/');
+  const normalizedRight = right.replace(/\\/g, '/');
+  const windowsWorkspace =
+    typeof workspaceKey === 'string' &&
+    (/^[a-z]:[\\/]/i.test(workspaceKey) || /^\\\\/.test(workspaceKey));
+  return windowsWorkspace
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+function isLaterSessionYamlResult(
+  candidate: ChatYamlSessionResult,
+  current: ChatYamlSessionResult | undefined,
+): boolean {
+  if (!current || candidate.completedAt !== current.completedAt) {
+    return !current || candidate.completedAt > current.completedAt;
+  }
+  return (candidate.resultId ?? '') > (current.resultId ?? '');
 }
 
 function persistFinishedTurnQueueForWorkspace(
@@ -2596,13 +2692,16 @@ function finishChatTurn(
     if (!force && !prev.sending && !prev.pendingUserText) return patch;
     const messages = sealCurrentTurnActivity(prev);
     const endedAt = Date.now();
-    const finishedTurn = makeFinishedTurn({
-      sessionId: prev.currentSessionId,
-      endedAt,
-      hidden: false,
-      termination,
-      yamlSnapshotBeforeSend: prev.yamlSnapshotBeforeSend,
-    });
+    const finishedTurn = bindFinishedTurnResultIdentity(
+      makeFinishedTurn({
+        sessionId: prev.currentSessionId,
+        endedAt,
+        hidden: false,
+        termination,
+        yamlSnapshotBeforeSend: prev.yamlSnapshotBeforeSend,
+      }),
+      finalAssistantMessageId(prev),
+    );
     const finishedTurnQueue = [...prev.finishedTurnQueue, finishedTurn];
     if (finishedTurn.yamlSnapshotBeforeSend) {
       persistFinishedTurnQueueForWorkspace(
@@ -3140,6 +3239,76 @@ function permissionOwnerSessionId(state: ChatStore, sessionID: string): string |
   return null;
 }
 
+const STAGED_HOST_GATED_PERMISSIONS = new Set([
+  'edit',
+  'write',
+  'external_directory',
+  'bash',
+  'shell',
+]);
+
+function stagedPermissionOwner(
+  state: ChatStore,
+  sessionID: string,
+): { ownerSessionID: string; snapshot: ChatYamlSnapshot } | null {
+  const seen = new Set<string>();
+  let candidate: string | null = sessionID;
+  while (candidate && !seen.has(candidate)) {
+    seen.add(candidate);
+    const snapshot =
+      candidate === state.currentSessionId
+        ? state.yamlSnapshotBeforeSend
+        : state.sessionStates[candidate]?.yamlSnapshotBeforeSend;
+    if (snapshot) return { ownerSessionID: candidate, snapshot };
+    candidate = state.sessionParentById[candidate] ?? null;
+  }
+  return null;
+}
+
+function routeStagedPermissionDecision(
+  permission: {
+    id: string;
+    sessionID: string;
+    permission: string;
+    patterns: string[];
+  },
+  get: () => ChatStore,
+  set: ChatSet,
+): boolean {
+  const owner = stagedPermissionOwner(get(), permission.sessionID);
+  if (!owner || !STAGED_HOST_GATED_PERMISSIONS.has(permission.permission.toLowerCase())) {
+    return false;
+  }
+  const { ownerSessionID, snapshot } = owner;
+  void (async () => {
+    let allowed = false;
+    let reason: string | null = null;
+    try {
+      const decision = await api.authorizeChatYamlStagePaths(
+        snapshot.staging.id,
+        permission.permission,
+        permission.patterns,
+        snapshot.workDir,
+      );
+      allowed = decision.allowed;
+      reason = decision.reason;
+    } catch (err) {
+      reason = `Host validation failed: ${describeError(err)}`;
+    }
+
+    await get().replyPermission(
+      permission.id,
+      allowed ? 'once' : 'reject',
+      permission.sessionID,
+      snapshot.workDir,
+    );
+    if (!allowed && get().currentSessionId === ownerSessionID) {
+      set({ sendError: `Staged write rejected: ${reason ?? 'target is outside the agent root.'}` });
+    }
+  })();
+  return true;
+}
+
 function sessionSubtreeIds(index: Record<string, string>, sessionID: string): Set<string> {
   const ids = new Set([sessionID]);
   let changed = true;
@@ -3533,13 +3702,16 @@ function finishHiddenSession(
     if (!runtime.sending && !runtime.pendingUserText) return {};
     if (!canFinish(runtime)) return {};
     const endedAt = Date.now();
-    const finishedTurn = makeFinishedTurn({
-      sessionId,
-      endedAt,
-      hidden: true,
-      termination: 'completed',
-      yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
-    });
+    const finishedTurn = bindFinishedTurnResultIdentity(
+      makeFinishedTurn({
+        sessionId,
+        endedAt,
+        hidden: true,
+        termination: 'completed',
+        yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
+      }),
+      finalAssistantMessageId(runtime),
+    );
     const finishedTurnQueue = [...prev.finishedTurnQueue, finishedTurn];
     if (finishedTurn.yamlSnapshotBeforeSend) {
       persistFinishedTurnQueueForWorkspace(
@@ -4206,11 +4378,6 @@ async function promptOpencode(
 
     if (!opts.internal && !opts.reuseLogicalTurn) {
       set((prev) => ({
-        sessionYamlResults: Object.fromEntries(
-          Object.entries(prev.sessionYamlResults).filter(([resultSessionId]) => {
-            return resultSessionId !== sessionId;
-          }),
-        ),
         dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
           (resultSessionId) => resultSessionId !== sessionId,
         ),
@@ -4838,6 +5005,13 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
         (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
       );
       persistChangedFinishedTurnQueues(state.finishedTurnQueue, finishedTurnQueue);
+      const turnYamlResults = Object.fromEntries(
+        Object.entries(state.turnYamlResults).flatMap(([messageId, results]) => {
+          const retained = results.filter((result) => !deletedSessionIds.has(result.sessionId));
+          return retained.length > 0 ? [[messageId, retained]] : [];
+        }),
+      ) as Record<string, ChatYamlSessionResult[]>;
+      savePersistedChatYamlResults(getOpencodeWorkspaceKey(), turnYamlResults);
       const patch: Partial<ChatStore> = {
         sessionParentById: removeSessionSubtreeFromIndex(
           state.sessionParentById,
@@ -4857,6 +5031,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
             ([sessionId]) => !deletedSessionIds.has(sessionId),
           ),
         ),
+        turnYamlResults,
         dismissedSessionYamlResultToastIds: state.dismissedSessionYamlResultToastIds.filter(
           (sessionId) => !deletedSessionIds.has(sessionId),
         ),
@@ -4896,6 +5071,20 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     case 'permission.asked': {
       const perm = event.properties;
       const patterns = perm.patterns.filter((pattern) => pattern.trim().length > 0);
+      if (
+        routeStagedPermissionDecision(
+          {
+            id: perm.id,
+            sessionID: perm.sessionID,
+            permission: perm.permission,
+            patterns,
+          },
+          get,
+          set,
+        )
+      ) {
+        return;
+      }
       const createdAt = Date.now();
       routePendingPermission({
         workspaceKey: getOpencodeWorkspaceKey(),
@@ -4910,6 +5099,23 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     }
     case 'permission.updated': {
       const perm = event.properties;
+      if (
+        routeStagedPermissionDecision(
+          {
+            id: perm.id,
+            sessionID: perm.sessionID,
+            permission: perm.type,
+            // Legacy events expose only a human-readable title, not the raw
+            // tool target. Never treat that display text as an authorized
+            // staged filesystem path.
+            patterns: [],
+          },
+          get,
+          set,
+        )
+      ) {
+        return;
+      }
       const createdAt = perm.time?.created ?? Date.now();
       routePendingPermission({
         workspaceKey: getOpencodeWorkspaceKey(),
@@ -5035,6 +5241,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sessionStates: {},
   completedUnreadSessionIds: [],
   sessionYamlResults: {},
+  turnYamlResults: {},
   dismissedSessionYamlResultToastIds: [],
   lastFinishedTurn: null,
   finishedTurnQueue: [],
@@ -5054,13 +5261,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     ),
   activeChatYamlLifecycle: null,
   beginChatYamlLifecycle: (lifecycle) => set({ activeChatYamlLifecycle: lifecycle }),
-  setChatYamlHostTrialActive: (turnId, active) =>
+  setChatYamlLifecycleTargetPaths: (turnId, targetPaths) =>
+    set((prev) =>
+      prev.activeChatYamlLifecycle?.turnId === turnId
+        ? {
+            activeChatYamlLifecycle: {
+              ...prev.activeChatYamlLifecycle,
+              targetPaths: [...new Set(targetPaths)],
+            },
+          }
+        : {},
+    ),
+  setChatYamlHostTrialActive: (turnId, active, trialId = null) =>
     set((prev) =>
       prev.activeChatYamlLifecycle?.turnId === turnId
         ? {
             activeChatYamlLifecycle: {
               ...prev.activeChatYamlLifecycle,
               hostTrialActive: active,
+              trialId: active ? trialId : null,
             },
           }
         : {},
@@ -5078,12 +5297,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         : {},
     );
-    if (!active.hostTrialActive) return;
+    const trialId = active.trialId;
+    if (!active.hostTrialActive || !trialId) return;
     try {
       const lease = getLocalChatYamlEditLockLeaseForWorkspace(active.workspaceKey);
       if (!lease) throw new Error('The local OpenCode YAML lock lease was lost.');
       await withYamlEditLockRequestBypass(lease.id, () =>
-        api.cancelChatYamlStageTrial(active.stageId, active.turnId, active.workspaceKey),
+        api.cancelChatYamlStageTrial(active.stageId, trialId, active.workspaceKey),
       );
     } catch (err) {
       const message = `Could not stop pipeline verification: ${describeError(err)}`;
@@ -5133,6 +5353,93 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         (sessionId) => sessionId !== result.sessionId,
       ),
     })),
+  setTurnYamlResult: (result) => {
+    const workspaceKey = result.workspaceKey ?? getOpencodeWorkspaceKey();
+    const persisted =
+      result.resultId && result.turnId && result.messageId && result.workspaceKey === workspaceKey
+        ? (validatePersistedChatYamlResult(result, workspaceKey) as ChatYamlSessionResult | null)
+        : null;
+    if (!persisted) {
+      console.warn('[chat] refused invalid turn pipeline result');
+      return;
+    }
+    const messageId = persisted.messageId!;
+    set((prev) => {
+      const current = prev.turnYamlResults[messageId] ?? [];
+      const existingIndex = current.findIndex(
+        (candidate) =>
+          candidate.resultId === persisted.resultId ||
+          (!candidate.resultId &&
+            candidate.turnId === persisted.turnId &&
+            candidate.path === persisted.path),
+      );
+      const nextForMessage =
+        existingIndex >= 0
+          ? current.map((candidate, index) => (index === existingIndex ? persisted : candidate))
+          : [...current, persisted];
+      const turnYamlResults = {
+        ...prev.turnYamlResults,
+        [messageId]: nextForMessage,
+      } as Record<string, ChatYamlSessionResult[]>;
+      const persistenceWarnings: string[] = [];
+      savePersistedChatYamlResults(workspaceKey, turnYamlResults, (issue) =>
+        persistenceWarnings.push(issue.message),
+      );
+      const sessionResults = Object.values(turnYamlResults)
+        .flat()
+        .filter((candidate) => candidate.sessionId === persisted.sessionId);
+      const currentSessionResult = sessionResults.reduce<ChatYamlSessionResult | undefined>(
+        (latest, candidate) => (isLaterSessionYamlResult(candidate, latest) ? candidate : latest),
+        undefined,
+      );
+      return {
+        turnYamlResults,
+        sessionYamlResults: {
+          ...prev.sessionYamlResults,
+          [persisted.sessionId]: currentSessionResult ?? persisted,
+        },
+        dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
+          (sessionId) => sessionId !== persisted.sessionId,
+        ),
+        ...(persistenceWarnings.length > 0
+          ? { completionWarning: persistenceWarnings.join('\n\n') }
+          : {}),
+      };
+    });
+  },
+  recordTurnYamlResultFinalMtime: (resultId, finalYamlMtimeMs) => {
+    if (!resultId.trim() || !Number.isFinite(finalYamlMtimeMs) || finalYamlMtimeMs < 0) return;
+    set((prev) => {
+      const targetResult = Object.values(prev.turnYamlResults)
+        .flat()
+        .find((candidate) => candidate.resultId === resultId);
+      if (!targetResult) return {};
+      const workspaceKey = targetResult.workspaceKey ?? getOpencodeWorkspaceKey();
+      if (workspaceKey !== getOpencodeWorkspaceKey()) return {};
+
+      let updated = false;
+      const turnYamlResults = Object.fromEntries(
+        Object.entries(prev.turnYamlResults).map(([messageId, results]) => [
+          messageId,
+          results.map((candidate) => {
+            if (updated || candidate.resultId !== resultId) return candidate;
+            updated = true;
+            return { ...candidate, finalYamlMtimeMs };
+          }),
+        ]),
+      ) as Record<string, ChatYamlSessionResult[]>;
+      if (!updated) return {};
+      savePersistedChatYamlResults(workspaceKey, turnYamlResults);
+
+      const sessionYamlResults = Object.fromEntries(
+        Object.entries(prev.sessionYamlResults).map(([sessionId, candidate]) => [
+          sessionId,
+          candidate.resultId === resultId ? { ...candidate, finalYamlMtimeMs } : candidate,
+        ]),
+      ) as Record<string, ChatYamlSessionResult>;
+      return { turnYamlResults, sessionYamlResults };
+    });
+  },
   dismissSessionYamlResultToast: (sessionId) =>
     set((prev) => ({
       dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.includes(
@@ -5152,6 +5459,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
       return {
         finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.id !== turnId),
+      };
+    }),
+  markFinishedTurnYamlTargetCompleted: (turnId, relativePath) =>
+    set((prev) => {
+      const normalized = normalizeFinishedTurnRelativePath(relativePath);
+      if (!normalized) return {};
+      const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
+      if (!target) return {};
+      if (
+        target.completedYamlRelativePaths?.some((path) =>
+          sameFinishedTurnRelativePath(path, normalized, target.yamlSnapshotBeforeSend?.workDir),
+        )
+      ) {
+        return {};
+      }
+      const completedTurn: ChatFinishedTurn = {
+        ...target,
+        completedYamlRelativePaths: [...(target.completedYamlRelativePaths ?? []), normalized],
+      };
+      const finishedTurnQueue = prev.finishedTurnQueue.map((turn) =>
+        turn.id === turnId ? completedTurn : turn,
+      );
+      if (completedTurn.yamlSnapshotBeforeSend) {
+        persistFinishedTurnQueueForWorkspace(
+          completedTurn.yamlSnapshotBeforeSend.workDir,
+          finishedTurnQueue,
+        );
+      }
+      return {
+        finishedTurnQueue,
+        ...(prev.lastFinishedTurn?.id === turnId ? { lastFinishedTurn: completedTurn } : {}),
       };
     }),
   markFinishedTurnReconciliationFailed: (turnId, message) =>
@@ -5447,9 +5785,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async bootstrap() {
     const workspaceKeyAtStart = getOpencodeWorkspaceKey();
+    const persistenceWarnings: string[] = [];
     const persistedReconciliationQueue = loadPersistedChatYamlReconciliationQueue(
       workspaceKeyAtStart,
     ) as ChatFinishedTurn[];
+    const persistedTurnYamlResults = loadPersistedChatYamlResults(workspaceKeyAtStart, (issue) =>
+      persistenceWarnings.push(issue.message),
+    ) as Record<string, ChatYamlSessionResult[]>;
+    const persistenceWarning = persistenceWarnings.join('\n\n') || null;
+    const persistedSessionYamlResults = Object.values(persistedTurnYamlResults)
+      .flat()
+      .reduce<Record<string, ChatYamlSessionResult>>((latest, result) => {
+        const current = latest[result.sessionId];
+        if (!current || current.completedAt <= result.completedAt) {
+          latest[result.sessionId] = result;
+        }
+        return latest;
+      }, {});
     const prevStatus = get().bootstrapStatus;
     if (prevStatus === 'booting' && bootstrappingWorkspaceKey === workspaceKeyAtStart) return;
     bootstrappingWorkspaceKey = workspaceKeyAtStart;
@@ -5466,6 +5818,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         bootstrapStatus: 'booting',
         bootstrapError: null,
+        ...(workspaceChanged || persistenceWarning
+          ? { completionWarning: persistenceWarning }
+          : {}),
         ...(workspaceChanged
           ? {
               providers: [],
@@ -5474,7 +5829,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               sessionParentById: {},
               sessionStates: {},
               completedUnreadSessionIds: [],
-              sessionYamlResults: {},
+              sessionYamlResults: persistedSessionYamlResults,
+              turnYamlResults: persistedTurnYamlResults,
               dismissedSessionYamlResultToastIds: [],
               lastFinishedTurn:
                 persistedReconciliationQueue[persistedReconciliationQueue.length - 1] ?? null,
@@ -5884,6 +6240,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
       );
       persistChangedFinishedTurnQueues(prev.finishedTurnQueue, finishedTurnQueue);
+      const turnYamlResults = Object.fromEntries(
+        Object.entries(prev.turnYamlResults).flatMap(([messageId, results]) => {
+          const retained = results.filter((result) => !deletedSessionIds.has(result.sessionId));
+          return retained.length > 0 ? [[messageId, retained]] : [];
+        }),
+      ) as Record<string, ChatYamlSessionResult[]>;
+      savePersistedChatYamlResults(workspaceKey, turnYamlResults);
       return {
         sessionParentById: removeSessionSubtreeFromIndex(prev.sessionParentById, deletedSessionIds),
         sessionStates: Object.fromEntries(
@@ -5899,6 +6262,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ([sessionId]) => !deletedSessionIds.has(sessionId),
           ),
         ),
+        turnYamlResults,
         dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
           (sessionId) => !deletedSessionIds.has(sessionId),
         ),

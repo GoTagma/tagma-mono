@@ -76,19 +76,20 @@ import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
 import {
   detectSnapshotlessChatYamlTarget,
-  detectChatStagedYamlTarget,
+  detectChatStagedYamlTargets,
   chatPipelineVerificationFailureDiagnostic,
   chatPipelineVerificationSucceeded,
   applicableFinalizedChatTrialResult,
   chatYamlFinalizeForceForkReason,
+  chatYamlTargetTrialId,
   chatPipelineRepairArtifactState,
-  shouldAdoptFinalizedChatStateOnCurrentCanvas,
-  shouldAutoSyncFinalizedChatBindings,
   shouldAutoRepairCompileResult,
   shouldAutoRepairTrialResult,
   shouldReverifyChatPipelineAfterRepair,
   shouldQueueTrialPlanPrompt,
   shouldTrialRunChatPipeline,
+  shouldPreserveCanvasForChatPipelineEvent,
+  sameChatYamlRelativePath,
   type ChatPipelineRepairArtifactState,
 } from './utils/chat-yaml-reconcile';
 import { createChatYamlLifecycleCancellationGuard } from './utils/chat-yaml-lifecycle';
@@ -515,6 +516,7 @@ export function App() {
         stageId: snapshot?.staging.id ?? '',
         workspaceKey: snapshot?.workDir ?? null,
         hostTrialActive: false,
+        trialId: null,
         cancellationRequested: false,
       });
       const claimedTurn = chat.abandonFinishedTurnReconciliation(turn.id);
@@ -552,7 +554,10 @@ export function App() {
           if (resolution.kind === 'finalized') {
             const finalized = resolution.finalizedResult;
             const finalEntry = finalized.entry;
-            if (finalEntry && claimedTurn.sessionId) {
+            const resultTurnId = snapshot.resultTurnId ?? claimedTurn.id;
+            const resultMessageId =
+              snapshot.resultMessageId ?? claimedTurn.assistantMessageId ?? null;
+            if (finalEntry && claimedTurn.sessionId && resultMessageId) {
               const verificationSucceeded =
                 finalized.compile.success &&
                 (finalized.trialVerification === 'verified' ||
@@ -569,10 +574,14 @@ export function App() {
                 name: finalEntry.name,
                 pipelineName: finalEntry.pipelineName,
               };
-              useChatStore.getState().setSessionYamlResult({
+              useChatStore.getState().setTurnYamlResult({
                 ...finalTarget,
+                resultId: resultTurnId + ':' + finalEntry.path,
+                turnId: resultTurnId,
+                messageId: resultMessageId,
                 sessionId: claimedTurn.sessionId,
                 workspaceKey: snapshot.workDir,
+                finalYamlMtimeMs: finalEntry.mtimeMs,
                 status: verificationSucceeded
                   ? 'ready'
                   : verificationBlocked
@@ -591,17 +600,6 @@ export function App() {
               });
             }
             if (finalEntry && usePipelineStore.getState().workDir === snapshot.workDir) {
-              const current = usePipelineStore.getState();
-              const canSafelyAdoptCommittedState =
-                finalized.outcome === 'adopted' &&
-                sameEditorPath(current.yamlPath, finalEntry.path) &&
-                sameEditorPath(finalized.state.yamlPath, finalEntry.path) &&
-                !current.isDirty &&
-                !current.layoutDirty &&
-                getLocalPipelineEditRevision() === snapshot.localEditRevision;
-              if (canSafelyAdoptCommittedState) {
-                current.adoptDiskState(finalized.state, 'chat');
-              }
               setWorkspacePipelines((current) => {
                 if (current.workspaceKey !== snapshot.workDir) return current;
                 const stagedRelativePath =
@@ -980,6 +978,10 @@ export function App() {
         // Older sidecars may still emit external-change instead of the newer
         // deferred conflict marker, so preserve the branch client-side too.
         if (useYamlEditLockStore.getState().local && isChatDrivenEditLikely()) return;
+        if (event.origin === 'chat-yaml-finalize') {
+          refreshYamlList();
+          return;
+        }
         {
           const pendingAdopt = diskAdoptRef.current;
           if (pendingAdopt) {
@@ -988,6 +990,29 @@ export function App() {
           }
           const s = usePipelineStore.getState();
           const chatDriven = isChatDrivenEditLikely();
+          const chatState = useChatStore.getState();
+          if (
+            shouldPreserveCanvasForChatPipelineEvent({
+              eventPath: event.newState.yamlPath,
+              workspaceKey: currentWorkDir,
+              activeLifecycleWorkspaceKey: chatState.activeChatYamlLifecycle?.workspaceKey ?? null,
+              activeTargetPaths: chatState.activeChatYamlLifecycle?.targetPaths ?? [],
+              acceptedCanvasPath: s.yamlPath,
+              acceptedCanvasMtimeMs: s.yamlMtimeMs,
+              resultTargets: [
+                ...Object.values(chatState.sessionYamlResults),
+                ...Object.values(chatState.turnYamlResults).flatMap((results) => results),
+              ].map((result) => ({
+                workspaceKey: result.workspaceKey,
+                path: result.reconcile?.resultPath ?? result.path,
+                finalYamlMtimeMs: result.finalYamlMtimeMs,
+              })),
+            })
+          ) {
+            preserveLocalStateInServerMemory();
+            refreshYamlList();
+            return;
+          }
           const policy =
             useEditorSettingsStore.getState().settings?.chatDirtyConflictPolicy ?? 'ask';
           const hasLocalChanges = hasLocalEditorChanges({
@@ -1071,6 +1096,30 @@ export function App() {
         // re-reads YAML + layout off disk and hands back the reconciled
         // state so "adopt" actually reflects what's on disk.
         const chatDriven = isChatDrivenEditLikely();
+        const chatState = useChatStore.getState();
+        const canvasState = usePipelineStore.getState();
+        if (
+          shouldPreserveCanvasForChatPipelineEvent({
+            eventPath: event.path,
+            workspaceKey: currentWorkDir,
+            activeLifecycleWorkspaceKey: chatState.activeChatYamlLifecycle?.workspaceKey ?? null,
+            activeTargetPaths: chatState.activeChatYamlLifecycle?.targetPaths ?? [],
+            acceptedCanvasPath: canvasState.yamlPath,
+            acceptedCanvasMtimeMs: canvasState.yamlMtimeMs,
+            resultTargets: [
+              ...Object.values(chatState.sessionYamlResults),
+              ...Object.values(chatState.turnYamlResults).flatMap((results) => results),
+            ].map((result) => ({
+              workspaceKey: result.workspaceKey,
+              path: result.reconcile?.resultPath ?? result.path,
+              finalYamlMtimeMs: result.finalYamlMtimeMs,
+            })),
+          })
+        ) {
+          preserveLocalStateInServerMemory();
+          refreshYamlList();
+          return;
+        }
         const doReload = () => {
           reloadAndApplyDiskState(chatDriven ? 'chat' : 'external', fileName);
         };
@@ -1234,12 +1283,41 @@ export function App() {
       void refreshWorkspaceYamls();
       if (!live.yamlPath) return;
       if (live.isDirty || live.layoutDirty) return;
+      const chatBeforeReload = useChatStore.getState();
+      if (
+        chatBeforeReload.sending ||
+        chatBeforeReload.reconciling ||
+        chatBeforeReload.activeChatYamlLifecycle
+      ) {
+        return;
+      }
       api
         .reloadFromDisk()
         .then((newState) => {
           const after = usePipelineStore.getState();
           if (newState.workDir !== after.workDir) return;
           if (after.isDirty || after.layoutDirty) return;
+          const chatState = useChatStore.getState();
+          if (
+            shouldPreserveCanvasForChatPipelineEvent({
+              eventPath: newState.yamlPath,
+              workspaceKey: after.workDir,
+              activeLifecycleWorkspaceKey: chatState.activeChatYamlLifecycle?.workspaceKey ?? null,
+              activeTargetPaths: chatState.activeChatYamlLifecycle?.targetPaths ?? [],
+              acceptedCanvasPath: after.yamlPath,
+              acceptedCanvasMtimeMs: after.yamlMtimeMs,
+              resultTargets: [
+                ...Object.values(chatState.sessionYamlResults),
+                ...Object.values(chatState.turnYamlResults).flatMap((results) => results),
+              ].map((result) => ({
+                workspaceKey: result.workspaceKey,
+                path: result.reconcile?.resultPath ?? result.path,
+                finalYamlMtimeMs: result.finalYamlMtimeMs,
+              })),
+            })
+          ) {
+            return;
+          }
           after.adoptDiskState(newState);
         })
         .catch(() => {
@@ -1261,6 +1339,7 @@ export function App() {
     let cancelled = false;
     void (async () => {
       let keepYamlLockForRepair = false;
+      let keepFinishedTurnForMoreTargets = false;
       let reconciliationFailed = false;
       let reconciliationTelemetryKey: string | null = null;
       let clearRepairAttemptsOnSuccess = false;
@@ -1342,6 +1421,8 @@ export function App() {
             stageId: snapshot.staging.id,
             workspaceKey: snapshot.workDir,
             hostTrialActive: false,
+            trialId: null,
+            targetPaths: [],
             cancellationRequested: finishedTurn.termination === 'user-stopped',
           });
           lifecycleCancellationGuard = createChatYamlLifecycleCancellationGuard({
@@ -1365,7 +1446,20 @@ export function App() {
             api.listChatYamlStage(snapshot.staging.id, snapshot.workDir),
           );
           if (cancelled || (await discardCancelledStage())) return;
-          const stagedTarget = detectChatStagedYamlTarget(snapshot, stage.entries);
+          const stagedTargets = detectChatStagedYamlTargets(snapshot, stage.entries).filter(
+            (target) =>
+              !(finishedTurn.completedYamlRelativePaths ?? []).some((completedPath) =>
+                sameChatYamlRelativePath(completedPath, target.relativePath, snapshot.workDir),
+              ),
+          );
+          useChatStore.getState().setChatYamlLifecycleTargetPaths(
+            finishedTurn.id,
+            stagedTargets.flatMap((target) => [
+              ...(target.sourcePath ? [target.sourcePath] : []),
+              `${snapshot.workDir}/.tagma/${target.relativePath}`,
+            ]),
+          );
+          const stagedTarget = stagedTargets[0] ?? null;
           if (!stagedTarget) {
             removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
             await underChatLock(() =>
@@ -1374,9 +1468,8 @@ export function App() {
             clearFinishedPostChatYamlAction();
             return;
           }
-          const reconcileLiveSourceDriftOnly = stagedTarget.reconcileLiveSourceDrift === true;
-          const reconcileDifferentActiveSourceDrift =
-            stagedTarget.reconcileActiveSourceDrift === true;
+          const retainStageForMoreTargets = stagedTargets.length > 1;
+          const reconcileLiveSourceDriftOnly = false;
           const authoritativeStagedTarget = stage.entries.find(
             (entry) =>
               entry.relativePath === stagedTarget.relativePath &&
@@ -1395,6 +1488,7 @@ export function App() {
 
           const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
           reconciliationTelemetryKey = attemptKey;
+          const targetTrialId = chatYamlTargetTrialId(finishedTurn.id, stagedTarget.relativePath);
           const getPlanningAccumulator = (): ChatTrialPlanningAccumulator => {
             const existing = trialPlanningTelemetryRef.current.get(attemptKey);
             if (existing) return existing;
@@ -1498,7 +1592,7 @@ export function App() {
                 api.trialRunChatYamlStage(
                   snapshot.staging.id,
                   stagedTarget.relativePath,
-                  finishedTurn.id,
+                  targetTrialId,
                   snapshot.workDir,
                 ),
               );
@@ -1509,7 +1603,9 @@ export function App() {
               phase: 'trial-running',
               compile,
             });
-            useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, true);
+            useChatStore
+              .getState()
+              .setChatYamlHostTrialActive(finishedTurn.id, true, targetTrialId);
             let stopTrialProgressPolling = false;
             let trialProgressTimer: ReturnType<typeof setTimeout> | null = null;
             const pollTrialProgress = async (): Promise<void> => {
@@ -1517,7 +1613,7 @@ export function App() {
                 const { progress } = await underChatLock(() =>
                   api.getChatYamlStageTrialProgress(
                     snapshot.staging.id,
-                    finishedTurn.id,
+                    targetTrialId,
                     snapshot.workDir,
                   ),
                 );
@@ -1527,7 +1623,7 @@ export function App() {
                   progress &&
                   current?.phase === 'trial-running' &&
                   current.path === stagedTarget.path &&
-                  progress.trialId === finishedTurn.id
+                  progress.trialId === targetTrialId
                 ) {
                   setFinishedPostChatYamlAction({
                     ...current,
@@ -1691,25 +1787,16 @@ export function App() {
             !!snapshot.activePath &&
             !!stagedTarget.sourcePath &&
             sameEditorPath(snapshot.activePath, stagedTarget.sourcePath);
-          const targetsDifferentPipeline =
-            reconcileDifferentActiveSourceDrift ||
-            (!!snapshot.activePath &&
-              (!stagedTarget.sourcePath ||
-                !sameEditorPath(snapshot.activePath, stagedTarget.sourcePath)));
           const beforeFlush = usePipelineStore.getState();
-          const shouldCaptureActivePipeline = targetsStartedPipeline || targetsDifferentPipeline;
           const userStillOnActivePipeline =
-            shouldCaptureActivePipeline &&
-            sameEditorPath(snapshot.activePath, beforeFlush.yamlPath);
+            targetsStartedPipeline && sameEditorPath(snapshot.activePath, beforeFlush.yamlPath);
           if (userStillOnActivePipeline) {
             await beforeFlush.flushPendingLocalEdits();
             if (cancelled || (await discardCancelledStage())) return;
           }
           const editorState = usePipelineStore.getState();
-          const pathMoved =
-            targetsStartedPipeline && !sameEditorPath(snapshot.activePath, editorState.yamlPath);
           const localRevisionChanged =
-            shouldCaptureActivePipeline &&
+            userStillOnActivePipeline &&
             snapshot.localEditRevision !== getLocalPipelineEditRevision();
           const capturedActiveLocalBranch =
             userStillOnActivePipeline &&
@@ -1727,13 +1814,12 @@ export function App() {
                 }
               : null;
           const localBranch = targetsStartedPipeline ? capturedActiveLocalBranch : null;
-          const activeLocalBranch = targetsDifferentPipeline ? capturedActiveLocalBranch : null;
           const forceForkReason = chatYamlFinalizeForceForkReason({
             reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,
             compileSuccess: compile.success,
-            pathMoved,
+            // A user navigating to another canvas is not a pipeline conflict.
+            pathMoved: false,
           });
-          const localEditRevisionBeforeFinalize = getLocalPipelineEditRevision();
           const finalizeOnce = () =>
             underChatLock(() =>
               api.finalizeChatYamlStage(
@@ -1741,17 +1827,17 @@ export function App() {
                   stageId: snapshot.staging.id,
                   relativePath: stagedTarget.relativePath,
                   localBranch,
-                  activeLocalBranch,
                   ...(forceForkReason ? { forceForkReason } : {}),
-                  trialId: finishedTurn.id,
-                  allowInvalid: reconcileLiveSourceDriftOnly || !compile.success,
+                  trialId: targetTrialId,
+                  allowInvalid: !compile.success,
+                  retainStage: retainStageForMoreTargets,
                 },
                 snapshot.workDir,
               ),
             );
           let finalized: Awaited<ReturnType<typeof api.finalizeChatYamlStage>> | null = null;
           let finalizeError: unknown;
-          useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, true);
+          useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, true, null);
           try {
             for (let attempt = 0; attempt < 2 && !finalized; attempt += 1) {
               if (await discardCancelledStage()) return;
@@ -1795,7 +1881,6 @@ export function App() {
               finalized.trialVerification === 'not-required');
           const verificationBlocked =
             compile.success && finalized.trialVerification === 'prerequisite-unavailable';
-          const verificationAccepted = verificationSucceeded || verificationBlocked;
           const applicableTrialRun = applicableFinalizedChatTrialResult(
             finalized.trialVerification,
             trialRun,
@@ -1816,11 +1901,18 @@ export function App() {
             );
           }
 
-          if (resultWorkspaceVisible() && finishedSessionId) {
-            useChatStore.getState().setSessionYamlResult({
+          const resultTurnId = snapshot.resultTurnId ?? finishedTurn.id;
+          const resultMessageId =
+            snapshot.resultMessageId ?? finishedTurn.assistantMessageId ?? null;
+          if (resultWorkspaceVisible() && finishedSessionId && resultMessageId) {
+            useChatStore.getState().setTurnYamlResult({
               ...finalTarget,
+              resultId: resultTurnId + ':' + finalEntry.path,
+              turnId: resultTurnId,
+              messageId: resultMessageId,
               sessionId: finishedSessionId,
               workspaceKey: snapshot.workDir,
+              finalYamlMtimeMs: finalEntry.mtimeMs,
               status: verificationSucceeded ? 'ready' : verificationBlocked ? 'blocked' : 'failed',
               compile,
               ...(applicableTrialRun ? { trial: applicableTrialRun } : {}),
@@ -1867,36 +1959,14 @@ export function App() {
           }
           if (cancelled || (await discardCancelledStage())) return;
 
-          const current = usePipelineStore.getState();
-          const finalStateBelongsOnCanvas = shouldAdoptFinalizedChatStateOnCurrentCanvas({
-            currentPath: current.yamlPath,
-            finalizedStatePath: finalized.state.yamlPath,
-            finalEntryPath: finalEntry.path,
-            finalizedOutcome: finalized.outcome,
-            localBranchPersisted: finalized.localBranchPersisted,
-            localEditRevisionBeforeFinalize,
-            currentLocalEditRevision: getLocalPipelineEditRevision(),
-          });
-          if (finalStateBelongsOnCanvas) {
-            current.adoptDiskState(finalized.state, 'chat');
-            if (
-              shouldAutoSyncFinalizedChatBindings({
-                currentPath: usePipelineStore.getState().yamlPath,
-                finalEntryPath: finalEntry.path,
-                finalizedOutcome: finalized.outcome,
-                verificationAccepted,
-              })
-            ) {
-              await usePipelineStore
-                .getState()
-                .autoSyncAllBindings('chat', { allowDuringYamlEditLock: true });
-              if (cancelled || (await discardCancelledStage())) return;
-              const afterSync = usePipelineStore.getState();
-              if (afterSync.isDirty || afterSync.layoutDirty) {
-                await afterSync.saveFile({ allowDuringYamlEditLock: true });
-                if (cancelled || (await discardCancelledStage())) return;
-              }
-            }
+          if (retainStageForMoreTargets) {
+            keepYamlLockForRepair = true;
+            keepFinishedTurnForMoreTargets = true;
+            clearFinishedPostChatYamlAction();
+            useChatStore
+              .getState()
+              .markFinishedTurnYamlTargetCompleted(finishedTurn.id, stagedTarget.relativePath);
+            return;
           }
 
           if (resultWorkspaceVisible()) {
@@ -1968,22 +2038,6 @@ export function App() {
         }
 
         clearRepairAttemptsOnSuccess = compile.success;
-        if (compile.success && sameEditorPath(target.path, usePipelineStore.getState().yamlPath)) {
-          const localRevisionBeforeReload = getLocalPipelineEditRevision();
-          const newState = await api.reloadFromDisk();
-          if (cancelled) return;
-          if (getLocalPipelineEditRevision() === localRevisionBeforeReload) {
-            const pipelineState = usePipelineStore.getState();
-            pipelineState.adoptDiskState(newState, 'chat');
-            await pipelineState.autoSyncAllBindings('chat', { allowDuringYamlEditLock: true });
-            if (cancelled) return;
-            const afterSync = usePipelineStore.getState();
-            if (afterSync.isDirty || afterSync.layoutDirty) {
-              await afterSync.saveFile({ allowDuringYamlEditLock: true });
-              if (cancelled) return;
-            }
-          }
-        }
         clearFinishedPostChatYamlAction();
         recordSessionResult(compile.success ? 'ready' : 'failed');
       } catch (err) {
@@ -2052,7 +2106,7 @@ export function App() {
           }
           useChatStore.getState().setReconciling(false, finishedSessionId);
           useChatStore.getState().completeChatYamlLifecycle(finishedTurn.id);
-          if (!reconciliationFailed && !cancelled) {
+          if (!reconciliationFailed && !cancelled && !keepFinishedTurnForMoreTargets) {
             useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);
           }
         }

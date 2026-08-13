@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { Response } from 'express';
 import { parseYaml } from '@tagma/sdk/yaml';
 
 import {
@@ -31,6 +40,16 @@ import {
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
+
+function mockStateEventResponse(chunks: string[]): Response {
+  return {
+    write: (chunk: string) => {
+      chunks.push(chunk);
+      return true;
+    },
+    end: () => undefined,
+  } as unknown as Response;
+}
 
 function makeRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'tagma-chat-stage-'));
@@ -129,6 +148,8 @@ describe('chat YAML staging', () => {
     const agentYaml = yamlFor('Agent Pipeline', 'agent');
     writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    const stateEvents: string[] = [];
+    ws.stateEventClients.add({ res: mockStateEventResponse(stateEvents) });
 
     const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
@@ -139,6 +160,7 @@ describe('chat YAML staging', () => {
     expect(result.conflicts).toEqual([]);
     expect(readFileSync(sourcePath, 'utf-8')).toBe(agentYaml);
     expect(result.entry?.path).toBe(sourcePath);
+    expect(stateEvents.join('')).toContain('"origin":"chat-yaml-finalize"');
     stopWorkspace(ws);
   });
 
@@ -857,7 +879,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('recovers an escaped chat write and preserves a simultaneous local layout edit', async () => {
+  test('does not claim or reconcile an escaped live write without a staged mutation', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -878,19 +900,18 @@ describe('chat YAML staging', () => {
       },
     });
 
-    expect(result.outcome).toBe('adopted');
-    expect(result.conflicts).toContain('source-changed-on-disk');
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
     expect(readFileSync(sourcePath, 'utf-8')).toBe(escapedChatYaml);
     const persistedLayout = JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'));
-    expect(persistedLayout.positions).toEqual(localLayout.positions);
-    expect(persistedLayout.trackHeights).toEqual(localLayout.trackHeights);
-    expect(ws.config.name).toBe('Agent Pipeline');
-    expect(ws.layout.positions['main.task']?.x).toBe(60);
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(persistedLayout).toEqual(JSON.parse(layoutFor(20)));
+    expect(ws.config.name).toBe('Base Pipeline');
+    expect(ws.layout.positions['main.task']?.x).toBe(20);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('prunes an escaped Chat rename when it is the only live change', async () => {
+  test('does not adopt an escaped live rename when the stage is unchanged', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -905,14 +926,16 @@ describe('chat YAML staging', () => {
       relativePath: staged.relativePath,
     });
 
-    expect(result.outcome).toBe('adopted');
-    expect(result.conflicts).toEqual(['source-changed-on-disk']);
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
     expect(result.compile.success).toBe(true);
-    expect(ws.config.name).toBe('Agent Pipeline');
+    expect(ws.config.name).toBe('Base Pipeline');
     expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
+      positions: { 'main.task': { x: 20 } },
+      folders: [],
       trackHeights: { main: 140 },
     });
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
@@ -1066,8 +1089,8 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('quarantines live drift with an unreadable layout artifact', async () => {
-    const { ws, sourcePath, baseYaml } = setupWorkspace();
+  test('does not quarantine live drift when the stage is unchanged', async () => {
+    const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     writeFileSync(sourcePath, yamlFor('Escaped Pipeline', 'escaped'), 'utf-8');
@@ -1078,18 +1101,17 @@ describe('chat YAML staging', () => {
       relativePath: staged.relativePath,
     });
 
-    expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('source-changed-on-disk');
-    expect(result.conflicts).toContain('compile-failed');
-    expect(result.compile.success).toBe(false);
-    expect(result.compile.summary).toBe('Source layout could not be read safely.');
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
-    expect(readFileSync(pipelineLayoutPath(result.entry!.path), 'utf-8')).toBe('{not-json');
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(result.compile.success).toBe(true);
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: escaped');
+    expect(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8')).toBe('{not-json');
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('recovers from an unreadable base layout instead of aborting local reconciliation', async () => {
+  test('does not reconcile an unreadable live layout when the stage is unchanged', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     writeFileSync(pipelineLayoutPath(sourcePath), '{broken-base-layout', 'utf-8');
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
@@ -1107,23 +1129,16 @@ describe('chat YAML staging', () => {
       },
     });
 
-    expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('local-branch-changed');
-    expect(result.conflicts).toContain('source-changed-on-disk');
-    expect(result.conflicts).toContain('compile-failed');
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
-    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
-      positions: localLayout.positions,
-      trackHeights: localLayout.trackHeights,
-    });
-    expect(readFileSync(pipelineLayoutPath(result.entry!.path), 'utf-8')).toBe(
-      '{broken-base-layout',
-    );
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: escaped');
+    expect(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8')).toBe('{broken-base-layout');
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('forks an escaped chat write when the renderer also changed pipeline YAML', async () => {
+  test('does not convert an escaped live write into a staged result', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const sourceSupportPath = join(dirname(sourcePath), 'prompts', 'policy.md');
     mkdirSync(dirname(sourceSupportPath), { recursive: true });
@@ -1168,29 +1183,22 @@ describe('chat YAML staging', () => {
       },
     });
 
-    expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('local-branch-changed');
-    expect(result.conflicts).toContain('source-changed-on-disk');
-    expect(result.localBranchPersisted).toBe(true);
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(localYaml);
-    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('prompt: agent');
-    expect(result.entry!.path).toBe(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'));
-    expect(readFileSync(sourceSupportPath, 'utf-8')).toBe('base policy\n');
-    expect(readFileSync(join(dirname(result.entry!.path), 'prompts', 'policy.md'), 'utf-8')).toBe(
-      'chat policy\n',
-    );
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(result.localBranchPersisted).toBe(false);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(escapedChatYaml);
+    expect(result.entry!.path).toBe(sourcePath);
+    expect(readFileSync(sourceSupportPath, 'utf-8')).toBe('chat policy\n');
     expect(readFileSync(pipelineRequirementsPath(sourcePath), 'utf-8')).toContain(
-      'Keep the base branch guidance.',
-    );
-    expect(readFileSync(pipelineRequirementsPath(result.entry!.path), 'utf-8')).toContain(
       'Keep the escaped Chat guidance.',
     );
-    expect(ws.config.name).toBe('User Pipeline');
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    expect(ws.config.name).toBe('Base Pipeline');
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('adopts an escaped Chat rename and prunes the obsolete manual position', async () => {
+  test('does not adopt an escaped live rename with local layout bookkeeping', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -1211,20 +1219,20 @@ describe('chat YAML staging', () => {
       },
     });
 
-    expect(result.outcome).toBe('adopted');
-    expect(result.conflicts).toEqual(['source-changed-on-disk']);
-    expect(result.localBranchPersisted).toBe(true);
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(result.localBranchPersisted).toBe(false);
     expect(readFileSync(sourcePath, 'utf-8')).toBe(renamedChatYaml);
     expect(result.entry?.path).toBe(sourcePath);
-    expect(ws.layout.positions).toEqual({});
+    expect(ws.layout.positions).toEqual({ 'main.task': { x: 20 } });
     expect(ws.layout.trackHeights).toEqual({ main: 140 });
     expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('quarantines an invalid escaped Chat write and restores the valid base branch', async () => {
-    const { ws, sourcePath, baseYaml } = setupWorkspace();
+  test('does not quarantine an invalid escaped live write when the stage is unchanged', async () => {
+    const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     const invalidEscapedYaml = [
@@ -1240,17 +1248,17 @@ describe('chat YAML staging', () => {
       relativePath: staged.relativePath,
     });
 
-    expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('compile-failed');
-    expect(result.compile.success).toBe(false);
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
-    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('tracks: invalid');
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(result.compile.success).toBe(true);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(invalidEscapedYaml);
+    expect(result.entry!.path).toBe(sourcePath);
     expect(ws.config.name).toBe('Base Pipeline');
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('restores a drifted source state coherently when finalize result persistence fails', async () => {
+  test('leaves escaped live state untouched when unchanged-result persistence fails', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -1268,13 +1276,13 @@ describe('chat YAML staging', () => {
     ).rejects.toThrow('injected escaped finalize result failure');
 
     expect(readFileSync(sourcePath, 'utf-8')).toBe(escapedChatYaml);
-    expect(ws.config.name).toBe('Escaped Pipeline');
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(ws.config.name).toBe('Base Pipeline');
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     expect(existsSync(join(stage.rootDir, 'finalized.json'))).toBe(false);
     stopWorkspace(ws);
   });
 
-  test('refreshes the optimistic-lock baseline when invalid drift is restored by rollback', async () => {
+  test('does not refresh the optimistic-lock baseline for invalid escaped drift', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -1298,12 +1306,12 @@ describe('chat YAML staging', () => {
 
     expect(readFileSync(sourcePath, 'utf-8')).toBe(invalidEscapedYaml);
     expect(ws.config.name).toBe('Base Pipeline');
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     expect(existsSync(join(stage.rootDir, 'finalized.json'))).toBe(false);
     stopWorkspace(ws);
   });
 
-  test('refreshes the optimistic-lock baseline when deleted drift is restored by rollback', async () => {
+  test('does not refresh the optimistic-lock baseline for deleted escaped drift', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -1326,13 +1334,13 @@ describe('chat YAML staging', () => {
 
     expect(existsSync(sourcePath)).toBe(false);
     expect(ws.config.name).toBe('Base Pipeline');
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     expect(existsSync(join(stage.rootDir, 'finalized.json'))).toBe(false);
     stopWorkspace(ws);
   });
 
-  test('restores a deleted active source without reporting the base as an adopted Chat edit', async () => {
-    const { ws, sourcePath, baseYaml } = setupWorkspace();
+  test('does not restore a deleted live source when the stage is unchanged', async () => {
+    const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     rmSync(sourcePath, { force: true });
@@ -1343,19 +1351,18 @@ describe('chat YAML staging', () => {
     });
 
     expect(result.outcome).toBe('unchanged');
-    expect(result.conflicts).toContain('source-changed-on-disk');
-    expect(result.conflicts).toContain('source-deleted');
-    expect(result.conflicts).not.toContain('compile-failed');
+    expect(result.conflicts).toEqual([]);
     expect(result.trialVerification).toBe('not-required');
     expect(result.compile.success).toBe(true);
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(existsSync(sourcePath)).toBe(false);
+    expect(result.entry).toBeNull();
     expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('forks an escaped live write instead of adopting it without required Trial evidence', async () => {
-    const { ws, sourcePath, baseYaml } = setupWorkspace();
+  test('does not run Trial or fork an escaped live write when the stage is unchanged', async () => {
+    const { ws, sourcePath } = setupWorkspace();
     writeEditorSettings(ws, { opencodeChatTrialRunEnabled: true });
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -1367,13 +1374,14 @@ describe('chat YAML staging', () => {
       relativePath: staged.relativePath,
     });
 
-    expect(result.outcome).toBe('forked');
-    expect(result.trialVerification).toBe('not-verified');
-    expect(result.conflicts).toContain('trial-run-failed');
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
-    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('prompt: escaped');
+    expect(result.outcome).toBe('unchanged');
+    expect(result.trialVerification).toBe('not-required');
+    expect(result.conflicts).toEqual([]);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(escapedChatYaml);
+    expect(result.entry!.path).toBe(sourcePath);
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
     expect(ws.config.name).toBe('Base Pipeline');
-    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(true);
     stopWorkspace(ws);
   });
 
@@ -1615,7 +1623,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('honors a path conflict even when an existing staged pipeline is unchanged', async () => {
+  test('does not create a conflict copy when an existing staged pipeline is unchanged', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -1627,11 +1635,37 @@ describe('chat YAML staging', () => {
       forceForkReason: 'path-moved',
     });
 
-    expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('path-moved');
-    expect(result.entry?.path).toBe(copyPath);
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(result.entry?.path).toBe(sourcePath);
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
-    expect(readFileSync(copyPath, 'utf-8')).toContain('name: Base Pipeline Copy 1');
+    expect(existsSync(copyPath)).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('does not publish live drift when the agent made no staged mutation', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const externallyChanged = yamlFor('External Pipeline', 'external');
+    writeFileSync(sourcePath, externallyChanged, 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      forceForkReason: 'path-moved',
+      localBranch: {
+        sourcePath,
+        yaml: yamlFor('Different Canvas Pipeline', 'canvas'),
+        layout: JSON.parse(layoutFor(90)),
+        changed: true,
+      },
+    });
+
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(externallyChanged);
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
     stopWorkspace(ws);
   });
 
@@ -1889,6 +1923,84 @@ describe('chat YAML staging', () => {
     expect(recovered?.state.revision).toBe(ws.stateRevision);
     expect(discardChatYamlStageWithDisposition(ws, stage.id)).toBe('finalized');
     expect(discardChatYamlStage(ws, stage.id)).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('publishes multiple staged pipelines incrementally and keeps each target idempotent', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const first = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const secondPath = join(stage.agentTagmaDir, 'second-pipeline', 'second-pipeline.yaml');
+    mkdirSync(dirname(secondPath), { recursive: true });
+    writeFileSync(first.stagedPath, yamlFor('First Pipeline', 'first'), 'utf-8');
+    writeFileSync(secondPath, yamlFor('Second Pipeline', 'second'), 'utf-8');
+
+    const firstResult = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: first.relativePath,
+      retainStage: true,
+    });
+    const firstRetry = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: first.relativePath,
+      retainStage: true,
+    });
+
+    expect(firstRetry).toEqual(firstResult);
+    expect(firstResult.outcome).toBe('adopted');
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: first');
+    expect(listChatYamlStage(ws, stage.id).entries).toHaveLength(2);
+
+    const secondResult = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: 'second-pipeline/second-pipeline.yaml',
+    });
+    const secondLivePath = pipelineYamlPath(ws.workDir, 'second-pipeline');
+    expect(secondResult.outcome).toBe('created');
+    expect(secondResult.entry?.path).toBe(secondLivePath);
+    expect(readFileSync(secondLivePath, 'utf-8')).toContain('prompt: second');
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: first');
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'second-pipeline-copy-1'))).toBe(false);
+
+    const secondRetry = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: 'second-pipeline/second-pipeline.yaml',
+    });
+    expect(secondRetry).toEqual(secondResult);
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'second-pipeline-copy-1'))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('rejects a tampered per-target finalize record without republishing', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Authenticated Pipeline', 'authenticated'), 'utf-8');
+    const first = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      retainStage: true,
+    });
+    expect(first.outcome).toBe('adopted');
+
+    const resultDir = join(stage.rootDir, 'finalized-results');
+    const [resultFile] = readdirSync(resultDir);
+    expect(resultFile).toEndWith('.json');
+    const resultPath = join(resultDir, resultFile!);
+    const tampered = JSON.parse(readFileSync(resultPath, 'utf-8')) as Record<string, unknown>;
+    tampered.relativePath = 'other/other.yaml';
+    writeFileSync(resultPath, JSON.stringify(tampered, null, 2) + '\n', 'utf-8');
+
+    await expect(
+      finalizeChatYamlStage(ws, {
+        stageId: stage.id,
+        relativePath: staged.relativePath,
+        retainStage: true,
+      }),
+    ).rejects.toThrow('authentication failed');
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: authenticated');
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
     stopWorkspace(ws);
   });
 

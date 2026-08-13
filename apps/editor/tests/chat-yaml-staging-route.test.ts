@@ -20,6 +20,10 @@ import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness
 import { bypassesRevisionCheck } from '../server/revision-routes';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
 import { beginRunSessionStart, endRunSessionStart, registerRunRoutes } from '../server/routes/run';
+import {
+  readAuthenticatedServerRecordSync,
+  writeAuthenticatedServerRecordSync,
+} from '../server/server-record-auth';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import {
@@ -360,6 +364,253 @@ afterEach(() => {
 });
 
 describe('chat YAML staging routes', () => {
+  test('keeps the stage open when finalize requests retainStage', async () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(entry.stagedPath, yamlFor('Retained Pipeline', 'retained'), 'utf-8');
+
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, retainStage: true },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({ outcome: 'adopted', entry: { path: sourcePath } });
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: retained');
+
+    const listRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/list')(
+      request(ws, { stageId: stage.id }, 'chat-lock'),
+      listRes,
+    );
+    expect(listRes.statusCode).toBe(200);
+    expect((listRes.body as { entries: unknown[] }).entries).not.toHaveLength(0);
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('rejects malformed retainStage without finalizing the stage', async () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const finalizeRes = makeRes();
+
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, retainStage: 'yes' },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+
+    expect(finalizeRes.statusCode).toBe(400);
+    expect(finalizeRes.body).toEqual({ error: 'retainStage must be a boolean.' });
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('authorizes staged child paths only with the matching YAML lock and authenticated stage root', () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as { id: string; agentTagmaDir: string };
+
+    const missingLockRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/authorize-paths')(
+      request(ws, {
+        stageId: stage.id,
+        permission: 'edit',
+        patterns: [join(stage.agentTagmaDir, 'pipeline', 'pipeline.yaml')],
+      }),
+      missingLockRes,
+    );
+    expect(missingLockRes.statusCode).toBe(423);
+
+    ws.yamlEditLock = {
+      ...ws.yamlEditLock!,
+      id: 'replacement-lock',
+    };
+    const replacementLockRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/authorize-paths')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          permission: 'edit',
+          patterns: [join(stage.agentTagmaDir, 'pipeline', 'pipeline.yaml')],
+        },
+        'replacement-lock',
+      ),
+      replacementLockRes,
+    );
+    expect(replacementLockRes.statusCode).toBe(423);
+    expect(replacementLockRes.body).toEqual({
+      error: 'The chat YAML stage does not belong to the active YAML edit lock.',
+    });
+    ws.yamlEditLock = {
+      ...ws.yamlEditLock!,
+      id: 'chat-lock',
+    };
+
+    const insideRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/authorize-paths')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          permission: 'edit',
+          patterns: [join(stage.agentTagmaDir, 'pipeline', 'pipeline.yaml')],
+        },
+        'chat-lock',
+      ),
+      insideRes,
+    );
+    expect(insideRes.body).toEqual({ allowed: true, reason: null });
+
+    const outsideRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/authorize-paths')(
+      request(ws, { stageId: stage.id, permission: 'edit', patterns: [sourcePath] }, 'chat-lock'),
+      outsideRes,
+    );
+    expect(outsideRes.body).toEqual({
+      allowed: false,
+      reason: expect.stringContaining('outside this turn'),
+    });
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('explains how to recover a pre-owner-hash unfinished stage without resuming it', () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as { id: string; rootDir: string };
+    const path = join(stage.rootDir, 'stage.json');
+    const context = {
+      workspaceTagmaDir: join(ws.workDir, '.tagma'),
+      controlRoot: stage.rootDir,
+      stageId: stage.id,
+      kind: 'stage-metadata' as const,
+    };
+    const saved = readAuthenticatedServerRecordSync<Record<string, unknown>>(path, context);
+    const legacy = { ...saved };
+    delete legacy.ownerLockHash;
+    writeAuthenticatedServerRecordSync(path, context, legacy);
+    try {
+      const res = makeRes();
+      getRoute('/api/workspace/chat-yaml-stage/list')(
+        request(ws, { stageId: stage.id }, 'chat-lock'),
+        res,
+      );
+      expect(res.statusCode).toBe(423);
+      const error = (res.body as { error: string }).error;
+      expect(error).toContain('older Tagma version');
+      expect(error).toContain('cannot be resumed safely');
+      expect(error).toContain('Keep canvas, discard Chat result');
+      expect(error).toContain('fresh isolated stage');
+    } finally {
+      writeAuthenticatedServerRecordSync(path, context, saved);
+      discardStage(getRoute, ws, stage.id);
+      ws.watcher.stopWatching();
+      ws.layoutWatcher.stopWatching();
+    }
+  });
+
+  test('rejects every stage operation when a different valid YAML lock presents another turn stage id', async () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stageId = (startRes.body as { id: string }).id;
+    ws.yamlEditLock = {
+      ...ws.yamlEditLock!,
+      id: 'forged-second-lock',
+    };
+
+    const cases: Array<{ path: string; body: Record<string, unknown> }> = [
+      { path: '/api/workspace/chat-yaml-stage/list', body: { stageId } },
+      {
+        path: '/api/workspace/chat-yaml-stage/compile',
+        body: { stageId, relativePath: 'missing/missing.yaml' },
+      },
+      {
+        path: '/api/workspace/chat-yaml-stage/trial-run',
+        body: { stageId, relativePath: 'missing/missing.yaml', trialId: 'forged_trial' },
+      },
+      {
+        path: '/api/workspace/chat-yaml-stage/trial-run/progress',
+        body: { stageId, trialId: 'forged_trial' },
+      },
+      {
+        path: '/api/workspace/chat-yaml-stage/trial-run/cancel',
+        body: { stageId, trialId: 'forged_trial' },
+      },
+      {
+        path: '/api/workspace/chat-yaml-stage/finalize',
+        body: { stageId, relativePath: 'missing/missing.yaml' },
+      },
+      { path: '/api/workspace/chat-yaml-stage/discard', body: { stageId } },
+    ];
+
+    for (const operation of cases) {
+      const res = makeRes();
+      await getRoute(operation.path)(request(ws, operation.body, 'forged-second-lock'), res);
+      expect(res.statusCode, operation.path).toBe(423);
+      expect(res.body, operation.path).toEqual({
+        error: 'The chat YAML stage does not belong to the active YAML edit lock.',
+      });
+    }
+
+    ws.yamlEditLock = {
+      ...ws.yamlEditLock!,
+      id: 'chat-lock',
+    };
+    discardStage(getRoute, ws, stageId);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('reports an exact discarded disposition for an active stage', () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

@@ -481,6 +481,7 @@ export interface ChatYamlStageFinalizeInput {
   forceForkReason?: 'path-moved' | 'compile-failed';
   trialId?: string;
   allowInvalid?: boolean;
+  retainStage?: boolean;
 }
 
 export interface ChatYamlStageFinalizeResult {
@@ -854,6 +855,7 @@ async function performRequest<T>(
   path: string,
   options: RequestInit | undefined,
   context: JsonRequestContext,
+  adoptResponseRevision = true,
 ): Promise<T> {
   const headers = buildJsonRequestHeaders(options, context);
 
@@ -888,6 +890,7 @@ async function performRequest<T>(
   const data = await res.json();
   // Opportunistically pick up revision from any ServerState-shaped response.
   if (
+    adoptResponseRevision &&
     data &&
     typeof data === 'object' &&
     'revision' in data &&
@@ -902,9 +905,10 @@ function request<T>(
   path: string,
   options?: RequestInit,
   workspaceKeyOverride?: string | null,
+  adoptResponseRevision = true,
 ): Promise<T> {
   const context = captureJsonRequestContext(workspaceKeyOverride);
-  const operation = () => performRequest<T>(path, options, context);
+  const operation = () => performRequest<T>(path, options, context, adoptResponseRevision);
   if (participatesInWorkspaceRevisionSequence(`${BASE}${path}`, options?.method)) {
     return enqueueRevisionMutation(context.workspaceKey, operation);
   }
@@ -1915,7 +1919,11 @@ export interface RunSummary {
 // detected a change but its in-memory state is dirty and cannot be safely
 // replaced — the client must decide what to do.
 export type ServerStateEvent =
-  | { type: 'external-change'; newState: ServerState }
+  | {
+      type: 'external-change';
+      newState: ServerState;
+      origin?: 'chat-yaml-finalize';
+    }
   | {
       type: 'external-conflict';
       path: string;
@@ -2041,6 +2049,21 @@ export const api = {
       workspaceKeyOverride,
     ),
 
+  authorizeChatYamlStagePaths: (
+    stageId: string,
+    permission: string,
+    patterns: string[],
+    workspaceKeyOverride?: string | null,
+  ) =>
+    request<{ allowed: boolean; reason: string | null }>(
+      '/workspace/chat-yaml-stage/authorize-paths',
+      {
+        method: 'POST',
+        body: jsonBody({ stageId, permission, patterns }),
+      },
+      workspaceKeyOverride,
+    ),
+
   compileChatYamlStage: (
     stageId: string,
     relativePath: string,
@@ -2106,6 +2129,7 @@ export const api = {
         body: jsonBody(body),
       },
       workspaceKeyOverride,
+      false,
     ),
 
   discardChatYamlStage: (stageId: string, workspaceKeyOverride?: string | null) =>
@@ -2677,26 +2701,9 @@ export const api = {
     es.addEventListener('state_event', (e) => {
       try {
         const event = JSON.parse((e as MessageEvent).data) as ServerStateEvent;
-        // C4 (P1-H1 lost-update fix): only bump the client revision on
-        // `external-change`, where the server has already reloaded the file
-        // and the App.tsx handler unconditionally calls init() so the local
-        // store will be replaced with the new state. For `state_sync` (a
-        // reconnect catch-up) the consumer may *skip* applying the new state
-        // when there are unsaved local edits — bumping the revision here
-        // would mean the next mutation passes the If-Match check against an
-        // unrelated baseline, silently overwriting whoever wrote that newer
-        // revision. The consumer is responsible for calling setClientRevision
-        // (via applyState) only when it actually adopts the new state.
-        const eventWorkDir = event.type === 'external-change' ? event.newState?.workDir : undefined;
-        const eventMatchesWorkspace =
-          workspaceKey === null || eventWorkDir === undefined || eventWorkDir === workspaceKey;
-        if (
-          event.type === 'external-change' &&
-          event.newState?.revision !== undefined &&
-          eventMatchesWorkspace
-        ) {
-          adoptNewerWorkspaceRevision(workspaceKey, event.newState.revision);
-        }
+        // An SSE notification is not itself acceptance of the disk branch.
+        // The consumer may preserve the current canvas, so only the state
+        // application path may advance the optimistic-lock baseline.
         onEvent(event);
       } catch {
         // malformed payload — ignore

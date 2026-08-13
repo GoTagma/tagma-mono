@@ -19,6 +19,7 @@ export interface ConversationExport {
 export interface BuildConversationExportOptions {
   format: ChatExportFormat;
   messages: readonly OpencodeThreadEntry[];
+  pipelineResultsByMessageId?: Readonly<Record<string, readonly ChatYamlSessionResult[]>>;
   pipelineVerification?: ChatYamlSessionResult | null;
   title?: string | null;
   exportedAt?: Date;
@@ -29,19 +30,45 @@ const MAX_TRIALABILITY_EXPORT_ITEMS = 32;
 const MAX_TRIALABILITY_EXPORT_MESSAGES = 16;
 const MAX_TRIAL_MANUAL_EXECUTION_GRANTS = 32;
 
+function pipelineResultIdentity(result: ChatYamlSessionResult): string {
+  return (
+    result.resultId ??
+    [
+      result.sessionId,
+      result.messageId ?? '',
+      result.reconcile?.resultPath ?? result.path,
+      result.completedAt,
+    ].join(':')
+  );
+}
+
+function safeExportPipelineResultPath(path: string | null | undefined): string {
+  if (!path) return 'none';
+  const parts = path.trim().replace(/\\/g, '/').toLocaleLowerCase('en-US').split('/');
+  return parts.includes('.chat-staging') ? 'invalid internal staging target (not openable)' : path;
+}
+
 export function buildConversationExport({
   format,
   messages,
+  pipelineResultsByMessageId = {},
   pipelineVerification,
   title,
   exportedAt = new Date(),
 }: BuildConversationExportOptions): ConversationExport {
   const heading = cleanTitle(title) || 'Chat Export';
   const body: string[] = [];
-  const verificationReplacementIndex = pipelineVerification
-    ? findPipelineVerificationReplacementIndex(messages, pipelineVerification, format)
+  const anchoredResults = Object.values(pipelineResultsByMessageId).flat();
+  const anchoredResultIds = new Set(anchoredResults.map(pipelineResultIdentity));
+  const legacyPipelineVerification =
+    pipelineVerification && !anchoredResultIds.has(pipelineResultIdentity(pipelineVerification))
+      ? pipelineVerification
+      : null;
+  const verificationReplacementIndex = legacyPipelineVerification
+    ? findPipelineVerificationReplacementIndex(messages, legacyPipelineVerification, format)
     : -1;
   let verificationRendered = false;
+  const renderedAnchoredResultIds = new Set<string>();
   let hideInternalContinuation = false;
   for (const [index, entry] of messages.entries()) {
     const role = entry.info.role;
@@ -54,16 +81,30 @@ export function buildConversationExport({
     } else if (role === 'assistant' && hideInternalContinuation) {
       continue;
     }
-    if (pipelineVerification && index === verificationReplacementIndex) {
-      body.push(renderPipelineVerification(pipelineVerification, format, true));
+    if (legacyPipelineVerification && index === verificationReplacementIndex) {
+      body.push(renderPipelineVerification(legacyPipelineVerification, format, true));
       verificationRendered = true;
       continue;
     }
     const rendered = renderEntry(entry, format);
     if (rendered !== null) body.push(rendered);
+    if (role === 'assistant') {
+      for (const result of pipelineResultsByMessageId[entry.info.id] ?? []) {
+        const identity = pipelineResultIdentity(result);
+        if (renderedAnchoredResultIds.has(identity)) continue;
+        body.push(renderPipelineVerification(result, format));
+        renderedAnchoredResultIds.add(identity);
+      }
+    }
   }
-  if (pipelineVerification && !verificationRendered) {
-    body.push(renderPipelineVerification(pipelineVerification, format));
+  for (const result of anchoredResults
+    .filter((candidate) => !renderedAnchoredResultIds.has(pipelineResultIdentity(candidate)))
+    .sort((a, b) => a.completedAt - b.completedAt)) {
+    body.push(renderPipelineVerification(result, format));
+    renderedAnchoredResultIds.add(pipelineResultIdentity(result));
+  }
+  if (legacyPipelineVerification && !verificationRendered) {
+    body.push(renderPipelineVerification(legacyPipelineVerification, format));
   }
 
   const content =
@@ -469,7 +510,7 @@ function renderPipelineVerification(
       ),
       exportNestedBullet(
         markdown,
-        `Result path: ${redactExportText(result.reconcile.resultPath ?? 'none')}`,
+        `Result path: ${redactExportText(safeExportPipelineResultPath(result.reconcile.resultPath))}`,
       ),
     );
   } else {

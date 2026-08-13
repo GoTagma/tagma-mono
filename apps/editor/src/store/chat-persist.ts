@@ -9,6 +9,23 @@
  */
 
 const STORAGE_KEY = 'tagma.chat.v2';
+const MAX_PERSISTED_CHAT_YAML_RESULTS = 500;
+
+export interface ChatYamlResultPersistenceIssue {
+  kind: 'legacy-unanchored-result' | 'ledger-truncated';
+  message: string;
+}
+
+type ChatYamlResultPersistenceIssueReporter = (issue: ChatYamlResultPersistenceIssue) => void;
+
+const LEGACY_UNANCHORED_RESULT_MESSAGE =
+  'An older Chat pipeline result cannot be restored safely because it has no message or turn ' +
+  'anchor. Open the intended target from the workspace pipeline list, then resend the request ' +
+  'if you need a new Chat result. Tagma did not infer a target from assistant text.';
+const LEDGER_TRUNCATED_MESSAGE =
+  'Chat keeps the newest 500 Open Pipeline results for this workspace. One or more older history ' +
+  'entries were removed from the result ledger; pipeline files were not deleted. Open an older ' +
+  'target from the workspace pipeline list, or resend the Chat request to create a fresh result.';
 
 export interface ModelPick {
   providerID: string;
@@ -41,6 +58,8 @@ export interface PersistedChatYamlSnapshot {
   activePath: string | null;
   localEditRevision: number;
   yamlEditLockId: string;
+  resultTurnId?: string;
+  resultMessageId?: string;
   staging: {
     id: string;
     agentTagmaDir: string;
@@ -53,10 +72,12 @@ export interface PersistedChatYamlSnapshot {
 export interface PersistedChatYamlReconciliationTurn {
   id: string;
   sessionId: string | null;
+  assistantMessageId?: string | null;
   endedAt: number;
   hidden: boolean;
   termination: 'completed' | 'user-stopped';
   yamlSnapshotBeforeSend: PersistedChatYamlSnapshot;
+  completedYamlRelativePaths?: string[];
   reconcileFailure?: {
     message: string;
     attempt: number;
@@ -69,11 +90,67 @@ interface PersistedChatYamlReconciliationQueue {
   turns: unknown[];
 }
 
+export interface PersistedChatYamlResult {
+  resultId: string;
+  turnId: string;
+  messageId: string;
+  sessionId: string;
+  workspaceKey: string;
+  kind: 'open-created' | 'refresh-current';
+  path: string;
+  name: string;
+  pipelineName: string | null;
+  status: 'ready' | 'blocked' | 'failed';
+  compile: {
+    success: boolean;
+    summary: string;
+    validation: {
+      errors: Array<{ path: string; message: string }>;
+      warnings: Array<{ path: string; message: string }>;
+    };
+  };
+  trial?: Record<string, unknown>;
+  repairAttempts?: number;
+  planningTelemetry?: {
+    promptCount: number;
+    toolAttemptCount: number;
+    validationRejectionCount: number;
+    repeatedValidationRejectionCount: number;
+    elapsedMs: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    cost: number;
+  };
+  reconcile?: {
+    outcome: 'unchanged' | 'adopted' | 'forked' | 'created';
+    conflicts: string[];
+    localBranchPersisted: boolean;
+    resultPath: string | null;
+    compileSuccess: boolean;
+    trialRunSuccess?: boolean;
+    trialVerification?: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
+  };
+  finalYamlMtimeMs?: number;
+  completedAt: number;
+}
+
+interface PersistedChatYamlResultsLedger {
+  version: 1;
+  results: unknown[];
+  truncated?: boolean;
+}
+
 export interface WorkspacePersistedShape {
   model?: ModelPick | null;
   agent?: string | null;
   reasoningEffort?: ChatReasoningEffort;
   unfinishedYamlReconciliations?: PersistedChatYamlReconciliationQueue;
+  pipelineResults?: PersistedChatYamlResultsLedger;
+  /** Pre-ledger compatibility input. New writes use pipelineResults. */
+  sessionYamlResults?: Record<string, unknown>;
 }
 
 interface PersistedShape {
@@ -125,6 +202,36 @@ function isNonNegativeFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function containsChatStagingPath(value: string): boolean {
+  return value
+    .replace(/\\/g, '/')
+    .split('/')
+    .some((segment) => segment.toLowerCase() === '.chat-staging');
+}
+
+function isSafeRelativeYamlPath(value: unknown): value is string {
+  if (!isNonEmptyString(value)) return false;
+  const normalized = value.replace(/\\/g, '/');
+  if (
+    normalized.startsWith('/') ||
+    /^[a-z]:\//i.test(normalized) ||
+    normalized
+      .split('/')
+      .some((segment) => segment === '..' || segment.toLowerCase() === '.chat-staging')
+  ) {
+    return false;
+  }
+  return /\.ya?ml$/i.test(normalized);
+}
+
 function isPersistedChatYamlStageEntry(value: unknown): value is PersistedChatYamlStageEntry {
   return (
     isRecord(value) &&
@@ -152,6 +259,8 @@ function isPersistedChatYamlSnapshot(
     Number.isSafeInteger(value.localEditRevision) &&
     (value.localEditRevision as number) >= 0 &&
     isNonEmptyString(value.yamlEditLockId) &&
+    (value.resultTurnId === undefined || isNonEmptyString(value.resultTurnId)) &&
+    (value.resultMessageId === undefined || isNonEmptyString(value.resultMessageId)) &&
     isNonEmptyString(staging.id) &&
     isNonEmptyString(staging.agentTagmaDir) &&
     isNullableString(staging.activeRelativePath) &&
@@ -188,6 +297,20 @@ function parsePersistedChatYamlReconciliationTurn(
       return null;
     }
   }
+  if (
+    value.assistantMessageId !== undefined &&
+    value.assistantMessageId !== null &&
+    !isNonEmptyString(value.assistantMessageId)
+  ) {
+    return null;
+  }
+  if (
+    value.completedYamlRelativePaths !== undefined &&
+    (!Array.isArray(value.completedYamlRelativePaths) ||
+      !value.completedYamlRelativePaths.every(isSafeRelativeYamlPath))
+  ) {
+    return null;
+  }
   return value as unknown as PersistedChatYamlReconciliationTurn;
 }
 
@@ -222,6 +345,269 @@ export function savePersistedChatYamlReconciliationQueue(
     unfinishedYamlReconciliations: {
       version: 1,
       turns: validatedPersistedChatYamlReconciliationTurns(workspaceKey, turns),
+    },
+  });
+}
+
+function isValidationIssueArray(value: unknown): value is Array<{ path: string; message: string }> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) => isRecord(item) && typeof item.path === 'string' && typeof item.message === 'string',
+    )
+  );
+}
+
+function isPersistedCompileResult(value: unknown): value is PersistedChatYamlResult['compile'] {
+  if (!isRecord(value) || !isRecord(value.validation)) return false;
+  return (
+    typeof value.success === 'boolean' &&
+    typeof value.summary === 'string' &&
+    isValidationIssueArray(value.validation.errors) &&
+    isValidationIssueArray(value.validation.warnings)
+  );
+}
+
+function isPersistedPlanningTelemetry(
+  value: unknown,
+): value is NonNullable<PersistedChatYamlResult['planningTelemetry']> {
+  if (!isRecord(value)) return false;
+  return [
+    'promptCount',
+    'toolAttemptCount',
+    'validationRejectionCount',
+    'repeatedValidationRejectionCount',
+    'elapsedMs',
+    'inputTokens',
+    'outputTokens',
+    'reasoningTokens',
+    'cacheReadTokens',
+    'cacheWriteTokens',
+    'cost',
+  ].every((key) => isNonNegativeFiniteNumber(value[key]));
+}
+
+function isPersistedReconcileResult(
+  value: unknown,
+  finalPath: string,
+  workspaceKey: string,
+): value is NonNullable<PersistedChatYamlResult['reconcile']> {
+  if (!isRecord(value)) return false;
+  const resultPath = value.resultPath;
+  return (
+    (value.outcome === 'adopted' || value.outcome === 'forked' || value.outcome === 'created') &&
+    isStringArray(value.conflicts) &&
+    typeof value.localBranchPersisted === 'boolean' &&
+    isNonEmptyString(resultPath) &&
+    isPersistedFinalPipelinePath(resultPath, workspaceKey) &&
+    samePersistedPath(resultPath, finalPath) &&
+    typeof value.compileSuccess === 'boolean' &&
+    (value.trialRunSuccess === undefined || typeof value.trialRunSuccess === 'boolean') &&
+    (value.trialVerification === undefined ||
+      value.trialVerification === 'verified' ||
+      value.trialVerification === 'prerequisite-unavailable' ||
+      value.trialVerification === 'not-verified' ||
+      value.trialVerification === 'not-required')
+  );
+}
+
+function normalizedPersistedPath(value: string): string {
+  const normalized = value.trim().replace(/\\/g, '/');
+  return normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
+}
+
+function isWindowsPersistedPath(value: string): boolean {
+  return /^[a-z]:\//i.test(value) || value.startsWith('//');
+}
+
+function samePersistedPath(left: string, right: string): boolean {
+  const normalizedLeft = normalizedPersistedPath(left);
+  const normalizedRight = normalizedPersistedPath(right);
+  return isWindowsPersistedPath(normalizedLeft) || isWindowsPersistedPath(normalizedRight)
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+function isPersistedFinalPipelinePath(path: string, workspaceKey: string): boolean {
+  const normalizedPath = normalizedPersistedPath(path);
+  const normalizedWorkspace = normalizedPersistedPath(workspaceKey);
+  const prefix = normalizedWorkspace + '/.tagma/';
+  const comparablePath = isWindowsPersistedPath(normalizedWorkspace)
+    ? normalizedPath.toLowerCase()
+    : normalizedPath;
+  const comparablePrefix = isWindowsPersistedPath(normalizedWorkspace)
+    ? prefix.toLowerCase()
+    : prefix;
+  if (!comparablePath.startsWith(comparablePrefix)) return false;
+  const relative = normalizedPath.slice(prefix.length);
+  return (
+    /\.ya?ml$/i.test(relative) &&
+    relative.length > 0 &&
+    !relative.split('/').some((segment) => segment === '..' || segment === '.') &&
+    !containsChatStagingPath(normalizedPath)
+  );
+}
+
+function legacyResultId(value: Record<string, unknown>): string {
+  const source = [value.messageId, value.path, value.completedAt].join('\u0000');
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return 'legacy_' + (hash >>> 0).toString(36);
+}
+
+export function validatePersistedChatYamlResult(
+  value: unknown,
+  workspaceKey: string,
+): PersistedChatYamlResult | null {
+  if (
+    !isRecord(value) ||
+    (value.resultId !== undefined && !isNonEmptyString(value.resultId)) ||
+    (value.turnId !== undefined && !isNonEmptyString(value.turnId)) ||
+    !isNonEmptyString(value.messageId) ||
+    !isNonEmptyString(value.sessionId) ||
+    (value.workspaceKey !== undefined && value.workspaceKey !== workspaceKey) ||
+    (value.kind !== 'open-created' && value.kind !== 'refresh-current') ||
+    !isNonEmptyString(value.path) ||
+    !isPersistedFinalPipelinePath(value.path, workspaceKey) ||
+    !isNonEmptyString(value.name) ||
+    !isNullableString(value.pipelineName) ||
+    (value.status !== 'ready' && value.status !== 'blocked' && value.status !== 'failed') ||
+    !isPersistedCompileResult(value.compile) ||
+    (value.finalYamlMtimeMs !== undefined && !isNonNegativeFiniteNumber(value.finalYamlMtimeMs)) ||
+    !isNonNegativeFiniteNumber(value.completedAt)
+  ) {
+    return null;
+  }
+  if (value.trial !== undefined && !isRecord(value.trial)) return null;
+  if (value.repairAttempts !== undefined && !isSafeNonNegativeInteger(value.repairAttempts)) {
+    return null;
+  }
+  if (
+    value.planningTelemetry !== undefined &&
+    !isPersistedPlanningTelemetry(value.planningTelemetry)
+  ) {
+    return null;
+  }
+  if (
+    value.reconcile !== undefined &&
+    !isPersistedReconcileResult(value.reconcile, value.path, workspaceKey)
+  ) {
+    return null;
+  }
+  return {
+    ...value,
+    resultId: isNonEmptyString(value.resultId) ? value.resultId : legacyResultId(value),
+    turnId: isNonEmptyString(value.turnId) ? value.turnId : value.messageId,
+    workspaceKey,
+  } as unknown as PersistedChatYamlResult;
+}
+
+interface ValidatedPersistedChatYamlResults {
+  results: PersistedChatYamlResult[];
+  truncated: boolean;
+}
+
+function validatedPersistedChatYamlResults(
+  workspaceKey: string,
+  values: readonly unknown[],
+): ValidatedPersistedChatYamlResults {
+  const results: PersistedChatYamlResult[] = [];
+  const ids = new Set<string>();
+  let truncated = false;
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const result = validatePersistedChatYamlResult(values[index], workspaceKey);
+    if (!result || ids.has(result.resultId)) continue;
+    ids.add(result.resultId);
+    if (results.length < MAX_PERSISTED_CHAT_YAML_RESULTS) {
+      results.unshift(result);
+    } else {
+      truncated = true;
+    }
+  }
+  return { results, truncated };
+}
+
+function resultsByMessageId(
+  results: readonly PersistedChatYamlResult[],
+): Record<string, PersistedChatYamlResult[]> {
+  const byMessageId: Record<string, PersistedChatYamlResult[]> = {};
+  for (const result of results) {
+    const bucket = byMessageId[result.messageId] ?? [];
+    byMessageId[result.messageId] = [...bucket, result];
+  }
+  return byMessageId;
+}
+
+function isUnanchoredLegacyPipelineResult(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    !isNonEmptyString(value.messageId) &&
+    !isNonEmptyString(value.turnId) &&
+    isNonEmptyString(value.sessionId) &&
+    isNonEmptyString(value.path) &&
+    isNonNegativeFiniteNumber(value.completedAt)
+  );
+}
+
+export function loadPersistedChatYamlResults(
+  workspaceKey: string,
+  reportIssue?: ChatYamlResultPersistenceIssueReporter,
+): Record<string, PersistedChatYamlResult[]> {
+  const persisted = loadPersisted(workspaceKey);
+  const ledger = persisted.pipelineResults as unknown;
+  let values: unknown[] = [];
+  if (isRecord(ledger) && ledger.version === 1) {
+    if (Array.isArray(ledger.results)) {
+      values = ledger.results;
+    } else if (Array.isArray(ledger.turns)) {
+      values = ledger.turns;
+    } else if (isRecord(ledger.byMessageId)) {
+      values = Object.values(ledger.byMessageId).flatMap((entry) =>
+        Array.isArray(entry) ? entry : [],
+      );
+    }
+  }
+  if (persisted.sessionYamlResults && isRecord(persisted.sessionYamlResults)) {
+    values = [
+      ...values,
+      ...Object.values(persisted.sessionYamlResults).flatMap((entry) =>
+        Array.isArray(entry) ? entry : [entry],
+      ),
+    ];
+  }
+  if (values.some(isUnanchoredLegacyPipelineResult)) {
+    reportIssue?.({
+      kind: 'legacy-unanchored-result',
+      message: LEGACY_UNANCHORED_RESULT_MESSAGE,
+    });
+  }
+  const validated = validatedPersistedChatYamlResults(workspaceKey, values);
+  if ((isRecord(ledger) && ledger.truncated === true) || validated.truncated) {
+    reportIssue?.({ kind: 'ledger-truncated', message: LEDGER_TRUNCATED_MESSAGE });
+  }
+  return resultsByMessageId(validated.results);
+}
+
+export function savePersistedChatYamlResults(
+  workspaceKey: string,
+  resultsByTurn: Readonly<Record<string, readonly unknown[]>>,
+  reportIssue?: ChatYamlResultPersistenceIssueReporter,
+): void {
+  const values = Object.values(resultsByTurn).flatMap((results) => [...results]);
+  const validated = validatedPersistedChatYamlResults(workspaceKey, values);
+  const previousLedger = loadPersisted(workspaceKey).pipelineResults as unknown;
+  const previouslyTruncated = isRecord(previousLedger) && previousLedger.truncated === true;
+  if (validated.truncated) {
+    reportIssue?.({ kind: 'ledger-truncated', message: LEDGER_TRUNCATED_MESSAGE });
+  }
+  savePersisted(workspaceKey, {
+    pipelineResults: {
+      version: 1,
+      results: validated.results,
+      truncated: previouslyTruncated || validated.truncated,
     },
   });
 }

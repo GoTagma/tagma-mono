@@ -305,6 +305,8 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('Never forward raw full transcript excerpts');
   expect(doc).toContain('read: deny');
   expect(doc).toContain('edit: deny');
+  expect(doc).toContain('preserve the complete `<chat-staging>` block unchanged');
+  expect(doc).toContain('exact `<agent-root>`');
 });
 
 test('tagma-router separates concrete read-only diagnosis from authorized pipeline mutation', () => {
@@ -686,6 +688,7 @@ test('tagma-pipeline agent treats chat staging as the only writable pipeline roo
   expect(doc).toContain('Use those absolute staged paths exactly');
   expect(doc).not.toContain('your cwd is exactly `<agent-root>`');
   expect(doc).not.toContain('paths are already relative to it');
+  expect(doc).toContain('edit: ask');
 });
 
 test('tagma-pipeline agent allows external file and directory trigger watch paths', () => {
@@ -808,12 +811,20 @@ test('tagma-pipeline-section-builder is a write-capable bounded implementer, not
   expect(doc).toContain('name: tagma-pipeline-section-builder');
   expect(doc).toContain('mode: subagent');
   expect(doc).toContain('hidden: true');
-  expect(doc).toContain('edit: allow');
+  expect(doc).toContain('edit: ask');
   expect(doc).toContain('bash: deny');
   expect(doc).toContain('"*": "deny"');
   expect(doc).toContain('Implement exactly one manifest section');
   expect(doc).toContain('Do not review or approve your own work');
   expect(doc).toContain('STEP_RESULT');
+});
+
+test('write-capable delegated agents force host permission checks', () => {
+  const python = buildTagmaPythonToolsAgent('Windows');
+
+  expect(python).toContain('edit: ask');
+  expect(python).toContain('bash: ask');
+  expect(python).toContain('Never substitute the live `.tagma` root for a staged `<agent-root>`');
 });
 
 test('tagma-pipeline agent delegates mechanical layout to the placement tool', () => {

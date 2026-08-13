@@ -77,6 +77,7 @@ import {
 const STAGING_DIR_NAME = '.chat-staging';
 const STAGE_METADATA_FILE = 'stage.json';
 const STAGE_RESULT_FILE = 'finalized.json';
+const STAGE_TARGET_RESULTS_DIR = 'finalized-results';
 const STAGE_VERSION = 3;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const MAX_PIPELINE_SUPPORT_FILE_BYTES = 16 * 1024 * 1024;
@@ -87,6 +88,10 @@ const STAGE_TTL_MS = 8 * 24 * 60 * 60 * 1_000;
 const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 const FINALIZE_WITNESS_TIMEOUT_MS = 60 * 60 * 1_000;
+const LEGACY_STAGE_LOCK_RECOVERY_MESSAGE =
+  'This unfinished Chat result is from an older Tagma version and cannot be resumed safely ' +
+  'because it has no lock ownership metadata. Choose Keep canvas, discard Chat result, ' +
+  'then resend to create a fresh isolated stage.';
 
 export type ChatYamlFinalizeWitnessFailureKind =
   'chat-yaml-finalize-witness-timeout' | 'chat-yaml-finalize-witness-aborted';
@@ -102,6 +107,13 @@ export class ChatYamlFinalizeWitnessError extends Error {
     );
     this.name = 'ChatYamlFinalizeWitnessError';
     this.kind = kind;
+  }
+}
+
+export class ChatYamlStageLockOwnershipError extends Error {
+  constructor(message = 'The chat YAML stage does not belong to the active YAML edit lock.') {
+    super(message);
+    this.name = 'ChatYamlStageLockOwnershipError';
   }
 }
 
@@ -209,6 +221,7 @@ interface ChatYamlStageMetadata {
   version: typeof STAGE_VERSION;
   id: string;
   createdAt: number;
+  ownerLockHash: string | null;
   trialPlanMaxAttempts: number;
   trialPlanAttempt: {
     relativePath: string;
@@ -276,6 +289,7 @@ export interface ChatYamlStageFinalizeInput {
   forceForkReason?: Extract<ChatYamlStageConflict, 'path-moved' | 'compile-failed'>;
   trialId?: string;
   allowInvalid?: boolean;
+  retainStage?: boolean;
 }
 
 export interface ChatYamlStageFinalizeResult {
@@ -299,6 +313,7 @@ interface StagePaths {
   agentTagmaDir: string;
   metadataPath: string;
   resultPath: string;
+  targetResultsDir: string;
 }
 
 interface FinalizeArtifactSnapshot {
@@ -516,6 +531,7 @@ function stagePaths(workDir: string, stageId: string): StagePaths {
     agentTagmaDir: tagmaDirOf(agentWorkspaceDir),
     metadataPath: join(rootDir, STAGE_METADATA_FILE),
     resultPath: join(rootDir, STAGE_RESULT_FILE),
+    targetResultsDir: join(rootDir, STAGE_TARGET_RESULTS_DIR),
   };
 }
 
@@ -797,6 +813,10 @@ function readMetadata(
       version: STAGE_VERSION,
       id: stageId,
       createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
+      ownerLockHash:
+        typeof raw.ownerLockHash === 'string' && /^[0-9a-f]{64}$/.test(raw.ownerLockHash)
+          ? raw.ownerLockHash
+          : null,
       trialPlanMaxAttempts,
       trialPlanAttempt,
       activeRelativePath:
@@ -1004,6 +1024,9 @@ export function createChatYamlStage(
       version: STAGE_VERSION,
       id,
       createdAt: Date.now(),
+      ownerLockHash: ws.yamlEditLock
+        ? createHash('sha256').update(ws.yamlEditLock.id).digest('hex')
+        : null,
       trialPlanMaxAttempts: readEditorSettings(ws).opencodeChatTrialPlanMaxAttempts,
       trialPlanAttempt: null,
       activeRelativePath,
@@ -1026,6 +1049,29 @@ export function listChatYamlStage(ws: WorkspaceState, stageId: string): ChatYaml
   const { paths, metadata } = readMetadata(ws, stageId);
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   return descriptor(ws, paths, metadata);
+}
+
+/** Resolve the server-authenticated write root for a staged chat turn. */
+export function resolveChatYamlStageAgentRoot(ws: WorkspaceState, stageId: string): string {
+  const { paths } = readMetadata(ws, stageId);
+  if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
+  return paths.agentTagmaDir;
+}
+
+/** Verify that a staged write request carries the lock that created the stage. */
+export function assertChatYamlStageLockOwner(
+  ws: WorkspaceState,
+  stageId: string,
+  lockId: string | undefined,
+): void {
+  const { metadata } = readMetadata(ws, stageId);
+  const requestLockHash = lockId ? createHash('sha256').update(lockId).digest('hex') : null;
+  if (!metadata.ownerLockHash) {
+    throw new ChatYamlStageLockOwnershipError(LEGACY_STAGE_LOCK_RECOVERY_MESSAGE);
+  }
+  if (metadata.ownerLockHash !== requestLockHash) {
+    throw new ChatYamlStageLockOwnershipError();
+  }
 }
 
 export function issueChatYamlStageTrialPlanAttempt(
@@ -1834,6 +1880,9 @@ function reconcileDifferentActiveSourceDrift(
   if (!activeRelativePath || samePipelineRelativePath(activeRelativePath, finalizedRelativePath)) {
     return { conflicts: [], localBranchPersisted: false, sourcePath: null };
   }
+  if (readTargetFinalizeResult(paths, activeRelativePath)) {
+    return { conflicts: [], localBranchPersisted: false, sourcePath: null };
+  }
 
   const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
     samePipelineRelativePath(candidate, activeRelativePath),
@@ -1945,7 +1994,70 @@ function describeRealEntry(ws: WorkspaceState, yamlPath: string): ChatYamlStageE
   };
 }
 
-function persistFinalizeResult(paths: StagePaths, result: ChatYamlStageFinalizeResult): void {
+interface TargetFinalizeRecord {
+  relativePath: string;
+  result: ChatYamlStageFinalizeResult;
+}
+
+function targetFinalizeResultPath(paths: StagePaths, relativePath: string): string {
+  const normalized = assertPortableRelativePath(relativePath);
+  const identity = process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  return join(paths.targetResultsDir, `${sha1(identity)}.json`);
+}
+
+function targetFinalizeResultContext(paths: StagePaths): ServerRecordContext {
+  return stageRecordContext(paths, 'finalized', paths.targetResultsDir);
+}
+
+function persistFinalizeResult(
+  paths: StagePaths,
+  result: ChatYamlStageFinalizeResult,
+  relativePath: string,
+  retainStage: boolean,
+): void {
+  const targetPath = targetFinalizeResultPath(paths, relativePath);
+  __chatYamlStagingTestHooks.beforeFinalizeResultWrite?.(targetPath);
+  try {
+    writeAuthenticatedServerRecordSync(targetPath, targetFinalizeResultContext(paths), {
+      relativePath: assertPortableRelativePath(relativePath),
+      result,
+    } satisfies TargetFinalizeRecord);
+    if (!retainStage) {
+      writeAuthenticatedServerRecordSync(
+        paths.resultPath,
+        stageRecordContext(paths, 'finalized'),
+        result,
+      );
+    }
+  } catch (err) {
+    rmSync(targetPath, { force: true });
+    if (!retainStage) rmSync(paths.resultPath, { force: true });
+    throw err;
+  }
+}
+
+function readTargetFinalizeResult(
+  paths: StagePaths,
+  relativePath: string,
+): ChatYamlStageFinalizeResult | null {
+  const targetPath = targetFinalizeResultPath(paths, relativePath);
+  if (!existsSync(targetPath)) return null;
+  const record = readAuthenticatedServerRecordSync<TargetFinalizeRecord>(
+    targetPath,
+    targetFinalizeResultContext(paths),
+  );
+  if (
+    typeof record.relativePath !== 'string' ||
+    !samePipelineRelativePath(record.relativePath, assertPortableRelativePath(relativePath)) ||
+    !record.result ||
+    typeof record.result !== 'object'
+  ) {
+    throw new Error('Finalized target record does not match the requested staged pipeline.');
+  }
+  return record.result;
+}
+
+function persistLegacyFinalizeResult(paths: StagePaths, result: ChatYamlStageFinalizeResult): void {
   __chatYamlStagingTestHooks.beforeFinalizeResultWrite?.(paths.resultPath);
   writeAuthenticatedServerRecordSync(
     paths.resultPath,
@@ -2160,6 +2272,19 @@ export async function finalizeChatYamlStage(
 ): Promise<ChatYamlStageFinalizeResult> {
   const forceForkReason = normalizeFinalizeForceForkReason(input.forceForkReason);
   const { paths, metadata } = readMetadata(ws, input.stageId);
+  const relativePath = assertPortableRelativePath(input.relativePath);
+  const retainStage = input.retainStage === true;
+  const previousTargetResult = readTargetFinalizeResult(paths, relativePath);
+  if (previousTargetResult) {
+    if (!retainStage) {
+      if (!readFinalizeResult(paths)) {
+        persistLegacyFinalizeResult(paths, previousTargetResult);
+      }
+      cleanupFinalizedStage(paths);
+    }
+    const state = getState(ws);
+    return { ...previousTargetResult, revision: state.revision, state };
+  }
   const previousResult = readFinalizeResult(paths);
   if (previousResult) {
     cleanupFinalizedStage(paths);
@@ -2167,14 +2292,10 @@ export async function finalizeChatYamlStage(
     return { ...previousResult, revision: state.revision, state };
   }
 
-  const relativePath = assertPortableRelativePath(input.relativePath);
   const stagedPath = resolveStagedYamlPath(paths, relativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
   const changed = stageTargetChanged(paths, metadata, relativePath);
   const compile = compileChatYamlStage(ws, input.stageId, relativePath);
-  if (!compile.success && !input.allowInvalid) {
-    throw new Error('Staged YAML did not compile successfully.');
-  }
 
   const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
     samePipelineRelativePath(candidate, relativePath),
@@ -2189,142 +2310,25 @@ export async function finalizeChatYamlStage(
     const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, sourceRelativePath);
     assertRequirementsConsistentWithYamlChange(baseYamlPath, stagedPath);
   }
-  if (!changed && sourcePath && !forceForkReason) {
-    const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
-    const diskMatchesCapturedLocal = sourceMatchesCapturedLocalBranch(
-      metadata,
-      sourcePath,
-      relativePath,
-      input.localBranch,
-    );
-    if (!diskMatchesBase && !diskMatchesCapturedLocal) {
-      let localChanges = { yaml: false, layout: false };
-      if (input.localBranch) {
-        if (!samePath(input.localBranch.sourcePath, sourcePath)) {
-          throw new Error('Local branch path does not match the staged source pipeline.');
-        }
-        localChanges = localBranchChangesFromBase(paths, metadata, relativePath, input.localBranch);
-      }
-      const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, relativePath);
-      const sourceExisted = existsSync(sourcePath);
-      const sourceTrialVerification =
-        sourceExisted && readEditorSettings(ws).opencodeChatTrialRunEnabled
-          ? ('not-verified' as const)
-          : ('not-required' as const);
-      const sourceTrialAccepted = sourceTrialVerification === 'not-required';
-      const committed = withFinalizeMutationTransaction(ws, (trackPipeline) => {
-        trackPipeline(sourcePath);
-        let sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
-        if (!hasReadableLayoutArtifact(sourcePath)) {
-          sourceCompile = {
-            ...sourceCompile,
-            success: false,
-            summary: 'Source layout could not be read safely.',
-          };
-        }
-        const localLayoutMerge =
-          input.localBranch?.layout !== undefined &&
-          !localChanges.yaml &&
-          localChanges.layout &&
-          sourceCompile.success
-            ? mergePipelineLayouts(baseYamlPath, sourcePath, input.localBranch.layout ?? null)
-            : null;
-        const canMergeLocalLayout =
-          sourceTrialAccepted &&
-          sourceCompile.success &&
-          !localChanges.yaml &&
-          localChanges.layout &&
-          !!localLayoutMerge &&
-          !localLayoutMerge.conflict;
-        const canAdoptSource =
-          sourceTrialAccepted &&
-          sourceCompile.success &&
-          !localChanges.yaml &&
-          !localChanges.layout;
-
-        if (canMergeLocalLayout || canAdoptSource) {
-          if (canMergeLocalLayout) {
-            writeLocalBranchLayout(ws, sourcePath, localLayoutMerge!.layout);
-          } else {
-            const finalTopology = pipelineLayoutTopology(sourcePath);
-            if (finalTopology) {
-              writeLocalBranchLayout(
-                ws,
-                sourcePath,
-                prunePipelineLayout(readSemanticLayout(sourcePath, 'source layout'), finalTopology),
-              );
-            }
-          }
-          runPipelineManifestSync(sourcePath);
-          runRequirementsSync(sourcePath);
-          sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
-          refreshCurrentWorkspaceState(ws, sourcePath);
-          bumpRevision(ws);
-          const state = getState(ws);
-          const result: ChatYamlStageFinalizeResult = {
-            outcome: 'adopted',
-            entry: describeRealEntry(ws, sourcePath),
-            conflicts: ['source-changed-on-disk'],
-            localBranchPersisted: canMergeLocalLayout,
-            trialVerification: sourceTrialVerification,
-            compile: sourceCompile,
-            revision: state.revision,
-            state,
-          };
-          persistFinalizeResult(paths, result);
-          return { result, state };
-        }
-
-        const preserved = sourceExisted
-          ? copyPreservedPipelineAsNumbered(
-              ws,
-              sourcePath,
-              sourcePath,
-              sourceCompile,
-              trackPipeline,
-            )
-          : null;
-        restoreRendererBranchFromBase(ws, baseYamlPath, sourcePath, input.localBranch);
-        const restoredCompile = runCompileAndWriteLog(sourcePath, ws.registry);
-        bumpRevision(ws);
-        const state = getState(ws);
-        const conflicts: ChatYamlStageConflict[] = ['source-changed-on-disk'];
-        if (localChanges.yaml || localChanges.layout) conflicts.unshift('local-branch-changed');
-        if (!sourceExisted) conflicts.push('source-deleted');
-        else if (!sourceCompile.success) conflicts.push('compile-failed');
-        if (!sourceTrialAccepted) conflicts.push('trial-run-failed');
-        const result: ChatYamlStageFinalizeResult = {
-          outcome: preserved ? 'forked' : 'unchanged',
-          entry: describeRealEntry(ws, preserved?.path ?? sourcePath),
-          conflicts,
-          localBranchPersisted: !!input.localBranch,
-          trialVerification: sourceTrialVerification,
-          compile: preserved?.compile ?? restoredCompile,
-          revision: state.revision,
-          state,
-        };
-        persistFinalizeResult(paths, result);
-        return { result, state };
-      });
-      cleanupFinalizedStage(paths);
-      if (ws.yamlPath && samePath(ws.yamlPath, sourcePath)) {
-        broadcastStateEvent(ws, { type: 'external-change', newState: committed.state });
-      }
-      return committed.result;
-    }
+  if (!changed) {
+    const state = getState(ws);
     const result: ChatYamlStageFinalizeResult = {
       outcome: 'unchanged',
-      entry: describeRealEntry(ws, sourcePath),
+      entry: sourcePath && existsSync(sourcePath) ? describeRealEntry(ws, sourcePath) : null,
       conflicts: [],
       localBranchPersisted: false,
       trialVerification: 'not-required',
       compile,
-      revision: ws.stateRevision,
-      state: getState(ws),
+      revision: state.revision,
+      state,
     };
-    persistFinalizeResult(paths, result);
-    cleanupFinalizedStage(paths);
+    persistFinalizeResult(paths, result, relativePath, retainStage);
+    if (!retainStage) cleanupFinalizedStage(paths);
     return result;
+  }
+
+  if (!compile.success && !input.allowInvalid) {
+    throw new Error('Staged YAML did not compile successfully.');
   }
 
   const trialVerification = !compile.success
@@ -2487,7 +2491,7 @@ export async function finalizeChatYamlStage(
       revision: state.revision,
       state,
     };
-    persistFinalizeResult(paths, result);
+    persistFinalizeResult(paths, result, relativePath, retainStage);
     return {
       destinationPath,
       reconciledActiveSourcePath: activeSourceReconciliation.sourcePath,
@@ -2496,14 +2500,18 @@ export async function finalizeChatYamlStage(
     };
   });
 
-  cleanupFinalizedStage(paths);
+  if (!retainStage) cleanupFinalizedStage(paths);
   if (
     ws.yamlPath &&
     (samePath(ws.yamlPath, sourcePath) ||
       samePath(ws.yamlPath, committed.destinationPath) ||
       samePath(ws.yamlPath, committed.reconciledActiveSourcePath))
   ) {
-    broadcastStateEvent(ws, { type: 'external-change', newState: committed.state });
+    broadcastStateEvent(ws, {
+      type: 'external-change',
+      origin: 'chat-yaml-finalize',
+      newState: committed.state,
+    });
   }
   return committed.result;
 }

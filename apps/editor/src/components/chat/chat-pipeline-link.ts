@@ -1,11 +1,120 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '../../api/client';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { useUIStore } from '../../store/ui-store';
 import { hasLocalEditorChanges } from '../../utils/chat-dirty-conflict';
 import { isChatYamlResultInActiveWorkspace } from '../../utils/chat-result-workspace';
 import { getLastLocalFieldEditAt } from '../../hooks/use-local-field';
-import type { ChatYamlSessionResult } from '../../store/chat-store';
+import { useChatStore, type ChatYamlSessionResult } from '../../store/chat-store';
 
-export type ChatPipelineLinkTarget = Pick<ChatYamlSessionResult, 'path' | 'name' | 'pipelineName'>;
+export type ChatPipelineLinkTarget = Pick<
+  ChatYamlSessionResult,
+  'path' | 'name' | 'pipelineName' | 'workspaceKey' | 'resultId'
+> & { verifiedYamlMtimeMs?: number };
+
+export interface ChatPipelineListEntry {
+  path: string;
+  name: string;
+  pipelineName: string | null;
+  mtimeMs: number;
+}
+
+export type ChatPipelineTargetAvailability =
+  | { available: true; target: ChatPipelineLinkTarget; reason: null }
+  | { available: false; target: null; reason: string };
+
+export interface ChatPipelineTargetAvailabilityController {
+  availability: ChatPipelineTargetAvailability;
+  revalidate: () => Promise<ChatPipelineTargetAvailability>;
+}
+
+const CHECKING_PIPELINE_TARGET: ChatPipelineTargetAvailability = {
+  available: false,
+  target: null,
+  reason: 'Checking that the final pipeline still exists…',
+};
+
+function usesWindowsPathSemantics(...paths: Array<string | null | undefined>): boolean {
+  return paths.some((path) => !!path && (/^[a-z]:[/\\]/i.test(path) || path.includes('\\')));
+}
+
+function comparablePipelinePath(path: string, windows: boolean): string {
+  const normalized = path.trim().replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  return windows ? normalized.toLocaleLowerCase('en-US') : normalized;
+}
+
+function isChatStagingPath(path: string): boolean {
+  return comparablePipelinePath(path, true).split('/').includes('.chat-staging');
+}
+
+export function resolveChatPipelineTargetAvailability({
+  target,
+  entries,
+  workspaceKey,
+}: {
+  target: ChatPipelineLinkTarget | null;
+  entries: readonly ChatPipelineListEntry[];
+  workspaceKey?: string | null;
+}): ChatPipelineTargetAvailability {
+  if (!target) {
+    return { available: false, target: null, reason: 'No verified final pipeline is available.' };
+  }
+  if (isChatStagingPath(target.path)) {
+    return {
+      available: false,
+      target: null,
+      reason: 'The result points to an internal staging path and cannot be opened.',
+    };
+  }
+
+  const windows = usesWindowsPathSemantics(
+    target.path,
+    workspaceKey,
+    ...entries.map((e) => e.path),
+  );
+  const targetPath = comparablePipelinePath(target.path, windows);
+  if (workspaceKey?.trim()) {
+    const workspacePath = comparablePipelinePath(workspaceKey, windows);
+    const livePipelineRoot = `${workspacePath}/.tagma/`;
+    if (!targetPath.startsWith(livePipelineRoot)) {
+      return {
+        available: false,
+        target: null,
+        reason: 'The final pipeline path is outside this workspace.',
+      };
+    }
+  }
+
+  const entry = entries.find(
+    (candidate) => comparablePipelinePath(candidate.path, windows) === targetPath,
+  );
+  if (!entry) {
+    return {
+      available: false,
+      target: null,
+      reason: 'The final pipeline no longer exists in this workspace.',
+    };
+  }
+  if (isChatStagingPath(entry.path)) {
+    return {
+      available: false,
+      target: null,
+      reason: 'The matching file is an internal staging artifact and cannot be opened.',
+    };
+  }
+
+  return {
+    available: true,
+    target: {
+      ...target,
+      path: entry.path,
+      name: entry.name,
+      pipelineName: entry.pipelineName ?? target.pipelineName,
+      verifiedYamlMtimeMs: entry.mtimeMs,
+    },
+    reason: null,
+  };
+}
 
 export function chatPipelineDeploymentTarget(
   result: ChatYamlSessionResult,
@@ -13,13 +122,111 @@ export function chatPipelineDeploymentTarget(
   const outcome = result.reconcile?.outcome;
   const resultPath = result.reconcile?.resultPath?.trim();
   if (
-    (result.status !== 'ready' && result.status !== 'blocked') ||
-    (outcome !== 'adopted' && outcome !== 'created') ||
-    !resultPath
+    (result.status !== 'ready' && result.status !== 'blocked' && result.status !== 'failed') ||
+    (outcome !== 'adopted' && outcome !== 'created' && outcome !== 'forked') ||
+    !resultPath ||
+    isChatStagingPath(resultPath)
   ) {
     return null;
   }
   return { ...result, path: resultPath };
+}
+
+export function chatPipelineTargetInvalidReason(result: ChatYamlSessionResult): string | null {
+  const outcome = result.reconcile?.outcome;
+  if (outcome !== 'adopted' && outcome !== 'created' && outcome !== 'forked') return null;
+  const resultPath = result.reconcile?.resultPath?.trim();
+  if (!resultPath) return 'The host did not provide a verified final pipeline path.';
+  if (isChatStagingPath(resultPath)) {
+    return 'The host returned an internal staging path, so this result cannot be opened.';
+  }
+  return null;
+}
+
+export function useChatPipelineTargetAvailability(
+  target: ChatPipelineLinkTarget | null,
+): ChatPipelineTargetAvailabilityController {
+  const activeWorkspaceKey = usePipelineStore((state) => state.workDir);
+  const targetPath = target?.path;
+  const targetName = target?.name;
+  const targetPipelineName = target?.pipelineName;
+  const targetResultId = target?.resultId;
+  const targetWorkspaceKey = target?.workspaceKey;
+  const [availability, setAvailability] = useState<ChatPipelineTargetAvailability>(() =>
+    target
+      ? CHECKING_PIPELINE_TARGET
+      : resolveChatPipelineTargetAvailability({ target, entries: [] }),
+  );
+  const validationGeneration = useRef(0);
+
+  const revalidate = useCallback(async (): Promise<ChatPipelineTargetAvailability> => {
+    const generation = ++validationGeneration.current;
+    const publish = (next: ChatPipelineTargetAvailability): ChatPipelineTargetAvailability => {
+      if (validationGeneration.current === generation) setAvailability(next);
+      return next;
+    };
+    if (!targetPath) {
+      const next = resolveChatPipelineTargetAvailability({ target: null, entries: [] });
+      return publish(next);
+    }
+    if (
+      targetWorkspaceKey &&
+      activeWorkspaceKey &&
+      !isChatYamlResultInActiveWorkspace({
+        resultWorkspaceKey: targetWorkspaceKey,
+        activeWorkspaceKey,
+      })
+    ) {
+      const next: ChatPipelineTargetAvailability = {
+        available: false,
+        target: null,
+        reason: 'The final pipeline belongs to a different workspace.',
+      };
+      return publish(next);
+    }
+    const validationWorkspaceKey = activeWorkspaceKey ?? targetWorkspaceKey;
+    const requestTarget: ChatPipelineLinkTarget = {
+      path: targetPath,
+      name: targetName ?? '',
+      pipelineName: targetPipelineName ?? null,
+      workspaceKey: targetWorkspaceKey,
+      resultId: targetResultId,
+    };
+    setAvailability(CHECKING_PIPELINE_TARGET);
+    try {
+      const { entries } = await api.listWorkspaceYamls(validationWorkspaceKey);
+      const next = resolveChatPipelineTargetAvailability({
+        target: requestTarget,
+        entries,
+        workspaceKey: validationWorkspaceKey,
+      });
+      return publish(next);
+    } catch {
+      const next: ChatPipelineTargetAvailability = {
+        available: false,
+        target: null,
+        reason:
+          'The final pipeline could not be verified. Try again after refreshing the workspace.',
+      };
+      return publish(next);
+    }
+  }, [
+    activeWorkspaceKey,
+    targetName,
+    targetPath,
+    targetPipelineName,
+    targetResultId,
+    targetWorkspaceKey,
+  ]);
+
+  useEffect(() => {
+    void revalidate();
+    return () => {
+      validationGeneration.current += 1;
+    };
+  }, [revalidate]);
+
+  return { availability, revalidate };
 }
 
 export function isChatPipelineDeployed(result: ChatYamlSessionResult): boolean {
@@ -65,14 +272,52 @@ export function selectVisibleChatCompletionResults({
 export function useOpenChatPipelineTarget(): (target: ChatPipelineLinkTarget) => Promise<void> {
   const openFile = usePipelineStore((s) => s.openFile);
   const saveFile = usePipelineStore((s) => s.saveFile);
+  const clearError = usePipelineStore((s) => s.clearError);
   const requestConfirm = useUIStore((s) => s.requestConfirm);
+  const recordTurnYamlResultFinalMtime = useChatStore((s) => s.recordTurnYamlResultFinalMtime);
 
   return async (target) => {
     const current = usePipelineStore.getState();
-    if (current.yamlPath === target.path) return;
+    if (
+      target.workspaceKey &&
+      current.workDir &&
+      !isChatYamlResultInActiveWorkspace({
+        resultWorkspaceKey: target.workspaceKey,
+        activeWorkspaceKey: current.workDir,
+      })
+    ) {
+      return;
+    }
+    const validationWorkspaceKey = current.workDir ?? target.workspaceKey;
+    let availability: ChatPipelineTargetAvailability;
+    try {
+      const { entries } = await api.listWorkspaceYamls(validationWorkspaceKey);
+      availability = resolveChatPipelineTargetAvailability({
+        target,
+        entries,
+        workspaceKey: validationWorkspaceKey,
+      });
+    } catch {
+      return;
+    }
+    if (!availability.available) return;
+    const verifiedTarget = availability.target;
 
     const openTarget = async () => {
-      await openFile(target.path);
+      clearError();
+      await openFile(verifiedTarget.path);
+      const openedState = usePipelineStore.getState();
+      if (openedState.errorMessage || !openedState.yamlPath) return;
+      const windows = usesWindowsPathSemantics(openedState.yamlPath, verifiedTarget.path);
+      if (
+        comparablePipelinePath(openedState.yamlPath, windows) !==
+        comparablePipelinePath(verifiedTarget.path, windows)
+      ) {
+        return;
+      }
+      if (verifiedTarget.resultId && typeof openedState.yamlMtimeMs === 'number') {
+        recordTurnYamlResultFinalMtime(verifiedTarget.resultId, openedState.yamlMtimeMs);
+      }
     };
     const hasLocalChanges = hasLocalEditorChanges({
       isDirty: current.isDirty,
@@ -84,7 +329,7 @@ export function useOpenChatPipelineTarget(): (target: ChatPipelineLinkTarget) =>
       return;
     }
 
-    const name = chatPipelineDisplayName(target);
+    const name = chatPipelineDisplayName(verifiedTarget);
     requestConfirm({
       title: 'Open pipeline?',
       details: [

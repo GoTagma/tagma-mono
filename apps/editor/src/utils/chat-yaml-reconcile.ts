@@ -13,6 +13,10 @@ export interface WorkspaceYamlEntry {
 export interface ChatYamlSnapshot {
   workDir: string;
   activePath: string | null;
+  /** Visible logical turn that owns any host-validated pipeline results. */
+  resultTurnId?: string;
+  /** Assistant message after which persistent pipeline actions are rendered. */
+  resultMessageId?: string;
   /** Renderer-local edit sequence captured before this logical chat turn. */
   localEditRevision: number;
   /** Exact YAML edit-lock lease that owns this staged logical turn. */
@@ -94,36 +98,26 @@ export type ChatStagedYamlTarget = ChatYamlTarget & {
   reconcileActiveSourceDrift?: boolean;
 };
 
-export function shouldAdoptFinalizedChatStateOnCurrentCanvas(args: {
-  currentPath: string | null;
-  finalizedStatePath: string | null;
-  finalEntryPath: string;
-  finalizedOutcome: 'adopted' | 'created' | 'forked' | 'unchanged';
-  localBranchPersisted: boolean;
-  localEditRevisionBeforeFinalize: number;
-  currentLocalEditRevision: number;
-}): boolean {
-  const finalizedStateBelongsOnCanvas =
-    samePath(args.currentPath, args.finalizedStatePath) &&
-    ((args.finalizedOutcome === 'adopted' && samePath(args.currentPath, args.finalEntryPath)) ||
-      args.localBranchPersisted);
-  return (
-    finalizedStateBelongsOnCanvas &&
-    args.currentLocalEditRevision === args.localEditRevisionBeforeFinalize
-  );
+function stableTrialIdHash(value: string, seed: bigint): string {
+  let hash = seed;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    hash ^= BigInt(codeUnit & 0xff);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+    hash ^= BigInt(codeUnit >>> 8);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return hash.toString(16).padStart(16, '0');
 }
 
-export function shouldAutoSyncFinalizedChatBindings(args: {
-  currentPath: string | null;
-  finalEntryPath: string;
-  finalizedOutcome: 'adopted' | 'created' | 'forked' | 'unchanged';
-  verificationAccepted: boolean;
-}): boolean {
-  return (
-    args.finalizedOutcome === 'adopted' &&
-    args.verificationAccepted &&
-    samePath(args.currentPath, args.finalEntryPath)
-  );
+export function chatYamlTargetTrialId(turnId: string, relativePath: string): string {
+  const identity = `${turnId}\u0000${relativePath.replace(/\\/g, '/')}`;
+  const suffix =
+    stableTrialIdHash(identity, 0xcbf29ce484222325n) +
+    stableTrialIdHash(identity, 0x6c62272e07bb0142n);
+  const readable = `${turnId}_${relativePath}`.replace(/[^A-Za-z0-9_-]/g, '_');
+  const boundedReadable = readable.slice(0, 160 - suffix.length - 1) || 'trial';
+  return `${boundedReadable}_${suffix}`;
 }
 
 export function detectSnapshotlessChatYamlTarget(args: {
@@ -146,10 +140,24 @@ export function detectChatStagedYamlTarget(
   snapshot: ChatYamlSnapshot,
   entries: readonly ChatYamlStageSnapshotEntry[],
 ): ChatStagedYamlTarget | null {
+  return detectChatStagedYamlTargets(snapshot, entries)[0] ?? null;
+}
+
+/**
+ * Return every pipeline artifact the agent actually changed in this isolated
+ * turn. Live/source drift is deliberately excluded: reconciliation must never
+ * turn bookkeeping outside the writable agent branch into a user-visible
+ * pipeline result.
+ */
+export function detectChatStagedYamlTargets(
+  snapshot: ChatYamlSnapshot,
+  entries: readonly ChatYamlStageSnapshotEntry[],
+): ChatStagedYamlTarget[] {
   const { staging } = snapshot;
+  const relativeKey = (value: string) => relativePathKey(value, snapshot.workDir);
   const before = new Map(
     staging.entries.map((entry) => [
-      pathKey(entry.relativePath),
+      relativeKey(entry.relativePath),
       {
         contentHash: entry.contentHash,
         layoutHash: entry.layoutHash,
@@ -158,7 +166,7 @@ export function detectChatStagedYamlTarget(
     ]),
   );
   const changed = entries.filter((entry) => {
-    const old = before.get(pathKey(entry.relativePath));
+    const old = before.get(relativeKey(entry.relativePath));
     return (
       old &&
       (entry.contentHash !== old.contentHash ||
@@ -167,34 +175,19 @@ export function detectChatStagedYamlTarget(
     );
   });
 
-  const activeKey = normalizePath(staging.activeRelativePath);
-  const activeEntry = activeKey
-    ? entries.find((candidate) => pathKey(candidate.relativePath) === activeKey)
-    : null;
-  const withActiveSourceDrift = (target: ChatStagedYamlTarget): ChatStagedYamlTarget =>
-    activeEntry?.sourcePath &&
-    activeEntry.sourceChangedOnDisk &&
-    pathKey(target.relativePath) !== activeKey
-      ? { ...target, reconcileActiveSourceDrift: true }
-      : target;
-  if (activeKey) {
-    const active = changed.find((entry) => pathKey(entry.relativePath) === activeKey);
-    if (active) return stagedTarget(active);
-  }
-
-  const created = entries
-    .filter((entry) => !before.has(pathKey(entry.relativePath)))
-    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
-  if (created.length > 0) return withActiveSourceDrift(stagedTarget(created[created.length - 1]!));
-
-  const entry = changed.sort((left, right) => left.relativePath.localeCompare(right.relativePath))[
-    changed.length - 1
-  ];
-  if (entry) return withActiveSourceDrift(stagedTarget(entry));
-
-  return activeEntry?.sourcePath && activeEntry.sourceChangedOnDisk
-    ? { ...stagedTarget(activeEntry), reconcileLiveSourceDrift: true }
-    : null;
+  const created = entries.filter((entry) => !before.has(relativeKey(entry.relativePath)));
+  const mutated = [...changed, ...created];
+  const activeKey = staging.activeRelativePath ? relativeKey(staging.activeRelativePath) : null;
+  return mutated
+    .sort((left, right) => {
+      const leftActive = activeKey !== null && relativeKey(left.relativePath) === activeKey;
+      const rightActive = activeKey !== null && relativeKey(right.relativePath) === activeKey;
+      if (leftActive !== rightActive) return leftActive ? -1 : 1;
+      return normalizeRelativePath(left.relativePath).localeCompare(
+        normalizeRelativePath(right.relativePath),
+      );
+    })
+    .map(stagedTarget);
 }
 
 function stagedTarget(entry: ChatYamlStageSnapshotEntry): ChatStagedYamlTarget {
@@ -208,8 +201,22 @@ function stagedTarget(entry: ChatYamlStageSnapshotEntry): ChatStagedYamlTarget {
   };
 }
 
-function pathKey(path: string): string {
-  return normalizePath(path) ?? path;
+function normalizeRelativePath(path: string): string {
+  return path
+    .trim()
+    .replace(/[\\]/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+}
+
+function relativePathKey(path: string, workDir: string): string {
+  const normalized = normalizeRelativePath(path);
+  return isWindowsStylePath(normalizePath(workDir) ?? workDir)
+    ? normalized.toLowerCase()
+    : normalized;
+}
+
+export function sameChatYamlRelativePath(left: string, right: string, workDir: string): boolean {
+  return relativePathKey(left, workDir) === relativePathKey(right, workDir);
 }
 
 function normalizePath(path: string | null | undefined): string | null {
@@ -222,6 +229,44 @@ function normalizePath(path: string | null | undefined): string | null {
 
 function samePath(a: string | null | undefined, b: string | null | undefined): boolean {
   return normalizePath(a) !== null && normalizePath(a) === normalizePath(b);
+}
+
+export function shouldPreserveCanvasForChatPipelineEvent(args: {
+  eventPath: string | null;
+  workspaceKey: string | null;
+  activeLifecycleWorkspaceKey: string | null;
+  activeTargetPaths?: readonly string[];
+  acceptedCanvasPath?: string | null;
+  acceptedCanvasMtimeMs?: number | null;
+  resultTargets: ReadonlyArray<{
+    workspaceKey: string | null | undefined;
+    path: string | null | undefined;
+    finalYamlMtimeMs?: number;
+  }>;
+}): boolean {
+  if (!normalizePath(args.eventPath) || !normalizePath(args.workspaceKey)) return false;
+  if (
+    samePath(args.activeLifecycleWorkspaceKey, args.workspaceKey) &&
+    (args.activeTargetPaths ?? []).some((path) => samePath(path, args.eventPath))
+  ) {
+    return true;
+  }
+  return args.resultTargets.some((target) => {
+    if (
+      !samePath(target.workspaceKey, args.workspaceKey) ||
+      !samePath(target.path, args.eventPath)
+    ) {
+      return false;
+    }
+    if (!samePath(args.acceptedCanvasPath, args.eventPath)) return true;
+    if (args.acceptedCanvasMtimeMs === null || args.acceptedCanvasMtimeMs === undefined) {
+      return true;
+    }
+    if (Number.isFinite(target.finalYamlMtimeMs)) {
+      return (target.finalYamlMtimeMs ?? 0) > args.acceptedCanvasMtimeMs;
+    }
+    return true;
+  });
 }
 
 function isWindowsStylePath(path: string): boolean {

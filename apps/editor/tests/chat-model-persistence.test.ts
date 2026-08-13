@@ -655,6 +655,7 @@ afterEach(() => {
     sessionParentById: {},
     sessionStates: {},
     sessionYamlResults: {},
+    turnYamlResults: {},
     dismissedSessionYamlResultToastIds: [],
     currentSessionId: null,
     messages: [],
@@ -1527,7 +1528,7 @@ describe('chat model persistence', () => {
     }
   });
 
-  test('injects the previous same-session YAML reconcile after clearing its result bubble', async () => {
+  test('injects the previous same-session YAML reconcile without clearing its result history', async () => {
     const repo = 'C:/previous-reconcile-repo';
     const baseUrl = 'http://opencode-previous-reconcile.test';
     workspaceBaseUrls.set(repo, baseUrl);
@@ -1573,7 +1574,7 @@ describe('chat model persistence', () => {
     try {
       await useChatStore.getState().send('why was a copy created?');
 
-      expect(useChatStore.getState().sessionYamlResults.existing).toBeUndefined();
+      expect(useChatStore.getState().sessionYamlResults.existing).toBeDefined();
       const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
       expect(parts[0]?.text).toContain('<previous-chat-yaml-reconcile>');
       expect(parts[0]?.text).toContain('<outcome>forked</outcome>');

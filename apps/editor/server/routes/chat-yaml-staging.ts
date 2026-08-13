@@ -1,8 +1,10 @@
 import type express from 'express';
 
 import {
+  assertChatYamlStageLockOwner,
   cancelChatYamlStageFinalize,
   ChatYamlFinalizeWitnessError,
+  ChatYamlStageLockOwnershipError,
   compileChatYamlStage,
   createChatYamlStage,
   discardChatYamlStageWithDisposition,
@@ -16,6 +18,7 @@ import {
   getChatPipelineTrialProgress,
   trialRunChatYamlStage,
 } from '../chat-pipeline-trial-run.js';
+import { authorizeChatYamlStagePaths } from '../chat-yaml-write-policy.js';
 import { errorMessage } from '../path-utils.js';
 import { requireWorkspace } from '../require-workspace.js';
 import {
@@ -94,6 +97,7 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
     );
   }
   const allowInvalid = optionalBoolean(body.allowInvalid, 'allowInvalid');
+  const retainStage = optionalBoolean(body.retainStage, 'retainStage');
   const localBranch = parseLocalBranch(body.localBranch);
   const activeLocalBranch = parseLocalBranch(body.activeLocalBranch, 'activeLocalBranch');
   const trialId = optionalTrialId(body.trialId);
@@ -116,6 +120,7 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
     ...(forceForkReason !== undefined ? { forceForkReason } : {}),
     ...(trialId !== undefined ? { trialId } : {}),
     ...(allowInvalid !== undefined ? { allowInvalid } : {}),
+    ...(retainStage !== undefined ? { retainStage } : {}),
   };
 }
 
@@ -135,7 +140,16 @@ function requireChatYamlStageLock(
   return false;
 }
 
+function assertRequestOwnsChatYamlStage(
+  req: express.Request,
+  ws: WorkspaceState,
+  stageId: string,
+): void {
+  assertChatYamlStageLockOwner(ws, stageId, req.get('X-Tagma-Yaml-Lock-Id'));
+}
+
 function stageErrorStatus(err: unknown): number {
+  if (err instanceof ChatYamlStageLockOwnershipError) return 423;
   if (err instanceof ChatYamlFinalizeWitnessError) {
     return err.kind === 'chat-yaml-finalize-witness-timeout' ? 504 : 503;
   }
@@ -191,8 +205,41 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
       return res.status(400).json({ error: 'stageId is required.' });
     }
+    const stageId = body.stageId.trim();
     try {
-      return res.json(listChatYamlStage(ws, body.stageId.trim()));
+      assertRequestOwnsChatYamlStage(req, ws, stageId);
+      return res.json(listChatYamlStage(ws, stageId));
+    } catch (err) {
+      return respondStageError(res, err);
+    }
+  });
+
+  app.post('/api/workspace/chat-yaml-stage/authorize-paths', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
+    const body = (req.body ?? {}) as {
+      stageId?: unknown;
+      permission?: unknown;
+      patterns?: unknown;
+    };
+    if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
+      return res.status(400).json({ error: 'stageId is required.' });
+    }
+    if (typeof body.permission !== 'string' || !body.permission.trim()) {
+      return res.status(400).json({ error: 'permission is required.' });
+    }
+    if (!Array.isArray(body.patterns) || body.patterns.some((value) => typeof value !== 'string')) {
+      return res.status(400).json({ error: 'patterns must be an array of strings.' });
+    }
+    try {
+      assertRequestOwnsChatYamlStage(req, ws, body.stageId.trim());
+      return res.json(
+        authorizeChatYamlStagePaths(ws, {
+          stageId: body.stageId.trim(),
+          permission: body.permission.trim(),
+          patterns: body.patterns as string[],
+        }),
+      );
     } catch (err) {
       return respondStageError(res, err);
     }
@@ -208,8 +255,10 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     if (typeof body.relativePath !== 'string' || !body.relativePath.trim()) {
       return res.status(400).json({ error: 'relativePath is required.' });
     }
+    const stageId = body.stageId.trim();
     try {
-      return res.json(compileChatYamlStage(ws, body.stageId.trim(), body.relativePath.trim()));
+      assertRequestOwnsChatYamlStage(req, ws, stageId);
+      return res.json(compileChatYamlStage(ws, stageId, body.relativePath.trim()));
     } catch (err) {
       return respondStageError(res, err);
     }
@@ -232,10 +281,12 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     if (typeof body.trialId !== 'string' || !body.trialId.trim()) {
       return res.status(400).json({ error: 'trialId is required.' });
     }
+    const stageId = body.stageId.trim();
     try {
+      assertRequestOwnsChatYamlStage(req, ws, stageId);
       return res.json(
         await trialRunChatYamlStage(ws, {
-          stageId: body.stageId.trim(),
+          stageId,
           relativePath: body.relativePath.trim(),
           trialId: body.trialId.trim(),
         }),
@@ -258,6 +309,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     const stageId = body.stageId.trim();
     const trialId = body.trialId.trim();
     try {
+      assertRequestOwnsChatYamlStage(req, ws, stageId);
       listChatYamlStage(ws, stageId);
       return res.json({
         progress: getChatPipelineTrialProgress(ws, { stageId, trialId }),
@@ -281,16 +333,23 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
       stageId: body.stageId.trim(),
       trialId: body.trialId.trim(),
     };
-    const trialCancelled = cancelChatPipelineTrial(ws, input);
-    const finalizeCancelled = cancelChatYamlStageFinalize(ws, input);
-    return res.json({ cancelled: trialCancelled || finalizeCancelled });
+    try {
+      assertRequestOwnsChatYamlStage(req, ws, input.stageId);
+      const trialCancelled = cancelChatPipelineTrial(ws, input);
+      const finalizeCancelled = cancelChatYamlStageFinalize(ws, input);
+      return res.json({ cancelled: trialCancelled || finalizeCancelled });
+    } catch (err) {
+      return respondStageError(res, err);
+    }
   });
 
   app.post('/api/workspace/chat-yaml-stage/finalize', async (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
     try {
-      return res.json(await finalizeChatYamlStage(ws, parseFinalizeInput(req.body)));
+      const input = parseFinalizeInput(req.body);
+      assertRequestOwnsChatYamlStage(req, ws, input.stageId);
+      return res.json(await finalizeChatYamlStage(ws, input));
     } catch (err) {
       return respondStageError(res, err);
     }
@@ -305,6 +364,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     }
     try {
       const stageId = body.stageId.trim();
+      assertRequestOwnsChatYamlStage(req, ws, stageId);
       const disposition = discardChatYamlStageWithDisposition(ws, stageId);
       const finalizedResult =
         disposition === 'finalized' ? readFinalizedChatYamlStageResult(ws, stageId) : null;
