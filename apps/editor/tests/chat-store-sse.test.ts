@@ -705,6 +705,7 @@ test('staged descendant permissions inherit the root agent directory and are dec
   const agentRoot =
     'C:/staged-permission-repo/.tagma/.chat-staging/11111111-1111-4111-8111-111111111111/agent-workspace/.tagma';
   const decisions: Array<{ permission: string; patterns: string[] }> = [];
+  const authorizationLockIds: Array<string | null> = [];
   const replies: Array<{ url: string; response: unknown }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : null;
@@ -713,6 +714,8 @@ test('staged descendant permissions inherit the root agent directory and are dec
       typeof init?.body === 'string' ? init.body : request ? await request.text() : '';
     const body = bodyText ? (JSON.parse(bodyText) as Record<string, unknown>) : {};
     if (url === '/api/workspace/chat-yaml-stage/authorize-paths') {
+      const headers = new Headers(request?.headers ?? init?.headers);
+      authorizationLockIds.push(headers.get('X-Tagma-Yaml-Lock-Id'));
       decisions.push({
         permission: String(body.permission),
         patterns: body.patterns as string[],
@@ -790,6 +793,7 @@ test('staged descendant permissions inherit the root agent directory and are dec
       permission: 'edit',
       patterns: [`${agentRoot.toUpperCase().split('/').join('\\')}\\sample\\sample.yaml`],
     });
+    expect(authorizationLockIds[0]).toBe('lock-stage-permission');
     expect(replies[0]?.url).toContain('/session/child/');
     expect(replies[0]?.response).toBe('once');
     expect(useChatStore.getState().pendingPermissions).toEqual([]);

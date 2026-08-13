@@ -122,7 +122,9 @@
   the complete child-to-root session ancestry and server-authenticated stage metadata. Auto-allow
   once only raw absolute `edit`/`write`/`external_directory` targets inside that root; reject
   relative paths, display-only legacy permission titles, live paths, glob or symlink escapes, and
-  unscoped shell capabilities. Bind authorization to the YAML lock that created the stage.
+  unscoped shell capabilities. Bind authorization to the YAML lock that created the stage, and
+  present that immutable snapshot lock id on the renderer's staged path-authorization request so
+  the global YAML-lock middleware cannot reject the request before host path validation runs.
 - Capture YAML/layout/requirements and support-tree hashes from the base copy in server-owned
   stage metadata. Supporting-file additions, edits, and deletions participate in the same
   three-way comparison and transactional publication as the core artifacts. Queued prompts and

@@ -3284,11 +3284,13 @@ function routeStagedPermissionDecision(
     let allowed = false;
     let reason: string | null = null;
     try {
-      const decision = await api.authorizeChatYamlStagePaths(
-        snapshot.staging.id,
-        permission.permission,
-        permission.patterns,
-        snapshot.workDir,
+      const decision = await withYamlEditLockRequestBypass(snapshot.yamlEditLockId, () =>
+        api.authorizeChatYamlStagePaths(
+          snapshot.staging.id,
+          permission.permission,
+          permission.patterns,
+          snapshot.workDir,
+        ),
       );
       allowed = decision.allowed;
       reason = decision.reason;
