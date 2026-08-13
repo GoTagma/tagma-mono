@@ -4804,6 +4804,12 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     case 'session.deleted': {
       const deletedId = event.properties.info.id;
       const deletedSessionIds = sessionSubtreeIds(state.sessionParentById, deletedId);
+      for (const [turnId, claimedTurn] of claimedFinishedTurnReconciliations) {
+        if (!claimedTurn.sessionId || !deletedSessionIds.has(claimedTurn.sessionId)) continue;
+        claimedFinishedTurnReconciliations.delete(turnId);
+        const snapshot = claimedTurn.yamlSnapshotBeforeSend;
+        if (snapshot) removePersistedFinishedTurn(snapshot.workDir, turnId);
+      }
       const deletedRuntimeLeases = new Map<string, ChatYamlEditLockLease>();
       const finishedTurnLeaseKeys = new Set(
         state.finishedTurnQueue.flatMap((turn) => {
@@ -5205,6 +5211,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
   restoreAbandonedFinishedTurnReconciliation: (turn, message) => {
     if (!turn.reconcileFailure || !turn.yamlSnapshotBeforeSend) return false;
+    if (claimedFinishedTurnReconciliations.get(turn.id) !== turn) return false;
     const workspaceKey = turn.yamlSnapshotBeforeSend.workDir;
     const stateBeforeRestore = get();
     if (stateBeforeRestore.finishedTurnQueue.some((candidate) => candidate.id === turn.id)) {

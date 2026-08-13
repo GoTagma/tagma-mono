@@ -289,6 +289,43 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([]);
   });
 
+  test('session deletion invalidates an abandoned reconciliation claim', () => {
+    const failed = failedStagedTurn('claimed-deleted', 'C:/repo');
+    setClientWorkspace('C:/repo');
+    savePersistedChatYamlReconciliationQueue('C:/repo', [failed]);
+    useChatStore.setState({
+      sessions: [{ id: failed.sessionId, title: 'Deleted chat' }],
+      sessionParentById: {},
+      finishedTurnQueue: [failed],
+      lastFinishedTurn: failed,
+    } as Partial<ChatState>);
+
+    expect(useChatStore.getState().abandonFinishedTurnReconciliation(failed.id)).toBe(failed);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([
+      expect.objectContaining({ id: failed.id }),
+    ]);
+
+    applySseEvent(
+      {
+        type: 'session.deleted',
+        properties: { info: { id: failed.sessionId } },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([]);
+    expect(
+      useChatStore
+        .getState()
+        .restoreAbandonedFinishedTurnReconciliation(failed, 'Cleanup was not confirmed.'),
+    ).toBe(false);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([]);
+  });
+
   test('keeps a claimed discard recoverable until server cleanup is acknowledged', () => {
     const turn = stagedTurn();
     setClientWorkspace('C:/repo');
