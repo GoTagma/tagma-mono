@@ -53,6 +53,28 @@
 - Keep optimistic and queued user-message bodies behind the same `min-w-0 max-w-full` flex shrink
   layer as persisted message parts. `break-words` alone does not constrain a flex item's intrinsic
   minimum width, so a long unbroken token can widen a transient bubble until its state changes.
+- User-bubble surface styling (border, tint gradient, right accent spine, raised shadow) lives in
+  the shared `.chat-user-bubble` / `.chat-user-bubble-queued` classes in `src/index.css`, consumed
+  by persisted, pending, and queued bubbles alike. Restyle the class, never per-call-site
+  utilities, so the three states of the same text cannot drift apart.
+- The conversation-flow fill's glow requires the track to stay free of `overflow-hidden` —
+  clipping the track cuts the `box-shadow` bloom off. The live sheen is a
+  `.chat-flow-fill.is-active::after` background-position sweep, also in `src/index.css`.
+- Assistant text bubbles use the shared `.chat-assistant-bubble` card class and permission
+  prompts `.chat-permission-card` (both in `src/index.css`). `.chat-markdown` internals are tuned
+  for the card's surface background: inline code sits on `tagma-elevated`, code fences on a
+  recessed `tagma-bg` well.
+- The composer is a single `.chat-composer-shell` card: the shell owns the border and the
+  `:focus-within` accent ring while the inner textarea stays borderless and opts out of the
+  global `input:focus` ring. Keep the textarea's `min-w-0 flex-1` and the buttons'
+  `shrink-0 p-1.5` classes — frontend-layout-resilience tests assert them verbatim.
+- Anchored pipeline results fuse into the owning assistant bubble: ChatMessages passes
+  `yamlResults` to MessageBubble, which injects `SessionYamlResultFooter` as the `cardFooter` of
+  the bubble's last text part. Both result components live in `SessionYamlResult.tsx`;
+  `SessionYamlResultBubble` remains the standalone card for unanchored session-level results and
+  is re-exported from ChatPanel because tests import it from there. Result-bearing bubbles get a
+  freshly-selected array each ChatMessages render, so they deliberately skip the MessageBubble
+  memo win (rare, and always on finished turns).
 
 ## Chat Context Attachments
 
@@ -537,6 +559,10 @@
   explicit file-mutation request to the read-only pipeline diagnosis agent. Keep an independent
   mutation-authorization gate in the write-capable pipeline agent so a router mistake cannot
   silently authorize edits.
+- Route pipeline-artifact edits separately from workspace data writes. YAML may reference an
+  external trigger path, but requests to create or change input/data outside `.tagma/` must be
+  answered directly, never delegated or retried through the staged pipeline agent. Keep the
+  staged write rejection intact as defense in depth.
 - Treat runtime/config mutations as workspace-wide: switching to another pipeline in the same
   workspace does not make them safe. A hung-turn force stop may bypass the runtime restart guard
   only with the matching YAML-lock lease capability; ordinary settings changes must never use
@@ -554,10 +580,17 @@
   and host-authorize write-capable permissions against that authenticated root; a child catalog
   entry must never become a new write root.
 - Managed Windows command strings run under PowerShell by default. Author PowerShell syntax for
-  plain command/shell tasks; invoke CMD-only syntax explicitly through argv with cmd.exe.
-- Treat YAML literal/folded command blocks as opaque scripts during requirements discovery even
-  when their parsed value contains only one command plus the block scalar's terminal newline;
-  PowerShell cmdlets in those blocks are not external binary requirements.
+  plain command/shell tasks; invoke CMD-only syntax explicitly through argv with cmd.exe. Generated
+  PowerShell helpers must read BOM-less UTF-8 text/JSON with explicit UTF-8 decoding, especially
+  for CJK content; do not rely on Windows PowerShell 5.1's legacy default code page.
+- Treat command blocks whose parsed value retains a newline as opaque during requirements
+  discovery. A folded/chomped scalar that becomes one line still enters the command scanner:
+  preserve PowerShell dialect after `powershell`/`pwsh`, ignore known built-in cmdlets and
+  expression starts after `|`/`;`, and continue discovering real external commands.
+- Multiple live `RunSession`s in one workspace are for distinct YAML sources. An equivalent request
+  for the same normalized YAML while its session is running or waiting must return that session's
+  `runId` with `alreadyRunning`; reject a different config/target request with 409, and allow a new
+  run after the prior session is terminal.
 - Conversation exports may continue to hide internal planning and repair turns, but must include
   every durable message-bound pipeline result with its final target, outcome, status, compile,
   redacted Trial evidence, conflicts, and live result path. Insert all results after their

@@ -1739,6 +1739,7 @@ export interface StartRunResult {
   ok: boolean;
   runId?: string;
   yamlRunVersion?: number;
+  alreadyRunning?: boolean;
   events?: RunEvent[];
 }
 

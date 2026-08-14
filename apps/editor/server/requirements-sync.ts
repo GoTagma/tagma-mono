@@ -251,6 +251,57 @@ const SHELL_BUILTINS = new Set([
   'write-host',
 ]);
 const WRAPPER_COMMANDS = new Set(['env', 'nohup', 'sudo', 'time']);
+const POWERSHELL_BINARIES = new Set(['powershell', 'pwsh']);
+const POWERSHELL_BUILTINS = new Set([
+  'add-content',
+  'clear-content',
+  'compare-object',
+  'convertfrom-csv',
+  'convertfrom-json',
+  'convertto-csv',
+  'convertto-json',
+  'copy-item',
+  'export-csv',
+  'foreach-object',
+  'format-list',
+  'format-table',
+  'get-childitem',
+  'get-content',
+  'get-item',
+  'get-location',
+  'get-member',
+  'get-process',
+  'get-service',
+  'group-object',
+  'import-csv',
+  'invoke-command',
+  'invoke-expression',
+  'invoke-restmethod',
+  'invoke-webrequest',
+  'join-path',
+  'measure-object',
+  'move-item',
+  'new-item',
+  'out-file',
+  'read-host',
+  'remove-item',
+  'rename-item',
+  'resolve-path',
+  'select-object',
+  'set-content',
+  'set-item',
+  'sort-object',
+  'split-path',
+  'start-process',
+  'stop-process',
+  'tee-object',
+  'test-path',
+  'where-object',
+  'write-error',
+  'write-host',
+  'write-output',
+  'write-warning',
+]);
 
 function isEnvAssignmentToken(tok: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*=/.test(tok) || /^\$env:[A-Za-z_][A-Za-z0-9_]*=/i.test(tok);
@@ -260,10 +311,21 @@ function isRedirectionToken(tok: string): boolean {
   return /^(\d*)>>?/.test(tok) || /^(\d*)<<?/.test(tok) || tok === '2>&1';
 }
 
+function isPowerShellBuiltinToken(tok: string): boolean {
+  const candidate = tok.replace(/^[({]+/, '').replace(/[)},]+$/, '');
+  return POWERSHELL_BUILTINS.has(candidate.toLowerCase());
+}
+
+function isPowerShellExpressionStartToken(tok: string): boolean {
+  const candidate = tok.replace(/^[({]+/, '');
+  return candidate.startsWith('$') || candidate.startsWith('@(') || candidate.startsWith('@{');
+}
+
 function shellCommandTokens(s: string): string[] {
   const bins: string[] = [];
   let expectingCommand = true;
   let inEnvWrapper = false;
+  let powerShellDialect = false;
 
   const command = s.trim().replace(TAGMA_INPUT_PLACEHOLDER_RE, TAGMA_INPUT_SENTINEL);
   for (const rawTok of splitShellTokens(command)) {
@@ -281,6 +343,16 @@ function shellCommandTokens(s: string): string[] {
       continue;
     }
     if (isEnvAssignmentToken(tok)) {
+      continue;
+    }
+    if (powerShellDialect && isPowerShellBuiltinToken(tok)) {
+      expectingCommand = false;
+      inEnvWrapper = false;
+      continue;
+    }
+    if (powerShellDialect && isPowerShellExpressionStartToken(tok)) {
+      expectingCommand = false;
+      inEnvWrapper = false;
       continue;
     }
     if (tok === TAGMA_INPUT_SENTINEL) {
@@ -303,6 +375,7 @@ function shellCommandTokens(s: string): string[] {
 
     const bin = commandBaseName(tok);
     if (bin && !bins.includes(bin)) bins.push(bin);
+    if (bin && POWERSHELL_BINARIES.has(bin.toLowerCase())) powerShellDialect = true;
     expectingCommand = false;
     inEnvWrapper = false;
   }

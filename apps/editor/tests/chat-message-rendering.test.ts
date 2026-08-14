@@ -235,6 +235,6 @@ describe('user attachment references', () => {
 
     expect(html).toContain('Run failed');
     expect(html).not.toContain('stderr tail');
-    expect(html).not.toContain('border-tagma-ready/40');
+    expect(html).not.toContain('chat-user-bubble');
   });
 });

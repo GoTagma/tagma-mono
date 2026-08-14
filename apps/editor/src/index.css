@@ -265,30 +265,141 @@ html.light ::-webkit-scrollbar-thumb:active {
   background-size: 184px 100%;
 }
 
-/* Conversation flow progress fill. A barely-there same-hue gradient (dim tail
-   → saturated head) keeps the bar from reading as a flat digital slab; no
-   glow, no sweep — state alone carries the meaning: cyan while the turn is
-   live, emerald once it lands, red on error. */
-.chat-flow-fill {
-  background-image: linear-gradient(
-    90deg,
-    rgb(var(--tagma-ready) / 0.55),
-    rgb(var(--tagma-ready) / 0.9)
-  );
-}
+/* Conversation flow progress fill. A three-stop same-hue gradient (dim tail
+   → saturated head) gives the bar a lit direction, and a soft matching glow
+   lifts it off the track — the track drops its overflow clip so the glow can
+   bloom. The bar runs in the brand accent: the same warm hue as selection,
+   focus rings, and the user bubble, so in-progress work reads as one family
+   with the user's own actions. While the turn is live a slow sheen sweep
+   travels the fill so ongoing work reads as motion; a completed turn keeps
+   the same accent fill and simply stops moving — the stage text carries the
+   state, no hue swap. Only an error switches color. The global
+   prefers-reduced-motion block stills the sweep. */
+.chat-flow-fill,
 .chat-flow-fill.is-complete {
   background-image: linear-gradient(
     90deg,
-    rgb(var(--tagma-success) / 0.55),
-    rgb(var(--tagma-success) / 0.9)
+    rgb(var(--tagma-accent) / 0.4),
+    rgb(var(--tagma-accent) / 0.75) 55%,
+    rgb(var(--tagma-accent))
   );
+  box-shadow: 0 0 6px rgb(var(--tagma-accent) / 0.4);
 }
 .chat-flow-fill.is-error {
   background-image: linear-gradient(
     90deg,
-    rgb(var(--tagma-error) / 0.55),
-    rgb(var(--tagma-error) / 0.9)
+    rgb(var(--tagma-error) / 0.4),
+    rgb(var(--tagma-error) / 0.75) 55%,
+    rgb(var(--tagma-error))
   );
+  box-shadow: 0 0 6px rgb(var(--tagma-error) / 0.35);
+}
+.chat-flow-fill.is-active {
+  position: relative;
+}
+.chat-flow-fill.is-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgb(255 255 255 / 0.45) 50%,
+    transparent 80%
+  );
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation: chat-flow-sheen 1.6s linear infinite;
+}
+@keyframes chat-flow-sheen {
+  from {
+    background-position: -120% 0;
+  }
+  to {
+    background-position: 220% 0;
+  }
+}
+
+/* User chat bubble. One class shared by the persisted message, the optimistic
+   pending copy, and (via the queued variant) the parked copy, so the three
+   states of the same text can never drift apart visually. The hue is the
+   brand accent — the same warm terracotta as selection, focus rings, and the
+   live progress bar — because a user message *is* the user's own action in
+   the transcript. The treatment borrows the app's elevated-surface language
+   — a layered same-hue tint over the surface base, a quiet border, and the
+   raised shadow scale — plus the selected-row accent-spine idiom mirrored to
+   the outer (right) edge, where it lines up as a rail down the conversation's
+   margin. Everything runs through the theme vars, so the light palette lands
+   without an override. */
+.chat-user-bubble {
+  border: 1px solid rgb(var(--tagma-accent) / 0.35);
+  background:
+    linear-gradient(160deg, rgb(var(--tagma-accent) / 0.13), rgb(var(--tagma-accent) / 0.05) 60%),
+    rgb(var(--tagma-surface));
+  box-shadow:
+    inset -2px 0 0 rgb(var(--tagma-accent) / 0.6),
+    0 1px 2px rgb(var(--tagma-shadow) / var(--tagma-shadow-contact)),
+    0 2px 6px -2px rgb(var(--tagma-shadow) / var(--tagma-shadow-ambient));
+}
+/* The queued copy sits one elevation lower — spine and tint but no cast
+   shadow — so it reads as parked in the surface until the send makes it
+   live. */
+.chat-user-bubble-queued {
+  border: 1px solid rgb(var(--tagma-muted) / 0.28);
+  background:
+    linear-gradient(160deg, rgb(var(--tagma-muted) / 0.08), rgb(var(--tagma-muted) / 0.03) 60%),
+    rgb(var(--tagma-surface));
+  box-shadow: inset -2px 0 0 rgb(var(--tagma-muted) / 0.3);
+}
+
+/* Assistant markdown bubble — the quiet counterpart of .chat-user-bubble:
+   the same elevated-surface language (opaque surface, hairline border,
+   raised shadow) with no accent and no spine, so the conversation reads as
+   neutral assistant cards answering accent-railed user cards. */
+.chat-assistant-bubble {
+  border: 1px solid rgb(var(--tagma-border) / 0.5);
+  background: rgb(var(--tagma-surface));
+  box-shadow:
+    0 1px 2px rgb(var(--tagma-shadow) / var(--tagma-shadow-contact)),
+    0 2px 6px -2px rgb(var(--tagma-shadow) / var(--tagma-shadow-ambient));
+}
+
+/* Permission prompt card — the conversation's one blocking action surface,
+   so it borrows the user bubble's treatment in the warning hue: tinted
+   surface, leading-edge spine, raised shadow. */
+.chat-permission-card {
+  border: 1px solid rgb(var(--tagma-warning) / 0.35);
+  background:
+    linear-gradient(160deg, rgb(var(--tagma-warning) / 0.08), rgb(var(--tagma-warning) / 0.03) 60%),
+    rgb(var(--tagma-surface));
+  box-shadow:
+    inset 2px 0 0 rgb(var(--tagma-warning) / 0.6),
+    0 1px 2px rgb(var(--tagma-shadow) / var(--tagma-shadow-contact)),
+    0 2px 6px -2px rgb(var(--tagma-shadow) / var(--tagma-shadow-ambient));
+}
+
+/* Composer input shell. The textarea and action buttons live inside one
+   surface card so the composer reads as a single control; the card owns the
+   focus accent via :focus-within while the inner textarea stays borderless
+   and opts out of the global input:focus ring. */
+.chat-composer-shell {
+  background: rgb(var(--tagma-surface));
+  border: 1px solid rgb(var(--tagma-border) / 0.7);
+  transition:
+    border-color var(--tagma-dur-base) var(--tagma-ease),
+    box-shadow var(--tagma-dur-base) var(--tagma-ease);
+}
+.chat-composer-shell:focus-within {
+  border-color: rgb(var(--tagma-accent));
+  box-shadow: 0 0 0 1px rgb(var(--tagma-accent) / 0.2);
+}
+.chat-composer-shell:has(textarea:disabled) {
+  opacity: 0.55;
+}
+.chat-composer-shell textarea:focus {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .track-row-even {
@@ -586,12 +697,14 @@ input[type='checkbox'] {
 }
 
 /* Assistant chat bubbles render as markdown (react-markdown + remark-gfm).
-   These rules give the rendered tree bubble-consistent typography — font
-   family inherited from the bubble's parent, tight spacing, and scoped
-   code-block styling — without reaching for @tailwindcss/typography. */
+   Prose reads in the app sans (Outfit) — mono body text was the main
+   "wireframe" tell in long answers. Code spans and fences keep JetBrains
+   Mono below. Tight spacing and scoped code styling without
+   @tailwindcss/typography. */
 .chat-markdown {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  line-height: 1.55;
+  font-family: 'Outfit', system-ui, sans-serif;
+  line-height: 1.72;
+  letter-spacing: 0.01em;
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
@@ -606,13 +719,16 @@ input[type='checkbox'] {
   margin-bottom: 0;
 }
 .chat-markdown p {
-  margin: 0 0 0.5em 0;
+  margin: 0 0 0.65em 0;
+}
+.chat-markdown strong {
+  font-weight: 600;
 }
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,
 .chat-markdown h4 {
-  margin: 0.75em 0 0.35em 0;
+  margin: 0.9em 0 0.45em 0;
   font-weight: 600;
   color: rgb(var(--tagma-text));
 }
@@ -627,11 +743,11 @@ input[type='checkbox'] {
 }
 .chat-markdown ul,
 .chat-markdown ol {
-  margin: 0.25em 0 0.5em 0;
+  margin: 0.35em 0 0.65em 0;
   padding-left: 1.25em;
 }
 .chat-markdown li {
-  margin: 0.15em 0;
+  margin: 0.28em 0;
 }
 .chat-markdown li > p {
   margin: 0;
@@ -642,15 +758,19 @@ input[type='checkbox'] {
   text-underline-offset: 2px;
 }
 .chat-markdown code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  background: rgb(var(--tagma-surface));
-  border: 1px solid rgb(var(--tagma-border));
+  font-family: 'JetBrains Mono', Menlo, monospace;
+  font-size: 0.85em;
+  background: rgb(var(--tagma-elevated));
+  border: 1px solid rgb(var(--tagma-border) / 0.6);
   padding: 0 0.25em;
   word-break: break-all;
 }
+/* Code fences sit one step *below* the assistant card's surface — a recessed
+   well instead of the old surface-on-canvas second box, so the card stops
+   reading as nested wireframes. */
 .chat-markdown pre {
-  background: rgb(var(--tagma-surface));
-  border: 1px solid rgb(var(--tagma-border));
+  background: rgb(var(--tagma-bg));
+  border: 1px solid rgb(var(--tagma-border) / 0.5);
   padding: 0.5em 0.65em;
   margin: 0.35em 0;
   max-width: 100%;
@@ -664,10 +784,18 @@ input[type='checkbox'] {
   white-space: pre-wrap;
   word-break: break-all;
 }
+/* Light mode: the neutral elevated chip reads as a dark slab on the white
+   card, so inline code switches to a soft accent tint — the same warm hue
+   family as the user bubble. Fenced code (pre > code) keeps the well. */
+html.light .chat-markdown :not(pre) > code {
+  background: rgb(var(--tagma-accent) / 0.08);
+  border-color: rgb(var(--tagma-accent) / 0.22);
+  color: rgb(var(--tagma-accent));
+}
 .chat-markdown blockquote {
   margin: 0.35em 0;
   padding: 0.15em 0.6em;
-  border-left: 2px solid rgb(var(--tagma-border));
+  border-left: 2px solid rgb(var(--tagma-muted) / 0.4);
   color: rgb(var(--tagma-muted));
 }
 .chat-markdown table {
@@ -679,12 +807,12 @@ input[type='checkbox'] {
 }
 .chat-markdown th,
 .chat-markdown td {
-  border: 1px solid rgb(var(--tagma-border));
+  border: 1px solid rgb(var(--tagma-border) / 0.7);
   padding: 0.25em 0.5em;
   text-align: left;
 }
 .chat-markdown hr {
   border: 0;
-  border-top: 1px solid rgb(var(--tagma-border));
+  border-top: 1px solid rgb(var(--tagma-border) / 0.7);
   margin: 0.75em 0;
 }

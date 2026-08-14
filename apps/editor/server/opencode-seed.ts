@@ -81,7 +81,7 @@ permission:
     ${TAGMA_TRIAL_PLANNER_AGENT}: "allow"
 ---
 
-Classify, then delegate once except for \`general_direct_answer\`. Never delegate preliminary inspection or workspace discovery; one specialist call owns both lookup and implementation.
+Delegate once except for \`general_direct_answer\`. Never delegate preliminary inspection or workspace discovery; one specialist call owns both lookup and implementation.
 
 ## Categories
 
@@ -91,9 +91,11 @@ Classify, then delegate once except for \`general_direct_answer\`. Never delegat
 - \`pipeline_diagnosis\` -> \`${TAGMA_PIPELINE_DIAGNOSIS_AGENT}\`: inspect, debug, explain, or answer why/how questions about a concrete pipeline, YAML, layout, requirements file, compile failure, or prior reconcile result, with no explicit request to change files.
 - \`general_discussion\` -> \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: conceptual advice without artifact changes.
 
-Route by authorized action. Debug, explain, review, and "how can I fix this?" do not authorize edits. A conceptual question about Tagma product behavior with no concrete artifact to inspect is \`general_discussion\`. An explicit file-change request is \`pipeline_work\`. After \`ROUTE_MISMATCH\`, report and stop; never make a second task call.
+Debug, explain, review, and "how can I fix this?" do not authorize edits. A conceptual question about Tagma product behavior with no concrete artifact to inspect is \`general_discussion\`. After \`ROUTE_MISMATCH\`, stop.
 
-For \`general_discussion\`, \`general_direct_answer\` means answer directly before delegation when context already contains the facts.
+\`general_direct_answer\`: answer directly before delegation with known facts.
+Input/data writes beyond current \`.tagma/\` or staged \`<agent-root>\` are \`general_direct_answer\`; never delegate to \`tagma-pipeline\`.
+YAML references to external trigger paths remain \`pipeline_work\`. Mixed requests delegate only YAML.
 
 Empty \`<task_result>\`: resume \`task_id\` once; if again empty, report no usable result and stop. \`pipeline_work\`: relay \`authoring complete; host verification pending\` verbatim; compilation cannot mean built, ready, successful, or verified.
 
@@ -101,7 +103,7 @@ Empty \`<task_result>\`: resume \`task_id\` once; if again empty, report no usab
 
 Host \`<tagma-internal>\` targeted Trial Plan uses \`targeted_trial_planning\`; pass its block unchanged. For a second request with the same staged path and YAML hash, resume the prior planner task with the new rejection; a different key starts fresh. Host repair remains authorized \`pipeline_work\`.
 
-Pass a compact \`<editor-context>\` handoff:
+Pass compact \`<editor-context>\`:
 
 - Always include latest text, named/current pipeline, and \`<workspace-yaml-folders>\` with concrete \`<yaml>\` paths. If present, preserve the complete \`<chat-staging>\` block unchanged, including its exact \`<agent-root>\`; never reconstruct or shorten it.
 - Do not add implementation choices that the user did not provide.
@@ -637,16 +639,23 @@ export interface TagmaPipelineAgentOptions {
   pythonToolsEnabled?: boolean;
 }
 
+const WINDOWS_UTF8_AUTHORING_RULE =
+  'Windows PowerShell 5.1 must explicitly decode BOM-less UTF-8 text/JSON, especially CJK, e.g. `Get-Content -Encoding UTF8`.';
+
 const WINDOWS_COMMAND_AUTHORING_CONTRACT = [
   '- On Windows, plain `command` strings and `{ shell: ... }` commands run under Windows PowerShell by default.',
   '- Use one shell dialect: prefer PowerShell forms such as `Get-ChildItem -Recurse -File`, `2>$null`, and `$env:NAME`.',
   '- Do not write bare CMD-only syntax such as `dir /s /b /a-d`, `2>nul`, `%VAR%`, or `set NAME=value` in a PowerShell command.',
   '- If CMD is required, use the `argv` form with `cmd.exe`, `/d`, `/s`, and `/c` instead of a bare shell string.',
+  `- ${WINDOWS_UTF8_AUTHORING_RULE}`,
 ].join('\n');
 
 function hostCommandAuthoringContract(hostOs: string): string {
   if (hostOs.trim().toLowerCase() === 'windows') {
-    return '- Windows plain `command` strings run under Windows PowerShell by default. Use `2>$null`; bare CMD `dir /s /b /a-d`, `2>nul`, and `%VAR%` require explicit `argv` invoking `cmd.exe`.';
+    return [
+      '- Commands run under Windows PowerShell by default: use `2>$null`. CMD `dir /s /b /a-d`, `2>nul`, and `%VAR%` require `cmd.exe` `argv`.',
+      `- ${WINDOWS_UTF8_AUTHORING_RULE}`,
+    ].join('\n');
   }
   return '- On macOS and Linux, plain `command` strings and `{ shell: ... }` commands run under `sh -c` by default. Use POSIX shell syntax unless `PIPELINE_SHELL` is explicitly part of the environment contract.';
 }
@@ -721,7 +730,7 @@ Every pipeline lives in exactly one folder directly under \`.tagma/\`: \`<stem>/
 
 The editor host OS is \`${hostOs}\`.
 ${hostCommandAuthoringContract(hostOs)}
-Use Python only when host-native commands would be bulky, fragile, insufficient, or explicitly requested.
+Use Python only when host-native commands would be bulky.
 
 Every turn may include \`<editor-context>\`; re-read it.
 

@@ -101,6 +101,52 @@ test('extractBinariesFromYaml scans shell command chains without treating builti
   expect(binaries!.find((b) => b.name === 'git')!.usedBy).toEqual(['main.chained']);
 });
 
+test('extractBinariesFromYaml preserves PascalCase hyphenated binaries outside PowerShell', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'pascal-binary.yaml',
+    [
+      'pipeline:',
+      '  name: Pascal binary',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: external',
+      '          command: "Acme-Tool run"',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['Acme-Tool']);
+});
+
+test('extractBinariesFromYaml preserves external binaries after a PowerShell segment', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'powershell-then-external.yaml',
+    [
+      'pipeline:',
+      '  name: PowerShell then external',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: external',
+      '          command: \'powershell -NoProfile -Command "Get-ChildItem" ; Acme-Tool run\'',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['Acme-Tool', 'powershell']);
+});
+
 test('extractBinariesFromYaml ignores Tagma input placeholder filters', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(
@@ -223,6 +269,34 @@ test('extractBinariesFromYaml includes output_check completion command dependenc
   expect(binaries!.find((b) => b.name === 'jq')!.usedBy).toEqual([
     'main.run.completion.output_check',
   ]);
+});
+
+test('extractBinariesFromYaml ignores PowerShell syntax inside a folded output_check script', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'powershell-output-check.yaml',
+    [
+      'pipeline:',
+      '  name: PowerShell output check',
+      '  tracks:',
+      '    - id: guard',
+      '      name: Guard',
+      '      tasks:',
+      '        - id: claims_fallback',
+      '          prompt: "Validate claims"',
+      '          completion:',
+      '            type: output_check',
+      '            check: >-',
+      "              powershell -NoProfile -Command $j = Get-Content 'artifacts/claims.json' -Raw |",
+      '              ConvertFrom-Json; if ($null -eq $j.claims) { exit 1 }; exit 0',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['opencode', 'powershell']);
 });
 
 test('extractBinariesFromYaml skips token extraction for multi-line script command blocks', () => {

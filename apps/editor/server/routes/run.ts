@@ -1,4 +1,5 @@
 import type express from 'express';
+import { createHash } from 'node:crypto';
 import {
   readFileSync,
   existsSync,
@@ -484,6 +485,26 @@ function addSession(ws: WorkspaceState, s: RunSession): void {
   getSessions(ws).set(s.runId, s);
 }
 
+function isActiveSession(session: RunSession): boolean {
+  return !session
+    .allBuffered()
+    .some((event) => event.type === 'run_end' || event.type === 'run_error');
+}
+
+function runRequestKey(content: string, targetTaskIds: readonly string[] | undefined): string {
+  const hash = createHash('sha256').update(content).update('\0');
+  for (const taskId of [...(targetTaskIds ?? [])].sort()) hash.update(taskId).update('\0');
+  return hash.digest('hex');
+}
+
+function findSessionForYaml(ws: WorkspaceState, yamlPath: string): RunSession | null {
+  return (
+    listSessions(ws).find(
+      (session) => isActiveSession(session) && sameFilesystemPath(session.sourceYamlPath, yamlPath),
+    ) ?? null
+  );
+}
+
 export type RunSessionStartToken = symbol;
 
 export function isRunSessionStarting(ws: WorkspaceState): boolean {
@@ -901,6 +922,7 @@ export function registerRunRoutes(app: express.Express): void {
         req.body.yamlPath.trim().length > 0
           ? req.body.yamlPath
           : null;
+      let sourceYamlPath: string | null = fromRunId === null ? ws.yamlPath : null;
       let requestedConfigSnapshot: { config: RawPipelineConfig; content: string } | null = null;
       if (fromRunId === null && req.body?.configSnapshot !== undefined) {
         try {
@@ -957,6 +979,7 @@ export function registerRunRoutes(app: express.Express): void {
           } catch (err) {
             return res.status(403).json({ error: errorMessage(err) || 'Invalid run YAML path' });
           }
+          sourceYamlPath = runYamlPath;
           if (!sameFilesystemPath(ws.yamlPath, runYamlPath)) {
             return res.status(409).json({
               error: 'Run YAML no longer matches the current workspace file',
@@ -1005,6 +1028,26 @@ export function registerRunRoutes(app: express.Express): void {
         targetTaskIds = normalizeRunTargetTaskIds(req.body?.targetTaskIds, effectiveConfig);
       } catch (err: unknown) {
         return res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+
+      const requestKey = sourceYamlPath ? runRequestKey(content, targetTaskIds) : null;
+      if (sourceYamlPath) {
+        const existingSession = findSessionForYaml(ws, sourceYamlPath);
+        if (existingSession) {
+          if (existingSession.requestKey !== requestKey) {
+            return res.status(409).json({
+              error: 'A different run request is already active for this pipeline',
+              runId: existingSession.runId,
+            });
+          }
+          return res.json({
+            ok: true,
+            runId: existingSession.runId,
+            yamlRunVersion: existingSession.yamlRunVersion,
+            alreadyRunning: true,
+            events: existingSession.allBuffered(),
+          });
+        }
       }
 
       // Pre-load plugins atomically: validate every name first, then load
@@ -1128,6 +1171,8 @@ export function registerRunRoutes(app: express.Express): void {
         fromRunId,
         yamlOverride,
         yamlRunVersion,
+        sourceYamlPath,
+        requestKey,
       );
       session.seedTasks();
       addSession(ws, session);

@@ -1,5 +1,6 @@
 import { beforeEach, expect, test } from 'bun:test';
 import express from 'express';
+import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -456,6 +457,174 @@ test('run start accepts a new instance while another run is live', async () => {
     await removeTempDir();
   }
 });
+
+test('run start is idempotent for the same yaml while its file trigger is waiting', async () => {
+  const sessions = (ws as unknown as { runSessions: Map<string, RunSession> }).runSessions;
+  sessions.clear();
+  bootstrapBuiltins(ws.registry);
+
+  const pipelineDir = join(tempDir, '.tagma', 'idempotent');
+  mkdirSync(pipelineDir, { recursive: true });
+  const yamlPath = join(pipelineDir, 'idempotent.yaml');
+  const configSnapshot = {
+    name: 'Idempotent File Trigger',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [
+          {
+            id: 'wait',
+            name: 'Wait for file',
+            command: 'echo ready',
+            trigger: {
+              type: 'file',
+              path: '.tagma/idempotent/never-created.signal',
+              timeout: '5m',
+            },
+          },
+        ],
+      },
+    ],
+  } satisfies RawPipelineConfig;
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: Idempotent File Trigger',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: wait',
+      '          name: Wait for file',
+      '          command: echo ready',
+      '          trigger:',
+      '            type: file',
+      '            path: .tagma/idempotent/never-created.signal',
+      '            timeout: 5m',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+  ws.yamlPath = yamlPath;
+  ws.config = configSnapshot;
+
+  const requestBody = { yamlPath, configSnapshot };
+  const { port, close } = await startApp(buildApp());
+  try {
+    const first = await postJsonReq(port, '/api/run/start', requestBody);
+    expect(first.status).toBe(200);
+    const firstBody = JSON.parse(first.body) as { runId?: string };
+    expect(firstBody.runId).toMatch(/^run_/);
+
+    // Trigger waiting happens before the engine emits run_start. The live
+    // RunSession itself is the authoritative active-run record at this stage.
+    await sleep(100);
+    expect(sessions.has(firstBody.runId!)).toBe(true);
+    expect(sessions.size).toBe(1);
+
+    const second = await postJsonReq(port, '/api/run/start', requestBody);
+    expect(second.status).toBe(200);
+    const secondBody = JSON.parse(second.body) as {
+      runId?: string;
+      alreadyRunning?: boolean;
+    };
+    expect(secondBody).toMatchObject({
+      runId: firstBody.runId,
+      alreadyRunning: true,
+    });
+    expect(sessions.size).toBe(1);
+
+    const conflicting = await postJsonReq(port, '/api/run/start', {
+      ...requestBody,
+      targetTaskIds: ['main.wait'],
+    });
+    expect(conflicting.status).toBe(409);
+    expect(JSON.parse(conflicting.body)).toMatchObject({
+      error: 'A different run request is already active for this pipeline',
+      runId: firstBody.runId,
+    });
+    expect(sessions.size).toBe(1);
+  } finally {
+    const liveRunIds = [...sessions.keys()];
+    try {
+      for (const session of sessions.values()) session.abort.abort();
+      await Promise.all(liveRunIds.map((runId) => waitForSessionDone(runId)));
+    } finally {
+      await close();
+      await removeTempDir();
+    }
+  }
+}, 15_000);
+
+test('run start creates a new run after the same yaml session is terminal', async () => {
+  const sessions = (ws as unknown as { runSessions: Map<string, RunSession> }).runSessions;
+  sessions.clear();
+
+  const pipelineDir = join(tempDir, '.tagma', 'terminal-rerun');
+  mkdirSync(pipelineDir, { recursive: true });
+  const yamlPath = join(pipelineDir, 'terminal-rerun.yaml');
+  const configSnapshot = {
+    name: 'Terminal Rerun',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [{ id: 'echo', name: 'Echo', command: 'echo ok' }],
+      },
+    ],
+  } satisfies RawPipelineConfig;
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: Terminal Rerun',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: echo',
+      '          name: Echo',
+      '          command: echo ok',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+  ws.yamlPath = yamlPath;
+  ws.config = configSnapshot;
+
+  const terminal = new RunSession('run_terminal', configSnapshot, null, undefined, 1, yamlPath);
+  terminal.seedTasks();
+  terminal.ingest({
+    type: 'run_end',
+    runId: terminal.runId,
+    success: true,
+    abortReason: null,
+  });
+  sessions.set(terminal.runId, terminal);
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const response = await postJsonReq(port, '/api/run/start', {
+      yamlPath,
+      configSnapshot,
+    });
+    expect(response.status).toBe(200);
+    const body = JSON.parse(response.body) as {
+      runId?: string;
+      alreadyRunning?: boolean;
+    };
+    expect(body.runId).toMatch(/^run_/);
+    expect(body.runId).not.toBe(terminal.runId);
+    expect(body.alreadyRunning).not.toBe(true);
+    await waitForSessionDone(body.runId!);
+  } finally {
+    sessions.delete(terminal.runId);
+    await close();
+    await removeTempDir();
+  }
+}, 10_000);
 
 test('completed history summary preserves the editor lane heights', async () => {
   ws.config = {

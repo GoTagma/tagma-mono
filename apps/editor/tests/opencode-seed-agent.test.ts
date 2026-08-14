@@ -325,6 +325,16 @@ test('tagma-router separates concrete read-only diagnosis from authorized pipeli
   );
 });
 
+test('tagma-router keeps external workspace data writes out of pipeline authoring', () => {
+  const doc = buildTagmaRouterAgent();
+
+  expect(doc).toContain(
+    'Input/data writes beyond current `.tagma/` or staged `<agent-root>` are `general_direct_answer`; never delegate to `tagma-pipeline`.',
+  );
+  expect(doc).toContain('YAML references to external trigger paths remain `pipeline_work`.');
+  expect(doc).toContain('Mixed requests delegate only YAML.');
+});
+
 test('tagma-router preserves host reconciliation evidence for Copy and finalize diagnosis', () => {
   const doc = buildTagmaRouterAgent();
 
@@ -1378,6 +1388,16 @@ test('Windows pipeline authoring uses PowerShell unless CMD is explicit argv', (
   expect(buildTagmaPipelineAgent('Windows')).not.toContain('Prefer PowerShell/cmd');
 });
 
+test('Windows pipeline authoring explicitly decodes BOM-less UTF-8 text and JSON', () => {
+  const documents = [buildTagmaPipelineAgent('Windows'), buildTagmaNativePrimitivesSkill()];
+
+  for (const doc of documents) {
+    expect(doc).toContain(
+      'Windows PowerShell 5.1 must explicitly decode BOM-less UTF-8 text/JSON, especially CJK, e.g. `Get-Content -Encoding UTF8`.',
+    );
+  }
+});
+
 test('tagma-pipeline agent grants python tools only when workspace settings enable them', () => {
   expect(buildTagmaPipelineAgent('Windows')).toContain('task: false');
   expect(buildTagmaPipelineAgent('Windows')).toContain('tagma-python-tools: "deny"');
@@ -1475,10 +1495,18 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   ];
 
   expect(existsSync(routerAgent)).toBe(true);
-  expect(readFileSync(routerAgent, 'utf8')).toContain('mode: primary');
-  expect(readFileSync(routerAgent, 'utf8')).toContain('tagma-pipeline');
+  const seededRouter = readFileSync(routerAgent, 'utf8');
+  expect(seededRouter).toContain('mode: primary');
+  expect(seededRouter).toContain('tagma-pipeline');
+  expect(seededRouter).toContain(
+    'Input/data writes beyond current `.tagma/` or staged `<agent-root>` are `general_direct_answer`',
+  );
+  expect(seededRouter).toContain('Mixed requests delegate only YAML.');
   expect(existsSync(pipelineAgent)).toBe(true);
-  expect(readFileSync(pipelineAgent, 'utf8')).toContain('name: tagma-pipeline');
+  const seededPipeline = readFileSync(pipelineAgent, 'utf8');
+  expect(seededPipeline).toContain('name: tagma-pipeline');
+  expect(seededPipeline).toContain('Get-Content -Encoding UTF8');
+  expect(readFileSync(nativeSkill, 'utf8')).toContain('Get-Content -Encoding UTF8');
   expect(existsSync(diagnosisAgent)).toBe(true);
   expect(readFileSync(diagnosisAgent, 'utf8')).toContain('name: tagma-pipeline-diagnosis');
   expect(readFileSync(diagnosisAgent, 'utf8')).toContain('edit: deny');

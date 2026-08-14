@@ -43,7 +43,8 @@ import {
 } from './StructuredParts';
 import { getRenderableMessageParts, shouldRenderMessageBubble } from './message-rendering';
 import { TurnActivityPanel } from './ActivityPanel';
-import { useChatStore } from '../../store/chat-store';
+import { SessionYamlResultBubble, SessionYamlResultFooter } from './SessionYamlResult';
+import { useChatStore, type ChatYamlSessionResult } from '../../store/chat-store';
 import { parseChatContextWindowMarker } from '../../../shared/chat-context-window.js';
 import {
   extractAskAiContextReferences,
@@ -56,7 +57,10 @@ import {
 // bubble whose entry actually changed — re-parsing every bubble's markdown
 // per SSE chunk was the dominant streaming cost. ChatPanel passes stable
 // props: primitives plus a useCallback'd onToggleActivity keyed by message
-// id, and the store replaces (never mutates) the streaming entry.
+// id, and the store replaces (never mutates) the streaming entry. The one
+// exception: `yamlResults` is a freshly-selected array per ChatMessages
+// render, so bubbles carrying a pipeline result skip the memo win — fine in
+// practice because they are rare and belong to already-finished turns.
 export const MessageBubble = memo(function MessageBubble({
   entry,
   streaming = false,
@@ -64,6 +68,7 @@ export const MessageBubble = memo(function MessageBubble({
   onToggleActivity,
   isCurrentTurn = false,
   surfaceActivitySummary = false,
+  yamlResults,
 }: {
   entry: OpencodeThreadEntry;
   streaming?: boolean;
@@ -71,6 +76,7 @@ export const MessageBubble = memo(function MessageBubble({
   onToggleActivity?: (messageId: string) => void;
   isCurrentTurn?: boolean;
   surfaceActivitySummary?: boolean;
+  yamlResults?: readonly ChatYamlSessionResult[];
 }) {
   const role = entry.info.role;
   const attachmentReferences =
@@ -103,6 +109,14 @@ export const MessageBubble = memo(function MessageBubble({
   // deltas are also hidden so they do not produce blank bordered chat boxes.
   // Visible structured parts get visual treatment in PartRenderer / StructuredParts.tsx.
   const renderableParts = getRenderableMessageParts(entry.parts);
+
+  // Anchored pipeline results fuse into the bottom of this bubble's last
+  // text card (see PartRenderer's `cardFooter`). A message with results but
+  // no text part — tool-only turns — keeps the standalone result card.
+  const fusedResults = role === 'assistant' && yamlResults?.length ? yamlResults : null;
+  const lastTextPartId = fusedResults
+    ? ([...renderableParts].reverse().find((p) => p.type === 'text')?.id ?? null)
+    : null;
 
   const hasActivity = role === 'assistant' && (entry.activity?.length ?? 0) > 0;
   if (
@@ -149,10 +163,25 @@ export const MessageBubble = memo(function MessageBubble({
           part.type === 'text' &&
           stripAskAiContext(part.text.replace(EDITOR_CONTEXT_RE, '')).trim().length === 0 ? null : (
             <div key={part.id} className="min-w-0 max-w-full">
-              <PartRenderer part={part} role={role} streaming={streaming} />
+              <PartRenderer
+                part={part}
+                role={role}
+                streaming={streaming}
+                cardFooter={
+                  fusedResults && part.id === lastTextPartId ? (
+                    <SessionYamlResultFooter results={fusedResults} />
+                  ) : null
+                }
+              />
             </div>
           ),
         )}
+        {role === 'assistant' &&
+          fusedResults &&
+          !lastTextPartId &&
+          fusedResults.map((result) => (
+            <SessionYamlResultBubble key={result.resultId ?? result.completedAt} result={result} />
+          ))}
         {role === 'user' && <UserMessageContextNote entry={entry} />}
         {role === 'assistant' && <AssistantMessageFooter info={entry.info as AssistantMessage} />}
         {role === 'assistant' && (
@@ -347,10 +376,12 @@ function PartRenderer({
   part,
   role,
   streaming = false,
+  cardFooter = null,
 }: {
   part: Part;
   role: 'user' | 'assistant';
   streaming?: boolean;
+  cardFooter?: React.ReactNode;
 }) {
   switch (part.type) {
     case 'text': {
@@ -362,14 +393,20 @@ function PartRenderer({
       // code fences, lists) so its structured output renders as intended.
       if (role === 'user') {
         return (
-          <div className="select-text px-2.5 py-1.5 text-[11px] font-mono whitespace-pre-wrap break-words border border-tagma-ready/40 bg-tagma-ready/5 text-tagma-text">
+          <div className="select-text px-3 py-2 text-[11px] font-mono whitespace-pre-wrap break-words chat-user-bubble text-tagma-text">
             {text}
           </div>
         );
       }
+      // The assistant card is a shell: markdown body first, then an optional
+      // fused footer (anchored pipeline results) below the card's own
+      // divider, so the outcome reads as part of the same bubble.
       return (
-        <div className="chat-markdown px-2.5 py-1.5 text-[11px] border border-tagma-border bg-tagma-bg text-tagma-text">
-          <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>
+        <div className="chat-assistant-bubble text-tagma-text">
+          <div className="chat-markdown px-3 py-2 text-[12px]">
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>
+          </div>
+          {cardFooter}
         </div>
       );
     }
@@ -506,7 +543,7 @@ function ToolPartView({ part }: { part: ToolPart }) {
   return (
     <details
       open={defaultOpen || undefined}
-      className="text-[10px] font-mono w-full border border-tagma-border/60 bg-tagma-surface/40"
+      className="text-[10px] font-mono w-full border border-tagma-border/50 bg-tagma-surface"
     >
       <summary
         onClick={onExpandIntoView}

@@ -49,8 +49,9 @@ export {
 
 // ═══ Run Session ════════════════════════════════════════════════════════
 //
-// Each workspace can own multiple live `RunSession` objects at a time,
-// keyed by runId on `ws.runSessions`. A session encapsulates one live run:
+// Each workspace can own multiple live `RunSession` objects at a time for
+// distinct pipeline sources, keyed by runId on `ws.runSessions`. A session
+// encapsulates one live run:
 // — abort controller, approval gateway, task mirror for snapshots,
 // pipeline-level log buffer, seq counter, event ring buffer, and
 // persistence inputs — so callers never have to coordinate multiple
@@ -573,6 +574,10 @@ export class RunSession {
   readonly fromRunId: string | null;
   readonly yamlOverride: string | undefined;
   readonly yamlRunVersion: number | undefined;
+  /** Absolute YAML source used to prevent duplicate live runs of one pipeline. */
+  readonly sourceYamlPath: string | null;
+  /** Hash of the effective config plus targeted task set for safe idempotent reuse. */
+  readonly requestKey: string | null;
 
   /** Wire-shape task mirror — single source of truth for snapshots. */
   private readonly tasks = new Map<string, RunTaskState>();
@@ -594,6 +599,8 @@ export class RunSession {
     fromRunId: string | null,
     yamlOverride: string | undefined,
     yamlRunVersion?: number,
+    sourceYamlPath: string | null = null,
+    requestKey: string | null = null,
   ) {
     this.runId = runId;
     this.startedAt = new Date().toISOString();
@@ -603,6 +610,8 @@ export class RunSession {
     this.fromRunId = fromRunId;
     this.yamlOverride = yamlOverride;
     this.yamlRunVersion = yamlRunVersion;
+    this.sourceYamlPath = sourceYamlPath;
+    this.requestKey = requestKey;
   }
 
   /** Seed the task mirror + summary records from the raw config. */
