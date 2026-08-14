@@ -69,6 +69,61 @@ describe('staged child write policy', () => {
     }
   });
 
+  test('allows read targets inside the authenticated agent root for absolute and worktree-relative paths', () => {
+    const { root, ws, stageId, agentRoot } = setupStage();
+    const target = join(agentRoot, 'sample', 'sample.yaml');
+    try {
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'read',
+          patterns: [target],
+        }),
+      ).toEqual({ allowed: true, reason: null });
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'read',
+          patterns: [relative(root, target)],
+        }),
+      ).toEqual({ allowed: true, reason: null });
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'read',
+          patterns: [relative(dirname(root), target)],
+        }),
+      ).toEqual({ allowed: true, reason: null });
+    } finally {
+      discardChatYamlStage(ws, stageId);
+    }
+  });
+
+  test('rejects read traversal, glob, live, and lookalike stage paths', () => {
+    const { root, ws, stageId, agentRoot } = setupStage();
+    const stagedTarget = join(agentRoot, 'sample', 'sample.yaml');
+    const liveTarget = pipelineYamlPath(root, 'sample');
+    try {
+      for (const pattern of [
+        relative(root, liveTarget),
+        join('..', relative(dirname(root), liveTarget)),
+        relative(root, stagedTarget).replace(stageId, `${stageId}-lookalike`),
+        join('unrelated-worktree', relative(root, stagedTarget)),
+        `${relative(root, stagedTarget)}*`,
+      ]) {
+        expect(
+          authorizeChatYamlStagePaths(ws, {
+            stageId,
+            permission: 'read',
+            patterns: [pattern],
+          }),
+        ).toEqual({ allowed: false, reason: expect.any(String) });
+      }
+    } finally {
+      discardChatYamlStage(ws, stageId);
+    }
+  });
+
   test('validates every absolute OpenCode apply_patch source and move target', () => {
     const { root, ws, stageId, agentRoot } = setupStage();
     const firstTarget = join(agentRoot, 'fact-checker', 'pipeline.yaml');

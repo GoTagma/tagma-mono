@@ -8,9 +8,11 @@
   conversation closes History synchronously without a network request; bootstrap failures must
   clear pending state and remain handled inside the store.
 - OpenCode task `completed` is only a child-session lifecycle state; its `<task_result>` may still
-  be empty. Seeded specialists must return a non-empty final report. The router may resume the
-  same `task_id` once to retrieve a missing report, then must surface an explicit unusable-result
-  failure instead of starting a replacement task or claiming success.
+  be empty, planning-only, or otherwise unusable. Seeded specialists must return a non-empty final
+  report. The router must resume the same `task_id` once, then must make exactly one fresh specialist
+  call against the same authenticated staged root so it can inspect and continue partial artifacts.
+  If that bounded recovery is also unusable, surface the observed failure without claiming success
+  or speculating about an infrastructure cause.
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
@@ -142,7 +144,8 @@
   `.tagma/.chat-staging/<id>/` branch. Copy each pipeline's YAML, layout, requirements,
   manifest, compile log, and bounded regular-file support tree into separate base and agent
   workspaces; bind OpenCode's prompt directory and all advertised pipeline paths to the agent
-  `.tagma/` root. Live pipeline paths remain read-only source material for the agent. Reject
+  `.tagma/` root. That authenticated agent root is the complete filesystem read/write boundary;
+  live workspace and pipeline paths outside it are not source material for the agent. Reject
   symbolic links and never stage or publish `*.trial-plan.json` as part of that support tree.
 - For staged OpenCode prompt POSTs, override both the `directory` query and the
   `x-opencode-directory` header with the agent `.tagma` root. The SDK keeps its client-level
@@ -153,11 +156,13 @@
   staged paths can resolve into the live `.tagma` tree even when the root prompt was redirected.
   Escape every dynamic editor-context value, including absolute paths, before embedding it in the
   XML-like prompt envelope.
-- Treat descendant writes as a host-enforced boundary: resolve the effective staged root through
-  the complete child-to-root session ancestry and server-authenticated stage metadata. Auto-allow
-  once only when `edit`/`write` execution metadata identifies raw absolute targets inside that
-  root (`metadata.filepath`, or every `metadata.files[*].filePath`/`movePath` for `apply_patch`);
-  `external_directory` remains scoped by its absolute pattern. OpenCode deliberately emits
+- Treat descendant filesystem access as a host-enforced boundary: resolve the effective staged
+  root through the complete child-to-root session ancestry and server-authenticated stage metadata.
+  Auto-allow
+  `read` once only when its normalized absolute or authenticated stage-relative pattern resolves
+  inside that root. Auto-allow `edit`/`write` once only when execution metadata identifies raw
+  absolute targets inside that root (`metadata.filepath`, or every
+  `metadata.files[*].filePath`/`movePath` for `apply_patch`). OpenCode deliberately emits
   worktree-relative `edit` patterns even for absolute tool targets, so never resolve those patterns
   against either the staged root or the live workspace. Keep absolute-pattern fallback only for
   metadata-free older events, and reject malformed target-bearing metadata, display-only legacy
@@ -189,11 +194,13 @@
   pipeline during chat is not a reconcile conflict and must not redirect the result to a different
   live path. Only the staged target's own authoritative finalize/reconcile result determines the
   persisted Open Pipeline destination.
-- Reject root and delegated-session write/edit/external-directory requests outside the
-  server-authenticated staged agent root at the host permission boundary. Descendants inherit the
-  visible turn's effective root through their parent chain; prompt policy is defense in depth, not
-  the write fence. A direct live `.tagma` write must fail with a diagnostic and must never be
-  converted into a reconcile result.
+- Reject root and delegated-session read/write/edit/external-directory requests outside the
+  server-authenticated staged agent root at the host permission boundary. Deny unscoped filesystem
+  discovery tools and task-based discovery delegates for every staged specialist. Descendants
+  inherit both the visible turn's effective root and the same read/write rule through their parent
+  chain; prompt policy is defense in depth,
+  not the filesystem fence. A direct live `.tagma` access must fail with an access diagnostic and
+  must never be converted into a reconcile result.
 - When one turn mutates multiple pipelines, finalize every changed relative path independently and
   retain the authenticated stage until the last target. Persist an authenticated per-target
   finalize record so response-loss retries are idempotent and skip already-published targets on
@@ -503,6 +510,9 @@
 - Do not mark a managed database epoch active until OpenCode health, a database-backed session
   query, and SQLite integrity validation all succeed. Expose the active runtime identity, database
   path, epoch, and initialization mode through the read-only diagnostics context.
+- Await the database-backed readiness query with one overall deadline instead of repeatedly
+  abandoning short requests while OpenCode initializes SQLite. Every loopback probe must close its
+  socket on timeout and must not write after the request has already settled.
 - Pin operational browser SDK clients and the primary history query to the server-returned
   canonical `<workspace>/.tagma` directory. Also use an unscoped discovery query to recover
   Tagma-marked legacy sessions that predate canonical directory pinning; accept those only when

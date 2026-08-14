@@ -10,6 +10,7 @@
  * picks it up automatically.
  */
 import {
+  AlertTriangle,
   Circle,
   CircleDot,
   CheckCircle2,
@@ -24,7 +25,10 @@ import {
   BookOpen,
 } from 'lucide-react';
 import type { ToolPart, ToolState } from '../../api/opencode-chat';
-import { extractSkillNameFromToolState } from '../../utils/chat-tool-display';
+import {
+  extractSkillNameFromToolState,
+  inspectTaskToolCompletion,
+} from '../../utils/chat-tool-display';
 
 export interface ToolRendererProps {
   part: ToolPart;
@@ -434,8 +438,9 @@ const TaskRenderer: ToolRenderer = ({ state }) => {
   const description = asString(state.input.description);
   const subagent = asString(state.input.subagent_type) ?? asString(state.input.agent);
   const prompt = asString(state.input.prompt);
-  if (!description && !prompt) return null;
-  const output = state.status === 'completed' ? state.output : undefined;
+  const completion = inspectTaskToolCompletion('task', state);
+  if (!description && !prompt && !completion) return null;
+  const output = completion?.kind === 'returned' ? completion.result : undefined;
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-1.5 text-[10px]">
@@ -449,6 +454,15 @@ const TaskRenderer: ToolRenderer = ({ state }) => {
         <pre className="select-text text-[9px] text-tagma-muted/80 whitespace-pre-wrap break-all overflow-x-hidden max-h-[120px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {prompt}
         </pre>
+      )}
+      {completion?.kind === 'no-usable-result' && (
+        <div
+          role="status"
+          className="flex items-start gap-1.5 border-l border-tagma-warning/40 pl-3 text-[9px] text-tagma-warning"
+        >
+          <AlertTriangle size={10} className="mt-0.5 shrink-0" />
+          <span>Child task returned without a usable result.</span>
+        </div>
       )}
       {output && (
         <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-accent/40">

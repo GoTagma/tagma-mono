@@ -1,5 +1,5 @@
 import { existsSync, lstatSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 import { resolveChatYamlStageAgentRoot } from './chat-yaml-staging.js';
 import { isPathWithin } from './path-utils.js';
@@ -17,8 +17,8 @@ export interface ChatYamlStagePathAuthorizationResult {
   reason: string | null;
 }
 
-const PATH_SCOPED_PERMISSIONS = new Set(['edit', 'write', 'external_directory']);
-const UNSCOPED_WRITE_PERMISSIONS = new Set(['bash', 'shell']);
+const PATH_SCOPED_PERMISSIONS = new Set(['read', 'edit', 'write', 'external_directory']);
+const UNSCOPED_FILESYSTEM_PERMISSIONS = new Set(['bash', 'shell']);
 const INVALID_EXECUTION_METADATA_REASON =
   'The staged write execution metadata must identify only absolute execution targets.';
 
@@ -124,6 +124,35 @@ function targetFromPattern(pattern: string): string | null {
   return resolve(target);
 }
 
+function readTargetFromPattern(pattern: string, workDir: string, agentRoot: string): string | null {
+  let target = pattern.trim();
+  if (!target || target.includes('\0')) return null;
+  const doubleQuoted = target.startsWith('"') && target.endsWith('"');
+  const singleQuoted = target.startsWith("'") && target.endsWith("'");
+  if (doubleQuoted || singleQuoted) target = target.slice(1, -1).trim();
+  if (!target || ['*', '?', '{', '}', '[', ']'].some((character) => target.includes(character))) {
+    return null;
+  }
+  if (isAbsolute(target)) return resolve(target);
+
+  const targetSegments = target.split(/[\\/]+/u).filter((segment) => segment && segment !== '.');
+  if (targetSegments.some((segment) => segment === '..')) return null;
+
+  // OpenCode read patterns are relative to its worktree. In non-git
+  // workspaces that can be any ancestor of workDir, including the filesystem
+  // root. Resolve only against those authenticated candidate roots; a copied
+  // stage-marker path under an unrelated worktree must fail closed.
+  let candidateRoot = resolve(workDir);
+  while (true) {
+    const candidate = resolve(candidateRoot, ...targetSegments);
+    if (isPathWithin(candidate, agentRoot)) return candidate;
+    const parent = dirname(candidateRoot);
+    if (parent === candidateRoot) break;
+    candidateRoot = parent;
+  }
+  return null;
+}
+
 function containsSymlinkAncestor(target: string, root: string): boolean {
   const rel = relative(resolve(root), resolve(target));
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) return false;
@@ -145,7 +174,7 @@ export function authorizeChatYamlStagePaths(
   input: ChatYamlStagePathAuthorizationInput,
 ): ChatYamlStagePathAuthorizationResult {
   const permission = input.permission.trim().toLowerCase();
-  if (UNSCOPED_WRITE_PERMISSIONS.has(permission)) {
+  if (UNSCOPED_FILESYSTEM_PERMISSIONS.has(permission)) {
     return {
       allowed: false,
       reason: `The ${permission} capability cannot be safely scoped to this turn's staged agent root.`,
@@ -154,7 +183,7 @@ export function authorizeChatYamlStagePaths(
   if (!PATH_SCOPED_PERMISSIONS.has(permission)) {
     return {
       allowed: false,
-      reason: `Unsupported staged write permission: ${permission || 'unknown'}.`,
+      reason: `Unsupported staged filesystem permission: ${permission || 'unknown'}.`,
     };
   }
   const agentRoot = resolveChatYamlStageAgentRoot(ws, input.stageId);
@@ -169,15 +198,23 @@ export function authorizeChatYamlStagePaths(
   const targets: string[] = metadataTargets?.targets ?? [];
   if (targets.length === 0) {
     if (input.patterns.length === 0) {
-      return { allowed: false, reason: 'The staged write request did not identify a target path.' };
+      return {
+        allowed: false,
+        reason: 'The staged filesystem request did not identify a target path.',
+      };
     }
     for (const pattern of input.patterns) {
-      const target = targetFromPattern(pattern);
+      const target =
+        permission === 'read'
+          ? readTargetFromPattern(pattern, ws.workDir, agentRoot)
+          : targetFromPattern(pattern);
       if (!target) {
         return {
           allowed: false,
           reason:
-            'The staged write target must be an absolute path under this turn agent root and must not contain an unbounded path pattern.',
+            permission === 'read'
+              ? 'The staged read target must resolve under this turn agent root and must not contain traversal or an unbounded path pattern.'
+              : 'The staged write target must be an absolute path under this turn agent root and must not contain an unbounded path pattern.',
         };
       }
       targets.push(target);
@@ -188,7 +225,7 @@ export function authorizeChatYamlStagePaths(
     if (containsSymlinkAncestor(target, agentRoot)) {
       return {
         allowed: false,
-        reason: 'The staged write target traverses a symbolic link or junction.',
+        reason: 'The staged filesystem target traverses a symbolic link or junction.',
       };
     }
     if (!isPathWithin(target, agentRoot)) {

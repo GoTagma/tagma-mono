@@ -6,8 +6,45 @@ import {
   shouldRenderMessageBubble,
 } from '../src/components/chat/message-rendering';
 import { MessageBubble } from '../src/components/chat/MessageBubble';
-import type { OpencodeThreadEntry, Part, Provider } from '../src/api/opencode-chat';
+import type { OpencodeThreadEntry, Part, Provider, ToolState } from '../src/api/opencode-chat';
 import { useChatStore } from '../src/store/chat-store';
+import { inspectTaskToolCompletion } from '../src/utils/chat-tool-display';
+
+type CompletedToolState = Extract<ToolState, { status: 'completed' }>;
+
+function completedToolState(output: string): CompletedToolState {
+  return {
+    status: 'completed',
+    input: {},
+    output,
+    title: 'Finished',
+    metadata: {},
+    time: { start: 1, end: 2 },
+  } as CompletedToolState;
+}
+
+function toolEntry(tool: string, output: string): OpencodeThreadEntry {
+  return {
+    info: {
+      id: `msg-${tool}`,
+      role: 'assistant',
+    },
+    parts: [
+      {
+        id: `part-${tool}`,
+        sessionID: 'session',
+        messageID: `msg-${tool}`,
+        type: 'tool',
+        callID: `call-${tool}`,
+        tool,
+        state: {
+          ...completedToolState(output),
+          input: tool === 'task' ? { description: 'Build the pipeline' } : {},
+        },
+      },
+    ],
+  } as unknown as OpencodeThreadEntry;
+}
 
 describe('shouldRenderMessageBubble', () => {
   test('does not render assistant messages that only contain empty text parts', () => {
@@ -236,5 +273,73 @@ describe('user attachment references', () => {
     expect(html).toContain('Run failed');
     expect(html).not.toContain('stderr tail');
     expect(html).not.toContain('chat-user-bubble');
+  });
+});
+
+describe('task tool completion presentation', () => {
+  test('treats an empty task_result wrapper as no usable result', () => {
+    const state = completedToolState('<task><task_result></task_result></task>');
+    const rawOutput = state.output;
+
+    expect(inspectTaskToolCompletion('task', state)).toEqual({ kind: 'no-usable-result' });
+    expect(state.output).toBe(rawOutput);
+
+    const html = renderToStaticMarkup(
+      createElement(MessageBubble, { entry: toolEntry('task', state.output) }),
+    );
+    expect(html).toContain('no usable result');
+    expect(html).toContain('Child task returned without a usable result.');
+    expect(html).toContain('text-tagma-warning');
+    expect(html).not.toContain('text-tagma-ready');
+  });
+
+  test('treats whitespace-only task_result as no usable result', () => {
+    expect(inspectTaskToolCompletion('task', completedToolState(''))).toEqual({
+      kind: 'no-usable-result',
+    });
+    expect(
+      inspectTaskToolCompletion(
+        'task',
+        completedToolState('<task><task_result>\n  \t\n</task_result></task>'),
+      ),
+    ).toEqual({ kind: 'no-usable-result' });
+  });
+
+  test('presents a non-empty wrapped result as a neutral return', () => {
+    const state = completedToolState('<task><task_result>Built pipeline.yml</task_result></task>');
+
+    expect(inspectTaskToolCompletion('task', state)).toEqual({
+      kind: 'returned',
+      result: 'Built pipeline.yml',
+    });
+
+    const html = renderToStaticMarkup(
+      createElement(MessageBubble, { entry: toolEntry('task', state.output) }),
+    );
+    expect(html).toContain('>returned</span>');
+    expect(html).toContain('Built pipeline.yml');
+    expect(html).not.toContain('text-tagma-ready');
+  });
+
+  test('fails closed for malformed task markup but accepts plain non-empty output', () => {
+    expect(
+      inspectTaskToolCompletion('task', completedToolState('<task><task_result>orphaned')),
+    ).toEqual({ kind: 'no-usable-result' });
+    expect(inspectTaskToolCompletion('task', completedToolState('Plain child response.'))).toEqual({
+      kind: 'returned',
+      result: 'Plain child response.',
+    });
+  });
+
+  test('does not reinterpret completed status for non-task tools', () => {
+    const state = completedToolState('Done.');
+    expect(inspectTaskToolCompletion('read', state)).toBeNull();
+
+    const html = renderToStaticMarkup(
+      createElement(MessageBubble, { entry: toolEntry('read', state.output) }),
+    );
+    expect(html).toContain('>completed</span>');
+    expect(html).toContain('text-tagma-ready');
+    expect(html).not.toContain('no usable result');
   });
 });

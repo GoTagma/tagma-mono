@@ -833,6 +833,23 @@ test('staged descendant permissions inherit the root agent directory and are dec
     expect(replies[0]?.response).toBe('once');
     expect(useChatStore.getState().pendingPermissions).toEqual([]);
 
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'inside-read',
+        sessionID: 'child',
+        permission: 'read',
+        patterns: [insideTarget],
+        metadata: {},
+        always: [],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(decisions[1]).toEqual({ permission: 'read', patterns: [insideTarget], metadata: {} });
+    expect(replies[1]?.response).toBe('once');
+    expect(useChatStore.getState().pendingPermissions).toEqual([]);
+
     const patchTarget = `${agentRoot}/fact-checker/pipeline.yaml`;
     const patchMoveTarget = `${agentRoot}/fact-checker/renamed-pipeline.yaml`;
     dispatch({
@@ -860,7 +877,7 @@ test('staged descendant permissions inherit the root agent directory and are dec
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(decisions[1]).toEqual({
+    expect(decisions[2]).toEqual({
       permission: 'edit',
       patterns: [],
       metadata: {
@@ -868,14 +885,14 @@ test('staged descendant permissions inherit the root agent directory and are dec
         files: [{ filePath: insideTarget }, { filePath: patchTarget, movePath: patchMoveTarget }],
       },
     });
-    expect(replies[1]?.response).toBe('once');
+    expect(replies[2]?.response).toBe('once');
 
     dispatch({
       type: 'permission.asked',
       properties: {
-        id: 'live-write',
+        id: 'live-read',
         sessionID: 'child',
-        permission: 'external_directory',
+        permission: 'read',
         patterns: [`${workspace}/.tagma/live/live.yaml`],
         metadata: {},
         always: [],
@@ -883,9 +900,14 @@ test('staged descendant permissions inherit the root agent directory and are dec
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(replies[2]?.response).toBe('reject');
+    expect(decisions[3]).toEqual({
+      permission: 'read',
+      patterns: [`${workspace}/.tagma/live/live.yaml`],
+      metadata: {},
+    });
+    expect(replies[3]?.response).toBe('reject');
     expect(useChatStore.getState().pendingPermissions).toEqual([]);
-    expect(useChatStore.getState().sendError).toContain('Staged write rejected');
+    expect(useChatStore.getState().sendError).toContain('Staged access rejected');
     expect(useChatStore.getState().sendError).toContain('outside this turn');
 
     dispatch({
@@ -902,8 +924,8 @@ test('staged descendant permissions inherit the root agent directory and are dec
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(decisions[3]).toEqual({ permission: 'edit', patterns: [], metadata: null });
-    expect(replies[3]?.response).toBe('reject');
+    expect(decisions[4]).toEqual({ permission: 'edit', patterns: [], metadata: null });
+    expect(replies[4]?.response).toBe('reject');
     expect(useChatStore.getState().sendError).toContain('did not identify a target path');
   } finally {
     setClientWorkspace(null);

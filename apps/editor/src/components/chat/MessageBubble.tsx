@@ -1,6 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import {
+  AlertTriangle,
+  Bot,
   Brain,
   Check,
   CheckCircle2,
@@ -13,7 +15,10 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { extractSkillNameFromToolState } from '../../utils/chat-tool-display';
+import {
+  extractSkillNameFromToolState,
+  inspectTaskToolCompletion,
+} from '../../utils/chat-tool-display';
 import type {
   AgentPart,
   AssistantMessage,
@@ -550,47 +555,66 @@ function ToolPartView({ part }: { part: ToolPart }) {
   const state: ToolState = part.state;
   const onExpandIntoView = useExpandIntoView();
   const running = state.status === 'running';
+  const taskCompletion = inspectTaskToolCompletion(part.tool, state);
+  const taskReturned = taskCompletion?.kind === 'returned';
+  const taskMissingResult = taskCompletion?.kind === 'no-usable-result';
   // The summary row carries the whole state story: a running call warms to
   // the accent (soft row wash, accent spinner, pulsing status), a completed
-  // call settles to ready-green, an error reads red — all collapsed to one
+  // call settles to ready-green (except neutral task returns), an error reads
+  // red, and an empty child return warns — all collapsed to one
   // quiet line until the user opens the body.
-  const icon =
-    state.status === 'completed' ? (
-      <CheckCircle2 size={10} className="text-tagma-ready" />
-    ) : state.status === 'error' ? (
-      <XCircle size={10} className="text-tagma-error" />
-    ) : running ? (
-      <Loader2 size={10} className="text-tagma-accent/90 animate-spin" />
-    ) : (
-      <Wrench size={10} className="text-tagma-muted" />
-    );
-  const statusTone =
-    state.status === 'completed'
-      ? 'text-tagma-ready/80'
-      : state.status === 'error'
-        ? 'text-tagma-error/90'
-        : running
-          ? 'text-tagma-accent/90 animate-pulse'
-          : 'text-tagma-muted/60';
+  const icon = taskMissingResult ? (
+    <AlertTriangle size={10} className="text-tagma-warning" />
+  ) : taskReturned ? (
+    <Bot size={10} className="text-tagma-muted/80" />
+  ) : state.status === 'completed' ? (
+    <CheckCircle2 size={10} className="text-tagma-ready" />
+  ) : state.status === 'error' ? (
+    <XCircle size={10} className="text-tagma-error" />
+  ) : running ? (
+    <Loader2 size={10} className="text-tagma-accent/90 animate-spin" />
+  ) : (
+    <Wrench size={10} className="text-tagma-muted" />
+  );
+  const statusTone = taskMissingResult
+    ? 'text-tagma-warning'
+    : taskReturned
+      ? 'text-tagma-muted/80'
+      : state.status === 'completed'
+        ? 'text-tagma-ready/80'
+        : state.status === 'error'
+          ? 'text-tagma-error/90'
+          : running
+            ? 'text-tagma-accent/90 animate-pulse'
+            : 'text-tagma-muted/60';
+  const statusLabel = taskMissingResult
+    ? 'no usable result'
+    : taskReturned
+      ? 'returned'
+      : state.status;
 
   const title = toolTitle(part, state);
 
   return (
     <details
       className={`chat-disclosure text-[10px] font-mono w-full border bg-tagma-surface ${
-        running ? 'border-tagma-accent/30' : 'border-tagma-border/40'
+        running
+          ? 'border-tagma-accent/30'
+          : taskMissingResult
+            ? 'border-tagma-warning/30'
+            : 'border-tagma-border/40'
       }`}
     >
       <summary
         onClick={onExpandIntoView}
         className={`cursor-pointer flex items-center gap-1.5 px-2 py-1.5 select-none hover:bg-tagma-border/20 ${
-          running ? 'bg-tagma-accent/[0.05]' : ''
+          running ? 'bg-tagma-accent/[0.05]' : taskMissingResult ? 'bg-tagma-warning/[0.05]' : ''
         }`}
       >
         {icon}
         <span className="text-tagma-muted/80">{part.tool}</span>
         <span className="min-w-0 flex-1 truncate text-tagma-text">{title}</span>
-        <span className={`shrink-0 text-[9px] ${statusTone}`}>{state.status}</span>
+        <span className={`shrink-0 text-[9px] ${statusTone}`}>{statusLabel}</span>
         <ChevronRight size={10} className="chat-disclosure-chevron shrink-0 text-tagma-muted/50" />
       </summary>
       <div className="px-2 py-1.5 border-t border-tagma-border/40 space-y-1">

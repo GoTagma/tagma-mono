@@ -225,7 +225,7 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
     lines.push(`  <chat-staging id="${escapeEditorContextValue(options.chatYamlStage.id)}">`);
     lines.push(`    <agent-root>${escapeEditorContextValue(agentRoot)}</agent-root>`);
     lines.push(
-      '    <write-policy>Write pipeline artifacts only inside agent-root. Live .tagma pipeline paths are read-only source material.</write-policy>',
+      '    <write-policy>Agent-root is the sole filesystem read/write boundary for this staged turn. Do not inspect or access live workspace paths outside agent-root.</write-policy>',
       '  </chat-staging>',
     );
   }

@@ -380,9 +380,19 @@ function loopbackGet(
     const chunks: Uint8Array[] = [];
     let settled = false;
     let closeSocket: (() => void) | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const done = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      try {
+        closeSocket?.();
+      } catch {
+        // The request outcome is already known; socket shutdown is best effort.
+      }
       fn();
     };
     const tryResolve = (allowIncompleteBody: boolean) => {
@@ -391,13 +401,9 @@ function loopbackGet(
         allowIncompleteBody,
       );
       if (!parsed) return;
-      clearTimeout(timer);
-      done(() => {
-        closeSocket?.();
-        resolve(parsed);
-      });
+      done(() => resolve(parsed));
     };
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       done(() => reject(new Error(`timeout after ${timeoutMs}ms`)));
     }, timeoutMs);
     Bun.connect({
@@ -405,6 +411,14 @@ function loopbackGet(
       port,
       socket: {
         open(s) {
+          if (settled) {
+            try {
+              s.end();
+            } catch {
+              // A request that timed out before connect completed must stay settled.
+            }
+            return;
+          }
           closeSocket = () => s.end();
           const authLine = authorization ? `Authorization: ${authorization}\r\n` : '';
           s.write(
@@ -412,16 +426,16 @@ function loopbackGet(
           );
         },
         data(_s, data) {
+          if (settled) return;
           chunks.push(data);
           try {
             tryResolve(false);
           } catch (err) {
-            clearTimeout(timer);
             done(() => reject(err));
           }
         },
         close() {
-          clearTimeout(timer);
+          closeSocket = null;
           done(() => {
             try {
               const parsed = parseLoopbackHttpResponse(
@@ -435,12 +449,10 @@ function loopbackGet(
           });
         },
         error(_s, err) {
-          clearTimeout(timer);
           done(() => reject(err));
         },
       },
     }).catch((err) => {
-      clearTimeout(timer);
       done(() => reject(err));
     });
   });
@@ -559,7 +571,8 @@ async function waitForDatabaseAccess(
   let lastStatus: number | null = null;
   while (Date.now() < deadline) {
     try {
-      const res = await loopbackGet(hostname, portNum, path, 2_000, authorization);
+      const remainingMs = Math.max(1, deadline - Date.now());
+      const res = await loopbackGet(hostname, portNum, path, remainingMs, authorization);
       lastStatus = res.status;
       lastErr = null;
       if (res.status >= 200 && res.status < 300) {
@@ -571,7 +584,10 @@ async function waitForDatabaseAccess(
       lastErr = err;
       lastStatus = null;
     }
-    await new Promise((r) => setTimeout(r, 500));
+    const remainingMs = deadline - Date.now();
+    if (remainingMs > 0) {
+      await new Promise((r) => setTimeout(r, Math.min(500, remainingMs)));
+    }
   }
   throw new Error(
     `opencode database did not become accessible within ${timeoutMs}ms` +

@@ -204,6 +204,9 @@ describe('chat editor context', () => {
     expect(context).toContain(
       '<agent-root>C:/repo/.tagma/.chat-staging/00000000-0000-4000-8000-000000000001/agent-workspace/.tagma</agent-root>',
     );
+    expect(context).toContain(
+      '<write-policy>Agent-root is the sole filesystem read/write boundary for this staged turn. Do not inspect or access live workspace paths outside agent-root.</write-policy>',
+    );
     expect(context).toContain(`<current-file>${stagedYaml}</current-file>`);
     expect(context).toContain(`<folder>${agentRoot}/build</folder>`);
     expect(context).toContain(`<yaml>${stagedYaml}</yaml>`);

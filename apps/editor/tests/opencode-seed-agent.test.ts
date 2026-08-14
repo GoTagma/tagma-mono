@@ -18,9 +18,11 @@ import {
   buildTagmaPythonToolsAgent,
   buildTagmaRuntimeGuardAgent,
   buildTagmaRouterAgent,
+  buildTagmaTrialPlannerAgent,
   buildTagmaTrialPlanTool,
   buildTagmaTriggerStrategySkill,
   buildTagmaYamlContractSkill,
+  buildTagmaYamlReviewAgent,
   seedOpencodeArtifacts,
 } from '../server/opencode-seed';
 import {
@@ -350,16 +352,17 @@ test('tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts a
   expect(doc).toContain('name: tagma-pipeline-diagnosis');
   expect(doc).toContain('mode: subagent');
   expect(doc).toContain('hidden: true');
-  expect(doc).toContain('read: allow');
-  expect(doc).toContain('glob: allow');
-  expect(doc).toContain('grep: allow');
-  expect(doc).toContain('list: allow');
+  expect(doc).toContain('read: ask');
+  expect(doc).toContain('glob: deny');
+  expect(doc).toContain('grep: deny');
+  expect(doc).toContain('list: deny');
+  expect(doc).toContain('external_directory: deny');
   expect(doc).toContain('edit: deny');
   expect(doc).toContain('bash: deny');
   expect(doc).toContain('webfetch: deny');
   expect(doc).toContain('websearch: deny');
-  expect(doc).toContain('explore: "allow"');
-  expect(doc).toContain('scout: "allow"');
+  expect(doc).not.toContain('explore: "allow"');
+  expect(doc).not.toContain('scout: "allow"');
   expect(doc).toContain('tagma-yaml-contract: "allow"');
   expect(doc).toContain('tagma-native-primitives: "allow"');
   expect(doc).toContain('YAML, manifest, layout, requirements, and `.compile.log`');
@@ -367,6 +370,36 @@ test('tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts a
   expect(doc).toContain('ROUTE_MISMATCH: pipeline_work');
   expect(doc).not.toContain('tagma_yaml_skeleton: allow');
   expect(doc).not.toContain('tagma_placement_plan: allow');
+});
+
+test('every staged file-reading specialist denies unscoped discovery', () => {
+  const docs = [
+    buildTagmaTrialPlannerAgent(),
+    buildTagmaPipelineDiagnosisAgent(),
+    buildTagmaYamlReviewAgent(),
+    buildTagmaPipelinePlannerAgent(),
+    buildTagmaCommandEvidenceAgent(),
+    buildTagmaRuntimeGuardAgent(),
+    buildTagmaContextPackagerAgent(),
+    buildTagmaPipelineSectionBuilderAgent('Windows'),
+    buildTagmaPipelineAgent('Windows'),
+    buildTagmaPythonToolsAgent('Windows'),
+  ];
+
+  for (const doc of docs) {
+    expect(doc).toContain('read: ask');
+    expect(doc).toContain('glob: deny');
+    expect(doc).toContain('grep: deny');
+    expect(doc).toContain('list: deny');
+    expect(doc).toContain('external_directory: deny');
+  }
+
+  const general = buildTagmaGeneralDiscussionAgent();
+  expect(general).toContain('read: deny');
+  expect(general).toContain('glob: deny');
+  expect(general).toContain('grep: deny');
+  expect(general).toContain('list: deny');
+  expect(general).toContain('external_directory: deny');
 });
 
 test('router prompt stays compact with the read-only diagnosis lane', () => {
@@ -380,9 +413,15 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   expect(doc).toContain('Never delegate preliminary inspection or workspace discovery');
   expect(doc).toContain('one specialist call owns both lookup and implementation');
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
-  expect(doc).toContain('Empty `<task_result>`');
-  expect(doc).toContain('resume `task_id` once');
-  expect(doc).toContain('if again empty, report no usable result and stop');
+  expect(doc).toContain('A task lifecycle state of `completed` is not deliverable success');
+  expect(doc).toContain('empty, planning-only, or otherwise unusable');
+  expect(doc).toContain('resume the same `task_id` exactly once');
+  expect(doc).toContain('launch exactly one fresh `tagma-pipeline` child');
+  expect(doc).toContain('same staged root and handoff');
+  expect(doc).toContain('inspect and continue any partial staged artifacts');
+  expect(doc).toContain('If the fresh child is also unusable, stop');
+  expect(doc).toContain('report only observed result facts');
+  expect(doc).toContain('Do not speculate about infrastructure or tooling causes');
   expect(doc).toContain('`pipeline_work`: relay');
   expect(doc).toContain('authoring complete; host verification pending');
   expect(doc).toContain('compilation cannot mean built, ready, successful, or verified');
@@ -518,9 +557,11 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('mode: subagent');
     expect(planner).toContain('hidden: true');
     expect(planner).toContain('read: true');
-    expect(planner).toContain('glob: true');
-    expect(planner).toContain('grep: true');
-    expect(planner).toContain('list: true');
+    expect(planner).toContain('glob: false');
+    expect(planner).toContain('grep: false');
+    expect(planner).toContain('list: false');
+    expect(planner).toContain('read: ask');
+    expect(planner).toContain('external_directory: deny');
     expect(planner).toContain('edit: false');
     expect(planner).toContain('bash: false');
     expect(planner).toContain('task: false');
@@ -686,18 +727,23 @@ test('tagma-pipeline agent allows workspace reads while restricting writes to .t
   expect(doc).toContain('Strip a leading `.tagma/`');
 });
 
-test('tagma-pipeline agent treats chat staging as the only writable pipeline root', () => {
+test('tagma-pipeline agent treats chat staging as the only readable and writable pipeline root', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc).toContain('it is the authoritative write boundary');
-  expect(doc).toContain('only under its `<agent-root>`');
-  expect(doc).toContain('live pipeline folders outside `<agent-root>` are read-only');
+  expect(doc).toContain('sole filesystem read/write boundary');
+  expect(doc).toContain('Read, write, create, rename, and delete only under its `<agent-root>`');
+  expect(doc).toContain('Do not inspect or access the live workspace or live `.tagma` outside it');
   expect(doc).toContain('Never translate them back');
   expect(doc).toContain('do not derive target identity from cwd');
   expect(doc).toContain('paths are absolute paths inside it');
   expect(doc).toContain('Use those absolute staged paths exactly');
   expect(doc).not.toContain('your cwd is exactly `<agent-root>`');
   expect(doc).not.toContain('paths are already relative to it');
+  expect(doc).toContain('read: ask');
+  expect(doc).toContain('glob: deny');
+  expect(doc).toContain('grep: deny');
+  expect(doc).toContain('list: deny');
+  expect(doc).toContain('external_directory: deny');
   expect(doc).toContain('edit: ask');
 });
 
@@ -763,10 +809,11 @@ test('specialized Tagma advisor subagents are hidden, read-only, and task-focuse
   for (const doc of [planner, commands, runtime, context]) {
     expect(doc).toContain('mode: subagent');
     expect(doc).toContain('hidden: true');
-    expect(doc).toContain('read: allow');
-    expect(doc).toContain('glob: allow');
-    expect(doc).toContain('grep: allow');
-    expect(doc).toContain('list: allow');
+    expect(doc).toContain('read: ask');
+    expect(doc).toContain('glob: deny');
+    expect(doc).toContain('grep: deny');
+    expect(doc).toContain('list: deny');
+    expect(doc).toContain('external_directory: deny');
     expect(doc).toContain('edit: deny');
     expect(doc).toContain('bash: deny');
     expect(doc).toContain('task:');
@@ -822,6 +869,12 @@ test('tagma-pipeline-section-builder is a write-capable bounded implementer, not
   expect(doc).toContain('mode: subagent');
   expect(doc).toContain('hidden: true');
   expect(doc).toContain('edit: ask');
+  expect(doc).toContain('read: ask');
+  expect(doc).toContain('glob: deny');
+  expect(doc).toContain('grep: deny');
+  expect(doc).toContain('list: deny');
+  expect(doc).toContain('external_directory: deny');
+  expect(doc).toContain('sole filesystem read/write boundary');
   expect(doc).toContain('bash: deny');
   expect(doc).toContain('"*": "deny"');
   expect(doc).toContain('Implement exactly one manifest section');
@@ -833,8 +886,16 @@ test('write-capable delegated agents force host permission checks', () => {
   const python = buildTagmaPythonToolsAgent('Windows');
 
   expect(python).toContain('edit: ask');
+  expect(python).toContain('read: ask');
+  expect(python).toContain('glob: deny');
+  expect(python).toContain('grep: deny');
+  expect(python).toContain('list: deny');
+  expect(python).toContain('external_directory: deny');
   expect(python).toContain('bash: ask');
-  expect(python).toContain('Never substitute the live `.tagma` root for a staged `<agent-root>`');
+  expect(python).toContain('sole filesystem read/write boundary');
+  expect(python).toContain(
+    'Do not inspect or access the live workspace or live `.tagma` outside it',
+  );
 });
 
 test('tagma-pipeline agent delegates mechanical layout to the placement tool', () => {

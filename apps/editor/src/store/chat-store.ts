@@ -3240,6 +3240,7 @@ function permissionOwnerSessionId(state: ChatStore, sessionID: string): string |
 }
 
 const STAGED_HOST_GATED_PERMISSIONS = new Set([
+  'read',
   'edit',
   'write',
   'external_directory',
@@ -3307,7 +3308,9 @@ function routeStagedPermissionDecision(
       snapshot.workDir,
     );
     if (!allowed && get().currentSessionId === ownerSessionID) {
-      set({ sendError: `Staged write rejected: ${reason ?? 'target is outside the agent root.'}` });
+      set({
+        sendError: `Staged access rejected: ${reason ?? 'target is outside the agent root.'}`,
+      });
     }
   })();
   return true;
