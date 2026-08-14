@@ -676,6 +676,9 @@
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
 - Keep prerequisite assertions independent of unrelated CLI availability. Prompt tasks default to
   the `opencode` driver, so use a command task when a test intends to isolate another blocker.
+- Seeded pipeline-agent documents follow the current host contract. Keep seed assertions
+  host-aware; verify Windows-only command guidance through `buildTagmaPipelineAgent('Windows')`
+  instead of requiring it from Linux or macOS seed output.
 
 ## Targeted Pipeline Runs
 

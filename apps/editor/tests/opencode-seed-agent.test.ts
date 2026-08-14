@@ -1505,7 +1505,12 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(existsSync(pipelineAgent)).toBe(true);
   const seededPipeline = readFileSync(pipelineAgent, 'utf8');
   expect(seededPipeline).toContain('name: tagma-pipeline');
-  expect(seededPipeline).toContain('Get-Content -Encoding UTF8');
+  if (process.platform === 'win32') {
+    expect(seededPipeline).toContain('Get-Content -Encoding UTF8');
+  } else {
+    expect(seededPipeline).toContain('commands run under `sh -c` by default');
+    expect(seededPipeline).not.toContain('Get-Content -Encoding UTF8');
+  }
   expect(readFileSync(nativeSkill, 'utf8')).toContain('Get-Content -Encoding UTF8');
   expect(existsSync(diagnosisAgent)).toBe(true);
   expect(readFileSync(diagnosisAgent, 'utf8')).toContain('name: tagma-pipeline-diagnosis');
