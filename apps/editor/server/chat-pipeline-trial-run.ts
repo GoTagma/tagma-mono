@@ -100,7 +100,12 @@ import {
   type ServerRecordContext,
 } from './server-record-auth.js';
 import { MAX_LOG_RUNS } from './state.js';
-import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-session.js';
+import {
+  normalizeRunTargetTaskIds,
+  runtimeWithInjectedEnv,
+  snapshotWorkspaceRuntimeMode,
+  type WorkspaceRuntimeMode,
+} from './routes/run-session.js';
 import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
 import type { WorkspaceState } from './workspace-state.js';
 import { timeoutMinutesToMs } from '../shared/execution-timeout-settings.js';
@@ -1530,6 +1535,7 @@ interface RunTrialPipelineInput {
   secretValues: string[];
   preflightEnvKeys: readonly string[];
   taskTimeoutMs: number;
+  runtimeMode: WorkspaceRuntimeMode;
   runId: string;
   manualApprovalScopesByRunId: Map<string, ReadonlySet<string>>;
   manualApprovalTaskIds: ReadonlySet<string>;
@@ -1796,6 +1802,7 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
       { ...input.pythonRunEnv, ...input.globalSecretEnv, ...trialEnv },
       input.secretValues,
       tagmaDirOf(input.ws.workDir),
+      { mode: input.runtimeMode },
     ),
   });
   if (input.manualApprovalScopesByRunId.has(input.runId)) {
@@ -2265,6 +2272,7 @@ async function executeTrial(
   abortState: { timedOut: boolean },
   budgets: TrialExecutionBudgets,
   progress: ChatPipelineTrialProgressReporter,
+  runtimeMode: WorkspaceRuntimeMode,
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
   progress.update({
@@ -2421,6 +2429,7 @@ async function executeTrial(
         secretValues,
         preflightEnvKeys: preflight.envKeys,
         taskTimeoutMs: budgets.taskTimeoutMs,
+        runtimeMode,
         runId,
         manualApprovalScopesByRunId,
         manualApprovalTaskIds: selectedManualTaskIds,
@@ -2484,6 +2493,7 @@ async function executeTrial(
         secretValues,
         preflightEnvKeys: preflight.envKeys,
         taskTimeoutMs: budgets.taskTimeoutMs,
+        runtimeMode,
         manualApprovalScopesByRunId,
         manualApprovalTaskIds: manualTaskIdsByCase.get(testCase.id) ?? new Set<string>(),
         stageRoot: stage.rootDir,
@@ -2763,6 +2773,7 @@ export async function trialRunChatYamlStage(
   ws: WorkspaceState,
   input: ChatPipelineTrialRunInput,
 ): Promise<ChatPipelineTrialRunResult> {
+  const runtimeMode = snapshotWorkspaceRuntimeMode();
   const trialId = validateTrialId(input.trialId);
   const editorSettings = readEditorSettings(ws);
   if (!hasCurrentChatPipelineTrialConsent(editorSettings)) {
@@ -3054,6 +3065,7 @@ export async function trialRunChatYamlStage(
           abortState,
           budgets,
           progress,
+          runtimeMode,
         );
         if (controller.signal.aborted) {
           return resultForStopped(result, abortState, startedAt, budgets.lifecycleTimeoutMs);

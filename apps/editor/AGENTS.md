@@ -499,6 +499,18 @@
   would be misclassified as an isolated case leak.
 - Command tasks remain host commands and must keep their normal PATH resolution, even when the
   command itself invokes `opencode`.
+- The sidecar-private Workspace Runtime uses the Native Broker by default. Treat
+  `TAGMA_WORKSPACE_RUNTIME=legacy` only as an explicit rollback choice: snapshot the mode once at
+  the start of each pipeline, workflow, or Trial run and pass that value to every runtime created
+  for the run. Invalid values fail closed, and a Broker failure must never automatically re-execute
+  through Legacy because the first attempt may already have produced external side effects.
+- Native Broker execution is host execution with enforcement level `none`, not a sandbox. A path
+  mount's existing-ancestor realpath check is only a best-effort pre-I/O escape detector and is
+  TOCTOU-prone; do not use it as authorization. Race-resistant filesystem authority requires
+  handle-bound/no-follow operations with post-open containment, or a genuinely isolated backend.
+- Keep the private execution-event journal bounded by both event count and buffered output bytes.
+  Dropped live events must be diagnosed before the single terminal event; persisted runtime output
+  remains the authoritative full stream.
 - When the managed layers are intentionally absent in headless development, resolve the system
   fallback with `Bun.which('opencode')` before spawning so Windows `.cmd` shims work.
 - OpenCode reserves an agent's configured final `steps` iteration for a forced text-only summary.

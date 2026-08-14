@@ -67,8 +67,10 @@ import {
   type WorkflowRunSessionEvent,
   type WorkflowRunHistorySummary,
   type PublicPipelineGraphResult,
+  type WorkspaceRuntimeMode,
   normalizeGraphRunId,
   runtimeWithInjectedEnv,
+  snapshotWorkspaceRuntimeMode,
   normalizeRunTargetTaskIds,
   shouldMirrorEngineResult,
   shouldResolveStartResponse,
@@ -312,6 +314,7 @@ function prepareWorkflowHostPolicy(
   workflow: WorkflowConfig,
   hostInputs: readonly WorkflowPipelineHostInput[],
   skipPreflight: boolean,
+  runtimeMode: WorkspaceRuntimeMode,
 ): WorkflowHostPolicy {
   const cwd = ws.workDir || process.cwd();
   const hostInputById = new Map(hostInputs.map((input) => [input.id, input]));
@@ -403,7 +406,9 @@ function prepareWorkflowHostPolicy(
   ].filter((value) => value.length > 0);
 
   return {
-    runtime: runtimeWithInjectedEnv(pythonRunEnv, secretRedactionValues, tagmaDirOf(cwd)),
+    runtime: runtimeWithInjectedEnv(pythonRunEnv, secretRedactionValues, tagmaDirOf(cwd), {
+      mode: runtimeMode,
+    }),
     resolvePipelineOptions: (pipeline) => {
       const yamlPath = yamlPathByPipelineId.get(pipeline.id);
       if (!yamlPath) {
@@ -415,7 +420,9 @@ function prepareWorkflowHostPolicy(
         ...(secretRunEnvByYamlPath.get(yamlPath) ?? {}),
       };
       return {
-        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues, tagmaDirOf(cwd)),
+        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues, tagmaDirOf(cwd), {
+          mode: runtimeMode,
+        }),
         secretResolver: (names: readonly string[]) => buildPipelineSecretEnv(cwd, yamlPath, names),
         ...(envKeys.length > 0 ? { envPolicy: { mode: 'allowlist' as const, keys: envKeys } } : {}),
       };
@@ -706,6 +713,7 @@ export function registerRunRoutes(app: express.Express): void {
     if (startToken === null) return res.status(409).json({ error: 'A run is starting' });
     let startTokenEnded = false;
     try {
+      const runtimeMode = snapshotWorkspaceRuntimeMode();
       const workflowContent = readFileSync(workflowPath, 'utf-8');
       const hostInputs = readWorkflowPipelineHostInputs(ws.workDir, workflowContent);
       await preloadWorkspacePluginsForRun(
@@ -718,6 +726,7 @@ export function registerRunRoutes(app: express.Express): void {
         workflow,
         hostInputs,
         (req.body ?? {}).skipPreflight === true,
+        runtimeMode,
       );
       if ((req.body ?? {}).live === true) {
         let resolveStartResponse: (() => void) | null = null;
@@ -879,6 +888,7 @@ export function registerRunRoutes(app: express.Express): void {
     let sessionLaunched = false;
     let launchedSession: RunSession | null = null;
     try {
+      const runtimeMode = snapshotWorkspaceRuntimeMode();
       const cwd = ws.workDir || process.cwd();
 
       const fromRunId: string | null =
@@ -1145,7 +1155,9 @@ export function registerRunRoutes(app: express.Express): void {
       const tagma = createTagma({
         registry: ws.registry,
         builtins: false,
-        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues, tagmaDirOf(cwd)),
+        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues, tagmaDirOf(cwd), {
+          mode: runtimeMode,
+        }),
       });
       tagma
         .run(pipelineConfig, {

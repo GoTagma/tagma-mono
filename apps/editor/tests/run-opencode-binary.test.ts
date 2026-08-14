@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bunRuntime } from '@tagma/sdk';
@@ -371,5 +371,68 @@ describe('editor OpenCode runtime selection', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.failureKind).toBeNull();
+  });
+
+  test('fails an invalid managed OpenCode binary without publishing its database generation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-invalid-'));
+    tempRoots.push(root);
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR = root;
+    process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+    process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+    delete process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+    delete process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+    delete process.env.TAGMA_OPENCODE_USER_DIR;
+
+    const runtime = runtimeWithInjectedEnvFromBase(bunRuntime(), {}, [], join(root, '.tagma'));
+    const result = await runtime.runSpawn(
+      { args: ['opencode', 'run', '--', 'Say hello'], cwd: root },
+      { name: 'opencode' } as DriverPlugin,
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.failureKind).not.toBeNull();
+    expect(existsSync(join(root, 'opencode-state', 'current-head.json'))).toBe(false);
+  });
+
+  test('preserves brokered managed binary-missing results without retry or DB publication', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-missing-'));
+    tempRoots.push(root);
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+    delete process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR;
+    delete process.env.TAGMA_OPENCODE_USER_DIR;
+
+    let spawnCount = 0;
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(): Promise<TaskResult> {
+        spawnCount += 1;
+        return taskResult({
+          exitCode: -1,
+          stderr: `Executable not found: ${binary}`,
+          failureKind: 'binary_missing',
+        });
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], join(root, '.tagma'), {
+      mode: 'broker',
+    });
+
+    const result = await runtime.runSpawn(
+      { args: ['opencode', 'run', '--', 'Say hello'], cwd: root },
+      { name: 'opencode' } as DriverPlugin,
+    );
+
+    expect(result.failureKind).toBe('binary_missing');
+    expect(result.exitCode).toBe(-1);
+    expect(spawnCount).toBe(1);
+    expect(existsSync(join(root, 'opencode-state', 'current-head.json'))).toBe(false);
   });
 });

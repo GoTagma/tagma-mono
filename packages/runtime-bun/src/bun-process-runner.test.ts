@@ -1,13 +1,142 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { isBinaryMissingError, runSpawn } from './bun-process-runner';
 
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024;
+const HEARTBEAT_INTERVAL_MS = 40;
+const HEARTBEAT_QUIET_MS = 250;
+const HEARTBEAT_STOP_TIMEOUT_MS = 2_000;
 
 function nodeArg(script: string): string[] {
   return ['node', '-e', script];
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function heartbeatCount(path: string): number {
+  try {
+    return readFileSync(path, 'utf8').match(/\n/g)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function waitForHeartbeatCount(
+  path: string,
+  minimum: number,
+  timeoutMs: number,
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  let count = heartbeatCount(path);
+  while (count < minimum && Date.now() < deadline) {
+    await delay(25);
+    count = heartbeatCount(path);
+  }
+  if (count < minimum) {
+    throw new Error(`grandchild produced ${count} heartbeats; expected at least ${minimum}`);
+  }
+  return count;
+}
+
+async function waitForHeartbeatToStop(path: string): Promise<number> {
+  const deadline = Date.now() + HEARTBEAT_STOP_TIMEOUT_MS;
+  let count = heartbeatCount(path);
+  let lastChangeAt = Date.now();
+
+  while (Date.now() < deadline) {
+    await delay(50);
+    const nextCount = heartbeatCount(path);
+    if (nextCount !== count) {
+      count = nextCount;
+      lastChangeAt = Date.now();
+    }
+    if (Date.now() - lastChangeAt >= HEARTBEAT_QUIET_MS) return count;
+  }
+
+  throw new Error(`grandchild heartbeat did not stop within ${HEARTBEAT_STOP_TIMEOUT_MS}ms`);
+}
+
+function processTreeFixtureScript(heartbeatPath: string, pidPath: string): string {
+  const grandchildScript = `
+    const { appendFileSync, writeFileSync } = require('node:fs');
+    const heartbeatPath = ${JSON.stringify(heartbeatPath)};
+    writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));
+    const beat = () => appendFileSync(heartbeatPath, 'beat\\n');
+    beat();
+    setInterval(beat, ${HEARTBEAT_INTERVAL_MS});
+  `;
+
+  return `
+    const { spawn } = require('node:child_process');
+    const grandchild = spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    grandchild.once('error', (error) => {
+      console.error(error);
+      process.exit(1);
+    });
+    process.stdout.write('grandchild-started\\n');
+    setInterval(() => {}, 1_000);
+  `;
+}
+
+function fixturePid(path: string): number | null {
+  try {
+    const value = Number(readFileSync(path, 'utf8').trim());
+    return Number.isInteger(value) && value > 0 && value !== process.pid ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForProcessExit(pid: number): Promise<void> {
+  const deadline = Date.now() + HEARTBEAT_STOP_TIMEOUT_MS;
+  while (processIsAlive(pid) && Date.now() < deadline) await delay(25);
+  if (processIsAlive(pid)) {
+    throw new Error(`grandchild process ${pid} did not exit within ${HEARTBEAT_STOP_TIMEOUT_MS}ms`);
+  }
+}
+
+async function cleanupFixtureProcess(pidPath: string): Promise<void> {
+  const pid = fixturePid(pidPath);
+  if (pid === null || !processIsAlive(pid)) return;
+
+  if (process.platform === 'win32') {
+    const result = Bun.spawnSync(['taskkill', '/F', '/T', '/PID', String(pid)], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    if (result.exitCode !== 0) {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* already exited */
+      }
+    }
+  } else {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      /* already exited */
+    }
+  }
+
+  const deadline = Date.now() + 1_000;
+  while (processIsAlive(pid) && Date.now() < deadline) await delay(25);
 }
 
 test('binary-missing detection does not confuse generic posix_spawn failures with ENOENT', () => {
@@ -211,6 +340,115 @@ test('runSpawn keeps task timeout classified as timeout', async () => {
   expect(result.failureKind).toBe('timeout');
 });
 
+test('runSpawn timeout terminates the descendant process tree', async () => {
+  if (
+    process.platform !== 'win32' &&
+    process.platform !== 'linux' &&
+    process.platform !== 'darwin'
+  ) {
+    return;
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-process-tree-timeout-'));
+  const heartbeatPath = join(dir, 'heartbeat.log');
+  const pidPath = join(dir, 'grandchild.pid');
+  const controller = new AbortController();
+  let runPromise: ReturnType<typeof runSpawn> | null = null;
+
+  try {
+    runPromise = runSpawn(
+      { args: nodeArg(processTreeFixtureScript(heartbeatPath, pidPath)) },
+      null,
+      { timeoutMs: 3_000, signal: controller.signal },
+    );
+    await waitForHeartbeatCount(heartbeatPath, 3, 2_500);
+
+    const result = await runPromise;
+
+    expect(result.exitCode).toBe(-1);
+    expect(result.failureKind).toBe('timeout');
+    expect(result.stdout).toContain('grandchild-started');
+    const pid = fixturePid(pidPath);
+    if (pid === null) throw new Error('grandchild did not publish its pid');
+    const [stoppedCount] = await Promise.all([
+      waitForHeartbeatToStop(heartbeatPath),
+      waitForProcessExit(pid),
+    ]);
+    expect(stoppedCount).toBeGreaterThanOrEqual(3);
+    expect(processIsAlive(pid)).toBe(false);
+    await delay(HEARTBEAT_QUIET_MS);
+    expect(heartbeatCount(heartbeatPath)).toBe(stoppedCount);
+  } finally {
+    controller.abort();
+    if (runPromise) {
+      await Promise.race([
+        runPromise.then(
+          () => undefined,
+          () => undefined,
+        ),
+        delay(3_000),
+      ]);
+    }
+    await cleanupFixtureProcess(pidPath);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);
+
+test('runSpawn external abort terminates the descendant process tree', async () => {
+  if (
+    process.platform !== 'win32' &&
+    process.platform !== 'linux' &&
+    process.platform !== 'darwin'
+  ) {
+    return;
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-process-tree-abort-'));
+  const heartbeatPath = join(dir, 'heartbeat.log');
+  const pidPath = join(dir, 'grandchild.pid');
+  const controller = new AbortController();
+  let runPromise: ReturnType<typeof runSpawn> | null = null;
+
+  try {
+    runPromise = runSpawn(
+      { args: nodeArg(processTreeFixtureScript(heartbeatPath, pidPath)) },
+      null,
+      { signal: controller.signal },
+    );
+    await waitForHeartbeatCount(heartbeatPath, 3, 4_000);
+    controller.abort();
+
+    const result = await runPromise;
+
+    expect(result.exitCode).toBe(-1);
+    expect(result.failureKind).toBe('aborted');
+    expect(result.stdout).toContain('grandchild-started');
+    const pid = fixturePid(pidPath);
+    if (pid === null) throw new Error('grandchild did not publish its pid');
+    const [stoppedCount] = await Promise.all([
+      waitForHeartbeatToStop(heartbeatPath),
+      waitForProcessExit(pid),
+    ]);
+    expect(stoppedCount).toBeGreaterThanOrEqual(3);
+    expect(processIsAlive(pid)).toBe(false);
+    await delay(HEARTBEAT_QUIET_MS);
+    expect(heartbeatCount(heartbeatPath)).toBe(stoppedCount);
+  } finally {
+    controller.abort();
+    if (runPromise) {
+      await Promise.race([
+        runPromise.then(
+          () => undefined,
+          () => undefined,
+        ),
+        delay(3_000),
+      ]);
+    }
+    await cleanupFixtureProcess(pidPath);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);
+
 test('runSpawn streams stdout/stderr to onOutputChunk before exit', async () => {
   const seen: Array<{ stream: 'stdout' | 'stderr'; text: string }> = [];
   const result = await runSpawn(
@@ -236,6 +474,50 @@ test('runSpawn streams stdout/stderr to onOutputChunk before exit', async () => 
   expect(stderr).toBe('warn ');
   // The bounded tail in the result still matches what was streamed.
   expect(result.stdout).toBe('hello world');
+});
+
+test('runSpawn incrementally decodes UTF-8 split across stdout/stderr chunks', async () => {
+  const expectedStdout = '你😀好';
+  const expectedStderr = '警🚨报';
+  const seen: Array<{ stream: 'stdout' | 'stderr'; text: string }> = [];
+  const script = `
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const writeSplit = async (stream, text, cuts) => {
+      const bytes = Buffer.from(text, 'utf8');
+      let start = 0;
+      for (const end of [...cuts, bytes.length]) {
+        stream.write(bytes.subarray(start, end));
+        start = end;
+        await sleep(75);
+      }
+    };
+    Promise.all([
+      writeSplit(process.stdout, ${JSON.stringify(expectedStdout)}, [1, 6]),
+      writeSplit(process.stderr, ${JSON.stringify(expectedStderr)}, [2, 5]),
+    ]).catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
+  `;
+
+  const result = await runSpawn({ args: nodeArg(script) }, null, {
+    onOutputChunk: (stream, text) => seen.push({ stream, text }),
+  });
+
+  const liveStdoutChunks = seen
+    .filter((chunk) => chunk.stream === 'stdout')
+    .map((chunk) => chunk.text);
+  const liveStderrChunks = seen
+    .filter((chunk) => chunk.stream === 'stderr')
+    .map((chunk) => chunk.text);
+
+  expect(result.exitCode).toBe(0);
+  expect(liveStdoutChunks.length).toBeGreaterThanOrEqual(2);
+  expect(liveStderrChunks.length).toBeGreaterThanOrEqual(2);
+  expect(liveStdoutChunks.join('')).toBe(expectedStdout);
+  expect(liveStderrChunks.join('')).toBe(expectedStderr);
+  expect(result.stdout).toBe(expectedStdout);
+  expect(result.stderr).toBe(expectedStderr);
 });
 
 test('runSpawn does not let a throwing onOutputChunk abort the drain', async () => {

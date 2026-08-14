@@ -11,17 +11,10 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import yaml from 'js-yaml';
-import {
-  TASK_LOG_CAP,
-  appendLiveOutput,
-  bunRuntime,
-  type RuntimeRunOptions,
-  type TagmaRuntime,
-} from '@tagma/sdk';
+import { TASK_LOG_CAP, appendLiveOutput } from '@tagma/sdk';
 import { serializePipeline } from '@tagma/sdk/yaml';
 import { buildRawDag } from '@tagma/sdk/config';
 import { InMemoryApprovalGateway } from '@tagma/sdk/approval';
-import type { CommandConfig, DriverPlugin, SpawnSpec, TaskResult } from '@tagma/types';
 import type {
   RunEventPayload,
   RunSnapshotPayload,
@@ -41,17 +34,18 @@ import type {
 } from '@tagma/sdk';
 import { serializeWorkflow } from '@tagma/sdk/workflow';
 import { atomicWriteFileSync, isPathWithin } from '../path-utils.js';
-import { prepareEmbeddedOpencodeRuntime } from '../opencode-config.js';
-import {
-  markManagedOpencodeDatabaseReady,
-  releaseManagedOpencodeDatabaseInitialization,
-  resolveManagedOpencodeDatabaseConfig,
-  waitForManagedOpencodeDatabase,
-  type PreparedManagedOpencodeDatabase,
-} from '../opencode-database.js';
-import { buildOpencodeEnv, resolveOpencodeBinary } from '../opencode-lifecycle.js';
 import type { WorkspaceState } from '../workspace-state.js';
 import { readYamlRunVersion } from '../yaml-run-version.js';
+
+export {
+  createSecretOutputRedactor,
+  parseWorkspaceRuntimeMode,
+  runtimeWithInjectedEnv,
+  runtimeWithInjectedEnvFromBase,
+  snapshotWorkspaceRuntimeMode,
+  workspaceRuntimeMode,
+  type WorkspaceRuntimeMode,
+} from '../execution/native-broker.js';
 
 // ═══ Run Session ════════════════════════════════════════════════════════
 //
@@ -87,291 +81,6 @@ const DEFAULT_PROMPT_DRIVER = 'opencode';
 
 // ═══ Runtime helpers ════════════════════════════════════════════════════
 
-function runRouteShellArgs(command: string): string[] {
-  const override = process.env.PIPELINE_SHELL;
-  if (override) {
-    return process.platform === 'win32' && /cmd(?:\.exe)?$/i.test(override)
-      ? [override, '/c', command]
-      : [override, process.platform === 'win32' ? '-Command' : '-c', command];
-  }
-  if (process.platform === 'win32') {
-    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-    const powershell = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-    if (existsSync(powershell)) return [powershell, '-Command', command];
-    return [`${systemRoot}\\System32\\cmd.exe`, '/c', command];
-  }
-  return ['/bin/sh', '-c', command];
-}
-
-function commandToSpawnSpecForRunRoute(command: CommandConfig, cwd: string): SpawnSpec {
-  if (typeof command === 'string') return { args: runRouteShellArgs(command), cwd };
-  if ('shell' in command) return { args: runRouteShellArgs(command.shell), cwd };
-  return { args: command.argv, cwd };
-}
-
-function mergeRuntimeEnv(
-  specEnv: Readonly<Record<string, string>> | undefined,
-  runtimeEnv: Readonly<Record<string, string>>,
-): Record<string, string> | undefined {
-  if (Object.keys(runtimeEnv).length === 0) {
-    return specEnv ? { ...specEnv } : undefined;
-  }
-  return { ...runtimeEnv, ...(specEnv ?? {}) };
-}
-
-const REDACTED_SECRET = '[redacted secret]';
-type OutputStreamName = 'stdout' | 'stderr';
-type OutputRedactor = NonNullable<RuntimeRunOptions['outputRedactor']>;
-
-function replaceAllSecrets(text: string, secrets: readonly string[]): string {
-  let out = text;
-  for (const secret of secrets) out = out.split(secret).join(REDACTED_SECRET);
-  return out;
-}
-
-export function createSecretOutputRedactor(values: readonly string[]): OutputRedactor | undefined {
-  const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
-    (a, b) => b.length - a.length,
-  );
-  if (secrets.length === 0) return undefined;
-
-  const maxSecretLength = Math.max(...secrets.map((secret) => secret.length));
-  const states: Record<OutputStreamName, { carry: string }> = {
-    stdout: { carry: '' },
-    stderr: { carry: '' },
-  };
-
-  return (stream, text, final = false) => {
-    const state = states[stream];
-    const combined = state.carry + text;
-    let safeLength = final ? combined.length : Math.max(0, combined.length - maxSecretLength + 1);
-
-    if (!final && safeLength > 0) {
-      for (const secret of secrets) {
-        let idx = combined.indexOf(secret, Math.max(0, safeLength - secret.length + 1));
-        while (idx !== -1) {
-          const end = idx + secret.length;
-          if (idx < safeLength && end > safeLength) safeLength = idx;
-          idx = combined.indexOf(secret, idx + 1);
-        }
-      }
-    }
-
-    const emit = combined.slice(0, safeLength);
-    state.carry = final ? '' : combined.slice(safeLength);
-    return replaceAllSecrets(emit, secrets);
-  };
-}
-
-function withOutputRedactor(
-  opts: RuntimeRunOptions,
-  redactor: OutputRedactor | undefined,
-): RuntimeRunOptions {
-  if (!redactor) return opts;
-  const existing = opts.outputRedactor;
-  if (!existing) return { ...opts, outputRedactor: redactor };
-  return {
-    ...opts,
-    outputRedactor(stream, text, final) {
-      return redactor(stream, existing(stream, text, final), final);
-    },
-  };
-}
-
-function resolveEditorDriverSpawnSpec(spec: SpawnSpec, driver: DriverPlugin | null): SpawnSpec {
-  if (driver?.name !== 'opencode' || spec.args[0] !== 'opencode') return spec;
-  const binary = resolveOpencodeBinary();
-  if (binary === spec.args[0]) return spec;
-  return { ...spec, args: [binary, ...spec.args.slice(1)] };
-}
-
-const MANAGED_OPENCODE_ISOLATION_ENV_KEYS = [
-  'HOME',
-  'USERPROFILE',
-  'APPDATA',
-  'LOCALAPPDATA',
-  'XDG_CONFIG_HOME',
-  'OPENCODE_CONFIG_DIR',
-  'XDG_DATA_HOME',
-  'XDG_STATE_HOME',
-  'XDG_CACHE_HOME',
-  'OPENCODE_DB',
-  'OPENCODE_CONFIG_CONTENT',
-] as const;
-
-function isManagedOpencodeSpawn(spec: SpawnSpec, driver: DriverPlugin | null): boolean {
-  return driver?.name === 'opencode' && spec.args[0] === 'opencode';
-}
-
-function mergeManagedOpencodeEnv(
-  injectedEnv: Readonly<Record<string, string>> | undefined,
-  managedOpencodeCwd: string,
-  managedDatabase: PreparedManagedOpencodeDatabase,
-): Record<string, string> {
-  const managedEnv = buildOpencodeEnv(managedOpencodeCwd, managedDatabase);
-  const env = { ...managedEnv, ...(injectedEnv ?? {}) };
-  // Pipeline-scoped provider keys and PATH additions may override the managed
-  // base environment, but runtime isolation must remain identical to Chat.
-  for (const key of MANAGED_OPENCODE_ISOLATION_ENV_KEYS) env[key] = managedEnv[key];
-  // `opencode run` starts and owns its local transport. The long-lived Chat
-  // sidecar credentials are not needed here and must not enter task children.
-  delete env.OPENCODE_SERVER_USERNAME;
-  delete env.OPENCODE_SERVER_PASSWORD;
-  return env;
-}
-
-const MANAGED_OPENCODE_ERROR_WINDOW_CHARS = 32_768;
-
-function withManagedOpencodeDiagnostics(spec: SpawnSpec): SpawnSpec {
-  const separator = spec.args.indexOf('--');
-  const commandArgs = spec.args.slice(0, separator === -1 ? spec.args.length : separator);
-  const args: string[] = [];
-  let hasPrintLogs = false;
-  for (let index = 0; index < commandArgs.length; index += 1) {
-    const arg = commandArgs[index];
-    if (arg === '--log-level') {
-      if (commandArgs[index + 1] && !commandArgs[index + 1].startsWith('--')) index += 1;
-      continue;
-    }
-    if (arg.startsWith('--log-level=')) continue;
-    if (arg === '--print-logs') hasPrintLogs = true;
-    args.push(arg);
-  }
-  if (!hasPrintLogs) args.push('--print-logs');
-  args.push('--log-level', 'ERROR');
-  if (separator !== -1) args.push(...spec.args.slice(separator));
-  return { ...spec, args };
-}
-
-function managedOpencodePrimaryStreamError(output: string): string | null {
-  for (const line of output.split(/\r?\n/u)) {
-    if (!line.includes('level=ERROR') || !line.includes('message="stream error"')) continue;
-    if (!/\bmode=primary\b/u.test(line) || !/\bsmall=false\b/u.test(line)) continue;
-    const error = line.match(/error\.error="((?:\\.|[^"])*)"/u)?.[1];
-    return error ?? 'OpenCode primary model stream failed.';
-  }
-  return null;
-}
-
-async function runManagedOpencodeSpawn(
-  base: TagmaRuntime,
-  spec: SpawnSpec,
-  driver: DriverPlugin | null,
-  opts: RuntimeRunOptions,
-): Promise<TaskResult> {
-  const controller = new AbortController();
-  const externalSignal = opts.signal;
-  const forwardExternalAbort = () => controller.abort(externalSignal?.reason);
-  if (externalSignal?.aborted) forwardExternalAbort();
-  else externalSignal?.addEventListener('abort', forwardExternalAbort, { once: true });
-
-  let stderrWindow = '';
-  let fatalError: string | null = null;
-  let result: TaskResult;
-  try {
-    result = await base.runSpawn(spec, driver, {
-      ...opts,
-      signal: controller.signal,
-      onOutputChunk(stream, text) {
-        if (stream === 'stderr' && fatalError === null) {
-          stderrWindow = (stderrWindow + text).slice(-MANAGED_OPENCODE_ERROR_WINDOW_CHARS);
-          fatalError = managedOpencodePrimaryStreamError(stderrWindow);
-          if (fatalError !== null) controller.abort(fatalError);
-        }
-        opts.onOutputChunk?.(stream, text);
-      },
-    });
-  } finally {
-    externalSignal?.removeEventListener('abort', forwardExternalAbort);
-  }
-
-  const detectedError = fatalError;
-  if (detectedError === null || externalSignal?.aborted || result.failureKind !== 'aborted') {
-    return result;
-  }
-  const note = `[editor] OpenCode primary model error: ${detectedError}`;
-  const stderr = result.stderr.includes(detectedError)
-    ? result.stderr
-    : [result.stderr, note].filter(Boolean).join('\n');
-  return {
-    ...result,
-    exitCode: 1,
-    stderr,
-    stderrBytes: new TextEncoder().encode(stderr).byteLength,
-    sessionId: null,
-    normalizedOutput: null,
-    failureKind: 'exit_nonzero',
-  };
-}
-
-export function runtimeWithInjectedEnvFromBase(
-  base: TagmaRuntime,
-  runtimeEnv: Readonly<Record<string, string>>,
-  secretValues: readonly string[] = [],
-  managedOpencodeCwd?: string,
-): TagmaRuntime {
-  const needsCommandWrapper =
-    Object.keys(runtimeEnv).length > 0 || secretValues.some((value) => value.length > 0);
-  return {
-    ...base,
-    runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, opts: RuntimeRunOptions = {}) {
-      const resolvedSpec = resolveEditorDriverSpawnSpec(spec, driver);
-      const injectedEnv = mergeRuntimeEnv(resolvedSpec.env, runtimeEnv);
-      const runOpts = withOutputRedactor(opts, createSecretOutputRedactor(secretValues));
-      if (!managedOpencodeCwd || !isManagedOpencodeSpawn(spec, driver)) {
-        return base.runSpawn({ ...resolvedSpec, env: injectedEnv }, driver, runOpts);
-      }
-      const managedCwd = managedOpencodeCwd;
-      return (async () => {
-        const managedDatabase = await waitForManagedOpencodeDatabase(
-          resolveManagedOpencodeDatabaseConfig(prepareEmbeddedOpencodeRuntime(managedCwd).root),
-          { signal: opts.signal },
-        );
-        const spawnSpec = {
-          ...resolvedSpec,
-          env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, managedDatabase),
-        };
-        let published = false;
-        try {
-          const result = await runManagedOpencodeSpawn(
-            base,
-            withManagedOpencodeDiagnostics(spawnSpec),
-            driver,
-            runOpts,
-          );
-          if (result.exitCode === 0) {
-            markManagedOpencodeDatabaseReady(managedDatabase);
-            published = true;
-          }
-          return result;
-        } finally {
-          if (!published) {
-            releaseManagedOpencodeDatabaseInitialization(managedDatabase);
-          }
-        }
-      })();
-    },
-    runCommand(command: CommandConfig, cwd: string, opts: RuntimeRunOptions = {}) {
-      if (!needsCommandWrapper) return base.runCommand(command, cwd, opts);
-      return base.runSpawn(
-        {
-          ...commandToSpawnSpecForRunRoute(command, cwd),
-          env: mergeRuntimeEnv(undefined, runtimeEnv),
-        },
-        null,
-        withOutputRedactor(opts, createSecretOutputRedactor(secretValues)),
-      );
-    },
-  };
-}
-
-export function runtimeWithInjectedEnv(
-  runtimeEnv: Readonly<Record<string, string>>,
-  secretValues: readonly string[] = [],
-  managedOpencodeCwd?: string,
-): TagmaRuntime {
-  return runtimeWithInjectedEnvFromBase(bunRuntime(), runtimeEnv, secretValues, managedOpencodeCwd);
-}
 function isPromptTaskShape(task: { prompt?: unknown; command?: unknown }): boolean {
   return task.prompt !== undefined && task.command === undefined;
 }
