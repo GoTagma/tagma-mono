@@ -120,9 +120,14 @@
   XML-like prompt envelope.
 - Treat descendant writes as a host-enforced boundary: resolve the effective staged root through
   the complete child-to-root session ancestry and server-authenticated stage metadata. Auto-allow
-  once only raw absolute `edit`/`write`/`external_directory` targets inside that root; reject
-  relative paths, display-only legacy permission titles, live paths, glob or symlink escapes, and
-  unscoped shell capabilities. Bind authorization to the YAML lock that created the stage, and
+  once only when `edit`/`write` execution metadata identifies raw absolute targets inside that
+  root (`metadata.filepath`, or every `metadata.files[*].filePath`/`movePath` for `apply_patch`);
+  `external_directory` remains scoped by its absolute pattern. OpenCode deliberately emits
+  worktree-relative `edit` patterns even for absolute tool targets, so never resolve those patterns
+  against either the staged root or the live workspace. Keep absolute-pattern fallback only for
+  metadata-free older events, and reject malformed target-bearing metadata, display-only legacy
+  permission titles, live paths, glob or symlink escapes, and unscoped shell capabilities. Bind
+  authorization to the YAML lock that created the stage, and
   present that immutable snapshot lock id on the renderer's staged path-authorization request so
   the global YAML-lock middleware cannot reject the request before host path validation runs.
 - Capture YAML/layout/requirements and support-tree hashes from the base copy in server-owned

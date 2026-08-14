@@ -499,6 +499,23 @@ describe('chat YAML staging routes', () => {
     );
     expect(insideRes.body).toEqual({ allowed: true, reason: null });
 
+    const relativePatternRes = makeRes();
+    const stagedTarget = join(stage.agentTagmaDir, 'pipeline', 'pipeline.yaml');
+    getRoute('/api/workspace/chat-yaml-stage/authorize-paths')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          permission: 'edit',
+          patterns: ['.tagma/.chat-staging/stage/agent-workspace/.tagma/pipeline/pipeline.yaml'],
+          metadata: { filepath: stagedTarget },
+        },
+        'chat-lock',
+      ),
+      relativePatternRes,
+    );
+    expect(relativePatternRes.body).toEqual({ allowed: true, reason: null });
+
     const outsideRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/authorize-paths')(
       request(ws, { stageId: stage.id, permission: 'edit', patterns: [sourcePath] }, 'chat-lock'),

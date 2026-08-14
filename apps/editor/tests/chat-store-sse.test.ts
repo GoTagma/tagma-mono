@@ -704,7 +704,11 @@ test('staged descendant permissions inherit the root agent directory and are dec
   const workspace = 'C:/staged-permission-repo';
   const agentRoot =
     'C:/staged-permission-repo/.tagma/.chat-staging/11111111-1111-4111-8111-111111111111/agent-workspace/.tagma';
-  const decisions: Array<{ permission: string; patterns: string[] }> = [];
+  const decisions: Array<{
+    permission: string;
+    patterns: string[];
+    metadata: Record<string, unknown> | null;
+  }> = [];
   const authorizationLockIds: Array<string | null> = [];
   const replies: Array<{ url: string; response: unknown }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -719,18 +723,41 @@ test('staged descendant permissions inherit the root agent directory and are dec
       decisions.push({
         permission: String(body.permission),
         patterns: body.patterns as string[],
+        metadata:
+          typeof body.metadata === 'object' && body.metadata !== null
+            ? (body.metadata as Record<string, unknown>)
+            : null,
       });
       const patterns = body.patterns as string[];
+      const metadata =
+        typeof body.metadata === 'object' && body.metadata !== null
+          ? (body.metadata as Record<string, unknown>)
+          : null;
+      const fileTargets = Array.isArray(metadata?.files)
+        ? metadata.files.flatMap((file) => {
+            if (typeof file !== 'object' || file === null || Array.isArray(file)) return [];
+            const record = file as Record<string, unknown>;
+            return [record.filePath, record.movePath].filter(
+              (path): path is string => typeof path === 'string',
+            );
+          })
+        : [];
+      const targets =
+        String(body.permission) === 'edit' && fileTargets.length > 0
+          ? fileTargets
+          : String(body.permission) === 'edit' && typeof metadata?.filepath === 'string'
+            ? [metadata.filepath]
+            : patterns;
       const allowed =
-        patterns.length > 0 &&
-        patterns.every((path) =>
+        targets.length > 0 &&
+        targets.every((path) =>
           path.split('\\').join('/').toLowerCase().startsWith(agentRoot.toLowerCase()),
         );
       return jsonResponse({
         allowed,
         reason: allowed
           ? null
-          : patterns.length === 0
+          : targets.length === 0
             ? 'The staged write request did not identify a target path.'
             : 'Target is outside this turn staged agent root.',
       });
@@ -776,27 +803,72 @@ test('staged descendant permissions inherit the root agent directory and are dec
       sessions: [makeSession('root'), makeSession('child', 'root')],
     } as never);
 
+    const insideTarget = `${agentRoot}/sample/sample.yaml`;
+
     dispatch({
       type: 'permission.asked',
       properties: {
         id: 'inside-write',
         sessionID: 'child',
         permission: 'edit',
-        patterns: [`${agentRoot.toUpperCase().split('/').join('\\')}\\sample\\sample.yaml`],
-        metadata: {},
-        always: [],
+        patterns: [
+          '.tagma/.chat-staging/11111111-1111-4111-8111-111111111111/agent-workspace/.tagma/sample/sample.yaml',
+        ],
+        metadata: { filepath: insideTarget, diff: 'OpenCode write diff is not forwarded' },
+        always: ['*'],
+        tool: { messageID: 'inside-write-message', callID: 'inside-write-call' },
       },
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(decisions[0]).toEqual({
       permission: 'edit',
-      patterns: [`${agentRoot.toUpperCase().split('/').join('\\')}\\sample\\sample.yaml`],
+      patterns: [
+        '.tagma/.chat-staging/11111111-1111-4111-8111-111111111111/agent-workspace/.tagma/sample/sample.yaml',
+      ],
+      metadata: { filepath: insideTarget },
     });
     expect(authorizationLockIds[0]).toBe('lock-stage-permission');
     expect(replies[0]?.url).toContain('/session/child/');
     expect(replies[0]?.response).toBe('once');
     expect(useChatStore.getState().pendingPermissions).toEqual([]);
+
+    const patchTarget = `${agentRoot}/fact-checker/pipeline.yaml`;
+    const patchMoveTarget = `${agentRoot}/fact-checker/renamed-pipeline.yaml`;
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'inside-patch',
+        sessionID: 'child',
+        permission: 'edit',
+        patterns: ['   '],
+        metadata: {
+          filepath: 'fact-checker/pipeline.yaml',
+          diff: 'must not cross the host authorization boundary',
+          files: [
+            { filePath: insideTarget, patch: 'must not be forwarded' },
+            {
+              filePath: patchTarget,
+              movePath: patchMoveTarget,
+              patch: 'must not be forwarded',
+            },
+          ],
+        },
+        always: ['*'],
+        tool: { messageID: 'inside-patch-message', callID: 'inside-patch-call' },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(decisions[1]).toEqual({
+      permission: 'edit',
+      patterns: [],
+      metadata: {
+        filepath: 'fact-checker/pipeline.yaml',
+        files: [{ filePath: insideTarget }, { filePath: patchTarget, movePath: patchMoveTarget }],
+      },
+    });
+    expect(replies[1]?.response).toBe('once');
 
     dispatch({
       type: 'permission.asked',
@@ -811,7 +883,7 @@ test('staged descendant permissions inherit the root agent directory and are dec
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(replies[1]?.response).toBe('reject');
+    expect(replies[2]?.response).toBe('reject');
     expect(useChatStore.getState().pendingPermissions).toEqual([]);
     expect(useChatStore.getState().sendError).toContain('Staged write rejected');
     expect(useChatStore.getState().sendError).toContain('outside this turn');
@@ -830,8 +902,8 @@ test('staged descendant permissions inherit the root agent directory and are dec
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(decisions[2]).toEqual({ permission: 'edit', patterns: [] });
-    expect(replies[2]?.response).toBe('reject');
+    expect(decisions[3]).toEqual({ permission: 'edit', patterns: [], metadata: null });
+    expect(replies[3]?.response).toBe('reject');
     expect(useChatStore.getState().sendError).toContain('did not identify a target path');
   } finally {
     setClientWorkspace(null);

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 import { createChatYamlStage, discardChatYamlStage } from '../server/chat-yaml-staging';
 import { authorizeChatYamlStagePaths } from '../server/chat-yaml-write-policy';
@@ -39,6 +39,101 @@ describe('staged child write policy', () => {
       expect(
         authorizeChatYamlStagePaths(ws, { stageId, permission: 'edit', patterns: [alias] }),
       ).toEqual({ allowed: true, reason: null });
+    } finally {
+      discardChatYamlStage(ws, stageId);
+    }
+  });
+
+  test('uses OpenCode absolute execution metadata when edit permission patterns are worktree-relative', () => {
+    const { root, ws, stageId, agentRoot } = setupStage();
+    const target = join(agentRoot, 'fact-checker', 'fact-checker.manifest.json');
+    try {
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'edit',
+          patterns: [relative(root, target)],
+          metadata: { filepath: target },
+        }),
+      ).toEqual({ allowed: true, reason: null });
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'edit',
+          patterns: [],
+          metadata: { filepath: target },
+        }),
+      ).toEqual({ allowed: true, reason: null });
+    } finally {
+      discardChatYamlStage(ws, stageId);
+    }
+  });
+
+  test('validates every absolute OpenCode apply_patch source and move target', () => {
+    const { root, ws, stageId, agentRoot } = setupStage();
+    const firstTarget = join(agentRoot, 'fact-checker', 'pipeline.yaml');
+    const secondTarget = join(agentRoot, 'fact-checker', 'layout.json');
+    const moveTarget = join(agentRoot, 'fact-checker', 'renamed-layout.json');
+    try {
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'edit',
+          patterns: [relative(root, firstTarget), relative(root, secondTarget)],
+          metadata: {
+            filepath: `${relative(root, firstTarget)}, ${relative(root, secondTarget)}`,
+            files: [{ filePath: firstTarget }, { filePath: secondTarget, movePath: moveTarget }],
+          },
+        }),
+      ).toEqual({ allowed: true, reason: null });
+
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'edit',
+          patterns: [relative(root, secondTarget)],
+          metadata: {
+            files: [{ filePath: secondTarget, movePath: join(root, '.tagma', 'live.yaml') }],
+          },
+        }),
+      ).toEqual({ allowed: false, reason: expect.stringContaining('outside this turn') });
+
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'edit',
+          patterns: [relative(root, firstTarget)],
+          metadata: {
+            filepath: join(root, '.tagma', 'live.yaml'),
+            files: [{ filePath: firstTarget }],
+          },
+        }),
+      ).toEqual({ allowed: false, reason: expect.stringContaining('outside this turn') });
+    } finally {
+      discardChatYamlStage(ws, stageId);
+    }
+  });
+
+  test('fails closed on malformed execution metadata instead of using safe fallback patterns', () => {
+    const { ws, stageId, agentRoot } = setupStage();
+    const safeTarget = join(agentRoot, 'sample', 'sample.yaml');
+    try {
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'edit',
+          patterns: [safeTarget],
+          metadata: { filepath: 'sample/sample.yaml' },
+        }),
+      ).toEqual({ allowed: false, reason: expect.stringContaining('absolute execution target') });
+      expect(
+        authorizeChatYamlStagePaths(ws, {
+          stageId,
+          permission: 'edit',
+          patterns: [safeTarget],
+          metadata: { files: 'not-an-array' },
+        }),
+      ).toEqual({ allowed: false, reason: expect.stringContaining('execution metadata') });
     } finally {
       discardChatYamlStage(ws, stageId);
     }

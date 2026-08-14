@@ -221,6 +221,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
       stageId?: unknown;
       permission?: unknown;
       patterns?: unknown;
+      metadata?: unknown;
     };
     if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
       return res.status(400).json({ error: 'stageId is required.' });
@@ -238,6 +239,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
           stageId: body.stageId.trim(),
           permission: body.permission.trim(),
           patterns: body.patterns as string[],
+          metadata: body.metadata,
         }),
       );
     } catch (err) {

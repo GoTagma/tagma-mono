@@ -1935,6 +1935,29 @@ export type ServerStateEvent =
     }
   | { type: 'state_sync'; newState: ServerState; seq: number };
 
+function projectChatYamlStageExecutionMetadata(
+  metadata: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!metadata) return null;
+  const hasOwn = (record: Record<string, unknown>, key: string) =>
+    Object.prototype.hasOwnProperty.call(record, key);
+  const projected: Record<string, unknown> = {};
+  if (hasOwn(metadata, 'filepath')) projected.filepath = metadata.filepath;
+  if (hasOwn(metadata, 'files')) {
+    projected.files = Array.isArray(metadata.files)
+      ? metadata.files.map((file) => {
+          if (typeof file !== 'object' || file === null || Array.isArray(file)) return file;
+          const record = file as Record<string, unknown>;
+          const projectedFile: Record<string, unknown> = {};
+          if (hasOwn(record, 'filePath')) projectedFile.filePath = record.filePath;
+          if (hasOwn(record, 'movePath')) projectedFile.movePath = record.movePath;
+          return projectedFile;
+        })
+      : metadata.files;
+  }
+  return projected;
+}
+
 export const api = {
   getState: () => request<ServerState>('/state'),
 
@@ -2053,13 +2076,19 @@ export const api = {
     stageId: string,
     permission: string,
     patterns: string[],
+    metadata: Record<string, unknown> | null,
     workspaceKeyOverride?: string | null,
   ) =>
     request<{ allowed: boolean; reason: string | null }>(
       '/workspace/chat-yaml-stage/authorize-paths',
       {
         method: 'POST',
-        body: jsonBody({ stageId, permission, patterns }),
+        body: jsonBody({
+          stageId,
+          permission,
+          patterns,
+          metadata: projectChatYamlStageExecutionMetadata(metadata),
+        }),
       },
       workspaceKeyOverride,
     ),

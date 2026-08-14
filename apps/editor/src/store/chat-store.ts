@@ -3271,6 +3271,7 @@ function routeStagedPermissionDecision(
     sessionID: string;
     permission: string;
     patterns: string[];
+    metadata: Record<string, unknown> | null;
   },
   get: () => ChatStore,
   set: ChatSet,
@@ -3289,6 +3290,7 @@ function routeStagedPermissionDecision(
           snapshot.staging.id,
           permission.permission,
           permission.patterns,
+          permission.metadata,
           snapshot.workDir,
         ),
       );
@@ -5080,6 +5082,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
             sessionID: perm.sessionID,
             permission: perm.permission,
             patterns,
+            metadata: perm.metadata,
           },
           get,
           set,
@@ -5111,6 +5114,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
             // tool target. Never treat that display text as an authorized
             // staged filesystem path.
             patterns: [],
+            metadata: null,
           },
           get,
           set,
