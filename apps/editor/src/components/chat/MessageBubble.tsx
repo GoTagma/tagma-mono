@@ -118,6 +118,14 @@ export const MessageBubble = memo(function MessageBubble({
     ? ([...renderableParts].reverse().find((p) => p.type === 'text')?.id ?? null)
     : null;
 
+  // The streaming caret rides the tail of the live text part — the same last-
+  // text-part lookup as the fused results, but tracked independently so a
+  // result-bearing finished turn never shows it.
+  const streamingTextPartId =
+    role === 'assistant' && streaming
+      ? ([...renderableParts].reverse().find((p) => p.type === 'text')?.id ?? null)
+      : null;
+
   const hasActivity = role === 'assistant' && (entry.activity?.length ?? 0) > 0;
   if (
     !shouldRenderMessageBubble({ info: entry.info, parts: renderableParts }) &&
@@ -140,20 +148,20 @@ export const MessageBubble = memo(function MessageBubble({
       : '';
 
   return (
-    <div className={`flex flex-col gap-1 ${role === 'user' ? 'items-end' : 'items-start'}`}>
-      <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60 flex items-center gap-2">
-        <span>{role}</span>
-      </div>
+    // No per-message role label: right-aligned accent rail says "user", open
+    // left-aligned prose says "assistant". State labels that carry meaning
+    // (queued position, withdraw affordance) stay on their own bubbles.
+    <div className={`flex flex-col ${role === 'user' ? 'items-end' : 'items-start'}`}>
       <div
-        className={`max-w-[90%] min-w-0 flex flex-col gap-1.5 ${
-          role === 'user' ? 'items-end' : 'items-start'
-        }`}
+        className={`${
+          role === 'user' ? 'max-w-[85%] items-end' : 'max-w-full items-start'
+        } min-w-0 flex flex-col gap-1.5`}
       >
         {attachmentReferences.length > 0 && (
           <AttachmentReferences references={attachmentReferences} />
         )}
         {renderableParts.map((part) =>
-          // Wrap each part so flex sizing propagates the bubble's 90% cap.
+          // Wrap each part so flex sizing propagates the bubble's width cap.
           // Default flex `min-width: auto` lets a long URL / hash / path
           // inside a part blow the bubble out; `min-w-0` lets the wrapper
           // shrink below its content's intrinsic width, and `max-w-full`
@@ -167,6 +175,7 @@ export const MessageBubble = memo(function MessageBubble({
                 part={part}
                 role={role}
                 streaming={streaming}
+                showStreamingCursor={part.id === streamingTextPartId}
                 cardFooter={
                   fusedResults && part.id === lastTextPartId ? (
                     <SessionYamlResultFooter results={fusedResults} />
@@ -376,11 +385,13 @@ function PartRenderer({
   part,
   role,
   streaming = false,
+  showStreamingCursor = false,
   cardFooter = null,
 }: {
   part: Part;
   role: 'user' | 'assistant';
   streaming?: boolean;
+  showStreamingCursor?: boolean;
   cardFooter?: React.ReactNode;
 }) {
   switch (part.type) {
@@ -393,18 +404,20 @@ function PartRenderer({
       // code fences, lists) so its structured output renders as intended.
       if (role === 'user') {
         return (
-          <div className="select-text px-3 py-2 text-[11px] font-mono whitespace-pre-wrap break-words chat-user-bubble text-tagma-text">
+          <div className="select-text px-3 py-2 text-[12px] font-sans whitespace-pre-wrap break-words chat-user-bubble text-tagma-text">
             {text}
           </div>
         );
       }
-      // The assistant card is a shell: markdown body first, then an optional
-      // fused footer (anchored pipeline results) below the card's own
-      // divider, so the outcome reads as part of the same bubble.
+      // The assistant block is box-free prose on the canvas: markdown body
+      // first, then an optional fused footer (anchored pipeline results)
+      // below, so the outcome reads as part of the same message. While the
+      // turn streams, a caret marks the part still being written.
       return (
         <div className="chat-assistant-bubble text-tagma-text">
-          <div className="chat-markdown px-3 py-2 text-[12px]">
+          <div className="chat-markdown py-1 text-[13px]">
             <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>
+            {showStreamingCursor && <span className="chat-stream-cursor" aria-hidden="true" />}
           </div>
           {cardFooter}
         </div>
@@ -515,13 +528,11 @@ function ReasoningPartView({ text, streaming }: { text: string; streaming: boole
   );
 }
 
-// Tools whose body is the primary signal of the call (vs. a side-effect log)
-// — for these the user almost always wants to see the body without an extra
-// click. Todo lists in particular: the *content* of the list is the message,
-// the tool wrapper is just bookkeeping. Keep the <details> wrapper so the
-// user can still collapse it manually if they want.
-const DEFAULT_OPEN_TOOLS = new Set(['todowrite', 'todoread', 'skill']);
-
+// Every tool call renders collapsed by default: the summary line (status
+// icon, tool name, title, status) is the always-visible signal, and the body
+// — input JSON, output, error — opens on demand. Even high-signal bodies
+// (todo lists, skill loads) stay folded: the transcript should read as a
+// clean conversation with the machinery one click away, not spread across it.
 function ToolPartView({ part }: { part: ToolPart }) {
   const state: ToolState = part.state;
   const onExpandIntoView = useExpandIntoView();
@@ -538,16 +549,11 @@ function ToolPartView({ part }: { part: ToolPart }) {
 
   const title = toolTitle(part, state);
 
-  const defaultOpen = DEFAULT_OPEN_TOOLS.has(part.tool.toLowerCase());
-
   return (
-    <details
-      open={defaultOpen || undefined}
-      className="text-[10px] font-mono w-full border border-tagma-border/50 bg-tagma-surface"
-    >
+    <details className="text-[10px] font-mono w-full border border-tagma-border/40 bg-tagma-surface">
       <summary
         onClick={onExpandIntoView}
-        className="cursor-pointer flex items-center gap-1.5 px-2 py-1 select-none hover:bg-tagma-border/20"
+        className="cursor-pointer flex items-center gap-1.5 px-2 py-1.5 select-none hover:bg-tagma-border/20"
       >
         {icon}
         <span className="text-tagma-muted/80">{part.tool}</span>

@@ -13,6 +13,7 @@ import {
   Download,
   FileText,
   Brain,
+  Terminal,
 } from 'lucide-react';
 import {
   isChatModelSelectionBlocked,
@@ -182,11 +183,15 @@ export function ConversationFlowBarView({
   const terminalStatus = conversationFlowTerminalStatus(steps, activeStep);
 
   return (
-    <section className="shrink-0 border-b border-tagma-border bg-tagma-bg px-3 py-2">
+    // One slim status strip: a live stage readout over a hairline progress
+    // track. No visible section label — the panel's chrome stays silent while
+    // the turn's own state carries the line. ("Conversation flow" remains as
+    // the accessible name; tests assert the string.)
+    <section
+      aria-label="Conversation flow"
+      className="shrink-0 border-b border-tagma-border/60 bg-tagma-bg px-3 py-1.5"
+    >
       <div className="flex items-center gap-2 text-[10px] font-mono text-tagma-muted min-w-0">
-        <span className="shrink-0 text-[9px] uppercase tracking-widest text-tagma-muted-dim">
-          Conversation flow
-        </span>
         <span
           className={`h-1 w-1 shrink-0 ${
             terminalStatus === 'error'
@@ -210,7 +215,7 @@ export function ConversationFlowBarView({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(percent)}
-        className="mt-1.5 h-1 w-full bg-tagma-border/30"
+        className="mt-1 h-[2px] w-full bg-tagma-border/25"
       >
         <div
           className={`chat-flow-fill h-full transition-[width] duration-slow ease-smooth ${
@@ -1184,12 +1189,18 @@ function ChatMessages() {
   return (
     <>
       <div ref={scrollRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto">
-        <div ref={contentRef} className="min-h-full px-3 py-3 flex flex-col gap-3">
+        <div ref={contentRef} className="min-h-full px-4 py-4 flex flex-col gap-5">
           {messages.length === 0 && !sending && !showPending && (
-            <div className="text-[11px] font-mono text-tagma-muted/70 mt-8 text-center">
-              Ask opencode anything about YAML pipelines.
-              <br />
-              House rules and your current file are loaded automatically.
+            <div className="mt-14 flex flex-col items-center gap-2.5 px-6 text-center animate-fade-in">
+              <div className="flex h-9 w-9 items-center justify-center border border-tagma-accent/25 bg-tagma-accent/10 shadow-glow-accent">
+                <Terminal size={15} className="text-tagma-accent" />
+              </div>
+              <div className="text-[13px] font-sans text-tagma-text">
+                Ask opencode anything about YAML pipelines.
+              </div>
+              <div className="text-[10px] font-mono text-tagma-muted/70">
+                House rules and your current file are loaded automatically.
+              </div>
             </div>
           )}
           {messages.map((entry) => {
@@ -1638,13 +1649,10 @@ function YamlActionBubble() {
  */
 export function PendingUserBubble({ text }: { text: string }) {
   return (
-    <div className="flex flex-col gap-1 items-end">
-      <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60 flex items-center gap-2">
-        <span>user</span>
-      </div>
-      <div className="max-w-[90%] min-w-0 flex flex-col gap-1.5 items-end">
+    <div className="flex flex-col items-end">
+      <div className="max-w-[85%] min-w-0 flex flex-col gap-1.5 items-end">
         <div className="min-w-0 max-w-full">
-          <div className="select-text px-3 py-2 text-[11px] font-mono whitespace-pre-wrap break-words chat-user-bubble text-tagma-text opacity-80 animate-pulse">
+          <div className="select-text px-3 py-2 text-[12px] font-sans whitespace-pre-wrap break-words chat-user-bubble text-tagma-text opacity-80 animate-pulse">
             {text}
           </div>
         </div>
@@ -1697,9 +1705,9 @@ export function QueuedUserBubble({
           <X size={10} />
         </button>
       </div>
-      <div className="max-w-[90%] min-w-0 flex flex-col gap-1.5 items-end">
+      <div className="max-w-[85%] min-w-0 flex flex-col gap-1.5 items-end">
         <div className="min-w-0 max-w-full">
-          <div className="select-text px-3 py-2 text-[11px] font-mono whitespace-pre-wrap break-words chat-user-bubble-queued text-tagma-muted">
+          <div className="select-text px-3 py-2 text-[12px] font-sans whitespace-pre-wrap break-words chat-user-bubble-queued text-tagma-muted">
             {text}
           </div>
         </div>
@@ -1729,12 +1737,11 @@ function PlaceholderAssistantBubble({
   onToggleExpanded: () => void;
 }) {
   const pendingActivity = useChatStore((s) => s.pendingActivity);
+  // Box-free like every assistant message: the activity rail (its own muted
+  // spine) is the only visible structure while the first token is pending.
   return (
-    <div className="flex flex-col gap-1 items-start">
-      <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60 flex items-center gap-2">
-        <span>assistant</span>
-      </div>
-      <div className="max-w-[90%] min-w-0 px-2.5 py-1.5 border border-tagma-border bg-tagma-bg text-tagma-muted">
+    <div className="flex flex-col items-start">
+      <div className="max-w-full min-w-0 py-1">
         <TurnActivityPanel
           activity={pendingActivity}
           isCurrentTurn={true}

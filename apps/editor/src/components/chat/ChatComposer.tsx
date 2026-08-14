@@ -329,7 +329,7 @@ export function ChatComposer() {
       : 'Send';
 
   return (
-    <div className="border-t border-tagma-border px-3 py-2 shrink-0 flex flex-col gap-2">
+    <div className="border-t border-tagma-border px-3 py-2.5 shrink-0 flex flex-col gap-2">
       <ReconciliationFailureBannerView
         failure={finishedTurn?.reconcileFailure ?? null}
         busy={discardingTurnId === finishedTurn?.id}
@@ -347,7 +347,7 @@ export function ChatComposer() {
       />
       <AttachmentChips />
       <ChatContextWindowIndicator />
-      <div className="chat-composer-shell flex min-w-0 items-end gap-1 px-1.5 py-1">
+      <div className="chat-composer-shell flex min-w-0 items-end gap-1 px-2 py-1.5">
         <textarea
           ref={textareaRef}
           value={text}
@@ -366,13 +366,17 @@ export function ChatComposer() {
           // textarea stays borderless inside it (`.chat-composer-shell
           // textarea:focus` in index.css neutralizes the global input focus
           // ring, which would otherwise draw a second box inside the card).
-          className="min-w-0 flex-1 resize-none overflow-y-auto bg-transparent border-0 px-1.5 py-1 text-[11px] font-mono text-tagma-text placeholder:text-tagma-muted-dim focus:outline-none disabled:cursor-not-allowed"
+          className="min-w-0 flex-1 resize-none overflow-y-auto bg-transparent border-0 px-1 py-0.5 text-[12px] font-sans text-tagma-text placeholder:text-tagma-muted-dim focus:outline-none disabled:cursor-not-allowed"
         />
         <button
           type="button"
           onClick={submit}
           disabled={!canSend}
-          className="shrink-0 p-1.5 text-tagma-muted transition-[color,background-color,transform,opacity] duration-fast ease-smooth hover:text-tagma-accent hover:bg-tagma-accent/10 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:bg-transparent disabled:active:translate-y-0"
+          className={`shrink-0 p-1.5 transition-[color,background-color,box-shadow,transform,opacity] duration-fast ease-smooth active:translate-y-px disabled:active:translate-y-0 ${
+            canSend
+              ? 'bg-tagma-accent text-white hover:bg-tagma-accent/85 hover:shadow-glow-accent'
+              : 'text-tagma-muted opacity-40 cursor-not-allowed'
+          }`}
           title={sendLabel}
           aria-label={sendLabel}
         >

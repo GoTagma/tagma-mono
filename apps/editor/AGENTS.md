@@ -60,14 +60,22 @@
 - The conversation-flow fill's glow requires the track to stay free of `overflow-hidden` —
   clipping the track cuts the `box-shadow` bloom off. The live sheen is a
   `.chat-flow-fill.is-active::after` background-position sweep, also in `src/index.css`.
-- Assistant text bubbles use the shared `.chat-assistant-bubble` card class and permission
-  prompts `.chat-permission-card` (both in `src/index.css`). `.chat-markdown` internals are tuned
-  for the card's surface background: inline code sits on `tagma-elevated`, code fences on a
-  recessed `tagma-bg` well.
+- Assistant text renders box-free directly on the conversation canvas: `.chat-assistant-bubble`
+  (in `src/index.css`) is deliberately just the shared semantic hook, with no border/background/
+  shadow — the accent-railed user bubble is the only card in the transcript. `.chat-markdown`
+  internals are tuned for the canvas background: inline code sits on `tagma-elevated`, code
+  fences on a raised `tagma-surface` chip. Permission prompts keep their own
+  `.chat-permission-card` frame. There are no per-message role labels; only state labels that
+  carry meaning (e.g. `queued #N`) stay.
 - The composer is a single `.chat-composer-shell` card: the shell owns the border and the
   `:focus-within` accent ring while the inner textarea stays borderless and opts out of the
   global `input:focus` ring. Keep the textarea's `min-w-0 flex-1` and the buttons'
   `shrink-0 p-1.5` classes — frontend-layout-resilience tests assert them verbatim.
+- Every tool-call `<details>` renders collapsed by default (no per-tool auto-open set); the
+  summary line is the always-visible signal. Reasoning still auto-opens only while its turn is
+  streaming, then collapses. The streaming caret is `.chat-stream-cursor` in `src/index.css`,
+  appended after the live assistant text part. The conversation-flow bar's visible section label
+  lives in the section's `aria-label="Conversation flow"` — tests assert the string in markup.
 - Anchored pipeline results fuse into the owning assistant bubble: ChatMessages passes
   `yamlResults` to MessageBubble, which injects `SessionYamlResultFooter` as the `cardFooter` of
   the bubble's last text part. Both result components live in `SessionYamlResult.tsx`;

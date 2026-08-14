@@ -332,9 +332,9 @@ html.light ::-webkit-scrollbar-thumb:active {
    margin. Everything runs through the theme vars, so the light palette lands
    without an override. */
 .chat-user-bubble {
-  border: 1px solid rgb(var(--tagma-accent) / 0.35);
+  border: 1px solid rgb(var(--tagma-accent) / 0.3);
   background:
-    linear-gradient(160deg, rgb(var(--tagma-accent) / 0.13), rgb(var(--tagma-accent) / 0.05) 60%),
+    linear-gradient(160deg, rgb(var(--tagma-accent) / 0.1), rgb(var(--tagma-accent) / 0.035) 60%),
     rgb(var(--tagma-surface));
   box-shadow:
     inset -2px 0 0 rgb(var(--tagma-accent) / 0.6),
@@ -352,16 +352,16 @@ html.light ::-webkit-scrollbar-thumb:active {
   box-shadow: inset -2px 0 0 rgb(var(--tagma-muted) / 0.3);
 }
 
-/* Assistant markdown bubble — the quiet counterpart of .chat-user-bubble:
-   the same elevated-surface language (opaque surface, hairline border,
-   raised shadow) with no accent and no spine, so the conversation reads as
-   neutral assistant cards answering accent-railed user cards. */
+/* Assistant markdown — intentionally box-free. Modern chat layouts let the
+   model's prose sit directly on the conversation canvas; the accent-railed
+   user bubble is the only card in the transcript, which makes the user's own
+   actions the single anchored surface and keeps long answers free of nested
+   wireframes. The class stays as the shared semantic hook (persisted bubble,
+   markdown internals, fused pipeline-result footer) so future surface
+   restyling still lands in exactly one place. Structured detail below the
+   prose (tool calls, reasoning, activity) keeps its own collapsible frames. */
 .chat-assistant-bubble {
-  border: 1px solid rgb(var(--tagma-border) / 0.5);
-  background: rgb(var(--tagma-surface));
-  box-shadow:
-    0 1px 2px rgb(var(--tagma-shadow) / var(--tagma-shadow-contact)),
-    0 2px 6px -2px rgb(var(--tagma-shadow) / var(--tagma-shadow-ambient));
+  position: relative;
 }
 
 /* Permission prompt card — the conversation's one blocking action surface,
@@ -390,8 +390,10 @@ html.light ::-webkit-scrollbar-thumb:active {
     box-shadow var(--tagma-dur-base) var(--tagma-ease);
 }
 .chat-composer-shell:focus-within {
-  border-color: rgb(var(--tagma-accent));
-  box-shadow: 0 0 0 1px rgb(var(--tagma-accent) / 0.2);
+  border-color: rgb(var(--tagma-accent) / 0.75);
+  box-shadow:
+    0 0 0 1px rgb(var(--tagma-accent) / 0.2),
+    0 0 20px -6px rgb(var(--tagma-accent) / 0.45);
 }
 .chat-composer-shell:has(textarea:disabled) {
   opacity: 0.55;
@@ -400,6 +402,26 @@ html.light ::-webkit-scrollbar-thumb:active {
   outline: none;
   border-color: transparent;
   box-shadow: none;
+}
+
+/* Streaming caret appended after the live assistant text part. A 2px accent
+   bar with a soft bloom — the terminal-caret idiom — marks exactly where the
+   model is still writing. The steps() blink reads as a cursor, not a spinner;
+   the global prefers-reduced-motion block stills it. */
+.chat-stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  background: rgb(var(--tagma-accent));
+  box-shadow: 0 0 8px rgb(var(--tagma-accent) / 0.55);
+  animation: chat-cursor-blink 1s steps(2, jump-none) infinite;
+}
+@keyframes chat-cursor-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 .track-row-even {
@@ -765,12 +787,12 @@ input[type='checkbox'] {
   padding: 0 0.25em;
   word-break: break-all;
 }
-/* Code fences sit one step *below* the assistant card's surface — a recessed
-   well instead of the old surface-on-canvas second box, so the card stops
-   reading as nested wireframes. */
+/* Code fences sit one step *above* the conversation canvas — assistant prose
+   is box-free now, so the old recessed tagma-bg well would vanish into the
+   canvas. A raised surface chip with a quiet border keeps the block framed. */
 .chat-markdown pre {
-  background: rgb(var(--tagma-bg));
-  border: 1px solid rgb(var(--tagma-border) / 0.5);
+  background: rgb(var(--tagma-surface));
+  border: 1px solid rgb(var(--tagma-border) / 0.6);
   padding: 0.5em 0.65em;
   margin: 0.35em 0;
   max-width: 100%;

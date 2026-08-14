@@ -191,7 +191,10 @@ export function SessionYamlResultFooter({
   results: readonly ChatYamlSessionResult[];
 }) {
   return (
-    <div className="border-t border-tagma-border/40 bg-tagma-bg/30 px-3 py-2 text-[10px] font-mono text-tagma-muted flex flex-col gap-1.5">
+    // Self-framed strip: the assistant message itself is box-free, so the
+    // fused footer carries its own quiet frame instead of the old in-card
+    // divider. It still renders inside the owning message's flow.
+    <div className="mt-1.5 border border-tagma-border/50 bg-tagma-surface px-3 py-2 text-[10px] font-mono text-tagma-muted flex flex-col gap-1.5">
       <div className="text-[8px] uppercase tracking-widest text-tagma-muted-dim">
         pipeline result
       </div>
