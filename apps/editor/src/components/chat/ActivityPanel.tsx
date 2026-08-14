@@ -145,12 +145,17 @@ function TurnActivityPanelView({
     } satisfies ActivitySummary);
 
   return (
+    // The live turn's panel wears the breathing accent rail (`.chat-live-rail`)
+    // so the "model is working" line reads as active at a glance; sealed turns
+    // fall back to the quiet muted rail.
     <details
       open={expanded}
       onToggle={(e) => {
         if (e.currentTarget.open !== expanded) onToggle();
       }}
-      className="w-full max-w-full min-w-0 text-[10px] font-mono border-l-2 border-tagma-muted/30 pl-2"
+      className={`w-full max-w-full min-w-0 text-[10px] font-mono border-l-2 pl-2 ${
+        isCurrentTurn ? 'chat-live-rail' : 'border-tagma-muted/30'
+      }`}
     >
       <summary
         className={`cursor-pointer flex items-center gap-1.5 min-w-0 select-none ${visibleSummary.tone}`}

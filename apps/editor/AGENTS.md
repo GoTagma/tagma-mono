@@ -76,6 +76,11 @@
   streaming, then collapses. The streaming caret is `.chat-stream-cursor` in `src/index.css`,
   appended after the live assistant text part. The conversation-flow bar's visible section label
   lives in the section's `aria-label="Conversation flow"` — tests assert the string in markup.
+- "This is happening now" is one shared treatment: `.chat-live-rail` (accent breathing left
+  spine, in `src/index.css`) applied to the reasoning block and the turn-activity panel while
+  their turn is open, plus accent-toned running states on tool-call summary rows. Collapsible
+  detail blocks use `.chat-disclosure` + `.chat-disclosure-chevron` — the chevron rotates via
+  the `[open]` attribute in CSS, so uncontrolled `<details>` need no per-component state.
 - Anchored pipeline results fuse into the owning assistant bubble: ChatMessages passes
   `yamlResults` to MessageBubble, which injects `SessionYamlResultFooter` as the `cardFooter` of
   the bubble's last text part. Both result components live in `SessionYamlResult.tsx`;

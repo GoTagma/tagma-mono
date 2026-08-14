@@ -424,6 +424,42 @@ html.light ::-webkit-scrollbar-thumb:active {
   }
 }
 
+/* Live rail — the shared "this is happening now" treatment for the reasoning
+   block and the turn-activity panel: the left spine warms to the accent and
+   breathes slowly while the turn is open, then falls back to a quiet muted
+   rail. Motion stays on the spine only; the text itself never animates. The
+   global prefers-reduced-motion block stills the breathe. */
+.chat-live-rail {
+  border-color: rgb(var(--tagma-accent) / 0.45);
+  animation: chat-live-rail-breathe 2.6s ease-in-out infinite;
+}
+@keyframes chat-live-rail-breathe {
+  0%,
+  100% {
+    border-color: rgb(var(--tagma-accent) / 0.45);
+  }
+  50% {
+    border-color: rgb(var(--tagma-accent) / 0.16);
+  }
+}
+
+/* Shared disclosure affordance for the chat's collapsible detail blocks
+   (reasoning, tool calls). The native marker is hidden in favor of a
+   trailing chevron that rotates via the [open] attribute, so uncontrolled
+   <details> elements need no per-component state. */
+.chat-disclosure > summary {
+  list-style: none;
+}
+.chat-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.chat-disclosure > summary .chat-disclosure-chevron {
+  transition: transform var(--tagma-dur-fast) var(--tagma-ease);
+}
+.chat-disclosure[open] > summary .chat-disclosure-chevron {
+  transform: rotate(90deg);
+}
+
 .track-row-even {
   background: transparent;
 }

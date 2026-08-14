@@ -4,6 +4,7 @@ import {
   Brain,
   Check,
   CheckCircle2,
+  ChevronRight,
   Copy,
   Loader2,
   Paperclip,
@@ -502,13 +503,19 @@ function ReasoningPartView({ text, streaming }: { text: string; streaming: boole
   useEffect(() => {
     if (streaming && !userToggled.current) setOpen(true);
   }, [streaming]);
+  // While the turn streams, the rail warms to the accent and breathes (see
+  // `.chat-live-rail`), the brain pulses, and the body reads as an italic
+  // internal monologue. Once sealed, everything falls back to a quiet muted
+  // rail behind the disclosure chevron.
   return (
     <details
       open={open}
       onToggle={(e) => {
         setOpen(e.currentTarget.open);
       }}
-      className="w-full text-[10px] font-mono text-tagma-muted/80 border-l-2 border-tagma-muted/30 pl-2"
+      className={`chat-disclosure w-full text-[10px] font-mono border-l-2 pl-2 ${
+        streaming ? 'chat-live-rail text-tagma-muted' : 'border-tagma-muted/30 text-tagma-muted/80'
+      }`}
     >
       <summary
         onClick={(e) => {
@@ -517,13 +524,19 @@ function ReasoningPartView({ text, streaming }: { text: string; streaming: boole
           }
           onExpandIntoView(e);
         }}
-        className="cursor-pointer flex items-center gap-1 select-none"
+        className="cursor-pointer flex items-center gap-1.5 select-none"
       >
-        <Brain size={10} />
-        <span>reasoning</span>
-        {streaming && <Loader2 size={10} className="animate-spin text-tagma-muted/60" />}
+        <Brain size={10} className={streaming ? 'text-tagma-accent/90 animate-pulse' : undefined} />
+        <span className={streaming ? 'text-tagma-text/80' : undefined}>reasoning</span>
+        {streaming && <Loader2 size={10} className="animate-spin text-tagma-accent/70" />}
+        <ChevronRight
+          size={10}
+          className="chat-disclosure-chevron ml-auto shrink-0 text-tagma-muted/50"
+        />
       </summary>
-      <div className="select-text mt-1 whitespace-pre-wrap break-words opacity-80">{text}</div>
+      <div className="select-text mt-1 whitespace-pre-wrap break-words italic text-tagma-muted/75">
+        {text}
+      </div>
     </details>
   );
 }
@@ -536,29 +549,49 @@ function ReasoningPartView({ text, streaming }: { text: string; streaming: boole
 function ToolPartView({ part }: { part: ToolPart }) {
   const state: ToolState = part.state;
   const onExpandIntoView = useExpandIntoView();
+  const running = state.status === 'running';
+  // The summary row carries the whole state story: a running call warms to
+  // the accent (soft row wash, accent spinner, pulsing status), a completed
+  // call settles to ready-green, an error reads red — all collapsed to one
+  // quiet line until the user opens the body.
   const icon =
     state.status === 'completed' ? (
       <CheckCircle2 size={10} className="text-tagma-ready" />
     ) : state.status === 'error' ? (
       <XCircle size={10} className="text-tagma-error" />
-    ) : state.status === 'running' ? (
-      <Loader2 size={10} className="text-tagma-muted animate-spin" />
+    ) : running ? (
+      <Loader2 size={10} className="text-tagma-accent/90 animate-spin" />
     ) : (
       <Wrench size={10} className="text-tagma-muted" />
     );
+  const statusTone =
+    state.status === 'completed'
+      ? 'text-tagma-ready/80'
+      : state.status === 'error'
+        ? 'text-tagma-error/90'
+        : running
+          ? 'text-tagma-accent/90 animate-pulse'
+          : 'text-tagma-muted/60';
 
   const title = toolTitle(part, state);
 
   return (
-    <details className="text-[10px] font-mono w-full border border-tagma-border/40 bg-tagma-surface">
+    <details
+      className={`chat-disclosure text-[10px] font-mono w-full border bg-tagma-surface ${
+        running ? 'border-tagma-accent/30' : 'border-tagma-border/40'
+      }`}
+    >
       <summary
         onClick={onExpandIntoView}
-        className="cursor-pointer flex items-center gap-1.5 px-2 py-1.5 select-none hover:bg-tagma-border/20"
+        className={`cursor-pointer flex items-center gap-1.5 px-2 py-1.5 select-none hover:bg-tagma-border/20 ${
+          running ? 'bg-tagma-accent/[0.05]' : ''
+        }`}
       >
         {icon}
         <span className="text-tagma-muted/80">{part.tool}</span>
-        <span className="flex-1 truncate text-tagma-text">{title}</span>
-        <span className="text-tagma-muted/60 text-[9px]">{state.status}</span>
+        <span className="min-w-0 flex-1 truncate text-tagma-text">{title}</span>
+        <span className={`shrink-0 text-[9px] ${statusTone}`}>{state.status}</span>
+        <ChevronRight size={10} className="chat-disclosure-chevron shrink-0 text-tagma-muted/50" />
       </summary>
       <div className="px-2 py-1.5 border-t border-tagma-border/40 space-y-1">
         <ToolBody part={part} state={state} />
