@@ -63,13 +63,58 @@ function makeTask(overrides: Partial<RunTaskState> = {}): RunTaskState {
 
 describe('formatTaskErrorAttachment', () => {
   test('builds a concise chip label from task id and exit code', () => {
-    const { label } = formatTaskErrorAttachment(makeTask(), makeConfig());
+    const { label } = formatTaskErrorAttachment(makeTask(), makeConfig())!;
     expect(label).toBe('Task `build.compile` failed (exit 2)');
   });
 
   test('label reports exit n/a when the exit code is unknown', () => {
-    const { label } = formatTaskErrorAttachment(makeTask({ exitCode: null }), makeConfig());
+    const { label } = formatTaskErrorAttachment(makeTask({ exitCode: null }), makeConfig())!;
     expect(label).toBe('Task `build.compile` failed (exit n/a)');
+  });
+
+  test('uses failed status as authoritative even when the process exit code is zero', () => {
+    const attachment = formatTaskErrorAttachment(
+      makeTask({ status: 'failed', exitCode: 0 }),
+      makeConfig(),
+    );
+
+    expect(attachment?.label).toBe('Task `build.compile` failed (exit 0)');
+    expect(attachment?.content).toContain('failed (status: failed, exit code: 0)');
+  });
+
+  test('returns no error attachment for a successful task with an empty persisted stderr file', () => {
+    expect(
+      formatTaskErrorAttachment(
+        makeTask({
+          status: 'success',
+          exitCode: 0,
+          stderr: '',
+          stderrPath: 'D:/tagma/.tagma/logs/run/task.stderr.log',
+          stderrBytes: 0,
+        }),
+        makeConfig(),
+      ),
+    ).toBeNull();
+  });
+
+  test('describes timeout and blocked attachments using their canonical status', () => {
+    const timeout = formatTaskErrorAttachment(
+      makeTask({ status: 'timeout', exitCode: -1 }),
+      makeConfig(),
+    )!;
+    const blocked = formatTaskErrorAttachment(
+      makeTask({ status: 'blocked', exitCode: null }),
+      makeConfig(),
+    )!;
+
+    expect(timeout.label).toBe('Task `build.compile` timed out (exit -1)');
+    expect(timeout.content).toContain(
+      'Run task `build.compile` timed out (status: timeout, exit code: -1).',
+    );
+    expect(blocked.label).toBe('Task `build.compile` was blocked (exit n/a)');
+    expect(blocked.content).toContain(
+      'Run task `build.compile` was blocked (status: blocked, exit code: n/a).',
+    );
   });
 
   test('content strips ANSI and keeps only the last 30 stderr lines', () => {
@@ -80,7 +125,7 @@ describe('formatTaskErrorAttachment', () => {
     const { content } = formatTaskErrorAttachment(
       makeTask({ stderr, stderrPath: 'D:/tagma/.tagma/logs/run/task.stderr.log' }),
       makeConfig(),
-    );
+    )!;
 
     expect(content).toContain('Run task `build.compile` failed (status: failed, exit code: 2).');
     expect(content).toContain('Driver: task-driver  Model: task-model  Track: Build');
@@ -95,7 +140,7 @@ describe('formatTaskErrorAttachment', () => {
     const { content } = formatTaskErrorAttachment(
       makeTask({ stderr: 'boom', stderrPath: 'D:/x.log' }),
       makeConfig(),
-    );
+    )!;
     expect(content).not.toContain('Please diagnose');
     expect(content).not.toContain('propose a YAML edit');
     expect(content.endsWith('\n')).toBe(false);
@@ -112,7 +157,7 @@ describe('formatTaskErrorAttachment', () => {
         ],
       }),
       makeConfig(),
-    );
+    )!;
 
     expect(content).toContain('be careful');
     expect(content).toContain('failed hard');
@@ -128,7 +173,7 @@ describe('formatTaskErrorAttachment', () => {
         model: undefined,
         tracks: [{ id: 'build', name: 'Build', tasks: [{ id: 'compile' }] }],
       }),
-    );
+    )!;
 
     expect(content).toContain('exit code: n/a');
     expect(content).not.toContain('Driver:');

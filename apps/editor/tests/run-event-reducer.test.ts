@@ -130,6 +130,51 @@ test('task_update merges partial fields and preserves untouched values', () => {
   expect(state.lastEventSeq).toBe(3);
 });
 
+test('task_update preserves an omitted waitReason and applies explicit null', () => {
+  let state = foldRunEvent(
+    initialRunFoldState(),
+    runStart(1, [
+      makeTask({
+        waitReason: { kind: 'dependencies', taskIds: ['track_a.upstream'] },
+      } as Partial<RunTaskState>),
+    ]),
+  );
+  state = foldRunEvent(state, {
+    type: 'task_update',
+    runId: 'run_test',
+    taskId: 'track_a.task_1',
+    status: 'waiting',
+    seq: 2,
+  });
+  expect(
+    (state.tasks.get('track_a.task_1') as RunTaskState & { waitReason?: unknown }).waitReason,
+  ).toEqual({ kind: 'dependencies', taskIds: ['track_a.upstream'] });
+
+  state = foldRunEvent(state, {
+    type: 'task_update',
+    runId: 'run_test',
+    taskId: 'track_a.task_1',
+    status: 'running',
+    waitReason: null,
+    seq: 3,
+  } as RunEvent & { type: 'task_update'; waitReason: null });
+  expect(
+    (state.tasks.get('track_a.task_1') as RunTaskState & { waitReason?: unknown }).waitReason,
+  ).toBeNull();
+});
+
+test('an unknown task_update keeps an omitted waitReason unavailable', () => {
+  const state = foldRunEvent(initialRunFoldState(), {
+    type: 'task_update',
+    runId: 'run_test',
+    taskId: 'track_a.late_task',
+    status: 'waiting',
+    seq: 1,
+  });
+
+  expect(state.tasks.get('track_a.late_task')?.waitReason).toBeUndefined();
+});
+
 test('SSE reconnect replay with seq dedupe: duplicates are dropped', () => {
   let state = foldRunEvent(initialRunFoldState(), runStart(1));
   // First update

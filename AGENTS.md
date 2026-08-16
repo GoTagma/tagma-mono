@@ -49,6 +49,44 @@ Do not amend the same commit to include these files after naming them with the c
   natural task failure is `failed`, explicit cancellation is `aborted`, and only a successful
   run is `completed`. Never emit a completed terminal line for a result whose `success` is false.
 
+## Pipeline Output Capture Integrity
+
+- A child exit code is not sufficient for success when stdout or stderr capture did not finish.
+  Keep child streams byte-authored (no runner diagnostics injected into stdout/stderr), report
+  read failures as structured `output_error` evidence, and do not let Completion Checks override
+  that runtime failure or consume partial output.
+- Bun subprocess readers may omit cleanup methods under concurrency. Treat missing or throwing
+  reader cleanup as compatibility cleanup after a completed drain; distinguish it from a `read()`
+  failure, which means output completeness is unknown.
+
+## Chat-Authored Pipeline Path Coordinates
+
+- Built-in trigger, completion, and static-context relative paths resolve from the task's effective
+  cwd: `task.cwd ?? track.cwd ?? workspaceRoot`. Keep that single-base runtime contract; never add
+  file-existence-dependent or duplicated-prefix fallback resolution.
+- Chat staging must fail closed when a generated path repeats the current pipeline workspace prefix
+  beneath an effective cwd in that same pipeline. Surface the resolved-coordinate error in the
+  compile log before finalize, while preserving an explicit `./` (`.\\` on Windows) opt-in for an
+  intentionally nested same-name path.
+
+## Runtime Waiting-State Observability
+
+- Represent a waiting cause with the safe `TaskWaitReason` wire shape only: qualified dependency
+  ids or a registered trigger type, never raw trigger configuration, paths, messages, metadata, or
+  credentials. `undefined` means an older producer or no update, `null` explicitly clears the cause.
+- Seed dependency reasons, update them as dependencies finish, replace them with the trigger reason
+  before watching, and clear the reason atomically before running or any terminal status. UI copy
+  must distinguish dependency, trigger, queued/preparing, and unavailable-detail states and show all
+  applicable authored timeouts without claiming one is the sole deadline.
+
+## Task Error Context Semantics
+
+- Decide whether a task is eligible for error-chat context from its canonical terminal status, not
+  from stderr content or the presence of a preallocated stderr path. A success task may legitimately
+  have either and must never be described to an agent as failed.
+- Build the attachment once and use that same nullable result for both button eligibility and the
+  submitted prompt so renderer and formatter cannot disagree about task failure semantics.
+
 ## Desktop Release Version Direction
 
 - Every Tagma hot-update entry point must require the manifest release version to be strictly

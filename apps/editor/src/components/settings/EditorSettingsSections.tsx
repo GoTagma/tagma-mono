@@ -609,12 +609,12 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+      className="modal-viewport-backdrop fixed inset-0 z-[60] flex items-center justify-center"
       onClick={(e) => e.stopPropagation()}
     >
       <div
         ref={wizardModalRef}
-        className="modal-viewport-shell flex w-full max-w-[520px] flex-col border border-tagma-border bg-tagma-surface shadow-panel"
+        className="modal-viewport-shell modal-tone-info flex w-full max-w-[520px] flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="python-agent-wizard-title"

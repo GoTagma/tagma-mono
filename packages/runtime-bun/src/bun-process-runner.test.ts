@@ -2,7 +2,14 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { isBinaryMissingError, runSpawn } from './bun-process-runner';
+import type { DriverPlugin } from '@tagma/core';
+import {
+  collectStream,
+  isBinaryMissingError,
+  runSpawn,
+  runSpawnWith,
+  type BunSpawnForRunner,
+} from './bun-process-runner';
 
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024;
 const HEARTBEAT_INTERVAL_MS = 40;
@@ -15,6 +22,42 @@ function nodeArg(script: string): string[] {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readerBackedStream(
+  reads: Array<ReadableStreamReadResult<Uint8Array> | Error>,
+): ReadableStream<Uint8Array> {
+  let index = 0;
+  const getReader = () => ({
+    async read() {
+      const next = reads[index++] ?? { done: true, value: undefined };
+      if (next instanceof Error) throw next;
+      return next;
+    },
+    // Bun 1.3.x can return a reader without releaseLock under concurrent
+    // spawn. The fixture deliberately models that runtime shape.
+  });
+  return {
+    getReader,
+    [Symbol.asyncIterator]() {
+      const reader = getReader();
+      return {
+        async next() {
+          const next = await reader.read();
+          if (next.done) {
+            // This is the old for-await failure mode: Bun's iterator cleanup
+            // assumes the partial reader implements releaseLock().
+            (
+              reader as unknown as {
+                releaseLock(): void;
+              }
+            ).releaseLock();
+          }
+          return next;
+        },
+      };
+    },
+  } as unknown as ReadableStream<Uint8Array>;
 }
 
 function heartbeatCount(path: string): number {
@@ -80,7 +123,7 @@ function processTreeFixtureScript(heartbeatPath: string, pidPath: string): strin
       console.error(error);
       process.exit(1);
     });
-    process.stdout.write('grandchild-started\\n');
+    require('node:fs').writeSync(1, 'grandchild-started\\n');
     setInterval(() => {}, 1_000);
   `;
 }
@@ -152,6 +195,185 @@ test('binary-missing detection does not confuse generic posix_spawn failures wit
       }),
     ),
   ).toBe(true);
+});
+
+test('collectStream bypasses iterator cleanup that assumes a missing releaseLock', async () => {
+  const first = new TextEncoder().encode('hello ');
+  const second = new TextEncoder().encode('world');
+  const reads: Array<ReadableStreamReadResult<Uint8Array> | Error> = [
+    { done: false, value: first },
+    { done: false, value: second },
+    { done: true, value: undefined },
+  ];
+  const legacyStream = readerBackedStream([...reads]);
+  let legacyText = '';
+  await expect(
+    (async () => {
+      for await (const chunk of legacyStream) {
+        legacyText += new TextDecoder().decode(chunk);
+      }
+    })(),
+  ).rejects.toThrow('releaseLock');
+  expect(legacyText).toBe('hello world');
+
+  const stream = readerBackedStream(reads);
+
+  const result = await collectStream(stream, undefined, 1024, 'stdout');
+
+  expect(result).toMatchObject({
+    text: 'hello world',
+    totalBytes: first.byteLength + second.byteLength,
+    path: null,
+    complete: true,
+    error: null,
+  });
+});
+
+test('collectStream reports a real mid-read failure without contaminating captured output', async () => {
+  const prefix = new TextEncoder().encode('valid-prefix');
+  const stream = readerBackedStream([
+    { done: false, value: prefix },
+    new Error('fixture stream fault'),
+  ]);
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-stream-fault-'));
+  const outputPath = join(dir, 'stdout.log');
+
+  try {
+    const result = await collectStream(stream, outputPath, 1024, 'stdout');
+
+    expect(result.text).toBe('valid-prefix');
+    expect(result.totalBytes).toBe(prefix.byteLength);
+    expect(result.path).toBe(outputPath);
+    expect(result.complete).toBe(false);
+    expect(result.error?.message).toBe('fixture stream fault');
+    expect(result.text).not.toContain('[runner]');
+    expect(readFileSync(outputPath, 'utf8')).toBe('valid-prefix');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runSpawn classifies an incomplete stream as output_error without parsing partial output', async () => {
+  const prefix = new TextEncoder().encode('partial-json');
+  const stdout = readerBackedStream([
+    { done: false, value: prefix },
+    new Error('fixture stream fault'),
+  ]);
+  let settleStderr!: () => void;
+  let stderrSettledByKill = false;
+  const stderr = {
+    getReader() {
+      return {
+        read() {
+          return new Promise<ReadableStreamReadResult<Uint8Array>>((resolve) => {
+            settleStderr = () => {
+              stderrSettledByKill = true;
+              resolve({ done: true, value: undefined });
+            };
+          });
+        },
+      };
+    },
+  } as unknown as ReadableStream<Uint8Array>;
+  let parseCalls = 0;
+  const driver = {
+    name: 'fixture-driver',
+    capabilities: {
+      sessionResume: false,
+      systemPrompt: false,
+      outputFormat: true,
+      enforcesPermissions: false,
+    },
+    async buildCommand() {
+      return { args: ['fixture-command'] };
+    },
+    parseResult() {
+      parseCalls += 1;
+      return { normalizedOutput: 'must-not-be-used' };
+    },
+  } as DriverPlugin;
+  let resolveExit!: (code: number) => void;
+  const exited = new Promise<number>((resolve) => {
+    resolveExit = resolve;
+  });
+  const killSignals: string[] = [];
+  const spawnProcess = (() =>
+    ({
+      pid: 2_000_000_000,
+      stdout,
+      stderr,
+      stdin: undefined,
+      exited,
+      kill(signal?: string) {
+        killSignals.push(signal ?? 'SIGTERM');
+        settleStderr();
+        resolveExit(0);
+      },
+    }) as unknown as ReturnType<typeof Bun.spawn>) satisfies BunSpawnForRunner;
+
+  const result = await runSpawnWith({ args: ['fixture-command'] }, driver, {}, spawnProcess);
+
+  expect(result.exitCode).toBe(0);
+  expect(result.failureKind).toBe('output_error');
+  expect(result.stdout).toBe('partial-json');
+  expect(result.stderr).toBe('');
+  expect(result.normalizedOutput).toBeNull();
+  expect(result.outputDiagnostics).toEqual([
+    {
+      stream: 'stdout',
+      stage: 'read',
+      message: 'fixture stream fault',
+      capturedBytes: prefix.byteLength,
+      path: null,
+    },
+  ]);
+  expect(Object.isFrozen(result.outputDiagnostics)).toBe(true);
+  expect(Object.isFrozen(result.outputDiagnostics?.[0])).toBe(true);
+  expect(parseCalls).toBe(0);
+  expect(killSignals).toEqual(['SIGTERM']);
+  expect(stderrSettledByKill).toBe(true);
+});
+
+test('runSpawn preserves complete output from an external Node subprocess reader', async () => {
+  const result = await runSpawn(
+    {
+      args: nodeArg(
+        'const { writeSync } = require("node:fs"); writeSync(1, "reader-ok"); writeSync(2, "reader-warning")',
+      ),
+    },
+    null,
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.failureKind).toBeNull();
+  expect(result.stdout).toBe('reader-ok');
+  expect(result.stderr).toBe('reader-warning');
+  expect(result.stdoutBytes).toBe('reader-ok'.length);
+  expect(result.stderrBytes).toBe('reader-warning'.length);
+  expect(result.outputDiagnostics).toBeUndefined();
+});
+
+test('runSpawn drains concurrent external Node subprocess readers independently', async () => {
+  const results = await Promise.all(
+    Array.from({ length: 8 }, (_, index) =>
+      runSpawn(
+        {
+          args: nodeArg(
+            `const { writeSync } = require("node:fs"); writeSync(1, "stdout-${index}"); writeSync(2, "stderr-${index}")`,
+          ),
+        },
+        null,
+      ),
+    ),
+  );
+
+  for (const [index, result] of results.entries()) {
+    expect(result.exitCode).toBe(0);
+    expect(result.failureKind).toBeNull();
+    expect(result.stdout).toBe(`stdout-${index}`);
+    expect(result.stderr).toBe(`stderr-${index}`);
+    expect(result.outputDiagnostics).toBeUndefined();
+  }
 });
 
 test('runSpawn reports a missing cwd as a spawn error instead of a missing executable', async () => {
@@ -239,7 +461,7 @@ test('runSpawn unwraps npm-style Windows .cmd shims without changing argv', asyn
   try {
     const entry = join(dir, 'node_modules', 'fixture', 'bin', 'cli.js');
     mkdirSync(dirname(entry), { recursive: true });
-    writeFileSync(entry, 'process.stdout.write(JSON.stringify(process.argv.slice(2)))');
+    writeFileSync(entry, 'require("node:fs").writeSync(1, JSON.stringify(process.argv.slice(2)))');
     writeFileSync(
       join(dir, 'fixture.cmd'),
       '@echo off\r\n"%_prog%"  "%dp0%\\node_modules\\fixture\\bin\\cli.js" %*\r\n',
@@ -278,7 +500,9 @@ test('runSpawn reports a missing bare Windows command after cwd and PATH lookup'
 test('runSpawn falls back to bounded tail caps for non-finite values', async () => {
   const totalBytes = DEFAULT_STDOUT_TAIL_BYTES + 1024 * 1024;
   const result = await runSpawn(
-    { args: nodeArg(`process.stdout.write("x".repeat(${totalBytes}))`) },
+    {
+      args: nodeArg(`require("node:fs").writeSync(1, Buffer.alloc(${totalBytes}, "x"))`),
+    },
     null,
     { maxStdoutTailBytes: Number.POSITIVE_INFINITY },
   );
@@ -293,7 +517,11 @@ test('runSpawn falls back to bounded tail caps for non-finite values', async () 
 
 test('runSpawn reports child output bytes before redaction', async () => {
   const result = await runSpawn(
-    { args: nodeArg('process.stdout.write("secret"); process.stderr.write("secret")') },
+    {
+      args: nodeArg(
+        'const { writeSync } = require("node:fs"); writeSync(1, "secret"); writeSync(2, "secret")',
+      ),
+    },
     null,
     {
       outputRedactor: (_stream, text) => text.replaceAll('secret', 'x'),
@@ -454,7 +682,7 @@ test('runSpawn streams stdout/stderr to onOutputChunk before exit', async () => 
   const result = await runSpawn(
     {
       args: nodeArg(
-        'process.stdout.write("hello "); process.stderr.write("warn "); process.stdout.write("world")',
+        'const { writeSync } = require("node:fs"); writeSync(1, "hello "); writeSync(2, "warn "); writeSync(1, "world")',
       ),
     },
     null,
@@ -482,18 +710,19 @@ test('runSpawn incrementally decodes UTF-8 split across stdout/stderr chunks', a
   const seen: Array<{ stream: 'stdout' | 'stderr'; text: string }> = [];
   const script = `
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const writeSplit = async (stream, text, cuts) => {
+    const { writeSync } = require('node:fs');
+    const writeSplit = async (fd, text, cuts) => {
       const bytes = Buffer.from(text, 'utf8');
       let start = 0;
       for (const end of [...cuts, bytes.length]) {
-        stream.write(bytes.subarray(start, end));
+        writeSync(fd, bytes.subarray(start, end));
         start = end;
         await sleep(75);
       }
     };
     Promise.all([
-      writeSplit(process.stdout, ${JSON.stringify(expectedStdout)}, [1, 6]),
-      writeSplit(process.stderr, ${JSON.stringify(expectedStderr)}, [2, 5]),
+      writeSplit(1, ${JSON.stringify(expectedStdout)}, [1, 6]),
+      writeSplit(2, ${JSON.stringify(expectedStderr)}, [2, 5]),
     ]).catch((error) => {
       console.error(error);
       process.exitCode = 1;
@@ -521,7 +750,7 @@ test('runSpawn incrementally decodes UTF-8 split across stdout/stderr chunks', a
 });
 
 test('runSpawn does not let a throwing onOutputChunk abort the drain', async () => {
-  const result = await runSpawn({ args: nodeArg('process.stdout.write("abc")') }, null, {
+  const result = await runSpawn({ args: nodeArg('require("node:fs").writeSync(1, "abc")') }, null, {
     onOutputChunk: () => {
       throw new Error('sink boom');
     },

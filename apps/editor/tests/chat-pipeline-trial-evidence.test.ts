@@ -1,9 +1,12 @@
 import { expect, test } from 'bun:test';
 
 import {
+  buildChatPipelineTrialOutputDiagnostics,
   buildChatPipelineTrialStreamEvidence,
+  evaluateTrialExpectation,
   filterChatPipelineTrialStderr,
   selectChatPipelineTrialTaskEvidence,
+  trialTaskRepairScope,
   type ChatPipelineTrialTaskResult,
 } from '../server/chat-pipeline-trial-run';
 
@@ -105,4 +108,92 @@ test('task evidence never exceeds its limit while reserving actionable failed-ca
   expect(selected).toHaveLength(4);
   expect(selected.some((item) => item.caseId === 'case-a')).toBe(true);
   expect(selected.some((item) => item.caseId === 'case-b')).toBe(true);
+});
+
+test('only runtime capture output_error is diagnostic-only Trial evidence', () => {
+  expect(trialTaskRepairScope('failed', 'output_error')).toBe('pipeline-artifact');
+  expect(
+    trialTaskRepairScope('failed', 'output_error', [
+      {
+        stream: 'stdout',
+        stage: 'read',
+        message: 'stream fault',
+        capturedBytes: 7,
+        path: null,
+      },
+    ]),
+  ).toBe('diagnostic-only');
+});
+
+test('task-status expectation keeps capture output_error diagnostic-only', () => {
+  const outputDiagnostics = [
+    {
+      stream: 'stdout' as const,
+      stage: 'read' as const,
+      message: 'stream fault',
+      capturedBytes: 7,
+      path: null,
+    },
+  ];
+  const lastResult = {
+    states: new Map([
+      [
+        'main.capture',
+        {
+          status: 'failed',
+          result: { failureKind: 'output_error', outputDiagnostics },
+        },
+      ],
+    ]),
+  } as unknown as NonNullable<Parameters<typeof evaluateTrialExpectation>[3]>;
+
+  expect(
+    evaluateTrialExpectation(
+      '/workspace',
+      'pipeline/pipeline.yaml',
+      { type: 'task-status', taskId: 'main.capture', status: 'success' },
+      lastResult,
+    ).repairScope,
+  ).toBe('diagnostic-only');
+});
+
+test('Trial output diagnostics are cloned, frozen, bounded, redacted, and basename-only', () => {
+  const source = [
+    {
+      stream: 'stdout' as const,
+      stage: 'read' as const,
+      message: 'token=do-not-expose ' + '你'.repeat(5_000),
+      capturedBytes: 12,
+      path: 'C:\\Users\\private-user\\workspace\\.tagma\\logs\\stdout.log',
+    },
+    {
+      stream: 'stderr' as const,
+      stage: 'read' as const,
+      message: 'second fault',
+      capturedBytes: 3,
+      path: '/home/private-user/workspace/.tagma/logs/stderr.log',
+    },
+    {
+      stream: 'stdout' as const,
+      stage: 'read' as const,
+      message: 'must be capped',
+      capturedBytes: 0,
+      path: '/tmp/third.log',
+    },
+  ];
+
+  const diagnostics = buildChatPipelineTrialOutputDiagnostics(source);
+
+  expect(diagnostics).toHaveLength(2);
+  expect(diagnostics).not.toBe(source);
+  expect(Object.isFrozen(diagnostics)).toBe(true);
+  expect(Object.isFrozen(diagnostics?.[0])).toBe(true);
+  expect(diagnostics?.[0]?.message).toContain('token=[REDACTED]');
+  expect(new TextEncoder().encode(diagnostics?.[0]?.message ?? '').length).toBeLessThanOrEqual(
+    4_096,
+  );
+  expect(diagnostics?.[0]?.path).toBe('stdout.log');
+  expect(diagnostics?.[1]?.path).toBe('stderr.log');
+  expect(JSON.stringify(diagnostics)).not.toContain('private-user');
+  expect(source[0]?.message).toContain('do-not-expose');
 });

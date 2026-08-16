@@ -101,6 +101,7 @@ export type {
   ApprovalRequestInfo,
   ApprovalRequestHandle,
   TaskStatus,
+  TaskWaitReason,
   ApprovalRequest,
   ApprovalGateway,
   PluginCategory,

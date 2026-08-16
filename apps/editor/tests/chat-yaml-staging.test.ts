@@ -15,6 +15,7 @@ import { parseYaml } from '@tagma/sdk/yaml';
 
 import {
   __chatYamlStagingTestHooks,
+  compileChatYamlStage,
   createChatYamlStage,
   discardChatYamlStage,
   discardChatYamlStageWithDisposition,
@@ -115,6 +116,15 @@ function stopWorkspace(ws: WorkspaceState): void {
   ws.layoutWatcher.stopWatching();
 }
 
+async function waitFor(predicate: () => boolean, label: string): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
 afterEach(() => {
   delete __chatYamlStagingTestHooks.afterDestinationYamlWrite;
   delete __chatYamlStagingTestHooks.beforeFinalizeResultWrite;
@@ -125,6 +135,74 @@ afterEach(() => {
 });
 
 describe('chat YAML staging', () => {
+  test('rejects chat-authored task-local plugin paths that repeat the pipeline cwd', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const agentYaml = [
+      'pipeline:',
+      '  name: Fact Checker',
+      '  tracks:',
+      '    - id: ingest',
+      '      name: Ingest',
+      '      cwd: .tagma/pipeline',
+      '      middlewares:',
+      '        - type: static_context',
+      '          file: .tagma/pipeline/trusted-sources.json',
+      '      tasks:',
+      '        - id: read',
+      '          name: Read',
+      '          prompt: read the input',
+      '          trigger:',
+      '            type: file',
+      '            path: .tagma/pipeline/input/article.md',
+      '          completion:',
+      '            type: file_exists',
+      '            path: .tagma/pipeline/work/units.json',
+      '',
+    ].join('\n');
+    writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
+
+    const compileLogPath = pipelineCompileLogPath(staged.stagedPath);
+    await waitFor(() => {
+      if (!existsSync(compileLogPath)) return false;
+      try {
+        return JSON.parse(readFileSync(compileLogPath, 'utf-8')).success === false;
+      } catch {
+        return false;
+      }
+    }, 'chat watcher path-coordinate diagnostics');
+    const watcherCompile = JSON.parse(readFileSync(compileLogPath, 'utf-8')) as {
+      validation: { errors: Array<{ path: string }> };
+    };
+    expect(watcherCompile.validation.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'tracks[0].middlewares[0].file' }),
+        expect.objectContaining({ path: 'tracks[0].tasks[0].trigger.path' }),
+        expect.objectContaining({ path: 'tracks[0].tasks[0].completion.path' }),
+      ]),
+    );
+
+    const compile = compileChatYamlStage(ws, stage.id, staged.relativePath);
+
+    expect(compile.success).toBe(false);
+    expect(compile.validation.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'tracks[0].middlewares[0].file' }),
+        expect.objectContaining({ path: 'tracks[0].tasks[0].trigger.path' }),
+        expect.objectContaining({ path: 'tracks[0].tasks[0].completion.path' }),
+      ]),
+    );
+    await expect(
+      finalizeChatYamlStage(ws, {
+        stageId: stage.id,
+        relativePath: staged.relativePath,
+      }),
+    ).rejects.toThrow('Staged YAML did not compile successfully.');
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
   test('keeps POSIX pipeline path identity case-sensitive', () => {
     expect(
       samePipelineRelativePath('pipeline/pipeline.yaml', 'Pipeline/Pipeline.yaml', 'linux'),

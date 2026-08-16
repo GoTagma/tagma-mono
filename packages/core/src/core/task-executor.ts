@@ -449,6 +449,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
 
   // 2. Check trigger
   if (task.trigger) {
+    ctx.setTaskWaitReason(taskId, { kind: 'trigger', triggerType: task.trigger.type });
     log.debug(
       `[task:${taskId}]`,
       `trigger wait: type=${task.trigger.type} ${JSON.stringify(task.trigger)}`,
@@ -520,6 +521,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
               });
 
         await Promise.race([watchHandle.fired, abortPromise, timeoutPromise]);
+        ctx.setTaskWaitReason(taskId, null);
       } finally {
         if (triggerTimeoutMs > 0) {
           // clearTimeout tolerates timers that already fired.
@@ -1123,7 +1125,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       terminalStatus = 'timeout';
     } else if (kind === 'aborted') {
       terminalStatus = ctx.abortReason === 'timeout' ? 'timeout' : 'skipped';
-    } else if (kind === 'spawn_error' || kind === 'parse_error') {
+    } else if (
+      kind === 'spawn_error' ||
+      kind === 'binary_missing' ||
+      kind === 'parse_error' ||
+      kind === 'output_error'
+    ) {
       terminalStatus = 'failed';
     } else if (task.completion) {
       const plugin = registry.getHandler<CompletionPlugin>('completions', task.completion.type);
@@ -1247,6 +1254,13 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     ctx.setTaskStatus(taskId, terminalStatus);
 
     // Log task outcome with relevant details
+    for (const diagnostic of result.outputDiagnostics ?? []) {
+      log.error(
+        `[task:${taskId}]`,
+        `${diagnostic.stream} capture failed after ${diagnostic.capturedBytes} bytes: ${diagnostic.message}` +
+          (diagnostic.path ? ` (partial output: ${diagnostic.path})` : ''),
+      );
+    }
     const durSec = (result.durationMs / 1000).toFixed(1);
     if (terminalStatus === 'success') {
       log.info(`[task:${taskId}]`, `success (${durSec}s)`);

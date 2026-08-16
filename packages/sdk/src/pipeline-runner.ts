@@ -48,9 +48,18 @@ function clonePermissions(
   return permissions ? { ...permissions } : permissions;
 }
 
+function cloneWaitReason(reason: RunTaskState['waitReason']): RunTaskState['waitReason'] {
+  return reason?.kind === 'dependencies'
+    ? { kind: 'dependencies', taskIds: [...reason.taskIds] }
+    : reason
+      ? { kind: 'trigger', triggerType: reason.triggerType }
+      : reason;
+}
+
 function cloneTaskState(task: RunTaskState): RunTaskState {
   return {
     ...task,
+    waitReason: cloneWaitReason(task.waitReason),
     outputs: cloneTaskRecord(task.outputs),
     inputs: cloneTaskRecord(task.inputs),
     resolvedPermissions: clonePermissions(task.resolvedPermissions),
@@ -164,6 +173,8 @@ export class PipelineRunner {
         this._tasks.set(event.taskId, {
           ...prev,
           status: event.status,
+          waitReason:
+            event.waitReason === undefined ? prev.waitReason : cloneWaitReason(event.waitReason),
           startedAt: pick(event.startedAt, prev.startedAt),
           finishedAt: pick(event.finishedAt, prev.finishedAt),
           durationMs: pick(event.durationMs, prev.durationMs),

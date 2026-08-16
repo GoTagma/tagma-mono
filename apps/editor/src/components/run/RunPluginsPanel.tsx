@@ -68,12 +68,12 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center"
       onClick={onClose}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[560px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-info flex w-full max-w-[560px] flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="run-plugins-panel-title"

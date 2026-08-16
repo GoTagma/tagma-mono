@@ -74,16 +74,16 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
   const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   return (
-    <div className="modal-viewport-backdrop absolute inset-0 z-30 flex items-center justify-center bg-black/40">
+    <div className="modal-viewport-backdrop absolute inset-0 z-30 flex items-center justify-center">
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-modal"
+        className="modal-viewport-shell modal-tone-warning flex w-full max-w-[480px] flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="approval-dialog-title"
         tabIndex={-1}
       >
-        <div className="flex shrink-0 min-w-0 items-center gap-2 border-b border-tagma-border bg-tagma-elevated px-4 py-2.5">
+        <div className="modal-viewport-header flex shrink-0 min-w-0 items-center gap-2 border-b px-4 py-2.5">
           <ShieldCheck size={14} className="shrink-0 text-tagma-warning" />
           <span
             id="approval-dialog-title"
@@ -164,20 +164,12 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
           </div>
         </div>
 
-        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border bg-tagma-elevated px-4 py-2.5">
-          <button
-            type="button"
-            onClick={() => onReject()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/10 transition-colors"
-          >
+        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t px-4 py-2.5">
+          <button type="button" onClick={() => onReject()} className="btn-danger-inline">
             <X size={11} />
             <span>Reject</span>
           </button>
-          <button
-            type="button"
-            onClick={() => onApprove()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-tagma-success border border-tagma-success/30 hover:bg-tagma-success/10 transition-colors"
-          >
+          <button type="button" onClick={() => onApprove()} className="btn-success-inline">
             <Check size={11} />
             <span>Approve</span>
           </button>

@@ -68,8 +68,10 @@ import type {
 ### Runtime Types
 
 - `TaskStatus` -- `'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked'`
-- `TaskResult` -- exit code, bounded `stdout`/`stderr` tails, on-disk `stdoutPath`/`stderrPath`, total `stdoutBytes`/`stderrBytes`, duration, session ID, normalized output, failure kind, and the published `outputs` map when a task declares output bindings
-- `TaskFailureKind` -- distinguishes _why_ a task failed: `'timeout' | 'aborted' | 'spawn_error' | 'binary_missing' | 'exit_nonzero' | 'parse_error' | 'output_error' | 'completion_failed' | null`. `'aborted'` covers external abort and `on_failure: stop_all`; `'parse_error'` covers driver `parseResult` failures; `'output_error'` covers post-success output-extraction failures; `'completion_failed'` means the process ran but its Completion Check rejected the result
+- `TaskResult` -- exit code, bounded `stdout`/`stderr` tails, on-disk `stdoutPath`/`stderrPath`, total `stdoutBytes`/`stderrBytes`, duration, session ID, normalized output, failure kind, optional structured output-capture diagnostics, and the published `outputs` map when a task declares output bindings
+- `TaskFailureKind` -- distinguishes _why_ a task failed: `'timeout' | 'aborted' | 'spawn_error' | 'binary_missing' | 'exit_nonzero' | 'parse_error' | 'output_error' | 'completion_failed' | null`. `'aborted'` covers external abort and `on_failure: stop_all`; `'parse_error'` covers driver `parseResult` failures; `'output_error'` covers incomplete child-stream capture and post-success output-extraction failures; `'completion_failed'` means the process ran but its Completion Check rejected the result
+- `TaskOutputDiagnostic` -- structured, child-output-external evidence for an incomplete stdout/stderr capture; runner diagnostics never become part of the child's authored stream
+- `TaskWaitReason` -- safe waiting detail containing only qualified dependency task IDs or a registered trigger type. On the wire, `undefined` means details are unavailable/no partial update and `null` explicitly clears the reason
 - `TaskState` -- mutable engine state for a running task (config, status, result, timestamps)
 - `SpawnSpec` -- args, stdin, cwd, env returned by a driver
 - `DriverCapabilities` -- declares session resume, system prompt, output format support
@@ -84,7 +86,7 @@ import type {
 The SDK engine, the editor server, and the editor client speak a single event vocabulary for a pipeline run. These types live here so every layer stays in sync.
 
 - `RunEventPayload` -- discriminated union emitted by `runPipeline`'s `onEvent` callback. Variants: `run_start`, `task_update`, `task_log`, `run_end`, `run_error`, `approval_request`, `approval_resolved`. Every variant carries `runId`
-- `RunTaskState` -- wire-shape projection of an engine `TaskState` (flat fields, `logs` capped at `TASK_LOG_CAP`). Includes `stdoutPath` / `stderrPath` / `stdoutBytes` / `stderrBytes` (so the editor can offer "open full log" without a separate request) plus `inputs` / `outputs` (resolved port values, populated live so node bubbles and the inputs panel update as a run progresses)
+- `RunTaskState` -- wire-shape projection of an engine `TaskState` (flat fields, `logs` capped at `TASK_LOG_CAP`). Includes the optional `waitReason`, `stdoutPath` / `stderrPath` / `stdoutBytes` / `stderrBytes` (so the editor can offer "open full log" without a separate request), plus `inputs` / `outputs` (resolved port values, populated live so node bubbles and the inputs panel update as a run progresses)
 - `RunSnapshotPayload` -- server-only payload the editor server emits on SSE (re)connect to rebuild the task map, pending approvals, and pipeline-level logs
 - `WireRunEvent` -- `(RunEventPayload | RunSnapshotPayload) & { seq: number }` — the stamped on-the-wire event. Clients dedupe by `(runId, seq)`
 - `AbortReason` -- `'timeout' | 'stop_all' | 'external'`; carried on `run_end`

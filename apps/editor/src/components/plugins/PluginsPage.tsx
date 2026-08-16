@@ -770,12 +770,12 @@ function UpgradeConfirmDialog({
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[240] flex items-center justify-center"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[520px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-accent flex w-full max-w-[520px] flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plugin-upgrade-confirm-title"
@@ -822,16 +822,10 @@ function UpgradeConfirmDialog({
           )}
         </div>
         <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-4 py-3">
-          <button
-            onClick={onCancel}
-            className="text-[11px] px-3 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent transition-colors"
-          >
+          <button onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
-          <button
-            onClick={onConfirm}
-            className="text-[11px] px-3 py-1 border border-tagma-accent/70 text-tagma-accent hover:bg-tagma-accent/10 transition-colors"
-          >
+          <button onClick={onConfirm} className="btn-primary min-w-24 justify-center">
             Upgrade all
           </button>
         </div>
@@ -868,12 +862,12 @@ function UninstallConfirmDialog({
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[240] flex items-center justify-center"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[520px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-danger flex w-full max-w-[520px] flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plugin-uninstall-confirm-title"
@@ -929,16 +923,10 @@ function UninstallConfirmDialog({
           </div>
         </div>
         <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-4 py-3">
-          <button
-            onClick={onCancel}
-            className="text-[11px] px-3 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent transition-colors"
-          >
+          <button onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
-          <button
-            onClick={onConfirm}
-            className="text-[11px] px-3 py-1 border border-tagma-error/60 text-tagma-error hover:bg-tagma-error/10 transition-colors"
-          >
+          <button onClick={onConfirm} className="btn-danger-inline">
             Uninstall anyway
           </button>
         </div>

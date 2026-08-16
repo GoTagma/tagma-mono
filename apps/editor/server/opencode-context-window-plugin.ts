@@ -8,16 +8,20 @@ import { join } from 'node:path';
  * from the sidecar), so the whole trimming policy is serialized into the
  * generated source as a self-contained module — exactly like the seeded custom
  * tools. It hooks `experimental.chat.messages.transform` (verified present in
- * pinned OpenCode 1.17.8: `packages/opencode/src/session/prompt.ts` and
+ * pinned OpenCode 1.18.18: `packages/opencode/src/session/prompt.ts` and
  * `compaction.ts` both call `plugin.trigger("experimental.chat.messages.transform",
  * {}, { messages: msgs })` and then keep using the same `msgs` array, so the
  * hook must splice in place and never reassign `output.messages`).
+ * It also hooks `tool.execute.before` for the builtin `task` tool and rejects
+ * non-empty `task_id` arguments. Tagma-managed sessions may create fresh tasks,
+ * but never reuse a persisted child session across workspace relocation.
  *
- * The hook fires for every model request in the workspace process, so it only
- * acts when a host-authored `<tagma-chat-context-window>` marker is present in
- * the current prompt's `<editor-context>` (or, for a hidden internal repair
- * continuation, in the most recent visible user turn). Bot-bridge, standalone
- * CLI, and legacy pre-marker threads have no marker and are left untouched.
+ * The transform hook fires for every model request in the workspace process,
+ * so it only acts when a host-authored `<tagma-chat-context-window>` marker is
+ * present in the current prompt's `<editor-context>` (or, for a hidden internal
+ * repair continuation, in the most recent visible user turn). Bot-bridge,
+ * standalone CLI, and legacy pre-marker threads have no marker and are left
+ * untouched by context trimming; the task-reuse guard remains global.
  *
  * On init the plugin writes a readiness marker into `.opencode/` so the sidecar
  * can fail closed: when the limit setting is on but the plugin did not load,
@@ -112,9 +116,17 @@ export function buildTagmaChatContextWindowPlugin(): string {
     'const READY_FILE = "' + OPENCODE_CONTEXT_WINDOW_READY_FILENAME + '";',
     'const READY = ' + pluginReadyMarkerSource() + ';',
     'const INTERNAL_TURN_PREFIX = "<tagma-internal>";',
+    'const BUILTIN_TASK_TOOL_ID = "task";',
+    'const TASK_RESUME_BLOCKED_MESSAGE = "Tagma managed OpenCode sessions do not allow task_id reuse. Start a fresh task without task_id.";',
     '',
     'function isTextPart(part) {',
     '  return !!part && part.type === "text" && typeof part.text === "string";',
+    '}',
+    '',
+    'function hasNonEmptyTaskId(args) {',
+    '  if (!args || typeof args !== "object") return false;',
+    '  const taskId = args.task_id;',
+    '  return taskId !== undefined && taskId !== null && taskId !== "";',
     '}',
     '',
     'function isInternalContinuation(message) {',
@@ -223,6 +235,12 @@ export function buildTagmaChatContextWindowPlugin(): string {
     '    console.error("[tagma-chat-context-window] failed to write readiness marker:", err);',
     '  }',
     '  return {',
+    '    "tool.execute.before": async (input, output) => {',
+    '      if (!input || input.tool !== BUILTIN_TASK_TOOL_ID) return;',
+    '      const args = output && output.args;',
+    '      if (!hasNonEmptyTaskId(args)) return;',
+    '      throw new Error(TASK_RESUME_BLOCKED_MESSAGE);',
+    '    },',
     '    "experimental.chat.messages.transform": async (_input, output) => {',
     '      const messages = output && output.messages;',
     '      if (!Array.isArray(messages) || messages.length === 0) return;',

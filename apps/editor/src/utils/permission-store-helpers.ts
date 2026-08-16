@@ -1,9 +1,14 @@
+export type PermissionProtocol = 'current' | 'legacy';
+
 export interface PendingPermission {
   workspaceKey: string;
+  /** Exact OpenCode Instance directory captured when the event arrived. */
+  directory?: string;
   id: string;
   sessionID: string;
   title: string;
   tool: string;
+  protocol: PermissionProtocol;
   metadata?: Record<string, unknown>;
   createdAt: number;
 }

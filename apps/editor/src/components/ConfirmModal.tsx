@@ -40,12 +40,12 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[210] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[210] flex items-center justify-center"
       onClick={handleDismiss}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell w-full max-w-[440px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className={`modal-viewport-shell ${info.danger ? 'modal-tone-danger' : 'modal-tone-accent'} w-full max-w-[440px] flex flex-col border`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"

@@ -574,7 +574,7 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain('same authorized logical turn');
   expect(doc).toContain('Never remove or weaken a manual approval');
   expect(doc).toContain('Never claim either mode passed without host evidence');
-  expect(doc).toContain('Relative trigger paths resolve from the real workspace root');
+  expect(doc).toContain('Task-local paths use `task.cwd ?? track.cwd ?? workspace root`');
   expect(doc).toContain(
     'staged pipeline support file does not satisfy the optional Live Smoke baseline',
   );
@@ -799,6 +799,34 @@ test('tagma-pipeline agent allows external file and directory trigger watch path
   expect(pipelineDoc).toContain('without reading or writing that external path');
   expect(triggerSkill).toContain('file/directory trigger watch paths may be absolute');
   expect(contractSkill).toContain('file/directory trigger watch paths may be absolute');
+});
+
+test('tagma authoring contracts define one effective cwd coordinate for built-in paths', () => {
+  const pipelineDocument = buildTagmaPipelineAgent('Windows');
+  const contractDocument = buildTagmaYamlContractSkill();
+
+  expect(pipelineDocument).toContain(
+    'Task-local paths use `task.cwd ?? track.cwd ?? workspace root`',
+  );
+  expect(pipelineDocument).toContain(
+    'use `input/a.md`, not repeated `.tagma/fact-checker/input/a.md`',
+  );
+  expect(pipelineDocument).toContain('`./` (`.\\` Windows) is explicit nested opt-in');
+
+  expect(contractDocument).toContain(
+    'The effective task cwd is `task.cwd` when authored, otherwise `track.cwd`, otherwise the workspace root.',
+  );
+  expect(contractDocument).toContain(
+    '`task.cwd` overrides `track.cwd` and is never appended to it.',
+  );
+  expect(contractDocument).toContain(
+    'Built-in `file.path`, `directory.path`, `file_exists.path`, and `static_context.file`',
+  );
+  expect(contractDocument).toContain(
+    'with `cwd: .tagma/fact-checker`, use `input/article.md`, `work/result.json`, and `trusted-sources.json`',
+  );
+  expect(contractDocument).toContain('`.tagma/fact-checker/.tagma/fact-checker/input/article.md`');
+  expect(contractDocument).toContain('signal the opt-in with a leading `./` (or `.\\` on Windows)');
 });
 
 test('tagma-yaml-contract requires one direct producer for each unresolved binding', () => {

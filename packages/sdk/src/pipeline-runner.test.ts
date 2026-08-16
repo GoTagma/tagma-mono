@@ -5,7 +5,14 @@ import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
 import { PipelineRunner } from './pipeline-runner';
 import { PluginRegistry } from '@tagma/core';
-import type { PipelineConfig, TagmaRuntime, TaskLogLine, TaskResult } from '@tagma/types';
+import type {
+  PipelineConfig,
+  RunEventPayload,
+  RunTaskState,
+  TagmaRuntime,
+  TaskLogLine,
+  TaskResult,
+} from '@tagma/types';
 
 function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-pipeline-runner-'));
@@ -52,6 +59,45 @@ function taskResult(stdout: string): TaskResult {
     normalizedOutput: null,
     failureKind: null,
   };
+}
+
+function mirroredTask(waitReason: RunTaskState['waitReason']): RunTaskState {
+  return {
+    taskId: 't.down',
+    trackId: 't',
+    taskName: 'down',
+    status: 'waiting',
+    waitReason,
+    startedAt: null,
+    finishedAt: null,
+    durationMs: null,
+    exitCode: null,
+    stdout: '',
+    stderr: '',
+    stdoutPath: null,
+    stderrPath: null,
+    stdoutBytes: null,
+    stderrBytes: null,
+    sessionId: null,
+    normalizedOutput: null,
+    failureKind: null,
+    missingBinary: null,
+    outputs: null,
+    inputs: null,
+    resolvedDriver: null,
+    resolvedModel: null,
+    resolvedPermissions: null,
+    logs: [],
+    totalLogCount: 0,
+  };
+}
+
+function applyRunnerEvent(runner: PipelineRunner, event: RunEventPayload): void {
+  (
+    runner as unknown as {
+      _applyEvent(event: RunEventPayload): void;
+    }
+  )._applyEvent(event);
 }
 
 function fakeRuntime(): TagmaRuntime {
@@ -113,6 +159,68 @@ async function run(config: PipelineConfig, dir: string): Promise<PipelineRunner>
 }
 
 describe('PipelineRunner task snapshot', () => {
+  test('waitReason is isolated and uses undefined-preserve/null-clear merge semantics', () => {
+    const runner = new PipelineRunner(bindingsPipeline('/workspace'), '/workspace', {
+      registry: new PluginRegistry(),
+      runtime: fakeRuntime(),
+      skipPluginLoading: true,
+    });
+    const initialTaskIds = ['t.up'];
+
+    applyRunnerEvent(runner, {
+      type: 'run_start',
+      runId: 'run_wait_reason',
+      tasks: [mirroredTask({ kind: 'dependencies', taskIds: initialTaskIds })],
+    });
+    initialTaskIds.push('event-mutated');
+    expect(runner.getTasks().get('t.down')?.waitReason).toEqual({
+      kind: 'dependencies',
+      taskIds: ['t.up'],
+    });
+
+    const returnedReason = runner.getTasks().get('t.down')?.waitReason;
+    if (returnedReason?.kind !== 'dependencies') throw new Error('expected dependency wait');
+    (returnedReason.taskIds as string[]).push('snapshot-mutated');
+    expect(runner.getTasks().get('t.down')?.waitReason).toEqual({
+      kind: 'dependencies',
+      taskIds: ['t.up'],
+    });
+
+    applyRunnerEvent(runner, {
+      type: 'task_update',
+      runId: 'run_wait_reason',
+      taskId: 't.down',
+      status: 'waiting',
+    });
+    expect(runner.getTasks().get('t.down')?.waitReason).toEqual({
+      kind: 'dependencies',
+      taskIds: ['t.up'],
+    });
+
+    const updatedTaskIds = ['t.next'];
+    applyRunnerEvent(runner, {
+      type: 'task_update',
+      runId: 'run_wait_reason',
+      taskId: 't.down',
+      status: 'waiting',
+      waitReason: { kind: 'dependencies', taskIds: updatedTaskIds },
+    });
+    updatedTaskIds.push('update-mutated');
+    expect(runner.getTasks().get('t.down')?.waitReason).toEqual({
+      kind: 'dependencies',
+      taskIds: ['t.next'],
+    });
+
+    applyRunnerEvent(runner, {
+      type: 'task_update',
+      runId: 'run_wait_reason',
+      taskId: 't.down',
+      status: 'running',
+      waitReason: null,
+    });
+    expect(runner.getTasks().get('t.down')?.waitReason).toBeNull();
+  });
+
   test('getTasks reflects task_update outputs and redacted input names', async () => {
     const dir = makeDir();
     try {

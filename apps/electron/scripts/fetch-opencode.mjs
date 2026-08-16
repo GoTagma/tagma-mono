@@ -36,9 +36,9 @@ const packageDir = resolve(scriptDir, '..');
 const buildDir = join(packageDir, 'build');
 const pkgJsonPath = join(packageDir, 'package.json');
 
-function parseArgs() {
+export function parseOpencodeTargetArgs(argv = process.argv.slice(2)) {
   const args = { platform: process.platform, arch: process.arch };
-  for (const raw of process.argv.slice(2)) {
+  for (const raw of argv) {
     const m = raw.match(/^--([^=]+)=(.*)$/);
     if (!m) continue;
     if (m[1] === 'platform') args.platform = m[2];
@@ -51,11 +51,32 @@ function parseArgs() {
 // only for x64. arm64 targets always use the single variant.
 // We mirror build-desktop-sidecar.ts's policy: always prefer baseline on x64
 // so installers never crash on VMs / older chips with STATUS_ILLEGAL_INSTRUCTION.
-function resolvePackageName(platform, arch) {
+function assertSupportedTarget(platform, arch) {
+  if (!['darwin', 'linux', 'win32'].includes(platform)) {
+    throw new Error(`Unsupported opencode target: ${platform}/${arch}`);
+  }
+  if (!['x64', 'arm64'].includes(arch)) {
+    throw new Error(`Unsupported opencode target: ${platform}/${arch}`);
+  }
+}
+
+export function resolveOpencodePackageName(platform, arch) {
+  assertSupportedTarget(platform, arch);
   const osSegment = platform === 'win32' ? 'windows' : platform;
   if (arch === 'x64') return `opencode-${osSegment}-x64-baseline`;
-  if (arch === 'arm64') return `opencode-${osSegment}-arm64`;
-  throw new Error(`Unsupported opencode target: ${platform}/${arch}`);
+  return `opencode-${osSegment}-arm64`;
+}
+
+export function resolveOpencodeStagePaths(targetRoot, platform, arch) {
+  assertSupportedTarget(platform, arch);
+  const targetDir = join(targetRoot, `${platform}-${arch}`);
+  const binDir = join(targetDir, 'bin');
+  return {
+    targetDir,
+    binDir,
+    destBinary: join(binDir, platform === 'win32' ? 'opencode.exe' : 'opencode'),
+    versionFile: join(targetDir, 'version.txt'),
+  };
 }
 
 function readBundledVersion() {
@@ -120,7 +141,9 @@ function verifyIntegrity(buf, meta, pkgName) {
     const [, algo, expected] = m;
     const actual = createHash(algo).update(buf).digest('base64');
     if (actual !== expected) {
-      throw new Error(`Integrity mismatch for ${pkgName}: expected ${meta.integrity}, got ${algo}-${actual}`);
+      throw new Error(
+        `Integrity mismatch for ${pkgName}: expected ${meta.integrity}, got ${algo}-${actual}`,
+      );
     }
     return;
   }
@@ -131,7 +154,25 @@ function verifyIntegrity(buf, meta, pkgName) {
     }
     return;
   }
-  throw new Error(`Registry returned no integrity or shasum for ${pkgName} — refusing to bundle an unverified tarball.`);
+  throw new Error(
+    `Registry returned no integrity or shasum for ${pkgName} — refusing to bundle an unverified tarball.`,
+  );
+}
+
+async function retryOperation(operation, label, logPrefix) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${logPrefix}] ${label} attempt ${attempt}/3 failed: ${message}`);
+      if (attempt < 3)
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 2000 * attempt));
+    }
+  }
+  throw lastError ?? new Error(`${label} failed after 3 attempts`);
 }
 
 function extractBinary(tgzPath, destFile, isWindows) {
@@ -169,14 +210,25 @@ function extractBinary(tgzPath, destFile, isWindows) {
     },
   });
   if (!written) {
-    throw new Error(`Did not find ${wantRelPath} inside the tarball — opencode layout may have changed.`);
+    throw new Error(
+      `Did not find ${wantRelPath} inside the tarball — opencode layout may have changed.`,
+    );
   }
 }
 
-async function main() {
-  const { platform, arch } = parseArgs();
-  const version = readBundledVersion();
-  const pkgName = resolvePackageName(platform, arch);
+export async function stageOpencodeVersion({
+  version,
+  platform = process.platform,
+  arch = process.arch,
+  targetRoot = join(buildDir, 'opencode'),
+  logPrefix = 'fetch-opencode',
+}) {
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(
+      `OpenCode staging requires an exact stable version, received: ${String(version)}`,
+    );
+  }
+  const pkgName = resolveOpencodePackageName(platform, arch);
   const isWindows = platform === 'win32';
 
   // Target layout: build/opencode/<platform>-<arch>/bin/opencode(.exe).
@@ -184,41 +236,35 @@ async function main() {
   // resources/opencode, and runtime-paths.ts prepends resources/opencode/bin
   // to PATH. One build subdirectory per target still lets multi-arch mac
   // builds pre-stage both arches before electron-builder selects the right one.
-  const targetDir = join(buildDir, 'opencode', `${platform}-${arch}`);
-  const binDir = join(targetDir, 'bin');
-  const destBinary = join(binDir, isWindows ? 'opencode.exe' : 'opencode');
-  const versionFile = join(targetDir, 'version.txt');
+  const { targetDir, binDir, destBinary, versionFile } = resolveOpencodeStagePaths(
+    targetRoot,
+    platform,
+    arch,
+  );
 
   if (existsSync(destBinary) && existsSync(versionFile)) {
     const existingVersion = readFileSync(versionFile, 'utf-8').trim();
     if (existingVersion === version) {
-      console.log(`[fetch-opencode] ${platform}/${arch} already at ${version} — skipping`);
-      return;
+      console.log(`[${logPrefix}] ${platform}/${arch} already at ${version} — skipping`);
+      return { targetDir, destBinary, versionFile };
     }
   }
 
-  console.log(`[fetch-opencode] ${platform}/${arch} → ${pkgName}@${version}`);
-  const meta = await fetchRegistryMeta(pkgName, version);
-  console.log(`[fetch-opencode] downloading ${meta.tarball}`);
+  console.log(`[${logPrefix}] ${platform}/${arch} → ${pkgName}@${version}`);
+  const meta = await retryOperation(
+    () => fetchRegistryMeta(pkgName, version),
+    'registry metadata',
+    logPrefix,
+  );
+  console.log(`[${logPrefix}] downloading ${meta.tarball}`);
   // ~150MB downloads over residential links occasionally get half-closed by
   // a CDN edge or a flaky local link; retry with exponential backoff so a
   // transient failure doesn't abort the whole desktop build.
-  let buf;
-  let lastErr;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      buf = await downloadToBuffer(meta.tarball);
-      break;
-    } catch (err) {
-      lastErr = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[fetch-opencode] download attempt ${attempt}/3 failed: ${msg}`);
-      if (attempt < 3) {
-        await new Promise((r) => setTimeout(r, 2000 * attempt));
-      }
-    }
-  }
-  if (!buf) throw lastErr ?? new Error('download failed after 3 attempts');
+  const buf = await retryOperation(
+    () => downloadToBuffer(meta.tarball),
+    'tarball download',
+    logPrefix,
+  );
   verifyIntegrity(buf, meta, pkgName);
 
   // Stage tarball to a temp file so tar.t has a file handle. Writing
@@ -234,7 +280,7 @@ async function main() {
     mkdirSync(binDir, { recursive: true });
     extractBinary(tgzPath, destBinary, isWindows);
     writeFileSync(versionFile, version + '\n', 'utf-8');
-    console.log(`[fetch-opencode] wrote ${destBinary}`);
+    console.log(`[${logPrefix}] wrote ${destBinary}`);
   } finally {
     try {
       rmSync(tempRoot, { recursive: true, force: true });
@@ -242,9 +288,18 @@ async function main() {
       /* best-effort */
     }
   }
+  return { targetDir, destBinary, versionFile };
 }
 
-main().catch((err) => {
-  console.error('[fetch-opencode] failed:', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+async function main() {
+  const { platform, arch } = parseOpencodeTargetArgs();
+  await stageOpencodeVersion({ version: readBundledVersion(), platform, arch });
+}
+
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null;
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[fetch-opencode] failed:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

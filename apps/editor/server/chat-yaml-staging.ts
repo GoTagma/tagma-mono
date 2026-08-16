@@ -57,6 +57,7 @@ import {
   runRequirementsSync,
 } from './requirements-sync.js';
 import { runCompileAndWriteLog } from './compile-log.js';
+import { validateChatPipelinePathCoordinates } from './chat-pipeline-path-validation.js';
 import {
   beginWatching,
   broadcastStateEvent,
@@ -114,6 +115,47 @@ export class ChatYamlStageLockOwnershipError extends Error {
   constructor(message = 'The chat YAML stage does not belong to the active YAML edit lock.') {
     super(message);
     this.name = 'ChatYamlStageLockOwnershipError';
+  }
+}
+
+export type ChatYamlStageSessionRelocationPhase = 'prepared' | 'staged' | 'restoring';
+
+export interface ChatYamlStageSessionRelocationBinding {
+  version: 1;
+  relocationId: string;
+  stageId: string;
+  sessionId: string;
+  sourceDirectory: string;
+  targetDirectory: string;
+  phase: ChatYamlStageSessionRelocationPhase;
+  updatedAt: number;
+}
+
+export interface ChatYamlStageSessionRelocationIdentity {
+  stageId: string;
+  sessionId: string;
+  relocationId: string;
+}
+
+export interface ChatYamlStageSessionRelocationAdvanceInput extends ChatYamlStageSessionRelocationIdentity {
+  expectedPhase: ChatYamlStageSessionRelocationPhase;
+  phase: ChatYamlStageSessionRelocationPhase;
+}
+
+export type ChatYamlStageSessionRelocationClearInput = ChatYamlStageSessionRelocationIdentity & {
+  expectedPhase: ChatYamlStageSessionRelocationPhase;
+} & (
+    | { verifiedHomeDirectory: string; verifiedSessionMissing?: never }
+    | { verifiedSessionMissing: true; verifiedHomeDirectory?: never }
+  );
+
+export class ChatYamlStageSessionRelocationError extends Error {
+  readonly kind: 'invalid' | 'conflict';
+
+  constructor(kind: 'invalid' | 'conflict', message: string) {
+    super(message);
+    this.name = 'ChatYamlStageSessionRelocationError';
+    this.kind = kind;
   }
 }
 
@@ -231,6 +273,7 @@ interface ChatYamlStageMetadata {
   activeRelativePath: string | null;
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
+  sessionRelocation?: ChatYamlStageSessionRelocationBinding;
 }
 
 interface ChatYamlStageBaseEntry {
@@ -271,6 +314,7 @@ export interface ChatYamlStageDescriptor {
   activeRelativePath: string | null;
   activeStagedPath: string | null;
   entries: ChatYamlStageEntry[];
+  sessionRelocation?: ChatYamlStageSessionRelocationBinding;
 }
 
 export interface ChatYamlStageLocalBranch {
@@ -547,6 +591,125 @@ function stageRecordContext(
     kind,
   };
 }
+
+function isRelocationPhase(value: unknown): value is ChatYamlStageSessionRelocationPhase {
+  return value === 'prepared' || value === 'staged' || value === 'restoring';
+}
+
+function isExactRelocationString(value: unknown, maxLength: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maxLength &&
+    value.trim() === value
+  );
+}
+
+function invalidRelocation(message: string): ChatYamlStageSessionRelocationError {
+  return new ChatYamlStageSessionRelocationError('invalid', message);
+}
+
+function relocationConflict(message: string): ChatYamlStageSessionRelocationError {
+  return new ChatYamlStageSessionRelocationError('conflict', message);
+}
+
+function parseSessionRelocationBinding(
+  value: unknown,
+  paths: StagePaths,
+): ChatYamlStageSessionRelocationBinding {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Chat YAML stage session relocation metadata is invalid.');
+  }
+  const raw = value as Partial<ChatYamlStageSessionRelocationBinding>;
+  if (
+    raw.version !== 1 ||
+    raw.stageId !== paths.id ||
+    !isExactRelocationString(raw.relocationId, 1_024) ||
+    !isExactRelocationString(raw.sessionId, 1_024) ||
+    !isExactRelocationString(raw.sourceDirectory, 32_768) ||
+    !isExactRelocationString(raw.targetDirectory, 32_768) ||
+    !isAbsolute(raw.sourceDirectory) ||
+    !isAbsolute(raw.targetDirectory) ||
+    raw.sourceDirectory !== paths.workspaceTagmaDir ||
+    raw.targetDirectory !== paths.agentTagmaDir ||
+    samePath(raw.sourceDirectory, raw.targetDirectory) ||
+    !isRelocationPhase(raw.phase) ||
+    !Number.isSafeInteger(raw.updatedAt) ||
+    (raw.updatedAt ?? -1) < 0
+  ) {
+    throw new Error('Chat YAML stage session relocation metadata is invalid.');
+  }
+  return {
+    version: 1,
+    relocationId: raw.relocationId,
+    stageId: paths.id,
+    sessionId: raw.sessionId,
+    sourceDirectory: raw.sourceDirectory,
+    targetDirectory: raw.targetDirectory,
+    phase: raw.phase,
+    updatedAt: raw.updatedAt!,
+  };
+}
+
+function validateRelocationIdentity(
+  input: ChatYamlStageSessionRelocationIdentity,
+  paths: StagePaths,
+): ChatYamlStageSessionRelocationIdentity & {
+  sourceDirectory: string;
+  targetDirectory: string;
+} {
+  if (input.stageId !== paths.id) {
+    throw invalidRelocation('Session relocation stage id does not match the authenticated stage.');
+  }
+  if (!isExactRelocationString(input.sessionId, 1_024)) {
+    throw invalidRelocation('Session relocation sessionId must be an exact non-empty string.');
+  }
+  if (!isExactRelocationString(input.relocationId, 1_024)) {
+    throw invalidRelocation('Session relocation relocationId must be an exact non-empty string.');
+  }
+  if (samePath(paths.workspaceTagmaDir, paths.agentTagmaDir)) {
+    throw invalidRelocation('Session relocation source and target directories must be different.');
+  }
+  return {
+    stageId: paths.id,
+    sessionId: input.sessionId,
+    relocationId: input.relocationId,
+    sourceDirectory: paths.workspaceTagmaDir,
+    targetDirectory: paths.agentTagmaDir,
+  };
+}
+
+function assertRelocationIdentityMatches(
+  binding: ChatYamlStageSessionRelocationBinding,
+  identity: ChatYamlStageSessionRelocationIdentity & {
+    sourceDirectory: string;
+    targetDirectory: string;
+  },
+): void {
+  if (
+    binding.stageId !== identity.stageId ||
+    binding.sessionId !== identity.sessionId ||
+    binding.relocationId !== identity.relocationId ||
+    binding.sourceDirectory !== identity.sourceDirectory ||
+    binding.targetDirectory !== identity.targetDirectory
+  ) {
+    throw relocationConflict(
+      'Session relocation identity does not match the authenticated stage binding.',
+    );
+  }
+}
+
+function nextRelocationUpdatedAt(previous?: ChatYamlStageSessionRelocationBinding): number {
+  return Math.max(Date.now(), (previous?.updatedAt ?? -1) + 1);
+}
+
+function assertStageSessionRelocationInactive(metadata: ChatYamlStageMetadata): void {
+  if (!metadata.sessionRelocation) return;
+  throw relocationConflict(
+    'Chat YAML stage session relocation is active; verify that the OpenCode session returned home and clear the binding before finalizing or discarding the stage.',
+  );
+}
+
 function assertPortableRelativePath(relativePath: string): string {
   if (typeof relativePath !== 'string' || relativePath.trim().length === 0) {
     throw new Error('A staged YAML relative path is required.');
@@ -795,6 +958,10 @@ function readMetadata(
           attemptId: rawTrialPlanAttempt.attemptId,
         }
       : null;
+  let sessionRelocation: ChatYamlStageSessionRelocationBinding | undefined;
+  if (raw.sessionRelocation !== undefined && raw.sessionRelocation !== null) {
+    sessionRelocation = parseSessionRelocationBinding(raw.sessionRelocation, paths);
+  }
   if (
     !raw ||
     raw.version !== STAGE_VERSION ||
@@ -829,6 +996,7 @@ function readMetadata(
         requirementsHash: entry.requirementsHash,
         supportHash: entry.supportHash,
       })),
+      ...(sessionRelocation ? { sessionRelocation } : {}),
     },
   };
 }
@@ -854,11 +1022,21 @@ function cleanupExpiredStages(workDir: string, now = Date.now()): void {
     }
     let createdAt = 0;
     try {
-      const parsed = readAuthenticatedServerRecordSync<{ createdAt?: unknown }>(
-        paths.metadataPath,
-        stageRecordContext(paths, 'stage-metadata'),
-      );
+      const parsed = readAuthenticatedServerRecordSync<{
+        createdAt?: unknown;
+        sessionRelocation?: unknown;
+      }>(paths.metadataPath, stageRecordContext(paths, 'stage-metadata'));
       if (typeof parsed.createdAt === 'number') createdAt = parsed.createdAt;
+      if (parsed.sessionRelocation !== undefined && parsed.sessionRelocation !== null) {
+        try {
+          parseSessionRelocationBinding(parsed.sessionRelocation, paths);
+        } catch {
+          // An authenticated but malformed relocation record may still represent
+          // a session whose persisted cwd points into this stage. Retain it for
+          // explicit recovery instead of turning metadata damage into deletion.
+        }
+        continue;
+      }
     } catch {
       try {
         createdAt = statSync(paths.rootDir).mtimeMs;
@@ -986,7 +1164,30 @@ function descriptor(
     activeRelativePath: metadata.activeRelativePath,
     activeStagedPath: active?.stagedPath ?? null,
     entries,
+    ...(metadata.sessionRelocation ? { sessionRelocation: metadata.sessionRelocation } : {}),
   };
+}
+
+function runChatStageCompileAndWriteLog(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  yamlPath: string,
+): ReturnType<typeof runCompileAndWriteLog> {
+  const relativeYamlPath = portableRelative(paths.agentTagmaDir, yamlPath);
+  return runCompileAndWriteLog(yamlPath, ws.registry, {
+    additionalValidation(content) {
+      try {
+        return validateChatPipelinePathCoordinates(parseYaml(content), {
+          workspaceRoot: ws.workDir,
+          relativeYamlPath,
+        });
+      } catch {
+        // The base compiler owns YAML/envelope/shape diagnostics. This
+        // context-aware check only augments structurally walkable pipelines.
+        return [];
+      }
+    },
+  });
 }
 
 export function createChatYamlStage(
@@ -1034,9 +1235,12 @@ export function createChatYamlStage(
       baseEntries,
     };
     writeMetadata(paths, metadata);
-    startChatCompileWatcher(paths.agentTagmaDir, ws.registry, undefined, {
-      compileExistingYaml: false,
-    });
+    startChatCompileWatcher(
+      paths.agentTagmaDir,
+      ws.registry,
+      (yamlPath) => runChatStageCompileAndWriteLog(ws, paths, yamlPath),
+      { compileExistingYaml: false },
+    );
     return descriptor(ws, paths, metadata);
   } catch (err) {
     stopChatCompileWatcher(paths.agentTagmaDir);
@@ -1049,6 +1253,143 @@ export function listChatYamlStage(ws: WorkspaceState, stageId: string): ChatYaml
   const { paths, metadata } = readMetadata(ws, stageId);
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   return descriptor(ws, paths, metadata);
+}
+
+export function readChatYamlStageSessionRelocation(
+  ws: WorkspaceState,
+  stageId: string,
+): ChatYamlStageSessionRelocationBinding | null {
+  return readMetadata(ws, stageId).metadata.sessionRelocation ?? null;
+}
+
+export function listChatYamlStageSessionRelocations(
+  ws: WorkspaceState,
+): ChatYamlStageSessionRelocationBinding[] {
+  if (!ws.workDir) return [];
+  const stagingHome = join(tagmaDirOf(ws.workDir), STAGING_DIR_NAME);
+  if (!existsSync(stagingHome)) return [];
+  try {
+    const stat = lstatSync(stagingHome);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return [];
+  } catch {
+    return [];
+  }
+  let entries;
+  try {
+    entries = readdirSync(stagingHome, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const bindings: ChatYamlStageSessionRelocationBinding[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const binding = readMetadata(ws, entry.name).metadata.sessionRelocation;
+      if (binding) bindings.push(binding);
+    } catch {
+      // Recovery discovery is best-effort across independent authenticated
+      // stage records. One missing, tampered, or malformed stage must not hide
+      // a different valid relocation that still needs to be restored.
+    }
+  }
+  return bindings.sort(
+    (left, right) => left.updatedAt - right.updatedAt || left.stageId.localeCompare(right.stageId),
+  );
+}
+
+export function prepareChatYamlStageSessionRelocation(
+  ws: WorkspaceState,
+  input: ChatYamlStageSessionRelocationIdentity,
+): ChatYamlStageSessionRelocationBinding {
+  const { paths, metadata } = readMetadata(ws, input.stageId);
+  if (readFinalizeResult(paths)) throw invalidRelocation('Chat YAML stage is already finalized.');
+  const identity = validateRelocationIdentity(input, paths);
+  if (metadata.sessionRelocation) {
+    assertRelocationIdentityMatches(metadata.sessionRelocation, identity);
+    if (metadata.sessionRelocation.phase === 'prepared') return metadata.sessionRelocation;
+    throw relocationConflict('Chat YAML stage already has an active session relocation.');
+  }
+  const binding: ChatYamlStageSessionRelocationBinding = {
+    version: 1,
+    ...identity,
+    phase: 'prepared',
+    updatedAt: nextRelocationUpdatedAt(),
+  };
+  writeMetadata(paths, { ...metadata, sessionRelocation: binding });
+  return binding;
+}
+
+export function advanceChatYamlStageSessionRelocation(
+  ws: WorkspaceState,
+  input: ChatYamlStageSessionRelocationAdvanceInput,
+): ChatYamlStageSessionRelocationBinding {
+  const { paths, metadata } = readMetadata(ws, input.stageId);
+  const identity = validateRelocationIdentity(input, paths);
+  if (!isRelocationPhase(input.expectedPhase) || !isRelocationPhase(input.phase)) {
+    throw invalidRelocation('Session relocation phases are invalid.');
+  }
+  const validTransition =
+    (input.expectedPhase === 'prepared' && input.phase === 'staged') ||
+    (input.expectedPhase === 'prepared' && input.phase === 'restoring') ||
+    (input.expectedPhase === 'staged' && input.phase === 'restoring') ||
+    input.expectedPhase === input.phase;
+  if (!validTransition) {
+    throw invalidRelocation('Session relocation transition is invalid.');
+  }
+  const current = metadata.sessionRelocation;
+  if (!current) throw relocationConflict('Chat YAML stage has no active session relocation.');
+  assertRelocationIdentityMatches(current, identity);
+  if (current.phase === input.phase) return current;
+  if (current.phase !== input.expectedPhase) {
+    throw relocationConflict(
+      `Session relocation phase does not match: expected ${input.expectedPhase}, found ${current.phase}.`,
+    );
+  }
+  const binding: ChatYamlStageSessionRelocationBinding = {
+    ...current,
+    phase: input.phase,
+    updatedAt: nextRelocationUpdatedAt(current),
+  };
+  writeMetadata(paths, { ...metadata, sessionRelocation: binding });
+  return binding;
+}
+
+export function clearChatYamlStageSessionRelocation(
+  ws: WorkspaceState,
+  input: ChatYamlStageSessionRelocationClearInput,
+): boolean {
+  const { paths, metadata } = readMetadata(ws, input.stageId);
+  const identity = validateRelocationIdentity(input, paths);
+  if (!isRelocationPhase(input.expectedPhase)) {
+    throw invalidRelocation('Session relocation expected phase is invalid.');
+  }
+  if (input.expectedPhase !== 'prepared' && input.expectedPhase !== 'restoring') {
+    throw invalidRelocation(
+      'Session relocation may be cleared only from prepared or restoring after home verification.',
+    );
+  }
+  if (input.verifiedSessionMissing !== true) {
+    if (
+      !isExactRelocationString(input.verifiedHomeDirectory, 32_768) ||
+      !isAbsolute(input.verifiedHomeDirectory) ||
+      input.verifiedHomeDirectory !== identity.sourceDirectory
+    ) {
+      throw invalidRelocation(
+        'Session relocation verified home directory must exactly match the source directory.',
+      );
+    }
+  }
+  const current = metadata.sessionRelocation;
+  if (!current) return false;
+  assertRelocationIdentityMatches(current, identity);
+  if (current.phase !== input.expectedPhase) {
+    throw relocationConflict(
+      `Session relocation phase does not match: expected ${input.expectedPhase}, found ${current.phase}.`,
+    );
+  }
+  const { sessionRelocation: _removed, ...cleared } = metadata;
+  writeMetadata(paths, cleared);
+  return true;
 }
 
 /** Resolve the server-authenticated write root for a staged chat turn. */
@@ -1115,7 +1456,7 @@ export function compileChatYamlStage(
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   const stagedPath = resolveStagedYamlPath(paths, relativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
-  const result = runCompileAndWriteLog(stagedPath, ws.registry);
+  const result = runChatStageCompileAndWriteLog(ws, paths, stagedPath);
   try {
     runPipelineManifestSync(stagedPath);
     runRequirementsSync(stagedPath);
@@ -2272,6 +2613,7 @@ export async function finalizeChatYamlStage(
 ): Promise<ChatYamlStageFinalizeResult> {
   const forceForkReason = normalizeFinalizeForceForkReason(input.forceForkReason);
   const { paths, metadata } = readMetadata(ws, input.stageId);
+  assertStageSessionRelocationInactive(metadata);
   const relativePath = assertPortableRelativePath(input.relativePath);
   const retainStage = input.retainStage === true;
   const previousTargetResult = readTargetFinalizeResult(paths, relativePath);
@@ -2525,7 +2867,8 @@ export function readFinalizedChatYamlStageResult(
   if (!ws.workDir) return null;
   const unresolvedPaths = stagePaths(ws.workDir, stageId);
   if (!existsSync(unresolvedPaths.rootDir)) return null;
-  const { paths } = readMetadata(ws, stageId);
+  const { paths, metadata } = readMetadata(ws, stageId);
+  assertStageSessionRelocationInactive(metadata);
   const result = readFinalizeResult(paths);
   if (!result) return null;
   cleanupFinalizedStage(paths);
@@ -2540,7 +2883,8 @@ export function discardChatYamlStageWithDisposition(
   if (!ws.workDir) return 'missing';
   const unresolvedPaths = stagePaths(ws.workDir, stageId);
   if (!existsSync(unresolvedPaths.rootDir)) return 'missing';
-  const { paths } = readMetadata(ws, stageId);
+  const { paths, metadata } = readMetadata(ws, stageId);
+  assertStageSessionRelocationInactive(metadata);
   if (readFinalizeResult(paths)) return 'finalized';
   stopChatCompileWatcher(paths.agentTagmaDir);
   rmSync(paths.rootDir, { recursive: true, force: true });

@@ -27,12 +27,13 @@ import type {
   RawTrackConfig,
   Permissions,
   TaskLogLevel,
+  PlatformExportTarget,
 } from '../../api/client';
 import { api, formatCommand } from '../../api/client';
 import { TASK_LOG_CAP } from '../../store/run-event-reducer';
 import { useChatStore } from '../../store/chat-store';
 import { usePipelineStore } from '../../store/pipeline-store';
-import { formatTaskErrorAttachment } from '../../utils/format-error-prompt';
+import { formatTaskErrorAttachment, isTaskErrorStatus } from '../../utils/format-error-prompt';
 import { CopyButton } from './CopyButton';
 import { MissingBinaryHelp } from './MissingBinaryHelp';
 import { JsonOutputView } from './JsonOutputView';
@@ -41,6 +42,8 @@ import { RUN_INSPECTOR_PANEL_CLASSES } from './run-layout';
 interface RunTaskPanelProps {
   task: RunTaskState;
   config: RawPipelineConfig;
+  /** Host that resolves runtime paths; omitted only by older/test callers. */
+  hostPlatform?: PlatformExportTarget | null;
   onClose: () => void;
 }
 
@@ -97,14 +100,8 @@ function permsLabel(perms: Permissions | undefined | null): string | null {
   return parts.length ? parts.join('+') : null;
 }
 
-const ASK_CHAT_TASK_STATUSES = new Set<TaskStatus>(['failed', 'timeout', 'blocked']);
-
-export function canAskChatForTaskError(
-  task: Pick<RunTaskState, 'status' | 'stderr' | 'stderrPath'>,
-): boolean {
-  return (
-    ASK_CHAT_TASK_STATUSES.has(task.status) || task.stderr.trim().length > 0 || !!task.stderrPath
-  );
+export function canAskChatForTaskError(task: Pick<RunTaskState, 'status'>): boolean {
+  return isTaskErrorStatus(task.status);
 }
 
 export async function openTaskOutputPath(
@@ -174,7 +171,7 @@ function ConfigRow({
   );
 }
 
-export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
+export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: RunTaskPanelProps) {
   const resolved = useMemo(() => resolveTask(task, config), [task, config]);
   const taskConfig = resolved?.taskConfig;
   const track = resolved?.track;
@@ -230,6 +227,29 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
   const cwd = taskConfig?.cwd ?? track?.cwd ?? null;
   const agentProfile = taskConfig?.agent_profile ?? track?.agent_profile ?? null;
   const timeout = taskConfig?.timeout ?? null;
+  const triggerPath =
+    taskConfig?.trigger && typeof taskConfig.trigger.path === 'string'
+      ? taskConfig.trigger.path
+      : null;
+  const triggerTimeout =
+    taskConfig?.trigger && typeof taskConfig.trigger.timeout === 'string'
+      ? taskConfig.trigger.timeout
+      : null;
+  const triggerPathIsAbsolute =
+    triggerPath !== null &&
+    (triggerPath.startsWith('/') ||
+      (hostPlatform === 'windows' &&
+        (triggerPath.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(triggerPath))));
+  const triggerPathContext = triggerPathIsAbsolute
+    ? 'absolute path'
+    : cwd
+      ? `relative to CWD ${cwd}`
+      : 'relative to workspace root';
+  const authoredTriggerWaitDeadlines = [
+    triggerTimeout ? `Trigger timeout ${triggerTimeout}` : null,
+    timeout ? `Task timeout ${timeout}` : null,
+    config.timeout ? `Pipeline timeout ${config.timeout}` : null,
+  ].filter((value): value is string => value !== null);
 
   const promptBody = taskConfig?.prompt?.trim();
   const commandBody = formatCommand(taskConfig?.command).trim();
@@ -243,10 +263,14 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
         }),
     });
   };
-  const canAskChat = canAskChatForTaskError(task);
+  const taskErrorAttachment = useMemo(
+    () => formatTaskErrorAttachment(task, config),
+    [task, config],
+  );
   const handleAskChatForTaskError = useCallback(() => {
-    useChatStore.getState().attachErrorContext(formatTaskErrorAttachment(task, config));
-  }, [task, config]);
+    if (!taskErrorAttachment) return;
+    useChatStore.getState().attachErrorContext(taskErrorAttachment);
+  }, [taskErrorAttachment]);
 
   return (
     <div className={RUN_INSPECTOR_PANEL_CLASSES}>
@@ -307,6 +331,67 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                 {STATUS_LABEL[task.status]}
               </div>
             </div>
+
+            {task.status === 'waiting' && (
+              <div
+                data-task-wait-reason={
+                  task.waitReason?.kind ?? (task.waitReason === null ? 'queued' : 'unavailable')
+                }
+              >
+                <label className="field-label">Waiting on</label>
+                <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-2 text-[10px] text-tagma-muted space-y-1.5">
+                  {task.waitReason?.kind === 'dependencies' ? (
+                    <>
+                      <div className="font-medium text-tagma-text/80">
+                        {`Waiting for ${task.waitReason.taskIds.length} ${
+                          task.waitReason.taskIds.length === 1 ? 'dependency' : 'dependencies'
+                        } to finish`}
+                      </div>
+                      <div className="space-y-0.5 font-mono">
+                        {task.waitReason.taskIds.map((taskId) => (
+                          <div key={taskId} className="whitespace-normal [overflow-wrap:anywhere]">
+                            {taskId}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : task.waitReason?.kind === 'trigger' ? (
+                    <>
+                      <div className="font-medium text-tagma-text/80">
+                        {`Waiting for ${task.waitReason.triggerType} trigger`}
+                      </div>
+                      {taskConfig?.trigger?.type === task.waitReason.triggerType && triggerPath && (
+                        <div className="font-mono whitespace-normal [overflow-wrap:anywhere]">
+                          {`Watching ${triggerPath} — ${triggerPathContext}`}
+                        </div>
+                      )}
+                      <div className="space-y-0.5 font-mono">
+                        {authoredTriggerWaitDeadlines.length > 0 ? (
+                          <>
+                            <div className="text-tagma-muted/70">Authored deadlines</div>
+                            {authoredTriggerWaitDeadlines.map((deadline) => (
+                              <div key={deadline}>{deadline}</div>
+                            ))}
+                            <div className="text-tagma-muted/70">
+                              The earliest applicable deadline ends the wait.
+                            </div>
+                          </>
+                        ) : (
+                          <div>
+                            No authored deadline — runtime, trigger, or workspace defaults may still
+                            apply.
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : task.waitReason === null ? (
+                    <div>Queued / preparing to start.</div>
+                  ) : (
+                    <div>Waiting details unavailable from this runtime.</div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Timing */}
             {task.startedAt && (
@@ -445,7 +530,7 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
               </div>
             )}
 
-            {canAskChat && (
+            {taskErrorAttachment && (
               <button
                 type="button"
                 onClick={handleAskChatForTaskError}

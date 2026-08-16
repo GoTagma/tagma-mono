@@ -12,6 +12,21 @@ import {
 
 const tempRoots: string[] = [];
 
+function readBundledOpencodeDbSchemaVersion(): number {
+  const electronPackage = JSON.parse(
+    readFileSync(path.resolve(import.meta.dirname, '../../apps/electron/package.json'), 'utf8'),
+  ) as { tagma?: { bundledOpencodeDbSchemaVersion?: unknown } };
+  const value = electronPackage.tagma?.bundledOpencodeDbSchemaVersion;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+    throw new Error(
+      'apps/electron/package.json must define tagma.bundledOpencodeDbSchemaVersion as a positive integer',
+    );
+  }
+  return value;
+}
+
+const bundledOpencodeDbSchemaVersion = readBundledOpencodeDbSchemaVersion();
+
 function withTempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'tagma-hotupdate-manifest-'));
   tempRoots.push(dir);
@@ -79,7 +94,7 @@ describe('build-hotupdate-manifest', () => {
       size: 'win-sidecar'.length,
     });
     expect(manifest.opencode?.version).toBe('1.15.13');
-    expect(manifest.opencode?.dbSchemaVersion).toBe(1);
+    expect(manifest.opencode?.dbSchemaVersion).toBe(bundledOpencodeDbSchemaVersion);
     expect(manifest.opencode?.targets.length).toBe(4);
     expect(manifest.opencode?.targets.map((t) => `${t.platform}/${t.arch}`)).toEqual([
       'win32/x64',

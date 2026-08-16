@@ -55,6 +55,8 @@ export interface ModelReasoningIdentity {
   /** Effective package after applying a model-level `provider.npm` override. */
   npm: string;
   releaseDate?: string;
+  /** Effective OpenCode provider id/endpoint family used by provider-specific transforms. */
+  providerHint?: string;
 }
 
 const MAX_VARIANTS = 32;
@@ -90,6 +92,7 @@ export function resolveModelReasoningIdentity(
   model: Record<string, unknown>,
   providerNpm: string,
   modelId: string,
+  providerHint?: string,
 ): ModelReasoningIdentity {
   const rawApiModelId = model.id;
   const apiModelId =
@@ -103,7 +106,14 @@ export function resolveModelReasoningIdentity(
   const rawReleaseDate = model.release_date;
   const releaseDate =
     typeof rawReleaseDate === 'string' && rawReleaseDate.trim() ? rawReleaseDate.trim() : undefined;
-  return { npm, modelId: modelId.trim(), apiModelId, ...(releaseDate ? { releaseDate } : {}) };
+  const normalizedHint = providerHint?.trim();
+  return {
+    npm,
+    modelId: modelId.trim(),
+    apiModelId,
+    ...(releaseDate ? { releaseDate } : {}),
+    ...(normalizedHint ? { providerHint: normalizedHint } : {}),
+  };
 }
 
 function effortProfile(id: string, label: string, efforts: string[]): ReasoningProfile {
@@ -189,19 +199,22 @@ function openAiCompatibleEfforts(modelId: string): string[] {
   return gpt5CodexEfforts(id) ?? versionedGpt5Efforts(id) ?? [...OPENAI_COMPATIBLE_EFFORTS];
 }
 
-function anthropicOpus47OrLater(modelId: string): boolean {
-  const version = /opus-(\d+)[.-](\d+)(?:[.@-]|$)|claude-(\d+)[.-](\d+)-opus(?:[.@-]|$)/i.exec(
-    modelId,
-  );
-  if (!version) return false;
-  const major = Number(version[1] ?? version[3]);
-  const minor = Number(version[2] ?? version[4]);
+function anthropicUsesModernAdaptiveThinking(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  if (!id.includes('claude-')) return false;
+  // Match both family-first IDs (claude-sonnet-4.7) and version-first IDs
+  // (claude-4.7-sonnet). Restrict the minor to two digits so release dates in
+  // IDs such as claude-opus-4-20250514 are not mistaken for model versions.
+  const version = /claude-(?:[a-z]+-)?(\d+)(?:[.-](\d{1,2}))?(?:[.@-]|$)/i.exec(id);
+  if (!version) return true;
+  const major = Number(version[1]);
+  const minor = Number(version[2] ?? 0);
   return major > 4 || (major === 4 && minor >= 7);
 }
 
 function anthropicAdaptiveEfforts(modelId: string): string[] | null {
   const id = modelId.toLowerCase();
-  if (anthropicOpus47OrLater(id) || id.includes('fable-5')) {
+  if (anthropicUsesModernAdaptiveThinking(id)) {
     return ['low', 'medium', 'high', 'xhigh', 'max'];
   }
   if (
@@ -221,6 +234,16 @@ function anthropicAdaptiveEfforts(modelId: string): string[] | null {
   return null;
 }
 
+function anthropicAdaptiveEffortsForProvider(
+  modelId: string,
+  providerHint?: string,
+): string[] | null {
+  const efforts = anthropicAdaptiveEfforts(modelId);
+  if (!efforts || normalizedProviderHint(providerHint) !== 'github-copilot') return efforts;
+  if (modelId.toLowerCase().includes('opus-4.7')) return ['medium'];
+  return efforts.filter((effort) => effort !== 'max' && effort !== 'xhigh');
+}
+
 function googleThinkingLevelEfforts(modelId: string): string[] {
   const id = modelId.toLowerCase();
   if (!id.includes('gemini-3')) return ['low', 'high'];
@@ -234,26 +257,53 @@ function normalizedProviderHint(providerHint?: string): string {
   return (providerHint ?? '').trim().toLowerCase();
 }
 
-function excludesOpenCodeGeneratedVariants(modelId: string): boolean {
+function isGlm52(modelId: string, apiModelId: string): boolean {
+  return ['glm-5.2', 'glm-5-2', 'glm-5p2'].some(
+    (name) => modelId.includes(name) || apiModelId.includes(name),
+  );
+}
+
+function isKimiFamily(apiModelId: string, providerHint?: string): boolean {
+  return [apiModelId, normalizedProviderHint(providerHint)].some(
+    (value) => value.includes('kimi') || value.includes('moonshot'),
+  );
+}
+
+function excludesOpenCodeGeneratedVariants(modelId: string, glm52: boolean): boolean {
   const id = modelId.toLowerCase();
-  return [
-    'deepseek-chat',
-    'deepseek-reasoner',
-    'deepseek-r1',
-    'deepseek-v3',
-    'minimax',
-    'glm',
-    'kimi',
-    'k2p',
-    'qwen',
-    'big-pickle',
-  ].some((value) => id.includes(value));
+  return (
+    [
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'deepseek-r1',
+      'deepseek-v3',
+      'minimax',
+      'kimi',
+      'k2p',
+      'qwen',
+      'big-pickle',
+    ].some((value) => id.includes(value)) ||
+    (id.includes('glm') && !glm52)
+  );
 }
 
 export function resolveLocalReasoningProviderHint(
   providerId: string,
   providerName: string,
+  baseURL?: string,
 ): string {
+  const normalizedProviderId = providerId.trim().toLowerCase();
+  if (normalizedProviderId === 'nvidia' || normalizedProviderId === 'lilac') {
+    return normalizedProviderId;
+  }
+  const endpoint = (baseURL ?? '').toLowerCase();
+  if (
+    ['api.kimi.com', 'api.moonshot.ai', 'api.moonshot.cn', 'api.moonshotai.cn'].some((host) =>
+      endpoint.includes(host),
+    )
+  ) {
+    return 'kimi';
+  }
   const hint = `${providerId} ${providerName}`.toLowerCase();
   if (/(?:^|[^a-z0-9])ollama(?:[^a-z0-9]|$)/.test(hint)) return 'ollama';
   if (
@@ -269,7 +319,7 @@ export function resolveLocalReasoningProviderHint(
 }
 
 /**
- * Return the exact ids OpenCode v1.17.8 generates for a reasoning-capable
+ * Return the exact ids OpenCode v1.18.18 generates for a reasoning-capable
  * model. Payloads vary by adapter and model limits, so this resolver is used
  * only for reconciliation/tombstones; authoring recommendations stay separate.
  */
@@ -278,9 +328,12 @@ export function resolveOpenCodeGeneratedReasoningVariantIds(
   modelId: string,
   releaseDate?: string,
   apiModelId = modelId,
+  providerHint?: string,
 ): string[] {
   const model = modelId.trim().toLowerCase();
   const apiModel = apiModelId.trim().toLowerCase();
+  const provider = normalizedProviderHint(providerHint);
+  const glm52 = isGlm52(model, apiModel);
 
   // This package/API special case precedes OpenCode's models-map-key exclusions.
   if (
@@ -291,10 +344,19 @@ export function resolveOpenCodeGeneratedReasoningVariantIds(
   }
 
   const adaptiveAnthropic = anthropicAdaptiveEfforts(apiModel);
-  if (excludesOpenCodeGeneratedVariants(model)) return [];
-  if (model.includes('grok')) {
-    return model.includes('grok-3-mini') ? ['low', 'high'] : [];
+  const providerAdaptiveAnthropic = anthropicAdaptiveEffortsForProvider(apiModel, provider);
+  if (glm52 && npm === '@openrouter/ai-sdk-provider') return ['high', 'xhigh'];
+  if (glm52 && (npm === '@ai-sdk/openai-compatible' || npm === '@ai-sdk/anthropic')) {
+    return ['high', 'max'];
   }
+  if (
+    isKimiFamily(apiModel, providerHint) &&
+    (npm === '@ai-sdk/anthropic' || npm === '@ai-sdk/google-vertex/anthropic')
+  ) {
+    return ['low', 'medium', 'high', 'xhigh', 'max'];
+  }
+  if (excludesOpenCodeGeneratedVariants(model, glm52)) return [];
+  if (model.includes('grok-3-mini')) return ['low', 'high'];
 
   switch (npm) {
     case '@openrouter/ai-sdk-provider':
@@ -302,19 +364,46 @@ export function resolveOpenCodeGeneratedReasoningVariantIds(
         ? openAiCompatibleEfforts(apiModel)
         : [...WIDELY_SUPPORTED_EFFORTS];
     case '@ai-sdk/cerebras':
+    case '@ai-sdk/togetherai':
     case '@ai-sdk/xai':
+    case '@ai-sdk/deepinfra':
+    case 'venice-ai-sdk-provider':
     case '@ai-sdk/openai-compatible': {
       if (apiModel.includes('north-mini-code')) return ['none', 'high'];
       return apiModel.includes('deepseek-v4')
         ? [...WIDELY_SUPPORTED_EFFORTS, 'max']
         : [...WIDELY_SUPPORTED_EFFORTS];
     }
+    case 'ai-gateway-provider':
+      return apiModel.startsWith('openai/')
+        ? nativeOpenAiEfforts(apiModel, releaseDate)
+        : [...WIDELY_SUPPORTED_EFFORTS];
+    case '@ai-sdk/gateway':
+      if (apiModel.includes('anthropic')) return adaptiveAnthropic ?? ['high', 'max'];
+      if (apiModel.includes('google')) {
+        return apiModel.includes('2.5') ? ['high', 'max'] : ['low', 'high'];
+      }
+      return openAiCompatibleEfforts(apiModel);
+    case '@ai-sdk/github-copilot': {
+      if (model.includes('gemini')) return [];
+      if (model.includes('claude')) return [...WIDELY_SUPPORTED_EFFORTS];
+      if (model.includes('5.1-codex-max') || model.includes('5.2') || model.includes('5.3')) {
+        return [...WIDELY_SUPPORTED_EFFORTS, 'xhigh'];
+      }
+      return model.includes('gpt-5') && (releaseDate ?? '') >= OPENAI_XHIGH_EFFORT_RELEASE_DATE
+        ? [...WIDELY_SUPPORTED_EFFORTS, 'xhigh']
+        : [...WIDELY_SUPPORTED_EFFORTS];
+    }
     case '@ai-sdk/azure':
       return model === 'o1-mini' ? [] : nativeOpenAiEfforts(model, releaseDate);
+    case '@ai-sdk/amazon-bedrock/mantle':
     case '@ai-sdk/openai':
-      return nativeOpenAiEfforts(apiModel, releaseDate);
+      return provider === 'meta'
+        ? [...OPENAI_COMPATIBLE_EFFORTS]
+        : nativeOpenAiEfforts(apiModel, releaseDate);
     case '@ai-sdk/anthropic':
-      if (adaptiveAnthropic) return adaptiveAnthropic;
+    case '@ai-sdk/google-vertex/anthropic':
+      if (providerAdaptiveAnthropic) return providerAdaptiveAnthropic;
       if (['opus-4-5', 'opus-4.5'].some((value) => apiModel.includes(value))) {
         return [...WIDELY_SUPPORTED_EFFORTS];
       }
@@ -336,38 +425,107 @@ export function resolveOpenCodeGeneratedReasoningVariantIds(
         : [];
     case '@ai-sdk/groq':
       return ['none', ...WIDELY_SUPPORTED_EFFORTS];
+    case '@jerome-benoit/sap-ai-provider-v2':
+      if (model.includes('anthropic')) return adaptiveAnthropic ?? ['high', 'max'];
+      if (model.includes('gemini') && model.includes('2.5')) return ['high', 'max'];
+      if (model.includes('gpt') || /\bo[1-9]/.test(model)) {
+        return nativeOpenAiEfforts(model, releaseDate);
+      }
+      return [...WIDELY_SUPPORTED_EFFORTS];
     default:
       return [];
   }
 }
 
-/** Mirror the generated-variant branches Tagma can author for the pinned OpenCode runtime. */
+/** Mirror the generated-variant branches Tagma can author for OpenCode v1.18.18. */
 export function resolveOpenCodeGeneratedReasoningProfile(
   npm: string,
   modelId: string,
   releaseDate?: string,
   apiModelId = modelId,
+  providerHint?: string,
 ): ReasoningProfile | null {
   const model = modelId.trim().toLowerCase();
   const apiModel = apiModelId.trim().toLowerCase();
+  const provider = normalizedProviderHint(providerHint);
+  const glm52 = isGlm52(model, apiModel);
+  const providerAdaptiveAnthropic = anthropicAdaptiveEffortsForProvider(apiModel, provider);
 
   // These branches precede OpenCode's models-map-key exclusions.
   if (
     apiModel.includes('minimax-m3') &&
     (npm === '@ai-sdk/anthropic' || npm === '@ai-sdk/openai-compatible')
   ) {
+    const usesChatTemplate = provider === 'nvidia' || provider === 'lilac';
     return {
       id: 'opencode-minimax-m3',
       label: 'MiniMax M3',
-      variants: [
-        { id: 'none', options: { thinking: { type: 'disabled' } } },
-        { id: 'thinking', options: { thinking: { type: 'adaptive' } } },
-      ],
+      variants: usesChatTemplate
+        ? [
+            { id: 'none', options: { chat_template_kwargs: { thinking_mode: 'disabled' } } },
+            { id: 'thinking', options: { chat_template_kwargs: { thinking_mode: 'enabled' } } },
+          ]
+        : [
+            { id: 'none', options: { thinking: { type: 'disabled' } } },
+            { id: 'thinking', options: { thinking: { type: 'adaptive' } } },
+          ],
     };
   }
-  if (excludesOpenCodeGeneratedVariants(model)) return null;
-  if (model.includes('grok')) {
-    if (!model.includes('grok-3-mini')) return null;
+  if (glm52 && npm === '@openrouter/ai-sdk-provider') {
+    return {
+      id: 'opencode-glm-5.2-openrouter',
+      label: 'GLM-5.2',
+      variants: ['high', 'xhigh'].map((effort) => ({
+        id: effort,
+        options: { reasoning: { effort } },
+      })),
+    };
+  }
+  if (glm52 && npm === '@ai-sdk/openai-compatible') {
+    return effortProfile('opencode-glm-5.2-openai-compatible', 'GLM-5.2', ['high', 'max']);
+  }
+  if (glm52 && npm === '@ai-sdk/anthropic') {
+    return {
+      id: 'opencode-glm-5.2-anthropic',
+      label: 'GLM-5.2',
+      variants: ['high', 'max'].map((effort) => ({ id: effort, options: { effort } })),
+    };
+  }
+  if (
+    isKimiFamily(apiModel, providerHint) &&
+    (npm === '@ai-sdk/anthropic' || npm === '@ai-sdk/google-vertex/anthropic')
+  ) {
+    return {
+      id: 'opencode-kimi-anthropic',
+      label: 'Kimi',
+      variants: ['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => ({
+        id: effort,
+        options: { thinking: { type: 'adaptive', display: 'summarized' }, effort },
+      })),
+    };
+  }
+  if (
+    providerAdaptiveAnthropic &&
+    (npm === '@ai-sdk/anthropic' || npm === '@ai-sdk/google-vertex/anthropic')
+  ) {
+    const summarized = anthropicUsesModernAdaptiveThinking(apiModel);
+    return {
+      id: 'opencode-anthropic-adaptive',
+      label: 'Anthropic adaptive thinking',
+      variants: providerAdaptiveAnthropic.map((effort) => ({
+        id: effort,
+        options: {
+          thinking: {
+            type: 'adaptive',
+            ...(summarized ? { display: 'summarized' } : {}),
+          },
+          effort,
+        },
+      })),
+    };
+  }
+  if (excludesOpenCodeGeneratedVariants(model, glm52)) return null;
+  if (model.includes('grok-3-mini')) {
     if (npm === '@openrouter/ai-sdk-provider') {
       return {
         id: 'opencode-grok-3-mini-openrouter',
@@ -379,6 +537,21 @@ export function resolveOpenCodeGeneratedReasoningProfile(
       };
     }
     return effortProfile('opencode-grok-3-mini', 'Grok 3 Mini', ['low', 'high']);
+  }
+
+  if (npm === '@openrouter/ai-sdk-provider') {
+    const efforts =
+      apiModel.startsWith('openai/') || model.includes('gpt')
+        ? openAiCompatibleEfforts(apiModel)
+        : [...WIDELY_SUPPORTED_EFFORTS];
+    return {
+      id: 'openrouter-default',
+      label: 'OpenRouter',
+      variants: efforts.map((effort) => ({
+        id: effort,
+        options: { reasoning: { effort } },
+      })),
+    };
   }
 
   if (npm === '@ai-sdk/openai-compatible') {
@@ -404,8 +577,18 @@ export function resolveOpenCodeGeneratedReasoningProfile(
     ]);
   }
 
-  if (npm === '@ai-sdk/openai') {
-    return openAiProfile(apiModel, nativeOpenAiEfforts(apiModel, releaseDate));
+  if (npm === '@ai-sdk/openai' || npm === '@ai-sdk/amazon-bedrock/mantle') {
+    const efforts =
+      provider === 'meta'
+        ? [...OPENAI_COMPATIBLE_EFFORTS]
+        : nativeOpenAiEfforts(apiModel, releaseDate);
+    return openAiProfile(apiModel, efforts);
+  }
+
+  if (npm === '@ai-sdk/cerebras' || npm === '@ai-sdk/xai') {
+    return effortProfile('opencode-reasoning-effort', 'Reasoning effort', [
+      ...WIDELY_SUPPORTED_EFFORTS,
+    ]);
   }
 
   return null;
@@ -479,7 +662,13 @@ export function resolveReasoningProfile(
     if (provider === 'lmstudio' || provider === 'lm-studio') return null;
   }
 
-  return resolveOpenCodeGeneratedReasoningProfile(npm, modelId, releaseDate, apiModelId);
+  return resolveOpenCodeGeneratedReasoningProfile(
+    npm,
+    modelId,
+    releaseDate,
+    apiModelId,
+    providerHint,
+  );
 }
 
 export function blankModelReasoningDraft(): ModelReasoningDraft {
@@ -501,6 +690,7 @@ export function parseModelReasoningConfig(
   modelId: string,
   releaseDate?: string,
   apiModelId = modelId,
+  providerHint?: string,
 ): ModelReasoningDraft {
   const rawVariants = isPlainObject(model.variants) ? model.variants : {};
   const variants: ReasoningVariantDraft[] = [];
@@ -513,6 +703,7 @@ export function parseModelReasoningConfig(
     modelId,
     releaseDate,
     apiModelId,
+    providerHint,
   );
   const managesGeneratedVariants =
     generatedIds.length > 0 &&
@@ -585,12 +776,14 @@ export function hasOpenCodeGeneratedReasoningOverrides(
   modelId: string,
   releaseDate?: string,
   apiModelId = modelId,
+  providerHint?: string,
 ): boolean {
   const generatedIds = resolveOpenCodeGeneratedReasoningVariantIds(
     npm,
     modelId,
     releaseDate,
     apiModelId,
+    providerHint,
   );
   if (generatedIds.length === 0) return false;
   if (draft.variants.length > 0) return true;
@@ -609,9 +802,16 @@ export function resetToOpenCodeGeneratedReasoningDefaults(
   modelId: string,
   releaseDate?: string,
   apiModelId = modelId,
+  providerHint?: string,
 ): ModelReasoningDraft {
   const generatedIds = new Set(
-    resolveOpenCodeGeneratedReasoningVariantIds(npm, modelId, releaseDate, apiModelId),
+    resolveOpenCodeGeneratedReasoningVariantIds(
+      npm,
+      modelId,
+      releaseDate,
+      apiModelId,
+      providerHint,
+    ),
   );
   if (generatedIds.size === 0) return draft;
   const originalModel = { ...draft.originalModel };
@@ -646,9 +846,16 @@ export function setOpenCodeGeneratedVariantsExact(
   modelId: string,
   releaseDate?: string,
   apiModelId = modelId,
+  providerHint?: string,
 ): ModelReasoningDraft {
   const generatedIds = new Set(
-    resolveOpenCodeGeneratedReasoningVariantIds(npm, modelId, releaseDate, apiModelId),
+    resolveOpenCodeGeneratedReasoningVariantIds(
+      npm,
+      modelId,
+      releaseDate,
+      apiModelId,
+      providerHint,
+    ),
   );
   if (generatedIds.size === 0 || draft.managesGeneratedVariants === exact) return draft;
 
@@ -774,6 +981,7 @@ export function touchReasoningDraftForIdentityChange(
       previous.modelId,
       previous.releaseDate,
       previous.apiModelId,
+      previous.providerHint,
     ),
   );
   const nextIds = new Set(
@@ -782,6 +990,7 @@ export function touchReasoningDraftForIdentityChange(
       next.modelId,
       next.releaseDate,
       next.apiModelId,
+      next.providerHint,
     ),
   );
   const generatedSetChanged =
@@ -952,7 +1161,13 @@ export function reasoningProfileMismatch(
   const profile = resolveReasoningProfile(npm, modelId, providerHint, releaseDate, apiModelId);
   const usesImplicitDefaults = draft.variants.length === 0 && !draft.managesGeneratedVariants;
   const generatedIds = usesImplicitDefaults
-    ? resolveOpenCodeGeneratedReasoningVariantIds(npm, modelId, releaseDate, apiModelId)
+    ? resolveOpenCodeGeneratedReasoningVariantIds(
+        npm,
+        modelId,
+        releaseDate,
+        apiModelId,
+        providerHint,
+      )
     : [];
   if (!profile) {
     if (usesImplicitDefaults && generatedIds.length > 0) return null;
@@ -970,6 +1185,7 @@ export function reasoningProfileMismatch(
       modelId,
       releaseDate,
       apiModelId,
+      providerHint,
     );
     if (!generatedProfile && generatedIds.length > 0) return null;
     for (const variant of generatedProfile?.variants ?? []) {
@@ -1000,7 +1216,7 @@ export function serializeModelReasoningConfig(
   draft: ModelReasoningDraft,
   npm: string,
   modelId: string,
-  _providerHint?: string,
+  providerHint?: string,
   releaseDate?: string,
   apiModelId = modelId,
 ): Record<string, unknown> {
@@ -1024,6 +1240,7 @@ export function serializeModelReasoningConfig(
     modelId,
     releaseDate,
     apiModelId,
+    providerHint,
   );
   const currentIds = new Set<string>();
   if (draft.enabled) {

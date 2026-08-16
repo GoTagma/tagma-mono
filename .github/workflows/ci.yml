@@ -11,10 +11,10 @@ permissions:
 
 jobs:
   # Keep the embedded runtime's filesystem/module boundary native on every
-  # desktop OS, then start the exact pinned OpenCode binary against a fresh
-  # isolated profile and require its real ToolRegistry to load every Tagma tool.
+  # desktop OS. Exercise both a fresh profile and the real 1.17.8 -> current ->
+  # 1.17.8 -> current database lineage with the published SDK clients.
   managed-opencode-runtime:
-    timeout-minutes: 20
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -32,22 +32,34 @@ jobs:
 
       - uses: actions/cache@v5
         with:
-          path: apps/electron/build/opencode
-          key: managed-opencode-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/electron/package.json') }}
+          path: |
+            apps/electron/build/opencode
+            apps/electron/build/opencode-upgrade-fixture
+          key: managed-opencode-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/electron/package.json', 'apps/electron/scripts/fetch-opencode.mjs', 'apps/electron/scripts/fetch-opencode-upgrade-fixture.mjs') }}
 
       - name: Stage pinned OpenCode binary
         working-directory: apps/electron
         run: bun ./scripts/fetch-opencode.mjs
 
+      - name: Stage pre-upgrade OpenCode fixture
+        working-directory: apps/electron
+        run: bun ./scripts/fetch-opencode-upgrade-fixture.mjs
+
       - name: Managed runtime unit contracts
         working-directory: apps/editor
-        run: bun scripts/test-serial.mjs --file tests/opencode-managed-tools.test.ts --file tests/opencode-lifecycle.test.ts
+        run: bun scripts/test-serial.mjs --file tests/opencode-managed-tools.test.ts --file tests/opencode-lifecycle.test.ts --file tests/opencode-database.test.ts
 
       - name: Native OpenCode ToolRegistry smoke
         working-directory: apps/editor
         env:
           TAGMA_OPENCODE_NATIVE_SMOKE: '1'
         run: bun test tests/opencode-managed-runtime-smoke.test.ts --timeout 360000
+
+      - name: Native OpenCode database upgrade and downgrade smoke
+        working-directory: apps/editor
+        env:
+          TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE: '1'
+        run: bun test tests/opencode-managed-upgrade-smoke.test.ts --timeout 1200000
 
   # Full repository gate: every check, lint, and test the repo runs on push
   # to main. Triggers on:
@@ -97,6 +109,9 @@ jobs:
 
       - name: Type check
         run: bun run check
+
+      - name: Script tests
+        run: bun run test:scripts
 
       - name: Test
         run: bun run test

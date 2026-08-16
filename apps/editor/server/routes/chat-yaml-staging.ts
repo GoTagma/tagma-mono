@@ -1,17 +1,27 @@
 import type express from 'express';
 
 import {
+  advanceChatYamlStageSessionRelocation,
   assertChatYamlStageLockOwner,
   cancelChatYamlStageFinalize,
+  clearChatYamlStageSessionRelocation,
   ChatYamlFinalizeWitnessError,
   ChatYamlStageLockOwnershipError,
+  ChatYamlStageSessionRelocationError,
   compileChatYamlStage,
   createChatYamlStage,
   discardChatYamlStageWithDisposition,
   finalizeChatYamlStage,
   listChatYamlStage,
+  listChatYamlStageSessionRelocations,
+  prepareChatYamlStageSessionRelocation,
+  readChatYamlStageSessionRelocation,
   readFinalizedChatYamlStageResult,
   type ChatYamlStageFinalizeInput,
+  type ChatYamlStageSessionRelocationAdvanceInput,
+  type ChatYamlStageSessionRelocationClearInput,
+  type ChatYamlStageSessionRelocationIdentity,
+  type ChatYamlStageSessionRelocationPhase,
 } from '../chat-yaml-staging.js';
 import {
   cancelChatPipelineTrial,
@@ -124,6 +134,75 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   };
 }
 
+function requiredRelocationString(
+  body: Record<string, unknown>,
+  key: 'stageId' | 'sessionId' | 'relocationId',
+): string {
+  const value = body[key];
+  if (typeof value !== 'string' || !value || value.trim() !== value) {
+    throw new Error(`${key} must be an exact non-empty string.`);
+  }
+  return value;
+}
+
+function relocationIdentity(value: unknown): ChatYamlStageSessionRelocationIdentity {
+  const body = asRequestRecord(value);
+  if ('sourceDirectory' in body || 'targetDirectory' in body) {
+    throw new Error(
+      'sourceDirectory and targetDirectory must not be provided; the server derives them from the authenticated stage.',
+    );
+  }
+  return {
+    stageId: requiredRelocationString(body, 'stageId'),
+    sessionId: requiredRelocationString(body, 'sessionId'),
+    relocationId: requiredRelocationString(body, 'relocationId'),
+  };
+}
+
+function relocationPhase(value: unknown, label: string): ChatYamlStageSessionRelocationPhase {
+  if (value !== 'prepared' && value !== 'staged' && value !== 'restoring') {
+    throw new Error(`${label} must be prepared, staged, or restoring.`);
+  }
+  return value;
+}
+
+function parseRelocationAdvance(value: unknown): ChatYamlStageSessionRelocationAdvanceInput {
+  const body = asRequestRecord(value);
+  return {
+    ...relocationIdentity(body),
+    expectedPhase: relocationPhase(body.expectedPhase, 'expectedPhase'),
+    phase: relocationPhase(body.phase, 'phase'),
+  };
+}
+
+function parseRelocationClear(value: unknown): ChatYamlStageSessionRelocationClearInput {
+  const body = asRequestRecord(value);
+  const verifiedSessionMissing = body.verifiedSessionMissing === true;
+  const hasHomeDirectory = body.verifiedHomeDirectory !== undefined;
+  if (verifiedSessionMissing === hasHomeDirectory) {
+    throw new Error(
+      'Exactly one of verifiedHomeDirectory or verifiedSessionMissing=true is required.',
+    );
+  }
+  const identity = relocationIdentity(body);
+  const expectedPhase = relocationPhase(body.expectedPhase, 'expectedPhase');
+  if (verifiedSessionMissing) {
+    return { ...identity, expectedPhase, verifiedSessionMissing: true };
+  }
+  if (
+    typeof body.verifiedHomeDirectory !== 'string' ||
+    !body.verifiedHomeDirectory ||
+    body.verifiedHomeDirectory.trim() !== body.verifiedHomeDirectory
+  ) {
+    throw new Error('verifiedHomeDirectory must be an exact non-empty string.');
+  }
+  return {
+    ...identity,
+    expectedPhase,
+    verifiedHomeDirectory: body.verifiedHomeDirectory,
+  };
+}
+
 function requireChatYamlStageLock(
   req: express.Request,
   res: express.Response,
@@ -150,6 +229,9 @@ function assertRequestOwnsChatYamlStage(
 
 function stageErrorStatus(err: unknown): number {
   if (err instanceof ChatYamlStageLockOwnershipError) return 423;
+  if (err instanceof ChatYamlStageSessionRelocationError) {
+    return err.kind === 'conflict' ? 409 : 400;
+  }
   if (err instanceof ChatYamlFinalizeWitnessError) {
     return err.kind === 'chat-yaml-finalize-witness-timeout' ? 504 : 503;
   }
@@ -209,6 +291,81 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     try {
       assertRequestOwnsChatYamlStage(req, ws, stageId);
       return res.json(listChatYamlStage(ws, stageId));
+    } catch (err) {
+      return respondStageError(res, err);
+    }
+  });
+
+  app.get('/api/workspace/chat-yaml-stage/session-relocation', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    const stageId = req.query.stageId;
+    if (typeof stageId !== 'string' || !stageId || stageId.trim() !== stageId) {
+      return res.status(400).json({ error: 'stageId must be an exact non-empty string.' });
+    }
+    try {
+      return res.json({ binding: readChatYamlStageSessionRelocation(ws, stageId) });
+    } catch (err) {
+      return respondStageError(res, err);
+    }
+  });
+
+  app.get('/api/workspace/chat-yaml-stage/session-relocations', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    return res.json({ bindings: listChatYamlStageSessionRelocations(ws) });
+  });
+
+  app.post('/api/workspace/chat-yaml-stage/session-relocation/prepare', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
+    try {
+      const input = relocationIdentity(req.body);
+      assertRequestOwnsChatYamlStage(req, ws, input.stageId);
+      return res.json({ binding: prepareChatYamlStageSessionRelocation(ws, input) });
+    } catch (err) {
+      return respondStageError(res, err);
+    }
+  });
+
+  app.post('/api/workspace/chat-yaml-stage/session-relocation/advance', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    try {
+      const input = parseRelocationAdvance(req.body);
+      const activeLock = getActiveYamlEditLock(ws);
+      if (activeLock) {
+        if (!requireChatYamlStageLock(req, res, ws)) return;
+        assertRequestOwnsChatYamlStage(req, ws, input.stageId);
+      } else if (input.phase !== 'restoring') {
+        return res.status(423).json({
+          error:
+            'An active OpenCode YAML edit lock is required unless recovering a relocation toward home.',
+          lock: null,
+        });
+      }
+      return res.json({ binding: advanceChatYamlStageSessionRelocation(ws, input) });
+    } catch (err) {
+      return respondStageError(res, err);
+    }
+  });
+
+  app.post('/api/workspace/chat-yaml-stage/session-relocation/clear', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    try {
+      const input = parseRelocationClear(req.body);
+      const activeLock = getActiveYamlEditLock(ws);
+      if (activeLock) {
+        if (!canBypassYamlEditLock(activeLock, req.get('X-Tagma-Yaml-Lock-Id'))) {
+          return res.status(423).json({
+            error: 'The active OpenCode YAML edit lock is required to clear this relocation.',
+            lock: publicYamlEditLock(activeLock),
+          });
+        }
+        assertRequestOwnsChatYamlStage(req, ws, input.stageId);
+      }
+      return res.json({ cleared: clearChatYamlStageSessionRelocation(ws, input) });
     } catch (err) {
       return respondStageError(res, err);
     }

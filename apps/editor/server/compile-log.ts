@@ -14,6 +14,21 @@ import { atomicWriteFileSync } from './path-utils.js';
 type SchemaCarryingCategory = 'triggers' | 'completions' | 'middlewares';
 type SchemaCarryingHandler = TriggerPlugin | CompletionPlugin | MiddlewarePlugin;
 
+export interface CompileLogDiagnostic {
+  readonly path: string;
+  readonly message: string;
+  readonly severity?: 'error' | 'warning';
+}
+
+export interface RunCompileAndWriteLogOptions {
+  /**
+   * Context-aware checks owned by a specific authoring surface. The callback
+   * receives the exact content snapshot compiled above, so its diagnostics
+   * cannot race a second file read.
+   */
+  readonly additionalValidation?: (content: string) => readonly CompileLogDiagnostic[];
+}
+
 function collectSchemas(
   registry: PluginRegistry,
   category: SchemaCarryingCategory,
@@ -38,6 +53,7 @@ export function compileLogPath(yamlPath: string): string {
 export function runCompileAndWriteLog(
   yamlPath: string,
   registry?: PluginRegistry,
+  options: RunCompileAndWriteLogOptions = {},
 ): YamlCompileResult {
   let content: string;
   try {
@@ -55,7 +71,7 @@ export function runCompileAndWriteLog(
     return result;
   }
 
-  const result = compileYamlContent(content, {
+  let result = compileYamlContent(content, {
     sourceName: yamlPath,
     knownTypes: registry
       ? {
@@ -75,9 +91,66 @@ export function runCompileAndWriteLog(
       : undefined,
   });
 
+  if (result.parseOk && options.additionalValidation) {
+    let additionalDiagnostics: readonly CompileLogDiagnostic[];
+    try {
+      additionalDiagnostics = options.additionalValidation(content);
+    } catch (err) {
+      additionalDiagnostics = [
+        {
+          path: 'pipeline',
+          message: `Additional compile validation failed: ${errorMessage(err)}`,
+          severity: 'error',
+        },
+      ];
+    }
+    result = mergeCompileDiagnostics(result, additionalDiagnostics);
+  }
+
   writeCompileLog(compileLogPath(yamlPath), result);
   return result;
 }
+
+function mergeCompileDiagnostics(
+  result: YamlCompileResult,
+  diagnostics: readonly CompileLogDiagnostic[],
+): YamlCompileResult {
+  if (diagnostics.length === 0) return result;
+
+  const errors = [...result.validation.errors];
+  const warnings = [...result.validation.warnings];
+  const seen = new Set([
+    ...errors.map((diagnostic) => `error\u0000${diagnostic.path}\u0000${diagnostic.message}`),
+    ...warnings.map((diagnostic) => `warning\u0000${diagnostic.path}\u0000${diagnostic.message}`),
+  ]);
+  for (const diagnostic of diagnostics) {
+    const severity = diagnostic.severity === 'warning' ? 'warning' : 'error';
+    const identity = `${severity}\u0000${diagnostic.path}\u0000${diagnostic.message}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    const target = severity === 'warning' ? warnings : errors;
+    target.push({ path: diagnostic.path, message: diagnostic.message });
+  }
+
+  const baseFailureHasNoValidationError = !result.success && result.validation.errors.length === 0;
+  return {
+    ...result,
+    success: result.success && errors.length === 0,
+    validation: { errors, warnings },
+    // A compiler crash is represented in `summary`, not in validation.errors.
+    // Preserve that authoritative failure text instead of replacing it with a
+    // count derived only from the additional authoring diagnostics.
+    summary: baseFailureHasNoValidationError
+      ? result.summary
+      : errors.length > 0
+        ? `Invalid: ${errors.length} error(s), ${warnings.length} warning(s)`
+        : warnings.length > 0
+          ? `Valid with ${warnings.length} warning(s)`
+          : 'Valid pipeline configuration',
+  };
+}
+
+export const __compileLogTestHooks = { mergeCompileDiagnostics };
 
 function writeCompileLog(path: string, result: YamlCompileResult): void {
   try {

@@ -26,7 +26,11 @@ import type {
   TaskLogLine,
   AbortReason,
 } from '../api/client';
-import { TASK_LOG_CAP as SDK_TASK_LOG_CAP, appendLiveOutput } from '@tagma/types';
+import {
+  TASK_LOG_CAP as SDK_TASK_LOG_CAP,
+  appendLiveOutput,
+  type RunTaskState as ReadonlyRunTaskState,
+} from '@tagma/types';
 
 export type RunStatus = 'idle' | 'starting' | 'running' | 'done' | 'failed' | 'aborted' | 'error';
 
@@ -84,14 +88,18 @@ function replaceApprovalsForRun(
  * the locally-aliased mutable version; both share the same field set, so
  * we take the readonly form and widen copy-by-copy.
  */
-function mapRunTasks(
-  tasksInput: ReadonlyArray<Omit<RunTaskState, 'logs'> & { logs: ReadonlyArray<TaskLogLine> }>,
-): Map<string, RunTaskState> {
+function mapRunTasks(tasksInput: readonly ReadonlyRunTaskState[]): Map<string, RunTaskState> {
   const tasks = new Map<string, RunTaskState>();
   for (const t of tasksInput) {
     const logs: TaskLogLine[] = Array.isArray(t.logs) ? [...t.logs] : [];
     tasks.set(t.taskId, {
       ...t,
+      waitReason:
+        t.waitReason?.kind === 'dependencies'
+          ? { kind: 'dependencies', taskIds: [...t.waitReason.taskIds] }
+          : t.waitReason?.kind === 'trigger'
+            ? { kind: 'trigger', triggerType: t.waitReason.triggerType }
+            : t.waitReason,
       logs,
       totalLogCount: typeof t.totalLogCount === 'number' ? t.totalLogCount : logs.length,
     });
@@ -197,6 +205,14 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
         tasks.set(event.taskId, {
           ...existing,
           status: event.status,
+          waitReason:
+            event.waitReason === undefined
+              ? existing.waitReason
+              : event.waitReason?.kind === 'dependencies'
+                ? { kind: 'dependencies', taskIds: [...event.waitReason.taskIds] }
+                : event.waitReason?.kind === 'trigger'
+                  ? { kind: 'trigger', triggerType: event.waitReason.triggerType }
+                  : null,
           startedAt: pick(event.startedAt, existing.startedAt),
           finishedAt: pick(event.finishedAt, existing.finishedAt),
           durationMs: pick(event.durationMs, existing.durationMs),
@@ -233,6 +249,12 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
           trackId,
           taskName: event.taskId,
           status: event.status,
+          waitReason:
+            event.waitReason?.kind === 'dependencies'
+              ? { kind: 'dependencies', taskIds: [...event.waitReason.taskIds] }
+              : event.waitReason?.kind === 'trigger'
+                ? { kind: 'trigger', triggerType: event.waitReason.triggerType }
+                : event.waitReason,
           startedAt: event.startedAt ?? null,
           finishedAt: event.finishedAt ?? null,
           durationMs: event.durationMs ?? null,

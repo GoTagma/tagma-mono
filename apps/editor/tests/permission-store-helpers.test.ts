@@ -11,6 +11,7 @@ const sample: PendingPermission = {
   sessionID: 'ses_1',
   title: 'Edit .tagma/foo.yaml',
   tool: 'edit',
+  protocol: 'current',
   metadata: {},
   createdAt: 1,
 };

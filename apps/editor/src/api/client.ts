@@ -148,6 +148,37 @@ export interface ChatYamlStageEntry extends WorkspaceYamlEntry {
   trialPlanHash?: string | null;
 }
 
+export type ChatYamlStageSessionRelocationPhase = 'prepared' | 'staged' | 'restoring';
+
+export interface ChatYamlStageSessionRelocationBinding {
+  version: 1;
+  relocationId: string;
+  stageId: string;
+  sessionId: string;
+  sourceDirectory: string;
+  targetDirectory: string;
+  phase: ChatYamlStageSessionRelocationPhase;
+  updatedAt: number;
+}
+
+export interface ChatYamlStageSessionRelocationIdentity {
+  stageId: string;
+  sessionId: string;
+  relocationId: string;
+}
+
+export interface ChatYamlStageSessionRelocationAdvanceInput extends ChatYamlStageSessionRelocationIdentity {
+  expectedPhase: ChatYamlStageSessionRelocationPhase;
+  phase: ChatYamlStageSessionRelocationPhase;
+}
+
+export type ChatYamlStageSessionRelocationClearInput = ChatYamlStageSessionRelocationIdentity & {
+  expectedPhase: ChatYamlStageSessionRelocationPhase;
+} & (
+    | { verifiedHomeDirectory: string; verifiedSessionMissing?: never }
+    | { verifiedSessionMissing: true; verifiedHomeDirectory?: never }
+  );
+
 export interface ChatYamlStageDescriptor {
   id: string;
   rootDir: string;
@@ -158,6 +189,7 @@ export interface ChatYamlStageDescriptor {
   activeRelativePath: string | null;
   activeStagedPath: string | null;
   entries: ChatYamlStageEntry[];
+  sessionRelocation?: ChatYamlStageSessionRelocationBinding;
 }
 
 export type ChatPipelineTrialRunKind =
@@ -175,6 +207,15 @@ export type ChatPipelineTrialRunKind =
   | 'timed-out'
   | 'busy';
 
+export interface ChatPipelineTrialOutputDiagnostic {
+  stream: 'stdout' | 'stderr';
+  stage: 'read';
+  message: string;
+  capturedBytes: number;
+  /** Basename only; the server never exposes a host artifact path here. */
+  path: string | null;
+}
+
 export interface ChatPipelineTrialTaskResult {
   caseId: string | null;
   runNumber: number;
@@ -184,6 +225,7 @@ export interface ChatPipelineTrialTaskResult {
   failureKind: string | null;
   stdout: string;
   stderr: string;
+  outputDiagnostics?: readonly ChatPipelineTrialOutputDiagnostic[];
   stderrAuxiliaryDiagnosticsOmittedLines?: number;
   repairScope?: 'pipeline-artifact' | 'diagnostic-only' | null;
   stdoutTruncation?: ChatPipelineTrialStreamTruncation;
@@ -2070,6 +2112,60 @@ export const api = {
         method: 'POST',
         body: jsonBody({ stageId }),
       },
+      workspaceKeyOverride,
+    ),
+
+  readChatYamlStageSessionRelocation: (
+    stageId: string,
+    workspaceKeyOverride?: string | null,
+    signal?: AbortSignal,
+  ) =>
+    request<{ binding: ChatYamlStageSessionRelocationBinding | null }>(
+      `/workspace/chat-yaml-stage/session-relocation?stageId=${encodeURIComponent(stageId)}`,
+      signal ? { signal } : undefined,
+      workspaceKeyOverride,
+    ),
+
+  listChatYamlStageSessionRelocations: (
+    workspaceKeyOverride?: string | null,
+    signal?: AbortSignal,
+  ) =>
+    request<{ bindings: ChatYamlStageSessionRelocationBinding[] }>(
+      '/workspace/chat-yaml-stage/session-relocations',
+      signal ? { signal } : undefined,
+      workspaceKeyOverride,
+    ),
+
+  prepareChatYamlStageSessionRelocation: (
+    input: ChatYamlStageSessionRelocationIdentity,
+    workspaceKeyOverride?: string | null,
+    signal?: AbortSignal,
+  ) =>
+    request<{ binding: ChatYamlStageSessionRelocationBinding }>(
+      '/workspace/chat-yaml-stage/session-relocation/prepare',
+      { method: 'POST', body: jsonBody(input), signal },
+      workspaceKeyOverride,
+    ),
+
+  advanceChatYamlStageSessionRelocation: (
+    input: ChatYamlStageSessionRelocationAdvanceInput,
+    workspaceKeyOverride?: string | null,
+    signal?: AbortSignal,
+  ) =>
+    request<{ binding: ChatYamlStageSessionRelocationBinding }>(
+      '/workspace/chat-yaml-stage/session-relocation/advance',
+      { method: 'POST', body: jsonBody(input), signal },
+      workspaceKeyOverride,
+    ),
+
+  clearChatYamlStageSessionRelocation: (
+    input: ChatYamlStageSessionRelocationClearInput,
+    workspaceKeyOverride?: string | null,
+    signal?: AbortSignal,
+  ) =>
+    request<{ cleared: boolean }>(
+      '/workspace/chat-yaml-stage/session-relocation/clear',
+      { method: 'POST', body: jsonBody(input), signal },
       workspaceKeyOverride,
     ),
 

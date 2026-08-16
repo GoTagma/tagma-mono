@@ -195,7 +195,7 @@ bun run dist:desktop:linux   # Build and produce Linux AppImage, .deb, .rpm, and
 bun run dist:desktop:mac     # Build and produce macOS dmg
 ```
 
-Each installer also ships platform-matched `opencode` and `bun` binaries in `resources/opencode/` and `resources/bun/`, so end users do not need a manual runtime install for bundled AI execution or plugin dependency installation. The versions are pinned via `apps/electron/package.json -> tagma.bundledOpencodeVersion` and `tagma.bundledBunVersion`; bump those fields and re-run a `dist:desktop:*` command to cut a release with new defaults. Users can upgrade opencode in-app (Editor Settings -> OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
+Each installer also ships platform-matched `opencode` and `bun` binaries in `resources/opencode/` and `resources/bun/`, so end users do not need a manual runtime install for bundled AI execution or plugin dependency installation. The versions are pinned via `apps/electron/package.json -> tagma.bundledOpencodeVersion` and `tagma.bundledBunVersion`; the OpenCode pin must exactly match `apps/editor/package.json -> @opencode-ai/sdk`. Bump the matching fields, refresh `bun.lock`, and re-run a `dist:desktop:*` command to cut a release with new defaults. OpenCode upgrades ship with Tagma releases; the sidecar's independent OpenCode update route remains a manual recovery interface and is not exposed in the editor UI.
 
 The `tagma-desktop` package is private and is never published to npm.
 

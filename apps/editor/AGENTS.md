@@ -128,7 +128,7 @@
   inside the message's `<editor-context>` block. Internal repair/planning continuations create no
   marker and inherit the most recent visible user turn's policy.
 - The seeded `.opencode/plugins/tagma-chat-context-window.ts` plugin hooks
-  `experimental.chat.messages.transform` (verified in pinned OpenCode 1.17.8 prompt.ts and
+  `experimental.chat.messages.transform` (verified in pinned OpenCode 1.18.18 prompt.ts and
   compaction.ts). It parses the marker from the leading host-authored `<editor-context>` only,
   counts visible user turns (excluding `<tagma-internal>` continuations, synthetic compaction
   continues, and text-less bookkeeping), and MUST `splice` the array in place — reassigning
@@ -166,10 +166,32 @@
   `.tagma/` root. That authenticated agent root is the complete filesystem read/write boundary;
   live workspace and pipeline paths outside it are not source material for the agent. Reject
   symbolic links and never stage or publish `*.trial-plan.json` as part of that support tree.
-- For staged OpenCode prompt POSTs, override both the `directory` query and the
-  `x-opencode-directory` header with the agent `.tagma` root. The SDK keeps its client-level
-  canonical workspace header on POST requests; a query-only override lets that live-directory
-  header win and makes delegated sessions edit the real workspace.
+- For staged OpenCode prompt POSTs, keep both the `directory` query and the
+  `x-opencode-directory` header set to the agent `.tagma` root, but never treat those fields as a
+  session move. OpenCode 1.17.8 and 1.18.18 route `/session/:id/...` through persisted
+  `session.directory` first. Before prompting, use the official
+  `experimental.controlPlane.moveSession({ moveChanges: false })` API to move the complete
+  quiescent root/descendant tree children-first into the authenticated stage directory; verify
+  every exact persisted directory before the stage-scoped SSE stream becomes ready. Move the
+  complete tree home children-first and verify it before closing staged SSE, clearing the signed
+  host binding, or allowing finalize/discard. A third-directory or workspace-bound descendant is
+  not part of this two-directory transaction and must fail closed before host prepare.
+- Persist the immutable relocation identity and phase in both a renderer journal and the
+  server-authenticated stage record before any move. Bootstrap recovery must join those records,
+  force the whole tree quiescent with a wall-clock deadline, tolerate partial children-first moves,
+  and restore home before catalogs, sends, or reconciliation become ready. A lost renderer journal
+  must still recover from the signed host record; a lost HTTP response must never delete a local
+  journal after the corresponding host mutation may have committed. Keep the finished-turn queue
+  and stage intact on any unverified restore or cleanup failure.
+- Run canonical and exact stage-directory event streams concurrently while a session is relocated;
+  prompt only after the stage stream's first event and generation/liveness check. Health,
+  reconnect readiness, abort ownership, and idle timers are directory/generation scoped. Current
+  requestID-only permission/question replies must carry the exact directory of the Instance that
+  owns the pending request.
+- The seeded managed plugin must reject every non-empty builtin `task.task_id`. Upstream accepts an
+  arbitrary session id without validating ancestry or directory, so resumed task sessions cannot
+  participate safely in the authenticated two-directory tree transaction. Fresh delegated tasks
+  without `task_id` remain supported.
 - Advertise staged `<current-file>` and pipeline inventory targets as absolute paths under the
   agent `.tagma` root. Delegated OpenCode child sessions can inherit a different cwd, so relative
   staged paths can resolve into the live `.tagma` tree even when the root prompt was redirected.
@@ -514,6 +536,10 @@
   metadata, not as a singleton database path. A compatible OpenCode upgrade keeps the epoch; an
   incompatible schema change bumps it. Persist that epoch beside staged binaries and inside the
   signed hot-update manifest.
+- Keep `apps/editor`'s exact `@opencode-ai/sdk` dependency equal to Electron's exact
+  `bundledOpencodeVersion`; `bun run check:deps` is the persistent parity gate. Refresh the root
+  lockfile whenever either pin changes. OpenCode 1.18.18 uses database epoch 2 because its
+  migrations drop `session_context_epoch` columns and reset the v2 projection tables.
 - Store managed databases as lineage generations behind one atomic `current-head` pointer. Reuse
   the current generation when its compatibility key matches. On upgrade, copy the current lower
   generation forward with a consistent SQLite snapshot into a new descendant generation. On
@@ -550,7 +576,10 @@
   never seed them into the sibling project `.opencode/tools`. Reconcile legacy workspaces by
   removing only the exact Tagma-owned tool filenames, preserving user tools and partial dependency
   trees. Deployment, migration, and readiness must share the canonical managed-tool contract, and
-  OpenCode version upgrades must run its native Linux, macOS, and Windows contract test.
+  OpenCode version upgrades must run its native Linux, macOS, and Windows contracts, including
+  the fixed 1.17.8 → current → 1.17.8 → current database lineage cycle. That cycle must prove
+  copy-forward migration, an isolated downgrade fork, re-upgrade from the active branch, SDK/CLI
+  interoperability, retained old generations, and SQLite integrity.
 - Pipeline prompt tasks using the built-in `opencode` driver must resolve the executable through
   `resolveOpencodeBinary()`, using the same user-runtime, bundled, dev-staged, then PATH precedence
   as Chat. They must also use Chat's `buildOpencodeEnv()` isolation rooted at the workspace
@@ -591,7 +620,7 @@
   relay the result, then cap. An exiting process may clear lifecycle maps only when it is still
   the tracked child for that cwd, or a stale exit callback can detach its replacement.
 - Treat assistant `finish` as a runtime protocol boundary even though the generated OpenCode SDK
-  types it as `string`. For pinned OpenCode 1.17.8, `stop` is normal completion, `tool-calls` is a
+  types it as `string`. For pinned OpenCode 1.18.18, `stop` is normal completion, `tool-calls` is a
   continuation, `length` is incomplete output, `content-filter` and `error` are errors, and
   `unknown` is indeterminate. Preserve partial output and finished-turn reconciliation; surface
   incomplete/indeterminate states as warnings instead of silently declaring success.
@@ -809,3 +838,13 @@
 - When editor tests pass Node buffers to `Response`, type fixture maps as `Buffer<ArrayBuffer>` and
   copy `readFileSync` results with `Buffer.from`; the default `Buffer<ArrayBufferLike>` is not
   assignable to TypeScript's DOM `BodyInit` binary view.
+
+## Renderer Modal Theme
+
+- Every renderer modal surface uses the shared `modal-viewport-backdrop` / `modal-viewport-shell`
+  skin from `src/index.css` plus one semantic `modal-tone-*` class. Do not add per-component black
+  scrims, surface colors, borders, or shadows; the shared skin owns their light/dark behavior and
+  follows Chat's tinted-surface, accent-rail, and layered-shadow language.
+- Modal footers use `btn-secondary`, `btn-primary`, or the semantic `btn-*-inline` variants so
+  cancel, approve, warning, and destructive actions keep one size and palette. Update
+  `tests/modal-theme-contract.test.ts` whenever adding or removing a modal surface.

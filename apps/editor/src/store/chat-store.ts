@@ -40,7 +40,10 @@ type ChatOpencodeEvent =
   | OpenCodePermissionRepliedEvent;
 import {
   createOpencodeSessionV2,
+  getOpencodeCanonicalDirectory,
   getOpencodeClient,
+  getOpencodeV2Client,
+  getOpencodeSessionV2,
   getOpencodeAuthHeader,
   getOpencodeWorkspaceHeader,
   getOpencodeBaseUrl,
@@ -48,6 +51,7 @@ import {
   getOpencodeWorkspaceKey,
   getClientBootstrap,
   listOpencodeSessions,
+  moveOpencodeSessionDirectory,
   resetOpencodeClient,
   restartOpencodeForConfig,
   updateOpencodeSessionV2,
@@ -60,6 +64,7 @@ import {
   type ProviderAuthAuthorization,
   type Session,
   type OpencodeSessionUpdateV2Input,
+  type OpencodeSessionV2,
   type OpencodeThreadEntry,
 } from '../api/opencode-chat';
 import type { Message, Part } from '@opencode-ai/sdk/client';
@@ -81,12 +86,14 @@ import {
   type ChatPipelineTrialPlanRequest,
   type ChatPipelineTrialProgress,
   type ChatPipelineTrialRunResult,
+  type ChatYamlStageSessionRelocationBinding,
   type UsageRecord,
   type YamlCompileResult,
 } from '../api/client';
 import {
   upsertPermission,
   removePermission,
+  type PermissionProtocol,
   type PendingPermission,
 } from '../utils/permission-store-helpers';
 import {
@@ -112,16 +119,21 @@ import {
 import { describeToolPartForActivity } from '../utils/chat-tool-display';
 import {
   isChatReasoningEffort,
+  clearPersistedChatSessionRelocation,
+  loadPersistedChatSessionRelocations,
   loadPersisted,
   loadPersistedChatYamlReconciliationQueue,
   loadPersistedChatYamlResults,
   savePersisted,
+  savePersistedChatSessionRelocation,
   savePersistedChatYamlReconciliationQueue,
   savePersistedChatYamlResults,
   sameModelPick,
   validatePersistedChatYamlResult,
   type ChatReasoningEffort,
   type ModelPick,
+  type PersistedChatYamlSnapshot,
+  type PersistedChatSessionRelocation,
 } from './chat-persist';
 import { buildEditorContext, type ChatYamlReconcileSummary } from './chat-editor-context';
 import {
@@ -545,9 +557,8 @@ interface ChatStore {
     metadata?: Record<string, string>,
   ) => Promise<void>;
   /** Start an OAuth flow. `promptAnswers` carries answers to the method's
-   *  `prompts[]` — the server accepts them flat alongside `method` in the
-   *  authorize body (e.g. `{method:0, deploymentType:"enterprise",
-   *  enterpriseUrl:"…"}` for GitHub Copilot Enterprise). Returns the
+   *  `prompts[]`; the v2 compatibility client sends them in the typed
+   *  `inputs` map alongside `method`. Returns the
    *  authorize envelope (URL + whether the browser can autocomplete or the
    *  user must paste a code), or null if the workspace changed while the
    *  authorization request was in flight. The caller is responsible for
@@ -568,9 +579,8 @@ interface ChatStore {
    * from the Connect dialog's "I've completed sign-in" button.
    */
   refreshProvidersAfterExternalAuth: () => Promise<void>;
-  /** Disconnect a provider (remove its stored credential). Goes through a
-   *  direct `fetch(DELETE /auth/{id})` because the 1.14.x SDK's `auth.remove`
-   *  is scoped to MCP servers. Same refresh semantics as setProviderApiKey. */
+  /** Disconnect a provider with the v2 typed auth API. Same refresh semantics
+   *  as setProviderApiKey. */
   removeProviderAuth: (providerId: string) => Promise<void>;
 
   // ── Custom providers (write to opencode.json directly) ──────────────────
@@ -648,17 +658,21 @@ interface ChatStore {
    */
   pendingPermissions: PendingPermission[];
   /**
-   * Reply to a pending permission. Calls
-   * POST /session/{id}/permissions/{permissionID}. `sessionID` should come
-   * from the permission event; if omitted we fall back to the pending entry.
-   * No optimistic mutation — server's subsequent `permission.replied` event
-   * clears the entry.
+   * Reply to a pending permission using the endpoint generation recorded on
+   * its SSE event. `sessionID` should come from the permission event; if
+   * omitted we fall back to the pending entry. No optimistic mutation — the
+   * server's subsequent `permission.replied` event clears the entry. Current
+   * requestID-only replies must stay on the exact Instance directory captured
+   * when the permission arrived. The optional directory argument freezes that
+   * ownership across async host authorization and relocation cleanup.
    */
   replyPermission: (
     id: string,
     reply: 'once' | 'always' | 'reject',
     sessionID?: string,
     workspaceKey?: string,
+    protocol?: PermissionProtocol,
+    directory?: string,
   ) => Promise<void>;
 }
 
@@ -1649,6 +1663,7 @@ async function updateDesktopChatSessionMetadata(
   reason: string,
   model: ModelPick | null,
   title?: string | null,
+  options: { required?: boolean } = {},
 ): Promise<void> {
   try {
     const body: OpencodeSessionUpdateV2Input = {
@@ -1659,6 +1674,7 @@ async function updateDesktopChatSessionMetadata(
     await updateOpencodeSessionV2(body, workspaceKey);
   } catch (err) {
     console.warn('[chat] session metadata update failed:', err);
+    if (options.required) throw err;
   }
 }
 
@@ -1702,16 +1718,59 @@ function persistChatSelectionToEditorSettings(patch: ChatSelectionSettingsPatch)
 
 const activeSseWorkspaces = new Set<string>();
 const activeSseControllers = new Map<string, AbortController>();
+interface StagedSseSubscription {
+  workspaceKey: string;
+  sessionId: string;
+  directory: string;
+  controller: AbortController;
+  ready: Promise<void>;
+  connected: boolean;
+  lastEventAt: number | null;
+}
+const stagedSseSubscriptions = new Map<string, StagedSseSubscription>();
+export interface SseConnectionHealth {
+  connected: boolean;
+  lastEventAt: number | null;
+}
+const canonicalSseHealthByWorkspace = new Map<string, SseConnectionHealth>();
+interface CanonicalSseReadiness {
+  controller: AbortController;
+  promise: Promise<void>;
+  resolve: () => void;
+  settled: boolean;
+}
+const canonicalSseReadinessByWorkspace = new Map<string, CanonicalSseReadiness>();
+const sessionRelocationOperations = new Map<string, Promise<unknown>>();
 let bootstrappingWorkspaceKey: string | null = null;
 let appliedBootstrapWorkspaceKey: string | null = null;
-let sseReadyPromise: Promise<void> | null = null;
-let sseReadyResolve: (() => void) | null = null;
 let queuedMessageSeq = 0;
 let composerAttachmentSeq = 0;
 let queuedPromptDispatchInFlight = false;
 const pendingPartsByMessage = new Map<string, Part[]>();
 const pendingPartKeys: string[] = [];
 const PENDING_PART_MESSAGE_LIMIT = 80;
+
+function sessionRelocationKey(workspaceKey: string, sessionId: string): string {
+  return `${workspaceKey}\u0000${sessionId}`;
+}
+
+async function serializeSessionRelocation<T>(
+  workspaceKey: string,
+  sessionId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key = sessionRelocationKey(workspaceKey, sessionId);
+  const previous = sessionRelocationOperations.get(key);
+  const current = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(operation);
+  sessionRelocationOperations.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (sessionRelocationOperations.get(key) === current) {
+      sessionRelocationOperations.delete(key);
+    }
+  }
+}
 
 /**
  * Per-renderer-process record of assistant message IDs whose usage has already
@@ -1727,8 +1786,15 @@ function abortSseSubscriptionsExcept(workspaceKey: string): void {
   for (const [key, controller] of activeSseControllers) {
     if (key === workspaceKey) continue;
     controller.abort();
+    releaseCanonicalSseReadiness(key, controller);
     activeSseControllers.delete(key);
     activeSseWorkspaces.delete(key);
+    canonicalSseHealthByWorkspace.delete(key);
+  }
+  for (const [key, subscription] of stagedSseSubscriptions) {
+    if (subscription.workspaceKey === workspaceKey) continue;
+    subscription.controller.abort();
+    stagedSseSubscriptions.delete(key);
   }
 }
 
@@ -1831,14 +1897,20 @@ let activeAbortAck: {
 // reconnecting" vs "SSE connected". The timer is managed inside
 // ensureSseSubscription and cleared on every event or stream end.
 let sseIdleTimer: ReturnType<typeof setTimeout> | null = null;
-let sseLastEventAt: number | null = null;
-let sseConnected = false;
-
+let sseIdleTimerOwner: { workspaceKey: string; turnKey: string; sourceKey: string } | null = null;
 function clearSseIdleTimer(): void {
   if (sseIdleTimer) {
     clearTimeout(sseIdleTimer);
     sseIdleTimer = null;
   }
+  sseIdleTimerOwner = null;
+}
+
+function currentTurnSseSourceKey(state: ChatStore): string {
+  const relocation = activeSessionRelocation(state, state.currentSessionId);
+  return relocation
+    ? `stage\u0000${relocation.sessionId}\u0000${relocation.stageDirectory}`
+    : 'canonical';
 }
 
 /**
@@ -1847,13 +1919,32 @@ function clearSseIdleTimer(): void {
  * Called on every SSE event and on stream open; cleared on stream close.
  * Only has an effect while a turn is in flight (sending === true).
  */
-function armSseIdleTimer(get: () => ChatStore, set: ChatSet): void {
+function armSseIdleTimer(get: () => ChatStore, set: ChatSet, workspaceKey: string): void {
   clearSseIdleTimer();
-  if (!get().sending) return;
+  const initial = get();
+  const turnKey = currentTurnKey(initial);
+  if (!initial.sending || !turnKey) return;
+  const owner = {
+    workspaceKey,
+    turnKey,
+    sourceKey: currentTurnSseSourceKey(initial),
+  };
+  sseIdleTimerOwner = owner;
   sseIdleTimer = setTimeout(() => {
+    if (sseIdleTimerOwner !== owner) return;
     sseIdleTimer = null;
+    sseIdleTimerOwner = null;
     const state = get();
-    if (!state.sending) return;
+    if (
+      !state.sending ||
+      getOpencodeWorkspaceKey() !== owner.workspaceKey ||
+      currentTurnKey(state) !== owner.turnKey ||
+      currentTurnSseSourceKey(state) !== owner.sourceKey
+    ) {
+      return;
+    }
+    const health = currentTurnSseHealth(state, workspaceKey);
+    if (!health.connected) return;
     // Only update turnHealth — don't touch anything else. The watchdog poll
     // will pick this up on its next cycle and include it in the health
     // summary.
@@ -1864,35 +1955,44 @@ function armSseIdleTimer(get: () => ChatStore, set: ChatSet): void {
         detail: state.turnHealth?.detail,
         sseState: 'idle',
         processAlive: state.turnHealth?.processAlive,
-        lastSseEventAt: sseLastEventAt,
+        lastSseEventAt: health.lastEventAt,
       },
     });
   }, SSE_IDLE_WARN_MS);
   unrefTimerForTests(sseIdleTimer);
 }
 
-function ensureSseReadyPromise(): Promise<void> {
-  if (!sseReadyPromise) {
-    sseReadyPromise = new Promise<void>((resolve) => {
-      sseReadyResolve = resolve;
-    });
+function installCanonicalSseReadiness(
+  workspaceKey: string,
+  controller: AbortController,
+): CanonicalSseReadiness {
+  const previous = canonicalSseReadinessByWorkspace.get(workspaceKey);
+  if (previous && previous.controller !== controller && !previous.settled) {
+    previous.resolve();
   }
-  return sseReadyPromise;
+  let resolvePromise!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  const readiness: CanonicalSseReadiness = {
+    controller,
+    promise,
+    settled: false,
+    resolve: () => {
+      if (readiness.settled) return;
+      readiness.settled = true;
+      resolvePromise();
+    },
+  };
+  canonicalSseReadinessByWorkspace.set(workspaceKey, readiness);
+  return readiness;
 }
 
-function resetSseReadyPromise(): void {
-  sseReadyPromise = null;
-  sseReadyResolve = null;
-}
-
-function markSseReady(): void {
-  // Resolve on first successful connect so awaiting callers (send()) stop
-  // blocking. Subsequent reconnects don't need to churn the promise — it's
-  // already fulfilled and later awaits resolve synchronously.
-  if (sseReadyResolve) {
-    sseReadyResolve();
-    sseReadyResolve = null;
-  }
+function releaseCanonicalSseReadiness(workspaceKey: string, controller: AbortController): void {
+  const readiness = canonicalSseReadinessByWorkspace.get(workspaceKey);
+  if (readiness?.controller !== controller) return;
+  readiness.resolve();
+  canonicalSseReadinessByWorkspace.delete(workspaceKey);
 }
 
 export async function waitForSseReadyWithTimeout(
@@ -1909,6 +2009,39 @@ export async function waitForSseReadyWithTimeout(
     await Promise.race([ready, timeout]);
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+async function waitForCanonicalSseConnection(
+  workspaceKey: string,
+  timeoutMs = SSE_READY_PROMPT_TIMEOUT_MS,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    const controller = activeSseControllers.get(workspaceKey);
+    if (!controller || controller.signal.aborted) {
+      throw new Error('OpenCode event stream stopped before becoming ready.');
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(`event stream did not become ready within ${timeoutMs}ms`);
+    }
+    const readiness = canonicalSseReadinessByWorkspace.get(workspaceKey);
+    if (!readiness || readiness.controller !== controller) continue;
+    await waitForSseReadyWithTimeout(readiness.promise, remaining);
+    // Readiness resolves from inside the iterator's first-event callback. Let
+    // that iterator request its next chunk before accepting the generation so
+    // an already-closed one-event response cannot race prompt dispatch.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const health = canonicalSseHealthByWorkspace.get(workspaceKey);
+    if (
+      activeSseControllers.get(workspaceKey) === controller &&
+      canonicalSseReadinessByWorkspace.get(workspaceKey) === readiness &&
+      !controller.signal.aborted &&
+      health?.connected
+    ) {
+      return;
+    }
   }
 }
 
@@ -1937,28 +2070,32 @@ function unrefTimerForTests(timer: ReturnType<typeof setTimeout>): void {
   (timer as unknown as { unref?: () => void }).unref?.();
 }
 
-export async function subscribeEventStreamWithReadinessTimeout<T>(
-  subscribe: (signal: AbortSignal) => Promise<T>,
-  parentSignal: AbortSignal,
-  timeoutMs = SSE_READY_TIMEOUT_MS,
-): Promise<T> {
-  const controller = new AbortController();
-  let removeParentAbort: (() => void) | null = null;
-  if (parentSignal.aborted) {
-    controller.abort(parentSignal.reason);
-  } else {
-    const onParentAbort = () => controller.abort(parentSignal.reason);
-    parentSignal.addEventListener('abort', onParentAbort, { once: true });
-    removeParentAbort = () => parentSignal.removeEventListener('abort', onParentAbort);
+/**
+ * Consume an SDK SSE iterable and publish readiness only after the server has
+ * delivered its first event. Both OpenCode SDK generations return the stream
+ * wrapper before the underlying fetch has connected, so treating
+ * `event.subscribe()` itself as ready can dispatch a prompt into a gap where
+ * no listener is attached yet.
+ */
+export async function consumeOpencodeEventStream<T>(
+  stream: AsyncIterable<T>,
+  options: {
+    signal: AbortSignal;
+    onReady: () => void;
+    onEvent: (event: T) => void;
+  },
+): Promise<void> {
+  let ready = false;
+  for await (const event of stream) {
+    if (options.signal.aborted) return;
+    if (!ready) {
+      ready = true;
+      options.onReady();
+    }
+    options.onEvent(event);
   }
-  const timer = setTimeout(() => {
-    controller.abort(new Error(`event stream did not become ready within ${timeoutMs}ms`));
-  }, timeoutMs);
-  try {
-    return await subscribe(controller.signal);
-  } finally {
-    clearTimeout(timer);
-    removeParentAbort?.();
+  if (!ready && !options.signal.aborted) {
+    throw new Error('OpenCode event stream closed before its first event.');
   }
 }
 
@@ -2286,7 +2423,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
     const sessionId = before.currentSessionId;
     if (!sessionId) return;
     const [statusMap, freshMessages, processAlive] = await Promise.all([
-      unwrap(client.session.status()).catch((err) => {
+      unwrap(client.session.status(sessionStatusQuery(before, sessionId))).catch((err) => {
         console.warn('[chat] stalled-turn status poll failed:', err);
         return null as Record<string, OpencodeSessionStatus> | null;
       }),
@@ -2338,8 +2475,9 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
     }
 
     const healthDegraded = statusMap === null && freshMessages === null;
-    const sseState: ChatTurnHealth['sseState'] = sseConnected
-      ? sseLastEventAt !== null && Date.now() - sseLastEventAt > SSE_IDLE_WARN_MS
+    const sseHealth = currentTurnSseHealth(current, workspaceKey);
+    const sseState: ChatTurnHealth['sseState'] = sseHealth.connected
+      ? sseHealth.lastEventAt !== null && Date.now() - sseHealth.lastEventAt > SSE_IDLE_WARN_MS
         ? 'idle'
         : 'connected'
       : 'reconnecting';
@@ -2354,12 +2492,12 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
             merged?.activityChanged ?? false,
             processAlive,
             sseState,
-            sseLastEventAt,
+            sseHealth.lastEventAt,
             current.pendingPermissions.length,
           ),
       sseState,
       processAlive,
-      lastSseEventAt: sseLastEventAt,
+      lastSseEventAt: sseHealth.lastEventAt,
     };
     if (merged?.activityChanged) patch.lastActivityAt = Date.now();
 
@@ -2392,14 +2530,15 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
       current.currentSessionId === before.currentSessionId &&
       currentTurnKey(current) === key
     ) {
+      const sseHealth = currentTurnSseHealth(current, workspaceKey);
       set({
         turnHealth: {
           status: 'degraded',
           checkedAt: Date.now(),
           detail: describeError(err),
           processAlive: false,
-          sseState: sseConnected ? 'connected' : 'reconnecting',
-          lastSseEventAt: sseLastEventAt,
+          sseState: sseHealth.connected ? 'connected' : 'reconnecting',
+          lastSseEventAt: sseHealth.lastEventAt,
         },
       });
     }
@@ -2434,7 +2573,7 @@ async function confirmIdleTurn(get: () => ChatStore, set: ChatSet): Promise<void
   try {
     const client = await getOpencodeClient(workspaceKey);
     const [statusMap, freshMessages] = await Promise.all([
-      unwrap(client.session.status()).catch((err) => {
+      unwrap(client.session.status(sessionStatusQuery(before, sessionId))).catch((err) => {
         console.warn('[chat] idle confirmation status poll failed:', err);
         return null as Record<string, OpencodeSessionStatus> | null;
       }),
@@ -2680,7 +2819,6 @@ function finishChatTurn(
 ): void {
   clearTurnWatchdog();
   clearSseIdleTimer();
-  sseLastEventAt = null;
   // Seal any open activity event on the current-turn assistant message so
   // the timeline shows a closed [start, end] for every row in history; if
   // we left them as `endedAt: null`, the rendered "Working… (live counter)"
@@ -3270,6 +3408,7 @@ function routeStagedPermissionDecision(
   permission: {
     id: string;
     sessionID: string;
+    protocol: PermissionProtocol;
     permission: string;
     patterns: string[];
     metadata: Record<string, unknown> | null;
@@ -3306,6 +3445,8 @@ function routeStagedPermissionDecision(
       allowed ? 'once' : 'reject',
       permission.sessionID,
       snapshot.workDir,
+      permission.protocol,
+      snapshot.staging.agentTagmaDir,
     );
     if (!allowed && get().currentSessionId === ownerSessionID) {
       set({
@@ -4240,6 +4381,7 @@ async function promptOpencode(
   let acquiredLockLeaseHere = false;
   let diskBranchAlreadyOwned = false;
   let createdStageHere: { id: string; workspaceKey: string | null } | null = null;
+  let sessionIdForRelocation = sessionIdAtDispatch;
   try {
     const turnStartedAt = Date.now();
     optimisticTurnStartedAt = turnStartedAt;
@@ -4329,6 +4471,7 @@ async function promptOpencode(
         assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
         const titledSession = withPromptTitleFallback(s, promptTitle);
         sessionId = titledSession.id;
+        sessionIdForRelocation = sessionId;
         set((prev) => ({
           sessions: upsertSession(prev.sessions, titledSession),
           currentSessionId: titledSession.id,
@@ -4346,7 +4489,19 @@ async function promptOpencode(
     // in the `<editor-context>` above.
 
     void ensureSseSubscription(get, set);
-    await waitForSseReadyWithTimeout(ensureSseReadyPromise());
+    try {
+      await waitForCanonicalSseConnection(workspaceKeyAtStart);
+    } catch (err) {
+      const controller = activeSseControllers.get(workspaceKeyAtStart);
+      controller?.abort();
+      if (controller && activeSseControllers.get(workspaceKeyAtStart) === controller) {
+        releaseCanonicalSseReadiness(workspaceKeyAtStart, controller);
+        activeSseControllers.delete(workspaceKeyAtStart);
+        activeSseWorkspaces.delete(workspaceKeyAtStart);
+        canonicalSseHealthByWorkspace.delete(workspaceKeyAtStart);
+      }
+      throw err;
+    }
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
     let preSendSnapshot: ChatYamlSnapshot | null = inheritedSnapshot;
@@ -4400,13 +4555,21 @@ async function promptOpencode(
       }));
     }
 
-    void updateDesktopChatSessionMetadata(
+    // Await the full-row session update before moving directories. OpenCode's
+    // session.updated projector writes directory/path along with metadata; a
+    // late update could otherwise overwrite the newer move-session event.
+    await updateDesktopChatSessionMetadata(
       sessionId,
       workspaceKeyAtStart,
       opts.internal ? 'internal-repair' : 'prompt',
       model,
       shouldApplyPromptTitle ? promptTitle : undefined,
+      { required: preSendSnapshot !== null },
     );
+
+    if (preSendSnapshot) {
+      preSendSnapshot = await relocateSessionToStage(get, set, preSendSnapshot, sessionId);
+    }
 
     const reasoningVariant = reconcileModelVariant(providers, model, reasoningEffort);
     const chatStage = preSendSnapshot?.staging ?? null;
@@ -4456,11 +4619,11 @@ async function promptOpencode(
         ...(chatStage
           ? {
               query: { directory: chatStage.agentTagmaDir },
-              // The OpenCode SDK keeps the client's canonical workspace in
-              // x-opencode-directory on POST requests. A query override alone
-              // therefore still executes the prompt (and delegated tasks) in
-              // the live .tagma directory. Override both transports so the
-              // staged branch is the only writable prompt workspace.
+              // Keep both request-level transports aligned for endpoints that
+              // do not already resolve a persisted session. OpenCode gives an
+              // existing session.directory priority over both values, so this
+              // is defense in depth rather than a physical-session rebind; the
+              // host permission boundary still validates staged writes.
               headers: buildOpencodeRequestHeaders(undefined, chatStage.agentTagmaDir),
             }
           : {}),
@@ -4474,7 +4637,36 @@ async function promptOpencode(
     if (!opts.targetSessionId || turnWatchdogAcceptedKey?.startsWith(`${opts.targetSessionId}:`)) {
       clearTurnWatchdog();
     }
-    if (createdStageHere && lockLease) {
+    let relocationRestoreFailed: unknown = null;
+    const relocationJournal = sessionIdForRelocation
+      ? loadPersistedChatSessionRelocations(workspaceKeyAtStart)[sessionIdForRelocation]
+      : null;
+    if (relocationJournal && sessionIdForRelocation) {
+      const recoverySnapshot = relocationJournal.snapshot as ChatYamlSnapshot;
+      try {
+        await restoreSessionHome(get, set, recoverySnapshot, sessionIdForRelocation, {
+          forceStop: true,
+        });
+      } catch (restoreErr) {
+        relocationRestoreFailed = restoreErr;
+        applyRuntimePatchToSession(get, set, sessionIdForRelocation, {
+          yamlSnapshotBeforeSend: recoverySnapshot,
+        });
+        if (get().currentSessionId === sessionIdForRelocation) {
+          finishChatTurn(
+            set,
+            {
+              sendError: `OpenCode could not return the staged session home: ${describeError(restoreErr)}`,
+            },
+            true,
+            'user-stopped',
+          );
+        } else {
+          finishHiddenSession(set, sessionIdForRelocation);
+        }
+      }
+    }
+    if (!relocationRestoreFailed && createdStageHere && lockLease) {
       try {
         await withYamlEditLockRequestBypass(lockLease.id, () =>
           api.discardChatYamlStage(createdStageHere!.id, createdStageHere!.workspaceKey),
@@ -4515,6 +4707,11 @@ async function promptOpencode(
       );
       throw err;
     }
+    if (relocationRestoreFailed) {
+      throw relocationRestoreFailed instanceof Error
+        ? relocationRestoreFailed
+        : new Error(describeError(relocationRestoreFailed));
+    }
     if (sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch) {
       applyRuntimePatchToSession(get, set, sessionIdAtDispatch, resetRuntime);
       set({ lastSendingEndedAt: Date.now() });
@@ -4538,8 +4735,11 @@ async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promis
   activeSseWorkspaces.add(workspaceKey);
   const controller = new AbortController();
   activeSseControllers.set(workspaceKey, controller);
-  resetSseReadyPromise();
-  ensureSseReadyPromise();
+  canonicalSseHealthByWorkspace.set(workspaceKey, {
+    connected: false,
+    lastEventAt: null,
+  });
+  installCanonicalSseReadiness(workspaceKey, controller);
 
   // Reconnect on stream end/error with capped exponential backoff. The server
   // normally keeps /event open indefinitely; if opencode crashes or the
@@ -4554,76 +4754,1474 @@ async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promis
         controller.abort();
         return;
       }
+      let connectedThisAttempt = false;
       try {
-        const client = await getOpencodeClient(workspaceKey);
-        const { stream } = await subscribeEventStreamWithReadinessTimeout(
-          (signal) => client.event.subscribe({ signal }),
-          controller.signal,
+        // Use the v2 compatibility surface, not the native `/api/event`
+        // stream. It keeps the legacy `/event` payload contract consumed by
+        // applySseEvent while honoring the client's configured fetch and the
+        // request AbortSignal.
+        const client = await getOpencodeV2Client(workspaceKey);
+        const { stream } = await client.event.subscribe(
+          {},
+          {
+            signal: controller.signal,
+            // Let this outer loop reacquire the client after a sidecar restart.
+            // The generated SSE helper otherwise retries the stale base URL
+            // forever and this reconnect path never regains control.
+            sseMaxRetryAttempts: 1,
+          },
         );
-        attempt = 0;
-        markSseReady();
-        sseConnected = true;
-        sseLastEventAt = Date.now();
-        clearSseIdleTimer();
-        armSseIdleTimer(get, set);
-        for await (const event of stream) {
-          if (controller.signal.aborted || getOpencodeWorkspaceKey() !== workspaceKey) {
-            controller.abort();
-            return;
-          }
-          sseLastEventAt = Date.now();
-          armSseIdleTimer(get, set);
-          applySseEvent(event as ChatOpencodeEvent, get, set);
-        }
-        sseConnected = false;
-        clearSseIdleTimer();
+        await consumeOpencodeEventStream(stream, {
+          signal: controller.signal,
+          onReady: () => {
+            connectedThisAttempt = true;
+            attempt = 0;
+            const readiness = canonicalSseReadinessByWorkspace.get(workspaceKey);
+            if (readiness?.controller === controller) readiness.resolve();
+            const health = canonicalSseHealthByWorkspace.get(workspaceKey);
+            if (health) {
+              health.connected = true;
+              health.lastEventAt = Date.now();
+            }
+            noteCurrentTurnSseEvent(get, set, workspaceKey);
+          },
+          onEvent: (event) => {
+            if (getOpencodeWorkspaceKey() !== workspaceKey) {
+              controller.abort();
+              return;
+            }
+            const health = canonicalSseHealthByWorkspace.get(workspaceKey);
+            if (health) health.lastEventAt = Date.now();
+            noteCurrentTurnSseEvent(get, set, workspaceKey);
+            applySseEvent(event as ChatOpencodeEvent, get, set);
+          },
+        });
+        const health = canonicalSseHealthByWorkspace.get(workspaceKey);
+        if (health) health.connected = false;
         if (!controller.signal.aborted && getOpencodeWorkspaceKey() === workspaceKey) {
-          resetOpencodeClient();
-          const state = get();
-          if (state.sending) {
-            set({
-              turnHealth: {
-                status: 'degraded',
-                checkedAt: Date.now(),
-                detail: 'event stream closed; reconnecting',
-                sseState: 'reconnecting',
-                processAlive: state.turnHealth?.processAlive,
-                lastSseEventAt: sseLastEventAt,
-              },
-            });
+          if (connectedThisAttempt) {
+            installCanonicalSseReadiness(workspaceKey, controller);
           }
+          resetOpencodeClient();
+          noteCurrentTurnSseDisconnect(get, set, workspaceKey, 'event stream closed; reconnecting');
         }
       } catch (err) {
-        sseConnected = false;
-        clearSseIdleTimer();
+        const health = canonicalSseHealthByWorkspace.get(workspaceKey);
+        if (health) health.connected = false;
         if (controller.signal.aborted) return;
         console.warn('[chat] event stream errored', err);
         if (getOpencodeWorkspaceKey() === workspaceKey) {
-          resetOpencodeClient();
-          const state = get();
-          if (state.sending) {
-            set({
-              turnHealth: {
-                status: 'degraded',
-                checkedAt: Date.now(),
-                detail: `event stream error; reconnecting (${describeError(err)})`,
-                sseState: 'reconnecting',
-                processAlive: state.turnHealth?.processAlive,
-                lastSseEventAt: sseLastEventAt,
-              },
-            });
+          if (connectedThisAttempt) {
+            installCanonicalSseReadiness(workspaceKey, controller);
           }
+          resetOpencodeClient();
+          noteCurrentTurnSseDisconnect(
+            get,
+            set,
+            workspaceKey,
+            `event stream error; reconnecting (${describeError(err)})`,
+          );
         }
       }
       const delay = Math.min(30_000, 500 * 2 ** attempt++);
-      await new Promise((r) => setTimeout(r, delay));
+      await waitForSseReconnectDelay(delay, controller.signal);
     }
   } finally {
     if (activeSseControllers.get(workspaceKey) === controller) {
+      releaseCanonicalSseReadiness(workspaceKey, controller);
       activeSseControllers.delete(workspaceKey);
+      activeSseWorkspaces.delete(workspaceKey);
+      canonicalSseHealthByWorkspace.delete(workspaceKey);
     }
-    activeSseWorkspaces.delete(workspaceKey);
   }
+}
+
+function stopStagedSseSubscription(workspaceKey: string, sessionId: string): void {
+  const key = sessionRelocationKey(workspaceKey, sessionId);
+  const subscription = stagedSseSubscriptions.get(key);
+  if (!subscription) return;
+  subscription.controller.abort();
+  stagedSseSubscriptions.delete(key);
+}
+
+async function waitForSseReconnectDelay(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(done, delayMs);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done, { once: true });
+  });
+}
+
+async function waitForStagedSseConnection(
+  subscription: StagedSseSubscription,
+  timeoutMs = SSE_READY_PROMPT_TIMEOUT_MS,
+): Promise<void> {
+  const key = sessionRelocationKey(subscription.workspaceKey, subscription.sessionId);
+  const deadline = Date.now() + timeoutMs;
+  while (!subscription.controller.signal.aborted) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(`event stream did not become ready within ${timeoutMs}ms`);
+    }
+    const ready = subscription.ready;
+    await waitForSseReadyWithTimeout(ready, remaining);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (
+      stagedSseSubscriptions.get(key) === subscription &&
+      !subscription.controller.signal.aborted &&
+      subscription.connected
+    ) {
+      return;
+    }
+  }
+  throw new Error('OpenCode staged event stream stopped before becoming ready.');
+}
+
+async function ensureStagedSseSubscription(
+  get: () => ChatStore,
+  set: ChatSet,
+  workspaceKey: string,
+  sessionId: string,
+  directory: string,
+): Promise<void> {
+  const key = sessionRelocationKey(workspaceKey, sessionId);
+  const existing = stagedSseSubscriptions.get(key);
+  if (existing && !existing.controller.signal.aborted && existing.directory === directory) {
+    try {
+      await waitForStagedSseConnection(existing);
+      return;
+    } catch (err) {
+      if (stagedSseSubscriptions.get(key) === existing) {
+        stopStagedSseSubscription(workspaceKey, sessionId);
+      }
+      throw err;
+    }
+  }
+  if (existing) stopStagedSseSubscription(workspaceKey, sessionId);
+
+  const controller = new AbortController();
+  let settleReady: () => void = () => undefined;
+  let readySettled = false;
+  const subscription: StagedSseSubscription = {
+    workspaceKey,
+    sessionId,
+    directory,
+    controller,
+    ready: Promise.resolve(),
+    connected: false,
+    lastEventAt: null,
+  };
+  const resetReady = () => {
+    readySettled = false;
+    const ready = new Promise<void>((resolve) => {
+      settleReady = () => {
+        if (readySettled) return;
+        readySettled = true;
+        resolve();
+      };
+    });
+    subscription.ready = ready;
+  };
+  resetReady();
+  stagedSseSubscriptions.set(key, subscription);
+
+  void (async () => {
+    let attempt = 0;
+    try {
+      while (!controller.signal.aborted) {
+        if (getOpencodeWorkspaceKey() !== workspaceKey) {
+          controller.abort();
+          break;
+        }
+        let connectedThisAttempt = false;
+        try {
+          const client = await getOpencodeV2Client(workspaceKey);
+          const { stream } = await client.event.subscribe(
+            { directory },
+            { signal: controller.signal, sseMaxRetryAttempts: 1 },
+          );
+          await consumeOpencodeEventStream(stream, {
+            signal: controller.signal,
+            onReady: () => {
+              connectedThisAttempt = true;
+              attempt = 0;
+              subscription.connected = true;
+              subscription.lastEventAt = Date.now();
+              settleReady();
+              noteCurrentTurnSseEvent(get, set, workspaceKey, { sessionId, directory });
+            },
+            onEvent: (event) => {
+              if (getOpencodeWorkspaceKey() !== workspaceKey) {
+                controller.abort();
+                return;
+              }
+              subscription.lastEventAt = Date.now();
+              noteCurrentTurnSseEvent(get, set, workspaceKey, { sessionId, directory });
+              applySseEvent(event as ChatOpencodeEvent, get, set);
+            },
+          });
+        } catch (err) {
+          if (controller.signal.aborted) break;
+          console.warn('[chat] staged event stream errored', err);
+          resetOpencodeClient(workspaceKey);
+        }
+        if (controller.signal.aborted) break;
+        subscription.connected = false;
+        if (connectedThisAttempt) resetReady();
+        noteCurrentTurnSseDisconnect(
+          get,
+          set,
+          workspaceKey,
+          'staged event stream closed; reconnecting',
+          { sessionId, directory },
+        );
+        const delay = Math.min(30_000, 500 * 2 ** attempt++);
+        await waitForSseReconnectDelay(delay, controller.signal);
+      }
+    } finally {
+      if (!controller.signal.aborted) controller.abort();
+      settleReady();
+      if (stagedSseSubscriptions.get(key) === subscription) {
+        stagedSseSubscriptions.delete(key);
+      }
+    }
+  })();
+
+  try {
+    await waitForStagedSseConnection(subscription);
+  } catch (err) {
+    if (stagedSseSubscriptions.get(key) === subscription) {
+      stopStagedSseSubscription(workspaceKey, sessionId);
+    }
+    throw err;
+  }
+}
+
+function persistedSnapshot(snapshot: ChatYamlSnapshot): PersistedChatYamlSnapshot {
+  return {
+    ...snapshot,
+    staging: {
+      ...snapshot.staging,
+      entries: snapshot.staging.entries.map((entry) => ({ ...entry })),
+    },
+  };
+}
+
+function saveSessionRelocationPhase(
+  snapshot: ChatYamlSnapshot,
+  phase: PersistedChatSessionRelocation['phase'],
+): void {
+  const relocation = snapshot.sessionRelocation;
+  if (!relocation) throw new Error('Chat YAML snapshot has no OpenCode session relocation.');
+  savePersistedChatSessionRelocation(snapshot.workDir, {
+    ...relocation,
+    phase,
+    updatedAt: Date.now(),
+    snapshot: persistedSnapshot(snapshot),
+  });
+}
+
+function assertSessionRelocationBinding(
+  binding: {
+    relocationId: string;
+    stageId: string;
+    sessionId: string;
+    sourceDirectory: string;
+    targetDirectory: string;
+  },
+  snapshot: ChatYamlSnapshot,
+): void {
+  const relocation = snapshot.sessionRelocation;
+  if (
+    !relocation ||
+    binding.relocationId !== relocation.relocationId ||
+    binding.stageId !== snapshot.staging.id ||
+    binding.sessionId !== relocation.sessionId ||
+    binding.sourceDirectory !== relocation.sourceDirectory ||
+    binding.targetDirectory !== relocation.stageDirectory ||
+    binding.targetDirectory !== snapshot.staging.agentTagmaDir
+  ) {
+    throw new Error('The authenticated chat-stage relocation does not match this chat turn.');
+  }
+}
+
+async function withSnapshotYamlLock<T>(
+  snapshot: ChatYamlSnapshot,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const lease = await ensureChatYamlEditLockLease(
+    { id: snapshot.yamlEditLockId, workspaceKey: snapshot.workDir },
+    { reason: YAML_EDIT_LOCK_MESSAGE, yamlPath: snapshot.activePath },
+  );
+  return withYamlEditLockRequestBypass(lease.id, operation);
+}
+
+function activeSessionRelocation(
+  state: ChatStore,
+  sessionId: string | null,
+): ChatYamlSnapshot['sessionRelocation'] | null {
+  if (!sessionId) return null;
+  return stagedPermissionOwner(state, sessionId)?.snapshot.sessionRelocation ?? null;
+}
+
+export function selectTurnSseHealth(
+  relocation: ChatYamlSnapshot['sessionRelocation'] | null,
+  canonical: SseConnectionHealth | undefined,
+  staged:
+    | Pick<StagedSseSubscription, 'sessionId' | 'directory' | 'connected' | 'lastEventAt'>
+    | undefined,
+): SseConnectionHealth {
+  if (!relocation) {
+    return canonical ?? { connected: false, lastEventAt: null };
+  }
+  if (
+    !staged ||
+    staged.sessionId !== relocation.sessionId ||
+    staged.directory !== relocation.stageDirectory
+  ) {
+    return { connected: false, lastEventAt: null };
+  }
+  return { connected: staged.connected, lastEventAt: staged.lastEventAt };
+}
+
+function currentTurnSseHealth(state: ChatStore, workspaceKey: string): SseConnectionHealth {
+  const relocation = activeSessionRelocation(state, state.currentSessionId);
+  const staged = relocation
+    ? stagedSseSubscriptions.get(sessionRelocationKey(workspaceKey, relocation.sessionId))
+    : undefined;
+  return selectTurnSseHealth(relocation, canonicalSseHealthByWorkspace.get(workspaceKey), staged);
+}
+
+function isCurrentTurnSseSource(
+  state: ChatStore,
+  workspaceKey: string,
+  stagedSource?: { sessionId: string; directory: string },
+): boolean {
+  if (getOpencodeWorkspaceKey() !== workspaceKey) return false;
+  const relocation = activeSessionRelocation(state, state.currentSessionId);
+  if (!relocation) return stagedSource === undefined;
+  return (
+    stagedSource?.sessionId === relocation.sessionId &&
+    stagedSource.directory === relocation.stageDirectory
+  );
+}
+
+function noteCurrentTurnSseEvent(
+  get: () => ChatStore,
+  set: ChatSet,
+  workspaceKey: string,
+  stagedSource?: { sessionId: string; directory: string },
+): void {
+  if (!isCurrentTurnSseSource(get(), workspaceKey, stagedSource)) return;
+  clearSseIdleTimer();
+  armSseIdleTimer(get, set, workspaceKey);
+}
+
+function noteCurrentTurnSseDisconnect(
+  get: () => ChatStore,
+  set: ChatSet,
+  workspaceKey: string,
+  detail: string,
+  stagedSource?: { sessionId: string; directory: string },
+): void {
+  const state = get();
+  if (!isCurrentTurnSseSource(state, workspaceKey, stagedSource)) return;
+  clearSseIdleTimer();
+  if (!state.sending) return;
+  const health = currentTurnSseHealth(state, workspaceKey);
+  set({
+    turnHealth: {
+      status: 'degraded',
+      checkedAt: Date.now(),
+      detail,
+      sseState: 'reconnecting',
+      processAlive: state.turnHealth?.processAlive,
+      lastSseEventAt: health.lastEventAt,
+    },
+  });
+}
+
+function sessionStatusQuery(
+  state: ChatStore,
+  sessionId: string | null,
+): { query: { directory: string } } | undefined {
+  const relocation = activeSessionRelocation(state, sessionId);
+  return relocation ? { query: { directory: relocation.stageDirectory } } : undefined;
+}
+
+async function relocateSessionToStage(
+  get: () => ChatStore,
+  set: ChatSet,
+  snapshot: ChatYamlSnapshot,
+  sessionId: string,
+): Promise<ChatYamlSnapshot> {
+  return serializeSessionRelocation(snapshot.workDir, sessionId, async () => {
+    const relocationSignal = AbortSignal.timeout(30_000);
+    const sourceSession = await getOpencodeSessionV2(sessionId, snapshot.workDir, relocationSignal);
+    if (sourceSession.workspaceID !== undefined) {
+      throw new Error('Workspace-bound OpenCode sessions cannot be moved into a chat stage.');
+    }
+    const canonicalDirectory = await getOpencodeCanonicalDirectory(snapshot.workDir);
+    const prior = snapshot.sessionRelocation;
+    const relocation = prior ?? {
+      relocationId: snapshot.staging.id,
+      sessionId,
+      sourceDirectory: canonicalDirectory,
+      stageDirectory: snapshot.staging.agentTagmaDir,
+    };
+    if (
+      relocation.relocationId !== snapshot.staging.id ||
+      relocation.sessionId !== sessionId ||
+      relocation.sourceDirectory !== canonicalDirectory ||
+      relocation.stageDirectory !== snapshot.staging.agentTagmaDir
+    ) {
+      throw new Error('Chat session relocation identity does not match the authenticated stage.');
+    }
+    const relocatedSnapshot: ChatYamlSnapshot = { ...snapshot, sessionRelocation: relocation };
+
+    if (sourceSession.directory === relocation.stageDirectory) {
+      const { binding } = await api.readChatYamlStageSessionRelocation(
+        snapshot.staging.id,
+        snapshot.workDir,
+        relocationSignal,
+      );
+      if (!binding || binding.phase !== 'staged') {
+        throw new Error('OpenCode is at the staged directory without an active staged binding.');
+      }
+      assertSessionRelocationBinding(binding, relocatedSnapshot);
+      const stagedRoot = await moveOpencodeSessionTreeDirectory({
+        workspaceKey: snapshot.workDir,
+        rootSession: sourceSession,
+        routingDirectory: relocation.stageDirectory,
+        sourceDirectory: relocation.sourceDirectory,
+        destinationDirectory: relocation.stageDirectory,
+      });
+      saveSessionRelocationPhase(relocatedSnapshot, 'at-stage');
+      applyRuntimePatchToSession(get, set, sessionId, {
+        yamlSnapshotBeforeSend: relocatedSnapshot,
+      });
+      updateSessionDirectoryInState(
+        get,
+        set,
+        sessionId,
+        relocation.stageDirectory,
+        stagedRoot,
+        snapshot.workDir,
+      );
+      await ensureStagedSseSubscription(
+        get,
+        set,
+        snapshot.workDir,
+        sessionId,
+        relocation.stageDirectory,
+      );
+      return relocatedSnapshot;
+    }
+    if (sourceSession.directory !== relocation.sourceDirectory) {
+      throw new Error(
+        `OpenCode session is in an unexpected directory: ${sourceSession.directory ?? '(missing)'}`,
+      );
+    }
+
+    // MoveSession relocates only the persisted root row; it does not move the
+    // source Instance's run state, pending approvals, or delegated children.
+    // A renderer reload can forget an in-flight turn, so prove the complete
+    // source tree is quiescent before changing the routing directory.
+    await waitForRelocatedSessionQuiescence(
+      snapshot.workDir,
+      sessionId,
+      relocation.sourceDirectory,
+      false,
+      15_000,
+      true,
+      [relocation.sourceDirectory],
+    );
+
+    // Validate the complete persisted subtree before creating the host
+    // binding. Otherwise a pre-existing child in an unrelated directory would
+    // leave a prepared binding that can never safely advance or clear.
+    await preflightOpencodeSessionTreeDirectory({
+      workspaceKey: snapshot.workDir,
+      rootSession: sourceSession,
+      routingDirectory: relocation.sourceDirectory,
+      allowedDirectories: [relocation.sourceDirectory],
+      signal: relocationSignal,
+    });
+
+    // Commit the renderer journal before the authoritative host binding. A
+    // crash can then leave only a harmless home-directory journal; it can
+    // never leave an unowned staged binding that lacks the YAML-lock identity
+    // required for recovery.
+    saveSessionRelocationPhase(relocatedSnapshot, 'moving-to-stage');
+    // Keep that journal even if prepare throws: the host may have committed
+    // its signed binding before the transport lost the response.
+    const { binding } = await withSnapshotYamlLock(relocatedSnapshot, () =>
+      api.prepareChatYamlStageSessionRelocation(
+        {
+          stageId: snapshot.staging.id,
+          sessionId,
+          relocationId: relocation.relocationId,
+        },
+        snapshot.workDir,
+        relocationSignal,
+      ),
+    );
+    assertSessionRelocationBinding(binding, relocatedSnapshot);
+    if (binding.phase !== 'prepared') {
+      throw new Error(`Chat-stage relocation is unexpectedly ${binding.phase}.`);
+    }
+
+    const stagedRoot = await moveOpencodeSessionTreeDirectory({
+      workspaceKey: snapshot.workDir,
+      rootSession: sourceSession,
+      routingDirectory: binding.sourceDirectory,
+      sourceDirectory: binding.sourceDirectory,
+      destinationDirectory: binding.targetDirectory,
+    });
+    const { binding: stagedBinding } = await withSnapshotYamlLock(relocatedSnapshot, () =>
+      api.advanceChatYamlStageSessionRelocation(
+        {
+          stageId: snapshot.staging.id,
+          sessionId,
+          relocationId: relocation.relocationId,
+          expectedPhase: 'prepared',
+          phase: 'staged',
+        },
+        snapshot.workDir,
+        relocationSignal,
+      ),
+    );
+    assertSessionRelocationBinding(stagedBinding, relocatedSnapshot);
+    if (stagedBinding.phase !== 'staged') {
+      throw new Error('Chat-stage relocation did not reach the staged phase.');
+    }
+    saveSessionRelocationPhase(relocatedSnapshot, 'at-stage');
+    applyRuntimePatchToSession(get, set, sessionId, {
+      yamlSnapshotBeforeSend: relocatedSnapshot,
+    });
+    updateSessionDirectoryInState(
+      get,
+      set,
+      sessionId,
+      binding.targetDirectory,
+      stagedRoot,
+      snapshot.workDir,
+    );
+    await ensureStagedSseSubscription(
+      get,
+      set,
+      snapshot.workDir,
+      sessionId,
+      binding.targetDirectory,
+    );
+    return relocatedSnapshot;
+  });
+}
+
+type OpencodeCompatibilityClientV2 = Awaited<ReturnType<typeof getOpencodeV2Client>>;
+
+async function listOpencodeSessionTree(
+  client: OpencodeCompatibilityClientV2,
+  rootSession: OpencodeSessionV2,
+  directory: string,
+  signal: AbortSignal,
+): Promise<Array<{ session: OpencodeSessionV2; depth: number }>> {
+  const result = [{ session: rootSession, depth: 0 }];
+  const seen = new Set([rootSession.id]);
+  for (let index = 0; index < result.length; index += 1) {
+    const parent = result[index];
+    const children = await unwrap(
+      client.session.children({ sessionID: parent.session.id, directory }, { signal }),
+    );
+    for (const child of children) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      result.push({ session: child, depth: parent.depth + 1 });
+    }
+  }
+  return result;
+}
+
+function assertOpencodeSessionTreeDirectories(
+  tree: Array<{ session: OpencodeSessionV2; depth: number }>,
+  allowedDirectories: readonly string[],
+): void {
+  const allowed = new Set(allowedDirectories);
+  for (const { session } of tree) {
+    if (session.workspaceID !== undefined) {
+      throw new Error(`Workspace-bound OpenCode session ${session.id} cannot be relocated safely.`);
+    }
+    if (!session.directory || !allowed.has(session.directory)) {
+      throw new Error(
+        `OpenCode session ${session.id} is in an unexpected directory: ${session.directory ?? '(missing)'}`,
+      );
+    }
+  }
+}
+
+async function preflightOpencodeSessionTreeDirectory(input: {
+  workspaceKey: string;
+  rootSession: OpencodeSessionV2;
+  routingDirectory: string;
+  allowedDirectories: readonly string[];
+  signal: AbortSignal;
+}): Promise<Array<{ session: OpencodeSessionV2; depth: number }>> {
+  const client = await getOpencodeV2Client(input.workspaceKey);
+  const tree = await listOpencodeSessionTree(
+    client,
+    input.rootSession,
+    input.routingDirectory,
+    input.signal,
+  );
+  assertOpencodeSessionTreeDirectories(tree, input.allowedDirectories);
+  return tree;
+}
+
+async function moveOpencodeSessionTreeDirectory(input: {
+  workspaceKey: string;
+  rootSession: OpencodeSessionV2;
+  routingDirectory: string;
+  sourceDirectory: string;
+  destinationDirectory: string;
+  timeoutMs?: number;
+}): Promise<OpencodeSessionV2> {
+  const controller = new AbortController();
+  const timeoutMs = input.timeoutMs ?? 15_000;
+  const timeoutError = new Error(
+    'OpenCode session tree did not move before the directory relocation deadline.',
+  );
+  const timer = setTimeout(() => controller.abort(timeoutError), timeoutMs);
+  unrefTimerForTests(timer);
+  try {
+    const client = await getOpencodeV2Client(input.workspaceKey);
+    const tree = await listOpencodeSessionTree(
+      client,
+      input.rootSession,
+      input.routingDirectory,
+      controller.signal,
+    );
+    assertOpencodeSessionTreeDirectories(tree, [input.sourceDirectory, input.destinationDirectory]);
+
+    let root = input.rootSession;
+    const childrenFirst = [...tree].sort((left, right) => right.depth - left.depth);
+    for (const { session } of childrenFirst) {
+      const moved = await moveOpencodeSessionDirectory({
+        sessionID: session.id,
+        destinationDirectory: input.destinationDirectory,
+        expectedSourceDirectories: [input.sourceDirectory, input.destinationDirectory],
+        workspaceKey: input.workspaceKey,
+        verification: { signal: controller.signal },
+      });
+      if (moved.session.directory !== input.destinationDirectory) {
+        throw new Error(`OpenCode session ${session.id} failed exact directory verification.`);
+      }
+      if (session.id === input.rootSession.id) root = moved.session;
+    }
+    return root;
+  } catch (err) {
+    if (controller.signal.aborted) throw timeoutError;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+class OpencodeRelocationRuntimeMismatchError extends Error {
+  constructor(details: string) {
+    super(`OpenCode session runtime directory does not match its persisted directory: ${details}`);
+    this.name = 'OpencodeRelocationRuntimeMismatchError';
+  }
+}
+
+function isOpencodeTaggedNotFoundError(error: unknown, tag: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const cause = (error as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== 'object') return false;
+  const causeRecord = cause as { status?: unknown; body?: unknown };
+  if (causeRecord.status !== 404 && causeRecord.status !== '404') return false;
+  return (
+    !!causeRecord.body &&
+    typeof causeRecord.body === 'object' &&
+    (causeRecord.body as { _tag?: unknown })._tag === tag
+  );
+}
+
+async function settleRelocationPendingRequest(
+  operation: Promise<unknown>,
+  notFoundTag: 'PermissionNotFoundError' | 'QuestionNotFoundError',
+): Promise<void> {
+  try {
+    await operation;
+  } catch (error) {
+    if (!isOpencodeTaggedNotFoundError(error, notFoundTag)) throw error;
+  }
+}
+
+async function waitForRelocatedSessionQuiescence(
+  workspaceKey: string,
+  sessionId: string,
+  routingDirectory: string,
+  forceStop: boolean,
+  timeoutMs = 15_000,
+  failIfRunning = false,
+  allowedDirectories: readonly string[] = [routingDirectory],
+): Promise<void> {
+  const client = await getOpencodeV2Client(workspaceKey);
+  const controller = new AbortController();
+  const timeoutError = new Error(
+    'OpenCode did not become idle before the staged session restore deadline.',
+  );
+  const timer = setTimeout(() => controller.abort(timeoutError), timeoutMs);
+  unrefTimerForTests(timer);
+  const abortedSessionIds = new Set<string>();
+  try {
+    while (!controller.signal.aborted) {
+      const rootSession = await getOpencodeSessionV2(sessionId, workspaceKey, controller.signal);
+      const tree = await listOpencodeSessionTree(
+        client,
+        rootSession,
+        routingDirectory,
+        controller.signal,
+      );
+      assertOpencodeSessionTreeDirectories(tree, allowedDirectories);
+      const sessionIds = new Set(tree.map((entry) => entry.session.id));
+      const sessionsByDirectory = new Map<string, Set<string>>();
+      const directoryBySession = new Map<string, string>();
+      for (const { session: treeSession } of tree) {
+        const directory = treeSession.directory!;
+        directoryBySession.set(treeSession.id, directory);
+        const ids = sessionsByDirectory.get(directory) ?? new Set<string>();
+        ids.add(treeSession.id);
+        sessionsByDirectory.set(directory, ids);
+      }
+      for (const directory of allowedDirectories) {
+        if (!sessionsByDirectory.has(directory)) {
+          sessionsByDirectory.set(directory, new Set());
+        }
+      }
+
+      const instanceStates = await Promise.all(
+        [...sessionsByDirectory].map(async ([directory, ids]) => {
+          const [statuses, permissions, questions] = await Promise.all([
+            unwrap(client.session.status({ directory }, { signal: controller.signal })),
+            unwrap(client.permission.list({ directory }, { signal: controller.signal })),
+            unwrap(client.question.list({ directory }, { signal: controller.signal })),
+          ]);
+          return { directory, ids, statuses, permissions, questions };
+        }),
+      );
+      const pendingPermissions = instanceStates.flatMap(({ directory, permissions }) =>
+        permissions.flatMap((item) =>
+          sessionIds.has(item.sessionID) ? [{ item, directory }] : [],
+        ),
+      );
+      const pendingQuestions = instanceStates.flatMap(({ directory, questions }) =>
+        questions.flatMap((item) => (sessionIds.has(item.sessionID) ? [{ item, directory }] : [])),
+      );
+      const runningSessions = instanceStates.flatMap(({ directory, statuses }) =>
+        [...sessionIds].flatMap((id) => {
+          const status = statuses[id];
+          return status && status.type !== 'idle' ? [{ id, directory }] : [];
+        }),
+      );
+      const runtimeMismatches = [
+        ...runningSessions.map(({ id, directory }) => ({ id, directory, kind: 'status' })),
+        ...pendingPermissions.map(({ item, directory }) => ({
+          id: item.sessionID,
+          directory,
+          kind: 'permission',
+        })),
+        ...pendingQuestions.map(({ item, directory }) => ({
+          id: item.sessionID,
+          directory,
+          kind: 'question',
+        })),
+      ].filter(({ id, directory }) => directoryBySession.get(id) !== directory);
+      if (runtimeMismatches.length > 0) {
+        throw new OpencodeRelocationRuntimeMismatchError(
+          runtimeMismatches
+            .map(({ id, directory, kind }) => `${id} has ${kind} state in ${directory}`)
+            .join('; '),
+        );
+      }
+      const runningSessionIds = [...new Set(runningSessions.map(({ id }) => id))];
+
+      if (forceStop) {
+        const firstPermissionBySession = new Map<string, (typeof pendingPermissions)[number]>();
+        for (const pending of pendingPermissions) {
+          if (!firstPermissionBySession.has(pending.item.sessionID)) {
+            firstPermissionBySession.set(pending.item.sessionID, pending);
+          }
+        }
+        const sessionsNeedingAbort = new Set([
+          ...runningSessionIds,
+          ...pendingPermissions.map(({ item }) => item.sessionID),
+          ...pendingQuestions.map(({ item }) => item.sessionID),
+        ]);
+        const sessionsToAbort = [...sessionsNeedingAbort].filter(
+          (id) => !abortedSessionIds.has(id),
+        );
+        // Reject approvals before aborting. OpenCode rejects every permission
+        // owned by a session when one is denied, so send at most one reply per
+        // session and avoid racing those replies with abort cleanup.
+        await Promise.all([
+          ...[...firstPermissionBySession.values()].map(({ item, directory }) =>
+            settleRelocationPendingRequest(
+              unwrap(
+                client.permission.reply(
+                  {
+                    requestID: item.id,
+                    directory,
+                    reply: 'reject',
+                  },
+                  { signal: controller.signal },
+                ),
+              ),
+              'PermissionNotFoundError',
+            ),
+          ),
+          ...pendingQuestions.map(({ item, directory }) =>
+            settleRelocationPendingRequest(
+              unwrap(
+                client.question.reject(
+                  { requestID: item.id, directory },
+                  { signal: controller.signal },
+                ),
+              ),
+              'QuestionNotFoundError',
+            ),
+          ),
+        ]);
+        await Promise.all(
+          sessionsToAbort.map(async (id) => {
+            const directory = directoryBySession.get(id);
+            if (!directory) {
+              throw new Error(`OpenCode session ${id} has no verified relocation directory.`);
+            }
+            await unwrap(
+              client.session.abort({ sessionID: id, directory }, { signal: controller.signal }),
+            );
+            abortedSessionIds.add(id);
+          }),
+        );
+      } else if (pendingPermissions.length > 0 || pendingQuestions.length > 0) {
+        throw new Error(
+          'OpenCode still has a pending permission or question in this chat session tree.',
+        );
+      }
+
+      if (!forceStop && failIfRunning && runningSessionIds.length > 0) {
+        throw new Error('OpenCode still has an active run in this chat session tree.');
+      }
+
+      if (
+        runningSessionIds.length === 0 &&
+        pendingPermissions.length === 0 &&
+        pendingQuestions.length === 0
+      ) {
+        await Promise.all(
+          tree.map(({ session: treeSession }) =>
+            unwrap(
+              client.session.messages(
+                { sessionID: treeSession.id, directory: treeSession.directory! },
+                { signal: controller.signal },
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+      await waitForSseReconnectDelay(100, controller.signal);
+    }
+    throw timeoutError;
+  } catch (err) {
+    if (controller.signal.aborted) throw timeoutError;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function updateSessionDirectoryInState(
+  get: () => ChatStore,
+  set: ChatSet,
+  sessionId: string,
+  directory: string,
+  session: OpencodeSessionV2,
+  workspaceKey: string,
+): void {
+  if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+  const legacySession = session as unknown as Session;
+  set((state) => ({
+    sessions: state.sessions.map((item) =>
+      item.id === sessionId ? { ...item, ...legacySession, directory } : item,
+    ),
+  }));
+  void get;
+}
+
+function isMissingOpencodeSessionError(error: unknown, sessionId: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const cause = (error as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== 'object') return false;
+  const causeRecord = cause as { status?: unknown; body?: unknown };
+  if (causeRecord.status !== 404 && causeRecord.status !== '404') return false;
+  const body = causeRecord.body;
+  if (!body || typeof body !== 'object') return false;
+  const bodyRecord = body as { name?: unknown; data?: unknown };
+  if (
+    bodyRecord.name !== 'NotFoundError' ||
+    !bodyRecord.data ||
+    typeof bodyRecord.data !== 'object'
+  ) {
+    return false;
+  }
+  return (bodyRecord.data as { message?: unknown }).message === `Session not found: ${sessionId}`;
+}
+
+async function clearMissingSessionRelocation(
+  snapshot: ChatYamlSnapshot,
+  binding: ChatYamlStageSessionRelocationBinding,
+  signal: AbortSignal,
+): Promise<void> {
+  let clearPhase: 'prepared' | 'restoring';
+  if (binding.phase === 'prepared') {
+    clearPhase = 'prepared';
+  } else if (binding.phase === 'restoring') {
+    clearPhase = 'restoring';
+  } else {
+    const { binding: restoring } = await withSnapshotYamlLock(snapshot, () =>
+      api.advanceChatYamlStageSessionRelocation(
+        {
+          stageId: binding.stageId,
+          sessionId: binding.sessionId,
+          relocationId: binding.relocationId,
+          expectedPhase: 'staged',
+          phase: 'restoring',
+        },
+        snapshot.workDir,
+        signal,
+      ),
+    );
+    assertSessionRelocationBinding(restoring, snapshot);
+    if (restoring.phase !== 'restoring') {
+      throw new Error('Missing OpenCode session relocation did not enter the restoring phase.');
+    }
+    clearPhase = 'restoring';
+  }
+
+  const { cleared } = await withSnapshotYamlLock(snapshot, () =>
+    api.clearChatYamlStageSessionRelocation(
+      {
+        stageId: binding.stageId,
+        sessionId: binding.sessionId,
+        relocationId: binding.relocationId,
+        expectedPhase: clearPhase,
+        verifiedSessionMissing: true,
+      },
+      snapshot.workDir,
+      signal,
+    ),
+  );
+  if (!cleared) {
+    const reread = await api.readChatYamlStageSessionRelocation(
+      binding.stageId,
+      snapshot.workDir,
+      signal,
+    );
+    if (reread.binding) {
+      throw new Error('Missing OpenCode session relocation binding could not be cleared.');
+    }
+  }
+}
+
+async function restoreSessionHome(
+  get: () => ChatStore,
+  set: ChatSet,
+  snapshot: ChatYamlSnapshot,
+  sessionId: string,
+  options: { forceStop?: boolean } = {},
+): Promise<void> {
+  const relocation = snapshot.sessionRelocation;
+  if (!relocation) return;
+  await serializeSessionRelocation(snapshot.workDir, sessionId, async () => {
+    const recovery = forcedRestartRecoveries.get(snapshot.workDir);
+    if (recovery) await recovery.promise;
+    const relocationSignal = AbortSignal.timeout(30_000);
+
+    const { binding } = await api.readChatYamlStageSessionRelocation(
+      snapshot.staging.id,
+      snapshot.workDir,
+      relocationSignal,
+    );
+    let session: OpencodeSessionV2;
+    try {
+      session = await getOpencodeSessionV2(sessionId, snapshot.workDir, relocationSignal);
+    } catch (error) {
+      if (!isMissingOpencodeSessionError(error, sessionId)) throw error;
+      if (binding) {
+        assertSessionRelocationBinding(binding, snapshot);
+        await clearMissingSessionRelocation(snapshot, binding, relocationSignal);
+      }
+      clearPersistedChatSessionRelocation(snapshot.workDir, sessionId, relocation.relocationId);
+      stopStagedSseSubscription(snapshot.workDir, sessionId);
+      return;
+    }
+    if (session.workspaceID !== undefined) {
+      throw new Error('Workspace-bound OpenCode sessions cannot be restored automatically.');
+    }
+    if (
+      session.directory !== relocation.sourceDirectory &&
+      session.directory !== relocation.stageDirectory
+    ) {
+      throw new Error(
+        `OpenCode session is in an unexpected directory: ${session.directory ?? '(missing)'}`,
+      );
+    }
+    if (!binding) {
+      if (session.directory !== relocation.sourceDirectory) {
+        throw new Error('OpenCode is staged but its authenticated relocation binding is missing.');
+      }
+      clearPersistedChatSessionRelocation(snapshot.workDir, sessionId, relocation.relocationId);
+      stopStagedSseSubscription(snapshot.workDir, sessionId);
+      updateSessionDirectoryInState(
+        get,
+        set,
+        sessionId,
+        relocation.sourceDirectory,
+        session,
+        snapshot.workDir,
+      );
+      return;
+    }
+    assertSessionRelocationBinding(binding, snapshot);
+
+    // A move crash can leave the root at home while one or more delegated
+    // children are already staged. Quiesce and validate both authenticated
+    // directories on every recovery phase before moving any row or clearing
+    // the host binding.
+    const waitForTreeQuiescence = () =>
+      waitForRelocatedSessionQuiescence(
+        snapshot.workDir,
+        sessionId,
+        session.directory,
+        options.forceStop ?? false,
+        15_000,
+        false,
+        [relocation.sourceDirectory, relocation.stageDirectory],
+      );
+    try {
+      await waitForTreeQuiescence();
+    } catch (error) {
+      if (
+        !(error instanceof OpencodeRelocationRuntimeMismatchError) ||
+        options.forceStop !== true
+      ) {
+        throw error;
+      }
+      stopStagedSseSubscription(snapshot.workDir, sessionId);
+      await withSnapshotYamlLock(snapshot, () =>
+        restartOpencodeForConfig(snapshot.workDir, {
+          forceStop: true,
+          yamlEditLockId: snapshot.yamlEditLockId,
+        }),
+      );
+      await waitForTreeQuiescence();
+    }
+
+    let clearPhase: 'prepared' | 'restoring';
+    if (binding.phase === 'prepared' && session.directory === relocation.sourceDirectory) {
+      clearPhase = 'prepared';
+    } else if (binding.phase === 'restoring') {
+      clearPhase = 'restoring';
+    } else {
+      const { binding: restoring } = await withSnapshotYamlLock(snapshot, () =>
+        api.advanceChatYamlStageSessionRelocation(
+          {
+            stageId: snapshot.staging.id,
+            sessionId,
+            relocationId: relocation.relocationId,
+            expectedPhase: binding.phase,
+            phase: 'restoring',
+          },
+          snapshot.workDir,
+          relocationSignal,
+        ),
+      );
+      assertSessionRelocationBinding(restoring, snapshot);
+      if (restoring.phase !== 'restoring') {
+        throw new Error('Chat-stage relocation did not enter the restoring phase.');
+      }
+      clearPhase = 'restoring';
+    }
+    saveSessionRelocationPhase(snapshot, 'moving-home');
+
+    const restoredRoot = await moveOpencodeSessionTreeDirectory({
+      workspaceKey: snapshot.workDir,
+      rootSession: session,
+      routingDirectory: relocation.stageDirectory,
+      sourceDirectory: relocation.stageDirectory,
+      destinationDirectory: relocation.sourceDirectory,
+      timeoutMs: 15_000,
+    });
+    if (restoredRoot.directory !== relocation.sourceDirectory) {
+      throw new Error('OpenCode session home-directory verification failed.');
+    }
+    const { cleared } = await withSnapshotYamlLock(snapshot, () =>
+      api.clearChatYamlStageSessionRelocation(
+        {
+          stageId: snapshot.staging.id,
+          sessionId,
+          relocationId: relocation.relocationId,
+          expectedPhase: clearPhase,
+          verifiedHomeDirectory: relocation.sourceDirectory,
+        },
+        snapshot.workDir,
+        relocationSignal,
+      ),
+    );
+    if (!cleared) {
+      const reread = await api.readChatYamlStageSessionRelocation(
+        snapshot.staging.id,
+        snapshot.workDir,
+        relocationSignal,
+      );
+      if (reread.binding) {
+        throw new Error('Chat-stage relocation binding was not cleared after home verification.');
+      }
+    }
+    clearPersistedChatSessionRelocation(snapshot.workDir, sessionId, relocation.relocationId);
+    stopStagedSseSubscription(snapshot.workDir, sessionId);
+    updateSessionDirectoryInState(
+      get,
+      set,
+      sessionId,
+      relocation.sourceDirectory,
+      restoredRoot,
+      snapshot.workDir,
+    );
+  });
+}
+
+export async function ensureFinishedTurnSessionHome(
+  turn: ChatFinishedTurn,
+  options: { forceStop?: boolean } = {},
+): Promise<void> {
+  const snapshot = turn.yamlSnapshotBeforeSend;
+  const relocation = snapshot?.sessionRelocation;
+  if (!relocation) return;
+  if (!turn.sessionId || turn.sessionId !== relocation.sessionId) {
+    throw new Error('Finished-turn session identity does not match its relocation journal.');
+  }
+  await restoreSessionHome(
+    useChatStore.getState,
+    useChatStore.setState as unknown as ChatSet,
+    snapshot,
+    relocation.sessionId,
+    options,
+  );
+}
+
+function sameRelocationIdentity(
+  left: NonNullable<ChatYamlSnapshot['sessionRelocation']>,
+  right: NonNullable<ChatYamlSnapshot['sessionRelocation']>,
+): boolean {
+  return (
+    left.relocationId === right.relocationId &&
+    left.sessionId === right.sessionId &&
+    left.sourceDirectory === right.sourceDirectory &&
+    left.stageDirectory === right.stageDirectory
+  );
+}
+
+function ensureRelocationRecoveryTurnPersisted(
+  workspaceKey: string,
+  relocation: PersistedChatSessionRelocation,
+): void {
+  const queue = loadPersistedChatYamlReconciliationQueue(workspaceKey) as ChatFinishedTurn[];
+  const existing = queue.find((turn) => {
+    const identity = turn.yamlSnapshotBeforeSend?.sessionRelocation;
+    return identity ? sameRelocationIdentity(identity, relocation) : false;
+  });
+  if (existing) return;
+
+  const id = `relocation-recovery:${relocation.relocationId}`;
+  const conflicting = queue.find((turn) => turn.id === id);
+  if (conflicting) {
+    throw new Error('A different interrupted chat turn already owns this relocation recovery id.');
+  }
+  const snapshot = {
+    ...relocation.snapshot,
+    resultTurnId: relocation.snapshot.resultTurnId ?? id,
+  } as ChatYamlSnapshot;
+  const recoveryTurn: ChatFinishedTurn = {
+    id,
+    sessionId: relocation.sessionId,
+    endedAt: relocation.updatedAt,
+    hidden: false,
+    termination: 'user-stopped',
+    yamlSnapshotBeforeSend: snapshot,
+  };
+  savePersistedChatYamlReconciliationQueue(workspaceKey, [...queue, recoveryTurn]);
+  const verified = loadPersistedChatYamlReconciliationQueue(workspaceKey) as ChatFinishedTurn[];
+  if (
+    !verified.some((turn) => {
+      const identity = turn.yamlSnapshotBeforeSend?.sessionRelocation;
+      return turn.id === id && identity ? sameRelocationIdentity(identity, relocation) : false;
+    })
+  ) {
+    throw new Error('Could not durably persist the interrupted chat relocation recovery turn.');
+  }
+}
+
+async function claimHostOnlySessionRelocationRecovery(
+  workspaceKey: string,
+  binding: ChatYamlStageSessionRelocationBinding,
+  signal: AbortSignal,
+): Promise<ChatYamlStageSessionRelocationBinding> {
+  const { binding: restoring } = await api.advanceChatYamlStageSessionRelocation(
+    {
+      stageId: binding.stageId,
+      sessionId: binding.sessionId,
+      relocationId: binding.relocationId,
+      expectedPhase: binding.phase,
+      phase: 'restoring',
+    },
+    workspaceKey,
+    signal,
+  );
+  if (
+    restoring.relocationId !== binding.relocationId ||
+    restoring.sessionId !== binding.sessionId ||
+    restoring.sourceDirectory !== binding.sourceDirectory ||
+    restoring.targetDirectory !== binding.targetDirectory ||
+    restoring.phase !== 'restoring'
+  ) {
+    throw new Error('Host-only chat-session relocation did not enter the restoring phase.');
+  }
+  return restoring;
+}
+
+async function clearHostOnlySessionRelocation(
+  workspaceKey: string,
+  restoring: ChatYamlStageSessionRelocationBinding,
+  signal: AbortSignal,
+  sessionMissing = false,
+): Promise<void> {
+  if (restoring.phase !== 'restoring') {
+    throw new Error('Host-only chat-session relocation must be claimed before clearing.');
+  }
+  const { cleared } = await api.clearChatYamlStageSessionRelocation(
+    {
+      stageId: restoring.stageId,
+      sessionId: restoring.sessionId,
+      relocationId: restoring.relocationId,
+      expectedPhase: 'restoring',
+      ...(sessionMissing
+        ? { verifiedSessionMissing: true as const }
+        : { verifiedHomeDirectory: restoring.sourceDirectory }),
+    },
+    workspaceKey,
+    signal,
+  );
+  if (!cleared) {
+    const reread = await api.readChatYamlStageSessionRelocation(
+      restoring.stageId,
+      workspaceKey,
+      signal,
+    );
+    if (reread.binding) {
+      throw new Error('Host-only chat-session relocation binding could not be cleared.');
+    }
+  }
+}
+
+async function recoverHostOnlyChatSessionRelocation(
+  workspaceKey: string,
+  binding: ChatYamlStageSessionRelocationBinding,
+  get: () => ChatStore,
+  set: ChatSet,
+  signal: AbortSignal,
+): Promise<void> {
+  await serializeSessionRelocation(workspaceKey, binding.sessionId, async () => {
+    let session: OpencodeSessionV2;
+    try {
+      session = await getOpencodeSessionV2(binding.sessionId, workspaceKey, signal);
+    } catch (error) {
+      if (!isMissingOpencodeSessionError(error, binding.sessionId)) throw error;
+      const restoring = await claimHostOnlySessionRelocationRecovery(workspaceKey, binding, signal);
+      await clearHostOnlySessionRelocation(workspaceKey, restoring, signal, true);
+      stopStagedSseSubscription(workspaceKey, binding.sessionId);
+      return;
+    }
+    if (session.workspaceID !== undefined) {
+      throw new Error('Workspace-bound OpenCode sessions cannot be recovered automatically.');
+    }
+    if (
+      session.directory !== binding.sourceDirectory &&
+      session.directory !== binding.targetDirectory
+    ) {
+      throw new Error(
+        `OpenCode session ${binding.sessionId} is in an unexpected directory: ${session.directory ?? '(missing)'}`,
+      );
+    }
+
+    // Claim recovery on the authenticated host record before rejecting any
+    // approval, aborting a run, or moving a row. If another renderer still
+    // owns the live YAML lease, the route returns 423 with zero OpenCode
+    // mutation and this bootstrap remains safely blocked.
+    const effectiveBinding = await claimHostOnlySessionRelocationRecovery(
+      workspaceKey,
+      binding,
+      signal,
+    );
+
+    const waitForTreeQuiescence = () =>
+      waitForRelocatedSessionQuiescence(
+        workspaceKey,
+        binding.sessionId,
+        session.directory,
+        true,
+        15_000,
+        false,
+        [binding.sourceDirectory, binding.targetDirectory],
+      );
+    try {
+      await waitForTreeQuiescence();
+    } catch (error) {
+      if (!(error instanceof OpencodeRelocationRuntimeMismatchError)) throw error;
+      stopStagedSseSubscription(workspaceKey, binding.sessionId);
+      await restartOpencodeForConfig(workspaceKey);
+      await waitForTreeQuiescence();
+    }
+
+    const restoredRoot = await moveOpencodeSessionTreeDirectory({
+      workspaceKey,
+      rootSession: session,
+      routingDirectory: session.directory,
+      sourceDirectory: binding.targetDirectory,
+      destinationDirectory: binding.sourceDirectory,
+    });
+    if (restoredRoot.directory !== binding.sourceDirectory) {
+      throw new Error('Host-only OpenCode session home-directory verification failed.');
+    }
+
+    await clearHostOnlySessionRelocation(workspaceKey, effectiveBinding, signal);
+    stopStagedSseSubscription(workspaceKey, binding.sessionId);
+    updateSessionDirectoryInState(
+      get,
+      set,
+      binding.sessionId,
+      binding.sourceDirectory,
+      restoredRoot,
+      workspaceKey,
+    );
+  });
+}
+
+async function recoverChatSessionRelocationsWithStore(
+  workspaceKey: string,
+  get: () => ChatStore,
+  set: ChatSet,
+): Promise<void> {
+  const recoverySignal = AbortSignal.timeout(30_000);
+  const [hostResult, canonicalDirectory] = await Promise.all([
+    api.listChatYamlStageSessionRelocations(workspaceKey, recoverySignal),
+    getOpencodeCanonicalDirectory(workspaceKey),
+  ]);
+  const local = loadPersistedChatSessionRelocations(workspaceKey);
+  const hostBySession = new Map<string, (typeof hostResult.bindings)[number]>();
+  const hostOnlySessionIds = new Set<string>();
+  for (const binding of hostResult.bindings) {
+    if (hostBySession.has(binding.sessionId)) {
+      throw new Error(`Multiple chat stages claim OpenCode session ${binding.sessionId}.`);
+    }
+    hostBySession.set(binding.sessionId, binding);
+  }
+
+  // Validate the complete ownership set before mutating any session. This
+  // prevents a valid record earlier in the list from being cleaned while a
+  // later tampered/orphan record leaves bootstrap only partially recovered.
+  for (const binding of hostResult.bindings) {
+    const journal = local[binding.sessionId];
+    if (!journal) {
+      if (binding.sourceDirectory !== canonicalDirectory) {
+        throw new Error(
+          `Chat stage ${binding.stageId} has a host-only relocation outside the canonical OpenCode directory.`,
+        );
+      }
+      hostOnlySessionIds.add(binding.sessionId);
+      continue;
+    }
+    const snapshot = journal.snapshot as ChatYamlSnapshot;
+    assertSessionRelocationBinding(binding, snapshot);
+    if (binding.sourceDirectory !== canonicalDirectory) {
+      throw new Error(
+        'Chat-stage relocation source does not match the OpenCode canonical directory.',
+      );
+    }
+  }
+
+  for (const binding of hostResult.bindings) {
+    if (!hostOnlySessionIds.has(binding.sessionId)) continue;
+    if (getOpencodeWorkspaceKey() !== workspaceKey) throw new ChatWorkspaceChangedError();
+    await recoverHostOnlyChatSessionRelocation(workspaceKey, binding, get, set, recoverySignal);
+  }
+
+  for (const journal of Object.values(local)) {
+    if (getOpencodeWorkspaceKey() !== workspaceKey) throw new ChatWorkspaceChangedError();
+    const snapshot = journal.snapshot as ChatYamlSnapshot;
+    const relocation = snapshot.sessionRelocation;
+    if (!relocation || !sameRelocationIdentity(relocation, journal)) {
+      throw new Error('Chat session relocation journal identity is inconsistent.');
+    }
+    ensureRelocationRecoveryTurnPersisted(workspaceKey, journal);
+    const binding = hostBySession.get(journal.sessionId) ?? null;
+    if (!binding) {
+      let session: OpencodeSessionV2;
+      try {
+        session = await getOpencodeSessionV2(journal.sessionId, workspaceKey, recoverySignal);
+      } catch (error) {
+        if (!isMissingOpencodeSessionError(error, journal.sessionId)) throw error;
+        clearPersistedChatSessionRelocation(workspaceKey, journal.sessionId, journal.relocationId);
+        stopStagedSseSubscription(workspaceKey, journal.sessionId);
+        continue;
+      }
+      if (session.workspaceID !== undefined) {
+        throw new Error('Workspace-bound OpenCode sessions cannot be recovered automatically.');
+      }
+      if (session.directory !== journal.sourceDirectory) {
+        throw new Error(
+          `OpenCode session ${journal.sessionId} has no host binding and is not at home.`,
+        );
+      }
+      clearPersistedChatSessionRelocation(workspaceKey, journal.sessionId, journal.relocationId);
+      stopStagedSseSubscription(workspaceKey, journal.sessionId);
+      continue;
+    }
+
+    try {
+      await restoreSessionHome(get, set, snapshot, journal.sessionId, { forceStop: true });
+    } finally {
+      await releaseChatYamlEditLock({
+        id: snapshot.yamlEditLockId,
+        workspaceKey: snapshot.workDir,
+      });
+    }
+  }
+}
+
+export async function recoverChatSessionRelocations(workspaceKey: string): Promise<void> {
+  return recoverChatSessionRelocationsWithStore(
+    workspaceKey,
+    useChatStore.getState,
+    useChatStore.setState as unknown as ChatSet,
+  );
 }
 
 /**
@@ -4662,9 +6260,13 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     return true;
   };
 
-  const routePendingPermission = (pendingPermission: PendingPermission): void => {
+  const routePendingPermission = (
+    pendingPermission: PendingPermission,
+    ownerSessionOverride?: string,
+  ): void => {
     const turnStartedAt = pendingPermission.createdAt;
-    let ownerSessionID = permissionOwnerSessionId(state, pendingPermission.sessionID);
+    let ownerSessionID =
+      ownerSessionOverride ?? permissionOwnerSessionId(state, pendingPermission.sessionID);
     if (!ownerSessionID) return;
     if (
       ownerSessionID !== currentSessionId &&
@@ -4672,7 +6274,8 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     ) {
       adoptBotSessionIfNeeded(ownerSessionID, turnStartedAt);
     }
-    ownerSessionID = permissionOwnerSessionId(state, pendingPermission.sessionID);
+    ownerSessionID =
+      ownerSessionOverride ?? permissionOwnerSessionId(state, pendingPermission.sessionID);
     if (!ownerSessionID) return;
     if (ownerSessionID !== currentSessionId) {
       upsertHiddenSessionRuntime(set, ownerSessionID, (runtime) => ({
@@ -5083,6 +6686,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
           {
             id: perm.id,
             sessionID: perm.sessionID,
+            protocol: 'current',
             permission: perm.permission,
             patterns,
             metadata: perm.metadata,
@@ -5093,16 +6697,22 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
       ) {
         return;
       }
+      const stagedOwner = stagedPermissionOwner(get(), perm.sessionID);
       const createdAt = Date.now();
-      routePendingPermission({
-        workspaceKey: getOpencodeWorkspaceKey(),
-        id: perm.id,
-        sessionID: perm.sessionID,
-        title: patterns.join(', ') || perm.permission,
-        tool: perm.permission,
-        metadata: perm.metadata,
-        createdAt,
-      });
+      routePendingPermission(
+        {
+          workspaceKey: getOpencodeWorkspaceKey(),
+          ...(stagedOwner ? { directory: stagedOwner.snapshot.staging.agentTagmaDir } : {}),
+          id: perm.id,
+          sessionID: perm.sessionID,
+          title: patterns.join(', ') || perm.permission,
+          tool: perm.permission,
+          protocol: 'current',
+          metadata: perm.metadata,
+          createdAt,
+        },
+        stagedOwner?.ownerSessionID,
+      );
       return;
     }
     case 'permission.updated': {
@@ -5112,6 +6722,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
           {
             id: perm.id,
             sessionID: perm.sessionID,
+            protocol: 'legacy',
             permission: perm.type,
             // Legacy events expose only a human-readable title, not the raw
             // tool target. Never treat that display text as an authorized
@@ -5125,16 +6736,22 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
       ) {
         return;
       }
+      const stagedOwner = stagedPermissionOwner(get(), perm.sessionID);
       const createdAt = perm.time?.created ?? Date.now();
-      routePendingPermission({
-        workspaceKey: getOpencodeWorkspaceKey(),
-        id: perm.id,
-        sessionID: perm.sessionID,
-        title: perm.title,
-        tool: perm.type,
-        metadata: perm.metadata,
-        createdAt,
-      });
+      routePendingPermission(
+        {
+          workspaceKey: getOpencodeWorkspaceKey(),
+          ...(stagedOwner ? { directory: stagedOwner.snapshot.staging.agentTagmaDir } : {}),
+          id: perm.id,
+          sessionID: perm.sessionID,
+          title: perm.title,
+          tool: perm.type,
+          protocol: 'legacy',
+          metadata: perm.metadata,
+          createdAt,
+        },
+        stagedOwner?.ownerSessionID,
+      );
       return;
     }
     case 'permission.replied': {
@@ -5682,22 +7299,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async setProviderApiKey(providerId, key, metadata) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
     const workspaceKey = getOpencodeWorkspaceKey();
-    const client = await getOpencodeClient(workspaceKey);
-    // `metadata` lives on the 1.14.x `ApiAuth` but isn't in the generated SDK
-    // types — cast down to the SDK's ApiAuth so the body type-checks. The
-    // server accepts the extra field and persists it to auth.json.
-    const body: ApiAuth = {
+    const client = await getOpencodeV2Client(workspaceKey);
+    const auth: ApiAuth = {
       type: 'api',
       key,
       ...(metadata && Object.keys(metadata).length > 0 ? { metadata } : {}),
     };
-    await unwrap(
-      client.auth.set({
-        path: { id: providerId },
-        body: body as unknown as Parameters<typeof client.auth.set>[0]['body'],
-      }),
-    );
-    // opencode 1.14.x caches /config/providers in memory; PUT /auth/{id}
+    await unwrap(client.auth.set({ providerID: providerId, auth }));
+    // OpenCode caches /config/providers in memory; PUT /auth/{id}
     // writes auth.json to disk but leaves the cache stale, so the new key
     // wouldn't take effect until the app restarted. Restarting the opencode
     // process forces a fresh read of auth.json — the refresh below then
@@ -5710,19 +7319,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async startProviderOauth(providerId, methodIdx, promptAnswers) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
     const workspaceKey = getOpencodeWorkspaceKey();
-    const client = await getOpencodeClient(workspaceKey);
-    // Prompt answers are spread flat into the body alongside `method` — the
-    // 1.14.x authorize endpoint reads them directly (e.g. `deploymentType`,
-    // `enterpriseUrl`, `accountId`). Cast because the generated SDK body type
-    // only declares `{method: number}`.
-    const body = {
-      method: methodIdx,
-      ...(promptAnswers ?? {}),
-    } as Parameters<typeof client.provider.oauth.authorize>[0]['body'];
+    const client = await getOpencodeV2Client(workspaceKey);
     const authorization = await unwrap(
       client.provider.oauth.authorize({
-        path: { id: providerId },
-        body,
+        providerID: providerId,
+        method: methodIdx,
+        ...(promptAnswers ? { inputs: promptAnswers } : {}),
       }),
     );
     if (getOpencodeWorkspaceKey() !== workspaceKey) return null;
@@ -5732,11 +7334,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async completeProviderOauth(providerId, methodIdx, code) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
     const workspaceKey = getOpencodeWorkspaceKey();
-    const client = await getOpencodeClient(workspaceKey);
+    const client = await getOpencodeV2Client(workspaceKey);
     await unwrap(
       client.provider.oauth.callback({
-        path: { id: providerId },
-        body: { method: methodIdx, code },
+        providerID: providerId,
+        method: methodIdx,
+        code,
       }),
     );
     // Same cache-invalidation reason as setProviderApiKey: oauth callback
@@ -5757,31 +7360,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async removeProviderAuth(providerId) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
     const workspaceKey = getOpencodeWorkspaceKey();
-    const [baseUrl, authHeader, workspaceHeader] = await Promise.all([
-      getOpencodeBaseUrl(workspaceKey),
-      getOpencodeAuthHeader(workspaceKey),
-      getOpencodeWorkspaceHeader(workspaceKey),
-    ]);
-    const res = await fetch(
-      `${baseUrl.replace(/\/+$/, '')}/auth/${encodeURIComponent(providerId)}`,
-      {
-        method: 'DELETE',
-        headers: buildOpencodeRequestHeaders(authHeader, undefined, workspaceHeader),
-      },
-    );
-    if (!res.ok) {
-      let detail = res.statusText;
-      try {
-        const errBody = (await res.json()) as { error?: { message?: unknown } | string };
-        if (typeof errBody.error === 'string') detail = errBody.error;
-        else if (errBody.error && typeof errBody.error === 'object' && 'message' in errBody.error)
-          detail = String(errBody.error.message);
-      } catch {
-        /* best-effort */
-      }
-      throw new Error(`Disconnect failed (${res.status}): ${detail}`);
-    }
-    // Opencode 1.14.x quirk: DELETE /auth/{id} updates auth.json on disk but
+    const client = await getOpencodeV2Client(workspaceKey);
+    await unwrap(client.auth.remove({ providerID: providerId }));
+    // DELETE /auth/{id} updates auth.json on disk but
     // doesn't invalidate the server's in-memory cache for /provider or
     // /config/providers. Restart the opencode process so the next refresh
     // reads fresh state from disk — otherwise the disconnected row would
@@ -5934,6 +7515,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
       return;
     }
+    try {
+      await recoverChatSessionRelocationsWithStore(workspaceKeyAtStart, get, set);
+    } catch (err) {
+      console.error('[chat] OpenCode session relocation recovery failed:', err);
+      if (getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
+        appliedBootstrapWorkspaceKey = workspaceKeyAtStart;
+        set({
+          bootstrapStatus: 'error',
+          bootstrapError: `OpenCode staged-session recovery failed: ${describeError(err)}`,
+        });
+      }
+      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+      return;
+    }
+    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
+      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+      return;
+    }
+    const recoveredReconciliationQueue = loadPersistedChatYamlReconciliationQueue(
+      workspaceKeyAtStart,
+    ) as ChatFinishedTurn[];
+    set({
+      lastFinishedTurn:
+        recoveredReconciliationQueue[recoveredReconciliationQueue.length - 1] ?? null,
+      finishedTurnQueue: recoveredReconciliationQueue,
+    });
     // Fire catalog queries in parallel — they're independent and each survives
     // the others failing. Default all to empty on error so UI pickers render
     // "no options" instead of crashing. The provider catalog is joined in here
@@ -6463,7 +8070,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // reconnects against the new port automatically.
   },
 
-  async replyPermission(id, reply, sessionID, permissionWorkspaceKey) {
+  async replyPermission(
+    id,
+    reply,
+    sessionID,
+    permissionWorkspaceKey,
+    permissionProtocol,
+    permissionDirectory,
+  ) {
     const state = get();
     const pending = state.pendingPermissions.find(
       (perm) =>
@@ -6474,15 +8088,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const sessionId = sessionID ?? pending?.sessionID ?? state.currentSessionId;
     const workspaceKey =
       permissionWorkspaceKey ?? pending?.workspaceKey ?? getOpencodeWorkspaceKey();
+    const protocol = permissionProtocol ?? pending?.protocol ?? 'legacy';
+    const relocation = activeSessionRelocation(state, sessionId);
+    const directory = permissionDirectory ?? pending?.directory ?? relocation?.stageDirectory;
     if (!sessionId) return;
     try {
-      const client = await getOpencodeClient(workspaceKey);
-      await unwrap(
-        client.postSessionIdPermissionsPermissionId({
-          path: { id: sessionId, permissionID: id },
-          body: { response: reply },
-        }),
-      );
+      const client = await getOpencodeV2Client(workspaceKey);
+      if (protocol === 'current') {
+        await unwrap(
+          client.permission.reply({
+            requestID: id,
+            reply,
+            ...(directory ? { directory } : {}),
+          }),
+        );
+      } else {
+        await unwrap(
+          client.permission.respond({
+            sessionID: sessionId,
+            permissionID: id,
+            response: reply,
+          }),
+        );
+      }
       // Do NOT remove from pendingPermissions here. The server emits
       // permission.replied as a consequence of this call; applySseEvent
       // removes the entry. Optimistic removal would race with a failed

@@ -1,8 +1,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import type { Provider, ProviderModelCatalogV2Snapshot, Session } from '../src/api/opencode-chat';
-import type { ChatYamlSessionResult } from '../src/store/chat-store';
+import type {
+  Provider,
+  ProviderAuthMethod,
+  ProviderModelCatalogV2Snapshot,
+  Session,
+} from '../src/api/opencode-chat';
+import type { ChatFinishedTurn, ChatYamlSessionResult } from '../src/store/chat-store';
+import type { ChatYamlSnapshot } from '../src/utils/chat-yaml-reconcile';
 import {
   buildProvidersFromV2Catalog,
+  fetchProviderCatalog,
   modelVariantIds,
   reconcileModelPick,
   reconcileModelVariant,
@@ -37,6 +44,16 @@ const providerBodiesByBaseUrl = new Map<
   string,
   { providers: unknown[]; default: Record<string, string> }
 >();
+const providerCatalogBodiesByBaseUrl = new Map<
+  string,
+  {
+    all: Array<{ id: string; name: string; env: string[] }>;
+    default: Record<string, string>;
+    connected: string[];
+  }
+>();
+const providerAuthBodiesByBaseUrl = new Map<string, Record<string, ProviderAuthMethod[]>>();
+const providerAuthRequests: string[] = [];
 const sessionListsByBaseUrl = new Map<string, Session[]>();
 const sessionListRequests: string[] = [];
 const authSetResponsesByBaseUrl = new Map<string, Promise<Response>>();
@@ -44,6 +61,11 @@ const oauthAuthorizeResponsesByBaseUrl = new Map<string, Promise<Response>>();
 const ensureRequests: string[] = [];
 const authSetRequests: string[] = [];
 const oauthAuthorizeRequests: string[] = [];
+const providerMutationRequests: Array<{
+  url: string;
+  method: string;
+  body: Record<string, unknown>;
+}> = [];
 const customProviderRequests: Array<{ method: string; workspace: string }> = [];
 const restartRequests: string[] = [];
 const promptAsyncRequests: string[] = [];
@@ -52,6 +74,25 @@ const promptAsyncHeaders: Headers[] = [];
 const sessionDeleteRequests: string[] = [];
 const sessionCreateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 const sessionUpdateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
+const sessionUpdateResponseFactoriesByBaseUrl = new Map<string, () => Promise<Response>>();
+const sessionDirectories = new Map<string, string>();
+const sessionChildrenByParent = new Map<string, Session[]>();
+const relocationBindings = new Map<
+  string,
+  {
+    version: 1;
+    relocationId: string;
+    stageId: string;
+    sessionId: string;
+    sourceDirectory: string;
+    targetDirectory: string;
+    phase: 'prepared' | 'staged' | 'restoring';
+    updatedAt: number;
+  }
+>();
+const relocationPrepareResponsesByWorkspace = new Map<string, Promise<Response>>();
+const stagedPromptSequence: string[] = [];
+const eventDirectories: Array<string | null> = [];
 let editorSettingsModel: { providerID: string; modelID: string } | null = null;
 let editorSettingsReasoningEffort: string | null = null;
 let providersShouldFail = false;
@@ -66,9 +107,15 @@ Object.defineProperty(globalThis, 'localStorage', {
 });
 
 const { getClientWorkspace, setClientWorkspace } = await import('../src/api/client');
-const { resetOpencodeClient, updateOpencodeSessionV2 } = await import('../src/api/opencode-chat');
-const { applySseEvent, selectPreviousChatYamlReconcileForPrompt, useChatStore } =
-  await import('../src/store/chat-store');
+const { getOpencodeClient, resetOpencodeClient, updateOpencodeSessionV2 } =
+  await import('../src/api/opencode-chat');
+const { loadPersistedChatSessionRelocations } = await import('../src/store/chat-persist');
+const {
+  applySseEvent,
+  ensureFinishedTurnSessionHome,
+  selectPreviousChatYamlReconcileForPrompt,
+  useChatStore,
+} = await import('../src/store/chat-store');
 const { useEditorSettingsStore } = await import('../src/store/editor-settings-store');
 const { usePipelineStore } = await import('../src/store/pipeline-store');
 const { releaseChatYamlEditLock } = await import('../src/store/yaml-edit-lock-store');
@@ -128,18 +175,24 @@ async function jsonRequestBody(
   return text ? (JSON.parse(text) as Record<string, unknown>) : {};
 }
 
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+} {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((r, j) => {
     resolve = r;
+    reject = j;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
+  for (let i = 0; i < 100; i += 1) {
     if (condition()) return;
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
   throw new Error('condition was not reached');
 }
@@ -189,6 +242,28 @@ beforeAll(() => {
       restartRequests.push(workspace);
       return Promise.resolve(
         jsonResponse({ baseUrl: workspaceBaseUrls.get(workspace) ?? 'http://opencode.test' }),
+      );
+    }
+    if (new URL(url, 'http://local.test').pathname === '/event' && method === 'GET') {
+      const directory = new URL(url, 'http://local.test').searchParams.get('directory');
+      eventDirectories.push(directory);
+      if (directory?.includes('.chat-staging')) stagedPromptSequence.push('stage-sse');
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`,
+                ),
+              );
+              const signal = request?.signal ?? init?.signal;
+              if (signal?.aborted) controller.close();
+              else signal?.addEventListener('abort', () => controller.close(), { once: true });
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
       );
     }
     if (url === '/api/opencode/custom-providers') {
@@ -315,11 +390,72 @@ beforeAll(() => {
         }),
       );
     }
+    if (url.startsWith('/api/workspace/chat-yaml-stage/session-relocation')) {
+      const workspace = headerValue(init?.headers, 'X-Tagma-Workspace') ?? '__default__';
+      if (url.includes('session-relocations') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            bindings: [...relocationBindings.values()].filter(
+              (binding) => binding.sourceDirectory === `${workspace}/.tagma`,
+            ),
+          }),
+        );
+      }
+      if (method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({ binding: relocationBindings.get(workspace) ?? null }),
+        );
+      }
+      const body = await jsonRequestBody(request, init);
+      if (url.endsWith('/prepare')) {
+        const stageId = String(body.stageId);
+        const binding = {
+          version: 1 as const,
+          relocationId: String(body.relocationId),
+          stageId,
+          sessionId: String(body.sessionId),
+          sourceDirectory: `${workspace}/.tagma`,
+          targetDirectory: `${workspace}/.tagma/.chat-staging/${stageId}/agent-workspace/.tagma`,
+          phase: 'prepared' as const,
+          updatedAt: Date.now(),
+        };
+        relocationBindings.set(workspace, binding);
+        stagedPromptSequence.push('host-prepare');
+        const deferredResponse = relocationPrepareResponsesByWorkspace.get(workspace);
+        if (deferredResponse) return deferredResponse;
+        return Promise.resolve(jsonResponse({ binding }));
+      }
+      if (url.endsWith('/advance')) {
+        const current = relocationBindings.get(workspace);
+        if (!current) return Promise.resolve(new Response('missing', { status: 409 }));
+        const binding = {
+          ...current,
+          phase: body.phase as 'staged' | 'restoring',
+          updatedAt: Date.now(),
+        };
+        relocationBindings.set(workspace, binding);
+        stagedPromptSequence.push(`host-${binding.phase}`);
+        return Promise.resolve(jsonResponse({ binding }));
+      }
+      if (url.endsWith('/clear')) {
+        relocationBindings.delete(workspace);
+        stagedPromptSequence.push('host-clear');
+        return Promise.resolve(jsonResponse({ cleared: true }));
+      }
+    }
+    if (url === '/api/workspace/chat-yaml-stage/discard' && method === 'POST') {
+      return Promise.resolve(jsonResponse({ discarded: true, disposition: 'discarded' }));
+    }
     for (const baseUrl of workspaceBaseUrls.values()) {
       if (url.startsWith(`${baseUrl}/auth/`) && method === 'PUT') {
         authSetRequests.push(url);
+        providerMutationRequests.push({ url, method, body: await jsonRequestBody(request, init) });
         const deferredResponse = authSetResponsesByBaseUrl.get(baseUrl);
         if (deferredResponse) return deferredResponse;
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (url.startsWith(`${baseUrl}/auth/`) && method === 'DELETE') {
+        providerMutationRequests.push({ url, method, body: await jsonRequestBody(request, init) });
         return Promise.resolve(jsonResponse({ ok: true }));
       }
       if (
@@ -328,9 +464,24 @@ beforeAll(() => {
         method === 'POST'
       ) {
         oauthAuthorizeRequests.push(url);
+        providerMutationRequests.push({ url, method, body: await jsonRequestBody(request, init) });
         const deferredResponse = oauthAuthorizeResponsesByBaseUrl.get(baseUrl);
         if (deferredResponse) return deferredResponse;
-        return Promise.resolve(jsonResponse({ url: `${baseUrl}/oauth-started` }));
+        return Promise.resolve(
+          jsonResponse({
+            url: `${baseUrl}/oauth-started`,
+            method: 'code',
+            instructions: 'Paste the code',
+          }),
+        );
+      }
+      if (
+        url.startsWith(`${baseUrl}/provider/`) &&
+        url.endsWith('/oauth/callback') &&
+        method === 'POST'
+      ) {
+        providerMutationRequests.push({ url, method, body: await jsonRequestBody(request, init) });
+        return Promise.resolve(jsonResponse({ ok: true }));
       }
     }
     const providerBase = endpointBase(url, '/config/providers');
@@ -366,6 +517,46 @@ beforeAll(() => {
     }
     const sessionUrl = parseAbsoluteUrl(url);
     const sessionBase = sessionUrl?.pathname === '/session' ? sessionUrl.origin : null;
+    if (
+      sessionUrl &&
+      method === 'POST' &&
+      sessionUrl.pathname === '/experimental/control-plane/move-session'
+    ) {
+      const body = await jsonRequestBody(request, init);
+      const sessionId = String(body.sessionID);
+      const destination = (body.destination as { directory?: unknown } | undefined)?.directory;
+      if (typeof destination !== 'string') {
+        return Promise.resolve(new Response('invalid destination', { status: 400 }));
+      }
+      sessionDirectories.set(`${sessionUrl.origin}:${sessionId}`, destination);
+      stagedPromptSequence.push(destination.includes('.chat-staging') ? 'move-stage' : 'move-home');
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+    if (sessionUrl && method === 'GET' && /\/session\/[^/]+$/.test(sessionUrl.pathname)) {
+      const id = sessionUrl.pathname.split('/').pop() ?? 'existing';
+      const directory =
+        sessionDirectories.get(`${sessionUrl.origin}:${id}`) ??
+        sessionUrl.searchParams.get('directory') ??
+        'C:/repo/.tagma';
+      return Promise.resolve(jsonResponse({ id, directory, title: 'Existing' }));
+    }
+    if (sessionUrl && method === 'GET' && /\/session\/[^/]+\/children$/.test(sessionUrl.pathname)) {
+      const pathSegments = sessionUrl.pathname.split('/');
+      const parentId = pathSegments[pathSegments.length - 2] ?? '';
+      return Promise.resolve(
+        jsonResponse(sessionChildrenByParent.get(`${sessionUrl.origin}:${parentId}`) ?? []),
+      );
+    }
+    if (sessionUrl?.pathname === '/session/status' && method === 'GET') {
+      return Promise.resolve(jsonResponse({}));
+    }
+    if (
+      sessionUrl &&
+      (sessionUrl.pathname === '/permission' || sessionUrl.pathname === '/question') &&
+      method === 'GET'
+    ) {
+      return Promise.resolve(jsonResponse([]));
+    }
     if (sessionUrl && sessionBase && method === 'GET') {
       sessionListRequests.push(url);
       const requestedDirectory = normalizedSessionDirectory(
@@ -388,8 +579,17 @@ beforeAll(() => {
     if (method === 'PATCH' && sessionUrl && /\/session\/[^/]+$/.test(sessionUrl.pathname)) {
       const body = await jsonRequestBody(request, init);
       sessionUpdateRequests.push({ url, body });
+      if (sessionUrl.origin === 'http://opencode-staged-prompt.test') {
+        stagedPromptSequence.push('metadata');
+      }
+      const responseFactory = sessionUpdateResponseFactoriesByBaseUrl.get(sessionUrl.origin);
+      if (responseFactory) return responseFactory();
       const id = sessionUrl.pathname.split('/').pop() ?? 'updated-session';
-      return Promise.resolve(jsonResponse({ id, metadata: body.metadata }));
+      const directory =
+        sessionDirectories.get(`${sessionUrl.origin}:${id}`) ??
+        sessionUrl.searchParams.get('directory') ??
+        'C:/repo/.tagma';
+      return Promise.resolve(jsonResponse({ id, directory, metadata: body.metadata }));
     }
     for (const baseUrl of workspaceBaseUrls.values()) {
       if (url.startsWith(`${baseUrl}/session/`) && method === 'DELETE') {
@@ -397,11 +597,22 @@ beforeAll(() => {
         return Promise.resolve(jsonResponse({ ok: true }));
       }
     }
-    if (endpointBase(url, '/provider')) {
-      return Promise.resolve(jsonResponse({ all: [], connected: [], default: {} }));
+    const providerAuthBase = endpointBase(url, '/provider/auth');
+    if (providerAuthBase) {
+      providerAuthRequests.push(url);
+      return Promise.resolve(jsonResponse(providerAuthBodiesByBaseUrl.get(providerAuthBase) ?? {}));
     }
-    if (endpointBase(url, '/provider/auth')) {
-      return Promise.resolve(jsonResponse({}));
+    const providerListBase = endpointBase(url, '/provider');
+    if (providerListBase) {
+      return Promise.resolve(
+        jsonResponse(
+          providerCatalogBodiesByBaseUrl.get(providerListBase) ?? {
+            all: [],
+            connected: [],
+            default: {},
+          },
+        ),
+      );
     }
     if (sessionBase && method === 'POST') {
       const body = await jsonRequestBody(request, init);
@@ -426,9 +637,12 @@ beforeAll(() => {
       promptAsyncRequests.push(url);
       promptAsyncBodies.push(body);
       promptAsyncHeaders.push(new Headers(init?.headers ?? request?.headers));
+      if (url.startsWith('http://opencode-staged-prompt.test/')) {
+        stagedPromptSequence.push('prompt');
+      }
       return Promise.resolve(jsonResponse({ ok: true }));
     }
-    if (url === 'http://opencode.test/session/existing/message') {
+    if (sessionUrl && /\/session\/[^/]+\/message$/.test(sessionUrl.pathname)) {
       return Promise.resolve(jsonResponse([]));
     }
     return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
@@ -540,7 +754,7 @@ function v2Model(
     name: id.toUpperCase(),
     api: { id, type: 'native', url: `https://${providerID}.example.test`, settings: {} },
     capabilities: { tools: true, input: ['text', 'image'], output: ['text'] },
-    request: { headers: {}, body: {}, options: {} },
+    request: { headers: {}, body: {} },
     variants: [],
     time: { released: 0 },
     cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3 } }],
@@ -608,7 +822,23 @@ function v2ModelsBody(baseUrl: string): ProviderModelCatalogV2Snapshot['models']
   );
 }
 
-afterEach(() => {
+afterEach(async () => {
+  const cleanupState = useChatStore.getState();
+  const cleanupSnapshot = cleanupState.yamlSnapshotBeforeSend;
+  if (
+    cleanupState.currentSessionId &&
+    cleanupSnapshot?.sessionRelocation &&
+    relocationBindings.has(cleanupSnapshot.workDir)
+  ) {
+    await ensureFinishedTurnSessionHome({
+      id: 'test-after-each-relocation',
+      sessionId: cleanupState.currentSessionId,
+      endedAt: Date.now(),
+      hidden: false,
+      termination: 'user-stopped',
+      yamlSnapshotBeforeSend: cleanupSnapshot,
+    });
+  }
   const currentWorkspace = getClientWorkspace();
   if (currentWorkspace) resetOpencodeClient();
   for (const workspace of workspaceBaseUrls.keys()) {
@@ -621,6 +851,9 @@ afterEach(() => {
   workspaceBaseUrls.clear();
   ensureResponsesByWorkspace.clear();
   providerBodiesByBaseUrl.clear();
+  providerCatalogBodiesByBaseUrl.clear();
+  providerAuthBodiesByBaseUrl.clear();
+  providerAuthRequests.length = 0;
   sessionListsByBaseUrl.clear();
   sessionListRequests.length = 0;
   authSetResponsesByBaseUrl.clear();
@@ -628,6 +861,7 @@ afterEach(() => {
   ensureRequests.length = 0;
   authSetRequests.length = 0;
   oauthAuthorizeRequests.length = 0;
+  providerMutationRequests.length = 0;
   customProviderRequests.length = 0;
   restartRequests.length = 0;
   promptAsyncRequests.length = 0;
@@ -636,6 +870,13 @@ afterEach(() => {
   sessionDeleteRequests.length = 0;
   sessionCreateRequests.length = 0;
   sessionUpdateRequests.length = 0;
+  sessionUpdateResponseFactoriesByBaseUrl.clear();
+  sessionDirectories.clear();
+  sessionChildrenByParent.clear();
+  relocationBindings.clear();
+  relocationPrepareResponsesByWorkspace.clear();
+  stagedPromptSequence.length = 0;
+  eventDirectories.length = 0;
   editorSettingsModel = null;
   editorSettingsReasoningEffort = null;
   providersShouldFail = false;
@@ -680,7 +921,124 @@ afterAll(() => {
   }
 });
 
+function configureStagedPromptSendFixture(): {
+  repo: string;
+  baseUrl: string;
+  sourcePath: string;
+  agentTagmaDir: string;
+} {
+  const repo = 'C:/staged-prompt-repo';
+  const baseUrl = 'http://opencode-staged-prompt.test';
+  const sourcePath = `${repo}/.tagma/sample/sample.yaml`;
+  const agentTagmaDir = `${repo}/.tagma/.chat-staging/staged-prompt-test-stage/agent-workspace/.tagma`;
+  workspaceBaseUrls.set(repo, baseUrl);
+  setClientWorkspace(repo);
+  usePipelineStore.setState({
+    workDir: repo,
+    yamlPath: sourcePath,
+    manualNewPipelineYamlPath: sourcePath,
+    config: {
+      name: 'Sample',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ id: 'task', name: 'Task', command: 'echo sample' }],
+        },
+      ],
+    },
+    positions: new Map(),
+    folders: [],
+    trackHeights: new Map(),
+    isDirty: false,
+    layoutDirty: false,
+    registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+  } as never);
+  useChatStore.setState({
+    model: { providerID: 'anthropic', modelID: 'claude' },
+    agent: 'tagma-router',
+    currentSessionId: 'existing',
+    sending: false,
+  } as never);
+  return { repo, baseUrl, sourcePath, agentTagmaDir };
+}
+
+async function cleanupStagedPromptSendFixture(): Promise<void> {
+  const state = useChatStore.getState();
+  const snapshot = state.yamlSnapshotBeforeSend;
+  if (
+    state.currentSessionId &&
+    snapshot?.sessionRelocation &&
+    relocationBindings.has(snapshot.workDir)
+  ) {
+    await ensureFinishedTurnSessionHome({
+      id: 'test-staged-prompt-cleanup',
+      sessionId: state.currentSessionId,
+      endedAt: Date.now(),
+      hidden: false,
+      termination: 'user-stopped',
+      yamlSnapshotBeforeSend: snapshot,
+    });
+  }
+  await releaseChatYamlEditLock();
+  usePipelineStore.setState({
+    workDir: null,
+    yamlPath: null,
+    manualNewPipelineYamlPath: null,
+  } as never);
+}
+
 describe('chat model persistence', () => {
+  test('loads provider auth methods through the v2 compatibility client', async () => {
+    const repo = 'C:/provider-auth-v2-repo';
+    const directory = `${repo}/.tagma`;
+    const baseUrl = 'http://opencode-provider-auth-v2.test';
+    const methods: ProviderAuthMethod[] = [
+      {
+        type: 'oauth',
+        label: 'Sign in',
+        prompts: [
+          {
+            type: 'text',
+            key: 'tenant',
+            message: 'Tenant',
+            when: { key: 'mode', op: 'neq', value: 'personal' },
+          },
+        ],
+      },
+    ];
+    workspaceBaseUrls.set(repo, baseUrl);
+    ensureResponsesByWorkspace.set(repo, Promise.resolve(jsonResponse({ baseUrl, directory })));
+    providerCatalogBodiesByBaseUrl.set(baseUrl, {
+      all: [{ id: 'example', name: 'Example', env: ['EXAMPLE_TOKEN'] }],
+      connected: ['example'],
+      default: {},
+    });
+    providerAuthBodiesByBaseUrl.set(baseUrl, { example: methods });
+    setClientWorkspace(repo);
+
+    const legacyClient = await getOpencodeClient(repo);
+    Object.defineProperty(legacyClient.provider, 'auth', {
+      configurable: true,
+      value: () => {
+        throw new Error('legacy provider.auth must not be called');
+      },
+    });
+
+    await expect(fetchProviderCatalog(repo)).resolves.toEqual([
+      {
+        id: 'example',
+        name: 'Example',
+        env: ['EXAMPLE_TOKEN'],
+        connected: true,
+        methods,
+      },
+    ]);
+    expect(providerAuthRequests).toEqual([
+      `${baseUrl}/provider/auth?directory=C%3A%2Fprovider-auth-v2-repo%2F.tagma`,
+    ]);
+  });
+
   test('reports an agent request failure instead of claiming the router file is missing', async () => {
     const repo = 'C:/agent-failure-repo';
     const directory = `${repo}/.tagma`;
@@ -951,6 +1309,29 @@ describe('chat model persistence', () => {
       },
       limit: { context: 200_000, output: 8_192 },
     });
+  });
+
+  test('ignores removed request.options fields from pre-v2 model snapshots', () => {
+    const model = v2Model('plain-provider', 'plain-model');
+    const preV2Snapshot = {
+      ...model,
+      request: {
+        headers: {},
+        body: { temperature: 0.25 },
+        options: {
+          reasoning: { effort: 'high' },
+          removedOption: 'must-not-leak',
+        },
+      },
+    } as unknown as ProviderModelCatalogV2Snapshot['models'][number];
+
+    const providers = buildProvidersFromV2Catalog({
+      providers: [v2Provider('plain-provider')],
+      models: [preV2Snapshot],
+    });
+
+    expect(providers[0]?.models['plain-model']?.options).toEqual({ temperature: 0.25 });
+    expect(providers[0]?.models['plain-model']?.capabilities.reasoning).toBe(false);
   });
 
   test('preserves each models own OpenCode variants from the v2 catalog', () => {
@@ -1514,6 +1895,7 @@ describe('chat model persistence', () => {
       currentSessionId: 'existing',
     } as never);
 
+    let stagedSnapshot: ChatYamlSnapshot | null = null;
     try {
       await useChatStore.getState().send('create a simple reporting pipeline');
 
@@ -1527,13 +1909,192 @@ describe('chat model persistence', () => {
       expect(parts[0]?.text).toContain(
         '<opencode-chat-model provider-id="anthropic" model-id="claude" />',
       );
+      expect(stagedPromptSequence).toEqual([
+        'metadata',
+        'host-prepare',
+        'move-stage',
+        'host-staged',
+        'stage-sse',
+        'prompt',
+      ]);
+      stagedSnapshot = useChatStore.getState().yamlSnapshotBeforeSend;
+      expect(stagedSnapshot?.sessionRelocation).toEqual({
+        relocationId: 'staged-prompt-test-stage',
+        sessionId: 'existing',
+        sourceDirectory: `${repo}/.tagma`,
+        stageDirectory: agentTagmaDir,
+      });
+      expect(eventDirectories).toContain(agentTagmaDir);
     } finally {
+      if (stagedSnapshot?.sessionRelocation) {
+        await ensureFinishedTurnSessionHome({
+          id: 'test-finished-turn',
+          sessionId: 'existing',
+          endedAt: Date.now(),
+          hidden: false,
+          termination: 'completed',
+          yamlSnapshotBeforeSend: stagedSnapshot,
+        } satisfies ChatFinishedTurn);
+      }
       await releaseChatYamlEditLock();
       usePipelineStore.setState({
         workDir: null,
         yamlPath: null,
         manualNewPipelineYamlPath: null,
       } as never);
+    }
+  });
+
+  for (const scenario of [
+    {
+      name: 'HTTP rejection',
+      response: () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              name: 'ServerError',
+              data: { message: 'metadata update rejected' },
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+    },
+    {
+      name: 'transport response loss',
+      response: () => Promise.reject(new Error('metadata update response was lost')),
+    },
+  ]) {
+    test(`public staged send stops when session metadata update is unconfirmed: ${scenario.name}`, async () => {
+      const { repo, baseUrl } = configureStagedPromptSendFixture();
+      sessionUpdateResponseFactoriesByBaseUrl.set(baseUrl, scenario.response);
+
+      let observed: {
+        outcome: 'fulfilled' | 'rejected';
+        updateRequestCount: number;
+        sequence: string[];
+        hostBindingPresent: boolean;
+        relocationJournalPresent: boolean;
+        promptCount: number;
+      } | null = null;
+      try {
+        const outcome = await useChatStore
+          .getState()
+          .send('inspect this staged pipeline')
+          .then(
+            () => 'fulfilled' as const,
+            () => 'rejected' as const,
+          );
+        observed = {
+          outcome,
+          updateRequestCount: sessionUpdateRequests.length,
+          sequence: [...stagedPromptSequence],
+          hostBindingPresent: relocationBindings.has(repo),
+          relocationJournalPresent: !!loadPersistedChatSessionRelocations(repo).existing,
+          promptCount: promptAsyncRequests.length,
+        };
+      } finally {
+        await cleanupStagedPromptSendFixture();
+      }
+
+      expect(observed).toEqual({
+        outcome: 'rejected',
+        updateRequestCount: 1,
+        sequence: ['metadata'],
+        hostBindingPresent: false,
+        relocationJournalPresent: false,
+        promptCount: 0,
+      });
+    });
+  }
+
+  test('public send rejects a third-directory child before host prepare or session move', async () => {
+    const { repo, baseUrl } = configureStagedPromptSendFixture();
+    sessionChildrenByParent.set(`${baseUrl}:existing`, [
+      {
+        id: 'third-directory-child',
+        parentID: 'existing',
+        directory: 'D:/unrelated-opencode-instance/.tagma',
+        title: 'Unrelated child',
+      } as unknown as Session,
+    ]);
+
+    try {
+      await expect(useChatStore.getState().send('inspect this staged pipeline')).rejects.toThrow(
+        /third-directory-child.*unexpected directory/i,
+      );
+
+      expect(relocationBindings.has(repo)).toBe(false);
+      expect(loadPersistedChatSessionRelocations(repo)).toEqual({});
+      expect(stagedPromptSequence).not.toContain('host-prepare');
+      expect(stagedPromptSequence).not.toContain('move-stage');
+      expect(promptAsyncRequests).toEqual([]);
+    } finally {
+      await cleanupStagedPromptSendFixture();
+    }
+  });
+
+  test('public send journals relocation before a committed prepare response can be lost', async () => {
+    const { repo, sourcePath, agentTagmaDir } = configureStagedPromptSendFixture();
+    const lostPrepareResponse = deferred<Response>();
+    relocationPrepareResponsesByWorkspace.set(repo, lostPrepareResponse.promise);
+    const sendPromise = useChatStore.getState().send('inspect this staged pipeline');
+    const sendOutcome = sendPromise.then(
+      () => ({ status: 'fulfilled' as const, error: null }),
+      (error: unknown) => ({ status: 'rejected' as const, error }),
+    );
+
+    let responseRejected = false;
+    try {
+      await waitFor(() => relocationBindings.has(repo));
+
+      const expectedIdentity = {
+        relocationId: 'staged-prompt-test-stage',
+        sessionId: 'existing',
+        sourceDirectory: `${repo}/.tagma`,
+        stageDirectory: agentTagmaDir,
+      };
+      expect(relocationBindings.get(repo)).toMatchObject({
+        relocationId: expectedIdentity.relocationId,
+        sessionId: expectedIdentity.sessionId,
+        sourceDirectory: expectedIdentity.sourceDirectory,
+        targetDirectory: expectedIdentity.stageDirectory,
+        phase: 'prepared',
+      });
+      expect(loadPersistedChatSessionRelocations(repo).existing).toMatchObject({
+        ...expectedIdentity,
+        phase: 'moving-to-stage',
+        snapshot: {
+          workDir: repo,
+          activePath: sourcePath,
+          yamlEditLockId: 'staged-prompt-test-lock',
+          sessionRelocation: expectedIdentity,
+          staging: {
+            id: 'staged-prompt-test-stage',
+            agentTagmaDir,
+          },
+        },
+      });
+      expect(stagedPromptSequence).toEqual(['metadata', 'host-prepare']);
+      expect(promptAsyncRequests).toEqual([]);
+
+      responseRejected = true;
+      lostPrepareResponse.reject(new Error('simulated prepare transport response loss'));
+      const outcome = await sendOutcome;
+      expect(outcome.status).toBe('rejected');
+      expect(outcome.error).toBeInstanceOf(Error);
+      expect(String(outcome.error)).toContain('simulated prepare transport response loss');
+
+      // The ordinary renderer error path can consume the durable pair too;
+      // after a real crash bootstrap sees the same pair before continuing.
+      expect(stagedPromptSequence).toContain('host-clear');
+      expect(relocationBindings.has(repo)).toBe(false);
+      expect(loadPersistedChatSessionRelocations(repo)).toEqual({});
+    } finally {
+      if (!responseRejected) {
+        lostPrepareResponse.reject(new Error('test cleanup: release prepare response'));
+      }
+      await sendOutcome;
+      await cleanupStagedPromptSendFixture();
     }
   });
 
@@ -1938,6 +2499,61 @@ describe('chat model persistence', () => {
 
     expect(getClientWorkspace()).toBe(repoB);
     expect(restartRequests).toEqual([repoA]);
+  });
+
+  test('uses the v2 provider auth endpoints and nested OAuth input body', async () => {
+    const repo = 'C:/provider-v2-contract-repo';
+    const baseUrl = 'http://opencode-provider-v2-contract.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+
+    await useChatStore
+      .getState()
+      .setProviderApiKey('cloudflare-workers-ai', 'secret-key', { accountId: 'acct-1' });
+    const authorization = await useChatStore.getState().startProviderOauth('github-copilot', 2, {
+      deploymentType: 'enterprise',
+      enterpriseUrl: 'https://github.example.test',
+    });
+    await useChatStore.getState().completeProviderOauth('github-copilot', 2, 'oauth-code');
+    await useChatStore.getState().removeProviderAuth('cloudflare-workers-ai');
+
+    expect(authorization).toEqual({
+      url: `${baseUrl}/oauth-started`,
+      method: 'code',
+      instructions: 'Paste the code',
+    });
+    expect(providerMutationRequests).toEqual([
+      {
+        url: `${baseUrl}/auth/cloudflare-workers-ai`,
+        method: 'PUT',
+        body: {
+          type: 'api',
+          key: 'secret-key',
+          metadata: { accountId: 'acct-1' },
+        },
+      },
+      {
+        url: `${baseUrl}/provider/github-copilot/oauth/authorize`,
+        method: 'POST',
+        body: {
+          method: 2,
+          inputs: {
+            deploymentType: 'enterprise',
+            enterpriseUrl: 'https://github.example.test',
+          },
+        },
+      },
+      {
+        url: `${baseUrl}/provider/github-copilot/oauth/callback`,
+        method: 'POST',
+        body: { method: 2, code: 'oauth-code' },
+      },
+      {
+        url: `${baseUrl}/auth/cloudflare-workers-ai`,
+        method: 'DELETE',
+        body: {},
+      },
+    ]);
   });
 
   test('deletes history sessions against the workspace where delete was requested', async () => {

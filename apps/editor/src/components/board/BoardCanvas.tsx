@@ -2030,10 +2030,10 @@ export function BoardCanvas({
           onClick={() => setInlineAdd(null)}
         >
           <div
-            className="modal-viewport-shell w-full max-w-64 border border-tagma-border bg-tagma-surface p-3 shadow-panel animate-fade-in"
+            className="modal-viewport-shell modal-tone-accent w-full max-w-64 border p-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <label className="field-label">
+            <label htmlFor="board-inline-name" className="field-label">
               {inlineAdd.type === 'task'
                 ? inlineAdd.kind === 'command'
                   ? 'New Command Task'
@@ -2046,6 +2046,7 @@ export function BoardCanvas({
             </label>
             <input
               ref={inlineRef}
+              id="board-inline-name"
               type="text"
               value={inlineValue}
               onChange={(e) => setInlineValue(e.target.value)}
@@ -2064,13 +2065,10 @@ export function BoardCanvas({
               autoFocus
             />
             <div className="flex items-center justify-end gap-2 mt-2">
-              <button
-                onClick={() => setInlineAdd(null)}
-                className="px-2 py-1 text-[11px] text-tagma-muted hover:text-tagma-text transition-colors"
-              >
+              <button onClick={() => setInlineAdd(null)} className="btn-secondary">
                 Cancel
               </button>
-              <button onClick={commitInlineAdd} className="btn-primary">
+              <button onClick={commitInlineAdd} className="btn-primary min-w-24 justify-center">
                 {inlineAdd.type === 'rename' || inlineAdd.type === 'rename-folder'
                   ? 'Rename'
                   : 'Create'}

@@ -21,10 +21,10 @@ function commandResult(): TaskResult {
   };
 }
 
-function fakeRuntime(): TagmaRuntime {
+function fakeRuntime(result: TaskResult = commandResult()): TagmaRuntime {
   return {
     async runCommand() {
-      return commandResult();
+      return result;
     },
     async runSpawn() {
       throw new Error('runSpawn should not be called');
@@ -115,6 +115,73 @@ describe('completion feedback', () => {
       );
     } finally {
       rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not let completion checks override runtime output or binary failures', async () => {
+    for (const failureKind of ['output_error', 'binary_missing'] as const) {
+      const workDir = mkdtempSync(join(tmpdir(), `tagma-completion-${failureKind}-`));
+      const registry = new PluginRegistry();
+      let completionChecks = 0;
+      registry.registerPlugin('completions', 'always-pass', {
+        name: 'always-pass',
+        async check() {
+          completionChecks += 1;
+          return true;
+        },
+      } as CompletionPlugin);
+      const runtimeResult: TaskResult = {
+        ...commandResult(),
+        exitCode: failureKind === 'binary_missing' ? -1 : 0,
+        failureKind,
+        ...(failureKind === 'binary_missing'
+          ? { missingBinary: 'fixture-command' }
+          : {
+              outputDiagnostics: [
+                {
+                  stream: 'stdout',
+                  stage: 'read',
+                  message: 'fixture stream fault',
+                  capturedBytes: 2,
+                  path: null,
+                },
+              ],
+            }),
+      };
+
+      try {
+        const result = await runPipeline(
+          {
+            name: `completion-${failureKind}`,
+            tracks: [
+              {
+                id: 'main',
+                name: 'Main',
+                tasks: [
+                  {
+                    id: 'answer',
+                    command: 'answer',
+                    completion: { type: 'always-pass' },
+                  },
+                ],
+              },
+            ],
+          },
+          workDir,
+          {
+            registry,
+            runtime: fakeRuntime(runtimeResult),
+            skipPluginLoading: true,
+          },
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.states.get('main.answer')?.status).toBe('failed');
+        expect(result.states.get('main.answer')?.result?.failureKind).toBe(failureKind);
+        expect(completionChecks).toBe(0);
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
     }
   });
 });

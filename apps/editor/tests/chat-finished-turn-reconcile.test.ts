@@ -79,6 +79,37 @@ describe('finished chat turn reconciliation', () => {
     expect(reconcileBlock).toContain('releaseChatYamlEditLock(chatYamlLockLease)');
   });
 
+  test('restores a relocated OpenCode session before any stage lifecycle operation', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const reconcileStart = appSource.indexOf('// Reconcile OpenCode');
+    const reconcileEnd = appSource.indexOf('const handleOpenWorkspaceFile', reconcileStart);
+    const reconcileBlock = appSource.slice(reconcileStart, reconcileEnd);
+
+    const restoreHome = reconcileBlock.indexOf('ensureFinishedTurnSessionHome(finishedTurn)');
+    const beginLifecycle = reconcileBlock.indexOf('beginChatYamlLifecycle({');
+    const listStage = reconcileBlock.indexOf('api.listChatYamlStage(');
+    const discardStage = reconcileBlock.indexOf('api.discardChatYamlStage(');
+
+    expect(restoreHome).toBeGreaterThan(-1);
+    expect(beginLifecycle).toBeGreaterThan(restoreHome);
+    expect(listStage).toBeGreaterThan(restoreHome);
+    expect(discardStage).toBeGreaterThan(restoreHome);
+  });
+
+  test('waits for chat bootstrap before reconciling every stage-backed turn', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const reconcileStart = appSource.indexOf('// Reconcile OpenCode');
+    const reconcileEnd = appSource.indexOf('const handleOpenWorkspaceFile', reconcileStart);
+    const reconcileBlock = appSource.slice(reconcileStart, reconcileEnd);
+
+    expect(reconcileBlock).toContain(
+      "if (finishedTurn.yamlSnapshotBeforeSend && chatBootstrapStatus !== 'ready')",
+    );
+    expect(reconcileBlock).not.toContain(
+      "finishedTurn.yamlSnapshotBeforeSend?.sessionRelocation && chatBootstrapStatus !== 'ready'",
+    );
+  });
+
   test('preserves a failed staged merge for an explicit retry', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
     const reconcileStart = appSource.indexOf('// Reconcile OpenCode');
@@ -142,12 +173,13 @@ describe('finished chat turn reconciliation', () => {
     expect(dispatchBlock).toContain('finishedTurnCount,');
   });
 
-  test('claims a failed-stage discard under a queue barrier before asynchronous cleanup', () => {
+  test('establishes a failed-stage discard barrier before restoring session home', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
     const cleanupStart = appSource.indexOf('const discardFailedChatReconciliation = useCallback(');
     const cleanupEnd = appSource.indexOf('const refreshWorkspaceYamls', cleanupStart);
     const cleanupBlock = appSource.slice(cleanupStart, cleanupEnd);
 
+    const restoreHome = cleanupBlock.indexOf('ensureFinishedTurnSessionHome(turn, {');
     const beginBarrier = cleanupBlock.indexOf('chat.beginChatYamlLifecycle({');
     const abandonHead = cleanupBlock.indexOf(
       'chat.abandonFinishedTurnReconciliation(turn.id)',
@@ -167,10 +199,25 @@ describe('finished chat turn reconciliation', () => {
     expect(cleanupBlock).toContain("if (resolution.kind === 'finalized')");
     expect(cleanupBlock).toContain('resolution.finalizedResult');
     expect(beginBarrier).toBeGreaterThan(-1);
+    expect(restoreHome).toBeGreaterThan(-1);
+    expect(restoreHome).toBeGreaterThan(beginBarrier);
     expect(abandonHead).toBeGreaterThan(beginBarrier);
+    expect(abandonHead).toBeGreaterThan(restoreHome);
     expect(discardStage).toBeGreaterThan(abandonHead);
     expect(removeStagedEntry).toBeGreaterThan(discardStage);
     expect(releaseBarrier).toBeGreaterThan(removeStagedEntry);
+
+    const restoreFailureStart = cleanupBlock.indexOf('} catch (err) {', restoreHome);
+    const restoreFailureEnd = cleanupBlock.indexOf('\n      if (', restoreFailureStart);
+    const restoreFailureBlock = cleanupBlock.slice(restoreFailureStart, restoreFailureEnd);
+    expect(restoreFailureStart).toBeGreaterThan(restoreHome);
+    expect(restoreFailureBlock).toContain(
+      'The OpenCode session could not be restored before discarding this preserved result',
+    );
+    expect(restoreFailureBlock).toContain('markFinishedTurnReconciliationFailed(');
+    expect(restoreFailureBlock).toContain('chat.completeChatYamlLifecycle(turn.id)');
+    expect(restoreFailureBlock).not.toContain('abandonFinishedTurnReconciliation(');
+    expect(restoreFailureBlock).not.toContain('discardChatYamlStage(');
   });
 
   test('reads back a committed result instead of claiming a false discard', async () => {

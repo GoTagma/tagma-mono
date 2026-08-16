@@ -117,7 +117,14 @@ describe('platform export helpers', () => {
   });
 
   test('platform conversion creates the temporary session with v2 metadata', async () => {
-    const sessionCreateBodies: unknown[] = [];
+    const sessionCreateRequests: Array<{
+      method: string;
+      pathname: string;
+      search: string;
+      authorization: string | null;
+      contentType: string | null;
+      body: unknown;
+    }> = [];
     const promptBodies: unknown[] = [];
     const deletedSessions: string[] = [];
     const model = { providerID: 'anthropic', modelID: 'claude' };
@@ -136,7 +143,14 @@ describe('platform export helpers', () => {
           );
         }
         if (url.pathname === '/session' && req.method === 'POST') {
-          sessionCreateBodies.push(await req.json());
+          sessionCreateRequests.push({
+            method: req.method,
+            pathname: url.pathname,
+            search: url.search,
+            authorization: req.headers.get('authorization'),
+            contentType: req.headers.get('content-type'),
+            body: await req.json(),
+          });
           return new Response(JSON.stringify({ id: 'platform-session' }), {
             headers: { 'content-type': 'application/json' },
           });
@@ -163,6 +177,7 @@ describe('platform export helpers', () => {
     try {
       const converted = await convertPipelineYamlForPlatform({
         baseUrl: server.url.href,
+        authHeader: 'Bearer platform-export-test',
         sourceYaml: validPipelineYaml,
         sourceName: 'pipeline.yaml',
         sourcePlatform: 'windows',
@@ -171,20 +186,29 @@ describe('platform export helpers', () => {
       });
 
       expect(converted).toContain('pipeline:');
-      expect(sessionCreateBodies).toHaveLength(1);
-      expect(sessionCreateBodies[0]).toMatchObject({
-        metadata: {
-          tagma: {
-            source: 'platform-export',
-            model,
-            platformExport: {
-              sourceName: 'pipeline.yaml',
-              sourcePlatform: 'windows',
-              targetPlatform: 'linux',
+      expect(sessionCreateRequests).toEqual([
+        {
+          method: 'POST',
+          pathname: '/session',
+          search: '',
+          authorization: 'Bearer platform-export-test',
+          contentType: 'application/json',
+          body: {
+            metadata: {
+              tagma: {
+                schema: 1,
+                source: 'platform-export',
+                model,
+                platformExport: {
+                  sourceName: 'pipeline.yaml',
+                  sourcePlatform: 'windows',
+                  targetPlatform: 'linux',
+                },
+              },
             },
           },
         },
-      });
+      ]);
       expect(promptBodies).toHaveLength(1);
       expect(deletedSessions).toEqual(['platform-session']);
     } finally {

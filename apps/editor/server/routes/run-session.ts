@@ -86,6 +86,22 @@ function isPromptTaskShape(task: { prompt?: unknown; command?: unknown }): boole
   return task.prompt !== undefined && task.command === undefined;
 }
 
+function cloneTaskWaitReason(reason: RunTaskState['waitReason']): RunTaskState['waitReason'] {
+  return reason?.kind === 'dependencies'
+    ? { kind: 'dependencies', taskIds: [...reason.taskIds] }
+    : reason
+      ? { kind: 'trigger', triggerType: reason.triggerType }
+      : reason;
+}
+
+function cloneRunTaskState(task: RunTaskState): RunTaskState {
+  return {
+    ...task,
+    waitReason: cloneTaskWaitReason(task.waitReason),
+    logs: [...task.logs],
+  };
+}
+
 // ═══ Target task validation ═════════════════════════════════════════════
 
 export function normalizeRunTargetTaskIds(
@@ -429,6 +445,8 @@ export function mergeRunTaskUpdate(prev: RunTaskState, payload: TaskUpdatePayloa
   return {
     ...prev,
     status: payload.status,
+    waitReason:
+      payload.waitReason === undefined ? prev.waitReason : cloneTaskWaitReason(payload.waitReason),
     startedAt: pick(payload.startedAt, prev.startedAt),
     finishedAt: pick(payload.finishedAt, prev.finishedAt),
     durationMs: pick(payload.durationMs, prev.durationMs),
@@ -473,6 +491,7 @@ export function engineStateToTaskUpdate(
     runId,
     taskId,
     status: state.status,
+    waitReason: cloneTaskWaitReason(state.waitReason),
     startedAt: state.startedAt ?? undefined,
     finishedAt: state.finishedAt ?? undefined,
     durationMs: state.result?.durationMs,
@@ -656,11 +675,19 @@ export class RunSession {
         // network / process access regardless of driver), so keep the
         // pipeline-level fallback for both shapes.
         const resolvedPermissions = task.permissions ?? track.permissions ?? pipelinePerms ?? null;
+        const resolved = resolvedDepsByTaskId.get(taskId);
+        const deps =
+          resolved !== undefined && resolved.length > 0
+            ? [...resolved]
+            : (task.depends_on ?? []).map((dep) =>
+                dep.includes('.') ? dep : `${track.id}.${dep}`,
+              );
         this.tasks.set(taskId, {
           taskId,
           trackId: track.id,
           taskName: task.name || task.id,
           status: 'waiting',
+          waitReason: deps.length > 0 ? { kind: 'dependencies', taskIds: [...deps] } : null,
           startedAt: null,
           finishedAt: null,
           durationMs: null,
@@ -683,13 +710,6 @@ export class RunSession {
           logs: [],
           totalLogCount: 0,
         });
-        const resolved = resolvedDepsByTaskId.get(taskId);
-        const deps =
-          resolved !== undefined && resolved.length > 0
-            ? [...resolved]
-            : (task.depends_on ?? []).map((dep) =>
-                dep.includes('.') ? dep : `${track.id}.${dep}`,
-              );
         this.summaries.set(taskId, {
           taskId,
           trackId: track.id,
@@ -734,10 +754,7 @@ export class RunSession {
     const snapshot: RunSnapshotPayload = {
       type: 'run_snapshot',
       runId: this.runId,
-      tasks: Array.from(this.tasks.values()).map((t) => ({
-        ...t,
-        logs: [...t.logs],
-      })),
+      tasks: Array.from(this.tasks.values()).map(cloneRunTaskState),
       pendingApprovals: this.gateway.pending().map(approvalToWire),
       pipelineLogs: [...this.pipelineLogs],
     };
@@ -827,7 +844,7 @@ export class RunSession {
       case 'run_start':
         this.tasks.clear();
         for (const t of payload.tasks) {
-          this.tasks.set(t.taskId, { ...t, logs: [...t.logs] });
+          this.tasks.set(t.taskId, cloneRunTaskState(t));
           const s = this.summaries.get(t.taskId);
           if (s) {
             this.summaries.set(t.taskId, {

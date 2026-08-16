@@ -21,6 +21,29 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
+function readyEventStreamResponse(): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            `data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`,
+          ),
+        );
+      },
+    }),
+    { headers: { 'Content-Type': 'text/event-stream' } },
+  );
+}
+
+async function waitFor(predicate: () => boolean, attempts = 100): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error('Timed out waiting for chat composer fixture state.');
+}
+
 function previousResult(): ChatYamlSessionResult {
   return {
     sessionId: 'existing',
@@ -321,6 +344,9 @@ describe('composer error-context attachments', () => {
       if (url === '/api/opencode/chat/ensure') {
         return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
       }
+      if (new URL(url, 'http://local.test').pathname === '/event') {
+        return Promise.resolve(readyEventStreamResponse());
+      }
       if (url === 'http://opencode.test/session/existing') {
         return Promise.resolve(jsonResponse({ id: 'existing' }));
       }
@@ -351,6 +377,8 @@ describe('composer error-context attachments', () => {
     expect(state.pendingUserText).toBe('Start fresh after reconcile.');
     expect(state.queuedMessages).toEqual([]);
     expect(state.queuedDispatchMode).toBeNull();
+    await waitFor(() => promptRequests.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   test('keeps every finished turn as a start-fresh queue barrier until it is acknowledged', async () => {
@@ -359,6 +387,9 @@ describe('composer error-context attachments', () => {
       const url = input instanceof Request ? input.url : String(input);
       if (url === '/api/opencode/chat/ensure') {
         return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+      }
+      if (new URL(url, 'http://local.test').pathname === '/event') {
+        return Promise.resolve(readyEventStreamResponse());
       }
       if (url === 'http://opencode.test/session/existing') {
         return Promise.resolve(jsonResponse({ id: 'existing' }));
@@ -391,6 +422,8 @@ describe('composer error-context attachments', () => {
     expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(true);
     expect(useChatStore.getState().sending).toBe(true);
     expect(useChatStore.getState().pendingUserText).toBe('Wait until reconciliation finishes.');
+    await waitFor(() => promptRequests.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   test('marks and retries reconciliation without changing the finished turn or stage identity', () => {
@@ -656,6 +689,9 @@ describe('composer error-context attachments', () => {
       if (url === '/api/opencode/chat/ensure') {
         return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
       }
+      if (new URL(url, 'http://local.test').pathname === '/event') {
+        return Promise.resolve(readyEventStreamResponse());
+      }
       if (url === 'http://opencode.test/session/existing') {
         return Promise.resolve(jsonResponse({ id: 'existing' }));
       }
@@ -705,5 +741,7 @@ describe('composer error-context attachments', () => {
     expect(useChatStore.getState().queuedMessages).toEqual([]);
     expect(useChatStore.getState().queuedDispatchMode).toBeNull();
     expect(useChatStore.getState().sending).toBe(true);
+    await waitFor(() => promptRequests.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 });

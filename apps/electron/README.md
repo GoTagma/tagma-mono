@@ -77,21 +77,23 @@ Artifacts are named `Tagma-${version}-${os}-${arch}.${ext}`.
 
 The editor's primary driver is OpenCode. Each installer ships a platform-matched `opencode` binary in `resources/opencode/` so end users don't need `bun` or a manual install.
 
-- **Pin location:** `package.json → tagma.bundledOpencodeVersion` (currently `1.17.8`). Bump that field and re-run a `dist:desktop:*` command to cut a release with a new default.
+- **Pin location:** `package.json → tagma.bundledOpencodeVersion` (currently `1.18.18`). It must exactly match the editor's `@opencode-ai/sdk` dependency; `bun run check:deps` enforces that contract. Bump both fields, refresh the root lockfile, and re-run a `dist:desktop:*` command to cut a release with a new default.
 - **Database compatibility:** `package.json → tagma.bundledOpencodeDbSchemaVersion` selects the
   Tagma-owned database bucket. Keep it unchanged for schema-compatible OpenCode updates and bump
   it for an incompatible migration. Provider login files remain in OpenCode's user data root, but
   managed sessions live under `userData/opencode-state/` through `OPENCODE_DB` and are never shared
   with the standalone CLI. The state root retains lineage generations and atomically points at the
-  current branch, so downgrade and re-upgrade never reuse an incompatible or stale branch.
+  current branch, so downgrade and re-upgrade never reuse an incompatible or stale branch. OpenCode
+  1.18.18 uses epoch `2` because its upstream migrations remove columns and reset v2 projection
+  tables; the three-OS native contract exercises a real 1.17.8 → 1.18.18 → 1.17.8 → 1.18.18 cycle.
 - **Fetcher:** `scripts/fetch-opencode.mjs` downloads the platform-specific binary into `build/opencode/<platform>-<arch>/` before electron-builder copies it into `extraResources`.
 - **Runtime lookup order** (`src/runtime-paths.ts`): `userData/opencode/bin` → `resources/opencode/bin` → system `PATH`. The bundled copy is read-only and never overwritten.
 
-### In-app upgrade
+### Manual recovery update
 
-Users can upgrade opencode from the editor (status bar version chip → **Update**, or Editor Settings → OpenCode CLI). Upgrades are downloaded into `userData/opencode/`, which then takes precedence over the bundled copy without replacing it. Removing the upgrade falls back to the bundled version automatically.
+The editor UI intentionally keeps OpenCode read-only and upgrades it only with a tested Tagma bundle. For tooling or manual recovery, the sidecar can still download an override into `userData/opencode/`; that copy takes precedence without replacing the bundled runtime, and removing it falls back to the bundle.
 
-The download is handled by the editor sidecar at `POST /api/opencode/update`; status is polled via `GET /api/opencode/info`.
+The recovery download is handled by `POST /api/opencode/update`; status is polled via `GET /api/opencode/info`.
 
 ## Editor frontend + sidecar hot-update
 

@@ -208,6 +208,7 @@ export function RunView({
   // an unrelated editor layout with the replay snapshot.
   const liveFolders = usePipelineStore((s) => s.folders);
   const liveTrackHeights = usePipelineStore((s) => s.trackHeights);
+  const hostPlatform = usePipelineStore((s) => s.hostPlatform);
   const toggleFolderCollapsed = usePipelineStore((s) => s.toggleFolderCollapsed);
   const folders = useMemo<TrackFolder[]>(() => {
     if (replayPositions) return [];
@@ -963,7 +964,12 @@ export function RunView({
             </div>
 
             {selectedTask && (
-              <RunTaskPanel task={selectedTask} config={config} onClose={() => selectTask(null)} />
+              <RunTaskPanel
+                task={selectedTask}
+                config={config}
+                hostPlatform={hostPlatform}
+                onClose={() => selectTask(null)}
+              />
             )}
 
             {!selectedTask &&

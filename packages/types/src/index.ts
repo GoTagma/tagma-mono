@@ -1031,6 +1031,21 @@ export type TaskFailureKind =
   | 'completion_failed'
   | null;
 
+/**
+ * Structured evidence that the runtime could not capture a child output
+ * stream to completion. Kept separate from stdout/stderr so infrastructure
+ * diagnostics never become part of the child's authored output.
+ */
+export interface TaskOutputDiagnostic {
+  readonly stream: 'stdout' | 'stderr';
+  readonly stage: 'read';
+  readonly message: string;
+  /** Bytes successfully captured before the stream reader failed. */
+  readonly capturedBytes: number;
+  /** Partial artifact path when persistence was configured, otherwise null. */
+  readonly path: string | null;
+}
+
 export interface TaskResult {
   readonly exitCode: number;
   /**
@@ -1064,6 +1079,8 @@ export interface TaskResult {
   readonly sessionId: string | null;
   readonly normalizedOutput: string | null;
   readonly failureKind: TaskFailureKind;
+  /** Present when `failureKind === 'output_error'` originated during capture. */
+  readonly outputDiagnostics?: readonly TaskOutputDiagnostic[];
   /**
    * Set only when `failureKind === 'binary_missing'`: the executable name the
    * driver tried to launch (e.g. `'claude'`, `'codex'`). UIs use this to look
@@ -1081,10 +1098,29 @@ export interface TaskResult {
 
 // ═══ Runtime Task State (mutable engine state — exposed for hook context typing) ═══
 
+/**
+ * Safe, structured reason a task is still externally waiting.
+ *
+ * This deliberately carries only qualified task ids or a registered trigger
+ * type. Trigger configuration (paths, messages, metadata, credentials, and
+ * arbitrary plugin fields) must never be copied into this runtime/wire shape.
+ */
+export type TaskWaitReason =
+  | {
+      readonly kind: 'dependencies';
+      readonly taskIds: readonly string[];
+    }
+  | {
+      readonly kind: 'trigger';
+      readonly triggerType: string;
+    };
+
 export interface TaskState {
   readonly config: TaskConfig;
   readonly trackConfig: TrackConfig;
   status: TaskStatus;
+  /** Optional for source compatibility; current engines always seed it. */
+  waitReason?: TaskWaitReason | null;
   result: TaskResult | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -1214,6 +1250,13 @@ export interface RunTaskState {
   readonly trackId: string;
   readonly taskName: string;
   readonly status: TaskStatus;
+  /**
+   * Present on current producers while `status === 'waiting'` and explicitly
+   * cleared with `null` before running or becoming terminal. Optional so a new
+   * client can still consume snapshots from an older producer: `undefined`
+   * means details unavailable, while `null` means queued/preparing.
+   */
+  readonly waitReason?: TaskWaitReason | null;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
   readonly durationMs: number | null;
@@ -1296,6 +1339,8 @@ export type RunEventPayload =
       readonly runId: string;
       readonly taskId: string;
       readonly status: TaskStatus;
+      /** Undefined preserves the prior mirror value; null explicitly clears it. */
+      readonly waitReason?: TaskWaitReason | null;
       readonly startedAt?: string;
       readonly finishedAt?: string;
       readonly durationMs?: number;

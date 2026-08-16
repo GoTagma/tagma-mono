@@ -1,4 +1,4 @@
-import type { RunTaskState, RawPipelineConfig } from '../api/client';
+import type { RunTaskState, RawPipelineConfig, TaskStatus } from '../api/client';
 
 const STDERR_TAIL_LINES = 30;
 // CSI / SGR escape sequences. Drivers like claude-code embed color codes in
@@ -73,14 +73,30 @@ export interface ErrorAttachment {
   content: string;
 }
 
+const TASK_ERROR_STATUS_OUTCOME = {
+  failed: 'failed',
+  timeout: 'timed out',
+  blocked: 'was blocked',
+} as const;
+
+type TaskErrorStatus = keyof typeof TASK_ERROR_STATUS_OUTCOME;
+
+/** Task status is the authoritative outcome; stderr is only an output stream. */
+export function isTaskErrorStatus(status: TaskStatus): status is TaskErrorStatus {
+  return Object.prototype.hasOwnProperty.call(TASK_ERROR_STATUS_OUTCOME, status);
+}
+
 export function formatTaskErrorAttachment(
   task: RunTaskState,
   config: RawPipelineConfig,
-): ErrorAttachment {
+): ErrorAttachment | null {
+  if (!isTaskErrorStatus(task.status)) return null;
+
   const ctx = resolveTaskContext(task, config);
   const exitLabel = exitCodeLabel(task);
+  const outcome = TASK_ERROR_STATUS_OUTCOME[task.status];
   const lines: string[] = [
-    `Run task \`${task.taskId}\` failed (status: ${task.status}, exit code: ${exitLabel}).`,
+    `Run task \`${task.taskId}\` ${outcome} (status: ${task.status}, exit code: ${exitLabel}).`,
     '',
   ];
 
@@ -106,7 +122,7 @@ export function formatTaskErrorAttachment(
   }
 
   return {
-    label: `Task \`${task.taskId}\` failed (exit ${exitLabel})`,
+    label: `Task \`${task.taskId}\` ${outcome} (exit ${exitLabel})`,
     content: lines.join('\n').trimEnd(),
   };
 }

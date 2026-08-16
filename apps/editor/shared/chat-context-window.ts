@@ -311,7 +311,7 @@ export function parseChatContextWindowPolicy(
  * Trim the in-memory model input array to the most recent `previousRoundLimit`
  * completed visible rounds plus the current user question.
  *
- * Must mutate `messages` in place (`splice`), not reassign: opencode 1.17.8
+ * Must mutate `messages` in place (`splice`), not reassign: opencode 1.18.18
  * keeps using the same `msgs` array variable after the
  * `experimental.chat.messages.transform` hook returns, so an assignment would
  * be discarded. The boundary always starts at a full visible user turn, so

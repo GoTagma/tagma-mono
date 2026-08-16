@@ -48,7 +48,6 @@ import {
   serializeModelReasoningConfig,
   setReasoningEnabled,
   setOpenCodeGeneratedVariantsExact,
-  touchReasoningDraft,
   touchReasoningDraftForIdentityChange,
   updateReasoningVariant,
   validateReasoningDraft,
@@ -359,12 +358,14 @@ function entryToFormState(entry: CustomProviderEntry): FormState {
   const models: ModelRow[] = Object.entries(def.models).map(([id, m]) => {
     const extra = modelExtraConfig(m);
     const identity = resolveModelReasoningIdentity(extra ?? {}, def.npm, id);
+    const providerHint = resolveLocalReasoningProviderHint(entry.id, def.name, def.options.baseURL);
     const reasoning = parseModelReasoningConfig(
       modelReasoningConfig(m),
       identity.npm,
       identity.modelId,
       identity.releaseDate,
       identity.apiModelId,
+      providerHint,
     );
     return {
       id,
@@ -408,7 +409,7 @@ function formStateToDef(form: FormState): CustomProviderDef {
         m.reasoning,
         reasoningIdentity.npm,
         reasoningIdentity.modelId,
-        resolveLocalReasoningProviderHint(form.id, form.name),
+        resolveLocalReasoningProviderHint(form.id, form.name, form.baseURL),
         reasoningIdentity.releaseDate,
         reasoningIdentity.apiModelId,
       ),
@@ -593,15 +594,17 @@ export function CustomProviderModal({
     if (!tpl) return;
     setForm((prev) => {
       const next = tpl.apply(prev);
-      if (next.npm === prev.npm && next.id === prev.id && next.name === prev.name) return next;
+      const previousHint = resolveLocalReasoningProviderHint(prev.id, prev.name, prev.baseURL);
+      const nextHint = resolveLocalReasoningProviderHint(next.id, next.name, next.baseURL);
+      if (next.npm === prev.npm && nextHint === previousHint) return next;
       return {
         ...next,
         models: next.models.map((model) => ({
           ...model,
           reasoning: touchReasoningDraftForIdentityChange(
             model.reasoning,
-            resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id),
-            resolveModelReasoningIdentity(model.extra ?? {}, next.npm, model.id),
+            resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id, previousHint),
+            resolveModelReasoningIdentity(model.extra ?? {}, next.npm, model.id, nextHint),
           ),
         })),
       };
@@ -614,30 +617,41 @@ export function CustomProviderModal({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const updateProviderIdentity = (key: 'id' | 'name', value: string): void => {
-    setForm((prev) => ({
-      ...prev,
-      [key]: value,
-      models: prev.models.map((model) => ({
-        ...model,
-        reasoning: touchReasoningDraft(model.reasoning),
-      })),
-    }));
+  const updateProviderIdentity = (key: 'id' | 'name' | 'baseURL', value: string): void => {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      const previousHint = resolveLocalReasoningProviderHint(prev.id, prev.name, prev.baseURL);
+      const nextHint = resolveLocalReasoningProviderHint(next.id, next.name, next.baseURL);
+      return {
+        ...next,
+        models: prev.models.map((model) => ({
+          ...model,
+          reasoning: touchReasoningDraftForIdentityChange(
+            model.reasoning,
+            resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id, previousHint),
+            resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id, nextHint),
+          ),
+        })),
+      };
+    });
   };
 
   const updateNpm = (npm: string): void => {
-    setForm((prev) => ({
-      ...prev,
-      npm,
-      models: prev.models.map((model) => ({
-        ...model,
-        reasoning: touchReasoningDraftForIdentityChange(
-          model.reasoning,
-          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id),
-          resolveModelReasoningIdentity(model.extra ?? {}, npm, model.id),
-        ),
-      })),
-    }));
+    setForm((prev) => {
+      const providerHint = resolveLocalReasoningProviderHint(prev.id, prev.name, prev.baseURL);
+      return {
+        ...prev,
+        npm,
+        models: prev.models.map((model) => ({
+          ...model,
+          reasoning: touchReasoningDraftForIdentityChange(
+            model.reasoning,
+            resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id, providerHint),
+            resolveModelReasoningIdentity(model.extra ?? {}, npm, model.id, providerHint),
+          ),
+        })),
+      };
+    });
   };
 
   const updateModel = (idx: number, patch: Partial<ModelRow>): void => {
@@ -653,13 +667,14 @@ export function CustomProviderModal({
       const models = prev.models.slice();
       const model = models[idx];
       if (!model) return prev;
+      const providerHint = resolveLocalReasoningProviderHint(prev.id, prev.name, prev.baseURL);
       models[idx] = {
         ...model,
         id,
         reasoning: touchReasoningDraftForIdentityChange(
           model.reasoning,
-          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id),
-          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, id),
+          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id, providerHint),
+          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, id, providerHint),
         ),
       };
       return { ...prev, models };
@@ -909,12 +924,12 @@ export function CustomProviderModal({
 
   return createPortal(
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[230] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[230] flex items-center justify-center"
       {...backdropDismissHandlers}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[600px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-accent flex w-full max-w-[600px] flex-col border"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-labelledby="custom-provider-modal-title"
@@ -924,9 +939,9 @@ export function CustomProviderModal({
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">
             {isEdit ? (
-              <Pencil size={14} className="text-tagma-muted shrink-0" />
+              <Pencil size={14} className="text-tagma-accent shrink-0" />
             ) : (
-              <Plus size={14} className="text-tagma-muted shrink-0" />
+              <Plus size={14} className="text-tagma-accent shrink-0" />
             )}
             <h2 id="custom-provider-modal-title" className="panel-title truncate">
               {isEdit ? `Edit “${editing!.id}”` : 'Add custom provider'}
@@ -1055,7 +1070,7 @@ export function CustomProviderModal({
                 autoComplete="off"
                 spellCheck={false}
                 value={form.baseURL}
-                onChange={(e) => updateField('baseURL', e.target.value)}
+                onChange={(e) => updateProviderIdentity('baseURL', e.target.value)}
                 placeholder="http://localhost:11434/v1"
                 className="field-input flex-1 min-w-0"
               />
@@ -1263,7 +1278,11 @@ export function CustomProviderModal({
             </div>
             <div className="mt-1.5 space-y-1.5">
               {form.models.map((m, idx) => {
-                const providerHint = resolveLocalReasoningProviderHint(form.id, form.name);
+                const providerHint = resolveLocalReasoningProviderHint(
+                  form.id,
+                  form.name,
+                  form.baseURL,
+                );
                 const reasoningIdentity = resolveModelReasoningIdentity(
                   m.extra ?? {},
                   form.npm,
@@ -1281,6 +1300,7 @@ export function CustomProviderModal({
                   reasoningIdentity.modelId,
                   reasoningIdentity.releaseDate,
                   reasoningIdentity.apiModelId,
+                  providerHint,
                 );
                 const warning = reasoningProfileMismatch(
                   m.reasoning,
@@ -1297,6 +1317,7 @@ export function CustomProviderModal({
                   reasoningIdentity.modelId,
                   reasoningIdentity.releaseDate,
                   reasoningIdentity.apiModelId,
+                  providerHint,
                 );
                 const reasoningIssues = validateReasoningDraft(
                   m.reasoning,
@@ -1455,6 +1476,7 @@ export function CustomProviderModal({
                                       reasoningIdentity.modelId,
                                       reasoningIdentity.releaseDate,
                                       reasoningIdentity.apiModelId,
+                                      providerHint,
                                     ),
                                   )
                                 }
@@ -1513,6 +1535,7 @@ export function CustomProviderModal({
                                       reasoningIdentity.modelId,
                                       reasoningIdentity.releaseDate,
                                       reasoningIdentity.apiModelId,
+                                      providerHint,
                                     ),
                                   )
                                 }

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ProviderAuthMethod } from '../src/api/opencode-chat';
+import { isPromptVisible } from '../src/components/chat/ProviderConnectDialog';
 import {
   shouldDismissModalFromBackdropClick,
   useModalBackdropDismiss,
@@ -157,5 +158,38 @@ describe('provider auth method row identity', () => {
     expect(providerAuthMethodKey('github-copilot', method, 0)).not.toBe(
       providerAuthMethodKey('github-copilot', changedPrompt, 0),
     );
+  });
+});
+
+describe('provider auth prompt visibility', () => {
+  test('supports both eq and neq gates from the v2 auth schema', () => {
+    const eqPrompt = {
+      type: 'text',
+      key: 'enterpriseUrl',
+      message: 'Enterprise URL',
+      when: { key: 'deploymentType', op: 'eq', value: 'enterprise' },
+    } as NonNullable<ProviderAuthMethod['prompts']>[number];
+    const neqPrompt = {
+      type: 'text',
+      key: 'publicEndpoint',
+      message: 'Public endpoint',
+      when: { key: 'deploymentType', op: 'neq', value: 'enterprise' },
+    } as NonNullable<ProviderAuthMethod['prompts']>[number];
+
+    expect(isPromptVisible(eqPrompt, { deploymentType: 'enterprise' })).toBe(true);
+    expect(isPromptVisible(eqPrompt, { deploymentType: 'public' })).toBe(false);
+    expect(isPromptVisible(neqPrompt, { deploymentType: 'public' })).toBe(true);
+    expect(isPromptVisible(neqPrompt, { deploymentType: 'enterprise' })).toBe(false);
+  });
+
+  test('keeps prompts visible for an unknown runtime gate operator', () => {
+    const futurePrompt = {
+      type: 'text',
+      key: 'futureValue',
+      message: 'Future value',
+      when: { key: 'deploymentType', op: 'matches', value: 'enterprise' },
+    } as unknown as NonNullable<ProviderAuthMethod['prompts']>[number];
+
+    expect(isPromptVisible(futurePrompt, { deploymentType: 'enterprise' })).toBe(true);
   });
 });

@@ -10,8 +10,8 @@
   "homepage": "https://github.com/GoTagma/tagma-mono",
   "main": "dist/main.js",
   "tagma": {
-    "bundledOpencodeVersion": "1.17.8",
-    "bundledOpencodeDbSchemaVersion": 1,
+    "bundledOpencodeVersion": "1.18.18",
+    "bundledOpencodeDbSchemaVersion": 2,
     "bundledBunVersion": "1.3.11",
     "channel": "alpha",
     "updateManifestPublicKey": "MCowBQYDK2VwAyEAL/xNIjP7rTKxJuxUAT4SerLIaxXMOyH/fIZF+kyMr40=",

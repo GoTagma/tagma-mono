@@ -8,6 +8,7 @@
    /alpha modifiers still compose correctly. Dark is the default; the
    `.light` override is applied by useTheme() when the user picks light. */
 :root {
+  color-scheme: dark;
   --tagma-bg: 8 8 10;
   --tagma-surface: 24 24 28;
   --tagma-elevated: 38 38 44;
@@ -30,6 +31,13 @@
   --tagma-shadow-ambient: 0.45;
   --tagma-shadow-cast: 0.6;
 
+  /* Modal scrims need a dedicated token: the app canvas is almost black in
+     dark mode but almost white in light mode, so tinting with `tagma-bg`
+     cannot dim both themes. The shell itself stays on the product palette
+     and takes its semantic hue from `--tagma-modal-tone`. */
+  --tagma-modal-scrim: 0 0 0;
+  --tagma-modal-scrim-opacity: 0.68;
+
   /* Shared motion vocabulary. One decelerating curve for everything that
      settles (hover, panel entrances) and one snappy curve for presses, so
      interactions across the app share a single rhythm instead of each
@@ -40,6 +48,7 @@
   --tagma-dur-base: 170ms;
 }
 html.light {
+  color-scheme: light;
   --tagma-bg: 245 245 247;
   --tagma-surface: 255 255 255;
   --tagma-elevated: 235 235 240;
@@ -66,6 +75,8 @@ html.light {
   --tagma-shadow-contact: 0.1;
   --tagma-shadow-ambient: 0.14;
   --tagma-shadow-cast: 0.2;
+  --tagma-modal-scrim: 26 26 26;
+  --tagma-modal-scrim-opacity: 0.32;
 }
 
 /* Document zoom is driven by Electron's webContents.setZoomFactor (see
@@ -87,13 +98,12 @@ body,
 .modal-viewport-backdrop {
   overflow-y: auto;
   padding: 0.5rem;
-  /* A flat scrim leaves the canvas behind it fully legible, which keeps the
-     eye competing between layers. A small blur pushes it out of focus so the
-     dialog reads as the only active surface, and the fade means dialogs
-     arrive instead of snapping in. Each call site keeps its own bg-black/NN
-     tint; this only adds the defocus and the entrance. */
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  /* Match Chat's single-focus composition: one active raised surface over a
+     quiet canvas. Dedicated per-theme scrim values avoid the muddy black veil
+     that the previous hard-coded bg-black utilities produced in light mode. */
+  background: rgb(var(--tagma-modal-scrim) / var(--tagma-modal-scrim-opacity));
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   animation: tagma-backdrop-in 0.14s ease-out both;
 }
 /* Declared here rather than reusing Tailwind's `fadeIn`: that keyframe is
@@ -109,14 +119,48 @@ body,
   }
 }
 .modal-viewport-shell {
+  --tagma-modal-tone: var(--tagma-accent);
   min-height: 0;
   max-height: calc(100dvh - 1rem);
+  border-color: rgb(var(--tagma-modal-tone) / 0.3);
+  background:
+    linear-gradient(
+      155deg,
+      rgb(var(--tagma-modal-tone) / 0.085),
+      rgb(var(--tagma-modal-tone) / 0.025) 44%,
+      transparent 72%
+    ),
+    rgb(var(--tagma-surface));
+  box-shadow:
+    inset 2px 0 0 rgb(var(--tagma-modal-tone) / 0.58),
+    0 0 0 1px rgb(var(--tagma-border) / 0.55),
+    0 4px 8px rgb(var(--tagma-shadow) / var(--tagma-shadow-contact)),
+    0 24px 64px -12px rgb(var(--tagma-shadow) / var(--tagma-shadow-cast));
   /* Dialogs rise a few px as they fade in. Paired with the backdrop's
      defocus this gives the modal layer a consistent sense of arriving above
-     the app rather than replacing part of it. Call sites keep their own
-     border/bg; several also carry `animate-fade-in`, which this overrides
-     harmlessly since both end at the same resting state. */
+     the app rather than replacing part of it. Call sites now supply only
+     layout, width, and semantic tone; this shared skin owns the surface. */
   animation: tagma-shell-in 0.19s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.modal-tone-accent {
+  --tagma-modal-tone: var(--tagma-accent);
+}
+.modal-tone-warning {
+  --tagma-modal-tone: var(--tagma-warning);
+}
+.modal-tone-danger {
+  --tagma-modal-tone: var(--tagma-error);
+}
+.modal-tone-success {
+  --tagma-modal-tone: var(--tagma-success);
+}
+.modal-tone-info {
+  --tagma-modal-tone: var(--tagma-info);
+}
+.modal-viewport-shell > .panel-header,
+.modal-viewport-header {
+  border-color: rgb(var(--tagma-modal-tone) / 0.2);
+  background: linear-gradient(90deg, rgb(var(--tagma-modal-tone) / 0.08), transparent 62%);
 }
 /* Resting state is `transform: none`, not `translateY(0) scale(1)`. With
    fill-mode `both` the final keyframe persists, and any lingering transform
@@ -142,6 +186,10 @@ body,
 .modal-viewport-footer {
   flex-shrink: 0;
   flex-wrap: wrap;
+  border-color: rgb(var(--tagma-modal-tone) / 0.18);
+  background:
+    linear-gradient(90deg, rgb(var(--tagma-modal-tone) / 0.045), transparent 58%),
+    rgb(var(--tagma-elevated) / 0.32);
 }
 @media (min-width: 640px) {
   .modal-viewport-backdrop {
@@ -683,8 +731,8 @@ input[type='checkbox'] {
   }
   /* Dialog-footer button family. One shared metric (28px tall, 96px minimum)
      so footers no longer mix py-1/py-1.5 and 96/100/120px min-widths across
-     dialogs. `.btn-secondary` is the neutral cancel/ghost, the two `-inline`
-     variants carry the same colors as btn-danger at footer metrics. */
+     dialogs. `.btn-secondary` is the neutral cancel/ghost; semantic outline
+     variants carry the same dimensions for approve/warn/destructive paths. */
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-muted border border-tagma-border hover:text-tagma-text hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-tagma-muted;
     transition:
@@ -722,6 +770,20 @@ input[type='checkbox'] {
     border-color: rgb(var(--tagma-warning) / 0.4);
   }
   .btn-warning-inline:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn-success-inline {
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-success border border-tagma-success/25 disabled:opacity-40 disabled:cursor-not-allowed;
+    transition:
+      background-color var(--tagma-dur-base) var(--tagma-ease),
+      border-color var(--tagma-dur-base) var(--tagma-ease),
+      transform var(--tagma-dur-fast) var(--tagma-ease-snap);
+  }
+  .btn-success-inline:hover:not(:disabled) {
+    background-color: rgb(var(--tagma-success) / 0.08);
+    border-color: rgb(var(--tagma-success) / 0.45);
+  }
+  .btn-success-inline:active:not(:disabled) {
     transform: translateY(1px);
   }
   .chip-xs {

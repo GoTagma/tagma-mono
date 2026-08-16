@@ -9,6 +9,7 @@ import type {
   TaskContinuationSeed,
   TaskState,
   TaskStatus,
+  TaskWaitReason,
 } from '../types';
 import { isPromptTaskConfig } from '../types';
 import type { Dag } from '../dag';
@@ -41,6 +42,32 @@ function redactInputsForEvent(
     });
   }
   return redacted;
+}
+
+function cloneTaskWaitReason(reason: TaskWaitReason | null | undefined): TaskWaitReason | null {
+  return reason?.kind === 'dependencies'
+    ? { kind: 'dependencies', taskIds: [...reason.taskIds] }
+    : reason
+      ? { kind: 'trigger', triggerType: reason.triggerType }
+      : null;
+}
+
+function sameTaskWaitReason(
+  a: TaskWaitReason | null | undefined,
+  b: TaskWaitReason | null | undefined,
+): boolean {
+  const left = a ?? null;
+  const right = b ?? null;
+  if (left === null || right === null) return left === right;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'trigger' && right.kind === 'trigger') {
+    return left.triggerType === right.triggerType;
+  }
+  if (left.kind !== 'dependencies' || right.kind !== 'dependencies') return false;
+  return (
+    left.taskIds.length === right.taskIds.length &&
+    left.taskIds.every((id, i) => id === right.taskIds[i])
+  );
 }
 
 export interface RunContextOptions {
@@ -124,6 +151,7 @@ export class RunContext {
         config: node.task,
         trackConfig: node.track,
         status: 'idle',
+        waitReason: null,
         result: null,
         startedAt: null,
         finishedAt: null,
@@ -146,14 +174,8 @@ export class RunContext {
     this.onEvent?.(event);
   }
 
-  setTaskStatus(taskId: string, newStatus: TaskStatus): void {
+  private emitTaskUpdate(taskId: string): void {
     const state = this.states.get(taskId)!;
-    // Terminal lock: once a task reaches a terminal state it must not be
-    // re-transitioned. This prevents stop_all from marking running tasks as
-    // skipped and then having their in-flight processTask promise overwrite
-    // that with success/failed, producing an invalid double transition.
-    if (isTerminal(state.status)) return;
-    state.status = newStatus;
     const result = state.result;
     const cfg = state.config;
     const resolved = resolveExecutionMetadata(cfg, state.trackConfig, this.config);
@@ -161,7 +183,8 @@ export class RunContext {
       type: 'task_update',
       runId: this.runId,
       taskId,
-      status: newStatus,
+      status: state.status,
+      waitReason: cloneTaskWaitReason(state.waitReason),
       startedAt: state.startedAt ?? undefined,
       finishedAt: state.finishedAt ?? undefined,
       durationMs: result?.durationMs,
@@ -182,6 +205,31 @@ export class RunContext {
       resolvedModel: resolved.resolvedModel,
       resolvedPermissions: resolved.resolvedPermissions,
     });
+  }
+
+  setTaskStatus(taskId: string, newStatus: TaskStatus): void {
+    const state = this.states.get(taskId)!;
+    // Terminal lock: once a task reaches a terminal state it must not be
+    // re-transitioned. This prevents stop_all from marking running tasks as
+    // skipped and then having their in-flight processTask promise overwrite
+    // that with success/failed, producing an invalid double transition.
+    if (isTerminal(state.status)) return;
+    state.status = newStatus;
+    if (newStatus !== 'waiting') state.waitReason = null;
+    this.emitTaskUpdate(taskId);
+  }
+
+  /**
+   * Update the structured reason for a still-waiting task. Identical reasons
+   * are suppressed so dependency rescans do not create event-stream churn.
+   */
+  setTaskWaitReason(taskId: string, reason: TaskWaitReason | null): void {
+    const state = this.states.get(taskId)!;
+    if (state.status !== 'waiting' || isTerminal(state.status)) return;
+    const next = cloneTaskWaitReason(reason);
+    if (sameTaskWaitReason(state.waitReason, next)) return;
+    state.waitReason = next;
+    this.emitTaskUpdate(taskId);
   }
 
   getOnFailure(taskId: string): OnFailure {

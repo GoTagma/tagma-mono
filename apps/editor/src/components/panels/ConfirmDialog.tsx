@@ -29,12 +29,12 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[60] flex items-center justify-center"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[420px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className={`modal-viewport-shell ${danger ? 'modal-tone-danger' : 'modal-tone-accent'} flex w-full max-w-[420px] flex-col border`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="panel-confirm-dialog-title"
@@ -43,7 +43,7 @@ export function ConfirmDialog({
       >
         <div className="panel-header">
           <h2 id="panel-confirm-dialog-title" className="panel-title flex items-center gap-1.5">
-            {danger && <AlertTriangle size={13} className="text-tagma-warning" />}
+            {danger && <AlertTriangle size={13} className="text-tagma-error" />}
             {title}
           </h2>
           <button
@@ -59,11 +59,7 @@ export function ConfirmDialog({
           {message}
         </div>
         <div className="modal-viewport-footer flex justify-end gap-2 border-t border-tagma-border px-4 py-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 text-[11px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-text/40 transition-colors"
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             {cancelLabel}
           </button>
           <button
@@ -71,7 +67,7 @@ export function ConfirmDialog({
             onClick={() => {
               onConfirm();
             }}
-            className={danger ? 'btn-danger-inline' : 'btn-primary'}
+            className={danger ? 'btn-danger-inline' : 'btn-primary min-w-24 justify-center'}
           >
             {confirmLabel}
           </button>

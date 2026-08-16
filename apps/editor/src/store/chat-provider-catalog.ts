@@ -12,6 +12,7 @@
 import {
   fetchProviderModelCatalogV2,
   getOpencodeClient,
+  getOpencodeV2Client,
   getOpencodeWorkspaceKey,
   unwrap,
   type ProviderModelCatalogV2Snapshot,
@@ -36,7 +37,10 @@ export interface ConfiguredProviderModels {
 export async function fetchProviderCatalog(
   workspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<ProviderCatalogEntry[]> {
-  const client = await getOpencodeClient(workspaceKey);
+  const [client, v2Client] = await Promise.all([
+    getOpencodeClient(workspaceKey),
+    getOpencodeV2Client(workspaceKey),
+  ]);
   const [listRes, authRes] = await Promise.all([
     unwrap(client.provider.list()).catch((err) => {
       console.error('[chat] provider.list failed:', err);
@@ -46,7 +50,7 @@ export async function fetchProviderCatalog(
         connected: [] as string[],
       };
     }),
-    unwrap(client.provider.auth()).catch((err) => {
+    unwrap(v2Client.provider.auth()).catch((err) => {
       console.error('[chat] provider.auth failed:', err);
       return {} as Record<string, ProviderAuthMethod[]>;
     }),
@@ -232,7 +236,6 @@ function modelRequestOptions(
   return {
     ...(model.api.settings ?? {}),
     ...model.request.body,
-    ...(model.request.options ?? {}),
   };
 }
 
@@ -251,11 +254,7 @@ function v2ModelSupportsReasoning(
   const apiId = model.api.id.toLowerCase();
   const apiUrl = modelApiUrl(model.api).toLowerCase();
   if (apiId.includes('responses') || apiUrl.includes('/responses')) return true;
-  return (
-    hasReasoningConfig(model.api.settings) ||
-    hasReasoningConfig(model.request.body) ||
-    hasReasoningConfig(model.request.options)
-  );
+  return hasReasoningConfig(model.api.settings) || hasReasoningConfig(model.request.body);
 }
 
 function hasReasoningConfig(value: unknown): boolean {

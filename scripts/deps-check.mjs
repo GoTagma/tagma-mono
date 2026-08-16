@@ -13,6 +13,8 @@
 //      semver-ranged reference to another workspace package is satisfied
 //      by that package's current version. Catches version-bump skew
 //      (e.g. bumping @tagma/types past a plugin's peerDependency range).
+//   5. The generated OpenCode SDK and bundled native CLI are pinned to the
+//      same exact version so their request/response contracts cannot drift.
 //
 // No third-party dependencies: a minimal but correct semver range
 // evaluator is implemented inline (semver is not resolvable here).
@@ -25,6 +27,7 @@ import {
   formatFrozenInstallDetail,
   formatFrozenInstallFailure,
 } from './lib/deps-check-message.mjs';
+import { validateOpencodeVersionContract } from './lib/opencode-version-contract.mjs';
 import { satisfies } from './lib/semver-lite.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -75,6 +78,22 @@ for (const dir of workspaceDirs) {
   const manifest = readJson(manifestPath);
   if (manifest.name) versionByName.set(manifest.name, manifest.version);
   manifests.push({ manifest, manifestPath });
+}
+
+// --- Angle 5: OpenCode SDK/native CLI version parity --------------------
+const editorManifestPath = join(repoRoot, 'apps', 'editor', 'package.json');
+const electronManifestPath = join(repoRoot, 'apps', 'electron', 'package.json');
+let opencodeVersionDetail = 'invalid';
+try {
+  const version = validateOpencodeVersionContract({
+    editorManifest: readJson(editorManifestPath),
+    electronManifest: readJson(electronManifestPath),
+    editorManifestPath: relative(repoRoot, editorManifestPath),
+    electronManifestPath: relative(repoRoot, electronManifestPath),
+  });
+  opencodeVersionDetail = `${version} (SDK/CLI match)`;
+} catch (error) {
+  failures.push(error instanceof Error ? error.message : String(error));
 }
 
 // --- Angle 2: workspace metadata in bun.lock ----------------------------
@@ -166,6 +185,7 @@ if (existsSync(lockPath)) {
 
 console.log(`[deps-check] workspace packages: ${versionByName.size}`);
 console.log(`[deps-check] lockfile workspace entries: ${lockWorkspaceCount}`);
+console.log(`[deps-check] OpenCode version contract: ${opencodeVersionDetail}`);
 console.log(`[deps-check] internal edges checked: ${checkedEdges.length}`);
 for (const edge of checkedEdges) console.log(`  - ${edge}`);
 console.log(`[deps-check] frozen-lockfile: ${frozenDetail}`);

@@ -22,7 +22,7 @@
       "name": "tagma-editor",
       "version": "0.2.0",
       "dependencies": {
-        "@opencode-ai/sdk": "1.17.8",
+        "@opencode-ai/sdk": "1.18.18",
         "@slack/socket-mode": "^2.0.7",
         "@slack/web-api": "^7.15.2",
         "@tagma/sdk": "workspace:*",
@@ -73,7 +73,7 @@
     },
     "packages/completion-llm-judge": {
       "name": "@tagma/completion-llm-judge",
-      "version": "0.2.91",
+      "version": "0.2.92",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -83,14 +83,14 @@
     },
     "packages/core": {
       "name": "@tagma/core",
-      "version": "0.1.96",
+      "version": "0.1.97",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-claude-code": {
       "name": "@tagma/driver-claude-code",
-      "version": "0.3.91",
+      "version": "0.3.92",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -100,7 +100,7 @@
     },
     "packages/driver-codex": {
       "name": "@tagma/driver-codex",
-      "version": "0.2.91",
+      "version": "0.2.92",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -110,7 +110,7 @@
     },
     "packages/middleware-lightrag": {
       "name": "@tagma/middleware-lightrag",
-      "version": "0.2.92",
+      "version": "0.2.93",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -120,7 +120,7 @@
     },
     "packages/runtime-bun": {
       "name": "@tagma/runtime-bun",
-      "version": "0.1.86",
+      "version": "0.1.87",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "chokidar": "^4.0.0",
@@ -128,7 +128,7 @@
     },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.7.100",
+      "version": "0.7.101",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "@tagma/runtime-bun": "workspace:*",
@@ -138,7 +138,7 @@
     },
     "packages/trigger-webhook": {
       "name": "@tagma/trigger-webhook",
-      "version": "0.2.92",
+      "version": "0.2.93",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -148,7 +148,7 @@
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.4.103",
+      "version": "0.4.104",
     },
   },
   "packages": {
@@ -328,7 +328,7 @@
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
-    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.17.8", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-6MKmsj2ujZyL44jy+12dpwWYDYKPS9fUr+0wVQxaIlPYQ/eAt8T8T3QrybplJ5ZtHfZUX+esXZ02x2UYYm7oEw=="],
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.18.18", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-zJlwXskIR47V1dkPJqeKBgq7nejG1uU8lJaGIGqbX3MWRCT8vKn0fEotbxuPCKnTdmWsDyNGNg9q1qIliDSMDA=="],
 
     "@peculiar/asn1-schema": ["@peculiar/asn1-schema@2.8.0", "", { "dependencies": { "@peculiar/utils": "^2.0.2", "asn1js": "^3.0.10", "tslib": "^2.8.1" } }, "sha512-7YT0U/ze0tF2QOBbE15gKZwy5tvgGyLRiRHLzhlbOpf7BT032oBSd0haZqXn5W6l26WLlu3dyxzjM+2638/z2Q=="],
 

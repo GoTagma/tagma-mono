@@ -66,6 +66,7 @@ import { ChatCompletionToast, ChatPanel } from './components/chat/ChatPanel';
 import { DiscardFailedChatReconciliationProvider } from './components/chat/ChatComposer';
 import {
   canContinueChatSession,
+  ensureFinishedTurnSessionHome,
   isChatDrivenEditLikely,
   useChatStore,
   type ChatYamlPostAction,
@@ -519,6 +520,29 @@ export function App() {
         trialId: null,
         cancellationRequested: false,
       });
+      try {
+        await ensureFinishedTurnSessionHome(turn, { forceStop: true });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        useChatStore
+          .getState()
+          .markFinishedTurnReconciliationFailed(
+            turn.id,
+            `The OpenCode session could not be restored before discarding this preserved result: ${detail}. Nothing was cleared; try again.`,
+          );
+        chat.completeChatYamlLifecycle(turn.id);
+        return;
+      }
+      if (
+        !useChatStore
+          .getState()
+          .finishedTurnQueue.some(
+            (candidate) => candidate.id === turn.id && candidate.reconcileFailure,
+          )
+      ) {
+        chat.completeChatYamlLifecycle(turn.id);
+        return;
+      }
       const claimedTurn = chat.abandonFinishedTurnReconciliation(turn.id);
       if (!claimedTurn) {
         chat.completeChatYamlLifecycle(turn.id);
@@ -1334,8 +1358,12 @@ export function App() {
   // is auto-opened, and the chat link is published only after repair
   // continuations and reconciliation end.
   const finishedTurn = useChatStore(selectFinishedTurnQueueHead);
+  const chatBootstrapStatus = useChatStore((state) => state.bootstrapStatus);
   useEffect(() => {
     if (!finishedTurn || finishedTurn.reconcileFailure) return;
+    if (finishedTurn.yamlSnapshotBeforeSend && chatBootstrapStatus !== 'ready') {
+      return;
+    }
     let cancelled = false;
     void (async () => {
       let keepYamlLockForRepair = false;
@@ -1367,6 +1395,8 @@ export function App() {
         lifecycleCancellationGuard ? lifecycleCancellationGuard.stopIfRequested() : false;
       useChatStore.getState().setReconciling(true, finishedSessionId);
       try {
+        await ensureFinishedTurnSessionHome(finishedTurn);
+        if (cancelled) return;
         const currentChatState = useChatStore.getState();
         if (finishedSessionId) {
           const finishedSessionMessages =
@@ -1434,10 +1464,11 @@ export function App() {
               );
             },
             discardStage: () => {
-              removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
               return underChatLock(() =>
                 api.discardChatYamlStage(snapshot.staging.id, snapshot.workDir),
-              ).then(() => undefined);
+              ).then(() => {
+                removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
+              });
             },
             clearPostChatAction: clearFinishedPostChatYamlAction,
           });
@@ -2046,14 +2077,20 @@ export function App() {
           activeLifecycle?.turnId === finishedTurn.id &&
           activeLifecycle.cancellationRequested === true;
         if (stoppedByUser) {
-          const stoppedSnapshot = finishedTurn.yamlSnapshotBeforeSend;
-          if (stoppedSnapshot) {
-            removeStagedWorkspacePipelines(stoppedSnapshot.workDir, stoppedSnapshot.staging.id);
-          }
           try {
             await discardCancelledStage();
           } catch (discardErr) {
             console.warn('[chat] failed to discard user-stopped YAML stage', discardErr);
+            reconciliationFailed = true;
+            useChatStore
+              .getState()
+              .markFinishedTurnReconciliationFailed(
+                finishedTurn.id,
+                `The user-stopped Chat stage could not be discarded: ${
+                  discardErr instanceof Error ? discardErr.message : String(discardErr)
+                }. Nothing was cleared; try again.`,
+              );
+            return;
           }
           clearFinishedPostChatYamlAction();
           return;
@@ -2117,6 +2154,7 @@ export function App() {
     };
   }, [
     finishedTurn,
+    chatBootstrapStatus,
     refreshWorkspaceYamls,
     removeStagedWorkspacePipelines,
     upsertStagedWorkspacePipeline,

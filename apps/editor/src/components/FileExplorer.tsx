@@ -286,12 +286,12 @@ export function FileExplorer({
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell h-[min(32rem,calc(100dvh-1rem))] w-full max-w-[560px] flex flex-col overflow-hidden border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in sm:h-[min(32rem,calc(100dvh-2rem))]"
+        className="modal-viewport-shell modal-tone-accent h-[min(32rem,calc(100dvh-1rem))] w-full max-w-[560px] flex flex-col overflow-hidden border sm:h-[min(32rem,calc(100dvh-2rem))]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="file-explorer-title"
@@ -478,7 +478,7 @@ export function FileExplorer({
                   : `${selected.length} selected`}
               </span>
             )}
-            <button onClick={onCancel} className="btn-ghost">
+            <button onClick={onCancel} className="btn-secondary">
               Cancel
             </button>
             {mode === 'open' ? (

@@ -22,12 +22,12 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center"
       onClick={onClose}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell w-full max-w-[440px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className={`modal-viewport-shell ${info.type === 'error' ? 'modal-tone-danger' : 'modal-tone-success'} w-full max-w-[440px] flex flex-col border`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-modal-title"

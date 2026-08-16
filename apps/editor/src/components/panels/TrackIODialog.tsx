@@ -91,12 +91,12 @@ export function TrackIODialog({ config, onClose }: TrackIODialogProps) {
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center"
       onClick={onClose}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[640px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-info flex w-full max-w-[640px] flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="track-io-dialog-title"
@@ -207,7 +207,7 @@ export function TrackIODialog({ config, onClose }: TrackIODialogProps) {
         </div>
 
         <div className="modal-viewport-footer flex justify-end border-t border-tagma-border px-4 py-3">
-          <button onClick={onClose} className="btn-primary">
+          <button onClick={onClose} className="btn-primary min-w-24 justify-center">
             Close
           </button>
         </div>

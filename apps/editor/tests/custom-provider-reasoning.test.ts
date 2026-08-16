@@ -111,7 +111,11 @@ describe('custom provider model reasoning configuration', () => {
       { id: 'low', options: { reasoningEffort: 'low' } },
       { id: 'high', options: { reasoningEffort: 'high' } },
     ]);
-    expect(resolveReasoningProfile('@ai-sdk/openai-compatible', 'grok-4')).toBeNull();
+    expect(resolveReasoningProfile('@ai-sdk/openai-compatible', 'grok-4')?.variants).toEqual([
+      { id: 'low', options: { reasoningEffort: 'low' } },
+      { id: 'medium', options: { reasoningEffort: 'medium' } },
+      { id: 'high', options: { reasoningEffort: 'high' } },
+    ]);
   });
 
   test('mirrors known native OpenAI variant payloads and model-specific effort sets', () => {
@@ -207,6 +211,46 @@ describe('custom provider model reasoning configuration', () => {
     expect(ids('@ai-sdk/azure', 'gpt-5.2')).toEqual(['none', 'low', 'medium', 'high', 'xhigh']);
     expect(ids('@ai-sdk/xai', 'reasoner')).toEqual(['low', 'medium', 'high']);
     expect(ids('@ai-sdk/cerebras', 'reasoner')).toEqual(['low', 'medium', 'high']);
+    expect(ids('@ai-sdk/togetherai', 'reasoner')).toEqual(['low', 'medium', 'high']);
+    expect(ids('@ai-sdk/deepinfra', 'reasoner')).toEqual(['low', 'medium', 'high']);
+    expect(ids('venice-ai-sdk-provider', 'reasoner')).toEqual(['low', 'medium', 'high']);
+    expect(ids('ai-gateway-provider', 'reasoner', 'anthropic/claude')).toEqual([
+      'low',
+      'medium',
+      'high',
+    ]);
+    expect(ids('ai-gateway-provider', 'reasoner', 'openai/gpt-5.2')).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ]);
+    expect(ids('@ai-sdk/gateway', 'reasoner', 'anthropic/claude-sonnet-4.7')).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+    expect(ids('@ai-sdk/gateway', 'reasoner', 'google/gemini-3-pro')).toEqual(['low', 'high']);
+    expect(ids('@ai-sdk/gateway', 'reasoner', 'openai/gpt-5.2')).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ]);
+    expect(ids('@ai-sdk/github-copilot', 'claude-sonnet-4.7')).toEqual(['low', 'medium', 'high']);
+    expect(ids('@ai-sdk/github-copilot', 'gemini-3-pro')).toEqual([]);
+    expect(ids('@ai-sdk/github-copilot', 'gpt-5.2')).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(ids('@jerome-benoit/sap-ai-provider-v2', 'anthropic-claude-sonnet-4.7')).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
     expect(ids('@ai-sdk/mistral', 'reasoner', 'mistral-small-2603')).toEqual(['high']);
     expect(ids('@ai-sdk/mistral', 'reasoner', 'mistral-large')).toEqual([]);
     for (const npm of [
@@ -219,6 +263,143 @@ describe('custom provider model reasoning configuration', () => {
       'ollama-ai-provider-v2',
     ]) {
       expect(ids(npm, 'reasoner')).toEqual([]);
+    }
+  });
+
+  test('mirrors OpenCode 1.18.18 GLM, Kimi, Grok, and MiniMax adapter branches', () => {
+    const ids = (npm: string, modelId: string, apiModelId = modelId, providerHint?: string) =>
+      resolveOpenCodeGeneratedReasoningVariantIds(
+        npm,
+        modelId,
+        undefined,
+        apiModelId,
+        providerHint,
+      );
+    const profile = (npm: string, modelId: string, apiModelId = modelId, providerHint?: string) =>
+      resolveOpenCodeGeneratedReasoningProfile(npm, modelId, undefined, apiModelId, providerHint);
+
+    expect(ids('@openrouter/ai-sdk-provider', 'glm-alias', 'glm-5.2')).toEqual(['high', 'xhigh']);
+    expect(profile('@openrouter/ai-sdk-provider', 'glm-alias', 'glm-5.2')?.variants).toEqual([
+      { id: 'high', options: { reasoning: { effort: 'high' } } },
+      { id: 'xhigh', options: { reasoning: { effort: 'xhigh' } } },
+    ]);
+    expect(ids('@ai-sdk/openai-compatible', 'glm-5p2')).toEqual(['high', 'max']);
+    expect(profile('@ai-sdk/openai-compatible', 'glm-5p2')?.variants).toEqual([
+      { id: 'high', options: { reasoningEffort: 'high' } },
+      { id: 'max', options: { reasoningEffort: 'max' } },
+    ]);
+    expect(ids('@ai-sdk/anthropic', 'glm-5-2')).toEqual(['high', 'max']);
+    expect(profile('@ai-sdk/anthropic', 'glm-5-2')?.variants).toEqual([
+      { id: 'high', options: { effort: 'high' } },
+      { id: 'max', options: { effort: 'max' } },
+    ]);
+    expect(ids('@ai-sdk/amazon-bedrock', 'glm-5.2')).toEqual(['low', 'medium', 'high']);
+
+    expect(ids('@ai-sdk/anthropic', 'friendly-alias', 'kimi-k2.5')).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+    expect(profile('@ai-sdk/anthropic', 'friendly-alias', 'kimi-k2.5')?.variants).toEqual(
+      ['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => ({
+        id: effort,
+        options: { thinking: { type: 'adaptive', display: 'summarized' }, effort },
+      })),
+    );
+    expect(ids('@ai-sdk/google-vertex/anthropic', 'alias', 'claude-shape', 'moonshot')).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+
+    expect(ids('@ai-sdk/xai', 'grok-4')).toEqual(['low', 'medium', 'high']);
+    expect(profile('@ai-sdk/xai', 'grok-4')?.variants).toEqual(
+      ['low', 'medium', 'high'].map((effort) => ({
+        id: effort,
+        options: { reasoningEffort: effort },
+      })),
+    );
+
+    expect(
+      profile('@ai-sdk/openai-compatible', 'minimax-m3', 'minimax-m3', 'nvidia')?.variants,
+    ).toEqual([
+      { id: 'none', options: { chat_template_kwargs: { thinking_mode: 'disabled' } } },
+      { id: 'thinking', options: { chat_template_kwargs: { thinking_mode: 'enabled' } } },
+    ]);
+    expect(
+      profile('@ai-sdk/openai-compatible', 'minimax-m3', 'minimax-m3', 'other')?.variants,
+    ).toEqual([
+      { id: 'none', options: { thinking: { type: 'disabled' } } },
+      { id: 'thinking', options: { thinking: { type: 'adaptive' } } },
+    ]);
+  });
+
+  test('mirrors OpenCode 1.18.18 modern Claude and Meta OpenAI branches', () => {
+    const ids = (npm: string, modelId: string, apiModelId = modelId, providerHint?: string) =>
+      resolveOpenCodeGeneratedReasoningVariantIds(
+        npm,
+        modelId,
+        undefined,
+        apiModelId,
+        providerHint,
+      );
+    const profile = (npm: string, modelId: string, apiModelId = modelId, providerHint?: string) =>
+      resolveOpenCodeGeneratedReasoningProfile(npm, modelId, undefined, apiModelId, providerHint);
+    const encryptedReasoningOptions = (reasoningEffort: string) => ({
+      reasoningEffort,
+      reasoningSummary: 'auto',
+      include: ['reasoning.encrypted_content'],
+    });
+    const modernEfforts = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+    for (const apiModelId of ['claude-sonnet-4.7', 'claude-haiku-4.8', 'claude-future']) {
+      expect(ids('@ai-sdk/anthropic', 'claude-alias', apiModelId)).toEqual(modernEfforts);
+    }
+    expect(ids('@ai-sdk/google-vertex/anthropic', 'claude-alias', 'claude-sonnet-4.7')).toEqual(
+      modernEfforts,
+    );
+    expect(ids('@ai-sdk/amazon-bedrock', 'claude-alias', 'anthropic.claude-sonnet-4.7')).toEqual(
+      modernEfforts,
+    );
+    expect(ids('@ai-sdk/anthropic', 'claude-alias', 'claude-opus-4-20250514')).toEqual([
+      'high',
+      'max',
+    ]);
+    expect(ids('@ai-sdk/anthropic', 'claude-alias', 'fable-5')).toEqual(['high', 'max']);
+    expect(profile('@ai-sdk/anthropic', 'claude-alias', 'claude-sonnet-4.7')?.variants).toEqual(
+      modernEfforts.map((effort) => ({
+        id: effort,
+        options: { thinking: { type: 'adaptive', display: 'summarized' }, effort },
+      })),
+    );
+    expect(ids('@ai-sdk/anthropic', 'claude-alias', 'claude-sonnet-4.7', 'github-copilot')).toEqual(
+      ['low', 'medium', 'high'],
+    );
+    expect(
+      profile('@ai-sdk/anthropic', 'claude-alias', 'claude-opus-4.7', 'github-copilot')?.variants,
+    ).toEqual([
+      {
+        id: 'medium',
+        options: {
+          thinking: { type: 'adaptive', display: 'summarized' },
+          effort: 'medium',
+        },
+      },
+    ]);
+
+    const metaEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+    for (const npm of ['@ai-sdk/openai', '@ai-sdk/amazon-bedrock/mantle']) {
+      expect(ids(npm, 'llama-alias', 'meta-llama/llama-4', 'meta')).toEqual(metaEfforts);
+      expect(profile(npm, 'llama-alias', 'meta-llama/llama-4', 'meta')?.variants).toEqual(
+        metaEfforts.map((effort) => ({
+          id: effort,
+          options: encryptedReasoningOptions(effort),
+        })),
+      );
     }
   });
 
@@ -273,6 +454,16 @@ describe('custom provider model reasoning configuration', () => {
     expect(resolveLocalReasoningProviderHint('exotic', 'Custom endpoint')).toBe('exotic');
     expect(resolveLocalReasoningProviderHint('my-exo', 'Exo cluster')).toBe('exo');
     expect(
+      resolveLocalReasoningProviderHint(
+        'custom-anthropic',
+        'Private endpoint',
+        'https://api.moonshot.cn/v1',
+      ),
+    ).toBe('kimi');
+    expect(
+      resolveLocalReasoningProviderHint('nvidia', 'NVIDIA', 'https://api.moonshot.cn/v1'),
+    ).toBe('nvidia');
+    expect(
       resolveReasoningProfile('@ai-sdk/openai-compatible', 'qwen3-local', 'exo')?.variants,
     ).toEqual([
       { id: 'off', options: { enable_thinking: false } },
@@ -297,6 +488,65 @@ describe('custom provider model reasoning configuration', () => {
     expect(
       resolveReasoningProfile('@ai-sdk/openai-compatible', 'loaded-model', 'lmstudio'),
     ).toBeNull();
+  });
+
+  test('uses a URL-derived Kimi hint for generated-variant form controls', () => {
+    const npm = '@ai-sdk/anthropic';
+    const modelId = 'private-model-alias';
+    const providerHint = resolveLocalReasoningProviderHint(
+      'custom-anthropic',
+      'Private endpoint',
+      'https://api.kimi.com/coding/v1',
+    );
+    const draft = parseModelReasoningConfig(
+      {
+        reasoning: true,
+        variants: { low: { effort: 'low' } },
+      },
+      npm,
+      modelId,
+      undefined,
+      modelId,
+      providerHint,
+    );
+
+    expect(
+      hasOpenCodeGeneratedReasoningOverrides(draft, npm, modelId, undefined, modelId, providerHint),
+    ).toBe(true);
+    const exact = setOpenCodeGeneratedVariantsExact(
+      draft,
+      true,
+      npm,
+      modelId,
+      undefined,
+      modelId,
+      providerHint,
+    );
+    expect(serializeModelReasoningConfig(exact, npm, modelId, providerHint)).toEqual({
+      reasoning: true,
+      variants: {
+        low: { effort: 'low' },
+        medium: { disabled: true },
+        high: { disabled: true },
+        xhigh: { disabled: true },
+        max: { disabled: true },
+      },
+    });
+    expect(
+      serializeModelReasoningConfig(
+        resetToOpenCodeGeneratedReasoningDefaults(
+          exact,
+          npm,
+          modelId,
+          undefined,
+          modelId,
+          providerHint,
+        ),
+        npm,
+        modelId,
+        providerHint,
+      ),
+    ).toEqual({ reasoning: true });
   });
 
   test('does not write recommended reasoning until the user explicitly enables it', () => {
@@ -756,6 +1006,52 @@ describe('custom provider model reasoning configuration', () => {
       reasoningEffort: 'vendor-low',
       vendorFlag: true,
       disabled: true,
+    });
+
+    const ordinaryAnthropic = {
+      npm: '@ai-sdk/anthropic',
+      modelId: 'private-model',
+      apiModelId: 'private-model',
+      providerHint: 'custom-anthropic',
+    };
+    const kimiAnthropic = { ...ordinaryAnthropic, providerHint: 'kimi' };
+    const anthropicExact = parseModelReasoningConfig(
+      {
+        reasoning: true,
+        variants: {
+          high: { reasoningEffort: 'high' },
+          max: { reasoningEffort: 'max' },
+        },
+      },
+      ordinaryAnthropic.npm,
+      ordinaryAnthropic.modelId,
+      undefined,
+      ordinaryAnthropic.apiModelId,
+      ordinaryAnthropic.providerHint,
+    );
+    const kimiRebased = touchReasoningDraftForIdentityChange(
+      anthropicExact,
+      ordinaryAnthropic,
+      kimiAnthropic,
+    );
+    expect(
+      serializeModelReasoningConfig(
+        kimiRebased,
+        kimiAnthropic.npm,
+        kimiAnthropic.modelId,
+        kimiAnthropic.providerHint,
+        undefined,
+        kimiAnthropic.apiModelId,
+      ),
+    ).toEqual({
+      reasoning: true,
+      variants: {
+        high: { reasoningEffort: 'high' },
+        max: { reasoningEffort: 'max' },
+        low: { disabled: true },
+        medium: { disabled: true },
+        xhigh: { disabled: true },
+      },
     });
   });
 

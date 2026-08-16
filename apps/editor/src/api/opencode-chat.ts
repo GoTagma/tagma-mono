@@ -20,10 +20,16 @@
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/client';
 import {
   createOpencodeClient as createOpencodeV2Client,
+  type ApiAuth as V2ApiAuth,
+  type Auth as V2Auth,
   type ModelV2Info,
+  type OAuth as V2OAuth,
   type OpencodeClient as OpencodeV2Client,
+  type ProviderAuthAuthorization as V2ProviderAuthAuthorization,
+  type ProviderAuthMethod as V2ProviderAuthMethod,
   type ProviderV2Info,
   type Session as V2Session,
+  type WellKnownAuth as V2WellKnownAuth,
 } from '@opencode-ai/sdk/v2/client';
 import type {
   Agent as SdkAgent,
@@ -31,9 +37,7 @@ import type {
   Model as SdkModel,
   Part,
   Session as SdkSession,
-  ApiAuth as SdkApiAuth,
   Provider as SdkProvider,
-  ProviderAuthMethod as SdkProviderAuthMethod,
 } from '@opencode-ai/sdk/client';
 import { api, getClientAuthToken, getClientWorkspace } from './client';
 import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-errors.js';
@@ -63,57 +67,14 @@ export type Provider = Omit<SdkProvider, 'models'> & {
   models: Record<string, Model>;
 };
 
-/**
- * Auth-method prompt shape. Opencode 1.14.x extended `/provider/auth` to let a
- * method declare interactive prompts that must be answered before auth can
- * complete — e.g. `cloudflare-workers-ai` needs `accountId`, `gitlab`'s PAT
- * flow needs `token`, `github-copilot` asks for `deploymentType` (and
- * `enterpriseUrl` when `deploymentType === "enterprise"`).
- *
- * The field isn't declared in the 1.14.x SDK types, so we redeclare it here and
- * widen `ProviderAuthMethod` to pick it up. Kept intentionally narrow —
- * opencode only emits `text` and `select` prompts today; if a future version
- * adds more, the dialog falls through to a generic "unsupported" notice
- * rather than silently dropping the requirement.
- */
-export interface AuthPromptWhen {
-  key: string;
-  op: 'eq';
-  value: string;
-}
-export interface AuthPromptSelectOption {
-  label: string;
-  value: string;
-  hint?: string;
-}
-export type AuthPrompt =
-  | {
-      type: 'text';
-      key: string;
-      message: string;
-      placeholder?: string;
-      when?: AuthPromptWhen;
-    }
-  | {
-      type: 'select';
-      key: string;
-      message: string;
-      options: AuthPromptSelectOption[];
-      when?: AuthPromptWhen;
-    };
-
-/**
- * Widened `ProviderAuthMethod` — `prompts` isn't in the 1.14.x SDK types but the
- * server emits it for providers that need pre-auth input.
- */
-export type ProviderAuthMethod = SdkProviderAuthMethod & { prompts?: AuthPrompt[] };
-
-/**
- * Widened `ApiAuth`. 1.14.x adds a `metadata` field (arbitrary string map)
- * that opencode stores alongside the key — used to persist answers to
- * `prompts` like Cloudflare's accountId. Not declared in the 1.14.x SDK types.
- */
-export type ApiAuth = SdkApiAuth & { metadata?: Record<string, string> };
+/** Auth shapes are authoritative in the v2 compatibility client. */
+export type ApiAuth = V2ApiAuth;
+export type Auth = V2Auth;
+export type OAuth = V2OAuth;
+export type ProviderAuthAuthorization = V2ProviderAuthAuthorization;
+export type ProviderAuthMethod = V2ProviderAuthMethod;
+export type WellKnownAuth = V2WellKnownAuth;
+export type AuthPrompt = NonNullable<ProviderAuthMethod['prompts']>[number];
 
 /**
  * Subtask part — a nested agent invocation surfaced inside the parent
@@ -155,18 +116,6 @@ export type {
   CompactionPart,
   TextPartInput,
   FilePartInput,
-  // Auth surface. opencode exposes `GET /provider/auth` (the universe of
-  // configurable providers + their methods), `PUT /auth/{id}` (write a
-  // credential envelope), and the pair of `POST /provider/{id}/oauth/authorize`
-  // and `…/oauth/callback` for browser-mediated OAuth. We re-export the shapes
-  // so the connect dialog doesn't have to reach back into the SDK package.
-  // `Auth` / `ApiAuth` / `ProviderAuthMethod` are re-declared above with
-  // additions; `OAuth`, `WellKnownAuth`, `ProviderAuthAuthorization` pass
-  // through unchanged.
-  Auth,
-  OAuth,
-  WellKnownAuth,
-  ProviderAuthAuthorization,
 } from '@opencode-ai/sdk/client';
 
 /**
@@ -538,16 +487,32 @@ export interface ProviderModelCatalogV2Snapshot {
   models: ModelV2Info[];
 }
 
-export type OpencodeSessionCreateV2Input = Parameters<OpencodeV2Client['session']['create']>[0] & {
-  parentID?: string;
-  title?: string;
-  metadata?: Record<string, unknown>;
-};
-export type OpencodeSessionUpdateV2Input = Parameters<OpencodeV2Client['session']['update']>[0] & {
-  title?: string;
-  metadata?: Record<string, unknown>;
-};
+export type OpencodeSessionCreateV2Input = NonNullable<
+  Parameters<OpencodeV2Client['session']['create']>[0]
+>;
+export type OpencodeSessionUpdateV2Input = Parameters<OpencodeV2Client['session']['update']>[0];
 export type OpencodeSessionV2 = V2Session;
+
+export interface OpencodeSessionDirectoryVerificationOptions {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+}
+
+export interface MoveOpencodeSessionDirectoryInput {
+  sessionID: string;
+  destinationDirectory: string;
+  expectedSourceDirectories?: readonly string[];
+  workspaceKey?: string;
+  verification?: OpencodeSessionDirectoryVerificationOptions;
+}
+
+export interface MoveOpencodeSessionDirectoryResult {
+  moved: boolean;
+  sourceDirectory: string;
+  destinationDirectory: string;
+  session: OpencodeSessionV2;
+}
 
 export async function getClientBootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const key = workspaceKey;
@@ -563,45 +528,199 @@ export async function getClientBootstrap(workspaceKey: string): Promise<ClientBo
   return pending;
 }
 
-async function readOpencodeJsonResponse<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  if (!response.ok) {
-    let errorBody: unknown = response.statusText;
-    if (text) {
-      try {
-        errorBody = JSON.parse(text);
-      } catch {
-        errorBody = text;
-      }
-    }
-    throw toOpencodeError(errorBody, response);
-  }
-  if (!text) {
-    throw new Error(`opencode returned no data (${response.status})`);
-  }
-  return JSON.parse(text) as T;
+function isAbsoluteOpencodeDirectory(value: string): boolean {
+  return (
+    value.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/.test(value)
+  );
 }
 
-async function requestOpencodeJson<T>(
-  bootstrap: ClientBootstrap,
-  path: string,
-  method: string,
-  body: unknown,
-): Promise<T> {
-  const url = `${bootstrap.baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
-  const response = await fetch(url, {
-    method,
-    headers: {
-      ...buildOpencodeRequestHeaders(
-        bootstrap.authHeader,
-        bootstrap.directory,
-        bootstrap.workspaceHeader,
-      ),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
+function requiredAbsoluteOpencodeDirectory(value: string, label: string): string {
+  const directory = value.trim();
+  if (!directory || !isAbsoluteOpencodeDirectory(directory)) {
+    throw new Error(`${label} must be a non-empty absolute directory`);
+  }
+  return directory;
+}
+
+function requiredOpencodeSessionID(value: string): string {
+  const sessionID = value.trim();
+  if (!sessionID) throw new Error('opencode session relocation requires a sessionID');
+  return sessionID;
+}
+
+async function unwrapNoContent(
+  request: Promise<{ data?: void; error?: unknown; response: Response }>,
+  expectedStatus: number,
+): Promise<void> {
+  const result = await request.catch((err) => {
+    throw toOpencodeError(err);
   });
-  return readOpencodeJsonResponse<T>(response);
+  if (result.error) throw toOpencodeError(result.error, result.response);
+  if (result.response.status !== expectedStatus) {
+    throw new Error(
+      `opencode returned ${result.response.status}; expected ${expectedStatus} with no content`,
+    );
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException('The operation was aborted', 'AbortError');
+}
+
+function waitForPollDelay(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      try {
+        throwIfAborted(signal);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function readOpencodeSessionV2(
+  client: OpencodeV2Client,
+  sessionID: string,
+  signal?: AbortSignal,
+): Promise<OpencodeSessionV2> {
+  throwIfAborted(signal);
+  const session = await unwrap(client.session.get({ sessionID }, signal ? { signal } : undefined));
+  if (session.id !== sessionID) {
+    throw new Error(
+      `opencode returned session ${JSON.stringify(session.id)} while reading ${JSON.stringify(sessionID)}`,
+    );
+  }
+  return session;
+}
+
+export async function getOpencodeCanonicalDirectory(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<string> {
+  const { directory } = await getClientBootstrap(workspaceKey);
+  if (!directory || !isAbsoluteOpencodeDirectory(directory)) {
+    throw new Error('opencode bootstrap did not return an absolute canonical directory');
+  }
+  return directory;
+}
+
+export async function getOpencodeSessionV2(
+  sessionID: string,
+  workspaceKey = currentWorkspaceKey(),
+  signal?: AbortSignal,
+): Promise<OpencodeSessionV2> {
+  const exactSessionID = requiredOpencodeSessionID(sessionID);
+  const client = await getOpencodeV2Client(workspaceKey);
+  return readOpencodeSessionV2(client, exactSessionID, signal);
+}
+
+export async function waitForOpencodeSessionDirectory(
+  sessionID: string,
+  expectedDirectory: string,
+  workspaceKey = currentWorkspaceKey(),
+  options: OpencodeSessionDirectoryVerificationOptions = {},
+): Promise<OpencodeSessionV2> {
+  const exactSessionID = requiredOpencodeSessionID(sessionID);
+  const exactDirectory = requiredAbsoluteOpencodeDirectory(
+    expectedDirectory,
+    'expected OpenCode session directory',
+  );
+  const timeoutMs = options.timeoutMs ?? 2_000;
+  const pollIntervalMs = options.pollIntervalMs ?? 25;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+    throw new Error('OpenCode session-directory timeout must be a non-negative number');
+  }
+  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs < 0) {
+    throw new Error('OpenCode session-directory poll interval must be a non-negative number');
+  }
+
+  const client = await getOpencodeV2Client(workspaceKey);
+  const startedAt = Date.now();
+  let lastDirectory: string | null = null;
+  while (true) {
+    const session = await readOpencodeSessionV2(client, exactSessionID, options.signal);
+    lastDirectory = session.directory;
+    if (lastDirectory === exactDirectory) return session;
+
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs >= timeoutMs) break;
+    await waitForPollDelay(Math.min(pollIntervalMs, timeoutMs - elapsedMs), options.signal);
+  }
+  throw new Error(
+    `OpenCode session ${JSON.stringify(exactSessionID)} did not move to the exact directory ` +
+      `${JSON.stringify(exactDirectory)} within ${timeoutMs}ms (last observed ${JSON.stringify(lastDirectory)})`,
+  );
+}
+
+export async function moveOpencodeSessionDirectory(
+  input: MoveOpencodeSessionDirectoryInput,
+): Promise<MoveOpencodeSessionDirectoryResult> {
+  const sessionID = requiredOpencodeSessionID(input.sessionID);
+  const destinationDirectory = requiredAbsoluteOpencodeDirectory(
+    input.destinationDirectory,
+    'OpenCode session destination',
+  );
+  const workspaceKey = input.workspaceKey ?? currentWorkspaceKey();
+  const client = await getOpencodeV2Client(workspaceKey);
+  const sourceSession = await readOpencodeSessionV2(client, sessionID, input.verification?.signal);
+  if (sourceSession.workspaceID !== undefined) {
+    throw new Error(
+      `OpenCode session ${JSON.stringify(sessionID)} has workspaceID and cannot be relocated safely`,
+    );
+  }
+  const sourceDirectory = sourceSession.directory;
+  if (!sourceDirectory) {
+    throw new Error(`OpenCode session ${JSON.stringify(sessionID)} has no source directory`);
+  }
+  if (input.expectedSourceDirectories) {
+    const expectedSources = input.expectedSourceDirectories.map((directory) =>
+      requiredAbsoluteOpencodeDirectory(directory, 'expected OpenCode session source directory'),
+    );
+    if (expectedSources.length === 0 || !expectedSources.includes(sourceDirectory)) {
+      throw new Error(
+        `OpenCode session ${JSON.stringify(sessionID)} is in unexpected source directory ${JSON.stringify(sourceDirectory)}`,
+      );
+    }
+  }
+  if (sourceDirectory === destinationDirectory) {
+    return {
+      moved: false,
+      sourceDirectory,
+      destinationDirectory,
+      session: sourceSession,
+    };
+  }
+
+  await unwrapNoContent(
+    client.experimental.controlPlane.moveSession(
+      {
+        sessionID,
+        destination: { directory: destinationDirectory },
+        moveChanges: false,
+      },
+      input.verification?.signal ? { signal: input.verification.signal } : undefined,
+    ),
+    204,
+  );
+  const session = await waitForOpencodeSessionDirectory(
+    sessionID,
+    destinationDirectory,
+    workspaceKey,
+    input.verification,
+  );
+  return { moved: true, sourceDirectory, destinationDirectory, session };
 }
 
 export async function fetchProviderModelCatalogV2(
@@ -619,36 +738,19 @@ export async function createOpencodeSessionV2(
   body: OpencodeSessionCreateV2Input,
   workspaceKey = currentWorkspaceKey(),
 ): Promise<OpencodeSessionV2> {
-  const bootstrap = await getClientBootstrap(workspaceKey);
-  return requestOpencodeJson<OpencodeSessionV2>(bootstrap, '/session', 'POST', body);
+  const client = await getOpencodeV2Client(workspaceKey);
+  return unwrap(client.session.create(body));
 }
 
 export async function updateOpencodeSessionV2(
   body: OpencodeSessionUpdateV2Input,
   workspaceKey = currentWorkspaceKey(),
 ): Promise<OpencodeSessionV2> {
-  const { sessionID, ...patchBody } = body as OpencodeSessionUpdateV2Input & {
-    sessionID?: unknown;
-  };
-  if (typeof sessionID !== 'string' || sessionID.length === 0) {
-    throw new Error('opencode session update requires sessionID');
-  }
-  const bootstrap = await getClientBootstrap(workspaceKey);
-  return requestOpencodeJson<OpencodeSessionV2>(
-    bootstrap,
-    `/session/${encodeURIComponent(sessionID)}`,
-    'PATCH',
-    patchBody,
-  );
+  const client = await getOpencodeV2Client(workspaceKey);
+  return unwrap(client.session.update(body));
 }
 
-/**
- * Base URL of the opencode server for the active workspace. Needed for the
- * handful of endpoints the 1.14.x SDK client doesn't cover — today just
- * `DELETE /auth/{id}` (provider logout). Shares the same bootstrap cache as
- * `getOpencodeClient`, so calling this before the client is ready still
- * spawns `opencode serve` exactly once.
- */
+/** Base URL of the opencode server for workspace-scoped diagnostic fetches. */
 export async function getOpencodeBaseUrl(workspaceKey = currentWorkspaceKey()): Promise<string> {
   const { baseUrl } = await getClientBootstrap(workspaceKey);
   return baseUrl;
@@ -681,7 +783,7 @@ export function resetOpencodeClient(workspaceKey = currentWorkspaceKey()): void 
 /**
  * Restart the opencode process for the current workspace and rebind the
  * browser-side SDK client to its new port. Needed after any provider auth
- * change (PUT/DELETE /auth/{id}) because opencode 1.14.x doesn't invalidate
+ * change (PUT/DELETE /auth/{id}) because OpenCode doesn't invalidate
  * its in-memory provider cache on auth.json writes — models added/removed on
  * disk stay invisible until the process is restarted. Kill + respawn happens
  * server-side via POST /api/opencode/chat/restart; here we just swap the

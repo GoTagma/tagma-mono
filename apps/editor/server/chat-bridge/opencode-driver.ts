@@ -21,9 +21,11 @@ import {
   type OpencodeClient,
   type Part,
 } from '@opencode-ai/sdk/client';
-import type {
-  OpencodeClient as OpencodeV2Client,
-  Session as V2Session,
+import {
+  createOpencodeClient as createOpencodeV2Client,
+  type OpencodeClient as OpencodeV2Client,
+  type PermissionRequest as OpencodeV2PermissionRequest,
+  type Session as V2Session,
 } from '@opencode-ai/sdk/v2/client';
 import { dirname, relative } from 'node:path';
 import { ensureOpencode, ensureRealTagmaDirectory } from '../opencode-lifecycle.js';
@@ -47,6 +49,7 @@ interface ClientCacheEntry {
   baseUrl: string;
   authHeader?: string;
   client: OpencodeClient;
+  v2Client: OpencodeV2Client;
 }
 
 /** workspaceKey → bound SDK client; flushed when baseUrl drifts (after restart). */
@@ -67,10 +70,16 @@ export function _setOpencodeRuntimeHooksForTests(hooks: OpencodeRuntimeHooksForT
 
 type EventSubscribeOptions = Parameters<OpencodeClient['event']['subscribe']>[0];
 type EventSubscribeResult = Awaited<ReturnType<OpencodeClient['event']['subscribe']>>;
-type BotSessionCreateBody = Parameters<OpencodeV2Client['session']['create']>[0] & {
-  title?: string;
-  metadata?: Record<string, unknown>;
-};
+type BotSessionCreateBody = NonNullable<Parameters<OpencodeV2Client['session']['create']>[0]>;
+
+type BotOpencodeEvent =
+  | OpencodeEvent
+  | {
+      type: 'permission.asked';
+      properties: OpencodeV2PermissionRequest;
+    };
+
+type PermissionProtocol = 'current' | 'legacy';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -213,8 +222,11 @@ async function* loopbackEventStream(
   }
 }
 
-export function createLoopbackOpencodeClient(baseUrl: string, authHeader?: string): OpencodeClient {
-  const loopbackFetch = createStreamingLoopbackFetch(baseUrl);
+function createLoopbackOpencodeClientWithFetch(
+  baseUrl: string,
+  authHeader: string | undefined,
+  loopbackFetch: typeof fetch,
+): OpencodeClient {
   const client = createOpencodeClient({
     baseUrl,
     ...(authHeader ? { headers: { Authorization: authHeader } } : {}),
@@ -230,6 +242,14 @@ export function createLoopbackOpencodeClient(baseUrl: string, authHeader?: strin
     stream: loopbackEventStream(baseUrl, loopbackFetch, options),
   })) as OpencodeClient['event']['subscribe'];
   return client;
+}
+
+export function createLoopbackOpencodeClient(baseUrl: string, authHeader?: string): OpencodeClient {
+  return createLoopbackOpencodeClientWithFetch(
+    baseUrl,
+    authHeader,
+    createStreamingLoopbackFetch(baseUrl),
+  );
 }
 
 async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry> {
@@ -252,8 +272,16 @@ async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry
   // tunnels even 127.0.0.1 through a local proxy when NO_PROXY lacks loopback —
   // the proxy then answers 502 ("opencode request failed (502)"). The loopback
   // fetch streams the body so the per-turn `event.subscribe` SSE still works.
-  const client = createLoopbackOpencodeClient(baseUrl, authHeader);
-  const entry = { baseUrl, authHeader, client };
+  const loopbackFetch = createStreamingLoopbackFetch(baseUrl);
+  const clientConfig = {
+    baseUrl,
+    ...(authHeader ? { headers: { Authorization: authHeader } } : {}),
+    throwOnError: true,
+    fetch: loopbackFetch,
+  };
+  const client = createLoopbackOpencodeClientWithFetch(baseUrl, authHeader, loopbackFetch);
+  const v2Client = createOpencodeV2Client(clientConfig);
+  const entry = { baseUrl, authHeader, client, v2Client };
   clientCache.set(workspaceKey, entry);
   return entry;
 }
@@ -404,41 +432,6 @@ async function unwrap<T>(
   return res.data;
 }
 
-async function readOpencodeJsonResponse<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  if (!response.ok) {
-    let errorBody: unknown = response.statusText;
-    if (text) {
-      try {
-        errorBody = JSON.parse(text);
-      } catch {
-        errorBody = text;
-      }
-    }
-    throw toOpencodeError(errorBody, response);
-  }
-  if (!text) {
-    throw new Error(`opencode returned no data (${response.status})`);
-  }
-  return JSON.parse(text) as T;
-}
-
-async function requestOpencodeJson<T>(
-  entry: ClientCacheEntry,
-  path: string,
-  method: string,
-  body: unknown,
-): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (entry.authHeader) headers.Authorization = entry.authHeader;
-  const response = await createStreamingLoopbackFetch(entry.baseUrl)(new URL(path, entry.baseUrl), {
-    method,
-    headers,
-    body: JSON.stringify(body),
-  });
-  return readOpencodeJsonResponse<T>(response);
-}
-
 function botSessionMetadata(workspaceKey: string, title?: string): Record<string, unknown> {
   const ws = workspaceRegistry.get(workspaceKey);
   return buildTagmaSessionMetadata({
@@ -457,11 +450,11 @@ async function updateBotSessionMetadata(
   title?: string,
 ): Promise<void> {
   try {
-    await requestOpencodeJson<V2Session>(
-      entry,
-      `/session/${encodeURIComponent(sessionId)}`,
-      'PATCH',
-      { metadata: botSessionMetadata(workspaceKey, title) },
+    await unwrap(
+      entry.v2Client.session.update({
+        sessionID: sessionId,
+        metadata: botSessionMetadata(workspaceKey, title),
+      }),
     );
   } catch (err) {
     console.warn('[bot-bridge] session metadata update failed:', err);
@@ -472,7 +465,7 @@ async function createBotSessionWithMetadata(
   entry: ClientCacheEntry,
   body: BotSessionCreateBody,
 ): Promise<V2Session> {
-  return requestOpencodeJson<V2Session>(entry, '/session', 'POST', body);
+  return unwrap(entry.v2Client.session.create(body));
 }
 
 export async function ensureSession(
@@ -568,10 +561,43 @@ export interface PermissionRequest {
 
 export type PermissionResponse = 'once' | 'always' | 'reject';
 
+function normalizePermissionEvent(
+  event: BotOpencodeEvent,
+): { permission: PermissionRequest; protocol: PermissionProtocol } | null {
+  if (event.type === 'permission.asked') {
+    const permission = event.properties;
+    const patterns = permission.patterns.filter((pattern) => pattern.trim().length > 0);
+    return {
+      protocol: 'current',
+      permission: {
+        id: permission.id,
+        sessionID: permission.sessionID,
+        type: permission.permission,
+        title: patterns.join(', ') || permission.permission,
+        metadata: permission.metadata,
+      },
+    };
+  }
+  if (event.type === 'permission.updated') {
+    const permission = event.properties;
+    return {
+      protocol: 'legacy',
+      permission: {
+        id: permission.id,
+        sessionID: permission.sessionID,
+        type: permission.type,
+        title: permission.title,
+        metadata: permission.metadata,
+      },
+    };
+  }
+  return null;
+}
+
 export interface StreamingCallbacks {
   /** Called for every `message.part.updated` event scoped to our session. */
   onPart: (part: Part) => void;
-  /** Called for every `permission.updated` event scoped to our session. */
+  /** Called for every current or legacy permission event scoped to our session. */
   onPermission: (perm: PermissionRequest, handle: StreamingHandle) => void;
   /** Called when `session.idle` for our session arrives. */
   onIdle: () => void;
@@ -682,12 +708,13 @@ export async function sendPromptStreaming(
   newSessionTitle?: string,
 ): Promise<StreamingHandle> {
   const entry = await getClientEntryFor(workspaceKey);
-  const { client } = entry;
+  const { client, v2Client } = entry;
   const resolvedSession = await ensureSession(workspaceKey, sessionId, newSessionTitle);
   void updateBotSessionMetadata(entry, workspaceKey, resolvedSession, newSessionTitle);
   const historicalMessageIds = await loadHistoricalMessageIds(client, resolvedSession);
   const controller = new AbortController();
   const { stream } = await client.event.subscribe({ signal: controller.signal });
+  const permissionProtocols = new Map<string, PermissionProtocol>();
 
   let settled = false;
   let resolveDone: () => void = () => {};
@@ -711,12 +738,24 @@ export async function sendPromptStreaming(
     },
     done,
     replyPermission: async (permissionID, response) => {
-      await unwrap(
-        client.postSessionIdPermissionsPermissionId({
-          path: { id: resolvedSession, permissionID },
-          body: { response },
-        }),
-      );
+      const protocol = permissionProtocols.get(permissionID) ?? 'legacy';
+      if (protocol === 'current') {
+        await unwrap(
+          v2Client.permission.reply({
+            requestID: permissionID,
+            reply: response,
+          }),
+        );
+      } else {
+        await unwrap(
+          v2Client.permission.respond({
+            sessionID: resolvedSession,
+            permissionID,
+            response,
+          }),
+        );
+      }
+      permissionProtocols.delete(permissionID);
     },
   };
 
@@ -767,7 +806,7 @@ export async function sendPromptStreaming(
   // user code must not poison the stream consumer.
   (async () => {
     try {
-      for await (const event of stream as AsyncIterable<OpencodeEvent>) {
+      for await (const event of stream as AsyncIterable<BotOpencodeEvent>) {
         if (controller.signal.aborted) break;
         const t = event.type;
         if (t === 'message.updated') {
@@ -779,13 +818,14 @@ export async function sendPromptStreaming(
           const part = event.properties.part as Part;
           if ((part as { sessionID?: string }).sessionID !== resolvedSession) continue;
           for (const assistantPart of partGate.observePart(part)) emitAssistantPart(assistantPart);
-        } else if (t === 'permission.updated') {
-          const perm = event.properties as PermissionRequest;
-          if (perm.sessionID !== resolvedSession) continue;
+        } else if (t === 'permission.asked' || t === 'permission.updated') {
+          const normalized = normalizePermissionEvent(event);
+          if (!normalized || normalized.permission.sessionID !== resolvedSession) continue;
           observedTurnActivity = true;
           clearIdleFloor();
+          permissionProtocols.set(normalized.permission.id, normalized.protocol);
           try {
-            callbacks.onPermission(perm, handle);
+            callbacks.onPermission(normalized.permission, handle);
           } catch (err) {
             console.warn('[bot-bridge] onPermission callback threw:', err);
           }

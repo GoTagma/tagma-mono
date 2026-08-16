@@ -44,6 +44,79 @@ function taskState(overrides: Partial<RunTaskState> = {}): RunTaskState {
 }
 
 describe('run session task mirror', () => {
+  test('waitReason preserves omitted partial updates and clears only on explicit null', () => {
+    const waiting = taskState({
+      waitReason: { kind: 'dependencies', taskIds: ['t.upstream'] },
+    } as Partial<RunTaskState>);
+    const omitted = mergeRunTaskUpdate(waiting, {
+      type: 'task_update',
+      runId: 'run_1',
+      taskId: 't.a',
+      status: 'waiting',
+    } as RunEventPayload & { type: 'task_update' });
+    expect((omitted as RunTaskState & { waitReason?: unknown }).waitReason).toEqual({
+      kind: 'dependencies',
+      taskIds: ['t.upstream'],
+    });
+
+    const cleared = mergeRunTaskUpdate(omitted, {
+      type: 'task_update',
+      runId: 'run_1',
+      taskId: 't.a',
+      status: 'running',
+      waitReason: null,
+    } as RunEventPayload & { type: 'task_update'; waitReason: null });
+    expect((cleared as RunTaskState & { waitReason?: unknown }).waitReason).toBeNull();
+  });
+
+  test('seeded and updated wait reasons survive reconnect snapshots', () => {
+    const session = new RunSession(
+      'run_wait_snapshot',
+      {
+        name: 'P',
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            tasks: [
+              { id: 'upstream', command: 'upstream' },
+              { id: 'a', command: 'a', depends_on: ['upstream'] },
+            ],
+          },
+        ],
+      },
+      null,
+      undefined,
+    );
+    session.seedTasks();
+
+    const seeded = session.emitSnapshot();
+    expect(seeded.type).toBe('run_snapshot');
+    if (seeded.type !== 'run_snapshot') throw new Error('expected run_snapshot');
+    expect(seeded.tasks.find((task) => task.taskId === 't.a')?.waitReason).toEqual({
+      kind: 'dependencies',
+      taskIds: ['t.upstream'],
+    });
+
+    session.ingest({
+      type: 'task_update',
+      runId: 'run_wait_snapshot',
+      taskId: 't.a',
+      status: 'waiting',
+      waitReason: { kind: 'trigger', triggerType: 'file' },
+    } as RunEventPayload & {
+      type: 'task_update';
+      waitReason: { kind: 'trigger'; triggerType: string };
+    });
+    const triggerSnapshot = session.emitSnapshot();
+    expect(triggerSnapshot.type).toBe('run_snapshot');
+    if (triggerSnapshot.type !== 'run_snapshot') throw new Error('expected run_snapshot');
+    expect(triggerSnapshot.tasks.find((task) => task.taskId === 't.a')?.waitReason).toEqual({
+      kind: 'trigger',
+      triggerType: 'file',
+    });
+  });
+
   test('task_update inputs and outputs are preserved in snapshots', () => {
     const running: RunEventPayload = {
       type: 'task_update',
@@ -85,6 +158,7 @@ describe('run session task mirror', () => {
         tasks: [],
       },
       status: 'blocked',
+      waitReason: null,
       result: null,
       startedAt: null,
       finishedAt: '2026-04-28T08:00:00.000Z',
@@ -95,6 +169,7 @@ describe('run session task mirror', () => {
       runId: 'run_gate',
       taskId: 't.a',
       status: 'blocked',
+      waitReason: null,
       startedAt: undefined,
       finishedAt: '2026-04-28T08:00:00.000Z',
       durationMs: undefined,

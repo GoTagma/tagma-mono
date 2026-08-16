@@ -662,6 +662,17 @@ const WINDOWS_COMMAND_AUTHORING_CONTRACT = [
   `- ${WINDOWS_UTF8_AUTHORING_RULE}`,
 ].join('\n');
 
+const TASK_LOCAL_PATH_COORDINATE_CONTRACT = [
+  'The effective task cwd is `task.cwd` when authored, otherwise `track.cwd`, otherwise the workspace root. Both cwd fields are resolved directly from the workspace root; `task.cwd` overrides `track.cwd` and is never appended to it.',
+  'Built-in `file.path`, `directory.path`, `file_exists.path`, and `static_context.file` values are absolute or resolve relative to that effective task cwd, never relative to the YAML file.',
+  'Good: with `cwd: .tagma/fact-checker`, use `input/article.md`, `work/result.json`, and `trusted-sources.json` for files inside that pipeline directory.',
+  'Bad: with `cwd: .tagma/fact-checker`, `.tagma/fact-checker/input/article.md` repeats the workspace coordinate and resolves as `.tagma/fact-checker/.tagma/fact-checker/input/article.md`.',
+  'Only when that nested repeated-coordinate target is intentional, signal the opt-in with a leading `./` (or `.\\` on Windows), for example `./.tagma/fact-checker/input/article.md`.',
+].join('\n\n');
+
+const TASK_LOCAL_PATH_COORDINATE_AGENT_SUMMARY =
+  'Task-local paths use `task.cwd ?? track.cwd ?? workspace root`; cwd values start at the workspace root. Built-in path plugins resolve from it. With cwd `.tagma/fact-checker`, use `input/a.md`, not repeated `.tagma/fact-checker/input/a.md`; `./` (`.\\` Windows) is explicit nested opt-in. See `tagma-yaml-contract`.';
+
 function hostCommandAuthoringContract(hostOs: string): string {
   if (hostOs.trim().toLowerCase() === 'windows') {
     return [
@@ -843,7 +854,9 @@ Your final response must be non-empty. Return a concise report with files change
 
 Host enters a dedicated planning phase when Trial is enabled. Host runs bounded Sandbox cases before release only after explicit opt-in in Editor Settings; it adds a real-workspace Live Smoke Test only under separate consent. Never claim either mode passed without host evidence. The trial-run failure evidence remains the same authorized logical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
 
-Relative trigger paths resolve from the real workspace root (or the task cwd), never from the YAML folder. During staged authoring, a staged pipeline support file does not satisfy the optional Live Smoke baseline before finalize. Report every missing real-workspace prerequisite precisely. A missing file or directory input is fixture-backed for host Trial: the planner supplies representative data only in Sandbox cases, and the host skips an unavailable Live Smoke baseline. Never create a placeholder in the real workspace or present a same-folder sample as evidence that the trigger is ready.
+${TASK_LOCAL_PATH_COORDINATE_AGENT_SUMMARY}
+
+During staged authoring, a staged pipeline support file does not satisfy the optional Live Smoke baseline before finalize. Report every missing real-workspace prerequisite precisely. A missing file or directory input is fixture-backed for host Trial: the planner supplies representative data only in Sandbox cases, and the host skips an unavailable Live Smoke baseline. Never create a placeholder in the real workspace or present a same-folder sample as evidence that the trigger is ready.
 
 ## Self-Review And Edge Cases
 
@@ -964,7 +977,8 @@ function buildTagmaYamlContractSkillBase(): string {
     .replace(
       'Each command has a hard\n30-second timeout',
       'Each command has a hard\n2-hour timeout',
-    );
+    )
+    .concat('\n\n## Task-local path coordinates\n\n', TASK_LOCAL_PATH_COORDINATE_CONTRACT);
 }
 
 export function buildTagmaNativePrimitivesSkill(): string {

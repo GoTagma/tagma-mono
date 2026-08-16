@@ -24,7 +24,13 @@ import { InMemoryApprovalGateway, scopeApprovalGateway, type ApprovalGateway } f
 import { freezeStates, skippedTaskResult, summarizeStates, toRunTaskState } from './core/run-state';
 import { preflight } from './core/preflight';
 import { RunContext } from './core/run-context';
-import { allTasksTerminal, findLaunchableTasks, skipNonTerminalTasks } from './core/scheduler';
+import {
+  allTasksTerminal,
+  dependencyWaitReason,
+  findLaunchableTasks,
+  refreshDependencyWaitReasons,
+  skipNonTerminalTasks,
+} from './core/scheduler';
 import { executeTask } from './core/task-executor';
 import type { TagmaRuntime } from './types';
 export { TriggerBlockedError, TriggerTimeoutError } from './types';
@@ -463,6 +469,9 @@ async function runPipelineInner(
         state.status = 'waiting';
       }
     }
+    for (const [id, state] of ctx.states) {
+      state.waitReason = state.status === 'waiting' ? dependencyWaitReason(ctx, id) : null;
+    }
     // Emit run_start with a wire-shape snapshot so SSE subscribers can
     // initialize their task maps on the same event stream that carries
     // updates. No separate "server pre-broadcasts run_start" ceremony —
@@ -553,9 +562,11 @@ async function runPipelineInner(
     try {
       while (ctx.abortReason === null) {
         // Launch every task whose deps are all terminal and that isn't already in-flight
+        const runningTaskIds = new Set(running.keys());
+        refreshDependencyWaitReasons(ctx, runningTaskIds);
         const capacity = maxConcurrency - running.size;
         const launchable =
-          capacity > 0 ? findLaunchableTasks(ctx, new Set(running.keys())).slice(0, capacity) : [];
+          capacity > 0 ? findLaunchableTasks(ctx, runningTaskIds).slice(0, capacity) : [];
         for (const id of launchable) {
           const p = executeTask({
             taskId: id,

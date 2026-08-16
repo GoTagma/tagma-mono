@@ -145,12 +145,12 @@ export function UnsavedChangesModal({
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[215] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[215] flex items-center justify-center"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell w-full max-w-[440px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-warning w-full max-w-[440px] flex flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="unsaved-changes-modal-title"

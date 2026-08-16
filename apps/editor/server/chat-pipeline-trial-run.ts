@@ -114,6 +114,7 @@ const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
 const MAX_TRIAL_SUMMARY_BYTES = 32 * 1024;
 const MAX_TRIAL_TASK_RESULTS = 32;
+const MAX_TRIAL_OUTPUT_DIAGNOSTICS = 2;
 const MAX_TRIAL_CASE_COPY_BYTES = 16 * 1024 * 1024;
 const MAX_TRIAL_CASE_COPY_FILES = 256;
 const MAX_TRIAL_ASSERTION_FILE_BYTES = 2 * 1024 * 1024;
@@ -149,6 +150,15 @@ export type ChatPipelineTrialRunKind =
   | 'timed-out'
   | 'busy';
 
+export interface ChatPipelineTrialOutputDiagnostic {
+  readonly stream: 'stdout' | 'stderr';
+  readonly stage: 'read';
+  readonly message: string;
+  readonly capturedBytes: number;
+  /** Basename only; Trial evidence never exposes a host artifact path. */
+  readonly path: string | null;
+}
+
 export interface ChatPipelineTrialTaskResult {
   caseId: string | null;
   runNumber: number;
@@ -158,6 +168,7 @@ export interface ChatPipelineTrialTaskResult {
   failureKind: string | null;
   stdout: string;
   stderr: string;
+  outputDiagnostics?: readonly ChatPipelineTrialOutputDiagnostic[];
   stderrAuxiliaryDiagnosticsOmittedLines?: number;
   repairScope: 'pipeline-artifact' | 'diagnostic-only' | null;
   stdoutTruncation: ChatPipelineTrialStreamTruncation;
@@ -607,6 +618,16 @@ function boundedTrialText(value: string): string {
   const tail = budget - head;
   const decoder = new TextDecoder();
   return decoder.decode(bytes.slice(0, head)) + marker + decoder.decode(bytes.slice(-tail));
+}
+
+function boundedTrialDiagnosticText(value: string): string {
+  const bounded = boundedTrialText(value);
+  const bytes = new TextEncoder().encode(bounded);
+  if (bytes.length <= MAX_TRIAL_STREAM_BYTES) return bounded;
+  // boundedTrialText preserves both ends. A slice that cuts a multibyte
+  // codepoint can add a replacement character and exceed the byte budget by
+  // up to three bytes; streaming decode drops only that incomplete suffix.
+  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_STREAM_BYTES), { stream: true });
 }
 
 export function filterChatPipelineTrialStderr(value: string): {
@@ -1077,7 +1098,7 @@ function resolveJsonPointer(
   return { found: true, value: current };
 }
 
-function evaluateTrialExpectation(
+export function evaluateTrialExpectation(
   workDir: string,
   relativeYamlPath: string,
   expectation: ChatPipelineTrialExpectation,
@@ -1096,8 +1117,11 @@ function evaluateTrialExpectation(
           ? passed
             ? 'pipeline-artifact'
             : 'diagnostic-only'
-          : (trialTaskRepairScope(state.status, state.result?.failureKind ?? null) ??
-            'pipeline-artifact'),
+          : (trialTaskRepairScope(
+              state.status,
+              state.result?.failureKind ?? null,
+              state.result?.outputDiagnostics,
+            ) ?? 'pipeline-artifact'),
     };
   }
 
@@ -1300,9 +1324,31 @@ async function ensureTrialPluginsLoaded(
   });
 }
 
-function trialTaskRepairScope(
+export function buildChatPipelineTrialOutputDiagnostics(
+  diagnostics: readonly ChatPipelineTrialOutputDiagnostic[] | undefined,
+): readonly ChatPipelineTrialOutputDiagnostic[] | undefined {
+  if (!diagnostics || diagnostics.length === 0) return undefined;
+  const projected = diagnostics.slice(0, MAX_TRIAL_OUTPUT_DIAGNOSTICS).map((diagnostic) => {
+    const pathSegments = diagnostic.path?.replace(/\\/gu, '/').split('/').filter(Boolean);
+    const pathBasename = pathSegments?.at(-1);
+    return Object.freeze({
+      stream: diagnostic.stream,
+      stage: diagnostic.stage,
+      message: boundedTrialDiagnosticText(diagnostic.message),
+      capturedBytes:
+        Number.isSafeInteger(diagnostic.capturedBytes) && diagnostic.capturedBytes >= 0
+          ? diagnostic.capturedBytes
+          : 0,
+      path: pathBasename ? boundedTrialDiagnosticText(pathBasename) : null,
+    });
+  });
+  return Object.freeze(projected);
+}
+
+export function trialTaskRepairScope(
   status: string,
   failureKind: string | null,
+  outputDiagnostics?: readonly ChatPipelineTrialOutputDiagnostic[],
 ): ChatPipelineTrialTaskResult['repairScope'] {
   if (status === 'success') return null;
   if (
@@ -1312,7 +1358,8 @@ function trialTaskRepairScope(
     failureKind === 'timeout' ||
     failureKind === 'aborted' ||
     failureKind === 'spawn_error' ||
-    failureKind === 'binary_missing'
+    failureKind === 'binary_missing' ||
+    (failureKind === 'output_error' && !!outputDiagnostics?.length)
   ) {
     return 'diagnostic-only';
   }
@@ -1429,6 +1476,9 @@ function trialTaskResults(
       new TextEncoder().encode(rawStderr).length,
     );
     const failureKind = state.result?.failureKind ?? null;
+    const outputDiagnostics = buildChatPipelineTrialOutputDiagnostics(
+      state.result?.outputDiagnostics,
+    );
     return {
       caseId,
       runNumber,
@@ -1438,10 +1488,11 @@ function trialTaskResults(
       failureKind,
       stdout: stdout.text,
       stderr: stderr.text,
+      ...(outputDiagnostics && outputDiagnostics.length > 0 ? { outputDiagnostics } : {}),
       ...(filteredStderr.omittedAuxiliaryDiagnosticLines > 0
         ? { stderrAuxiliaryDiagnosticsOmittedLines: filteredStderr.omittedAuxiliaryDiagnosticLines }
         : {}),
-      repairScope: trialTaskRepairScope(state.status, failureKind),
+      repairScope: trialTaskRepairScope(state.status, failureKind, outputDiagnostics),
       stdoutTruncation: stdout.truncation,
       stderrTruncation: stderr.truncation,
     };

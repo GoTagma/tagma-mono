@@ -159,12 +159,12 @@ export function ProviderConnectDialog() {
 
   return createPortal(
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[210] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[210] flex items-center justify-center"
       {...backdropDismissHandlers}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[600px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-accent flex w-full max-w-[600px] flex-col border"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Connect providers"
@@ -173,7 +173,7 @@ export function ProviderConnectDialog() {
       >
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">
-            <Plug size={14} className="text-tagma-muted shrink-0" />
+            <Plug size={14} className="text-tagma-accent shrink-0" />
             <h2 className="panel-title truncate">Connect providers</h2>
             {totalCount > 0 && (
               <span className="text-[10px] font-mono text-tagma-muted-dim ml-1">
@@ -604,7 +604,7 @@ function StatusBadge({ connected }: { connected: boolean }) {
  * the API-key flow on the same provider — each renders independently with
  * its own spinner and error.
  *
- * `method.prompts` (opencode 1.14.x) is handed down so each row can render
+ * `method.prompts` from the v2 auth schema is handed down so each row can render
  * its pre-auth questions (e.g. Cloudflare's accountId, GitHub Copilot's
  * deploymentType) inline before the credential input or Sign-in button.
  */
@@ -651,14 +651,16 @@ function MethodBlock({
 }
 
 /**
- * Evaluate an auth prompt's `when` gate against the current answer map. Today
- * the server only emits `op: "eq"`; unknown ops fall open (show the prompt)
- * so a future extension doesn't silently hide a required field.
+ * Evaluate the v2 auth schema's `eq` / `neq` prompt gates against the current
+ * answer map.
  */
-function isPromptVisible(prompt: AuthPrompt, answers: Record<string, string>): boolean {
+export function isPromptVisible(prompt: AuthPrompt, answers: Record<string, string>): boolean {
   if (!prompt.when) return true;
   if (prompt.when.op === 'eq') {
     return answers[prompt.when.key] === prompt.when.value;
+  }
+  if (prompt.when.op === 'neq') {
+    return answers[prompt.when.key] !== prompt.when.value;
   }
   return true;
 }

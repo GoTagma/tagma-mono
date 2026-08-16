@@ -21,6 +21,17 @@ export interface ChatYamlSnapshot {
   localEditRevision: number;
   /** Exact YAML edit-lock lease that owns this staged logical turn. */
   yamlEditLockId: string;
+  /**
+   * Immutable identity for the physical OpenCode session-directory move that
+   * owns this stage. The source and target are captured from authenticated
+   * host/OpenCode state; callers must never synthesize either path.
+   */
+  sessionRelocation?: {
+    relocationId: string;
+    sessionId: string;
+    sourceDirectory: string;
+    stageDirectory: string;
+  };
   staging: ChatYamlStagingSnapshot;
 }
 

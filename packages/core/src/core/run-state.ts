@@ -7,6 +7,7 @@ import type {
   Permissions,
   TaskConfig,
   TrackConfig,
+  TaskWaitReason,
 } from '../types';
 import { isPromptTaskConfig } from '../types';
 
@@ -46,12 +47,21 @@ export function freezeStates(states: Map<string, TaskState>): ReadonlyMap<string
       config: { ...s.config },
       trackConfig: { ...s.trackConfig },
       status: s.status,
+      waitReason: cloneTaskWaitReason(s.waitReason),
       result: s.result ? { ...s.result } : null,
       startedAt: s.startedAt,
       finishedAt: s.finishedAt,
     });
   }
   return copy;
+}
+
+function cloneTaskWaitReason(reason: TaskWaitReason | null | undefined): TaskWaitReason | null {
+  return reason?.kind === 'dependencies'
+    ? { kind: 'dependencies', taskIds: [...reason.taskIds] }
+    : reason
+      ? { kind: 'trigger', triggerType: reason.triggerType }
+      : null;
 }
 
 export interface RunSummary {
@@ -140,6 +150,7 @@ export function toRunTaskState(
     trackId,
     taskName,
     status: state.status,
+    waitReason: cloneTaskWaitReason(state.waitReason),
     startedAt: state.startedAt,
     finishedAt: state.finishedAt,
     durationMs: result?.durationMs ?? null,

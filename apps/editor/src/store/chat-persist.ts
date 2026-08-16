@@ -53,6 +53,13 @@ export interface PersistedChatYamlStageEntry {
   sourceChangedOnDisk?: boolean;
 }
 
+export interface PersistedChatSessionRelocationIdentity {
+  relocationId: string;
+  sessionId: string;
+  sourceDirectory: string;
+  stageDirectory: string;
+}
+
 export interface PersistedChatYamlSnapshot {
   workDir: string;
   activePath: string | null;
@@ -60,6 +67,8 @@ export interface PersistedChatYamlSnapshot {
   yamlEditLockId: string;
   resultTurnId?: string;
   resultMessageId?: string;
+  /** Immutable OpenCode directory move owned by this exact staged snapshot. */
+  sessionRelocation?: PersistedChatSessionRelocationIdentity;
   staging: {
     id: string;
     agentTagmaDir: string;
@@ -67,6 +76,14 @@ export interface PersistedChatYamlSnapshot {
     activeStagedPath: string | null;
     entries: PersistedChatYamlStageEntry[];
   };
+}
+
+export type ChatSessionRelocationPhase = 'moving-to-stage' | 'at-stage' | 'moving-home';
+
+export interface PersistedChatSessionRelocation extends PersistedChatSessionRelocationIdentity {
+  phase: ChatSessionRelocationPhase;
+  updatedAt: number;
+  snapshot: PersistedChatYamlSnapshot;
 }
 
 export interface PersistedChatYamlReconciliationTurn {
@@ -88,6 +105,11 @@ export interface PersistedChatYamlReconciliationTurn {
 interface PersistedChatYamlReconciliationQueue {
   version: 1;
   turns: unknown[];
+}
+
+interface PersistedChatSessionRelocationJournal {
+  version: 1;
+  sessions: Record<string, unknown>;
 }
 
 export interface PersistedChatYamlResult {
@@ -148,6 +170,7 @@ export interface WorkspacePersistedShape {
   agent?: string | null;
   reasoningEffort?: ChatReasoningEffort;
   unfinishedYamlReconciliations?: PersistedChatYamlReconciliationQueue;
+  activeSessionRelocations?: PersistedChatSessionRelocationJournal;
   pipelineResults?: PersistedChatYamlResultsLedger;
   /** Pre-ledger compatibility input. New writes use pipelineResults. */
   sessionYamlResults?: Record<string, unknown>;
@@ -174,15 +197,16 @@ export function loadPersisted(workspaceKey: string): WorkspacePersistedShape {
   return all.workspaces?.[workspaceKey] ?? {};
 }
 
-export function savePersisted(workspaceKey: string, patch: WorkspacePersistedShape): void {
-  if (typeof localStorage === 'undefined') return;
+export function savePersisted(workspaceKey: string, patch: WorkspacePersistedShape): boolean {
+  if (typeof localStorage === 'undefined') return false;
   try {
     const all = loadAllPersisted();
     const workspaces = { ...(all.workspaces ?? {}) };
     workspaces[workspaceKey] = { ...(workspaces[workspaceKey] ?? {}), ...patch };
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...all, workspaces }));
+    return true;
   } catch {
-    /* quota / disabled — fine, just won't persist */
+    return false;
   }
 }
 
@@ -215,6 +239,28 @@ function containsChatStagingPath(value: string): boolean {
     .replace(/\\/g, '/')
     .split('/')
     .some((segment) => segment.toLowerCase() === '.chat-staging');
+}
+
+function isAbsolutePersistedDirectory(value: unknown): value is string {
+  if (!isNonEmptyString(value) || value !== value.trim()) return false;
+  return (
+    value.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/.test(value)
+  );
+}
+
+function isPersistedChatSessionRelocationIdentity(
+  value: unknown,
+): value is PersistedChatSessionRelocationIdentity {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.relocationId) &&
+    isNonEmptyString(value.sessionId) &&
+    isAbsolutePersistedDirectory(value.sourceDirectory) &&
+    isAbsolutePersistedDirectory(value.stageDirectory) &&
+    value.sourceDirectory !== value.stageDirectory
+  );
 }
 
 function isSafeRelativeYamlPath(value: unknown): value is string {
@@ -254,6 +300,7 @@ function isPersistedChatYamlSnapshot(
 ): value is PersistedChatYamlSnapshot {
   if (!isRecord(value) || value.workDir !== workspaceKey || !isRecord(value.staging)) return false;
   const staging = value.staging;
+  const relocation = value.sessionRelocation;
   return (
     isNullableString(value.activePath) &&
     Number.isSafeInteger(value.localEditRevision) &&
@@ -261,6 +308,10 @@ function isPersistedChatYamlSnapshot(
     isNonEmptyString(value.yamlEditLockId) &&
     (value.resultTurnId === undefined || isNonEmptyString(value.resultTurnId)) &&
     (value.resultMessageId === undefined || isNonEmptyString(value.resultMessageId)) &&
+    (relocation === undefined ||
+      (isPersistedChatSessionRelocationIdentity(relocation) &&
+        relocation.relocationId === staging.id &&
+        relocation.stageDirectory === staging.agentTagmaDir)) &&
     isNonEmptyString(staging.id) &&
     isNonEmptyString(staging.agentTagmaDir) &&
     isNullableString(staging.activeRelativePath) &&
@@ -285,6 +336,8 @@ function parsePersistedChatYamlReconciliationTurn(
   ) {
     return null;
   }
+  const snapshotRelocation = value.yamlSnapshotBeforeSend.sessionRelocation;
+  if (snapshotRelocation && value.sessionId !== snapshotRelocation.sessionId) return null;
   if (value.reconcileFailure !== undefined) {
     const failure = value.reconcileFailure;
     if (
@@ -347,6 +400,91 @@ export function savePersistedChatYamlReconciliationQueue(
       turns: validatedPersistedChatYamlReconciliationTurns(workspaceKey, turns),
     },
   });
+}
+
+function parsePersistedChatSessionRelocation(
+  value: unknown,
+  workspaceKey: string,
+  sessionMapKey: string,
+): PersistedChatSessionRelocation | null {
+  if (
+    !isRecord(value) ||
+    !isPersistedChatSessionRelocationIdentity(value) ||
+    value.sessionId !== sessionMapKey ||
+    (value.phase !== 'moving-to-stage' &&
+      value.phase !== 'at-stage' &&
+      value.phase !== 'moving-home') ||
+    !isNonNegativeFiniteNumber(value.updatedAt) ||
+    !isPersistedChatYamlSnapshot(value.snapshot, workspaceKey)
+  ) {
+    return null;
+  }
+  const snapshotIdentity = value.snapshot.sessionRelocation;
+  if (
+    !snapshotIdentity ||
+    snapshotIdentity.relocationId !== value.relocationId ||
+    snapshotIdentity.sessionId !== value.sessionId ||
+    snapshotIdentity.sourceDirectory !== value.sourceDirectory ||
+    snapshotIdentity.stageDirectory !== value.stageDirectory
+  ) {
+    return null;
+  }
+  return value as unknown as PersistedChatSessionRelocation;
+}
+
+export function loadPersistedChatSessionRelocations(
+  workspaceKey: string,
+): Record<string, PersistedChatSessionRelocation> {
+  const journal = loadPersisted(workspaceKey).activeSessionRelocations;
+  if (!journal || journal.version !== 1 || !isRecord(journal.sessions)) return {};
+  return Object.fromEntries(
+    Object.entries(journal.sessions).flatMap(([sessionId, value]) => {
+      const relocation = parsePersistedChatSessionRelocation(value, workspaceKey, sessionId);
+      return relocation ? [[sessionId, relocation] as const] : [];
+    }),
+  );
+}
+
+function persistChatSessionRelocationMap(
+  workspaceKey: string,
+  sessions: Record<string, PersistedChatSessionRelocation>,
+): void {
+  const persisted = savePersisted(workspaceKey, {
+    activeSessionRelocations: { version: 1, sessions },
+  });
+  if (!persisted) {
+    throw new Error('could not persist chat session relocation journal');
+  }
+}
+
+export function savePersistedChatSessionRelocation(
+  workspaceKey: string,
+  relocation: PersistedChatSessionRelocation,
+): void {
+  const validated = parsePersistedChatSessionRelocation(
+    relocation,
+    workspaceKey,
+    relocation.sessionId,
+  );
+  if (!validated) throw new Error('invalid chat session relocation');
+  persistChatSessionRelocationMap(workspaceKey, {
+    ...loadPersistedChatSessionRelocations(workspaceKey),
+    [validated.sessionId]: validated,
+  });
+}
+
+export function clearPersistedChatSessionRelocation(
+  workspaceKey: string,
+  sessionId: string,
+  expectedRelocationId?: string,
+): void {
+  if (!isNonEmptyString(sessionId)) throw new Error('invalid chat session id for relocation clear');
+  const sessions = loadPersistedChatSessionRelocations(workspaceKey);
+  const current = sessions[sessionId];
+  if (!current || (expectedRelocationId && current.relocationId !== expectedRelocationId)) return;
+  const next = { ...sessions };
+  delete next[sessionId];
+  persistChatSessionRelocationMap(workspaceKey, next);
 }
 
 function isValidationIssueArray(value: unknown): value is Array<{ path: string; message: string }> {

@@ -494,6 +494,65 @@ describe('describeChatContextWindowIndicator', () => {
 });
 
 describe('seeded opencode plugin', () => {
+  test('blocks builtin task session reuse globally while allowing fresh tasks', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tagma-context-window-plugin-'));
+    const pluginPath = join(dir, 'tagma-chat-context-window.ts');
+    writeFileSync(pluginPath, buildTagmaChatContextWindowPlugin(), 'utf8');
+    try {
+      type ToolExecuteBeforeHook = (
+        input: { tool: string; sessionID: string; callID: string },
+        output: { args: Record<string, unknown> },
+      ) => Promise<void>;
+      const loaded = (await import(`${pathToFileURL(pluginPath).href}?test=${Date.now()}`)) as {
+        TagmaChatContextWindow: (ctx: { directory: string }) => Promise<{
+          'tool.execute.before': ToolExecuteBeforeHook;
+        }>;
+      };
+      const instance = await loaded.TagmaChatContextWindow({ directory: dir });
+      const hook = instance['tool.execute.before'];
+      expect(typeof hook).toBe('function');
+
+      const freshTask = {
+        description: 'Fresh specialist',
+        prompt: 'Inspect the staged pipeline.',
+        subagent_type: 'general',
+      };
+      await expect(
+        hook(
+          { tool: 'task', sessionID: 'session-root', callID: 'call-fresh' },
+          { args: freshTask },
+        ),
+      ).resolves.toBeUndefined();
+      await expect(
+        hook(
+          { tool: 'task', sessionID: 'session-root', callID: 'call-empty' },
+          { args: { ...freshTask, task_id: '' } },
+        ),
+      ).resolves.toBeUndefined();
+      await expect(
+        hook(
+          { tool: 'read', sessionID: 'session-root', callID: 'call-other-tool' },
+          { args: { task_id: 'session-old' } },
+        ),
+      ).resolves.toBeUndefined();
+
+      await expect(
+        hook(
+          { tool: 'task', sessionID: 'session-root', callID: 'call-reuse' },
+          { args: { ...freshTask, task_id: 'session-old' } },
+        ),
+      ).rejects.toThrow(/fresh task without task_id/i);
+      await expect(
+        hook(
+          { tool: 'task', sessionID: 'session-root', callID: 'call-whitespace' },
+          { args: { ...freshTask, task_id: '   ' } },
+        ),
+      ).rejects.toThrow(/fresh task without task_id/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('registers the messages.transform hook, writes the ready marker, and trims in place', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tagma-context-window-plugin-'));
     const pluginPath = join(dir, 'tagma-chat-context-window.ts');

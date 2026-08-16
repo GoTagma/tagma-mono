@@ -99,6 +99,10 @@ function makeWorkspace(commandScript = 'process.exit(0)'): {
 function createHarness() {
   const routes = new Map<string, RouteHandler>();
   const app = {
+    get(path: string, handler: RouteHandler) {
+      routes.set(path, handler);
+      return app;
+    },
     post(path: string, handler: RouteHandler) {
       routes.set(path, handler);
       return app;

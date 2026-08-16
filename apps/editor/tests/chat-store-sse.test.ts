@@ -7,8 +7,9 @@ import {
   canEndCurrentTurnFromConfirmedIdle,
   canContinueChatSession,
   chatPipelinePreflightMode,
+  consumeOpencodeEventStream,
   describePolledTurnHealth,
-  subscribeEventStreamWithReadinessTimeout,
+  selectTurnSseHealth,
   waitForSseReadyWithTimeout,
 } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
@@ -79,6 +80,48 @@ afterEach(() => {
 
 const dispatch = (event: unknown): void =>
   applySseEvent(event as never, useChatStore.getState, useChatStore.setState as never);
+
+test('declares an OpenCode event stream ready only after its first wire event', async () => {
+  let releaseFirstEvent!: () => void;
+  const firstEvent = new Promise<void>((resolve) => {
+    releaseFirstEvent = resolve;
+  });
+  const observed: string[] = [];
+  async function* stream() {
+    await firstEvent;
+    yield 'server.connected';
+  }
+
+  const consuming = consumeOpencodeEventStream(stream(), {
+    signal: new AbortController().signal,
+    onReady: () => observed.push('ready'),
+    onEvent: (event) => observed.push(event),
+  });
+  await Promise.resolve();
+  expect(observed).toEqual([]);
+
+  releaseFirstEvent();
+  await consuming;
+  expect(observed).toEqual(['ready', 'server.connected']);
+});
+
+test('rejects an OpenCode event stream that closes before its readiness event', async () => {
+  async function* emptyStream() {
+    yield* [] as string[];
+  }
+
+  await expect(
+    consumeOpencodeEventStream(emptyStream(), {
+      signal: new AbortController().signal,
+      onReady: () => {
+        throw new Error('unreachable');
+      },
+      onEvent: () => {
+        throw new Error('unreachable');
+      },
+    }),
+  ).rejects.toThrow(/closed before its first event/i);
+});
 
 test('stalled-turn health reports pending approvals before a busy model status', () => {
   const detail = describePolledTurnHealth(
@@ -347,6 +390,18 @@ function headerValue(headers: HeadersInit | undefined, name: string): string | n
   return (headers as Record<string, string | undefined>)[name] ?? null;
 }
 
+async function jsonRequestBody(
+  request: Request | null,
+  init: RequestInit | undefined,
+): Promise<Record<string, unknown>> {
+  if (typeof init?.body === 'string') {
+    return init.body ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+  }
+  if (!request) return {};
+  const text = await request.clone().text();
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
 async function waitFor(condition: () => boolean): Promise<void> {
   for (let i = 0; i < 20; i += 1) {
     if (condition()) return;
@@ -355,32 +410,50 @@ async function waitFor(condition: () => boolean): Promise<void> {
   throw new Error('condition was not reached');
 }
 
-test('OpenCode event subscription readiness timeout aborts a hung subscribe', async () => {
-  let subscribeSignal: AbortSignal | null = null;
-  const parent = new AbortController();
-
-  await expect(
-    subscribeEventStreamWithReadinessTimeout(
-      (signal) => {
-        subscribeSignal = signal;
-        return new Promise<unknown>((_resolve, reject) => {
-          signal.addEventListener(
-            'abort',
-            () => reject(signal.reason instanceof Error ? signal.reason : new Error('aborted')),
-            { once: true },
-          );
-        });
-      },
-      parent.signal,
-      5,
-    ),
-  ).rejects.toThrow(/event stream/i);
-  expect((subscribeSignal as unknown as AbortSignal).aborted).toBe(true);
-  expect(parent.signal.aborted).toBe(false);
-});
-
 test('OpenCode send readiness wait resolves when the event stream is ready', async () => {
   await expect(waitForSseReadyWithTimeout(Promise.resolve(), 5)).resolves.toBeUndefined();
+});
+
+test('uses staged stream health instead of a healthy canonical heartbeat while relocated', () => {
+  const relocation = {
+    relocationId: 'stage-1',
+    sessionId: 'session-1',
+    sourceDirectory: '/repo/.tagma',
+    stageDirectory: '/repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma',
+  };
+  expect(
+    selectTurnSseHealth(
+      relocation,
+      { connected: true, lastEventAt: 200 },
+      {
+        sessionId: 'session-1',
+        directory: relocation.stageDirectory,
+        connected: false,
+        lastEventAt: 100,
+      },
+    ),
+  ).toEqual({ connected: false, lastEventAt: 100 });
+});
+
+test('keeps staged stream health connected when the canonical stream is down', () => {
+  const relocation = {
+    relocationId: 'stage-1',
+    sessionId: 'session-1',
+    sourceDirectory: '/repo/.tagma',
+    stageDirectory: '/repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma',
+  };
+  expect(
+    selectTurnSseHealth(
+      relocation,
+      { connected: false, lastEventAt: 100 },
+      {
+        sessionId: 'session-1',
+        directory: relocation.stageDirectory,
+        connected: true,
+        lastEventAt: 200,
+      },
+    ),
+  ).toEqual({ connected: true, lastEventAt: 200 });
 });
 
 test('OpenCode send readiness wait rejects instead of hanging forever', async () => {
@@ -389,14 +462,154 @@ test('OpenCode send readiness wait rejects instead of hanging forever', async ()
   );
 });
 
-test('replyPermission posts to the permission workspace/session, not mutable current state', async () => {
-  const requests: Array<{ url: string; method: string; workspace: string | null }> = [];
+test('keeps the canonical readiness gate across a failed pre-ready connection attempt', async () => {
+  const workspace = 'C:/sse-pre-ready-retry';
+  const baseUrl = 'http://opencode-sse-pre-ready.test';
+  let eventAttempts = 0;
+  let promptRequests = 0;
+  let releaseStream: () => void = () => undefined;
+  const streamGate = new Promise<void>((resolve) => {
+    releaseStream = resolve;
+  });
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : null;
     const url = request?.url ?? String(input);
     const method = init?.method ?? request?.method ?? 'GET';
-    const workspace = headerValue(init?.headers, 'X-Tagma-Workspace');
-    requests.push({ url, method, workspace });
+    if (url === '/api/opencode/chat/ensure') {
+      return Promise.resolve(jsonResponse({ baseUrl, directory: `${workspace}/.tagma` }));
+    }
+    const parsed = new URL(url, 'http://local.test');
+    if (parsed.pathname === '/event') {
+      eventAttempts += 1;
+      if (eventAttempts === 1) return Promise.resolve(new Response('unavailable', { status: 503 }));
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`,
+                ),
+              );
+              await streamGate;
+              controller.close();
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      );
+    }
+    if (parsed.pathname === '/session/session-retry' && method === 'PATCH') {
+      return Promise.resolve(jsonResponse({ id: 'session-retry' }));
+    }
+    if (parsed.pathname === '/session/session-retry/prompt_async' && method === 'POST') {
+      promptRequests += 1;
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+    return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+  }) as typeof fetch;
+  setClientWorkspace(workspace);
+  resetOpencodeClient();
+  useChatStore.setState({
+    currentSessionId: 'session-retry',
+    sessions: [makeSession('session-retry')],
+    model: { providerID: 'openai', modelID: 'gpt-test' },
+    agent: 'tagma-router',
+  } as never);
+
+  try {
+    await useChatStore.getState().send('retry readiness');
+    expect(eventAttempts).toBe(2);
+    expect(promptRequests).toBe(1);
+  } finally {
+    releaseStream();
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('waits for a new canonical generation when a ready stream closes before dispatch', async () => {
+  const workspace = 'C:/sse-ready-close';
+  const baseUrl = 'http://opencode-sse-ready-close.test';
+  let eventAttempts = 0;
+  let promptAttempt = 0;
+  let releaseStream: () => void = () => undefined;
+  const streamGate = new Promise<void>((resolve) => {
+    releaseStream = resolve;
+  });
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? 'GET';
+    if (url === '/api/opencode/chat/ensure') {
+      return Promise.resolve(jsonResponse({ baseUrl, directory: `${workspace}/.tagma` }));
+    }
+    const parsed = new URL(url, 'http://local.test');
+    if (parsed.pathname === '/event') {
+      eventAttempts += 1;
+      const keepOpen = eventAttempts > 1;
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`,
+                ),
+              );
+              if (keepOpen) await streamGate;
+              controller.close();
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      );
+    }
+    if (parsed.pathname === '/session/session-close' && method === 'PATCH') {
+      return Promise.resolve(jsonResponse({ id: 'session-close' }));
+    }
+    if (parsed.pathname === '/session/session-close/prompt_async' && method === 'POST') {
+      promptAttempt = eventAttempts;
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+    return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+  }) as typeof fetch;
+  setClientWorkspace(workspace);
+  resetOpencodeClient();
+  useChatStore.setState({
+    currentSessionId: 'session-close',
+    sessions: [makeSession('session-close')],
+    model: { providerID: 'openai', modelID: 'gpt-test' },
+    agent: 'tagma-router',
+  } as never);
+
+  try {
+    await useChatStore.getState().send('wait for replacement stream');
+    expect(eventAttempts).toBe(2);
+    expect(promptAttempt).toBe(2);
+  } finally {
+    releaseStream();
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('replyPermission uses exact current and legacy endpoints for the recorded protocol', async () => {
+  const requests: Array<{
+    url: string;
+    method: string;
+    workspace: string | null;
+    body: Record<string, unknown>;
+  }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? 'GET';
+    const workspace = headerValue(request?.headers ?? init?.headers, 'X-Tagma-Workspace');
+    const body = await jsonRequestBody(request, init);
+    requests.push({ url, method, workspace, body });
     if (url === '/api/opencode/chat/ensure') {
       let baseUrl = 'http://opencode-current.test';
       if (workspace === 'C:/permission-repo') {
@@ -406,7 +619,7 @@ test('replyPermission posts to the permission workspace/session, not mutable cur
       }
       return Promise.resolve(jsonResponse({ baseUrl }));
     }
-    if (url.includes('/permissions/')) {
+    if (url.startsWith('http://opencode-permission.test/')) {
       return Promise.resolve(jsonResponse({ ok: true }));
     }
     return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
@@ -423,6 +636,7 @@ test('replyPermission posts to the permission workspace/session, not mutable cur
           sessionID: 'permission-session',
           title: 'Wrong workspace command',
           tool: 'bash',
+          protocol: 'current',
           createdAt: 1,
         },
         {
@@ -431,7 +645,17 @@ test('replyPermission posts to the permission workspace/session, not mutable cur
           sessionID: 'permission-session',
           title: 'Run command',
           tool: 'bash',
+          protocol: 'current',
           createdAt: 2,
+        },
+        {
+          workspaceKey: 'C:/permission-repo',
+          id: 'legacy-perm',
+          sessionID: 'legacy-session',
+          title: 'Legacy command',
+          tool: 'bash',
+          protocol: 'legacy',
+          createdAt: 3,
         },
       ],
     } as never);
@@ -439,15 +663,28 @@ test('replyPermission posts to the permission workspace/session, not mutable cur
     await useChatStore
       .getState()
       .replyPermission('perm-1', 'once', 'permission-session', 'C:/permission-repo');
+    await useChatStore
+      .getState()
+      .replyPermission('legacy-perm', 'reject', 'legacy-session', 'C:/permission-repo');
 
-    const permissionRequest = requests.find((request) => request.url.includes('/permissions/'));
     const ensureRequest = requests.find((request) => request.url === '/api/opencode/chat/ensure');
     expect(ensureRequest?.workspace).toBe('C:/permission-repo');
-    expect(permissionRequest?.method).toBe('POST');
-    expect(permissionRequest?.url).toContain('http://opencode-permission.test/');
-    expect(permissionRequest?.url).not.toContain('http://opencode-wrong-permission.test/');
-    expect(permissionRequest?.url).toContain('/session/permission-session/');
-    expect(permissionRequest?.url).not.toContain('/session/current-session/');
+    expect(
+      requests.filter((request) => request.url.startsWith('http://opencode-permission.test/')),
+    ).toEqual([
+      {
+        url: 'http://opencode-permission.test/permission/perm-1/reply',
+        method: 'POST',
+        workspace: null,
+        body: { reply: 'once' },
+      },
+      {
+        url: 'http://opencode-permission.test/session/legacy-session/permissions/legacy-perm',
+        method: 'POST',
+        workspace: null,
+        body: { response: 'reject' },
+      },
+    ]);
     expect(useChatStore.getState().sendError).toBeNull();
   } finally {
     setClientWorkspace('C:/permission-repo');
@@ -611,8 +848,12 @@ test('routes delegated child permission prompts to the current parent session', 
   expect(state.currentSessionId).toBe('parent');
   expect(state.sessions.map((session) => session.id)).toEqual(['parent']);
   expect(
-    state.pendingPermissions.map((permission) => [permission.id, permission.sessionID]),
-  ).toEqual([['child-permission', 'child']]);
+    state.pendingPermissions.map((permission) => [
+      permission.id,
+      permission.sessionID,
+      permission.protocol,
+    ]),
+  ).toEqual([['child-permission', 'child', 'legacy']]);
 
   dispatch({
     type: 'permission.replied',
@@ -642,7 +883,7 @@ test('routes delegated child permission prompts to the current parent session', 
   expect(useChatStore.getState().pendingPermissions).toEqual([]);
 });
 
-test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID replies', () => {
+test('routes current permission.asked prompts and clears requestID replies', () => {
   useChatStore.setState({
     currentSessionId: 'parent',
     sessions: [makeSession('parent')],
@@ -677,6 +918,7 @@ test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID repli
       sessionID: permission.sessionID,
       tool: permission.tool,
       title: permission.title,
+      protocol: permission.protocol,
     })),
   ).toEqual([
     {
@@ -684,6 +926,7 @@ test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID repli
       sessionID: 'child',
       tool: 'external_directory',
       title: 'F:\\test0723\\*',
+      protocol: 'current',
     },
   ]);
 
@@ -700,7 +943,7 @@ test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID repli
   expect(state.pendingPermissions).toEqual([]);
 });
 
-test('staged descendant permissions inherit the root agent directory and are decided by the host', async () => {
+test('staged descendant permissions are host-authorized and reply through the session instance', async () => {
   const workspace = 'C:/staged-permission-repo';
   const agentRoot =
     'C:/staged-permission-repo/.tagma/.chat-staging/11111111-1111-4111-8111-111111111111/agent-workspace/.tagma';
@@ -710,7 +953,12 @@ test('staged descendant permissions inherit the root agent directory and are dec
     metadata: Record<string, unknown> | null;
   }> = [];
   const authorizationLockIds: Array<string | null> = [];
-  const replies: Array<{ url: string; response: unknown }> = [];
+  const replies: Array<{
+    pathname: string;
+    directory: string | null;
+    directoryHeader: string | null;
+    body: Record<string, unknown>;
+  }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : null;
     const url = request?.url ?? String(input);
@@ -768,8 +1016,18 @@ test('staged descendant permissions inherit the root agent directory and are dec
         directory: `${workspace}/.tagma`,
       });
     }
-    if (url.includes('/permissions/')) {
-      replies.push({ url, response: body.response });
+    const parsedUrl = new URL(url);
+    if (
+      parsedUrl.pathname.includes('/permissions/') ||
+      /\/permission\/[^/]+\/reply$/.test(parsedUrl.pathname)
+    ) {
+      const headers = new Headers(request?.headers ?? init?.headers);
+      replies.push({
+        pathname: parsedUrl.pathname,
+        directory: parsedUrl.searchParams.get('directory'),
+        directoryHeader: headers.get('x-opencode-directory'),
+        body,
+      });
       return jsonResponse({ ok: true });
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -787,6 +1045,12 @@ test('staged descendant permissions inherit the root agent directory and are dec
         activePath: `${workspace}/.tagma/sample/sample.yaml`,
         localEditRevision: 0,
         yamlEditLockId: 'lock-stage-permission',
+        sessionRelocation: {
+          relocationId: '11111111-1111-4111-8111-111111111111',
+          sessionId: 'root',
+          sourceDirectory: `${workspace}/.tagma`,
+          stageDirectory: agentRoot,
+        },
         staging: {
           id: '11111111-1111-4111-8111-111111111111',
           agentTagmaDir: agentRoot,
@@ -829,8 +1093,12 @@ test('staged descendant permissions inherit the root agent directory and are dec
       metadata: { filepath: insideTarget },
     });
     expect(authorizationLockIds[0]).toBe('lock-stage-permission');
-    expect(replies[0]?.url).toContain('/session/child/');
-    expect(replies[0]?.response).toBe('once');
+    expect(replies[0]).toEqual({
+      pathname: '/permission/inside-write/reply',
+      directory: agentRoot,
+      directoryHeader: encodeURIComponent(`${workspace}/.tagma`),
+      body: { reply: 'once' },
+    });
     expect(useChatStore.getState().pendingPermissions).toEqual([]);
 
     dispatch({
@@ -847,7 +1115,12 @@ test('staged descendant permissions inherit the root agent directory and are dec
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(decisions[1]).toEqual({ permission: 'read', patterns: [insideTarget], metadata: {} });
-    expect(replies[1]?.response).toBe('once');
+    expect(replies[1]).toEqual({
+      pathname: '/permission/inside-read/reply',
+      directory: agentRoot,
+      directoryHeader: encodeURIComponent(`${workspace}/.tagma`),
+      body: { reply: 'once' },
+    });
     expect(useChatStore.getState().pendingPermissions).toEqual([]);
 
     const patchTarget = `${agentRoot}/fact-checker/pipeline.yaml`;
@@ -885,7 +1158,12 @@ test('staged descendant permissions inherit the root agent directory and are dec
         files: [{ filePath: insideTarget }, { filePath: patchTarget, movePath: patchMoveTarget }],
       },
     });
-    expect(replies[2]?.response).toBe('once');
+    expect(replies[2]).toEqual({
+      pathname: '/permission/inside-patch/reply',
+      directory: agentRoot,
+      directoryHeader: encodeURIComponent(`${workspace}/.tagma`),
+      body: { reply: 'once' },
+    });
 
     dispatch({
       type: 'permission.asked',
@@ -905,10 +1183,47 @@ test('staged descendant permissions inherit the root agent directory and are dec
       patterns: [`${workspace}/.tagma/live/live.yaml`],
       metadata: {},
     });
-    expect(replies[3]?.response).toBe('reject');
+    expect(replies[3]).toEqual({
+      pathname: '/permission/live-read/reply',
+      directory: agentRoot,
+      directoryHeader: encodeURIComponent(`${workspace}/.tagma`),
+      body: { reply: 'reject' },
+    });
     expect(useChatStore.getState().pendingPermissions).toEqual([]);
     expect(useChatStore.getState().sendError).toContain('Staged access rejected');
     expect(useChatStore.getState().sendError).toContain('outside this turn');
+
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'manual-webfetch',
+        sessionID: 'child',
+        permission: 'webfetch',
+        patterns: ['https://example.com'],
+        metadata: {},
+        always: [],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useChatStore.getState().pendingPermissions).toMatchObject([
+      {
+        id: 'manual-webfetch',
+        sessionID: 'child',
+        protocol: 'current',
+      },
+    ]);
+    await useChatStore.getState().replyPermission('manual-webfetch', 'once', 'child', workspace);
+    expect(replies[4]).toEqual({
+      pathname: '/permission/manual-webfetch/reply',
+      directory: agentRoot,
+      directoryHeader: encodeURIComponent(`${workspace}/.tagma`),
+      body: { reply: 'once' },
+    });
+    dispatch({
+      type: 'permission.replied',
+      properties: { sessionID: 'child', requestID: 'manual-webfetch', reply: 'once' },
+    });
 
     dispatch({
       type: 'permission.updated',
@@ -925,8 +1240,226 @@ test('staged descendant permissions inherit the root agent directory and are dec
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(decisions[4]).toEqual({ permission: 'edit', patterns: [], metadata: null });
-    expect(replies[4]?.response).toBe('reject');
+    expect(replies[5]).toEqual({
+      pathname: '/session/child/permissions/legacy-forged-title',
+      directory: null,
+      directoryHeader: encodeURIComponent(`${workspace}/.tagma`),
+      body: { response: 'reject' },
+    });
     expect(useChatStore.getState().sendError).toContain('did not identify a target path');
+  } finally {
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('staged permission reply keeps the captured directory after renderer relocation clears', async () => {
+  const workspace = 'C:/staged-permission-race-repo';
+  const agentRoot =
+    'C:/staged-permission-race-repo/.tagma/.chat-staging/22222222-2222-4222-8222-222222222222/agent-workspace/.tagma';
+  let markAuthorizationStarted!: () => void;
+  const authorizationStarted = new Promise<void>((resolve) => {
+    markAuthorizationStarted = resolve;
+  });
+  let releaseAuthorization!: () => void;
+  const authorizationGate = new Promise<void>((resolve) => {
+    releaseAuthorization = resolve;
+  });
+  const replies: Array<{
+    pathname: string;
+    directory: string | null;
+    body: Record<string, unknown>;
+  }> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    if (url === '/api/workspace/chat-yaml-stage/authorize-paths') {
+      markAuthorizationStarted();
+      await authorizationGate;
+      return jsonResponse({ allowed: true, reason: null });
+    }
+    if (url === '/api/opencode/chat/ensure') {
+      return jsonResponse({
+        baseUrl: 'http://opencode-stage-permission-race.test',
+        directory: `${workspace}/.tagma`,
+      });
+    }
+    const parsedUrl = new URL(url);
+    if (/\/permission\/[^/]+\/reply$/.test(parsedUrl.pathname)) {
+      replies.push({
+        pathname: parsedUrl.pathname,
+        directory: parsedUrl.searchParams.get('directory'),
+        body: await jsonRequestBody(request, init),
+      });
+      return jsonResponse({ ok: true });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+  setClientWorkspace(workspace);
+  resetOpencodeClient();
+  try {
+    useChatStore.setState({
+      currentSessionId: 'race-root',
+      sessions: [makeSession('race-root')],
+      sessionStates: {},
+      sending: true,
+      pendingPermissions: [],
+      yamlSnapshotBeforeSend: {
+        workDir: workspace,
+        activePath: `${workspace}/.tagma/sample/sample.yaml`,
+        localEditRevision: 0,
+        yamlEditLockId: 'lock-stage-permission-race',
+        sessionRelocation: {
+          relocationId: '22222222-2222-4222-8222-222222222222',
+          sessionId: 'race-root',
+          sourceDirectory: `${workspace}/.tagma`,
+          stageDirectory: agentRoot,
+        },
+        staging: {
+          id: '22222222-2222-4222-8222-222222222222',
+          agentTagmaDir: agentRoot,
+          activeRelativePath: 'sample/sample.yaml',
+          activeStagedPath: `${agentRoot}/sample/sample.yaml`,
+          entries: [],
+        },
+      },
+    } as never);
+    dispatch({
+      type: 'session.created',
+      properties: { info: makeSession('race-child', 'race-root') },
+    });
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'race-write',
+        sessionID: 'race-child',
+        permission: 'edit',
+        patterns: [`${agentRoot}/sample/sample.yaml`],
+        metadata: { filepath: `${agentRoot}/sample/sample.yaml` },
+        always: [],
+        tool: { messageID: 'race-message', callID: 'race-call' },
+      },
+    });
+
+    await authorizationStarted;
+    useChatStore.setState({ yamlSnapshotBeforeSend: null, sessionStates: {} } as never);
+    releaseAuthorization();
+    await waitFor(() => replies.length === 1);
+
+    expect(replies).toEqual([
+      {
+        pathname: '/permission/race-write/reply',
+        directory: agentRoot,
+        body: { reply: 'once' },
+      },
+    ]);
+  } finally {
+    releaseAuthorization();
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('manual staged current permission keeps its queued directory after relocation clears', async () => {
+  const workspace = 'C:/manual-staged-permission-race-repo';
+  const agentRoot =
+    'C:/manual-staged-permission-race-repo/.tagma/.chat-staging/33333333-3333-4333-8333-333333333333/agent-workspace/.tagma';
+  const replies: Array<{
+    pathname: string;
+    directory: string | null;
+    body: Record<string, unknown>;
+  }> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    if (url === '/api/opencode/chat/ensure') {
+      return jsonResponse({
+        baseUrl: 'http://opencode-manual-stage-permission-race.test',
+        directory: `${workspace}/.tagma`,
+      });
+    }
+    const parsedUrl = new URL(url);
+    if (/\/permission\/[^/]+\/reply$/.test(parsedUrl.pathname)) {
+      replies.push({
+        pathname: parsedUrl.pathname,
+        directory: parsedUrl.searchParams.get('directory'),
+        body: await jsonRequestBody(request, init),
+      });
+      return jsonResponse({ ok: true });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+  setClientWorkspace(workspace);
+  resetOpencodeClient();
+  try {
+    useChatStore.setState({
+      currentSessionId: 'manual-race-root',
+      sessions: [makeSession('manual-race-root')],
+      sessionStates: {},
+      sending: true,
+      pendingPermissions: [],
+      yamlSnapshotBeforeSend: {
+        workDir: workspace,
+        activePath: `${workspace}/.tagma/sample/sample.yaml`,
+        localEditRevision: 0,
+        yamlEditLockId: 'lock-manual-stage-permission-race',
+        sessionRelocation: {
+          relocationId: '33333333-3333-4333-8333-333333333333',
+          sessionId: 'manual-race-root',
+          sourceDirectory: `${workspace}/.tagma`,
+          stageDirectory: agentRoot,
+        },
+        staging: {
+          id: '33333333-3333-4333-8333-333333333333',
+          agentTagmaDir: agentRoot,
+          activeRelativePath: 'sample/sample.yaml',
+          activeStagedPath: `${agentRoot}/sample/sample.yaml`,
+          entries: [],
+        },
+      },
+    } as never);
+    dispatch({
+      type: 'session.created',
+      properties: { info: makeSession('manual-race-child', 'manual-race-root') },
+    });
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'manual-race-webfetch',
+        sessionID: 'manual-race-child',
+        permission: 'webfetch',
+        patterns: ['https://example.com'],
+        metadata: {},
+        always: [],
+      },
+    });
+
+    const pending = useChatStore.getState().pendingPermissions[0];
+    expect(pending).toMatchObject({
+      id: 'manual-race-webfetch',
+      sessionID: 'manual-race-child',
+      workspaceKey: workspace,
+      protocol: 'current',
+      directory: agentRoot,
+    });
+    if (!pending) throw new Error('manual staged permission was not queued');
+
+    useChatStore.setState({ yamlSnapshotBeforeSend: null, sessionStates: {} } as never);
+    await useChatStore
+      .getState()
+      .replyPermission(pending.id, 'once', pending.sessionID, pending.workspaceKey);
+
+    expect(replies).toEqual([
+      {
+        pathname: '/permission/manual-race-webfetch/reply',
+        directory: agentRoot,
+        body: { reply: 'once' },
+      },
+    ]);
   } finally {
     setClientWorkspace(null);
     resetOpencodeClient();
@@ -967,6 +1500,9 @@ test('keeps staged child ancestry through bootstrap and refresh for permission r
     const method = init?.method ?? request?.method ?? 'GET';
     if (url === '/api/opencode/chat/ensure') {
       return Promise.resolve(jsonResponse({ baseUrl, directory }));
+    }
+    if (url === '/api/workspace/chat-yaml-stage/session-relocations') {
+      return Promise.resolve(jsonResponse({ bindings: [] }));
     }
     const parsed = (() => {
       try {
@@ -1658,6 +2194,11 @@ test('allows sending from another conversation while a hidden conversation is st
         new Response(
           new ReadableStream<Uint8Array>({
             async start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`,
+                ),
+              );
               await eventStreamGate;
               controller.close();
             },
@@ -1743,6 +2284,11 @@ test('hidden trial-plan continuation stays with its owning conversation', async 
         new Response(
           new ReadableStream<Uint8Array>({
             async start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`,
+                ),
+              );
               await eventStreamGate;
               controller.close();
             },
@@ -3301,13 +3847,14 @@ describe('applySseEvent — turn lifecycle', () => {
     globalThis.fetch = ((input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       calls.push(url);
+      const pathname = new URL(url, 'http://local.test').pathname;
       if (url.endsWith('/api/opencode/chat/ensure')) {
         return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
       }
-      if (url === 'http://opencode.test/session/status') {
+      if (pathname === '/session/status') {
         return Promise.resolve(jsonResponse({ s1: { type: 'idle' } }));
       }
-      if (url === 'http://opencode.test/session/s1/message') {
+      if (pathname === '/session/s1/message') {
         return Promise.resolve(jsonResponse([completedEntry]));
       }
       return Promise.resolve(new Response('not found', { status: 404 }));
@@ -3328,8 +3875,12 @@ describe('applySseEvent — turn lifecycle', () => {
       await flushAsyncWork();
 
       const state = useChatStore.getState();
-      expect(calls).toContain('http://opencode.test/session/status');
-      expect(calls).toContain('http://opencode.test/session/s1/message');
+      expect(
+        calls.some((url) => new URL(url, 'http://local.test').pathname === '/session/status'),
+      ).toBe(true);
+      expect(
+        calls.some((url) => new URL(url, 'http://local.test').pathname === '/session/s1/message'),
+      ).toBe(true);
       expect(state.sending).toBe(false);
       expect(state.sendError).toBeNull();
       expect(state.completionWarning).toBe(
@@ -3476,13 +4027,14 @@ describe('applySseEvent — turn lifecycle', () => {
     globalThis.fetch = ((input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       calls.push(url);
+      const pathname = new URL(url, 'http://local.test').pathname;
       if (url.endsWith('/api/opencode/chat/ensure')) {
         return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
       }
-      if (url === 'http://opencode.test/session/status') {
+      if (pathname === '/session/status') {
         return Promise.resolve(jsonResponse({}));
       }
-      if (url === 'http://opencode.test/session/s1/message') {
+      if (pathname === '/session/s1/message') {
         return Promise.resolve(jsonResponse([staleEntry]));
       }
       return Promise.resolve(new Response('not found', { status: 404 }));
@@ -3497,8 +4049,12 @@ describe('applySseEvent — turn lifecycle', () => {
       await flushAsyncWork();
 
       const state = useChatStore.getState();
-      expect(calls).toContain('http://opencode.test/session/status');
-      expect(calls).toContain('http://opencode.test/session/s1/message');
+      expect(
+        calls.some((url) => new URL(url, 'http://local.test').pathname === '/session/status'),
+      ).toBe(true);
+      expect(
+        calls.some((url) => new URL(url, 'http://local.test').pathname === '/session/s1/message'),
+      ).toBe(true);
       expect(state.sending).toBe(false);
       expect(state.pendingUserText).toBe(null);
       expect(state.messages[0].activity?.at(-1)?.endedAt).not.toBeNull();

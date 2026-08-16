@@ -85,6 +85,28 @@ test('ci full-check runs repository hygiene gates before type/test/lint', () => 
   }
 });
 
+test('ci full-check executes the repository script-test gate', () => {
+  const scriptTests = stepIndex(ciWorkflow, 'Script tests');
+  const repositoryTests = stepIndex(ciWorkflow, 'Test');
+  const block = ciWorkflow.slice(scriptTests, repositoryTests);
+
+  assert(scriptTests < repositoryTests, 'script tests must run before the repository test suite');
+  assert.match(block, /run:\s*bun run test:scripts/);
+});
+
+test('ci validates the pinned OpenCode database upgrade and downgrade cycle on every desktop OS', () => {
+  const managedStart = ciWorkflow.indexOf('  managed-opencode-runtime:');
+  const fullCheckStart = ciWorkflow.indexOf('  full-check:');
+  assert.notEqual(managedStart, -1, 'missing managed-opencode-runtime job');
+  assert.notEqual(fullCheckStart, -1, 'missing full-check job');
+  const block = ciWorkflow.slice(managedStart, fullCheckStart);
+
+  assert.match(block, /os: \[ubuntu-latest, macos-latest, windows-latest\]/);
+  assert.match(block, /fetch-opencode-upgrade-fixture\.mjs/);
+  assert.match(block, /TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE:\s*'1'/);
+  assert.match(block, /opencode-managed-upgrade-smoke\.test\.ts/);
+});
+
 test('ci fork check runs read-only hygiene gates before public package checks', () => {
   const publicTypeCheck = stepIndex(ciWorkflow, 'Type check public packages');
   const requiredSteps = [
@@ -107,7 +129,7 @@ test('ci fork check runs read-only hygiene gates before public package checks', 
 test('test:scripts runs both node mjs tests and Bun TypeScript script tests', () => {
   const script = packageJson.scripts?.['test:scripts'];
 
-  assert.match(script, /node scripts\/run-node-tests\.mjs/);
+  assert.match(script, /^node scripts\/run-node-tests\.mjs &&/);
   assert.doesNotMatch(script, /node --test ["']?scripts\/\*\*\/\*\.test\.mjs/);
   assert.match(script, /bun test/);
   assert.match(script, /scripts\/\*\*\/\*\.test\.ts/);

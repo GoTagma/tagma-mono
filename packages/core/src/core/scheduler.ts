@@ -1,4 +1,5 @@
 import type { RunContext } from './run-context';
+import type { TaskWaitReason } from '../types';
 import { isTerminal, skippedTaskResult } from './run-state';
 import { nowISO } from '../utils';
 
@@ -22,6 +23,28 @@ export function findLaunchableTasks(
     if (allDepsTerminal) launchable.push(id);
   }
   return launchable;
+}
+
+export function dependencyWaitReason(ctx: RunContext, taskId: string): TaskWaitReason | null {
+  const node = ctx.dag.nodes.get(taskId);
+  if (!node) return null;
+  const taskIds = node.dependsOn.filter((depId) => {
+    const dependency = ctx.states.get(depId);
+    return dependency !== undefined && !isTerminal(dependency.status);
+  });
+  return taskIds.length > 0 ? { kind: 'dependencies', taskIds } : null;
+}
+
+/** Refresh only tasks not already executing (including trigger watchers). */
+export function refreshDependencyWaitReasons(
+  ctx: RunContext,
+  runningTaskIds: ReadonlySet<string>,
+): void {
+  for (const taskId of ctx.dag.sorted) {
+    const state = ctx.states.get(taskId);
+    if (!state || state.status !== 'waiting' || runningTaskIds.has(taskId)) continue;
+    ctx.setTaskWaitReason(taskId, dependencyWaitReason(ctx, taskId));
+  }
 }
 
 export function allTasksTerminal(ctx: RunContext): boolean {

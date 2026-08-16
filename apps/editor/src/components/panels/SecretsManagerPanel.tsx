@@ -287,12 +287,12 @@ export function SecretsManagerPanel({
   return (
     <>
       <div
-        className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center"
         onClick={onClose}
       >
         <div
           ref={modalRef}
-          className="modal-viewport-shell flex max-w-full flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+          className="modal-viewport-shell modal-tone-accent flex max-w-full flex-col border"
           style={{ width: bounds.width, height: bounds.height, maxHeight: bounds.height }}
           role="dialog"
           aria-modal="true"

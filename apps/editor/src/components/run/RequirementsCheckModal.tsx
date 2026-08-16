@@ -128,12 +128,12 @@ export function RequirementsCheckModal({
 
   return (
     <div
-      className="modal-viewport-backdrop fixed inset-0 z-[220] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[220] flex items-center justify-center"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[640px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell modal-tone-warning flex w-full max-w-[640px] flex-col border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="requirements-check-modal-title"

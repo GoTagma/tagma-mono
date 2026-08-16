@@ -7,6 +7,7 @@ import type {
   DriverPlugin,
   RunOptions,
   TaskResult,
+  TaskOutputDiagnostic,
   CommandConfig,
 } from '@tagma/core';
 import { commandToSpawnSpec } from '@tagma/core';
@@ -187,15 +188,24 @@ function killUnixProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
  * UTF-8 boundaries at the slice point may emit replacement characters when
  * decoded — acceptable (the trailing/leading codepoint is a cosmetic loss).
  */
-async function collectStream(
+export async function collectStream(
   stream: ReadableStream<Uint8Array> | undefined,
   filePath: string | undefined,
   maxTailBytes: number,
   streamName: OutputStreamName,
   onChunk?: (text: string) => void,
   outputRedactor?: OutputRedactor,
-): Promise<{ text: string; totalBytes: number; path: string | null }> {
-  if (!stream) return { text: '', totalBytes: 0, path: null };
+  onReadError?: (error: Error) => void,
+): Promise<{
+  text: string;
+  totalBytes: number;
+  path: string | null;
+  complete: boolean;
+  error: Error | null;
+}> {
+  if (!stream) {
+    return { text: '', totalBytes: 0, path: null, complete: true, error: null };
+  }
 
   // Independent streaming decoder for the live side-channel. Kept separate
   // from the tail decoder below so emitting incremental text can't perturb
@@ -225,6 +235,8 @@ async function collectStream(
   let storedBytes = 0;
   let childBytes = 0;
   let streamError: Error | null = null;
+  let streamComplete = false;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
   const redactPiece = (text: string, final: boolean): string => {
     if (!outputRedactor) return text;
@@ -295,17 +307,23 @@ async function collectStream(
   };
 
   try {
-    // Use for await...of to avoid Bun bug where getReader() returns an
-    // incomplete reader missing releaseLock() under concurrent spawn.
-    // https://github.com/oven-sh/bun/issues/28952
-    //
-    // Bun 1.3.x also has sporadic failures iterating a spawned process's
-    // stream under concurrent Bun.spawn -- the iterator throws mid-drain even
-    // when the child exited 0. We record the error as a breadcrumb instead
-    // of propagating, so the caller still sees the real exitCode from
-    // proc.exited and a task that the OS considered successful doesn't get
-    // marked failed over a runtime stream glitch.
-    for await (const value of stream as AsyncIterable<Uint8Array>) {
+    // Bun 1.3.x subprocess streams can expose a partial reader shape under
+    // concurrent spawn: read() remains usable, but releaseLock() may be
+    // absent. The stream's async iterator can then throw "undefined is not a
+    // function" while finalizing an otherwise successful drain. Drive read()
+    // explicitly so reader cleanup is a separate, optional compatibility
+    // step and a cleanup-shape defect cannot masquerade as truncated output.
+    reader = stream.getReader();
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) {
+        streamComplete = true;
+        break;
+      }
+      const value = next.value;
+      if (!(value instanceof Uint8Array)) {
+        throw new TypeError(`${streamName} reader returned a non-Uint8Array chunk`);
+      }
       childBytes += value.length;
       if (outputRedactor && redactorDecoder && redactorEncoder) {
         const piece = redactorDecoder.decode(value, { stream: true });
@@ -322,7 +340,25 @@ async function collectStream(
     console.error(
       `[runner] stream read failed: ${streamError.message} -- returning partial output`,
     );
+    try {
+      onReadError?.(streamError);
+    } catch {
+      // Capture classification is authoritative. A process-termination
+      // callback is only there to prevent a child from blocking on a broken
+      // pipe and must not replace the original stream error.
+    }
   } finally {
+    if (reader && typeof reader.releaseLock === 'function') {
+      try {
+        reader.releaseLock();
+      } catch (err) {
+        // The drain has already reached done (or recorded its read failure),
+        // so a release-only defect must not change output completeness.
+        console.error(
+          `[runner] failed to release ${streamName} reader: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     if (outputRedactor && redactorDecoder && redactorEncoder) {
       const redactedTail = redactPiece(redactorDecoder.decode(), true);
       if (redactedTail.length > 0)
@@ -366,16 +402,14 @@ async function collectStream(
     text = `[${dropped} bytes truncated from head; full output at: ${pathHint}]\n${text}`;
   }
 
-  if (streamError) {
-    text = text + `\n[runner] stream read aborted: ${streamError.message}`;
-  }
-
   return {
     text,
     totalBytes: childBytes,
     // Return the path even on partial-write failure so operators can still
     // inspect the head bytes we managed to persist.
     path: filePath ?? null,
+    complete: streamComplete && streamError === null,
+    error: streamError,
   };
 }
 /**
@@ -707,10 +741,23 @@ export function validateSpawnSpec(spec: unknown, driverName: string): string | n
   return null;
 }
 
-export async function runSpawn(
+export type BunSpawnForRunner = (
+  args: string[],
+  options: {
+    cwd: string | undefined;
+    env: Record<string, string>;
+    stdout: 'pipe';
+    stderr: 'pipe';
+    stdin: 'pipe' | undefined;
+    detached: boolean;
+  },
+) => ReturnType<typeof Bun.spawn>;
+
+export async function runSpawnWith(
   spec: SpawnSpec,
   driver: DriverPlugin | null,
-  opts: RunOptions = {},
+  opts: RunOptions,
+  spawnProcess: BunSpawnForRunner,
 ): Promise<TaskResult> {
   const { timeoutMs, signal } = opts;
   const start = performance.now();
@@ -768,7 +815,7 @@ export async function runSpawn(
   // ── 1. Spawn (catch ENOENT / bad-cwd up front) ────────────────────────
   let proc: ReturnType<typeof Bun.spawn>;
   try {
-    proc = Bun.spawn(resolvedArgs as string[], {
+    proc = spawnProcess(resolvedArgs as string[], {
       cwd: spec.cwd,
       env: mergedEnv,
       stdout: 'pipe',
@@ -789,11 +836,11 @@ export async function runSpawn(
   }
 
   // ── 2. Timeout & abort handling ────────────────────────────────────────
-  let killReason: 'timeout' | 'aborted' | null = null;
+  let killReason: 'timeout' | 'aborted' | 'output_error' | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let forceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const killGracefully = (reason: 'timeout' | 'aborted') => {
+  const killGracefully = (reason: 'timeout' | 'aborted' | 'output_error') => {
     if (killReason !== null) return;
     killReason = reason;
 
@@ -866,6 +913,7 @@ export async function runSpawn(
     'stdout',
     sink ? (text) => sink('stdout', text) : undefined,
     opts.outputRedactor,
+    () => killGracefully('output_error'),
   );
   const stderrPromise = collectStream(
     stderrStream,
@@ -874,6 +922,7 @@ export async function runSpawn(
     'stderr',
     sink ? (text) => sink('stderr', text) : undefined,
     opts.outputRedactor,
+    () => killGracefully('output_error'),
   );
   const exitPromise = proc.exited;
 
@@ -903,6 +952,25 @@ export async function runSpawn(
   const stderrPath = stderrResult.path;
   const stdoutBytes = stdoutResult.totalBytes;
   const stderrBytes = stderrResult.totalBytes;
+  const outputDiagnostics: TaskOutputDiagnostic[] = [];
+  if (stdoutResult.error) {
+    outputDiagnostics.push({
+      stream: 'stdout',
+      stage: 'read',
+      message: stdoutResult.error.message,
+      capturedBytes: stdoutBytes,
+      path: stdoutPath,
+    });
+  }
+  if (stderrResult.error) {
+    outputDiagnostics.push({
+      stream: 'stderr',
+      stage: 'read',
+      message: stderrResult.error.message,
+      capturedBytes: stderrBytes,
+      path: stderrPath,
+    });
+  }
 
   // ── 6. Cleanup timers & listeners ──────────────────────────────────────
   if (timer) clearTimeout(timer);
@@ -917,7 +985,7 @@ export async function runSpawn(
   // incorrectly. The `timedOut` flag guards against the narrow race where the
   // process exits naturally at the exact moment the timeout fires — even if
   // killedByUs wasn't set in time, the timeout intention still applies.
-  if (killReason !== null) {
+  if (killReason === 'timeout' || killReason === 'aborted') {
     return {
       exitCode: -1,
       stdout,
@@ -932,6 +1000,30 @@ export async function runSpawn(
       // H2: explicit kind so engine.ts no longer has to guess "is exitCode -1
       // a timeout or a spawn-failure?" Both used to share the same code.
       failureKind: killReason,
+    };
+  }
+
+  // A process exit code cannot prove that its output was captured intact.
+  // Do not parse driver metadata or let completion checks consume a partial
+  // stream: return the raw captured prefix/tail plus structured diagnostics,
+  // with no runner text injected into either child stream.
+  if (outputDiagnostics.length > 0) {
+    const immutableOutputDiagnostics = Object.freeze(
+      outputDiagnostics.map((diagnostic) => Object.freeze({ ...diagnostic })),
+    );
+    return {
+      exitCode,
+      stdout,
+      stderr,
+      stdoutPath,
+      stderrPath,
+      stdoutBytes,
+      stderrBytes,
+      durationMs,
+      sessionId: null,
+      normalizedOutput: null,
+      failureKind: 'output_error',
+      outputDiagnostics: immutableOutputDiagnostics,
     };
   }
 
@@ -1020,6 +1112,14 @@ export async function runSpawn(
     // timeout branch even if a third-party driver returns -1 by mistake.
     failureKind: exitCode === 0 ? null : 'exit_nonzero',
   };
+}
+
+export async function runSpawn(
+  spec: SpawnSpec,
+  driver: DriverPlugin | null,
+  opts: RunOptions = {},
+): Promise<TaskResult> {
+  return runSpawnWith(spec, driver, opts, (args, options) => Bun.spawn(args, options));
 }
 
 export async function runCommand(
