@@ -369,7 +369,12 @@ function sqliteString(value: string): string {
 }
 
 function assertDatabaseHealthy(path: string): void {
-  const db = new Database(path, { readonly: true, strict: true });
+  // A WAL database may need to create or update its shared-memory sidecar
+  // while opening. In particular, Bun 1.3.11 on macOS cannot reliably open a
+  // fresh WAL database with SQLITE_OPEN_READONLY even when the database file
+  // itself is healthy. Keep creation disabled so a missing database still
+  // fails, but allow SQLite to manage its WAL sidecars for the integrity check.
+  const db = new Database(path, { readwrite: true, create: false, strict: true });
   try {
     const result = db.query('PRAGMA quick_check').get() as Record<string, unknown> | null;
     if (!result || !Object.values(result).includes('ok')) {
