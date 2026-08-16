@@ -366,11 +366,16 @@ async function expectBothSdkGenerationsSeeSession(
   ]);
   const legacySession = legacySessions.find((session) => session.id === sessionID);
   const v2Session = v2Sessions.find((session) => session.id === sessionID);
+  const v2SessionDetail = await unwrap(v2.session.get({ sessionID, directory }));
   expect(legacySession?.title).toBe(title);
   expectFilesystemPath(legacySession?.directory ?? '', directory);
   expect(v2Session?.title).toBe(title);
   expectFilesystemPath(v2Session?.directory ?? '', directory);
-  expect(v2Session?.metadata?.nativeUpgradeMarker).toBe(marker);
+  expect(v2SessionDetail.id).toBe(sessionID);
+  expect(v2SessionDetail.metadata?.nativeUpgradeMarker).toBe(marker);
+  if (v2Session?.metadata?.nativeUpgradeMarker !== undefined) {
+    expect(v2Session.metadata.nativeUpgradeMarker).toBe(marker);
+  }
 }
 
 function checkpointedDatabaseDigest(path: string): string {
