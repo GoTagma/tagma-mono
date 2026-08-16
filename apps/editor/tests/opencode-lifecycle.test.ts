@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,6 +9,7 @@ import {
   restartOpencode,
   stopOpencodeProcesses,
 } from '../server/opencode-lifecycle';
+import { TAGMA_MANAGED_OPENCODE_TOOL_IDS } from '../server/opencode-managed-tools';
 
 type BunLike = typeof Bun & {
   listen: typeof Bun.listen;
@@ -25,6 +26,7 @@ const realBun = {
 };
 const realDateNow = Date.now;
 const realSetTimeout = globalThis.setTimeout;
+const MANAGED_TOOL_IDS_BODY = JSON.stringify(TAGMA_MANAGED_OPENCODE_TOOL_IDS);
 
 let tempRoot: string;
 const originalDatabaseStateDir = process.env.TAGMA_OPENCODE_DB_STATE_DIR;
@@ -62,15 +64,24 @@ function mockOpencodeProcess(onKill?: () => void): ReturnType<typeof Bun.spawn> 
   } as unknown as ReturnType<typeof Bun.spawn>;
 }
 
+function successfulProbeBody(request: string | Uint8Array): string {
+  const path = String(request).split(' ')[1] ?? '';
+  return path.startsWith('/experimental/tool/ids?')
+    ? MANAGED_TOOL_IDS_BODY
+    : '{"healthy":true,"version":"1.17.8"}';
+}
+
+function successfulProbeResponse(request: string | Uint8Array): Buffer {
+  const body = successfulProbeBody(request);
+  return Buffer.from(
+    `HTTP/1.1 200 OK\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: keep-alive\r\n\r\n${body}`,
+  );
+}
+
 function respondToHealthyProbe(options: Parameters<typeof Bun.connect>[0]): void {
   const socket = {
-    write() {
-      options.socket.data?.(
-        socket as never,
-        Buffer.from(
-          'HTTP/1.1 200 OK\r\nContent-Length: 36\r\nConnection: keep-alive\r\n\r\n123456789012345678901234567890123456',
-        ),
-      );
+    write(request: string | Uint8Array) {
+      options.socket.data?.(socket as never, successfulProbeResponse(request));
     },
     end() {},
   };
@@ -116,7 +127,8 @@ afterEach(async () => {
 
 describe('ensureOpencode health probing', () => {
   test('accepts a complete HTTP health response before the socket closes', async () => {
-    mkdirSync(join(tempRoot, '.tagma'), { recursive: true });
+    const cwd = join(tempRoot, 'workspace with spaces 中文', '.tagma');
+    mkdirSync(cwd, { recursive: true });
     const requestedPaths: string[] = [];
     let nowCalls = 0;
     Date.now = () => {
@@ -148,12 +160,7 @@ describe('ensureOpencode health probing', () => {
         const socket = {
           write(request: string | Uint8Array) {
             requestedPaths.push(String(request).split(' ')[1] ?? '');
-            options.socket.data?.(
-              socket as never,
-              Buffer.from(
-                'HTTP/1.1 200 OK\r\nContent-Length: 36\r\nConnection: keep-alive\r\n\r\n{"healthy":true,"version":"1.14.41"}',
-              ),
-            );
+            options.socket.data?.(socket as never, successfulProbeResponse(request));
           },
           end() {},
         };
@@ -162,7 +169,7 @@ describe('ensureOpencode health probing', () => {
       return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
     }) as typeof Bun.connect;
 
-    const handle = await ensureOpencode(join(tempRoot, '.tagma'));
+    const handle = await ensureOpencode(cwd);
     expect(handle.baseUrl).toBe('http://127.0.0.1:45123');
     expect(handle.database.schemaVersion).toBe(1);
     expect(
@@ -173,11 +180,134 @@ describe('ensureOpencode health probing', () => {
     expect(handle.database.generationId.startsWith('schema-v1-')).toBe(true);
     expect(requestedPaths).toContain('/global/health');
     expect(requestedPaths).toContain('/session?limit=1');
+    const toolRegistryPath = requestedPaths.find((path) =>
+      path.startsWith('/experimental/tool/ids?'),
+    );
+    expect(toolRegistryPath).toBeDefined();
+    expect(new URL(toolRegistryPath!, 'http://127.0.0.1').searchParams.get('directory')).toBe(cwd);
     const active = JSON.parse(
       readFileSync(join(tempRoot, 'opencode-state', 'current-head.json'), 'utf-8'),
     ) as { schemaVersion: number; generationId: string };
     expect(active.schemaVersion).toBe(1);
     expect(active.generationId).toBe(handle.database.generationId);
+  });
+
+  test('rejects startup unless the managed tool registry is complete and valid', async () => {
+    const scenarios = [
+      {
+        name: 'module resolution failure',
+        status: '500 Internal Server Error',
+        body: "Cannot find module '@opencode-ai/plugin'",
+        error: /tool registry did not become accessible.*Cannot find module '@opencode-ai\/plugin'/,
+      },
+      {
+        name: 'incomplete registry',
+        status: '200 OK',
+        body: '["tagma_yaml_skeleton"]',
+        error: /missing managed tool ids.*tagma_placement_plan, tagma_trial_plan/,
+      },
+      {
+        name: 'malformed registry response',
+        status: '200 OK',
+        body: '{not-json',
+        error: /tool registry returned invalid JSON/,
+      },
+    ] as const;
+
+    for (const [index, scenario] of scenarios.entries()) {
+      const cwd = join(tempRoot, `${index}-${scenario.name} with spaces 中文`, '.tagma');
+      mkdirSync(cwd, { recursive: true });
+      let killed = false;
+      const requestedPaths: string[] = [];
+
+      (Bun as BunLike).listen = (() =>
+        ({
+          port: 45130 + index,
+          stop() {},
+        }) as unknown as ReturnType<typeof Bun.listen>) as unknown as typeof Bun.listen;
+      (Bun as BunLike).spawn = (() =>
+        mockOpencodeProcess(() => {
+          killed = true;
+        })) as typeof Bun.spawn;
+      (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
+        queueMicrotask(() => {
+          const socket = {
+            write(request: string | Uint8Array) {
+              const path = String(request).split(' ')[1] ?? '';
+              requestedPaths.push(path);
+              const isToolProbe = path.startsWith('/experimental/tool/ids?');
+              const body = isToolProbe ? scenario.body : '[]';
+              const status = isToolProbe ? scenario.status : '200 OK';
+              options.socket.data?.(
+                socket as never,
+                Buffer.from(
+                  `HTTP/1.1 ${status}\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`,
+                ),
+              );
+            },
+            end() {},
+          };
+          options.socket.open?.(socket as never);
+        });
+        return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
+      }) as typeof Bun.connect;
+
+      await expect(ensureOpencode(cwd)).rejects.toThrow(scenario.error);
+      expect(killed).toBe(true);
+      expect(requestedPaths).toContain('/global/health');
+      expect(requestedPaths).toContain('/session?limit=1');
+      expect(requestedPaths.some((path) => path.startsWith('/experimental/tool/ids?'))).toBe(true);
+      expect(existsSync(join(tempRoot, 'opencode-state', 'current-head.json'))).toBe(false);
+    }
+  });
+
+  test('can retry the same cwd after a managed tool registry startup failure', async () => {
+    const cwd = join(tempRoot, 'retry same cwd 中文', '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    let toolRegistryHealthy = false;
+    let killed = 0;
+
+    (Bun as BunLike).listen = (() =>
+      ({
+        port: 45133,
+        stop() {},
+      }) as unknown as ReturnType<typeof Bun.listen>) as unknown as typeof Bun.listen;
+    (Bun as BunLike).spawn = (() =>
+      mockOpencodeProcess(() => {
+        killed += 1;
+      })) as typeof Bun.spawn;
+    (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
+      queueMicrotask(() => {
+        const socket = {
+          write(request: string | Uint8Array) {
+            const path = String(request).split(' ')[1] ?? '';
+            if (path.startsWith('/experimental/tool/ids?') && !toolRegistryHealthy) {
+              const body = "Cannot find module '@opencode-ai/plugin'";
+              options.socket.data?.(
+                socket as never,
+                Buffer.from(
+                  `HTTP/1.1 500 Internal Server Error\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`,
+                ),
+              );
+              return;
+            }
+            options.socket.data?.(socket as never, successfulProbeResponse(request));
+          },
+          end() {},
+        };
+        options.socket.open?.(socket as never);
+      });
+      return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
+    }) as typeof Bun.connect;
+
+    await expect(ensureOpencode(cwd)).rejects.toThrow(/tool registry did not become accessible/);
+    expect(killed).toBe(1);
+    expect(existsSync(join(tempRoot, 'opencode-state', 'current-head.json'))).toBe(false);
+
+    toolRegistryHealthy = true;
+    const handle = await ensureOpencode(cwd);
+    expect(handle.cwd).toBe(cwd);
+    expect(existsSync(join(tempRoot, 'opencode-state', 'current-head.json'))).toBe(true);
   });
 
   test('closes a timed-out socket before ignoring its late response', async () => {
@@ -294,12 +424,7 @@ describe('ensureOpencode health probing', () => {
           write(request: string | Uint8Array) {
             const path = String(request).split(' ')[1] ?? '';
             const respond = () => {
-              options.socket.data?.(
-                socket as never,
-                Buffer.from(
-                  'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n[]',
-                ),
-              );
+              options.socket.data?.(socket as never, successfulProbeResponse(request));
             };
             if (path === '/session?limit=1') {
               databaseProbeCount += 1;
@@ -616,13 +741,8 @@ describe('ensureOpencode health probing', () => {
     (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
       const respond = () => {
         const socket = {
-          write() {
-            options.socket.data?.(
-              socket as never,
-              Buffer.from(
-                'HTTP/1.1 200 OK\r\nContent-Length: 36\r\nConnection: keep-alive\r\n\r\n{"healthy":true,"version":"1.14.41"}',
-              ),
-            );
+          write(request: string | Uint8Array) {
+            options.socket.data?.(socket as never, successfulProbeResponse(request));
           },
           end() {},
         };

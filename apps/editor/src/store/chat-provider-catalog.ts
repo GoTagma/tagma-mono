@@ -309,7 +309,9 @@ export function modelVariantIds(providers: readonly Provider[], model: ModelPick
   const provider = providers.find((entry) => entry.id === model.providerID);
   const variants = provider?.models?.[model.modelID]?.variants;
   if (!variants) return [];
-  return Object.keys(variants).filter((variant) => variant.trim().length > 0);
+  return Object.entries(variants)
+    .filter(([variant, options]) => variant.trim().length > 0 && options['disabled'] !== true)
+    .map(([variant]) => variant);
 }
 
 /**

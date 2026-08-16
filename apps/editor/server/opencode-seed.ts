@@ -6,21 +6,24 @@ import {
 } from '../shared/opencode-agent-step-limit.js';
 
 import { buildTagmaTrialPlanTool } from './opencode-trial-plan-tool.js';
+import { resolveOpencodeRuntimePaths } from './opencode-config.js';
 import {
   OPENCODE_CONTEXT_WINDOW_PLUGIN_FILENAME,
   OPENCODE_CONTEXT_WINDOW_READY_FILENAME,
   buildTagmaChatContextWindowPlugin,
 } from './opencode-context-window-plugin.js';
+import { TAGMA_MANAGED_OPENCODE_TOOLS } from './opencode-managed-tools.js';
 
 export { buildTagmaTrialPlanTool };
 /**
  * Editor-shipped opencode artifacts.
  *
- * Opencode discovers these from `<cwd>/.opencode/`, and we spawn opencode
- * with `cwd = <workDir>/.tagma`. We therefore seed the agent file into every
- * workspace on chat bootstrap so it's always available - without seeding,
- * opencode silently falls back to its built-in default agent and loses the
- * read-workspace/write-.tagma boundary the chat UI promises the user.
+ * Opencode discovers workspace-scoped agents, plugins, and skills from
+ * `<cwd>/.opencode/`, and we spawn opencode with `cwd = <workDir>/.tagma`.
+ * Runtime-backed custom tools live under the isolated `OPENCODE_CONFIG_DIR`
+ * instead, so their bare imports resolve against the dependency root that
+ * OpenCode owns. We seed both scopes on chat bootstrap so the editor-managed
+ * contract is always available.
  *
  * The primary chat agent (`tagma-router`) is intentionally tiny: it classifies
  * each turn into an explicitly authorized pipeline mutation, a read-only
@@ -780,6 +783,10 @@ For each new prompt task:
 - An explicit user provider/model choice wins. If the driver is \`opencode\`, no model was chosen, and \`<opencode-chat-model provider-id="..." model-id="..." />\` exists, persist \`model: <provider-id>/<model-id>\` with those exact ids.
 - With an explicit non-\`opencode\` driver and no model, omit the model. Never copy the OpenCode Chat model to a non-\`opencode\` driver.
 
+## Design-Before-Generation Gate
+
+For create-new and fill-manual-new requests, complete this gate in the current worker before the first artifact write. Establish the goal and observable success evidence, task graph and typed dataflow, track/persona boundaries, trigger and permission choices, verification and failure behavior, requirements impact, assumptions, and relevant edge-case hypotheses. Resolve only material ambiguity under Implementation Ambiguity; keep a one-task design proportional. Do not write the manifest, call \`tagma_yaml_skeleton\`, or write YAML until the design is coherent.
+
 ## Manifest-Guided YAML Edits
 
 For new pipelines, write \`<stem>.manifest.json\` first, call \`tagma_yaml_skeleton\` with that object, write the returned YAML text to \`<stem>/<stem>.yaml\`, then fill every prompt or command.
@@ -819,11 +826,11 @@ Ask only when the missing choice would authorize an external side effect, paid s
 
 1. Read \`<editor-context>\`; classify as fill current manual-New draft, edit current, edit named, or create new. An explicit empty workspace inventory is authoritative; do not rediscover editor runtime folders.
 2. Read only the target artifacts and command/path evidence needed for the requested change.
-3. Design the smallest runnable graph in this model: tasks, dependencies, prompt-vs-command split, trigger, inputs/outputs, permissions, layout, and requirements impact.
-4. For **create new**, write the manifest, call \`tagma_yaml_skeleton\`, write the YAML, and fill all selected sections yourself.
+3. For create/fill-new, complete the Design-Before-Generation Gate; for edits, design the smallest safe change before writing.
+4. For **create new**, write the manifest only after completing the Design-Before-Generation Gate, call \`tagma_yaml_skeleton\`, write the YAML, and fill all selected sections yourself.
 5. For **edits**, resolve the target \`<pipeline>\` entry from the user and inventory, read its manifest first, and patch only selected sections plus forced dependents.
 6. Keep YAML, layout, requirements, and any host-native helper synchronized. The editor regenerates the manifest from YAML.
-7. Run the Self-Review checklist once and fix its findings. Read \`.compile.log\` after every YAML write; repair until the final compile has \`success: true\` or only explicitly accepted warnings.
+7. Run Self-Review And Edge Cases once and fix its findings. Read \`.compile.log\` after every YAML write; repair until the final compile has \`success: true\` or only explicitly accepted warnings.
 8. Once final compile succeeds, call no more tools; answer with files changed, assumptions, run instructions, and genuine limitations. Host enters a dedicated planning phase when Trial is enabled.
 
 Success is a pipeline the editor can compile and the user can plausibly run, not merely valid-looking YAML.
@@ -838,9 +845,9 @@ Host enters a dedicated planning phase when Trial is enabled. Host runs bounded 
 
 Relative trigger paths resolve from the real workspace root (or the task cwd), never from the YAML folder. During staged authoring, a staged pipeline support file does not satisfy the optional Live Smoke baseline before finalize. Report every missing real-workspace prerequisite precisely. A missing file or directory input is fixture-backed for host Trial: the planner supplies representative data only in Sandbox cases, and the host skips an unavailable Live Smoke baseline. Never create a placeholder in the real workspace or present a same-folder sample as evidence that the trigger is ready.
 
-## Self-Review
+## Self-Review And Edge Cases
 
-Before finishing, check user intent, target selection, compile success, YAML/layout/requirements consistency, command grounding, trigger and secret safety, path containment, and whether a simpler native design would work. Fix actionable findings directly; do not delegate review.
+After creating or materially editing the artifacts, review user intent, target selection, compile success, companion consistency, command grounding, safety, containment, and simpler native options. Explicitly consider only relevant edge cases: empty, missing, malformed, duplicate, or ambiguous inputs; multiline, Unicode, and shell-special values; boundary sizes and counts; missing files, binaries, plugins, services, network access, secrets, or permissions; Windows and POSIX path and quoting behavior; timeouts, crashes, partial failure, and bounded retry behavior; repeated or concurrent runs, idempotency, and output collisions; destructive or external side effects. Do not invent handling for an irrelevant case. Fix applicable findings and re-read the resulting \`.compile.log\`; report unverified risk as a limitation. Trial adds execution evidence only when the host enables it. Fix actionable findings directly; do not delegate review.
 
 For deterministic handoff commands, distinguish missing or malformed artifacts from valid empty collections. A schema-valid empty list is not an error unless the artifact contract explicitly says so.
 
@@ -1579,6 +1586,21 @@ function seedFile(targetDir: string, filename: string, content: string): boolean
   return true;
 }
 
+function pruneLegacyManagedToolFiles(tagmaCwd: string): boolean {
+  const legacyToolsDir = join(tagmaCwd, '.opencode', 'tools');
+  let changed = false;
+  for (const { filename } of TAGMA_MANAGED_OPENCODE_TOOLS) {
+    const path = join(legacyToolsDir, filename);
+    if (!existsSync(path)) continue;
+    // These filenames have always been overwritten by Tagma. Fail closed if a
+    // legacy copy cannot be removed: OpenCode imports every discovered tool,
+    // so leaving one broken copy would still block all chat turns.
+    rmSync(path, { force: true });
+    changed = true;
+  }
+  return changed;
+}
+
 // OpenCode scans both `.opencode/agent/` (legacy singular) and
 // `.opencode/agents/` (current plural). We standardize on the plural path
 // only; `pruneStaleAgentFiles` removes any singular-dir copy and renamed-away
@@ -1674,6 +1696,7 @@ export function seedOpencodeArtifacts(
   options: SeedOpencodeArtifactsOptions = {},
 ): boolean {
   const hostOs = hostOsLabel();
+  const runtime = resolveOpencodeRuntimePaths(tagmaCwd);
   const agentMaxSteps = options.agentMaxSteps ?? DEFAULT_OPENCODE_AGENT_MAX_STEPS;
   const seedAgent = (filename: string, content: string): boolean =>
     seedAgentFile(tagmaCwd, filename, content, agentMaxSteps);
@@ -1703,24 +1726,15 @@ export function seedOpencodeArtifacts(
     ) || changed;
   changed = seedAgent(`${TAGMA_TRIAL_PLANNER_AGENT}.md`, buildTagmaTrialPlannerAgent()) || changed;
   changed = seedAgent('tagma-python-tools.md', buildTagmaPythonToolsAgent(hostOs)) || changed;
-  changed =
-    seedFile(
-      join(tagmaCwd, '.opencode', 'tools'),
-      'tagma_yaml_skeleton.ts',
-      buildTagmaYamlSkeletonTool(),
-    ) || changed;
-  changed =
-    seedFile(
-      join(tagmaCwd, '.opencode', 'tools'),
-      'tagma_placement_plan.ts',
-      buildTagmaPlacementTool(),
-    ) || changed;
-  changed =
-    seedFile(
-      join(tagmaCwd, '.opencode', 'tools'),
-      'tagma_trial_plan.ts',
-      buildTagmaTrialPlanTool(),
-    ) || changed;
+  const managedToolContents: Record<(typeof TAGMA_MANAGED_OPENCODE_TOOLS)[number]['id'], string> = {
+    tagma_yaml_skeleton: buildTagmaYamlSkeletonTool(),
+    tagma_placement_plan: buildTagmaPlacementTool(),
+    tagma_trial_plan: buildTagmaTrialPlanTool(),
+  };
+  for (const { id, filename } of TAGMA_MANAGED_OPENCODE_TOOLS) {
+    changed = seedFile(runtime.managedToolsDir, filename, managedToolContents[id]) || changed;
+  }
+  changed = pruneLegacyManagedToolFiles(tagmaCwd) || changed;
   // Context-window plugin: trims the in-memory model input to the configured
   // recent rounds on every Tagma desktop-chat prompt without touching the
   // persisted conversation. A content change invalidates the readiness marker

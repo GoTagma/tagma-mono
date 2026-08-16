@@ -22,6 +22,7 @@ import {
   buildEmbeddedOpencodeRuntimeConfig,
   prepareEmbeddedOpencodeRuntime,
 } from './opencode-config.js';
+import { TAGMA_MANAGED_OPENCODE_TOOL_IDS } from './opencode-managed-tools.js';
 import {
   markManagedOpencodeDatabaseReady,
   releaseManagedOpencodeDatabaseInitialization,
@@ -595,6 +596,43 @@ async function waitForDatabaseAccess(
   );
 }
 
+async function waitForManagedToolRegistry(
+  baseUrl: string,
+  cwd: string,
+  timeoutMs = 300_000,
+  authorization?: string,
+): Promise<void> {
+  const { hostname, port } = new URL(baseUrl);
+  const portNum = Number(port);
+  const query = new URLSearchParams({ directory: cwd });
+  const path = `/experimental/tool/ids?${query.toString()}`;
+  const res = await loopbackGet(hostname, portNum, path, timeoutMs, authorization);
+  const body = res.body.slice(0, 500);
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(
+      `opencode tool registry did not become accessible via ${path}` +
+        ` (status=${res.status}, body=${body})`,
+    );
+  }
+
+  let ids: unknown;
+  try {
+    ids = JSON.parse(res.body);
+  } catch (error) {
+    throw new Error(`opencode tool registry returned invalid JSON via ${path}: ${String(error)}`);
+  }
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+    throw new Error(`opencode tool registry returned a non-string-array response via ${path}`);
+  }
+  const missing = TAGMA_MANAGED_OPENCODE_TOOL_IDS.filter((id) => !ids.includes(id));
+  if (missing.length > 0) {
+    throw new Error(
+      `opencode tool registry is missing managed tool ids via ${path}: ${missing.join(', ')}`,
+    );
+  }
+  console.log(`[opencode] managed tool registry check passed via ${path} (${res.status})`);
+}
+
 function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
   const attempt: OpencodeStartAttempt = {
     canceledByRestart: false,
@@ -715,6 +753,7 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
       healthResult = await Promise.race([
         waitForHealth(baseUrl, 300_000, auth.authorization)
           .then(() => waitForDatabaseAccess(baseUrl, 300_000, auth.authorization))
+          .then(() => waitForManagedToolRegistry(baseUrl, cwd, 300_000, auth.authorization))
           .then(() => ({
             kind: 'healthy' as const,
           })),

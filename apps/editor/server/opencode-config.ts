@@ -29,6 +29,22 @@ import { atomicWriteFileSync } from './path-utils.js';
 
 export type ConfigScope = 'global' | 'workspace';
 
+export interface CustomProviderVariantDef {
+  /** Prevent an OpenCode-generated variant from reappearing after a user removes it. */
+  disabled?: boolean;
+  /** Provider-specific request options applied when this variant is selected. */
+  [key: string]: unknown;
+}
+
+export interface CustomProviderModelProviderDef {
+  /** AI-SDK package OpenCode uses for this model instead of the provider default. */
+  npm?: string;
+  /** Optional model-specific API/base URL override used by OpenCode. */
+  api?: string;
+  /** Preserve OpenCode/provider-specific metadata alongside the package override. */
+  [key: string]: unknown;
+}
+
 /**
  * Per-model entry under `provider.<id>.models`. Limit fields are optional —
  * opencode/models.dev fills sensible defaults when omitted, and Ollama users
@@ -42,9 +58,15 @@ export interface CustomProviderModelDef {
     context?: number;
     output?: number;
   };
+  /** Advertise that the model supports configurable reasoning. */
+  reasoning?: boolean;
+  /** OpenCode-native model variant IDs mapped to provider option overlays. */
+  variants?: Record<string, CustomProviderVariantDef>;
+  /** Optional model-specific AI-SDK package override used by OpenCode. */
+  provider?: CustomProviderModelProviderDef;
   /**
    * OpenCode also accepts advanced per-model settings, including per-model
-   * `npm` overrides for mixed endpoint setups and package-specific `options`.
+   * `provider.npm` overrides for mixed endpoint setups and package-specific `options`.
    * Keep unknown JSON fields so a UI edit does not silently erase them.
    */
   [key: string]: unknown;
@@ -311,6 +333,8 @@ export interface EmbeddedOpencodeRuntimePaths {
   root: string;
   home: string;
   configDir: string;
+  /** Custom tools owned by Tagma and loaded with configDir's runtime dependencies. */
+  managedToolsDir: string;
   configHome: string;
   dataHome: string;
   stateHome: string;
@@ -335,6 +359,7 @@ export function resolveOpencodeRuntimePaths(tagmaCwd: string): EmbeddedOpencodeR
     root,
     home: join(root, 'home'),
     configDir,
+    managedToolsDir: join(configDir, 'tools'),
     configHome,
     dataHome: resolveUserDataHome(),
     stateHome: resolveUserStateHome(),
@@ -397,6 +422,105 @@ function isSafeExtraConfigKey(key: string): boolean {
   return key !== '__proto__' && key !== 'prototype' && key !== 'constructor';
 }
 
+function hasControlCharacters(value: string): boolean {
+  for (const char of value) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    if (codePoint <= 0x1f || codePoint === 0x7f) return true;
+  }
+  return false;
+}
+
+const MAX_CUSTOM_PROVIDER_VARIANTS = 32;
+const MAX_CUSTOM_PROVIDER_VARIANT_ID_LENGTH = 64;
+const MAX_CUSTOM_PROVIDER_VARIANT_OPTIONS_BYTES = 32_768;
+const CUSTOM_PROVIDER_MODEL_RESERVED_KEYS = new Set([
+  'name',
+  'limit',
+  'reasoning',
+  'variants',
+  'provider',
+]);
+
+function validateCustomProviderVariants(
+  modelId: string,
+  raw: unknown,
+): Record<string, CustomProviderVariantDef> {
+  if (!isPlainObject(raw)) {
+    throw new CustomProviderValidationError(`Model "${modelId}" \`variants\` must be an object.`);
+  }
+  const rawEntries = Object.entries(raw);
+  if (rawEntries.length > MAX_CUSTOM_PROVIDER_VARIANTS) {
+    throw new CustomProviderValidationError(
+      `Model "${modelId}" may define at most ${MAX_CUSTOM_PROVIDER_VARIANTS} variants.`,
+    );
+  }
+
+  const variants: Record<string, CustomProviderVariantDef> = {};
+  const seenIds = new Set<string>();
+  for (const [rawVariantId, rawOptions] of rawEntries) {
+    const variantId = rawVariantId.trim();
+    if (!variantId) {
+      throw new CustomProviderValidationError(
+        `Variant id for model "${modelId}" must be non-empty.`,
+      );
+    }
+    if (hasControlCharacters(variantId)) {
+      throw new CustomProviderValidationError(
+        `Variant id for model "${modelId}" contains invalid control characters.`,
+      );
+    }
+    if (variantId.length > MAX_CUSTOM_PROVIDER_VARIANT_ID_LENGTH) {
+      throw new CustomProviderValidationError(
+        `Variant id "${variantId}" for model "${modelId}" must be at most ${MAX_CUSTOM_PROVIDER_VARIANT_ID_LENGTH} characters.`,
+      );
+    }
+    if (!isSafeExtraConfigKey(variantId)) {
+      throw new CustomProviderValidationError(
+        `Variant id "${variantId}" for model "${modelId}" uses a reserved key.`,
+      );
+    }
+    if (seenIds.has(variantId)) {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" has duplicate variant id "${variantId}" after trimming.`,
+      );
+    }
+    seenIds.add(variantId);
+
+    if (!isPlainObject(rawOptions)) {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" variant "${variantId}" options must be an object.`,
+      );
+    }
+    if (rawOptions.disabled !== undefined && typeof rawOptions.disabled !== 'boolean') {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" variant "${variantId}" \`disabled\` must be a boolean.`,
+      );
+    }
+    let serializedOptions: string;
+    try {
+      serializedOptions = JSON.stringify(rawOptions);
+    } catch {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" variant "${variantId}" options must be valid JSON.`,
+      );
+    }
+    if (Buffer.byteLength(serializedOptions, 'utf8') > MAX_CUSTOM_PROVIDER_VARIANT_OPTIONS_BYTES) {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" variant "${variantId}" options are too large (maximum ${MAX_CUSTOM_PROVIDER_VARIANT_OPTIONS_BYTES} bytes).`,
+      );
+    }
+    for (const optionKey of Object.keys(rawOptions)) {
+      if (!isSafeExtraConfigKey(optionKey)) {
+        throw new CustomProviderValidationError(
+          `Model "${modelId}" variant "${variantId}" uses reserved option key "${optionKey}".`,
+        );
+      }
+    }
+    variants[variantId] = { ...rawOptions };
+  }
+  return variants;
+}
+
 function preserveJsonObjectExtras(
   raw: Record<string, unknown>,
   reserved: ReadonlySet<string>,
@@ -409,13 +533,64 @@ function preserveJsonObjectExtras(
   return out;
 }
 
+function sanitizeCustomProviderModelProvider(
+  raw: unknown,
+): CustomProviderModelProviderDef | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const provider: CustomProviderModelProviderDef = preserveJsonObjectExtras(
+    raw,
+    new Set(['npm', 'api']),
+  );
+  const npm = typeof raw.npm === 'string' ? raw.npm.trim() : '';
+  if (npm && ALLOWED_PROVIDER_NPM_PACKAGES.has(npm)) provider.npm = npm;
+  const api = typeof raw.api === 'string' ? raw.api.trim() : '';
+  if (api) provider.api = api;
+  return provider;
+}
+
+function validateCustomProviderModelProvider(
+  modelId: string,
+  raw: unknown,
+): CustomProviderModelProviderDef {
+  if (!isPlainObject(raw)) {
+    throw new CustomProviderValidationError(`Model "${modelId}" \`provider\` must be an object.`);
+  }
+  const provider: CustomProviderModelProviderDef = preserveJsonObjectExtras(
+    raw,
+    new Set(['npm', 'api']),
+  );
+  if (raw.npm !== undefined) {
+    const npm = typeof raw.npm === 'string' ? raw.npm.trim() : '';
+    if (!npm) {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" \`provider.npm\` must be a non-empty string.`,
+      );
+    }
+    if (!ALLOWED_PROVIDER_NPM_PACKAGES.has(npm)) {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" \`provider.npm\` "${npm}" is not in the allowlist. ` +
+          `Allowed packages: ${[...ALLOWED_PROVIDER_NPM_PACKAGES].sort().join(', ')}.`,
+      );
+    }
+    provider.npm = npm;
+  }
+  if (raw.api !== undefined) {
+    const api = typeof raw.api === 'string' ? raw.api.trim() : '';
+    if (!api) {
+      throw new CustomProviderValidationError(
+        `Model "${modelId}" \`provider.api\` must be a non-empty string.`,
+      );
+    }
+    provider.api = api;
+  }
+  return provider;
+}
+
 function sanitizeModelExtras(raw: Record<string, unknown>): Record<string, unknown> {
-  const extra = preserveJsonObjectExtras(raw, new Set(['name', 'limit']));
-  const npm = extra.npm;
-  if (typeof npm === 'string') {
-    const pkg = npm.trim();
-    if (pkg && ALLOWED_PROVIDER_NPM_PACKAGES.has(pkg)) extra.npm = pkg;
-    else delete extra.npm;
+  const extra = preserveJsonObjectExtras(raw, new Set(['name', 'limit', 'provider']));
+  if (raw.provider !== undefined) {
+    const provider = sanitizeCustomProviderModelProvider(raw.provider);
+    if (provider) extra.provider = provider;
   }
   return extra;
 }
@@ -902,17 +1077,10 @@ export function validateCustomProvider(
     if (!isPlainObject(raw)) {
       throw new CustomProviderValidationError(`Model "${modelId}" must be an object.`);
     }
-    const entry: CustomProviderModelDef = preserveJsonObjectExtras(raw, new Set(['name', 'limit']));
-    if (typeof entry.npm === 'string') {
-      const pkg = entry.npm.trim();
-      if (!ALLOWED_PROVIDER_NPM_PACKAGES.has(pkg)) {
-        throw new CustomProviderValidationError(
-          `Model "${modelId}" uses npm package "${pkg}", which is not in the allowlist. ` +
-            `Allowed packages: ${[...ALLOWED_PROVIDER_NPM_PACKAGES].sort().join(', ')}.`,
-        );
-      }
-      entry.npm = pkg;
-    }
+    const entry: CustomProviderModelDef = preserveJsonObjectExtras(
+      raw,
+      CUSTOM_PROVIDER_MODEL_RESERVED_KEYS,
+    );
     if (typeof raw.name === 'string' && raw.name.trim() !== '') entry.name = raw.name.trim();
     if (isPlainObject(raw.limit)) {
       const limit: NonNullable<CustomProviderModelDef['limit']> = {};
@@ -923,6 +1091,20 @@ export function validateCustomProvider(
         limit.output = raw.limit.output;
       }
       if (Object.keys(limit).length > 0) entry.limit = limit;
+    }
+    if (raw.reasoning !== undefined) {
+      if (typeof raw.reasoning !== 'boolean') {
+        throw new CustomProviderValidationError(
+          `Model "${modelId}" \`reasoning\` must be a boolean.`,
+        );
+      }
+      entry.reasoning = raw.reasoning;
+    }
+    if (raw.variants !== undefined) {
+      entry.variants = validateCustomProviderVariants(modelId, raw.variants);
+    }
+    if (raw.provider !== undefined) {
+      entry.provider = validateCustomProviderModelProvider(modelId, raw.provider);
     }
     models[modelId.trim()] = entry;
   }

@@ -1029,6 +1029,11 @@ describe('chat model persistence', () => {
           ...modelDef('llama3.1:8b'),
           providerID: 'ollama',
           name: 'Llama 3.1 8B',
+          variants: {
+            low: { reasoningEffort: 'low' },
+            high: { reasoningEffort: 'high' },
+            retired: { disabled: true },
+          },
         },
       },
     } as unknown as Provider;
@@ -1043,6 +1048,10 @@ describe('chat model persistence', () => {
 
     expect(providers.map((provider) => provider.id)).toEqual(['anthropic', 'ollama']);
     expect(providers[1]?.models['llama3.1:8b']?.name).toBe('Llama 3.1 8B');
+    expect(modelVariantIds(providers, { providerID: 'ollama', modelID: 'llama3.1:8b' })).toEqual([
+      'low',
+      'high',
+    ]);
   });
 
   test('treats missing v2 model enabled flag as enabled', () => {

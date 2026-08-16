@@ -228,6 +228,232 @@ test('custom provider validation accepts dotted ids and preserves advanced OpenC
   });
 });
 
+test('custom provider validation uses model provider.npm and preserves opaque top-level npm', () => {
+  const validated = validateCustomProvider(
+    'mixed-sdk-local',
+    {
+      ...providerDef,
+      models: {
+        'anthropic-model': {
+          name: 'Anthropic model',
+          npm: 'ignored-top-level-marker',
+          provider: {
+            npm: '  @ai-sdk/anthropic  ',
+            transport: { compatibility: 'strict' },
+            customProviderFlag: true,
+          },
+        },
+        'api-only-model': {
+          provider: {
+            api: 'https://local.example/v1',
+            transport: { compatibility: 'strict' },
+          },
+        },
+      },
+    },
+    { scope: 'global' },
+  );
+
+  upsertCustomProvider('global', tempRoot, 'mixed-sdk-local', validated);
+
+  const listed = listCustomProviders(tempRoot).find(
+    (provider) => provider.scope === 'global' && provider.id === 'mixed-sdk-local',
+  );
+  expect(listed?.def.models['anthropic-model']).toEqual({
+    name: 'Anthropic model',
+    npm: 'ignored-top-level-marker',
+    provider: {
+      npm: '@ai-sdk/anthropic',
+      transport: { compatibility: 'strict' },
+      customProviderFlag: true,
+    },
+  });
+  expect(listed?.def.models['api-only-model']).toEqual({
+    provider: {
+      api: 'https://local.example/v1',
+      transport: { compatibility: 'strict' },
+    },
+  });
+});
+
+test('custom provider validation rejects invalid model provider overrides', () => {
+  const definitionWithProvider = (provider: unknown): unknown => ({
+    ...providerDef,
+    models: {
+      'mixed-sdk-model': {
+        name: 'Mixed SDK model',
+        provider,
+      },
+    },
+  });
+  const invalidCases: Array<{ label: string; provider: unknown; message: RegExp }> = [
+    {
+      label: 'non-object provider',
+      provider: '@ai-sdk/anthropic',
+      message: /model .*provider.*object/i,
+    },
+    {
+      label: 'non-string provider npm',
+      provider: { npm: 42 },
+      message: /provider\.npm.*non-empty string/i,
+    },
+    {
+      label: 'unsupported provider npm',
+      provider: { npm: '@untrusted/provider' },
+      message: /provider\.npm.*not in the allowlist/i,
+    },
+    {
+      label: 'non-string provider api',
+      provider: { api: 42 },
+      message: /provider\.api.*non-empty string/i,
+    },
+  ];
+
+  for (const { label, provider, message } of invalidCases) {
+    expect(
+      () =>
+        validateCustomProvider('mixed-sdk-local', definitionWithProvider(provider), {
+          scope: 'global',
+        }),
+      label,
+    ).toThrow(message);
+  }
+});
+
+test('custom provider reasoning variants survive validation and persistence roundtrip', () => {
+  const validated = validateCustomProvider(
+    'reasoning-local',
+    {
+      ...providerDef,
+      models: {
+        'reasoning-model': {
+          name: 'Reasoning model',
+          reasoning: true,
+          variants: {
+            low: {
+              reasoningEffort: 'low',
+              providerOptions: {
+                local: { budgetTokens: 2_048 },
+              },
+            },
+            high: { reasoningEffort: 'high', disabled: true },
+          },
+        },
+      },
+    },
+    { scope: 'global' },
+  );
+
+  upsertCustomProvider('global', tempRoot, 'reasoning-local', validated);
+
+  const listed = listCustomProviders(tempRoot).find(
+    (provider) => provider.scope === 'global' && provider.id === 'reasoning-local',
+  );
+  expect(listed?.def.models['reasoning-model']).toEqual({
+    name: 'Reasoning model',
+    reasoning: true,
+    variants: {
+      low: {
+        reasoningEffort: 'low',
+        providerOptions: {
+          local: { budgetTokens: 2_048 },
+        },
+      },
+      high: { reasoningEffort: 'high', disabled: true },
+    },
+  });
+});
+
+test('custom provider validation rejects malformed reasoning variants', () => {
+  const definitionWithModel = (model: Record<string, unknown>): unknown => ({
+    ...providerDef,
+    models: {
+      'reasoning-model': {
+        name: 'Reasoning model',
+        ...model,
+      },
+    },
+  });
+  const invalidCases: Array<{ label: string; model: Record<string, unknown>; message: RegExp }> = [
+    {
+      label: 'non-boolean reasoning',
+      model: { reasoning: 'yes' },
+      message: /reasoning.*boolean/i,
+    },
+    {
+      label: 'non-object variants map',
+      model: { variants: ['low'] },
+      message: /variants.*object/i,
+    },
+    {
+      label: 'non-object variant options',
+      model: { variants: { low: 'reasoningEffort=low' } },
+      message: /variant "low".*object/i,
+    },
+    {
+      label: 'non-boolean disabled flag',
+      model: { variants: { high: { disabled: 'yes' } } },
+      message: /variant "high".*disabled.*boolean/i,
+    },
+    {
+      label: 'oversized variant options',
+      model: { variants: { high: { vendorPayload: 'x'.repeat(32_769) } } },
+      message: /variant "high".*too large/i,
+    },
+    {
+      label: 'too many variants',
+      model: {
+        variants: Object.fromEntries(
+          Array.from({ length: 33 }, (_, index) => [`variant-${index}`, {}]),
+        ),
+      },
+      message: /at most 32 variants/i,
+    },
+    {
+      label: 'blank variant id',
+      model: { variants: { '   ': {} } },
+      message: /variant id.*non-empty/i,
+    },
+    {
+      label: 'variant id with control characters',
+      model: { variants: { 'bad\nvariant': {} } },
+      message: /variant id.*control/i,
+    },
+    {
+      label: 'overlong variant id',
+      model: { variants: { ['v'.repeat(65)]: {} } },
+      message: /variant id.*64 characters/i,
+    },
+    {
+      label: 'unsafe variant id',
+      model: { variants: JSON.parse('{"__proto__":{}}') as Record<string, unknown> },
+      message: /variant id.*reserved/i,
+    },
+    {
+      label: 'duplicate variant id after trimming',
+      model: { variants: { low: {}, ' low ': {} } },
+      message: /duplicate variant id "low".*trimming/i,
+    },
+    {
+      label: 'unsafe variant option key',
+      model: {
+        variants: {
+          low: JSON.parse('{"constructor":{}}') as Record<string, unknown>,
+        },
+      },
+      message: /variant "low".*reserved option key "constructor"/i,
+    },
+  ];
+
+  for (const { label, model, message } of invalidCases) {
+    expect(
+      () =>
+        validateCustomProvider('reasoning-local', definitionWithModel(model), { scope: 'global' }),
+      label,
+    ).toThrow(message);
+  }
+});
+
 test('workspace custom providers reject plaintext API keys', () => {
   expect(() =>
     validateCustomProvider(
@@ -279,6 +505,7 @@ test('custom provider redaction hides API keys and sensitive headers', () => {
 
 test('embedded opencode runtime normalizes existing uppercase provider ids', () => {
   const paths = resolveOpencodeRuntimePaths(tagmaCwd);
+  expect(paths.managedToolsDir).toBe(join(paths.configDir, 'tools'));
   writeJson(paths.workspaceConfigPath, {
     provider: { Alibaba: providerDef },
   });

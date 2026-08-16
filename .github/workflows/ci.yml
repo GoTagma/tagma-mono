@@ -10,6 +10,45 @@ permissions:
   contents: read
 
 jobs:
+  # Keep the embedded runtime's filesystem/module boundary native on every
+  # desktop OS, then start the exact pinned OpenCode binary against a fresh
+  # isolated profile and require its real ToolRegistry to load every Tagma tool.
+  managed-opencode-runtime:
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install fetcher dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - uses: actions/cache@v4
+        with:
+          path: apps/electron/build/opencode
+          key: managed-opencode-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/electron/package.json') }}
+
+      - name: Stage pinned OpenCode binary
+        working-directory: apps/electron
+        run: bun ./scripts/fetch-opencode.mjs
+
+      - name: Managed runtime unit contracts
+        working-directory: apps/editor
+        run: bun scripts/test-serial.mjs --file tests/opencode-managed-tools.test.ts --file tests/opencode-lifecycle.test.ts
+
+      - name: Native OpenCode ToolRegistry smoke
+        working-directory: apps/editor
+        env:
+          TAGMA_OPENCODE_NATIVE_SMOKE: '1'
+        run: bun test tests/opencode-managed-runtime-smoke.test.ts --timeout 360000
+
   # Full repository gate: every check, lint, and test the repo runs on push
   # to main. Triggers on:
   #   - push to main

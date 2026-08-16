@@ -1,6 +1,108 @@
 import { describe, expect, test } from 'bun:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import type { ProviderAuthMethod } from '../src/api/opencode-chat';
+import {
+  shouldDismissModalFromBackdropClick,
+  useModalBackdropDismiss,
+  type ModalBackdropDismissHandlers,
+  type ModalBackdropPointerSequence,
+} from '../src/components/modal-backdrop-dismiss';
 import { providerAuthMethodKey } from '../src/components/chat/provider-auth-method-key';
+
+function renderBackdropDismissHandlers(onDismiss: () => void): ModalBackdropDismissHandlers {
+  let handlers: ModalBackdropDismissHandlers | null = null;
+  function Probe() {
+    handlers = useModalBackdropDismiss(onDismiss);
+    return null;
+  }
+  renderToStaticMarkup(createElement(Probe));
+  if (!handlers) throw new Error('Backdrop dismiss handlers did not render');
+  return handlers;
+}
+
+function backdropEvent<T>(target: EventTarget, currentTarget: EventTarget): T {
+  return { target, currentTarget } as T;
+}
+
+describe('provider connect dialog backdrop dismissal', () => {
+  test('does not dismiss after a text-selection drag starts inside and ends outside', () => {
+    const selectionDrag: ModalBackdropPointerSequence = {
+      startedOnBackdrop: false,
+      endedOnBackdrop: true,
+    };
+
+    // Browsers target the synthesized click at the closest common ancestor of
+    // the press and release targets — the backdrop in this interaction.
+    expect(shouldDismissModalFromBackdropClick(selectionDrag, true)).toBe(false);
+  });
+
+  test('dismisses only when the complete pointer click stays on the backdrop', () => {
+    expect(
+      shouldDismissModalFromBackdropClick({ startedOnBackdrop: true, endedOnBackdrop: true }, true),
+    ).toBe(true);
+    expect(
+      shouldDismissModalFromBackdropClick(
+        { startedOnBackdrop: true, endedOnBackdrop: false },
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      shouldDismissModalFromBackdropClick(
+        { startedOnBackdrop: true, endedOnBackdrop: true },
+        false,
+      ),
+    ).toBe(false);
+    expect(shouldDismissModalFromBackdropClick(null, true)).toBe(false);
+  });
+
+  test('tracks the real handler sequence across a selection drag and the next outside click', () => {
+    let dismissCount = 0;
+    const handlers = renderBackdropDismissHandlers(() => {
+      dismissCount += 1;
+    });
+    const backdrop = new EventTarget();
+    const input = new EventTarget();
+
+    handlers.onPointerDownCapture(backdropEvent(input, backdrop));
+    handlers.onPointerUpCapture(backdropEvent(backdrop, backdrop));
+    handlers.onClick(backdropEvent(backdrop, backdrop));
+    expect(dismissCount).toBe(0);
+
+    handlers.onPointerDownCapture(backdropEvent(backdrop, backdrop));
+    handlers.onPointerUpCapture(backdropEvent(backdrop, backdrop));
+    handlers.onClick(backdropEvent(backdrop, backdrop));
+    expect(dismissCount).toBe(1);
+
+    handlers.onPointerDownCapture(backdropEvent(backdrop, backdrop));
+    handlers.onPointerCancelCapture(backdropEvent(backdrop, backdrop));
+    handlers.onClick(backdropEvent(backdrop, backdrop));
+    expect(dismissCount).toBe(1);
+  });
+
+  test('dismisses the custom-provider layer without dismissing its parent portal', () => {
+    let parentDismissCount = 0;
+    let childDismissCount = 0;
+    const parentHandlers = renderBackdropDismissHandlers(() => {
+      parentDismissCount += 1;
+    });
+    const childHandlers = renderBackdropDismissHandlers(() => {
+      childDismissCount += 1;
+    });
+    const parentBackdrop = new EventTarget();
+    const childBackdrop = new EventTarget();
+
+    parentHandlers.onPointerDownCapture(backdropEvent(childBackdrop, parentBackdrop));
+    childHandlers.onPointerDownCapture(backdropEvent(childBackdrop, childBackdrop));
+    parentHandlers.onPointerUpCapture(backdropEvent(childBackdrop, parentBackdrop));
+    childHandlers.onPointerUpCapture(backdropEvent(childBackdrop, childBackdrop));
+    childHandlers.onClick(backdropEvent(childBackdrop, childBackdrop));
+    parentHandlers.onClick(backdropEvent(childBackdrop, parentBackdrop));
+
+    expect(childDismissCount).toBe(1);
+    expect(parentDismissCount).toBe(0);
+  });
+});
 
 describe('provider auth method row identity', () => {
   test('changes when a provider auth method changes at the same list index', () => {

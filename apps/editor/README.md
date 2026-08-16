@@ -221,6 +221,12 @@ The running sidecar can also fetch a newer platform-specific sidecar binary from
 
 The frontend status bar no longer surfaces this endpoint — independent OpenCode upgrades have caused chat/runtime regressions, so the desktop UI pins users to the OpenCode that ships with each Tagma release. The route is kept for tooling/manual recovery only.
 
+Tagma-owned custom tools are deployed into the workspace's isolated managed OpenCode config root,
+next to the dependency tree owned by that runtime. Chat bootstrap does not report the runtime as
+ready until OpenCode's ToolRegistry loads all required Tagma tool IDs. Existing workspaces are
+migrated on bootstrap by removing only the three legacy Tagma tool copies from the old project
+tool directory; user-authored tools are left untouched.
+
 ## Notes
 
 - The entire stack (editor server, SDK, CLI, sandbox) runs on Bun. Do not use `npm` or `node` — scripts assume Bun and the server source imports `Bun.*` globals.

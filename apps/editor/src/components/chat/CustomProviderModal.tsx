@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  Brain,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -28,6 +29,31 @@ import {
   isCurrentCustomProviderProbeRequest,
 } from './custom-provider-probe-request';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
+import { useModalBackdropDismiss } from '../modal-backdrop-dismiss';
+import {
+  addReasoningVariant,
+  blankModelReasoningDraft,
+  enableRecommendedReasoning,
+  hasOpenCodeGeneratedReasoningOverrides,
+  parseModelReasoningConfig,
+  reasoningProfileMismatch,
+  removeReasoningVariant,
+  resetToOpenCodeGeneratedReasoningDefaults,
+  restorableDisabledReasoningVariantCount,
+  resolveLocalReasoningProviderHint,
+  resolveModelReasoningIdentity,
+  resolveOpenCodeGeneratedReasoningVariantIds,
+  resolveReasoningProfile,
+  restoreDisabledReasoningVariants,
+  serializeModelReasoningConfig,
+  setReasoningEnabled,
+  setOpenCodeGeneratedVariantsExact,
+  touchReasoningDraft,
+  touchReasoningDraftForIdentityChange,
+  updateReasoningVariant,
+  validateReasoningDraft,
+} from './custom-provider-reasoning';
+import type { ModelReasoningDraft } from './custom-provider-reasoning';
 
 /**
  * Sentinel apiKey value the renderer writes when the user leaves the API key
@@ -56,16 +82,18 @@ const NPM_PACKAGES = [
   },
 ] as const;
 
-interface ModelRow {
+export interface ModelRow {
   id: string;
   name: string;
   context: string;
   output: string;
+  reasoning: ModelReasoningDraft;
+  reasoningOpen: boolean;
   /** Advanced model-level config fields preserved from hand-written OpenCode config. */
   extra?: Record<string, unknown>;
 }
 
-interface FormState {
+export interface FormState {
   id: string;
   name: string;
   npm: string;
@@ -80,6 +108,33 @@ interface FormState {
   optionExtra?: Record<string, unknown>;
 }
 
+function blankModelRow(): ModelRow {
+  return {
+    id: '',
+    name: '',
+    context: '',
+    output: '',
+    reasoning: blankModelReasoningDraft(),
+    reasoningOpen: false,
+  };
+}
+
+function isPristineBlankModelRow(model: ModelRow): boolean {
+  return (
+    model.id.trim() === '' &&
+    model.name.trim() === '' &&
+    model.context.trim() === '' &&
+    model.output.trim() === '' &&
+    (!model.extra || Object.keys(model.extra).length === 0) &&
+    !model.reasoning.enabled &&
+    model.reasoning.variants.length === 0 &&
+    !model.reasoning.managesGeneratedVariants &&
+    model.reasoning.removedVariantIds.length === 0 &&
+    Object.keys(model.reasoning.originalModel).length === 0 &&
+    !model.reasoning.dirty
+  );
+}
+
 const BLANK_FORM: FormState = {
   id: '',
   name: '',
@@ -87,7 +142,7 @@ const BLANK_FORM: FormState = {
   baseURL: '',
   apiKey: '',
   headers: [],
-  models: [{ id: '', name: '', context: '', output: '' }],
+  models: [blankModelRow()],
   scope: 'global',
 };
 
@@ -126,10 +181,7 @@ function localTemplate(args: {
       npm: '@ai-sdk/openai-compatible',
       baseURL: args.baseURL,
       apiKey: '',
-      models:
-        current.models.length > 0
-          ? current.models
-          : [{ id: '', name: '', context: '', output: '' }],
+      models: current.models.length > 0 ? current.models : [blankModelRow()],
     }),
   };
 }
@@ -244,10 +296,17 @@ function isLocalHost(host: string): boolean {
 function modelExtraConfig(model: CustomProviderModelDef): Record<string, unknown> | undefined {
   const extra: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(model)) {
-    if (key === 'name' || key === 'limit') continue;
+    if (key === 'name' || key === 'limit' || key === 'reasoning' || key === 'variants') continue;
     extra[key] = value;
   }
   return Object.keys(extra).length > 0 ? extra : undefined;
+}
+
+function modelReasoningConfig(model: CustomProviderModelDef): Record<string, unknown> {
+  const config: Record<string, unknown> = {};
+  if (Object.prototype.hasOwnProperty.call(model, 'reasoning')) config.reasoning = model.reasoning;
+  if (Object.prototype.hasOwnProperty.call(model, 'variants')) config.variants = model.variants;
+  return config;
 }
 
 function providerOptionExtraConfig(
@@ -297,13 +356,26 @@ function entryToFormState(entry: CustomProviderEntry): FormState {
   const headers = def.options.headers
     ? Object.entries(def.options.headers).map(([key, value]) => ({ key, value }))
     : [];
-  const models: ModelRow[] = Object.entries(def.models).map(([id, m]) => ({
-    id,
-    name: m.name ?? '',
-    context: m.limit?.context !== undefined ? String(m.limit.context) : '',
-    output: m.limit?.output !== undefined ? String(m.limit.output) : '',
-    extra: modelExtraConfig(m),
-  }));
+  const models: ModelRow[] = Object.entries(def.models).map(([id, m]) => {
+    const extra = modelExtraConfig(m);
+    const identity = resolveModelReasoningIdentity(extra ?? {}, def.npm, id);
+    const reasoning = parseModelReasoningConfig(
+      modelReasoningConfig(m),
+      identity.npm,
+      identity.modelId,
+      identity.releaseDate,
+      identity.apiModelId,
+    );
+    return {
+      id,
+      name: m.name ?? '',
+      context: m.limit?.context !== undefined ? String(m.limit.context) : '',
+      output: m.limit?.output !== undefined ? String(m.limit.output) : '',
+      reasoning,
+      reasoningOpen: reasoning.enabled,
+      extra,
+    };
+  });
   return {
     id: entry.id,
     name: def.name,
@@ -311,7 +383,7 @@ function entryToFormState(entry: CustomProviderEntry): FormState {
     baseURL: def.options.baseURL,
     apiKey,
     headers,
-    models: models.length > 0 ? models : [{ id: '', name: '', context: '', output: '' }],
+    models: models.length > 0 ? models : [blankModelRow()],
     scope: entry.scope,
     providerExtra: providerExtraConfig(def),
     optionExtra: providerOptionExtraConfig(def.options),
@@ -329,7 +401,18 @@ function formStateToDef(form: FormState): CustomProviderDef {
   for (const m of form.models) {
     const id = m.id.trim();
     if (!id) continue;
-    const entry: CustomProviderModelDef = { ...(m.extra ?? {}) };
+    const reasoningIdentity = resolveModelReasoningIdentity(m.extra ?? {}, form.npm, id);
+    const entry: CustomProviderModelDef = {
+      ...(m.extra ?? {}),
+      ...serializeModelReasoningConfig(
+        m.reasoning,
+        reasoningIdentity.npm,
+        reasoningIdentity.modelId,
+        resolveLocalReasoningProviderHint(form.id, form.name),
+        reasoningIdentity.releaseDate,
+        reasoningIdentity.apiModelId,
+      ),
+    };
     if (m.name.trim()) entry.name = m.name.trim();
     const limit: NonNullable<CustomProviderModelDef['limit']> = {};
     const ctx = Number(m.context);
@@ -365,7 +448,7 @@ function formStateToDef(form: FormState): CustomProviderDef {
   };
 }
 
-function validate(form: FormState, isEdit: boolean): string | null {
+export function validateCustomProviderForm(form: FormState, isEdit: boolean): string | null {
   if (!isEdit && !ID_RE.test(form.id)) {
     return 'Provider id must be lowercase alphanumerics, dots, dashes, or underscores (and start with one).';
   }
@@ -381,15 +464,25 @@ function validate(form: FormState, isEdit: boolean): string | null {
   } catch {
     return 'Base URL is not a valid URL.';
   }
+  const incompleteModel = form.models.find(
+    (model) => !model.id.trim() && !isPristineBlankModelRow(model),
+  );
+  if (incompleteModel) return 'Every configured model needs a model id.';
   const validModels = form.models.filter((m) => m.id.trim().length > 0);
   if (validModels.length === 0) return 'Add at least one model.';
+  const modelIds = new Set<string>();
   for (const m of validModels) {
+    const modelId = m.id.trim();
+    if (modelIds.has(modelId)) return `Duplicate model id "${modelId}".`;
+    modelIds.add(modelId);
     if (m.context.trim() && !(Number(m.context) > 0)) {
       return `Model "${m.id}" has an invalid context limit.`;
     }
     if (m.output.trim() && !(Number(m.output) > 0)) {
       return `Model "${m.id}" has an invalid output limit.`;
     }
+    const reasoningIssues = validateReasoningDraft(m.reasoning, m.name.trim() || m.id.trim());
+    if (reasoningIssues[0]) return reasoningIssues[0].message;
   }
   for (const h of form.headers) {
     if (h.key.trim() && !h.value.trim()) {
@@ -439,6 +532,7 @@ export function CustomProviderModal({
 
   const idInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useModalFocusTrap<HTMLDivElement>();
+  const backdropDismissHandlers = useModalBackdropDismiss(onClose);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const modalRunRef = useRef(0);
   const latestFormRef = useRef(form);
@@ -497,13 +591,53 @@ export function CustomProviderModal({
   const applyTemplate = (templateId: string): void => {
     const tpl = TEMPLATES.find((t) => t.id === templateId);
     if (!tpl) return;
-    setForm((prev) => tpl.apply(prev));
+    setForm((prev) => {
+      const next = tpl.apply(prev);
+      if (next.npm === prev.npm && next.id === prev.id && next.name === prev.name) return next;
+      return {
+        ...next,
+        models: next.models.map((model) => ({
+          ...model,
+          reasoning: touchReasoningDraftForIdentityChange(
+            model.reasoning,
+            resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id),
+            resolveModelReasoningIdentity(model.extra ?? {}, next.npm, model.id),
+          ),
+        })),
+      };
+    });
     setDetectMsg(null);
     setVerifyMsg(null);
   };
 
   const updateField = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const updateProviderIdentity = (key: 'id' | 'name', value: string): void => {
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+      models: prev.models.map((model) => ({
+        ...model,
+        reasoning: touchReasoningDraft(model.reasoning),
+      })),
+    }));
+  };
+
+  const updateNpm = (npm: string): void => {
+    setForm((prev) => ({
+      ...prev,
+      npm,
+      models: prev.models.map((model) => ({
+        ...model,
+        reasoning: touchReasoningDraftForIdentityChange(
+          model.reasoning,
+          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id),
+          resolveModelReasoningIdentity(model.extra ?? {}, npm, model.id),
+        ),
+      })),
+    }));
   };
 
   const updateModel = (idx: number, patch: Partial<ModelRow>): void => {
@@ -514,10 +648,46 @@ export function CustomProviderModal({
     });
   };
 
+  const updateModelId = (idx: number, id: string): void => {
+    setForm((prev) => {
+      const models = prev.models.slice();
+      const model = models[idx];
+      if (!model) return prev;
+      models[idx] = {
+        ...model,
+        id,
+        reasoning: touchReasoningDraftForIdentityChange(
+          model.reasoning,
+          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, model.id),
+          resolveModelReasoningIdentity(model.extra ?? {}, prev.npm, id),
+        ),
+      };
+      return { ...prev, models };
+    });
+  };
+
+  const updateModelReasoning = (
+    idx: number,
+    update: (reasoning: ModelReasoningDraft) => ModelReasoningDraft,
+    open = true,
+  ): void => {
+    setForm((prev) => {
+      const models = prev.models.slice();
+      const model = models[idx];
+      if (!model) return prev;
+      models[idx] = {
+        ...model,
+        reasoning: update(model.reasoning),
+        reasoningOpen: open ? true : model.reasoningOpen,
+      };
+      return { ...prev, models };
+    });
+  };
+
   const addModelRow = (): void => {
     setForm((prev) => ({
       ...prev,
-      models: [...prev.models, { id: '', name: '', context: '', output: '' }],
+      models: [...prev.models, blankModelRow()],
     }));
   };
 
@@ -526,7 +696,7 @@ export function CustomProviderModal({
       const models = prev.models.filter((_, i) => i !== idx);
       return {
         ...prev,
-        models: models.length > 0 ? models : [{ id: '', name: '', context: '', output: '' }],
+        models: models.length > 0 ? models : [blankModelRow()],
       };
     });
   };
@@ -600,8 +770,8 @@ export function CustomProviderModal({
         );
         const additions: ModelRow[] = models
           .filter((m) => !existingIds.has(m.id))
-          .map((m) => ({ id: m.id, name: m.name ?? '', context: '', output: '' }));
-        const cleaned = prev.models.filter((m) => m.id.trim().length > 0);
+          .map((m) => ({ ...blankModelRow(), id: m.id, name: m.name ?? '' }));
+        const cleaned = prev.models.filter((m) => !isPristineBlankModelRow(m));
         return { ...prev, models: [...cleaned, ...additions] };
       });
       setDetectMsg(
@@ -691,7 +861,7 @@ export function CustomProviderModal({
     if (saving || blocked) return;
     const runId = modalRunRef.current;
     const id = (isEdit ? editing!.id : form.id).trim();
-    const validationError = validate(form, isEdit);
+    const validationError = validateCustomProviderForm(form, isEdit);
     if (validationError) {
       setError(validationError);
       return;
@@ -730,18 +900,24 @@ export function CustomProviderModal({
   const baseURLIsLocal = isLocalBaseURL(form.baseURL);
   const showDetectButton = baseURLEmpty || baseURLIsLocal;
   const showVerifyButton = !baseURLEmpty && !baseURLIsLocal;
+  const customHeadersId = 'custom-provider-custom-headers';
+  const providerIdWarningId = 'custom-provider-id-warning';
+  const workspaceKeyWarningId = 'custom-provider-workspace-key-warning';
+  const modelLimitControlIds = form.models
+    .map((_, idx) => `custom-provider-model-${idx}-limits`)
+    .join(' ');
 
   return createPortal(
     <div
       className="modal-viewport-backdrop fixed inset-0 z-[230] flex items-center justify-center bg-black/60"
-      onClick={onClose}
+      {...backdropDismissHandlers}
     >
       <div
         ref={modalRef}
         className="modal-viewport-shell flex w-full max-w-[600px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
-        aria-label={isEdit ? 'Edit custom provider' : 'Add custom provider'}
+        aria-labelledby="custom-provider-modal-title"
         aria-modal="true"
         tabIndex={-1}
       >
@@ -752,7 +928,7 @@ export function CustomProviderModal({
             ) : (
               <Plus size={14} className="text-tagma-muted shrink-0" />
             )}
-            <h2 className="panel-title truncate">
+            <h2 id="custom-provider-modal-title" className="panel-title truncate">
               {isEdit ? `Edit “${editing!.id}”` : 'Add custom provider'}
             </h2>
           </div>
@@ -767,8 +943,14 @@ export function CustomProviderModal({
 
         <div className="modal-viewport-body space-y-4 px-4 py-3">
           {!isEdit && (
-            <div className="flex items-center gap-2">
-              <span className="field-label !mb-0">Template</span>
+            <div
+              role="group"
+              aria-labelledby="custom-provider-template-label"
+              className="flex items-center gap-2"
+            >
+              <span id="custom-provider-template-label" className="field-label !mb-0">
+                Template
+              </span>
               <div className="flex flex-wrap gap-1.5">
                 {TEMPLATES.map((tpl) => (
                   <button
@@ -787,46 +969,53 @@ export function CustomProviderModal({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="field-label">Provider ID</label>
+              <label htmlFor="custom-provider-id" className="field-label">
+                Provider ID
+              </label>
               <input
+                id="custom-provider-id"
                 ref={idInputRef}
                 type="text"
                 autoComplete="off"
                 spellCheck={false}
                 value={form.id}
                 disabled={isEdit}
-                onChange={(e) => updateField('id', e.target.value.toLowerCase())}
+                onChange={(e) => updateProviderIdentity('id', e.target.value.toLowerCase())}
                 placeholder="e.g. ollama, lmstudio, llama.cpp"
+                aria-describedby={idCollision || builtinCollision ? providerIdWarningId : undefined}
                 className={`field-input ${isEdit ? 'opacity-60 cursor-not-allowed' : ''}`}
               />
               {idCollision && (
-                <InlineHint kind="warn">
+                <InlineHint id={providerIdWarningId} kind="warn" role="alert">
                   An entry with this id already exists — saving will overwrite it.
                 </InlineHint>
               )}
               {builtinCollision && !idCollision && (
-                <InlineHint kind="warn">
+                <InlineHint id={providerIdWarningId} kind="warn" role="alert">
                   This id matches a built-in opencode provider — your config will override it.
                 </InlineHint>
               )}
             </div>
             <div>
-              <label className="field-label">Display name</label>
+              <label htmlFor="custom-provider-name" className="field-label">
+                Display name
+              </label>
               <input
+                id="custom-provider-name"
                 ref={nameInputRef}
                 type="text"
                 autoComplete="off"
                 spellCheck={false}
                 value={form.name}
-                onChange={(e) => updateField('name', e.target.value)}
+                onChange={(e) => updateProviderIdentity('name', e.target.value)}
                 placeholder="Ollama (local)"
                 className="field-input"
               />
             </div>
           </div>
 
-          <div>
-            <label className="field-label">SDK package</label>
+          <fieldset>
+            <legend className="field-label">SDK package</legend>
             <div className="flex flex-col gap-1.5">
               {NPM_PACKAGES.map((pkg) => {
                 const active = form.npm === pkg.value;
@@ -834,7 +1023,8 @@ export function CustomProviderModal({
                   <button
                     key={pkg.value}
                     type="button"
-                    onClick={() => updateField('npm', pkg.value)}
+                    aria-pressed={active}
+                    onClick={() => updateNpm(pkg.value)}
                     className={`flex flex-col items-start text-left px-2 py-1.5 border transition-colors ${
                       active
                         ? 'border-tagma-accent/60 bg-tagma-accent/10'
@@ -852,12 +1042,15 @@ export function CustomProviderModal({
                 );
               })}
             </div>
-          </div>
+          </fieldset>
 
           <div>
-            <label className="field-label">Base URL</label>
+            <label htmlFor="custom-provider-base-url" className="field-label">
+              Base URL
+            </label>
             <div className="flex items-stretch gap-2">
               <input
+                id="custom-provider-base-url"
                 type="text"
                 autoComplete="off"
                 spellCheck={false}
@@ -883,15 +1076,24 @@ export function CustomProviderModal({
                 </button>
               )}
             </div>
-            {detectMsg && (
-              <InlineHint kind={detectMsg.startsWith('Imported') ? 'ok' : 'warn'}>
-                {detectMsg}
-              </InlineHint>
-            )}
+            <div role="status" aria-live="polite" aria-atomic="true">
+              {detecting ? (
+                <p className="sr-only">Detecting models.</p>
+              ) : (
+                detectMsg && (
+                  <InlineHint kind={detectMsg.startsWith('Imported') ? 'ok' : 'warn'}>
+                    {detectMsg}
+                  </InlineHint>
+                )
+              )}
+            </div>
           </div>
 
           <div>
-            <label className="field-label flex items-center gap-1">
+            <label
+              htmlFor="custom-provider-api-key"
+              className="field-label flex items-center gap-1"
+            >
               <KeyRound size={9} />
               API key
               <span className="text-tagma-muted-dim normal-case tracking-normal font-normal">
@@ -900,11 +1102,13 @@ export function CustomProviderModal({
             </label>
             <div className="flex items-stretch gap-2">
               <input
+                id="custom-provider-api-key"
                 type="password"
                 autoComplete="off"
                 spellCheck={false}
                 value={isRedactedCredential(form.apiKey) ? '' : form.apiKey}
                 onChange={(e) => updateField('apiKey', e.target.value)}
+                aria-describedby={showWorkspaceKeyWarning ? workspaceKeyWarningId : undefined}
                 placeholder={
                   isRedactedCredential(form.apiKey)
                     ? `${editing?.def.apiKeyPreview ?? 'Saved key'} - leave blank to keep`
@@ -929,16 +1133,22 @@ export function CustomProviderModal({
                 </button>
               )}
             </div>
-            {verifyMsg && (
-              <InlineHint kind={verifyMsg.kind}>
-                {verifyMsg.kind === 'ok' && (
-                  <CheckCircle2 size={10} className="inline-block mr-1 align-text-bottom" />
-                )}
-                {verifyMsg.text}
-              </InlineHint>
-            )}
+            <div role="status" aria-live="polite" aria-atomic="true">
+              {verifying ? (
+                <p className="sr-only">Verifying provider connection.</p>
+              ) : (
+                verifyMsg && (
+                  <InlineHint kind={verifyMsg.kind}>
+                    {verifyMsg.kind === 'ok' && (
+                      <CheckCircle2 size={10} className="inline-block mr-1 align-text-bottom" />
+                    )}
+                    {verifyMsg.text}
+                  </InlineHint>
+                )
+              )}
+            </div>
             {showWorkspaceKeyWarning && (
-              <InlineHint kind="warn">
+              <InlineHint id={workspaceKeyWarningId} kind="warn" role="alert">
                 Plain-text keys are not saved in workspace scope. Use
                 <code> {'{env:VAR_NAME}'} </code> or save this provider in embedded-runtime scope.
               </InlineHint>
@@ -950,14 +1160,15 @@ export function CustomProviderModal({
             )}
           </div>
 
-          <div>
-            <label className="field-label">Scope</label>
+          <fieldset>
+            <legend className="field-label">Scope</legend>
             <div className="flex flex-col gap-1.5 sm:flex-row">
               <ScopeButton
                 active={form.scope === 'global'}
                 onClick={() => updateField('scope', 'global')}
                 label="Embedded runtime"
                 hint=".tagma/.opencode-runtime/config/opencode/opencode.json"
+                ariaDescribedBy={showWorkspaceKeyWarning ? workspaceKeyWarningId : undefined}
                 disabled={isEdit && editing!.scope !== 'global'}
               />
               <ScopeButton
@@ -965,6 +1176,7 @@ export function CustomProviderModal({
                 onClick={() => updateField('scope', 'workspace')}
                 label="This workspace"
                 hint=".tagma/opencode.json - commit to share with team"
+                ariaDescribedBy={showWorkspaceKeyWarning ? workspaceKeyWarningId : undefined}
                 disabled={(isEdit && editing!.scope !== 'workspace') || !workspaceAvailable}
               />
             </div>
@@ -973,11 +1185,13 @@ export function CustomProviderModal({
                 Scope is locked while editing. Delete and re-create to move between scopes.
               </p>
             )}
-          </div>
+          </fieldset>
 
           <div>
             <button
               type="button"
+              aria-expanded={showHeaders}
+              aria-controls={showHeaders ? customHeadersId : undefined}
               onClick={() => setShowHeaders((v) => !v)}
               className="flex items-center gap-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
             >
@@ -985,7 +1199,7 @@ export function CustomProviderModal({
               Custom headers ({form.headers.length})
             </button>
             {showHeaders && (
-              <div className="mt-2 space-y-1.5">
+              <div id={customHeadersId} className="mt-2 space-y-1.5">
                 {form.headers.map((h, idx) => (
                   <div key={idx} className="flex items-center gap-1.5">
                     <input
@@ -995,6 +1209,7 @@ export function CustomProviderModal({
                       value={h.key}
                       onChange={(e) => updateHeader(idx, { key: e.target.value })}
                       placeholder="Header-Name"
+                      aria-label={`Custom header ${idx + 1} name`}
                       className="field-input w-[40%]"
                     />
                     <input
@@ -1006,12 +1221,14 @@ export function CustomProviderModal({
                       placeholder={
                         isRedactedCredential(h.value) ? 'saved - leave blank to keep' : 'value'
                       }
+                      aria-label={`Value for custom header ${h.key.trim() || idx + 1}`}
                       className="field-input flex-1 min-w-0"
                     />
                     <button
                       type="button"
                       onClick={() => removeHeaderRow(idx)}
                       title="Remove header"
+                      aria-label={`Remove custom header ${h.key.trim() || idx + 1}`}
                       className="shrink-0 w-5 p-1 text-tagma-muted hover:text-tagma-error"
                     >
                       <Trash2 size={11} />
@@ -1032,9 +1249,11 @@ export function CustomProviderModal({
 
           <div>
             <div className="flex items-center justify-between">
-              <label className="field-label !mb-0">Models</label>
+              <span className="field-label !mb-0">Models</span>
               <button
                 type="button"
+                aria-expanded={showAdvanced}
+                aria-controls={showAdvanced ? modelLimitControlIds : undefined}
                 onClick={() => setShowAdvanced((v) => !v)}
                 className="flex items-center gap-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
               >
@@ -1043,61 +1262,411 @@ export function CustomProviderModal({
               </button>
             </div>
             <div className="mt-1.5 space-y-1.5">
-              {form.models.map((m, idx) => (
-                <div key={idx} className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={m.id}
-                      onChange={(e) => updateModel(idx, { id: e.target.value })}
-                      placeholder="model id (e.g. llama3.1:8b)"
-                      className="field-input w-[40%]"
-                    />
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={m.name}
-                      onChange={(e) => updateModel(idx, { name: e.target.value })}
-                      placeholder="display name (optional)"
-                      className="field-input flex-1 min-w-0"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeModelRow(idx)}
-                      title="Remove model"
-                      className="shrink-0 w-5 p-1 text-tagma-muted hover:text-tagma-error"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                  {showAdvanced && (
-                    <div className="flex items-center gap-1.5 pl-2">
+              {form.models.map((m, idx) => {
+                const providerHint = resolveLocalReasoningProviderHint(form.id, form.name);
+                const reasoningIdentity = resolveModelReasoningIdentity(
+                  m.extra ?? {},
+                  form.npm,
+                  m.id,
+                );
+                const profile = resolveReasoningProfile(
+                  reasoningIdentity.npm,
+                  reasoningIdentity.modelId,
+                  providerHint,
+                  reasoningIdentity.releaseDate,
+                  reasoningIdentity.apiModelId,
+                );
+                const generatedVariantIds = resolveOpenCodeGeneratedReasoningVariantIds(
+                  reasoningIdentity.npm,
+                  reasoningIdentity.modelId,
+                  reasoningIdentity.releaseDate,
+                  reasoningIdentity.apiModelId,
+                );
+                const warning = reasoningProfileMismatch(
+                  m.reasoning,
+                  reasoningIdentity.npm,
+                  reasoningIdentity.modelId,
+                  providerHint,
+                  reasoningIdentity.releaseDate,
+                  reasoningIdentity.apiModelId,
+                );
+                const restorableVariantCount = restorableDisabledReasoningVariantCount(m.reasoning);
+                const canUseOpenCodeDefaults = hasOpenCodeGeneratedReasoningOverrides(
+                  m.reasoning,
+                  reasoningIdentity.npm,
+                  reasoningIdentity.modelId,
+                  reasoningIdentity.releaseDate,
+                  reasoningIdentity.apiModelId,
+                );
+                const reasoningIssues = validateReasoningDraft(
+                  m.reasoning,
+                  m.name.trim() || m.id.trim() || `Model ${idx + 1}`,
+                );
+                const disclosureId = `custom-provider-model-${idx}-reasoning`;
+                const checkboxId = `${disclosureId}-enabled`;
+                const exactListId = `${disclosureId}-exact-list`;
+                return (
+                  <fieldset
+                    key={idx}
+                    className="space-y-1.5 border-b border-tagma-border/40 pb-1.5"
+                  >
+                    <legend className="sr-only">Model {m.id.trim() || idx + 1}</legend>
+                    <div className="flex items-center gap-1.5">
                       <input
-                        type="number"
-                        min="0"
+                        type="text"
                         autoComplete="off"
-                        value={m.context}
-                        onChange={(e) => updateModel(idx, { context: e.target.value })}
-                        placeholder="context tokens"
+                        spellCheck={false}
+                        value={m.id}
+                        onChange={(e) => updateModelId(idx, e.target.value)}
+                        placeholder="model id (e.g. llama3.1:8b)"
+                        aria-label={`Model ${idx + 1} id`}
                         className="field-input w-[40%]"
                       />
                       <input
-                        type="number"
-                        min="0"
+                        type="text"
                         autoComplete="off"
-                        value={m.output}
-                        onChange={(e) => updateModel(idx, { output: e.target.value })}
-                        placeholder="output tokens"
+                        spellCheck={false}
+                        value={m.name}
+                        onChange={(e) => updateModel(idx, { name: e.target.value })}
+                        placeholder="display name (optional)"
+                        aria-label={`Model ${idx + 1} display name`}
                         className="field-input flex-1 min-w-0"
                       />
-                      <span className="shrink-0 w-5" aria-hidden="true" />
+                      <button
+                        type="button"
+                        onClick={() => removeModelRow(idx)}
+                        title="Remove model"
+                        aria-label={`Remove model ${m.id.trim() || idx + 1}`}
+                        className="shrink-0 w-5 p-1 text-tagma-muted hover:text-tagma-error"
+                      >
+                        <Trash2 size={11} />
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
+                    {showAdvanced && (
+                      <div
+                        id={`custom-provider-model-${idx}-limits`}
+                        className="flex items-center gap-1.5 pl-2"
+                      >
+                        <input
+                          type="number"
+                          min="0"
+                          autoComplete="off"
+                          value={m.context}
+                          onChange={(e) => updateModel(idx, { context: e.target.value })}
+                          placeholder="context tokens"
+                          aria-label={`Model ${m.id.trim() || idx + 1} context tokens`}
+                          className="field-input w-[40%]"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          autoComplete="off"
+                          value={m.output}
+                          onChange={(e) => updateModel(idx, { output: e.target.value })}
+                          placeholder="output tokens"
+                          aria-label={`Model ${m.id.trim() || idx + 1} output tokens`}
+                          className="field-input flex-1 min-w-0"
+                        />
+                        <span className="shrink-0 w-5" aria-hidden="true" />
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      aria-expanded={m.reasoningOpen}
+                      aria-controls={m.reasoningOpen ? disclosureId : undefined}
+                      onClick={() => updateModel(idx, { reasoningOpen: !m.reasoningOpen })}
+                      className="flex items-center gap-1 pl-2 text-[10px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
+                    >
+                      {m.reasoningOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                      <Brain size={10} />
+                      {m.reasoning.enabled
+                        ? m.reasoning.variants.length > 0
+                          ? `Adjustable thinking · ${m.reasoning.variants.length} explicit variant${m.reasoning.variants.length === 1 ? '' : 's'}`
+                          : generatedVariantIds.length > 0 && !m.reasoning.managesGeneratedVariants
+                            ? 'Adjustable thinking · OpenCode defaults'
+                            : 'Adjustable thinking · no active variants'
+                        : 'Adjustable thinking off'}
+                      {warning && <AlertCircle size={10} className="text-tagma-warning" />}
+                    </button>
+
+                    {warning && !m.reasoningOpen && (
+                      <p
+                        role="status"
+                        aria-live="polite"
+                        className="ml-2 text-[9px] font-mono text-tagma-warning/90"
+                      >
+                        {warning.message}
+                      </p>
+                    )}
+
+                    {m.reasoningOpen && (
+                      <div
+                        id={disclosureId}
+                        className="ml-2 space-y-2 border-l border-tagma-border/60 pl-2 pb-1"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <label
+                            htmlFor={checkboxId}
+                            className="inline-flex items-center gap-1.5 text-[10px] font-mono text-tagma-text"
+                          >
+                            <input
+                              id={checkboxId}
+                              type="checkbox"
+                              checked={m.reasoning.enabled}
+                              onChange={(e) =>
+                                updateModelReasoning(idx, (reasoning) =>
+                                  setReasoningEnabled(
+                                    reasoning,
+                                    e.target.checked,
+                                    reasoningIdentity.npm,
+                                    reasoningIdentity.modelId,
+                                    providerHint,
+                                    reasoningIdentity.releaseDate,
+                                    reasoningIdentity.apiModelId,
+                                  ),
+                                )
+                              }
+                            />
+                            Configurable reasoning for{' '}
+                            {m.name.trim() || m.id.trim() || 'this model'}
+                          </label>
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            {restorableVariantCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateModelReasoning(idx, restoreDisabledReasoningVariants)
+                                }
+                                className="px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                              >
+                                Restore {restorableVariantCount} disabled variant
+                                {restorableVariantCount === 1 ? '' : 's'}
+                              </button>
+                            )}
+                            {canUseOpenCodeDefaults && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateModelReasoning(idx, (reasoning) =>
+                                    resetToOpenCodeGeneratedReasoningDefaults(
+                                      reasoning,
+                                      reasoningIdentity.npm,
+                                      reasoningIdentity.modelId,
+                                      reasoningIdentity.releaseDate,
+                                      reasoningIdentity.apiModelId,
+                                    ),
+                                  )
+                                }
+                                className="px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                              >
+                                Reset to OpenCode defaults
+                              </button>
+                            )}
+                            {profile && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateModelReasoning(idx, (reasoning) =>
+                                    enableRecommendedReasoning(
+                                      reasoning,
+                                      reasoningIdentity.npm,
+                                      reasoningIdentity.modelId,
+                                      providerHint,
+                                      reasoningIdentity.releaseDate,
+                                      reasoningIdentity.apiModelId,
+                                    ),
+                                  )
+                                }
+                                className="px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                              >
+                                Use {profile.label} recommendations
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-[9px] font-mono text-tagma-muted-dim">
+                          Variant IDs appear in Chat. Each JSON object is merged into the selected
+                          model request options. Recommendations are advisory because endpoint and
+                          model versions can support different values. Turning this off retains the
+                          JSON as disabled entries. Use the explicit restore action to reactivate
+                          them later; the editor never guesses whether a tombstone was intentional.
+                        </p>
+
+                        {m.reasoning.enabled && generatedVariantIds.length > 0 && (
+                          <div className="space-y-0.5">
+                            <label
+                              htmlFor={exactListId}
+                              className="inline-flex items-center gap-1.5 text-[9px] font-mono text-tagma-text"
+                            >
+                              <input
+                                id={exactListId}
+                                type="checkbox"
+                                checked={m.reasoning.managesGeneratedVariants}
+                                onChange={(e) =>
+                                  updateModelReasoning(idx, (reasoning) =>
+                                    setOpenCodeGeneratedVariantsExact(
+                                      reasoning,
+                                      e.target.checked,
+                                      reasoningIdentity.npm,
+                                      reasoningIdentity.modelId,
+                                      reasoningIdentity.releaseDate,
+                                      reasoningIdentity.apiModelId,
+                                    ),
+                                  )
+                                }
+                              />
+                              Only show the variants listed here
+                            </label>
+                            <p className="pl-5 text-[9px] font-mono text-tagma-muted-dim">
+                              When unchecked, other generated variants not listed here remain
+                              available. Variants you explicitly remove stay disabled until Reset to
+                              OpenCode defaults. Check this to disable every missing generated
+                              variant.
+                            </p>
+                          </div>
+                        )}
+
+                        {m.reasoning.enabled && m.reasoning.variants.length === 0 && (
+                          <p role="status" className="text-[9px] font-mono text-tagma-muted">
+                            {generatedVariantIds.length > 0 && m.reasoning.managesGeneratedVariants
+                              ? 'This exact list is empty. All OpenCode-generated variants will be disabled; add a row to keep an active choice.'
+                              : generatedVariantIds.length > 0
+                                ? 'No explicit variants are configured. OpenCode provides model defaults; add a row to override or add one choice, or use the exact-list option above to hide generated choices.'
+                                : 'No variants are configured or generated for this model. Add the exact variant IDs and request-options JSON documented by the endpoint.'}
+                          </p>
+                        )}
+
+                        {!m.reasoning.enabled && reasoningIssues[0] && (
+                          <p role="alert" className="text-[9px] font-mono text-tagma-error">
+                            Re-enable reasoning to fix the retained variant:{' '}
+                            {reasoningIssues[0].message}
+                          </p>
+                        )}
+
+                        {m.reasoning.enabled && (
+                          <div className="space-y-1.5">
+                            {m.reasoning.variants.map((variant, variantIndex) => {
+                              const idIssue = reasoningIssues.find(
+                                (issue) =>
+                                  issue.index === variantIndex && issue.field === 'variant-id',
+                              );
+                              const optionsIssue = reasoningIssues.find(
+                                (issue) =>
+                                  issue.index === variantIndex && issue.field === 'variant-options',
+                              );
+                              const idIssueId = `${disclosureId}-variant-${variantIndex}-id-issue`;
+                              const optionsIssueId = `${disclosureId}-variant-${variantIndex}-options-issue`;
+                              return (
+                                <div
+                                  key={variantIndex}
+                                  className="grid grid-cols-[minmax(90px,0.35fr)_minmax(0,1fr)_20px] items-start gap-1.5"
+                                >
+                                  <input
+                                    type="text"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    value={variant.id}
+                                    onChange={(e) =>
+                                      updateModelReasoning(idx, (reasoning) =>
+                                        updateReasoningVariant(reasoning, variantIndex, {
+                                          id: e.target.value,
+                                        }),
+                                      )
+                                    }
+                                    placeholder="variant id"
+                                    aria-label={`Reasoning variant ${variantIndex + 1} id for ${m.id || `model ${idx + 1}`}`}
+                                    aria-invalid={!!idIssue}
+                                    aria-describedby={idIssue ? idIssueId : undefined}
+                                    className="field-input"
+                                  />
+                                  <textarea
+                                    rows={2}
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    value={variant.optionsText}
+                                    onChange={(e) =>
+                                      updateModelReasoning(idx, (reasoning) =>
+                                        updateReasoningVariant(reasoning, variantIndex, {
+                                          optionsText: e.target.value,
+                                        }),
+                                      )
+                                    }
+                                    placeholder={'{"reasoningEffort":"low"}'}
+                                    aria-label={`Request options JSON for reasoning variant ${variant.id || variantIndex + 1}`}
+                                    aria-invalid={!!optionsIssue}
+                                    aria-describedby={optionsIssue ? optionsIssueId : undefined}
+                                    className="field-input min-h-12 resize-y font-mono"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateModelReasoning(idx, (reasoning) =>
+                                        removeReasoningVariant(reasoning, variantIndex),
+                                      )
+                                    }
+                                    title="Remove reasoning variant"
+                                    aria-label={`Remove reasoning variant ${variant.id || variantIndex + 1}`}
+                                    className="w-5 p-1 text-tagma-muted hover:text-tagma-error"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                  {idIssue && (
+                                    <p
+                                      id={idIssueId}
+                                      role="alert"
+                                      className="col-span-3 text-[9px] font-mono text-tagma-error"
+                                    >
+                                      {idIssue.message}
+                                    </p>
+                                  )}
+                                  {optionsIssue && (
+                                    <p
+                                      id={optionsIssueId}
+                                      role="alert"
+                                      className="col-span-3 text-[9px] font-mono text-tagma-error"
+                                    >
+                                      {optionsIssue.message}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateModelReasoning(idx, (reasoning) =>
+                                  addReasoningVariant(reasoning),
+                                )
+                              }
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                            >
+                              <Plus size={9} />
+                              Add variant
+                            </button>
+                          </div>
+                        )}
+
+                        {reasoningIssues.find((issue) => issue.field === 'variants') && (
+                          <p role="alert" className="text-[9px] font-mono text-tagma-error">
+                            {reasoningIssues.find((issue) => issue.field === 'variants')?.message}
+                          </p>
+                        )}
+                        {warning && (
+                          <p
+                            role="status"
+                            aria-live="polite"
+                            className="text-[9px] font-mono text-tagma-warning/90"
+                          >
+                            {warning.message}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </fieldset>
+                );
+              })}
               <button
                 type="button"
                 onClick={addModelRow}
@@ -1115,7 +1684,7 @@ export function CustomProviderModal({
           </InlineHint>
 
           {error && (
-            <div className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
+            <div role="alert" className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
               <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono break-words">
                 <AlertCircle size={10} className="shrink-0 mt-[1px]" />
                 <span>{error}</span>
@@ -1149,17 +1718,21 @@ function ScopeButton({
   onClick,
   label,
   hint,
+  ariaDescribedBy,
   disabled,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   hint: string;
+  ariaDescribedBy?: string;
   disabled?: boolean;
 }) {
   return (
     <button
       type="button"
+      aria-pressed={active}
+      aria-describedby={ariaDescribedBy}
       onClick={onClick}
       disabled={disabled}
       className={`flex flex-col items-start text-left px-2 py-1.5 border transition-colors flex-1 ${
@@ -1179,9 +1752,13 @@ function ScopeButton({
 function InlineHint({
   kind,
   children,
+  id,
+  role,
 }: {
   kind: 'info' | 'warn' | 'ok';
   children: React.ReactNode;
+  id?: string;
+  role?: 'alert' | 'status';
 }) {
   const tone =
     kind === 'warn'
@@ -1189,5 +1766,14 @@ function InlineHint({
       : kind === 'ok'
         ? 'text-tagma-ready'
         : 'text-tagma-muted-dim';
-  return <p className={`mt-1 text-[10px] font-mono ${tone} break-words`}>{children}</p>;
+  return (
+    <p
+      id={id}
+      role={role}
+      aria-atomic={role ? 'true' : undefined}
+      className={`mt-1 text-[10px] font-mono ${tone} break-words`}
+    >
+      {children}
+    </p>
+  );
 }

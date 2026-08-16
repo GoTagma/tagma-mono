@@ -46,6 +46,25 @@
   runtime/legacy variants with its v2 `variants` because v2 can omit provider-generated choices;
   v2 metadata wins for duplicate ids. `null` means model default. Do not restore a fixed
   cross-model reasoning-effort enum.
+- Custom-provider reasoning is authored per model as OpenCode-native `reasoning` plus `variants`.
+  Package/local-server profiles are advisory and apply only after explicit model opt-in; detected
+  models stay off by default. Preserve arbitrary JSON option overlays for unknown adapters, and
+  serialize `{ disabled: true }` tombstones when explicitly removing OpenCode-generated variant
+  ids so OpenCode's deep merge cannot make them reappear. Editing one explicit override must not
+  suppress its implicit generated siblings; only a separate exact-list choice may tombstone every
+  missing generated id. Turning model reasoning off must retain active payloads as disabled,
+  restorable entries rather than silently deleting hand-authored JSON.
+  Reactivating payload-bearing disabled entries must be explicit: portable OpenCode config cannot
+  distinguish a Tagma-retained payload from an intentional hand-authored tombstone. Profile
+  resolution must mirror OpenCode's split identity: use the models-map key for global exclusions,
+  but `model.id` and `model.provider.npm` for package-specific transforms.
+  Variant-only edits must preserve an explicitly false or omitted `reasoning` capability field;
+  active hand-authored variants do not authorize flipping it to true. Track persisted/restored row
+  provenance rather than transient text-input prefixes so renames and removals tombstone only real
+  generated origins and never collapse temporarily blank or duplicate draft rows.
+  Keep endpoint recommendations separate from the pinned OpenCode-generated variant set: only the
+  latter determines which missing ids need tombstones, and capability-only `reasoning: true` with
+  no explicit rows must remain valid.
 - Streaming and default-open message details must not claim chat scroll ownership from a
   programmatic `toggle`. Only a trusted user activation on the `summary` may request
   `scrollIntoView`, and the next frame must confirm that the details remain open.
@@ -508,8 +527,9 @@
   checks, and discard only their own unready generation on failure. A dead owner's provisional
   generation may be rebuilt; a published generation must never be removed by lease recovery.
 - Do not mark a managed database epoch active until OpenCode health, a database-backed session
-  query, and SQLite integrity validation all succeed. Expose the active runtime identity, database
-  path, epoch, and initialization mode through the read-only diagnostics context.
+  query, a managed ToolRegistry query containing every required Tagma tool id, and SQLite integrity
+  validation all succeed. Expose the active runtime identity, database path, epoch, and
+  initialization mode through the read-only diagnostics context.
 - Await the database-backed readiness query with one overall deadline instead of repeatedly
   abandoning short requests while OpenCode initializes SQLite. Every loopback probe must close its
   socket on timeout and must not write after the request has already settled.
@@ -525,6 +545,12 @@
   `.tagma/.chat-staging/<id>/.../agent-workspace/.tagma` as the authoritative root, and delegated
   child sessions must inherit that effective root through host-validated permission routing rather
   than prompt text alone.
+- Keep Tagma-owned custom tool modules under the isolated runtime layout's
+  `OPENCODE_CONFIG_DIR/tools`, where OpenCode owns their `@opencode-ai/plugin` dependency root;
+  never seed them into the sibling project `.opencode/tools`. Reconcile legacy workspaces by
+  removing only the exact Tagma-owned tool filenames, preserving user tools and partial dependency
+  trees. Deployment, migration, and readiness must share the canonical managed-tool contract, and
+  OpenCode version upgrades must run its native Linux, macOS, and Windows contract test.
 - Pipeline prompt tasks using the built-in `opencode` driver must resolve the executable through
   `resolveOpencodeBinary()`, using the same user-runtime, bundled, dev-staged, then PATH precedence
   as Chat. They must also use Chat's `buildOpencodeEnv()` isolation rooted at the workspace
@@ -702,6 +728,19 @@
 - Seeded pipeline-agent documents follow the current host contract. Keep seed assertions
   host-aware; verify Windows-only command guidance through `buildTagmaPipelineAgent('Windows')`
   instead of requiring it from Linux or macOS seed output.
+- Keep create/fill-new planning and post-authoring edge-case review inside the single pipeline
+  worker. It must close a proportional design gate before the first manifest/YAML write, then
+  review only relevant input, platform, prerequisite, failure, repeat/concurrency, collision, and
+  external-side-effect boundaries before finalizing. Optional host Trial adds execution evidence;
+  it does not replace this review for ordinary Chat or bot-bridge authoring.
+
+## Provider Modal Backdrop Dismissal
+
+- Connect Providers and its Add/Edit custom-provider child may dismiss from their backdrops only
+  when pointer down, pointer up, and the resulting click all directly target that modal's own
+  backdrop. A text-selection drag that starts in an input and ends outside can synthesize a click
+  on the backdrop's common ancestor, so shell-level click propagation guards are insufficient.
+  Reuse `useModalBackdropDismiss` for these provider modals.
 
 ## Targeted Pipeline Runs
 

@@ -14,16 +14,38 @@ import { opencodeWorkspaceHeaderValue } from './opencode-chat';
 
 export type ConfigScope = 'global' | 'workspace';
 
+export interface CustomProviderVariantDef {
+  /** Prevent an OpenCode-generated variant from reappearing after a user removes it. */
+  disabled?: boolean;
+  /** Provider-specific request options applied when this variant is selected. */
+  [key: string]: unknown;
+}
+
+export interface CustomProviderModelProviderDef {
+  /** AI-SDK package OpenCode uses for this model instead of the provider default. */
+  npm?: string;
+  /** Optional model-specific API/base URL override used by OpenCode. */
+  api?: string;
+  /** Preserve provider-specific metadata such as the SDK API surface. */
+  [key: string]: unknown;
+}
+
 export interface CustomProviderModelDef {
   name?: string;
   limit?: {
     context?: number;
     output?: number;
   };
+  /** Advertise that the model supports configurable reasoning. */
+  reasoning?: boolean;
+  /** OpenCode-native model variant IDs mapped to provider option overlays. */
+  variants?: Record<string, CustomProviderVariantDef>;
+  /** Optional model-specific AI-SDK package override used by OpenCode. */
+  provider?: CustomProviderModelProviderDef;
   /**
-   * Preserve OpenCode/AI-SDK advanced model-level settings such as per-model
-   * `npm` overrides or provider-specific `options`. The modal only edits
-   * name/limit, but it must not erase hand-written config when saving.
+   * Preserve OpenCode/AI-SDK advanced model-level settings such as `id`,
+   * `provider.npm` overrides, or provider-specific `options`. The modal must
+   * not erase hand-written config when saving.
    */
   [key: string]: unknown;
 }

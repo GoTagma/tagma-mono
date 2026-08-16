@@ -1,6 +1,6 @@
 {
-  "pid": 30496,
-  "version": "0.9.6",
-  "socketPath": "\\\\.\\pipe\\codegraph-e3e4298d67486296",
-  "startedAt": 1781617172890
+  "pid": 433696,
+  "version": "1.0.1",
+  "socketPath": "/home/sanchai/projects/tagma-mono/.codegraph/daemon.sock",
+  "startedAt": 1786864556243
 }

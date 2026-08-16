@@ -30,6 +30,7 @@ import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { CustomProviderModal } from './CustomProviderModal';
 import { providerAuthMethodKey } from './provider-auth-method-key';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
+import { useModalBackdropDismiss } from '../modal-backdrop-dismiss';
 
 /**
  * Provider connect dialog — the GUI equivalent of opencode's CLI `/connect`.
@@ -70,6 +71,7 @@ export function ProviderConnectDialog() {
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const modalRef = useModalFocusTrap<HTMLDivElement>();
+  const backdropDismissHandlers = useModalBackdropDismiss(close);
 
   // The "Add custom" / "Edit" modal lives inside this dialog so it tears down
   // with the right dock. `editingEntry === null` distinguishes the two modes:
@@ -158,7 +160,7 @@ export function ProviderConnectDialog() {
   return createPortal(
     <div
       className="modal-viewport-backdrop fixed inset-0 z-[210] flex items-center justify-center bg-black/60"
-      onClick={close}
+      {...backdropDismissHandlers}
     >
       <div
         ref={modalRef}

@@ -29,6 +29,7 @@ import {
   parseChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
 } from '../server/chat-pipeline-trial-plan';
+import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 
 type GeneratedTrialPlanTool = {
   execute(args: Record<string, unknown>, context: { directory: string }): Promise<string>;
@@ -430,7 +431,8 @@ test('router keeps one bounded implementation handoff before result synthesis', 
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc.length).toBeLessThan(18_000);
+  // Keep the explicit design gate and edge-case matrix bounded with the rest of the base contract.
+  expect(doc.length).toBeLessThan(19_500);
   expect(doc).toContain('Keep context small');
   expect(doc).toContain('schema source of truth');
   expect(doc).toContain('YAML Contract Quick Reference');
@@ -519,6 +521,46 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('Never ask for or store secret values');
   expect(doc).toContain('never edit `.env`');
   expect(doc).toContain('never call secret-manager APIs');
+});
+
+test('tagma-pipeline completes a design gate before generating a new pipeline', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+  const designGate = doc.indexOf('## Design-Before-Generation Gate');
+  const manifestFlow = doc.indexOf('## Manifest-Guided YAML Edits');
+
+  expect(designGate).toBeGreaterThan(0);
+  expect(manifestFlow).toBeGreaterThan(designGate);
+  expect(doc).toContain('create-new and fill-manual-new requests');
+  expect(doc).toContain('goal and observable success evidence');
+  expect(doc).toContain('task graph and typed dataflow');
+  expect(doc).toContain('Do not write the manifest, call `tagma_yaml_skeleton`, or write YAML');
+  expect(doc).toContain('complete this gate in the current worker');
+  expect(doc).toContain(
+    'For **create new**, write the manifest only after completing the Design-Before-Generation Gate',
+  );
+});
+
+test('seed prompts require a scope-aware edge-case review after pipeline creation', () => {
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  const createWrite = pipeline.indexOf(
+    'For **create new**, write the manifest only after completing the Design-Before-Generation Gate',
+  );
+  const edgeCaseReview = pipeline.indexOf('## Self-Review And Edge Cases');
+
+  expect(edgeCaseReview).toBeGreaterThan(createWrite);
+  expect(pipeline).toContain('empty, missing, malformed, duplicate, or ambiguous inputs');
+  expect(pipeline).toContain('multiline, Unicode, and shell-special values');
+  expect(pipeline).toContain('boundary sizes and counts');
+  expect(pipeline).toContain(
+    'missing files, binaries, plugins, services, network access, secrets, or permissions',
+  );
+  expect(pipeline).toContain('Windows and POSIX path and quoting behavior');
+  expect(pipeline).toContain('timeouts, crashes, partial failure, and bounded retry behavior');
+  expect(pipeline).toContain('repeated or concurrent runs, idempotency, and output collisions');
+  expect(pipeline).toContain('destructive or external side effects');
+  expect(pipeline).toContain('Fix applicable findings and re-read the resulting `.compile.log`');
+  expect(pipeline).toContain('Do not invent handling for an irrelevant case');
+  expect(pipeline).toContain('Trial adds execution evidence only when the host enables it');
 });
 
 test('tagma-pipeline agent cooperates with optional host trial-run repair before the logical turn ends', () => {
@@ -1545,9 +1587,10 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
     trialPlannerAgent,
     pythonAgent,
   ];
-  const skeletonTool = join(dir, '.opencode', 'tools', 'tagma_yaml_skeleton.ts');
-  const placementTool = join(dir, '.opencode', 'tools', 'tagma_placement_plan.ts');
-  const trialPlanTool = join(dir, '.opencode', 'tools', 'tagma_trial_plan.ts');
+  const managedToolsDir = resolveOpencodeRuntimePaths(dir).managedToolsDir;
+  const skeletonTool = join(managedToolsDir, 'tagma_yaml_skeleton.ts');
+  const placementTool = join(managedToolsDir, 'tagma_placement_plan.ts');
+  const trialPlanTool = join(managedToolsDir, 'tagma_trial_plan.ts');
   const blockToolNames = [
     'tagma_read_block.ts',
     'tagma_upsert_block.ts',
