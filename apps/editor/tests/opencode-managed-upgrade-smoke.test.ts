@@ -2,7 +2,15 @@ import { createOpencodeClient as createLegacyClient } from '@opencode-ai/sdk/cli
 import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client';
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -67,7 +75,7 @@ async function expectNoContent(request: RequestEnvelope<void>, operation: string
 }
 
 function normalizedFilesystemPath(path: string): string {
-  const normalized = resolve(path).replace(/\\/g, '/');
+  const normalized = realpathSync.native(resolve(path)).replace(/\\/g, '/');
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 

@@ -1,7 +1,15 @@
 import { createOpencodeClient as createLegacyOpencodeClient } from '@opencode-ai/sdk/client';
 import { createOpencodeClient as createV2OpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -98,13 +106,26 @@ function providerCatalogIds(catalog: ProviderCatalog): {
 }
 
 function normalizedFilesystemPath(path: string): string {
-  const normalized = resolve(path).replace(/\\/g, '/');
+  const normalized = realpathSync.native(resolve(path)).replace(/\\/g, '/');
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 function expectFilesystemPath(actual: string, expected: string): void {
   expect(normalizedFilesystemPath(actual)).toBe(normalizedFilesystemPath(expected));
 }
+
+test('native filesystem path comparison resolves directory aliases', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-native-path-alias-'));
+  const target = join(root, 'target');
+  const alias = join(root, 'alias');
+  try {
+    mkdirSync(target);
+    symlinkSync(target, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    expectFilesystemPath(alias, target);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
   test('pinned OpenCode CLI serves both SDK clients from a fresh isolated native profile', async () => {
