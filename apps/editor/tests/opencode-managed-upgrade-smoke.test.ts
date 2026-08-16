@@ -74,8 +74,12 @@ async function expectNoContent(request: RequestEnvelope<void>, operation: string
   expect(result.response.status).toBe(204);
 }
 
+function canonicalFilesystemPath(path: string): string {
+  return realpathSync.native(resolve(path));
+}
+
 function normalizedFilesystemPath(path: string): string {
-  const normalized = realpathSync.native(resolve(path)).replace(/\\/g, '/');
+  const normalized = canonicalFilesystemPath(path).replace(/\\/g, '/');
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
@@ -366,16 +370,11 @@ async function expectBothSdkGenerationsSeeSession(
   ]);
   const legacySession = legacySessions.find((session) => session.id === sessionID);
   const v2Session = v2Sessions.find((session) => session.id === sessionID);
-  const v2SessionDetail = await unwrap(v2.session.get({ sessionID, directory }));
   expect(legacySession?.title).toBe(title);
   expectFilesystemPath(legacySession?.directory ?? '', directory);
   expect(v2Session?.title).toBe(title);
   expectFilesystemPath(v2Session?.directory ?? '', directory);
-  expect(v2SessionDetail.id).toBe(sessionID);
-  expect(v2SessionDetail.metadata?.nativeUpgradeMarker).toBe(marker);
-  if (v2Session?.metadata?.nativeUpgradeMarker !== undefined) {
-    expect(v2Session.metadata.nativeUpgradeMarker).toBe(marker);
-  }
+  expect(v2Session?.metadata?.nativeUpgradeMarker).toBe(marker);
 }
 
 function checkpointedDatabaseDigest(path: string): string {
@@ -465,16 +464,18 @@ if (process.env.TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE === '1') {
         timeout: 30_000,
       });
       expect(gitInit.exitCode).toBe(0);
-      const tagmaCwd = join(workspaceDir, '.tagma');
-      const stagedTagmaCwd = join(
-        tagmaCwd,
+      const tagmaCwdPath = join(workspaceDir, '.tagma');
+      const stagedTagmaCwdPath = join(
+        tagmaCwdPath,
         '.chat-staging',
         '11111111-1111-4111-8111-111111111111',
         'agent-workspace',
         '.tagma',
       );
-      mkdirSync(tagmaCwd, { recursive: true });
-      mkdirSync(stagedTagmaCwd, { recursive: true });
+      mkdirSync(tagmaCwdPath, { recursive: true });
+      mkdirSync(stagedTagmaCwdPath, { recursive: true });
+      const tagmaCwd = canonicalFilesystemPath(tagmaCwdPath);
+      const stagedTagmaCwd = canonicalFilesystemPath(stagedTagmaCwdPath);
       seedOpencodeArtifacts(tagmaCwd);
       seedDeterministicToolPlugin(tagmaCwd);
 

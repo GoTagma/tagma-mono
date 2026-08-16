@@ -554,10 +554,10 @@
   aliases with `realpathSync.native`, normalize separators, keep POSIX comparisons case-sensitive,
   and compare Windows paths case-insensitively. This covers macOS `/var` aliases and Windows
   junction, short-path, and casing differences without accepting a different directory.
-- In the pinned 1.17.8 upgrade fixture, a platform-native `session.list` response may omit optional
-  session metadata even though the complete `session.get` resource retains it. Native lineage
-  smoke tests use lists for discovery and `session.get` for metadata persistence; if a list does
-  include metadata, its value must still match.
+- Native runtime smoke tests must canonicalize the workspace and staged directories immediately
+  after creating them and use those coordinates for startup and every SDK request. Canonicalizing
+  only assertion operands is insufficient because OpenCode 1.17.8 filters `session.list` by the
+  authored directory string before the test can compare returned paths.
 - Guard first use of every unpublished generation with an exclusive initialization lease. Chat and
   prompt-task launchers must pass the exact prepared generation into `buildOpencodeEnv`, wait when
   another live owner holds the lease, publish only after database-backed readiness and integrity

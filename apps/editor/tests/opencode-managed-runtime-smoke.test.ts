@@ -105,8 +105,12 @@ function providerCatalogIds(catalog: ProviderCatalog): {
   };
 }
 
+function canonicalFilesystemPath(path: string): string {
+  return realpathSync.native(resolve(path));
+}
+
 function normalizedFilesystemPath(path: string): string {
-  const normalized = realpathSync.native(resolve(path)).replace(/\\/g, '/');
+  const normalized = canonicalFilesystemPath(path).replace(/\\/g, '/');
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
@@ -191,8 +195,9 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       expect(binaryVersion.exitCode).toBe(0);
       expect(new TextDecoder().decode(binaryVersion.stdout).trim()).toBe(expectedVersion);
 
-      const tagmaCwd = join(root, 'workspace with spaces 中文', '.tagma');
-      mkdirSync(tagmaCwd, { recursive: true });
+      const tagmaCwdPath = join(root, 'workspace with spaces 中文', '.tagma');
+      mkdirSync(tagmaCwdPath, { recursive: true });
+      const tagmaCwd = canonicalFilesystemPath(tagmaCwdPath);
       expect(seedOpencodeArtifacts(tagmaCwd)).toBe(true);
 
       const runtime = resolveOpencodeRuntimePaths(tagmaCwd);
