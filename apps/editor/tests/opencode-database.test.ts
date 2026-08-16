@@ -28,6 +28,10 @@ function tempStateDir(): string {
   return join(root, 'opencode-state');
 }
 
+function openExistingDatabaseForInspection(path: string): Database {
+  return new Database(path, { readwrite: true, create: false, strict: true });
+}
+
 afterEach(() => {
   for (const root of tempRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
@@ -198,7 +202,7 @@ test('an abandoned unready generation is rebuilt instead of reusing a poisoned d
   expect(recovered.generationId).toBe(abandoned.generationId);
   expect(recovered.initializationLease).not.toBeNull();
   expect(recovered.initializationLease?.path).toBe(abandonedLeasePath);
-  const db = new Database(recovered.databasePath, { readonly: true });
+  const db = openExistingDatabaseForInspection(recovered.databasePath);
   expect(Object.values(db.query('PRAGMA quick_check').get() ?? {})).toContain('ok');
   db.close();
   markManagedOpencodeDatabaseReady(recovered);
@@ -289,7 +293,7 @@ test('first managed launch never imports the user-global OpenCode database', () 
   expect(prepared.copiedFromSchemaVersion).toBeNull();
   expect(existsSync(prepared.databasePath)).toBe(true);
   expect(existsSync(globalDatabase)).toBe(true);
-  const managedDb = new Database(prepared.databasePath, { readonly: true });
+  const managedDb = openExistingDatabaseForInspection(prepared.databasePath);
   expect(
     managedDb.query('SELECT name FROM sqlite_master WHERE name = ?').get('externally_migrated'),
   ).toBeNull();
@@ -381,7 +385,7 @@ test('legacy runtimes without schema metadata get isolated exact-version buckets
   const preparedNewer = prepareManagedOpencodeDatabase(newer);
   expect(preparedNewer.initialization).toBe('fresh');
   expect(preparedNewer.databasePath.includes('runtime-v1.18.0-')).toBe(true);
-  const newerDb = new Database(preparedNewer.databasePath, { readonly: true });
+  const newerDb = openExistingDatabaseForInspection(preparedNewer.databasePath);
   expect(
     newerDb.query('SELECT name FROM sqlite_master WHERE name = ?').get('old_runtime_only'),
   ).toBeNull();

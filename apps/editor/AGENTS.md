@@ -547,6 +547,11 @@
   a downgrade must create a descendant of the current fork, never silently reuse an older branch.
   Retain every prior generation. A legacy runtime without epoch metadata gets an exact-version
   compatibility key and never participates in automatic copy-forward.
+- Bun 1.3.11 on macOS may need to create or update SQLite WAL sidecars before the first query on a
+  fresh managed database. Integrity and test inspection opens must use `readwrite: true` with
+  `create: false`, not `readonly`, so a missing database still fails without blocking `-shm` setup.
+- Compare OpenCode-returned directories as native filesystem coordinates: normalize separators and
+  resolve paths, keep POSIX comparisons case-sensitive, and compare Windows paths case-insensitively.
 - Guard first use of every unpublished generation with an exclusive initialization lease. Chat and
   prompt-task launchers must pass the exact prepared generation into `buildOpencodeEnv`, wait when
   another live owner holds the lease, publish only after database-backed readiness and integrity

@@ -97,6 +97,15 @@ function providerCatalogIds(catalog: ProviderCatalog): {
   };
 }
 
+function normalizedFilesystemPath(path: string): string {
+  const normalized = resolve(path).replace(/\\/g, '/');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function expectFilesystemPath(actual: string, expected: string): void {
+  expect(normalizedFilesystemPath(actual)).toBe(normalizedFilesystemPath(expected));
+}
+
 if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
   test('pinned OpenCode CLI serves both SDK clients from a fresh isolated native profile', async () => {
     const electronPackage = JSON.parse(
@@ -234,9 +243,9 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       const nativeV2Agents = await readSdkData(v2Client.v2.agent.list(), 'v2 agent.list');
       const nativeV2Providers = await readSdkData(v2Client.v2.provider.list(), 'v2 provider.list');
       const nativeV2Models = await readSdkData(v2Client.v2.model.list(), 'v2 model.list');
-      expect(nativeV2Agents.location.directory).toBe(tagmaCwd);
-      expect(nativeV2Providers.location.directory).toBe(tagmaCwd);
-      expect(nativeV2Models.location.directory).toBe(tagmaCwd);
+      expectFilesystemPath(nativeV2Agents.location.directory, tagmaCwd);
+      expectFilesystemPath(nativeV2Providers.location.directory, tagmaCwd);
+      expectFilesystemPath(nativeV2Models.location.directory, tagmaCwd);
       // The native durable-v2 projection is independent from the compatibility
       // catalog Tagma uses today. A fresh compatibility profile can legitimately
       // expose no native-v2 agents, so validate its wire shape without treating
@@ -273,7 +282,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         legacyClient.session.create({ body: { title: 'Tagma native smoke legacy' } }),
         'legacy session.create',
       );
-      expect(legacyCreated.directory).toBe(tagmaCwd);
+      expectFilesystemPath(legacyCreated.directory, tagmaCwd);
       expect(legacyCreated.version).toBe(expectedVersion);
       expect(
         (await readSdkData(legacyClient.session.list(), 'legacy session.list')).some(
@@ -304,7 +313,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         v2Client.session.create({ title: 'Tagma native smoke v2 compatibility' }),
         'v2 compatibility session.create',
       );
-      expect(compatibilityCreated.directory).toBe(tagmaCwd);
+      expectFilesystemPath(compatibilityCreated.directory, tagmaCwd);
       expect(compatibilityCreated.version).toBe(expectedVersion);
       expect(
         (await readSdkData(v2Client.session.list(), 'v2 compatibility session.list')).some(
