@@ -16,7 +16,7 @@ function collectTsxFiles(dir: string): string[] {
 const modalFiles = collectTsxFiles(srcRoot)
   .map((path) => ({
     path,
-    relativePath: relative(srcRoot, path).replaceAll('\\', '/'),
+    relativePath: relative(srcRoot, path).replace(/\\/g, '/'),
     source: readFileSync(path, 'utf8'),
   }))
   .filter(({ source }) => source.includes('modal-viewport-shell'));
