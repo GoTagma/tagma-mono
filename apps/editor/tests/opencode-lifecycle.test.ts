@@ -206,7 +206,12 @@ describe('ensureOpencode health probing', () => {
       path.startsWith('/experimental/tool/ids?'),
     );
     expect(toolRegistryPath).toBeDefined();
-    expect(new URL(toolRegistryPath!, 'http://127.0.0.1').searchParams.get('directory')).toBe(cwd);
+    // ensureOpencode canonicalizes the cwd via realpathSync.native before use, so the
+    // registry probe carries the native real path: macOS resolves /var to /private/var
+    // and Windows CI expands 8.3 short temp names such as RUNNER~1.
+    expect(new URL(toolRegistryPath!, 'http://127.0.0.1').searchParams.get('directory')).toBe(
+      realpathSync.native(cwd),
+    );
     const active = JSON.parse(
       readFileSync(join(tempRoot, 'opencode-state', 'current-head.json'), 'utf-8'),
     ) as { schemaVersion: number; generationId: string };
@@ -328,7 +333,7 @@ describe('ensureOpencode health probing', () => {
 
     toolRegistryHealthy = true;
     const handle = await ensureOpencode(cwd);
-    expect(handle.cwd).toBe(cwd);
+    expect(handle.cwd).toBe(realpathSync.native(cwd));
     expect(existsSync(join(tempRoot, 'opencode-state', 'current-head.json'))).toBe(true);
   });
 
