@@ -95,6 +95,16 @@ export function requirementsPath(yamlPath: string): string {
  * `@{ k = v; ... }` hashtable keys apart from real PATH binaries, so any
  * extraction would fabricate bogus entries. Multi-line dependencies are
  * agent-owned and live in the requirements markdown body instead.
+ *
+ * Single-line strings get no such bypass, so the token scanner itself must
+ * never emit a token that cannot be a PATH-resolvable bare command name.
+ * PowerShell keywords (`try`/`catch`/...), curated cmdlet names, `$`/`@`
+ * expressions (including parenthesized ones like `($null ...)`), type member
+ * access (`[Console]::In`), and dash-prefixed flags are language constructs,
+ * not user-installable CLIs — they are filtered unconditionally, without
+ * waiting for a `powershell`/`pwsh` token to reveal the dialect. Authored
+ * one-liners are routinely raw PowerShell with no such prefix, and the
+ * curated lists cannot collide with real PATH binaries.
  */
 function extractBinariesFromCommand(cmd: unknown): string[] {
   if (typeof cmd === 'string') {
@@ -171,17 +181,29 @@ const COMMAND_SEPARATORS = new Set([';', '&&', '||', '|']);
 const TAGMA_INPUT_PLACEHOLDER_RE =
   /\{\{\s*inputs\.[A-Za-z_][A-Za-z0-9_]*(?:\s*\|\s*[A-Za-z_][A-Za-z0-9_]*)?\s*\}\}/g;
 const TAGMA_INPUT_SENTINEL = '__tagma_input__';
-const GROUP_OPENERS = new Set(['(', '{']);
+const GROUP_STRUCTURAL_TOKENS = new Set(['(', '{', ')', '}']);
 const CONTROL_WORDS = new Set([
+  'begin',
+  'catch',
+  'data',
   'do',
   'done',
   'elif',
   'else',
+  'end',
   'esac',
   'fi',
+  'finally',
+  'for',
+  'foreach',
   'if',
   'in',
+  'param',
+  'process',
+  'switch',
   'then',
+  'throw',
+  'try',
   'until',
   'while',
 ]);
@@ -251,7 +273,6 @@ const SHELL_BUILTINS = new Set([
   'write-host',
 ]);
 const WRAPPER_COMMANDS = new Set(['env', 'nohup', 'sudo', 'time']);
-const POWERSHELL_BINARIES = new Set(['powershell', 'pwsh']);
 const POWERSHELL_BUILTINS = new Set([
   'add-content',
   'clear-content',
@@ -324,8 +345,6 @@ function isPowerShellExpressionStartToken(tok: string): boolean {
 function shellCommandTokens(s: string): string[] {
   const bins: string[] = [];
   let expectingCommand = true;
-  let inEnvWrapper = false;
-  let powerShellDialect = false;
 
   const command = s.trim().replace(TAGMA_INPUT_PLACEHOLDER_RE, TAGMA_INPUT_SENTINEL);
   for (const rawTok of splitShellTokens(command)) {
@@ -333,51 +352,49 @@ function shellCommandTokens(s: string): string[] {
     if (!tok) continue;
     if (COMMAND_SEPARATORS.has(tok)) {
       expectingCommand = true;
-      inEnvWrapper = false;
       continue;
     }
     if (!expectingCommand) continue;
 
     const lower = tok.toLowerCase();
-    if (GROUP_OPENERS.has(tok) || CONTROL_WORDS.has(lower) || isRedirectionToken(tok)) {
+    if (GROUP_STRUCTURAL_TOKENS.has(tok) || CONTROL_WORDS.has(lower) || isRedirectionToken(tok)) {
+      continue;
+    }
+    // A dash-prefixed token in command position is a stranded flag (e.g. a
+    // PowerShell `-not` / `-ErrorAction`), never a PATH-resolvable binary —
+    // even when grouping openers precede it, as in `if (-not (Test-Path …))`.
+    if (tok.replace(/^[({]+/, '').startsWith('-')) {
       continue;
     }
     if (isEnvAssignmentToken(tok)) {
       continue;
     }
-    if (powerShellDialect && isPowerShellBuiltinToken(tok)) {
+    // PowerShell constructs are filtered unconditionally: authored one-liners
+    // are routinely raw PowerShell with no `powershell`/`pwsh` prefix token,
+    // and the curated cmdlet list cannot collide with real PATH binaries.
+    if (isPowerShellBuiltinToken(tok)) {
       expectingCommand = false;
-      inEnvWrapper = false;
       continue;
     }
-    if (powerShellDialect && isPowerShellExpressionStartToken(tok)) {
+    if (isPowerShellExpressionStartToken(tok)) {
       expectingCommand = false;
-      inEnvWrapper = false;
       continue;
     }
     if (tok === TAGMA_INPUT_SENTINEL) {
       expectingCommand = false;
-      inEnvWrapper = false;
-      continue;
-    }
-    if (inEnvWrapper && tok.startsWith('-')) {
       continue;
     }
     if (WRAPPER_COMMANDS.has(lower)) {
-      inEnvWrapper = lower === 'env';
       continue;
     }
     if (SHELL_BUILTINS.has(lower)) {
       expectingCommand = false;
-      inEnvWrapper = false;
       continue;
     }
 
     const bin = commandBaseName(tok);
     if (bin && !bins.includes(bin)) bins.push(bin);
-    if (bin && POWERSHELL_BINARIES.has(bin.toLowerCase())) powerShellDialect = true;
     expectingCommand = false;
-    inEnvWrapper = false;
   }
 
   return bins;
@@ -392,6 +409,9 @@ function shellCommandTokens(s: string): string[] {
 function commandBaseName(arg: string): string | null {
   if (!arg) return null;
   if (arg.startsWith('$')) return null;
+  // `Env::Member` / `[Type]::Member` access is a language expression, and no
+  // PATH-resolved bare command name contains `::`.
+  if (arg.includes('::')) return null;
   if (arg.includes('/') || arg.includes('\\') || arg.startsWith('.')) return null;
   return arg.replace(/\.(exe|cmd|bat|ps1)$/i, '');
 }

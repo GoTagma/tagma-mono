@@ -299,6 +299,85 @@ test('extractBinariesFromYaml ignores PowerShell syntax inside a folded output_c
   expect(binaries!.map((binary) => binary.name)).toEqual(['opencode', 'powershell']);
 });
 
+test('extractBinariesFromYaml ignores raw single-line PowerShell output_check without a pwsh prefix', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'raw-powershell-output-check.yaml',
+    [
+      'pipeline:',
+      '  name: raw PowerShell output check',
+      '  tracks:',
+      '    - id: retrieve',
+      '      name: Retrieve',
+      '      tasks:',
+      '        - id: fetch_sources',
+      '          prompt: "Fetch sources"',
+      '          completion:',
+      '            type: output_check',
+      // Verbatim check string from the live incident: a single-line raw
+      // PowerShell snippet (no `powershell`/`pwsh` token to flip the dialect).
+      // Must not fabricate `try` / `($null` / `ConvertFrom-Json` binaries.
+      '            check: "try { $in = [Console]::In.ReadToEnd(); $o = $in | ConvertFrom-Json -ErrorAction Stop; if ($null -eq $o.claims_planned -or $null -eq $o.fetched -or $null -eq $o.failed) { exit 1 }; exit 0 } catch { exit 1 }"',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['opencode']);
+});
+
+test('extractBinariesFromYaml ignores raw single-line PowerShell command statements', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'raw-powershell-command.yaml',
+    [
+      'pipeline:',
+      '  name: raw PowerShell command',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: guard',
+      '          command: "if (-not (Test-Path $planPath)) { exit 1 }"',
+      '        - id: read_stdin',
+      '          command: "[Console]::In.ReadToEnd() | ConvertFrom-Json"',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  // `-not`, `($null`-style expressions, type member access, and cmdlets are
+  // PowerShell language constructs, never PATH-resolvable CLI installs.
+  expect(binaries!.map((binary) => binary.name)).toEqual([]);
+});
+
+test('extractBinariesFromYaml still detects real binaries inside raw PowerShell one-liners', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'raw-powershell-real-binary.yaml',
+    [
+      'pipeline:',
+      '  name: raw PowerShell real binary',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: status',
+      '          command: "try { git status; if ($LASTEXITCODE -ne 0) { exit 1 } } catch { exit 1 }"',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['git']);
+});
+
 test('extractBinariesFromYaml skips token extraction for multi-line script command blocks', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(

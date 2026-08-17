@@ -675,9 +675,13 @@
   PowerShell helpers must read BOM-less UTF-8 text/JSON with explicit UTF-8 decoding, especially
   for CJK content; do not rely on Windows PowerShell 5.1's legacy default code page.
 - Treat command blocks whose parsed value retains a newline as opaque during requirements
-  discovery. A folded/chomped scalar that becomes one line still enters the command scanner:
-  preserve PowerShell dialect after `powershell`/`pwsh`, ignore known built-in cmdlets and
-  expression starts after `|`/`;`, and continue discovering real external commands.
+  discovery. A folded/chomped scalar that becomes one line still enters the command scanner,
+  which must only emit tokens that can be PATH-resolvable bare command names: filter shell
+  control words plus PowerShell keywords, curated cmdlets, `$`/`@` expressions (including
+  parenthesized forms like `($null ...)` or `(-not ...)`), `Type::Member` access, stranded
+  dash flags, and path-shaped tokens unconditionally — do not gate PowerShell filtering on
+  spotting a `powershell`/`pwsh` prefix, because authored one-liners are routinely raw
+  PowerShell. Keep discovering real external commands elsewhere in the same line.
 - Multiple live `RunSession`s in one workspace are for distinct YAML sources. An equivalent request
   for the same normalized YAML while its session is running or waiting must return that session's
   `runId` with `alreadyRunning`; reject a different config/target request with 409, and allow a new
