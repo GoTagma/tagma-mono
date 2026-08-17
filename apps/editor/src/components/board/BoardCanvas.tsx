@@ -1837,7 +1837,7 @@ export function BoardCanvas({
                 }}
               >
                 <span
-                  className="absolute flex items-center justify-center text-[9px] font-mono uppercase tracking-wider text-tagma-muted/70 select-none"
+                  className="absolute flex items-center justify-center section-label select-none"
                   style={{ left: tasksRight, top: 0, width: LABEL_TAB_W, height: h }}
                 >
                   parallel

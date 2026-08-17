@@ -78,13 +78,13 @@ export function MiddlewareEditor({
         </label>
         <button
           onClick={handleAdd}
-          className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+          className="flex items-center gap-1 text-caption text-tagma-accent hover:text-tagma-text transition-colors"
         >
           <Plus size={10} /> Add
         </button>
       </div>
       {middlewares.length === 0 && (
-        <p className="text-[10px] text-tagma-muted">No middlewares. Click Add to create one.</p>
+        <p className="text-caption text-tagma-muted">No middlewares. Click Add to create one.</p>
       )}
       <div className="space-y-2">
         {middlewares.map((m, i) => (
@@ -143,12 +143,12 @@ function MiddlewareItem({
         <X size={10} />
       </button>
       <div>
-        <label className="text-[10px] text-tagma-muted">
+        <label className="text-caption text-tagma-muted">
           Type
           <FieldHelpButton field="type" scope="middleware entry" />
         </label>
         <select
-          className="field-input text-[11px]"
+          className="field-input text-body"
           value={middleware.type}
           onChange={(e) => onUpdate({ type: e.target.value })}
         >
@@ -169,7 +169,7 @@ function MiddlewareItem({
         />
       ) : (
         <div className="space-y-1">
-          <p className="text-[10px] text-tagma-muted">
+          <p className="text-caption text-tagma-muted">
             Custom fields (plugin "{middleware.type}" has no known schema — falling back to KV
             editor):
           </p>
@@ -210,7 +210,7 @@ function CustomFieldsEditor({
           <CopyableField value={k} label="Copy middleware field key" className="w-[90px]">
             <input
               type="text"
-              className="field-input font-mono text-[11px]"
+              className="field-input font-mono text-body"
               value={k}
               onChange={(e) => updateKey(i, e.target.value)}
               placeholder="key"
@@ -223,7 +223,7 @@ function CustomFieldsEditor({
           >
             <input
               type="text"
-              className="field-input font-mono text-[11px]"
+              className="field-input font-mono text-body"
               value={String(v ?? '')}
               onChange={(e) => updateValue(i, e.target.value)}
               placeholder="value"
@@ -240,7 +240,7 @@ function CustomFieldsEditor({
       ))}
       <button
         onClick={add}
-        className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+        className="text-caption text-tagma-accent hover:text-tagma-text transition-colors"
       >
         + Add field
       </button>

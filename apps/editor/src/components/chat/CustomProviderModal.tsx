@@ -947,11 +947,7 @@ export function CustomProviderModal({
               {isEdit ? `Edit “${editing!.id}”` : 'Add custom provider'}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-tagma-muted hover:text-tagma-text"
-            aria-label="Close dialog"
-          >
+          <button onClick={onClose} className="icon-btn" aria-label="Close dialog">
             <XIcon size={14} />
           </button>
         </div>
@@ -973,7 +969,7 @@ export function CustomProviderModal({
                     type="button"
                     onClick={() => applyTemplate(tpl.id)}
                     title={tpl.hint}
-                    className="px-2 py-1 text-[10px] font-mono border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 transition-colors"
+                    className="px-2 py-1 text-caption font-mono border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 transition-colors"
                   >
                     {tpl.label}
                   </button>
@@ -1047,12 +1043,12 @@ export function CustomProviderModal({
                     }`}
                   >
                     <span
-                      className={`text-[11px] font-mono ${active ? 'text-tagma-text' : 'text-tagma-muted'}`}
+                      className={`text-body font-mono ${active ? 'text-tagma-text' : 'text-tagma-muted'}`}
                     >
                       {pkg.label}
                       <span className="ml-1.5 text-tagma-muted-dim">({pkg.value})</span>
                     </span>
-                    <span className="text-[10px] text-tagma-muted-dim">{pkg.hint}</span>
+                    <span className="text-caption text-tagma-muted-dim">{pkg.hint}</span>
                   </button>
                 );
               })}
@@ -1080,7 +1076,7 @@ export function CustomProviderModal({
                   onClick={handleDetect}
                   disabled={detecting || !form.baseURL.trim()}
                   title="Probe the base URL for models — tries /v1/models, falls back to /api/tags"
-                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-body font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {detecting ? (
                     <Loader2 size={11} className="animate-spin" />
@@ -1137,7 +1133,7 @@ export function CustomProviderModal({
                   onClick={handleVerify}
                   disabled={verifying || !form.baseURL.trim()}
                   title="Ping the base URL with this API key — confirms the URL is reachable and the key is accepted"
-                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-body font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {verifying ? (
                     <Loader2 size={11} className="animate-spin" />
@@ -1196,7 +1192,7 @@ export function CustomProviderModal({
               />
             </div>
             {isEdit && (
-              <p className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
+              <p className="mt-1 text-caption font-mono text-tagma-muted-dim">
                 Scope is locked while editing. Delete and re-create to move between scopes.
               </p>
             )}
@@ -1208,7 +1204,7 @@ export function CustomProviderModal({
               aria-expanded={showHeaders}
               aria-controls={showHeaders ? customHeadersId : undefined}
               onClick={() => setShowHeaders((v) => !v)}
-              className="flex items-center gap-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
+              className="flex items-center gap-1 text-caption font-mono text-tagma-muted hover:text-tagma-text transition-colors"
             >
               {showHeaders ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
               Custom headers ({form.headers.length})
@@ -1253,7 +1249,7 @@ export function CustomProviderModal({
                 <button
                   type="button"
                   onClick={addHeaderRow}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-caption font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
                 >
                   <Plus size={10} />
                   Add header
@@ -1270,7 +1266,7 @@ export function CustomProviderModal({
                 aria-expanded={showAdvanced}
                 aria-controls={showAdvanced ? modelLimitControlIds : undefined}
                 onClick={() => setShowAdvanced((v) => !v)}
-                className="flex items-center gap-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
+                className="flex items-center gap-1 text-caption font-mono text-tagma-muted hover:text-tagma-text transition-colors"
               >
                 {showAdvanced ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                 Show context / output limits
@@ -1397,7 +1393,7 @@ export function CustomProviderModal({
                       aria-expanded={m.reasoningOpen}
                       aria-controls={m.reasoningOpen ? disclosureId : undefined}
                       onClick={() => updateModel(idx, { reasoningOpen: !m.reasoningOpen })}
-                      className="flex items-center gap-1 pl-2 text-[10px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
+                      className="flex items-center gap-1 pl-2 text-caption font-mono text-tagma-muted hover:text-tagma-text transition-colors"
                     >
                       {m.reasoningOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                       <Brain size={10} />
@@ -1415,7 +1411,7 @@ export function CustomProviderModal({
                       <p
                         role="status"
                         aria-live="polite"
-                        className="ml-2 text-[9px] font-mono text-tagma-warning/90"
+                        className="ml-2 text-tiny font-mono text-tagma-warning/90"
                       >
                         {warning.message}
                       </p>
@@ -1429,7 +1425,7 @@ export function CustomProviderModal({
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <label
                             htmlFor={checkboxId}
-                            className="inline-flex items-center gap-1.5 text-[10px] font-mono text-tagma-text"
+                            className="inline-flex items-center gap-1.5 text-caption font-mono text-tagma-text"
                           >
                             <input
                               id={checkboxId}
@@ -1459,7 +1455,7 @@ export function CustomProviderModal({
                                 onClick={() =>
                                   updateModelReasoning(idx, restoreDisabledReasoningVariants)
                                 }
-                                className="px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                                className="px-2 py-1 text-tiny font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
                               >
                                 Restore {restorableVariantCount} disabled variant
                                 {restorableVariantCount === 1 ? '' : 's'}
@@ -1480,7 +1476,7 @@ export function CustomProviderModal({
                                     ),
                                   )
                                 }
-                                className="px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                                className="px-2 py-1 text-tiny font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
                               >
                                 Reset to OpenCode defaults
                               </button>
@@ -1500,7 +1496,7 @@ export function CustomProviderModal({
                                     ),
                                   )
                                 }
-                                className="px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                                className="px-2 py-1 text-tiny font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
                               >
                                 Use {profile.label} recommendations
                               </button>
@@ -1508,7 +1504,7 @@ export function CustomProviderModal({
                           </div>
                         </div>
 
-                        <p className="text-[9px] font-mono text-tagma-muted-dim">
+                        <p className="text-tiny font-mono text-tagma-muted-dim">
                           Variant IDs appear in Chat. Each JSON object is merged into the selected
                           model request options. Recommendations are advisory because endpoint and
                           model versions can support different values. Turning this off retains the
@@ -1520,7 +1516,7 @@ export function CustomProviderModal({
                           <div className="space-y-0.5">
                             <label
                               htmlFor={exactListId}
-                              className="inline-flex items-center gap-1.5 text-[9px] font-mono text-tagma-text"
+                              className="inline-flex items-center gap-1.5 text-tiny font-mono text-tagma-text"
                             >
                               <input
                                 id={exactListId}
@@ -1542,7 +1538,7 @@ export function CustomProviderModal({
                               />
                               Only show the variants listed here
                             </label>
-                            <p className="pl-5 text-[9px] font-mono text-tagma-muted-dim">
+                            <p className="pl-5 text-tiny font-mono text-tagma-muted-dim">
                               When unchecked, other generated variants not listed here remain
                               available. Variants you explicitly remove stay disabled until Reset to
                               OpenCode defaults. Check this to disable every missing generated
@@ -1552,7 +1548,7 @@ export function CustomProviderModal({
                         )}
 
                         {m.reasoning.enabled && m.reasoning.variants.length === 0 && (
-                          <p role="status" className="text-[9px] font-mono text-tagma-muted">
+                          <p role="status" className="text-tiny font-mono text-tagma-muted">
                             {generatedVariantIds.length > 0 && m.reasoning.managesGeneratedVariants
                               ? 'This exact list is empty. All OpenCode-generated variants will be disabled; add a row to keep an active choice.'
                               : generatedVariantIds.length > 0
@@ -1562,7 +1558,7 @@ export function CustomProviderModal({
                         )}
 
                         {!m.reasoning.enabled && reasoningIssues[0] && (
-                          <p role="alert" className="text-[9px] font-mono text-tagma-error">
+                          <p role="alert" className="text-tiny font-mono text-tagma-error">
                             Re-enable reasoning to fix the retained variant:{' '}
                             {reasoningIssues[0].message}
                           </p>
@@ -1639,7 +1635,7 @@ export function CustomProviderModal({
                                     <p
                                       id={idIssueId}
                                       role="alert"
-                                      className="col-span-3 text-[9px] font-mono text-tagma-error"
+                                      className="col-span-3 text-tiny font-mono text-tagma-error"
                                     >
                                       {idIssue.message}
                                     </p>
@@ -1648,7 +1644,7 @@ export function CustomProviderModal({
                                     <p
                                       id={optionsIssueId}
                                       role="alert"
-                                      className="col-span-3 text-[9px] font-mono text-tagma-error"
+                                      className="col-span-3 text-tiny font-mono text-tagma-error"
                                     >
                                       {optionsIssue.message}
                                     </p>
@@ -1663,7 +1659,7 @@ export function CustomProviderModal({
                                   addReasoningVariant(reasoning),
                                 )
                               }
-                              className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                              className="inline-flex items-center gap-1 px-2 py-1 text-tiny font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
                             >
                               <Plus size={9} />
                               Add variant
@@ -1672,7 +1668,7 @@ export function CustomProviderModal({
                         )}
 
                         {reasoningIssues.find((issue) => issue.field === 'variants') && (
-                          <p role="alert" className="text-[9px] font-mono text-tagma-error">
+                          <p role="alert" className="text-tiny font-mono text-tagma-error">
                             {reasoningIssues.find((issue) => issue.field === 'variants')?.message}
                           </p>
                         )}
@@ -1680,7 +1676,7 @@ export function CustomProviderModal({
                           <p
                             role="status"
                             aria-live="polite"
-                            className="text-[9px] font-mono text-tagma-warning/90"
+                            className="text-tiny font-mono text-tagma-warning/90"
                           >
                             {warning.message}
                           </p>
@@ -1693,7 +1689,7 @@ export function CustomProviderModal({
               <button
                 type="button"
                 onClick={addModelRow}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-1 text-caption font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
               >
                 <Plus size={10} />
                 Add model
@@ -1707,8 +1703,8 @@ export function CustomProviderModal({
           </InlineHint>
 
           {error && (
-            <div role="alert" className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
-              <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono break-words">
+            <div role="alert" className="alert-box-error">
+              <div className="alert-text-error break-words">
                 <AlertCircle size={10} className="shrink-0 mt-[1px]" />
                 <span>{error}</span>
               </div>
@@ -1764,10 +1760,10 @@ function ScopeButton({
           : 'border-tagma-border/60 hover:border-tagma-muted/60'
       } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
     >
-      <span className={`text-[11px] font-mono ${active ? 'text-tagma-text' : 'text-tagma-muted'}`}>
+      <span className={`text-body font-mono ${active ? 'text-tagma-text' : 'text-tagma-muted'}`}>
         {label}
       </span>
-      <span className="text-[10px] text-tagma-muted-dim">{hint}</span>
+      <span className="text-caption text-tagma-muted-dim">{hint}</span>
     </button>
   );
 }
@@ -1787,14 +1783,14 @@ function InlineHint({
     kind === 'warn'
       ? 'text-tagma-warning/90'
       : kind === 'ok'
-        ? 'text-tagma-ready'
+        ? 'text-tagma-success'
         : 'text-tagma-muted-dim';
   return (
     <p
       id={id}
       role={role}
       aria-atomic={role ? 'true' : undefined}
-      className={`mt-1 text-[10px] font-mono ${tone} break-words`}
+      className={`mt-1 text-caption font-mono ${tone} break-words`}
     >
       {children}
     </p>

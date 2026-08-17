@@ -261,7 +261,7 @@ export function Minimap({
         title="Show minimap"
       >
         <MapIcon size={10} />
-        <span className="text-[9px] font-mono uppercase tracking-wider">minimap</span>
+        <span className="text-tiny font-mono uppercase tracking-wider">minimap</span>
       </button>
     );
   }
@@ -274,7 +274,7 @@ export function Minimap({
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="tagma-rail flex items-center justify-between px-2 h-5 border-b border-tagma-border/60">
-        <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted">
+        <span className="text-tiny font-mono uppercase tracking-wider text-tagma-muted">
           minimap
         </span>
         <button

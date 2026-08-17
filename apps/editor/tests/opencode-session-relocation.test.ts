@@ -67,13 +67,15 @@ describe('OpenCode session relocation helpers', () => {
     await expect(getOpencodeCanonicalDirectory(WORKSPACE)).resolves.toBe(CANONICAL_DIRECTORY);
   });
 
-  test('captures the exact source, posts moveChanges false, and polls for exact destination', async () => {
+  test('captures the source, posts moveChanges false, and accepts a Windows-equivalent destination', async () => {
     const sourceDirectory = 'C:\\Repo\\.tagma';
     const destinationDirectory = 'C:/repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma';
+    const returnedDestinationDirectory =
+      'c:\\repo\\.tagma\\.chat-staging\\stage-1\\agent-workspace\\.tagma';
     sessionResponses = [
       { id: 'session-1', directory: sourceDirectory },
       { id: 'session-1', directory: sourceDirectory },
-      { id: 'session-1', directory: destinationDirectory },
+      { id: 'session-1', directory: returnedDestinationDirectory },
     ];
 
     const result = await moveOpencodeSessionDirectory({
@@ -86,7 +88,10 @@ describe('OpenCode session relocation helpers', () => {
     expect(result.moved).toBe(true);
     expect(result.sourceDirectory).toBe(sourceDirectory);
     expect(result.destinationDirectory).toBe(destinationDirectory);
-    expect(result.session).toMatchObject({ id: 'session-1', directory: destinationDirectory });
+    expect(result.session).toMatchObject({
+      id: 'session-1',
+      directory: returnedDestinationDirectory,
+    });
     const operations = requests
       .filter((request) => request.url.origin === BASE_URL)
       .map((request) => `${request.method} ${request.url.pathname}`);
@@ -119,6 +124,47 @@ describe('OpenCode session relocation helpers', () => {
 
     expect(result.moved).toBe(false);
     expect(result.sourceDirectory).toBe(destinationDirectory);
+    expect(
+      requests.some(
+        (request) => request.url.pathname === '/experimental/control-plane/move-session',
+      ),
+    ).toBe(false);
+  });
+
+  test('treats Windows drive casing and separators as the same allowed source', async () => {
+    const returnedDirectory = 'c:\\repo\\.tagma';
+    sessionResponses = [{ id: 'session-1', directory: returnedDirectory }];
+
+    const result = await moveOpencodeSessionDirectory({
+      sessionID: 'session-1',
+      destinationDirectory: CANONICAL_DIRECTORY,
+      expectedSourceDirectories: [CANONICAL_DIRECTORY],
+      workspaceKey: WORKSPACE,
+    });
+
+    expect(result).toMatchObject({
+      moved: false,
+      sourceDirectory: returnedDirectory,
+      destinationDirectory: CANONICAL_DIRECTORY,
+    });
+    expect(
+      requests.some(
+        (request) => request.url.pathname === '/experimental/control-plane/move-session',
+      ),
+    ).toBe(false);
+  });
+
+  test('keeps POSIX directory comparisons case-sensitive', async () => {
+    sessionResponses = [{ id: 'session-1', directory: '/Repo/.tagma' }];
+
+    await expect(
+      moveOpencodeSessionDirectory({
+        sessionID: 'session-1',
+        destinationDirectory: '/repo/.tagma',
+        expectedSourceDirectories: ['/repo/.tagma'],
+        workspaceKey: WORKSPACE,
+      }),
+    ).rejects.toThrow('unexpected source directory');
     expect(
       requests.some(
         (request) => request.url.pathname === '/experimental/control-plane/move-session',

@@ -87,12 +87,12 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
           <ShieldCheck size={14} className="shrink-0 text-tagma-warning" />
           <span
             id="approval-dialog-title"
-            className="min-w-0 flex-1 truncate text-xs font-medium text-tagma-text"
+            className="min-w-0 flex-1 truncate text-label font-medium text-tagma-text"
           >
             Approval Required
           </span>
           <span
-            className="max-w-[45%] shrink-0 truncate text-[10px] font-mono text-tagma-muted"
+            className="max-w-[45%] shrink-0 truncate text-caption font-mono text-tagma-muted"
             title={request.taskId}
           >
             {request.taskId}
@@ -107,19 +107,19 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
             <div className="px-4 py-2.5 border-b border-tagma-border/60 bg-tagma-bg/40">
               <div className="flex items-center gap-2 min-w-0">
                 {taskContext.isCommand ? (
-                  <Terminal size={11} className="text-tagma-ready shrink-0" />
+                  <Terminal size={11} className="text-tagma-accent shrink-0" />
                 ) : (
                   <MessageSquare size={11} className="text-tagma-muted/70 shrink-0" />
                 )}
-                <span className="text-[12px] font-medium text-tagma-text truncate flex-1">
+                <span className="text-label font-medium text-tagma-text truncate flex-1">
                   {taskContext.taskName}
                 </span>
-                <span className="text-[9px] font-mono text-tagma-muted shrink-0 truncate max-w-[140px]">
+                <span className="text-tiny font-mono text-tagma-muted shrink-0 truncate max-w-[140px]">
                   {taskContext.trackName}
                 </span>
               </div>
               {(taskContext.driver || taskContext.model) && !taskContext.isCommand && (
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] font-mono">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-tiny font-mono">
                   {taskContext.driver && (
                     <span className="min-w-0 break-all text-tagma-accent/80">
                       driver: {taskContext.driver}
@@ -133,7 +133,7 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
                 </div>
               )}
               {promptPreview && (
-                <pre className="mt-2 text-[10px] font-mono text-tagma-muted/90 bg-tagma-bg border border-tagma-border/60 px-2 py-1.5 max-h-[100px] overflow-auto whitespace-pre-wrap break-words">
+                <pre className="mt-2 text-caption font-mono text-tagma-muted/90 bg-tagma-bg border border-tagma-border/60 px-2 py-1.5 max-h-[100px] overflow-auto whitespace-pre-wrap break-words">
                   {promptPreview}
                 </pre>
               )}
@@ -143,7 +143,7 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
           <div className="px-4 py-3 space-y-3">
             <div>
               <label className="field-label">Message</label>
-              <div className="text-[12px] text-tagma-text whitespace-pre-wrap break-words">
+              <div className="text-label text-tagma-text whitespace-pre-wrap break-words">
                 {request.message || '(no message)'}
               </div>
             </div>
@@ -151,13 +151,13 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
             {request.metadata && Object.keys(request.metadata).length > 0 && (
               <div>
                 <label className="field-label">Metadata</label>
-                <pre className="text-[10px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2 py-1.5 overflow-auto max-h-[140px]">
+                <pre className="text-caption font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2 py-1.5 overflow-auto max-h-[140px]">
                   {JSON.stringify(request.metadata, null, 2)}
                 </pre>
               </div>
             )}
 
-            <div className="text-[10px] font-mono text-tagma-muted">
+            <div className="text-caption font-mono text-tagma-muted">
               Timeout: {Math.round(request.timeoutMs / 1000)}s · Created{' '}
               {new Date(request.createdAt).toLocaleTimeString()}
             </div>

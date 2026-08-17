@@ -448,7 +448,7 @@ function WorkflowLoopCountInput({
       onChange={(e) => setDraft(e.currentTarget.value)}
       onBlur={commitDraft}
       onKeyDown={handleKeyDown}
-      className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text disabled:text-tagma-muted disabled:cursor-not-allowed"
+      className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-body font-mono text-tagma-text disabled:text-tagma-muted disabled:cursor-not-allowed"
       aria-label={ariaLabel}
     />
   );
@@ -480,7 +480,7 @@ export function WorkflowRunModeControls({
           onModeChange(event.currentTarget.value as Exclude<WorkflowPipelineRunMode, 'custom'>)
         }
         aria-label="Pipeline run mode"
-        className="w-full border border-tagma-border bg-tagma-surface px-2 py-1 text-[11px] text-tagma-text"
+        className="w-full border border-tagma-border bg-tagma-surface px-2 py-1 text-body text-tagma-text"
       >
         {mode === 'custom' && (
           <option value="custom" disabled>
@@ -511,7 +511,7 @@ export function WorkflowRunModeControls({
           />
         </div>
       )}
-      <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
+      <div className="mt-1 text-caption font-mono text-tagma-muted-dim">
         {mode === 'run-once' && 'Runs this pipeline once.'}
         {mode === 'retry-success' &&
           'Pipeline success is the gate: the whole pipeline succeeds before retries stop. Add a final command task (for example pytest or bun test) or a task Completion Check. Failed output is fed to the next agent attempt.'}
@@ -907,10 +907,10 @@ export function WorkflowView({
         </button>
         <Workflow size={14} className="hidden shrink-0 text-tagma-accent sm:block" />
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-semibold truncate">
+          <div className="text-label font-semibold truncate">
             {selectedWorkflow?.workflowName ?? selectedWorkflow?.name ?? 'Pipeline Graph'}
           </div>
-          <div className="text-[10px] font-mono text-tagma-muted truncate">
+          <div className="text-caption font-mono text-tagma-muted truncate">
             {selectedWorkflow?.path ?? 'No workflow graph selected'}
           </div>
         </div>
@@ -926,7 +926,7 @@ export function WorkflowView({
         <button
           type="button"
           onClick={onCreateWorkflow}
-          className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-[11px] text-tagma-muted hover:text-tagma-text"
+          className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-body text-tagma-muted hover:text-tagma-text"
           aria-label="New Graph"
           title="New Graph"
         >
@@ -937,7 +937,7 @@ export function WorkflowView({
           <button
             type="button"
             onClick={() => setRunPageVisible((visible) => !visible)}
-            className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-[11px] text-tagma-muted hover:text-tagma-text"
+            className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-body text-tagma-muted hover:text-tagma-text"
             aria-label={runPageVisible ? 'Edit graph' : 'Show graph run'}
             title={runPageVisible ? 'Edit graph' : 'Show graph run'}
           >
@@ -964,7 +964,7 @@ export function WorkflowView({
             onClick={onAbort}
             aria-label="Abort workflow"
             title="Abort workflow"
-            className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-[11px] text-tagma-error hover:bg-tagma-error/10"
+            className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-body text-tagma-error hover:bg-tagma-error/10"
           >
             <Ban size={11} />
             <span className="hidden md:inline">Abort workflow</span>
@@ -992,13 +992,11 @@ export function WorkflowView({
         <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(12rem,auto)_minmax(24rem,1fr)_minmax(16rem,auto)] overflow-y-auto lg:grid-cols-[220px_minmax(360px,1fr)_320px] lg:grid-rows-1 lg:overflow-hidden xl:grid-cols-[260px_minmax(420px,1fr)_360px]">
           <aside className="max-h-[18rem] min-h-0 overflow-auto border-b border-tagma-border bg-tagma-surface/70 p-3 lg:max-h-none lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
-                Workflow Graphs
-              </div>
+              <div className="section-label-md">Workflow Graphs</div>
               <button
                 type="button"
                 onClick={onCreateWorkflow}
-                className="h-6 px-2 inline-flex items-center gap-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text"
+                className="h-6 px-2 inline-flex items-center gap-1 border border-tagma-border text-caption text-tagma-muted hover:text-tagma-text"
                 title="New Graph"
                 aria-label="New Graph"
               >
@@ -1007,9 +1005,7 @@ export function WorkflowView({
               </button>
             </div>
             {workflows.length === 0 ? (
-              <div className="text-[11px] font-mono text-tagma-muted">
-                No workflow graphs found.
-              </div>
+              <div className="text-body font-mono text-tagma-muted">No workflow graphs found.</div>
             ) : (
               <div className="space-y-2">
                 {workflows.map((workflow) => {
@@ -1030,13 +1026,13 @@ export function WorkflowView({
                           : 'border-tagma-border bg-tagma-bg hover:border-tagma-accent/50'
                       }`}
                     >
-                      <div className="text-[12px] font-semibold truncate">
+                      <div className="text-label font-semibold truncate">
                         {workflow.workflowName ?? workflow.name}
                       </div>
-                      <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
+                      <div className="mt-0.5 text-caption font-mono text-tagma-muted truncate">
                         {workflow.name}
                       </div>
-                      <div className="mt-2 flex items-center justify-between text-[9px] font-mono text-tagma-muted-dim">
+                      <div className="mt-2 flex items-center justify-between text-tiny font-mono text-tagma-muted-dim">
                         <span>{workflow.pipelines.length} pipelines</span>
                         <span>
                           {workflow.pipelines.reduce((sum, p) => sum + p.depends_on.length, 0)} deps
@@ -1048,11 +1044,9 @@ export function WorkflowView({
               </div>
             )}
 
-            <div className="mt-5 text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-              Workspace Pipelines
-            </div>
+            <div className="mt-5 section-label-md mb-2">Workspace Pipelines</div>
             {workspacePipelines.length === 0 ? (
-              <div className="text-[11px] font-mono text-tagma-muted">No pipelines found.</div>
+              <div className="text-body font-mono text-tagma-muted">No pipelines found.</div>
             ) : (
               <div className="space-y-2">
                 {workspacePipelines.map((pipeline) => {
@@ -1074,16 +1068,16 @@ export function WorkflowView({
                       title={pipeline.path}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 text-[12px] font-semibold truncate">
+                        <span className="min-w-0 text-label font-semibold truncate">
                           {displayPipelineName(pipeline)}
                         </span>
                         {inGraph && (
-                          <span className="shrink-0 text-[9px] font-mono text-tagma-accent">
+                          <span className="shrink-0 text-tiny font-mono text-tagma-accent">
                             In graph
                           </span>
                         )}
                       </div>
-                      <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
+                      <div className="mt-0.5 text-caption font-mono text-tagma-muted truncate">
                         {pipeline.name}
                       </div>
                     </button>
@@ -1095,25 +1089,23 @@ export function WorkflowView({
 
           <main className="min-h-[24rem] min-w-0 flex flex-col overflow-hidden border-b border-tagma-border lg:min-h-0 lg:border-b-0">
             {!selectedWorkflow ? (
-              <div className="flex-1 flex items-center justify-center text-[12px] font-mono text-tagma-muted">
+              <div className="flex-1 flex items-center justify-center text-label font-mono text-tagma-muted">
                 No workflow graph selected.
               </div>
             ) : (
               <>
                 <div className="h-9 shrink-0 border-b border-tagma-border bg-tagma-surface/40 px-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
-                      Graph Canvas
-                    </div>
+                    <div className="section-label-md">Graph Canvas</div>
                   </div>
-                  <div className="flex items-center gap-3 text-[10px] font-mono text-tagma-muted">
+                  <div className="flex items-center gap-3 text-caption font-mono text-tagma-muted">
                     <span>{selectedWorkflow.pipelines.length} pipelines</span>
                     <span>{graphLayout.edges.length} edges</span>
                   </div>
                 </div>
 
                 {localError && (
-                  <div className="shrink-0 border-b border-tagma-error/30 bg-tagma-error/8 px-3 py-2 text-[11px] font-mono text-tagma-error">
+                  <div className="shrink-0 border-b border-tagma-error/30 bg-tagma-error/8 px-3 py-2 text-body font-mono text-tagma-error">
                     {localError}
                   </div>
                 )}
@@ -1249,7 +1241,7 @@ export function WorkflowView({
                     })}
 
                     {renderedPipelines.length === 0 && (
-                      <div className="absolute left-8 top-8 border border-dashed border-tagma-border bg-tagma-surface/70 px-4 py-3 text-[12px] font-mono text-tagma-muted">
+                      <div className="absolute left-8 top-8 border border-dashed border-tagma-border bg-tagma-surface/70 px-4 py-3 text-label font-mono text-tagma-muted">
                         No pipelines in this graph.
                       </div>
                     )}
@@ -1339,16 +1331,16 @@ export function WorkflowView({
                             <div className="min-w-0 flex items-center gap-2">
                               <span className={`h-2 w-2 shrink-0 ${meta.dot}`} />
                               <div className="min-w-0">
-                                <div className="text-[12px] font-semibold truncate">
+                                <div className="text-label font-semibold truncate">
                                   {display.title}
                                 </div>
-                                <div className="text-[9px] font-mono text-tagma-muted truncate">
+                                <div className="text-tiny font-mono text-tagma-muted truncate">
                                   {display.subtitle}
                                 </div>
                               </div>
                             </div>
                             <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-mono ${meta.text}`}
+                              className={`inline-flex items-center gap-1 text-caption font-mono ${meta.text}`}
                             >
                               <Icon
                                 size={11}
@@ -1357,11 +1349,11 @@ export function WorkflowView({
                               {meta.label}
                             </span>
                           </div>
-                          <div className="mt-1 text-[10px] font-mono text-tagma-muted truncate">
+                          <div className="mt-1 text-caption font-mono text-tagma-muted truncate">
                             {display.pathLabel}
                           </div>
                           <div className="mt-2 flex items-center justify-between gap-2">
-                            <div className="min-w-0 flex items-center gap-2 text-[9px] font-mono text-tagma-muted-dim">
+                            <div className="min-w-0 flex items-center gap-2 text-tiny font-mono text-tagma-muted-dim">
                               <span>{pipeline.depends_on.length} upstream</span>
                               <span>{downstream.length} downstream</span>
                               {runMode === 'retry-success' && (
@@ -1399,19 +1391,17 @@ export function WorkflowView({
                 </div>
 
                 <div className="shrink-0 border-t border-tagma-border bg-tagma-surface/70 p-3">
-                  <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-                    Dependency Edges
-                  </div>
+                  <div className="section-label-md mb-2">Dependency Edges</div>
                   <div className="flex flex-wrap gap-2">
                     {graphLayout.edges.length === 0 ? (
-                      <span className="text-[11px] font-mono text-tagma-muted">
+                      <span className="text-body font-mono text-tagma-muted">
                         No dependency edges
                       </span>
                     ) : (
                       graphLayout.edges.map((edge) => (
                         <span
                           key={edge.key}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono border border-tagma-border bg-tagma-bg px-2 py-1"
+                          className="inline-flex items-center gap-1 text-body font-mono border border-tagma-border bg-tagma-bg px-2 py-1"
                         >
                           {edge.from} -&gt; {edge.to}
                         </span>
@@ -1424,23 +1414,21 @@ export function WorkflowView({
           </main>
 
           <aside className="max-h-[20rem] min-h-0 overflow-auto bg-tagma-surface p-3 lg:max-h-none lg:border-l lg:border-tagma-border">
-            <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-              Pipeline Detail
-            </div>
+            <div className="section-label-md mb-2">Pipeline Detail</div>
             {!selectedPipeline ? (
-              <div className="text-[11px] font-mono text-tagma-muted">No pipeline selected.</div>
+              <div className="text-body font-mono text-tagma-muted">No pipeline selected.</div>
             ) : (
               <div className="space-y-2">
                 <div className="border border-tagma-border bg-tagma-bg p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-[13px] font-semibold truncate">
+                      <div className="text-title font-semibold truncate">
                         {selectedPipelineDisplay?.title ?? selectedPipeline.id}
                       </div>
-                      <div className="text-[10px] font-mono text-tagma-muted truncate">
+                      <div className="text-caption font-mono text-tagma-muted truncate">
                         ID: {selectedPipeline.id}
                       </div>
-                      <div className="text-[10px] font-mono text-tagma-muted-dim truncate">
+                      <div className="text-caption font-mono text-tagma-muted-dim truncate">
                         {selectedPipeline.path}
                       </div>
                     </div>
@@ -1486,14 +1474,14 @@ export function WorkflowView({
                     <div className="field-label">Upstream</div>
                     <div className="space-y-1">
                       {selectedPipeline.depends_on.length === 0 ? (
-                        <div className="text-[11px] font-mono text-tagma-muted">
+                        <div className="text-body font-mono text-tagma-muted">
                           No upstream dependencies
                         </div>
                       ) : (
                         selectedPipeline.depends_on.map((dep) => (
                           <div
                             key={dep}
-                            className="min-w-0 text-[11px] font-mono text-tagma-muted truncate"
+                            className="min-w-0 text-body font-mono text-tagma-muted truncate"
                           >
                             {dep}
                           </div>
@@ -1505,14 +1493,14 @@ export function WorkflowView({
                     <div className="field-label">Downstream</div>
                     <div className="space-y-1">
                       {selectedDownstream.length === 0 ? (
-                        <div className="text-[11px] font-mono text-tagma-muted">
+                        <div className="text-body font-mono text-tagma-muted">
                           No downstream pipelines
                         </div>
                       ) : (
                         selectedDownstream.map((downstream) => (
                           <div
                             key={downstream}
-                            className="min-w-0 text-[11px] font-mono text-tagma-muted truncate"
+                            className="min-w-0 text-body font-mono text-tagma-muted truncate"
                           >
                             {downstream}
                           </div>
@@ -1525,7 +1513,7 @@ export function WorkflowView({
                 {selectedState?.runId && (
                   <div className="border border-tagma-border bg-tagma-bg p-2">
                     <div className="field-label">Run</div>
-                    <div className="text-[11px] font-mono text-tagma-muted truncate">
+                    <div className="text-body font-mono text-tagma-muted truncate">
                       {selectedState.runId}
                     </div>
                   </div>
@@ -1534,7 +1522,7 @@ export function WorkflowView({
                 {selectedState?.error && (
                   <div className="border border-tagma-error/30 bg-tagma-error/8 p-2">
                     <div className="field-label text-tagma-error">Error</div>
-                    <div className="text-[11px] font-mono text-tagma-error select-text">
+                    <div className="text-body font-mono text-tagma-error select-text">
                       {selectedState.error}
                     </div>
                   </div>
@@ -1543,11 +1531,9 @@ export function WorkflowView({
                 {selectedState && <WorkflowAttemptHistory attempts={selectedState.attempts} />}
 
                 <div className="pt-2">
-                  <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-                    Task Events
-                  </div>
+                  <div className="section-label-md mb-2">Task Events</div>
                   {selectedTasks.length === 0 ? (
-                    <div className="text-[11px] font-mono text-tagma-muted">
+                    <div className="text-body font-mono text-tagma-muted">
                       No task events for this pipeline yet.
                     </div>
                   ) : (
@@ -1558,14 +1544,12 @@ export function WorkflowView({
                           className="border border-tagma-border bg-tagma-bg p-2"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <div className="text-[12px] font-semibold truncate">
-                              {task.taskName}
-                            </div>
-                            <div className="text-[10px] font-mono uppercase text-tagma-muted">
+                            <div className="text-label font-semibold truncate">{task.taskName}</div>
+                            <div className="text-caption font-mono uppercase text-tagma-muted">
                               {task.status}
                             </div>
                           </div>
-                          <div className="text-[10px] font-mono text-tagma-muted truncate">
+                          <div className="text-caption font-mono text-tagma-muted truncate">
                             {task.taskId}
                           </div>
                         </div>
@@ -1587,7 +1571,7 @@ export function WorkflowView({
                       ) : (
                         <ChevronRight size={14} className="shrink-0" />
                       )}
-                      <div className="text-[10px] font-mono uppercase tracking-wide">
+                      <div className="text-caption font-mono uppercase tracking-wide">
                         Execution Timeline
                       </div>
                     </button>
@@ -1643,7 +1627,7 @@ function WorkflowAttemptHistory({ attempts }: { attempts: PipelineRuntimeState['
   if (attempts.length === 0) return null;
   return (
     <div className="mt-3 border-t border-tagma-border/50 pt-2">
-      <div className="mb-1.5 text-[9px] font-mono uppercase tracking-wide text-tagma-muted-dim">
+      <div className="mb-1.5 text-tiny font-mono uppercase tracking-wide text-tagma-muted-dim">
         Attempts
       </div>
       <div className="space-y-1">
@@ -1652,7 +1636,7 @@ function WorkflowAttemptHistory({ attempts }: { attempts: PipelineRuntimeState['
           return (
             <div
               key={attempt.attempt}
-              className="border border-tagma-border/60 bg-tagma-bg/50 px-2 py-1.5 text-[10px] font-mono"
+              className="border border-tagma-border/60 bg-tagma-bg/50 px-2 py-1.5 text-caption font-mono"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-tagma-text">Attempt {attempt.attempt}</span>
@@ -1663,7 +1647,7 @@ function WorkflowAttemptHistory({ attempts }: { attempts: PipelineRuntimeState['
                   <summary className="cursor-pointer select-none text-tagma-muted hover:text-tagma-text">
                     Repair feedback
                   </summary>
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words border border-tagma-border/50 bg-tagma-surface p-2 text-[10px] leading-relaxed text-tagma-text select-text">
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words border border-tagma-border/50 bg-tagma-surface p-2 text-caption leading-relaxed text-tagma-text select-text">
                     {attempt.repairFeedback}
                   </pre>
                 </details>
@@ -1732,7 +1716,7 @@ export function WorkflowRunPage({
       <div className="border-b border-tagma-border bg-tagma-surface/70 px-5 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0">
-            <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-tagma-muted-dim">
+            <div className="text-caption font-mono uppercase tracking-[0.22em] text-tagma-muted-dim">
               Graph Run
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -1740,7 +1724,7 @@ export function WorkflowRunPage({
                 size={16}
                 className={`${outcomeMeta.text} ${running ? 'animate-spin' : ''}`}
               />
-              <h1 className="text-[18px] font-semibold text-tagma-text truncate">
+              <h1 className="text-display font-semibold text-tagma-text truncate">
                 {outcome.label}
               </h1>
               <span className={`chip-sm ${outcomeMeta.text} ${outcomeMeta.border} bg-tagma-bg/60`}>
@@ -1757,7 +1741,7 @@ export function WorkflowRunPage({
                 </span>
               )}
             </div>
-            <div className="mt-1 text-[11px] font-mono text-tagma-muted truncate">
+            <div className="mt-1 text-body font-mono text-tagma-muted truncate">
               {workflow.workflowName ?? workflow.name}
               {graphRunId ? ` · ${graphRunId}` : ''}
             </div>
@@ -1768,7 +1752,7 @@ export function WorkflowRunPage({
                 <button
                   type="button"
                   onClick={onEditGraph}
-                  className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-[11px] text-tagma-muted hover:text-tagma-text"
+                  className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-body text-tagma-muted hover:text-tagma-text"
                   title="Edit graph"
                   aria-label="Edit graph"
                 >
@@ -1780,7 +1764,7 @@ export function WorkflowRunPage({
                 <button
                   type="button"
                   onClick={onAbort}
-                  className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-[11px] text-tagma-error hover:bg-tagma-error/10"
+                  className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-body text-tagma-error hover:bg-tagma-error/10"
                   title="Abort workflow"
                   aria-label="Abort workflow"
                 >
@@ -1807,9 +1791,7 @@ export function WorkflowRunPage({
 
       <div className="grid min-h-[calc(100%-80px)] grid-cols-1 gap-0 xl:grid-cols-[minmax(420px,1fr)_360px]">
         <section className="min-w-0 border-b border-tagma-border p-3 sm:p-4 xl:border-b-0 xl:border-r">
-          <div className="mb-3 text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
-            Pipeline Runtime
-          </div>
+          <div className="mb-3 section-label-md">Pipeline Runtime</div>
           <div className="space-y-3">
             {workflow.pipelines.map((pipeline, index) => {
               const state = pipelineStates[index]!;
@@ -1826,17 +1808,17 @@ export function WorkflowRunPage({
                           size={13}
                           className={`${meta.text} ${state.status === 'running' ? 'animate-spin' : ''}`}
                         />
-                        <div className="text-[13px] font-semibold truncate">{display.title}</div>
+                        <div className="text-title font-semibold truncate">{display.title}</div>
                       </div>
-                      <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
+                      <div className="mt-0.5 text-caption font-mono text-tagma-muted truncate">
                         {display.subtitle} · {display.pathLabel}
                       </div>
                     </div>
-                    <div className={`shrink-0 text-[10px] font-mono ${meta.text}`}>
+                    <div className={`shrink-0 text-caption font-mono ${meta.text}`}>
                       {meta.label}
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-1 gap-2 text-[10px] font-mono sm:grid-cols-3">
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-caption font-mono sm:grid-cols-3">
                     <div className="border border-tagma-border/60 bg-tagma-bg/60 px-2 py-1.5">
                       <div className="text-tagma-muted-dim">Run</div>
                       <div className="text-tagma-text">
@@ -1857,26 +1839,26 @@ export function WorkflowRunPage({
                     </div>
                   </div>
                   {state.runId && (
-                    <div className="mt-2 text-[10px] font-mono text-tagma-muted truncate">
+                    <div className="mt-2 text-caption font-mono text-tagma-muted truncate">
                       Run ID: {state.runId}
                     </div>
                   )}
                   {state.error && (
-                    <div className="mt-2 border border-tagma-error/25 bg-tagma-error/8 px-2 py-1.5 text-[10px] font-mono text-tagma-error">
+                    <div className="mt-2 border border-tagma-error/25 bg-tagma-error/8 px-2 py-1.5 text-caption font-mono text-tagma-error">
                       {state.error}
                     </div>
                   )}
                   <WorkflowAttemptHistory attempts={state.attempts} />
                   {tasks.length > 0 && (
                     <div className="mt-3 border-t border-tagma-border/50 pt-2">
-                      <div className="mb-1.5 text-[9px] font-mono uppercase tracking-wide text-tagma-muted-dim">
+                      <div className="mb-1.5 text-tiny font-mono uppercase tracking-wide text-tagma-muted-dim">
                         Task Events
                       </div>
                       <div className="space-y-1">
                         {tasks.map((task) => (
                           <div
                             key={task.taskId}
-                            className="flex items-center gap-2 text-[10px] font-mono"
+                            className="flex items-center gap-2 text-caption font-mono"
                           >
                             <span className="w-16 shrink-0 uppercase text-tagma-muted">
                               {task.status}
@@ -1897,11 +1879,9 @@ export function WorkflowRunPage({
         </section>
 
         <aside className="min-w-0 bg-tagma-surface/70 p-3 sm:p-4">
-          <div className="mb-3 text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
-            Execution Timeline
-          </div>
+          <div className="mb-3 section-label-md">Execution Timeline</div>
           {events.length === 0 ? (
-            <div className="text-[11px] font-mono text-tagma-muted">
+            <div className="text-body font-mono text-tagma-muted">
               No workflow events recorded yet.
             </div>
           ) : (

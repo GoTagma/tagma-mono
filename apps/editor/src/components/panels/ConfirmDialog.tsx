@@ -46,16 +46,11 @@ export function ConfirmDialog({
             {danger && <AlertTriangle size={13} className="text-tagma-error" />}
             {title}
           </h2>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-            aria-label="Close"
-          >
+          <button type="button" onClick={onCancel} className="icon-btn" aria-label="Close">
             <X size={14} />
           </button>
         </div>
-        <div className="modal-viewport-body space-y-2 px-4 py-3 text-[12px] text-tagma-text">
+        <div className="modal-viewport-body space-y-2 px-4 py-3 text-label text-tagma-text">
           {message}
         </div>
         <div className="modal-viewport-footer flex justify-end gap-2 border-t border-tagma-border px-4 py-3">

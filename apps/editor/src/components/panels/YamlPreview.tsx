@@ -253,7 +253,7 @@ export function YamlPreview({
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 p-1 text-[10px] text-tagma-muted hover:text-tagma-text transition-colors"
+            className="flex items-center gap-1 p-1 text-caption text-tagma-muted hover:text-tagma-text transition-colors"
           >
             {copied ? <Check size={10} className="text-tagma-success" /> : <Copy size={10} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
@@ -263,7 +263,7 @@ export function YamlPreview({
       {/* Content */}
       <div className="flex-1 flex min-h-0">
         <div ref={contentRef} className="flex-1 overflow-auto p-4 min-w-0" onCopy={handleCopyEvent}>
-          <div className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words select-text">
+          <div className="text-body font-mono leading-relaxed whitespace-pre-wrap break-words select-text">
             {rows.map((row) => {
               if (row.kind === 'block-header') {
                 const block = row.block;
@@ -273,7 +273,7 @@ export function YamlPreview({
                     key={row.key}
                     className="mt-2 first:mt-0 flex items-center justify-between gap-2 px-2 py-1 border-y border-tagma-border bg-tagma-surface"
                   >
-                    <div className="min-w-0 flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-tagma-muted">
+                    <div className="min-w-0 flex items-center gap-2 text-caption font-mono uppercase tracking-wider text-tagma-muted">
                       <span>{sourceLabel(block.source)}</span>
                       <span className="text-tagma-muted/60">
                         #{blockIndex >= 0 ? blockIndex + 1 : '?'}

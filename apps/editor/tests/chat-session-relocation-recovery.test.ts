@@ -437,6 +437,18 @@ describe('chat session relocation crash recovery', () => {
     expect(harness.calls).not.toContain('POST /experimental/control-plane/move-session');
   });
 
+  test('recovers a staged session whose Windows directory uses equivalent casing and separators', async () => {
+    savePersistedChatSessionRelocation(workspace, relocation('at-stage'));
+    const equivalentStage = stage.toLowerCase().replace(/\//g, '\\');
+    const harness = installHarness({ binding: binding('staged'), directory: equivalentStage });
+
+    await recoverChatSessionRelocations(workspace);
+
+    expect(harness.binding()).toBeNull();
+    expect(harness.directory()).toBe(home);
+    expect(harness.moveSessionIds).toEqual([sessionId]);
+  });
+
   test('keeps a mismatched authenticated binding and journal fail-closed', async () => {
     const journal = relocation('at-stage');
     savePersistedChatSessionRelocation(workspace, journal);

@@ -41,6 +41,7 @@ import type {
 } from '@opencode-ai/sdk/client';
 import { api, getClientAuthToken, getClientWorkspace } from './client';
 import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-errors.js';
+import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 
 /**
  * Opencode 1.14 returns a `hidden: true` marker on internal utility agents
@@ -652,14 +653,14 @@ export async function waitForOpencodeSessionDirectory(
   while (true) {
     const session = await readOpencodeSessionV2(client, exactSessionID, options.signal);
     lastDirectory = session.directory;
-    if (lastDirectory === exactDirectory) return session;
+    if (sameFilesystemPathCoordinate(lastDirectory, exactDirectory)) return session;
 
     const elapsedMs = Date.now() - startedAt;
     if (elapsedMs >= timeoutMs) break;
     await waitForPollDelay(Math.min(pollIntervalMs, timeoutMs - elapsedMs), options.signal);
   }
   throw new Error(
-    `OpenCode session ${JSON.stringify(exactSessionID)} did not move to the exact directory ` +
+    `OpenCode session ${JSON.stringify(exactSessionID)} did not move to the expected directory ` +
       `${JSON.stringify(exactDirectory)} within ${timeoutMs}ms (last observed ${JSON.stringify(lastDirectory)})`,
   );
 }
@@ -688,13 +689,16 @@ export async function moveOpencodeSessionDirectory(
     const expectedSources = input.expectedSourceDirectories.map((directory) =>
       requiredAbsoluteOpencodeDirectory(directory, 'expected OpenCode session source directory'),
     );
-    if (expectedSources.length === 0 || !expectedSources.includes(sourceDirectory)) {
+    if (
+      expectedSources.length === 0 ||
+      !expectedSources.some((expected) => sameFilesystemPathCoordinate(sourceDirectory, expected))
+    ) {
       throw new Error(
         `OpenCode session ${JSON.stringify(sessionID)} is in unexpected source directory ${JSON.stringify(sourceDirectory)}`,
       );
     }
   }
-  if (sourceDirectory === destinationDirectory) {
+  if (sameFilesystemPathCoordinate(sourceDirectory, destinationDirectory)) {
     return {
       moved: false,
       sourceDirectory,

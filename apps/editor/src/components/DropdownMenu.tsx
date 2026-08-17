@@ -79,7 +79,7 @@ export function DropdownMenu({ items, onClose, anchorClassName, anchorStyle }: D
         return (
           <div
             key={ii}
-            className={`group w-full flex items-center justify-between pr-1 text-[11px] text-left transition-colors relative ${item.disabled ? 'text-tagma-muted/45 cursor-not-allowed' : item.active ? 'text-tagma-accent bg-tagma-accent/8' : 'text-tagma-text hover:bg-tagma-accent/10 hover:text-tagma-accent'}`}
+            className={`group w-full flex items-center justify-between pr-1 text-body text-left transition-colors relative ${item.disabled ? 'text-tagma-muted/45 cursor-not-allowed' : item.active ? 'text-tagma-accent bg-tagma-accent/8' : 'text-tagma-text hover:bg-tagma-accent/10 hover:text-tagma-accent'}`}
           >
             {item.active && (
               <span
@@ -101,7 +101,7 @@ export function DropdownMenu({ items, onClose, anchorClassName, anchorStyle }: D
                 <span className="truncate max-w-full">{item.label}</span>
                 {item.subLabel && (
                   <span
-                    className={`text-[9px] truncate max-w-full leading-tight ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}
+                    className={`text-tiny truncate max-w-full leading-tight ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}
                   >
                     {item.subLabel}
                   </span>
@@ -109,7 +109,7 @@ export function DropdownMenu({ items, onClose, anchorClassName, anchorStyle }: D
               </span>
               {item.shortcut && (
                 <span
-                  className={`text-[9px] font-mono ml-6 tracking-wider ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}
+                  className={`text-tiny font-mono ml-6 tracking-wider ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}
                 >
                   {item.shortcut}
                 </span>

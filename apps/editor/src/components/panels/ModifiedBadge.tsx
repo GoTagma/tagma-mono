@@ -24,7 +24,7 @@ export function ModifiedBadge({
   return (
     <span
       title={title ?? 'Unsaved change since last save'}
-      className="inline-block text-[9px] font-medium tracking-wider uppercase text-tagma-warning/80 bg-tagma-warning/8 px-1.5 ml-1.5 align-middle leading-3"
+      className="inline-block text-tiny font-medium tracking-wider uppercase text-tagma-warning/80 bg-tagma-warning/8 px-1.5 ml-1.5 align-middle leading-3"
     >
       {label}
     </span>

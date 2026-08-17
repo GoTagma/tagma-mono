@@ -150,17 +150,13 @@ export function RequirementsCheckModal({
               Pipeline requirements not satisfied
             </h2>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-1 text-tagma-muted hover:text-tagma-text"
-            aria-label="Close dialog"
-          >
+          <button onClick={onCancel} className="icon-btn" aria-label="Close dialog">
             <XIcon size={14} />
           </button>
         </div>
 
         <div className="modal-viewport-body space-y-3 px-4 py-3">
-          <p className="text-[11px] text-tagma-text/80 leading-relaxed">
+          <p className="text-body text-tagma-text/80 leading-relaxed">
             Tagma checked this pipeline against its{' '}
             <code className="font-mono text-tagma-muted">.requirements.md</code> file before
             launching and found {state.missing.binaries.length + state.missing.envs.length} missing
@@ -171,16 +167,14 @@ export function RequirementsCheckModal({
           </p>
 
           {loadError && (
-            <div className="border border-tagma-warning/30 bg-tagma-warning/5 px-2.5 py-2 text-[11px] text-tagma-warning">
+            <div className="border border-tagma-error/30 bg-tagma-error/8 px-2.5 py-2 text-body text-tagma-error/90">
               Could not load install instructions: {loadError}
             </div>
           )}
 
           {state.missing.binaries.length > 0 && (
             <section>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-1.5">
-                Missing CLI tools
-              </div>
+              <div className="section-label-md mb-1.5">Missing CLI tools</div>
               <div className="space-y-2">
                 {state.missing.binaries.map((name, i) => (
                   <BinaryCard key={name} name={name} section={binarySections[i] ?? null} />
@@ -191,20 +185,18 @@ export function RequirementsCheckModal({
 
           {state.missing.envs.length > 0 && (
             <section>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-1.5">
-                Missing environment variables
-              </div>
+              <div className="section-label-md mb-1.5">Missing environment variables</div>
               <div className="space-y-1.5">
                 {envSections.map((e) => (
                   <div
                     key={e.name}
-                    className="border border-tagma-warning/30 bg-tagma-warning/5 px-2.5 py-2"
+                    className="border border-tagma-border bg-tagma-bg/40 px-2.5 py-2"
                   >
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-tagma-warning">
+                    <div className="flex items-center gap-1.5 text-body font-medium text-tagma-warning">
                       <code className="font-mono">{e.name}</code>
                     </div>
                     {e.description && (
-                      <p className="mt-1 text-[10px] text-tagma-text/70 leading-relaxed">
+                      <p className="mt-1 text-caption text-tagma-text/70 leading-relaxed">
                         {e.description}
                       </p>
                     )}
@@ -217,7 +209,7 @@ export function RequirementsCheckModal({
           <button
             type="button"
             onClick={() => openLocalFilePath(state.requirementsPath)}
-            className="flex items-center gap-1 text-[10px] text-tagma-accent hover:underline"
+            className="flex items-center gap-1 text-caption text-tagma-accent hover:underline"
           >
             <ExternalLink size={10} />
             <span>View full requirements document</span>
@@ -244,8 +236,8 @@ export function RequirementsCheckModal({
 
 function BinaryCard({ name, section }: { name: string; section: BinarySection | null }) {
   return (
-    <div className="border border-tagma-warning/30 bg-tagma-warning/5 px-2.5 py-2 space-y-2">
-      <div className="flex items-center gap-1.5 text-[11px] font-medium text-tagma-warning">
+    <div className="border border-tagma-border bg-tagma-bg/40 px-2.5 py-2 space-y-2">
+      <div className="flex items-center gap-1.5 text-body font-medium text-tagma-warning">
         <Download size={11} />
         <span>
           <code className="font-mono">{name}</code> not found on PATH
@@ -253,7 +245,7 @@ function BinaryCard({ name, section }: { name: string; section: BinarySection | 
       </div>
 
       {section?.usedBy && section.usedBy.length > 0 && (
-        <p className="text-[10px] text-tagma-text/70 leading-relaxed">
+        <p className="text-caption text-tagma-text/70 leading-relaxed">
           Used in:{' '}
           {section.usedBy.map((u, i) => (
             <span key={u}>
@@ -268,10 +260,8 @@ function BinaryCard({ name, section }: { name: string; section: BinarySection | 
         <div className="space-y-1.5">
           {section.commands.map((c, idx) => (
             <div key={`${c.platform}-${idx}`}>
-              <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-0.5">
-                {c.platform}
-              </div>
-              <div className="flex items-center gap-1.5 text-[10px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
+              <div className="section-label mb-0.5">{c.platform}</div>
+              <div className="flex items-center gap-1.5 text-caption font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
                 <span className="flex-1 min-w-0 truncate select-text" title={c.command}>
                   {c.command}
                 </span>
@@ -281,7 +271,7 @@ function BinaryCard({ name, section }: { name: string; section: BinarySection | 
           ))}
         </div>
       ) : (
-        <p className="text-[10px] text-tagma-muted/80 leading-relaxed">
+        <p className="text-caption text-tagma-muted/80 leading-relaxed">
           {section === null
             ? 'Loading install instructions…'
             : section.hasContent
@@ -291,7 +281,7 @@ function BinaryCard({ name, section }: { name: string; section: BinarySection | 
       )}
 
       {section?.verify && (
-        <p className="text-[10px] text-tagma-muted/80">
+        <p className="text-caption text-tagma-muted/80">
           Verify: <code className="font-mono text-tagma-text/80">{section.verify}</code>
         </p>
       )}

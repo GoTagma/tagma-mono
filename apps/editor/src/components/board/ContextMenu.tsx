@@ -113,14 +113,14 @@ function SubmenuPanel({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={config.searchPlaceholder ?? 'Search...'}
-              className="bg-transparent text-[11px] text-tagma-text placeholder:text-tagma-muted/50 border border-transparent w-full"
+              className="bg-transparent text-body text-tagma-text placeholder:text-tagma-muted/50 border border-transparent w-full"
             />
           </div>
         </div>
       )}
       <div className="overflow-y-auto" style={{ maxHeight: maxH }}>
         {filtered.length === 0 && (
-          <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">No matches</div>
+          <div className="px-3 py-2 text-caption font-mono text-tagma-muted/60">No matches</div>
         )}
         {filtered.map((entry, i) => {
           if (isSeparator(entry)) {
@@ -136,7 +136,7 @@ function SubmenuPanel({
                 onClose();
               }}
               className={`
-                w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left transition-colors
+                w-full flex items-center gap-2 px-3 py-1.5 text-body text-left transition-colors
                 disabled:opacity-30 disabled:cursor-not-allowed
                 ${
                   entry.danger
@@ -179,7 +179,7 @@ function SubmenuTrigger({
     <div className="relative">
       <button
         ref={btnRef}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left transition-colors text-tagma-text hover:bg-tagma-elevated"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-body text-left transition-colors text-tagma-text hover:bg-tagma-elevated"
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={onClick}
@@ -358,7 +358,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
               onClose();
             }}
             className={`
-              w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left transition-colors
+              w-full flex items-center gap-2 px-3 py-1.5 text-body text-left transition-colors
               disabled:opacity-30 disabled:cursor-not-allowed
               ${
                 entry.danger

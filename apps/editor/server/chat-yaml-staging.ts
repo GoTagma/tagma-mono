@@ -3,6 +3,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   rmSync,
   statSync,
@@ -545,7 +546,15 @@ function baseEntryFor(
 
 function samePath(left: string | null | undefined, right: string | null | undefined): boolean {
   if (!left || !right) return false;
-  return sameFilesystemPath(resolve(left), resolve(right));
+  const nativePath = (value: string): string => {
+    const resolved = resolve(value);
+    try {
+      return realpathSync.native(resolved);
+    } catch {
+      return resolved;
+    }
+  };
+  return sameFilesystemPath(nativePath(left), nativePath(right));
 }
 
 function portableRelative(from: string, to: string): string {
@@ -561,7 +570,7 @@ function assertStageId(stageId: string): string {
 
 function stagePaths(workDir: string, stageId: string): StagePaths {
   const id = assertStageId(stageId);
-  const workspaceTagmaDir = tagmaDirOf(workDir);
+  const workspaceTagmaDir = realpathSync.native(resolve(tagmaDirOf(workDir)));
   const rootDir = join(workspaceTagmaDir, STAGING_DIR_NAME, id);
   const baseWorkspaceDir = join(rootDir, 'base-workspace');
   const agentWorkspaceDir = join(rootDir, 'agent-workspace');
@@ -630,8 +639,8 @@ function parseSessionRelocationBinding(
     !isExactRelocationString(raw.targetDirectory, 32_768) ||
     !isAbsolute(raw.sourceDirectory) ||
     !isAbsolute(raw.targetDirectory) ||
-    raw.sourceDirectory !== paths.workspaceTagmaDir ||
-    raw.targetDirectory !== paths.agentTagmaDir ||
+    !samePath(raw.sourceDirectory, paths.workspaceTagmaDir) ||
+    !samePath(raw.targetDirectory, paths.agentTagmaDir) ||
     samePath(raw.sourceDirectory, raw.targetDirectory) ||
     !isRelocationPhase(raw.phase) ||
     !Number.isSafeInteger(raw.updatedAt) ||
@@ -690,8 +699,8 @@ function assertRelocationIdentityMatches(
     binding.stageId !== identity.stageId ||
     binding.sessionId !== identity.sessionId ||
     binding.relocationId !== identity.relocationId ||
-    binding.sourceDirectory !== identity.sourceDirectory ||
-    binding.targetDirectory !== identity.targetDirectory
+    !samePath(binding.sourceDirectory, identity.sourceDirectory) ||
+    !samePath(binding.targetDirectory, identity.targetDirectory)
   ) {
     throw relocationConflict(
       'Session relocation identity does not match the authenticated stage binding.',

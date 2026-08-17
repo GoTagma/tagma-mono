@@ -135,7 +135,7 @@ describe('RunCanvasView', () => {
     const trackHtml = renderToStaticMarkup(
       <TrackInfoPanel track={longConfig.tracks[0]!} config={longConfig} onClose={() => {}} />,
     );
-    expect(trackHtml).toContain('flex min-w-0 items-start gap-2 py-[2px] text-[10px]');
+    expect(trackHtml).toContain('flex min-w-0 items-start gap-2 py-[2px] text-caption');
     expect(trackHtml).toContain(
       'min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] font-mono',
     );

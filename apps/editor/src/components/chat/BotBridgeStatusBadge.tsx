@@ -564,7 +564,7 @@ export function BotBridgeStatusBadge() {
         width={300}
         maxHeight={460}
       >
-        <div className="overflow-y-auto p-3 text-[11px] text-tagma-text">
+        <div className="overflow-y-auto p-3 text-body text-tagma-text">
           <div className="font-medium mb-1">Bot bridge</div>
           {!reachable && (
             <div className="mb-2 border border-tagma-warning/40 bg-tagma-warning/10 px-2 py-1 text-tagma-warning">
@@ -816,7 +816,7 @@ export function BotBridgeStatusBadge() {
                       type="button"
                       onClick={() => void handleRevokeSender(entry)}
                       disabled={allowlistBusy}
-                      className="border border-tagma-border px-1.5 py-0.5 text-[10px] hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40"
+                      className="border border-tagma-border px-1.5 py-0.5 text-caption hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40"
                     >
                       Remove
                     </button>
@@ -889,7 +889,7 @@ export function BotBridgeStatusBadge() {
             ) : pairCode ? (
               <div>
                 <div className="text-tagma-muted">Send to your bot:</div>
-                <div className="font-mono text-lg tracking-widest text-tagma-text my-1 select-all">
+                <div className="font-mono text-display tracking-widest text-tagma-text my-1 select-all">
                   /pair {pairCode.code}
                 </div>
                 <div className="text-tagma-muted">

@@ -8,6 +8,8 @@
  * always re-hydrated from opencode on demand.
  */
 
+import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
+
 const STORAGE_KEY = 'tagma.chat.v2';
 const MAX_PERSISTED_CHAT_YAML_RESULTS = 500;
 
@@ -259,7 +261,7 @@ function isPersistedChatSessionRelocationIdentity(
     isNonEmptyString(value.sessionId) &&
     isAbsolutePersistedDirectory(value.sourceDirectory) &&
     isAbsolutePersistedDirectory(value.stageDirectory) &&
-    value.sourceDirectory !== value.stageDirectory
+    !sameFilesystemPathCoordinate(value.sourceDirectory, value.stageDirectory)
   );
 }
 
@@ -308,12 +310,12 @@ function isPersistedChatYamlSnapshot(
     isNonEmptyString(value.yamlEditLockId) &&
     (value.resultTurnId === undefined || isNonEmptyString(value.resultTurnId)) &&
     (value.resultMessageId === undefined || isNonEmptyString(value.resultMessageId)) &&
+    isNonEmptyString(staging.id) &&
+    isNonEmptyString(staging.agentTagmaDir) &&
     (relocation === undefined ||
       (isPersistedChatSessionRelocationIdentity(relocation) &&
         relocation.relocationId === staging.id &&
-        relocation.stageDirectory === staging.agentTagmaDir)) &&
-    isNonEmptyString(staging.id) &&
-    isNonEmptyString(staging.agentTagmaDir) &&
+        sameFilesystemPathCoordinate(relocation.stageDirectory, staging.agentTagmaDir))) &&
     isNullableString(staging.activeRelativePath) &&
     isNullableString(staging.activeStagedPath) &&
     Array.isArray(staging.entries) &&
@@ -424,8 +426,8 @@ function parsePersistedChatSessionRelocation(
     !snapshotIdentity ||
     snapshotIdentity.relocationId !== value.relocationId ||
     snapshotIdentity.sessionId !== value.sessionId ||
-    snapshotIdentity.sourceDirectory !== value.sourceDirectory ||
-    snapshotIdentity.stageDirectory !== value.stageDirectory
+    !sameFilesystemPathCoordinate(snapshotIdentity.sourceDirectory, value.sourceDirectory) ||
+    !sameFilesystemPathCoordinate(snapshotIdentity.stageDirectory, value.stageDirectory)
   ) {
     return null;
   }

@@ -4,8 +4,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -135,6 +137,19 @@ afterEach(() => {
 });
 
 describe('chat YAML staging', () => {
+  test('returns native stage coordinates when the workspace is opened through an alias', () => {
+    const { root, ws, sourcePath } = setupWorkspace();
+    const alias = `${root}-alias`;
+    symlinkSync(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    roots.unshift(alias);
+    ws.workDir = alias;
+
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+
+    expect(stage.agentTagmaDir.startsWith(realpathSync.native(join(root, '.tagma')))).toBe(true);
+    stopWorkspace(ws);
+  });
+
   test('rejects chat-authored task-local plugin paths that repeat the pipeline cwd', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });

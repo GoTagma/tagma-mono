@@ -553,7 +553,9 @@
 - Compare OpenCode-returned existing directories as native filesystem coordinates: canonicalize
   aliases with `realpathSync.native`, normalize separators, keep POSIX comparisons case-sensitive,
   and compare Windows paths case-insensitively. This covers macOS `/var` aliases and Windows
-  junction, short-path, and casing differences without accepting a different directory.
+  junction, short-path, and casing differences without accepting a different directory. Renderer
+  session relocation, recovery, SSE ownership, and persisted-journal checks must use the shared
+  filesystem-coordinate comparator; raw string equality against `session.directory` is invalid.
 - Native runtime smoke tests must canonicalize the workspace and staged directories immediately
   after creating them and use those coordinates for startup and every SDK request. Canonicalizing
   only assertion operands is insufficient because OpenCode 1.17.8 filters `session.list` by the
@@ -854,8 +856,61 @@
 
 - Every renderer modal surface uses the shared `modal-viewport-backdrop` / `modal-viewport-shell`
   skin from `src/index.css` plus one semantic `modal-tone-*` class. Do not add per-component black
-  scrims, surface colors, borders, or shadows; the shared skin owns their light/dark behavior and
-  follows Chat's tinted-surface, accent-rail, and layered-shadow language.
+  scrims, surface colors, borders, or shadows; the shared skin owns their light/dark behavior.
+  The skin is deliberately restrained: flat surface, neutral hairlines, layered shadow, and the
+  semantic tone speaking once through the left rail — keep tinted gradients and per-band tone
+  backgrounds out of the shell, header, and footer.
 - Modal footers use `btn-secondary`, `btn-primary`, or the semantic `btn-*-inline` variants so
   cancel, approve, warning, and destructive actions keep one size and palette. Update
   `tests/modal-theme-contract.test.ts` whenever adding or removing a modal surface.
+- Keep `tagma-ready` (cyan) out of dialogs: it is the running/ready task-status hue owned by the
+  canvas and run views. Success state inside a dialog uses `tagma-success`, and a header icon
+  takes the color of the shell's `modal-tone-*` (accent for `modal-tone-accent`, warning for
+  `modal-tone-warning`, and so on) instead of introducing a second hue.
+- Inside a toned dialog, keep card and row chrome neutral (`border-tagma-border`, `bg-tagma-bg/40`)
+  and let the semantic tone mark the item itself (a title, icon, or chip). Repeating tone-tinted
+  card surfaces inside an already tone-railed shell stacks the hue and reads busy; inline alert
+  boxes keep the established `bg-{tone}/8 border-{tone}/30` vocabulary.
+
+## Design Tokens
+
+- Font sizes come only from the semantic scale in `tailwind.config.js` (`text-micro` 8px,
+  `text-tiny` 9px, `text-caption` 10px, `text-body` 11px, `text-label` 12px, `text-title` 13px,
+  `text-heading` 14px, `text-display` 16px). Never reintroduce `text-[Npx]` arbitrary values or
+  Tailwind's default `text-xs/sm/lg/xl` utilities; pick the token by meaning. The one standing
+  exception is the plugin-card avatar glyph (`text-[20px]`), a single-letter icon, not prose.
+- The UI font is the IDE-style system stack (`-apple-system … Segoe WPC, Segoe UI, system-ui …`)
+  set once in `tailwind.config.js`; do not add per-component `font-family` declarations or new
+  webfonts. Code uses JetBrains Mono (400/500/600/700 loaded in `index.html`); `.chat-markdown`
+  inherits the sans stack deliberately.
+- Colors come only from the `tagma-*` CSS-var tokens in `src/index.css` (dark `:root`, light
+  `html.light`). Do not hardcode hex/rgb colors in components; SVG canvas edges read the
+  `--tagma-edge-*` / `--tagma-mm-*` vars. Shared component skins (`panel-*`, `field-*`, `btn-*`,
+  `chip-*`, `chat-*`, `section-label(-rule)`, `icon-btn`, `alert-text-*`, `alert-box-*`,
+  `indent-rail`, `empty-state`) live in `src/index.css` — restyle the class, never per-call-site
+  utilities.
+- In components the slash-opacity modifier accepts any bare number (`bg-tagma-error/8` generates
+  fine). Inside `@apply` in `index.css` it does not — `@apply` only resolves opacity steps of 5,
+  so non-multiples (`/8`, `/12`, `/6`, `/4`) must be written as plain CSS
+  (`background: rgb(var(--tagma-error) / 0.08)`), the idiom the shared skins already use.
+
+## Zoom Invariance
+
+- The app zooms globally: native `webContents.setZoomFactor` in Electron (default 1.2, range
+  0.5–3.0 via the status-bar `ZoomControls`, fanned out to every window by the main process) and
+  CSS `zoom` on `<html>` as the browser fallback. Every layout and coordinate decision must live
+  in the zoomed CSS-pixel space so the whole UI scales proportionally at any zoom level.
+- `src/utils/zoom.ts` is the only place that reads the zoom factor: `getZoom()` (1 under native
+  zoom, the CSS zoom value in the browser), `viewportW()/viewportH()`, and `screenToLogical()`.
+  Never read `window.innerWidth/innerHeight`, `devicePixelRatio`, or screen-space event
+  coordinates (`movementX/Y`, `screenX/Y`, `pageX/Y`) in components — `tests/zoom-invariance-contract.test.ts`
+  fails the build on violations.
+- Pointer math stays correct by mixing only one space: `clientX/Y` deltas and
+  `getBoundingClientRect()` are already zoomed, so dividing by `getZoom()` is a no-op in Electron
+  and the required conversion under browser CSS zoom. Keep using the shared helpers instead of
+  inventing per-component conversions; `ZoomControls.tsx` is the only writer of
+  `documentElement.style.zoom`.
+- Layout state (dock widths, panel sizes, scroll offsets) is stored in CSS pixels deliberately —
+  it scales automatically with zoom. Breakpoints (e.g. `RIGHT_DOCK_COMPACT_BREAKPOINT`) compare
+  against `viewportW()`, never the raw `window.innerWidth`, so compact layouts engage at the same
+  effective size in both zoom modes.

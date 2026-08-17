@@ -49,12 +49,12 @@ export const FolderHeaderBar = memo(function FolderHeaderBar({
         }}
       />
       <span
-        className="flex-1 min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider"
+        className="flex-1 min-w-0 truncate text-caption font-semibold uppercase tracking-wider"
         style={{ color: accent }}
       >
         {folder.name}
       </span>
-      <span className="shrink-0 text-[8.5px] font-mono tabular-nums text-tagma-muted/60">
+      <span className="shrink-0 text-micro font-mono tabular-nums text-tagma-muted/60">
         {memberCount}
       </span>
     </div>

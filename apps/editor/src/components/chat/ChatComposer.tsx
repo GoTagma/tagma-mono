@@ -28,7 +28,7 @@ export function ErrorBanner() {
   return (
     <div className="shrink-0 flex items-start gap-2 border-t border-tagma-error/40 bg-tagma-error/8 px-3 py-2">
       <AlertTriangle size={12} className="text-tagma-error shrink-0 mt-0.5" />
-      <div className="flex-1 text-[10px] font-mono text-tagma-error/90 break-words">
+      <div className="flex-1 text-caption font-mono text-tagma-error/90 break-words">
         {sendError}
       </div>
       <button
@@ -56,7 +56,7 @@ export function CompletionWarningBannerView({
   return (
     <div className="shrink-0 flex items-start gap-2 border-t border-tagma-warning/40 bg-tagma-warning/8 px-3 py-2">
       <AlertTriangle size={12} className="text-tagma-warning shrink-0 mt-0.5" />
-      <div className="flex-1 text-[10px] font-mono text-tagma-warning/90 break-words">
+      <div className="flex-1 text-caption font-mono text-tagma-warning/90 break-words">
         {warning}
       </div>
       <button
@@ -96,7 +96,7 @@ export function ReconciliationFailureBannerView({
       className="shrink-0 flex items-start gap-2 border border-tagma-accent/35 bg-tagma-accent/8 px-2.5 py-2"
     >
       <Info size={12} className="mt-0.5 shrink-0 text-tagma-accent" />
-      <div className="min-w-0 flex-1 text-[10px] font-mono text-tagma-muted">
+      <div className="min-w-0 flex-1 text-caption font-mono text-tagma-muted">
         <div className="text-tagma-text">
           The merge is paused. Your manual canvas edits and the Chat result are both preserved.
         </div>
@@ -107,7 +107,7 @@ export function ReconciliationFailureBannerView({
           type="button"
           onClick={retry}
           disabled={busy}
-          className="border border-tagma-accent/50 px-2 py-1 text-[10px] font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
+          className="border border-tagma-accent/50 px-2 py-1 text-caption font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
         >
           Retry merge
         </button>
@@ -115,7 +115,7 @@ export function ReconciliationFailureBannerView({
           type="button"
           onClick={discard}
           disabled={busy}
-          className="border border-tagma-border px-2 py-1 text-[10px] font-mono text-tagma-muted transition-colors hover:border-tagma-muted/60 hover:text-tagma-text disabled:opacity-40"
+          className="border border-tagma-border px-2 py-1 text-caption font-mono text-tagma-muted transition-colors hover:border-tagma-muted/60 hover:text-tagma-text disabled:opacity-40"
         >
           Keep canvas, discard Chat result
         </button>
@@ -145,7 +145,7 @@ function AttachmentChips() {
       {attachments.map((a) => (
         <div
           key={a.id}
-          className="flex min-w-0 max-w-full items-center gap-1 border border-tagma-border bg-tagma-bg/60 px-1.5 py-0.5 text-[10px] font-mono text-tagma-muted sm:max-w-[260px]"
+          className="flex min-w-0 max-w-full items-center gap-1 border border-tagma-border bg-tagma-bg/60 px-1.5 py-0.5 text-caption font-mono text-tagma-muted sm:max-w-[260px]"
         >
           <Paperclip size={10} className="shrink-0 text-tagma-muted/70" />
           <span className="truncate" title={a.label}>
@@ -184,7 +184,7 @@ function ChatContextWindowIndicator() {
   const { label, tooltip } = describeChatContextWindowIndicator(snapshot);
   return (
     <div
-      className="shrink-0 text-[9px] font-mono text-tagma-muted/70"
+      className="shrink-0 text-tiny font-mono text-tagma-muted/70"
       title={tooltip}
       aria-label={tooltip}
     >
@@ -366,7 +366,7 @@ export function ChatComposer() {
           // textarea stays borderless inside it (`.chat-composer-shell
           // textarea:focus` in index.css neutralizes the global input focus
           // ring, which would otherwise draw a second box inside the card).
-          className="min-w-0 flex-1 resize-none overflow-y-auto bg-transparent border-0 px-1 py-0.5 text-[12px] font-sans text-tagma-text placeholder:text-tagma-muted-dim focus:outline-none disabled:cursor-not-allowed"
+          className="min-w-0 flex-1 resize-none overflow-y-auto bg-transparent border-0 px-1 py-0.5 text-label font-sans text-tagma-text placeholder:text-tagma-muted-dim focus:outline-none disabled:cursor-not-allowed"
         />
         <button
           type="button"

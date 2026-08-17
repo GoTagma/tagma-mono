@@ -48,11 +48,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
               {info.title}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-tagma-muted hover:text-tagma-text"
-            aria-label="Close dialog"
-          >
+          <button onClick={onClose} className="icon-btn" aria-label="Close dialog">
             <XIcon size={14} />
           </button>
         </div>
@@ -67,7 +63,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
               ) : (
                 <CheckCircle2 size={11} className="text-tagma-success shrink-0 mt-0.5" />
               )}
-              <div className="text-[11px] text-tagma-text font-mono min-w-0 break-words">
+              <div className="text-body text-tagma-text font-mono min-w-0 break-words">
                 {detail}
               </div>
             </div>

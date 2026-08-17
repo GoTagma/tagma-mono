@@ -153,7 +153,7 @@ function TurnActivityPanelView({
       onToggle={(e) => {
         if (e.currentTarget.open !== expanded) onToggle();
       }}
-      className={`w-full max-w-full min-w-0 text-[10px] font-mono border-l-2 pl-2 ${
+      className={`w-full max-w-full min-w-0 text-caption font-mono border-l-2 pl-2 ${
         isCurrentTurn ? 'chat-live-rail' : 'border-tagma-muted/30'
       }`}
     >
@@ -508,7 +508,7 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   'assistant-started': {
     label: 'Assistant started',
     icon: (
-      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
         ›
       </span>
     ),
@@ -520,7 +520,7 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   'streaming-answer': {
     label: 'Streaming answer',
     icon: (
-      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
         ¶
       </span>
     ),
@@ -540,7 +540,7 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   'step-start': {
     label: 'Step start',
     icon: (
-      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
         ·
       </span>
     ),
@@ -548,7 +548,7 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   'step-finish': {
     label: 'Step finish',
     icon: (
-      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
         ·
       </span>
     ),

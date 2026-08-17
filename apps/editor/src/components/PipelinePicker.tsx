@@ -54,10 +54,10 @@ export function PipelinePicker({
             <ProductLogo size={32} />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[15px] font-semibold tracking-wide text-tagma-text truncate">
+            <h1 className="text-display font-semibold tracking-wide text-tagma-text truncate">
               {wsName}
             </h1>
-            <p className="text-[10px] font-mono uppercase tracking-widest text-tagma-muted-dim mt-0.5 truncate">
+            <p className="text-caption font-mono uppercase tracking-widest text-tagma-muted-dim mt-0.5 truncate">
               {workDir}
             </p>
           </div>
@@ -70,7 +70,7 @@ export function PipelinePicker({
             aria-label="Switch workspace"
           >
             <ArrowLeft size={11} />
-            <span className="hidden text-[10px] font-mono uppercase tracking-widest sm:inline">
+            <span className="hidden text-caption font-mono uppercase tracking-widest sm:inline">
               Switch Workspace
             </span>
           </button>
@@ -79,7 +79,7 @@ export function PipelinePicker({
         {/* Section heading */}
         <div className="flex items-center gap-2 mb-3 px-0.5">
           <FileCode2 size={10} className="text-tagma-muted-dim" />
-          <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-widest">
+          <span className="text-caption font-medium text-tagma-muted uppercase tracking-widest">
             Pipelines
           </span>
         </div>
@@ -122,12 +122,12 @@ export function PipelinePicker({
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-[12px] font-medium text-tagma-text">
+                      <span className="truncate text-label font-medium text-tagma-text">
                         {primary}
                       </span>
                     </div>
                     {showSecondary && (
-                      <div className="mt-0.5 truncate font-mono text-[10px] text-tagma-muted-dim">
+                      <div className="mt-0.5 truncate font-mono text-caption text-tagma-muted-dim">
                         {y.name}
                       </div>
                     )}
@@ -136,13 +136,13 @@ export function PipelinePicker({
                     <span
                       role="status"
                       aria-live="polite"
-                      className="shrink-0 font-mono text-[10px] text-tagma-accent"
+                      className="shrink-0 font-mono text-caption text-tagma-accent"
                     >
                       <span className="sr-only">Opening pipeline {primary}</span>
                       <span aria-hidden="true">Opening</span>
                     </span>
                   ) : (
-                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-tagma-muted-dim">
+                    <span className="shrink-0 font-mono text-caption tabular-nums text-tagma-muted-dim">
                       {formatRelative(y.mtimeMs)}
                     </span>
                   )}
@@ -175,12 +175,12 @@ export function PipelinePicker({
           className="group flex items-center gap-2 mt-3 px-3 py-2 text-tagma-muted hover:text-tagma-accent transition-colors disabled:cursor-wait disabled:text-tagma-muted-dim/50"
         >
           <Plus size={11} />
-          <span className="text-[11px] font-medium">New Pipeline</span>
+          <span className="text-body font-medium">New Pipeline</span>
         </button>
 
         {/* Footer hint */}
         <div className="mt-6 text-center sm:mt-10">
-          <p className="text-[10px] font-mono text-tagma-muted-dim/70 tracking-wide">
+          <p className="text-caption font-mono text-tagma-muted-dim/70 tracking-wide">
             Pipelines stored in <span className="text-tagma-muted-dim">{wsRoot}/.tagma/</span>
           </p>
         </div>

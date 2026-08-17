@@ -56,12 +56,12 @@ export function ErrorToast({ contained = false }: { contained?: boolean } = {}) 
         ) : (
           <AlertCircle size={14} className="text-tagma-error shrink-0 mt-0.5" />
         )}
-        <div className="flex-1 min-w-0 text-[11px] text-tagma-text font-mono break-words">
+        <div className="flex-1 min-w-0 text-body text-tagma-text font-mono break-words">
           {errorMessage}
         </div>
         <button
           onClick={clearError}
-          className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
+          className="icon-btn shrink-0"
           aria-label={isYamlEditLockStatus ? 'Dismiss status' : 'Dismiss error'}
         >
           <XIcon size={12} />

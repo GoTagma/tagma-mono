@@ -259,7 +259,7 @@ export function SchemaForm({ schema, value, onChange, onBrowsePath, helpScope }:
   return (
     <div className="space-y-2">
       {schema.description && (
-        <p className="text-[10px] text-tagma-muted/80 leading-snug mb-1">{schema.description}</p>
+        <p className="text-caption text-tagma-muted/80 leading-snug mb-1">{schema.description}</p>
       )}
       {schema.fields.map((field) => (
         <SchemaFieldRow
@@ -296,7 +296,7 @@ function SchemaFieldRow({
 
   return (
     <div>
-      <label className="text-[10px] text-tagma-muted flex items-center gap-1">
+      <label className="text-caption text-tagma-muted flex items-center gap-1">
         <span>
           {label}
           {field.required && <span className="text-tagma-error ml-0.5">*</span>}
@@ -311,7 +311,7 @@ function SchemaFieldRow({
         onBrowsePath={onBrowsePath}
       />
       {field.description && (
-        <p className="text-[9px] text-tagma-muted/80 mt-0.5 leading-snug">{field.description}</p>
+        <p className="text-tiny text-tagma-muted/80 mt-0.5 leading-snug">{field.description}</p>
       )}
     </div>
   );
@@ -375,7 +375,7 @@ function SchemaFieldInput({
     case 'enum':
       return (
         <select
-          className="field-input text-[11px]"
+          className="field-input text-body"
           value={strValue}
           onChange={(e) => onChange(e.target.value || undefined)}
         >
@@ -389,7 +389,7 @@ function SchemaFieldInput({
       );
     case 'boolean':
       return (
-        <label className="flex items-center gap-1.5 text-[11px] text-tagma-text cursor-pointer">
+        <label className="flex items-center gap-1.5 text-body text-tagma-text cursor-pointer">
           <input
             type="checkbox"
             checked={value === true}
@@ -403,7 +403,7 @@ function SchemaFieldInput({
         <CopyableField value={localStr} label={`Copy ${field.key}`}>
           <input
             type="number"
-            className="field-input font-mono text-[11px]"
+            className="field-input font-mono text-body"
             value={localStr}
             min={field.min}
             max={field.max}
@@ -419,7 +419,7 @@ function SchemaFieldInput({
           <CopyableField value={localStr} label={`Copy ${field.key}`} className="flex-1 min-w-0">
             <input
               type="text"
-              className="field-input font-mono text-[11px]"
+              className="field-input font-mono text-body"
               value={localStr}
               onChange={(e) => setLocalStr(e.target.value)}
               onBlur={blurStr}
@@ -447,7 +447,7 @@ function SchemaFieldInput({
         <CopyableField value={localStr} label={`Copy ${field.key}`}>
           <input
             type="text"
-            className="field-input font-mono text-[11px]"
+            className="field-input font-mono text-body"
             value={localStr}
             onChange={(e) => setLocalStr(e.target.value)}
             onBlur={blurStr}

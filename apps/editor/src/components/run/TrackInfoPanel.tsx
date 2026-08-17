@@ -36,7 +36,7 @@ function permsLabel(perms: Permissions | undefined | null): string | null {
 
 function ConfigRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 items-start gap-2 py-[2px] text-[10px]">
+    <div className="flex min-w-0 items-start gap-2 py-[2px] text-caption">
       <span
         className="text-tagma-muted/70 w-[80px] shrink-0 font-mono tracking-tight truncate"
         title={label}
@@ -87,7 +87,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
         <div>
           <label className="field-label">Track ID</label>
           <div
-            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
+            className="text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
             title={track.id}
           >
             {track.id}
@@ -115,7 +115,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
         {/* On failure */}
         <div>
           <label className="field-label">On Failure</label>
-          <div className="flex items-center gap-2 text-[11px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
+          <div className="flex items-center gap-2 text-body font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
             {ON_FAILURE_ICON[onFailure] ?? null}
             <span>{ON_FAILURE_LABEL[onFailure] ?? onFailure}</span>
           </div>
@@ -149,7 +149,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
               {track.tasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex min-w-0 items-start gap-2 py-[2px] text-[10px] font-mono text-tagma-text/80"
+                  className="flex min-w-0 items-start gap-2 py-[2px] text-caption font-mono text-tagma-text/80"
                 >
                   <span className="text-tagma-muted/60 min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
                     {track.id}.{task.id}

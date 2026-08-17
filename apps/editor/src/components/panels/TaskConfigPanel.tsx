@@ -126,7 +126,7 @@ function FieldConflictBadge({
 }) {
   if (!changed) return null;
   return (
-    <div className="flex items-center justify-between gap-2 px-2 py-1 mb-1 bg-tagma-warning/10 border border-tagma-warning/40 text-[10px]">
+    <div className="flex items-center justify-between gap-2 px-2 py-1 mb-1 bg-tagma-warning/10 border border-tagma-warning/40 text-caption">
       <div className="flex items-center gap-1.5 text-tagma-warning min-w-0">
         <AlertTriangle size={10} className="shrink-0" />
         <span className="truncate">External change available</span>
@@ -533,12 +533,9 @@ export function TaskConfigPanel({
             return (
               <>
                 {errs.length > 0 && (
-                  <div className="bg-tagma-error/8 border border-tagma-error/30 px-2.5 py-1.5 space-y-1">
+                  <div className="alert-box-error space-y-1">
                     {errs.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono"
-                      >
+                      <div key={i} className="alert-text-error">
                         <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
                         <span>{d.message}</span>
                       </div>
@@ -546,12 +543,9 @@ export function TaskConfigPanel({
                   </div>
                 )}
                 {warns.length > 0 && (
-                  <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2.5 py-1.5 space-y-1">
+                  <div className="alert-box-warning space-y-1">
                     {warns.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono"
-                      >
+                      <div key={i} className="alert-text-warning">
                         <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
                         <span>{d.message}</span>
                       </div>
@@ -568,7 +562,7 @@ export function TaskConfigPanel({
             Task ID <span className="text-tagma-error">*</span>
           </label>
           <div
-            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
+            className="text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
             title={qualifiedId}
           >
             {qualifiedId}
@@ -604,7 +598,7 @@ export function TaskConfigPanel({
         {/* Type (fixed at creation, not switchable) */}
         <div>
           <label className="field-label">Type</label>
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] border border-tagma-border bg-tagma-bg text-tagma-muted">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-body border border-tagma-border bg-tagma-bg text-tagma-muted">
             {mode === 'prompt' ? <MessageSquare size={11} /> : <Terminal size={11} />}
             <span>{mode === 'prompt' ? 'Prompt Task' : 'Command Task'}</span>
           </div>
@@ -633,7 +627,7 @@ export function TaskConfigPanel({
             buttonClassName="top-2 translate-y-0"
           >
             <textarea
-              className="field-input min-h-[120px] resize-y font-mono text-[11px]"
+              className="field-input min-h-[120px] resize-y font-mono text-body"
               value={mode === 'prompt' ? prompt : command}
               onChange={(e) =>
                 mode === 'prompt' ? setPrompt(e.target.value) : setCommand(e.target.value)
@@ -765,7 +759,7 @@ export function TaskConfigPanel({
                 buttonClassName="top-2 translate-y-0"
               >
                 <textarea
-                  className="field-input min-h-[60px] resize-y font-mono text-[11px]"
+                  className="field-input min-h-[60px] resize-y font-mono text-body"
                   value={agentProfile}
                   onChange={(e) => setAgentProfile(e.target.value)}
                   onBlur={blurAgentProfile}
@@ -773,7 +767,7 @@ export function TaskConfigPanel({
                 />
               </CopyableField>
               {systemPromptUnsupported && (
-                <p className="text-[10px] text-tagma-warning mt-1 flex items-start gap-1">
+                <p className="text-caption text-tagma-warning mt-1 flex items-start gap-1">
                   <AlertTriangle size={10} className="mt-0.5 shrink-0" />
                   <span>
                     Driver "{resolvedDriver.value ?? 'unknown'}" does not support{' '}
@@ -787,7 +781,7 @@ export function TaskConfigPanel({
                   <button
                     type="button"
                     onClick={() => setShowTrackProfile((v) => !v)}
-                    className="text-[10px] text-tagma-muted hover:text-tagma-text flex items-center gap-1 transition-colors"
+                    className="text-caption text-tagma-muted hover:text-tagma-text flex items-center gap-1 transition-colors"
                   >
                     {showTrackProfile ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                     <span>
@@ -805,7 +799,7 @@ export function TaskConfigPanel({
                     </span>
                   </button>
                   {showTrackProfile && (
-                    <pre className="mt-1 text-[10px] font-mono text-tagma-muted/80 bg-tagma-bg border border-tagma-border px-2 py-1.5 max-h-[120px] overflow-auto whitespace-pre-wrap break-words">
+                    <pre className="mt-1 text-caption font-mono text-tagma-muted/80 bg-tagma-bg border border-tagma-border px-2 py-1.5 max-h-[120px] overflow-auto whitespace-pre-wrap break-words">
                       {track.agent_profile}
                     </pre>
                   )}
@@ -853,7 +847,7 @@ export function TaskConfigPanel({
                         className="accent-tagma-accent"
                       />
                       <span
-                        className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
+                        className={`text-body capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
                       >
                         {key}
                       </span>
@@ -930,7 +924,7 @@ export function TaskConfigPanel({
             >
               <input
                 type="text"
-                className="field-input font-mono text-[11px]"
+                className="field-input font-mono text-body"
                 value={cwd}
                 onChange={(e) => setCwd(e.target.value)}
                 onBlur={blurCwd}
@@ -979,7 +973,7 @@ export function TaskConfigPanel({
                     key={dep}
                     className="flex items-center gap-1.5 bg-tagma-bg border border-tagma-border px-2 py-1"
                   >
-                    <span className="text-[11px] font-mono text-tagma-text flex-1 truncate">
+                    <span className="text-body font-mono text-tagma-text flex-1 truncate">
                       {dep}
                     </span>
                     <button
@@ -1022,7 +1016,7 @@ export function TaskConfigPanel({
           <div>
             <label className="field-label">
               Continue From
-              <span className="text-[10px] text-tagma-muted font-normal normal-case tracking-normal ml-1">
+              <span className="text-caption text-tagma-muted font-normal normal-case tracking-normal ml-1">
                 (resume session from an upstream task)
               </span>
               <FieldHelpButton field="Continue From" scope="task" />
@@ -1040,12 +1034,12 @@ export function TaskConfigPanel({
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-tagma-muted mt-1">
+            <p className="text-caption text-tagma-muted mt-1">
               Uses session resume when both drivers support it; otherwise falls back to injecting
               the upstream normalized output. Server validation will flag unsupported combinations.
             </p>
             {sessionResumeUnsupported && (
-              <p className="text-[10px] text-tagma-warning mt-1 flex items-start gap-1">
+              <p className="text-caption text-tagma-warning mt-1 flex items-start gap-1">
                 <AlertTriangle size={10} className="mt-0.5 shrink-0" />
                 <span>
                   Driver "{resolvedDriver.value ?? 'unknown'}" does not support session resume —
@@ -1084,7 +1078,7 @@ export function TaskConfigPanel({
           <div className="border-t border-tagma-border pt-3">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-1 text-[10px] text-tagma-muted hover:text-tagma-text transition-colors w-full"
+              className="flex items-center gap-1 text-caption text-tagma-muted hover:text-tagma-text transition-colors w-full"
             >
               {showAdvanced ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
               Advanced
@@ -1098,7 +1092,7 @@ export function TaskConfigPanel({
             <div>
               <label className="field-label">
                 Trigger
-                <span className="text-[10px] text-tagma-muted font-normal normal-case tracking-normal ml-1">
+                <span className="text-caption text-tagma-muted font-normal normal-case tracking-normal ml-1">
                   (from plugin registry)
                 </span>
                 <FieldHelpButton field="Trigger" scope="task" />
@@ -1119,7 +1113,7 @@ export function TaskConfigPanel({
             </div>
 
             {task.trigger?.type === 'manual' && (
-              <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+              <div className="indent-rail">
                 <TriggerField
                   label="Message"
                   helpField="message"
@@ -1137,7 +1131,7 @@ export function TaskConfigPanel({
                   placeholder="e.g. 5m"
                 />
                 <div>
-                  <label className="text-[10px] text-tagma-muted">
+                  <label className="text-caption text-tagma-muted">
                     Metadata
                     <FieldHelpButton field="metadata" scope="`manual` trigger plugin" />
                   </label>
@@ -1158,7 +1152,7 @@ export function TaskConfigPanel({
             )}
 
             {task.trigger?.type === 'file' && (
-              <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+              <div className="indent-rail">
                 <TriggerField
                   label="Path *"
                   helpField="path"
@@ -1192,7 +1186,7 @@ export function TaskConfigPanel({
                   Object.entries(task.trigger).filter(([k]) => k !== 'type'),
                 ) as Record<string, unknown>;
                 return (
-                  <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+                  <div className="indent-rail">
                     {schema ? (
                       <SchemaForm
                         schema={schema}
@@ -1207,7 +1201,7 @@ export function TaskConfigPanel({
                       />
                     ) : (
                       <>
-                        <p className="text-[10px] text-tagma-muted">
+                        <p className="text-caption text-tagma-muted">
                           Custom trigger fields (plugin "{triggerType}" has no known schema —
                           falling back to KV editor):
                         </p>
@@ -1227,7 +1221,7 @@ export function TaskConfigPanel({
             <div>
               <label className="field-label">
                 Completion Check
-                <span className="text-[10px] text-tagma-muted font-normal normal-case tracking-normal ml-1">
+                <span className="text-caption text-tagma-muted font-normal normal-case tracking-normal ml-1">
                   (from plugin registry)
                 </span>
                 <FieldHelpButton field="Completion Check" scope="task" />
@@ -1250,9 +1244,9 @@ export function TaskConfigPanel({
             </div>
 
             {effectiveCompletionType === 'exit_code' && (
-              <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+              <div className="indent-rail">
                 <div>
-                  <label className="text-[10px] text-tagma-muted">
+                  <label className="text-caption text-tagma-muted">
                     Expected Code
                     <FieldHelpButton field="expect" scope="`exit_code` completion plugin" />
                   </label>
@@ -1264,7 +1258,7 @@ export function TaskConfigPanel({
                   >
                     <input
                       type="text"
-                      className="field-input font-mono text-[11px]"
+                      className="field-input font-mono text-body"
                       value={
                         task.completion?.expect !== undefined ? String(task.completion.expect) : ''
                       }
@@ -1283,7 +1277,7 @@ export function TaskConfigPanel({
             )}
 
             {task.completion && effectiveCompletionType === 'file_exists' && (
-              <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+              <div className="indent-rail">
                 <TriggerField
                   label="Path *"
                   helpField="path"
@@ -1300,7 +1294,7 @@ export function TaskConfigPanel({
                   }
                 />
                 <div>
-                  <label className="text-[10px] text-tagma-muted">
+                  <label className="text-caption text-tagma-muted">
                     Kind
                     <FieldHelpButton field="kind" scope="`file_exists` completion plugin" />
                   </label>
@@ -1316,7 +1310,7 @@ export function TaskConfigPanel({
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-tagma-muted">
+                  <label className="text-caption text-tagma-muted">
                     Min Size (bytes)
                     <FieldHelpButton field="min_size" scope="`file_exists` completion plugin" />
                   </label>
@@ -1328,7 +1322,7 @@ export function TaskConfigPanel({
                   >
                     <input
                       type="number"
-                      className="field-input font-mono text-[11px]"
+                      className="field-input font-mono text-body"
                       value={
                         typeof task.completion.min_size === 'number' ? task.completion.min_size : ''
                       }
@@ -1346,7 +1340,7 @@ export function TaskConfigPanel({
             )}
 
             {task.completion && effectiveCompletionType === 'output_check' && (
-              <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+              <div className="indent-rail">
                 <TriggerField
                   label="Check Command *"
                   helpField="check"
@@ -1377,7 +1371,7 @@ export function TaskConfigPanel({
                   Object.entries(task.completion).filter(([k]) => k !== 'type'),
                 ) as Record<string, unknown>;
                 return (
-                  <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+                  <div className="indent-rail">
                     {schema ? (
                       <SchemaForm
                         schema={schema}
@@ -1394,7 +1388,7 @@ export function TaskConfigPanel({
                       />
                     ) : (
                       <>
-                        <p className="text-[10px] text-tagma-muted">
+                        <p className="text-caption text-tagma-muted">
                           Custom completion fields (plugin "{completionType}" has no known schema —
                           falling back to KV editor):
                         </p>
@@ -1462,14 +1456,14 @@ export function TaskConfigPanel({
                   </p>
                   <ul className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
                     {downstreamTasksThatDependOnMe.map((d) => (
-                      <li key={d.qualified} className="font-mono text-[11px] text-tagma-text/80">
+                      <li key={d.qualified} className="font-mono text-body text-tagma-text/80">
                         &bull; {d.qualified}
                       </li>
                     ))}
                   </ul>
                 </div>
               ) : (
-                <p className="text-tagma-muted text-[11px]">
+                <p className="text-tagma-muted text-body">
                   No downstream tasks depend on this task.
                 </p>
               )}
@@ -1517,7 +1511,7 @@ function TriggerField({
   const [val, setVal, blurVal] = useLocalField(value ?? '', onChange);
   return (
     <div>
-      <label className="text-[10px] text-tagma-muted">
+      <label className="text-caption text-tagma-muted">
         {label}
         {helpScope && <FieldHelpButton field={helpField ?? label} scope={helpScope} />}
       </label>
@@ -1526,7 +1520,7 @@ function TriggerField({
           <CopyableField value={val} label={`Copy ${label}`} className="flex-1 min-w-0">
             <input
               type="text"
-              className="field-input font-mono text-[11px]"
+              className="field-input font-mono text-body"
               value={val}
               onChange={(e) => setVal(e.target.value)}
               onBlur={blurVal}
@@ -1547,7 +1541,7 @@ function TriggerField({
         <CopyableField value={val} label={`Copy ${label}`}>
           <input
             type="text"
-            className="field-input font-mono text-[11px]"
+            className="field-input font-mono text-body"
             value={val}
             onChange={(e) => setVal(e.target.value)}
             onBlur={blurVal}
@@ -1599,7 +1593,7 @@ function KeyValueEditor({
           <CopyableField value={k} label={`Copy ${k} key`} className="w-[92px] shrink-0">
             <input
               type="text"
-              className="field-input font-mono text-[11px]"
+              className="field-input font-mono text-body"
               value={k}
               onChange={(e) => handleKeyChange(k, e.target.value)}
               placeholder="key"
@@ -1612,7 +1606,7 @@ function KeyValueEditor({
           >
             <input
               type="text"
-              className="field-input font-mono text-[11px]"
+              className="field-input font-mono text-body"
               value={String(v ?? '')}
               onChange={(e) => handleValueChange(k, e.target.value)}
               placeholder="value"
@@ -1629,7 +1623,7 @@ function KeyValueEditor({
       ))}
       <button
         onClick={handleAdd}
-        className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+        className="flex items-center gap-1 text-caption text-tagma-accent hover:text-tagma-text transition-colors"
       >
         <Plus size={10} /> Add entry
       </button>

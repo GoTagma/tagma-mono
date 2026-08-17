@@ -90,10 +90,10 @@ export function MarketplacePanel({
           />
           <AlertTriangle size={13} className="shrink-0 mt-0.5 text-tagma-warning" />
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-medium text-tagma-warning tracking-wide">
+            <div className="text-body font-medium text-tagma-warning tracking-wide">
               Partial results
             </div>
-            <div className="text-[10px] text-tagma-muted-dim leading-relaxed mt-0.5">
+            <div className="text-caption text-tagma-muted-dim leading-relaxed mt-0.5">
               The npm registry reported an error — the list below may be incomplete. Try
               <button
                 onClick={onRetry}
@@ -103,7 +103,7 @@ export function MarketplacePanel({
               </button>
               in a moment.
             </div>
-            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-warning/20 text-tagma-warning/90 text-[9px] font-mono whitespace-pre-wrap break-words max-h-16 overflow-y-auto">
+            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-warning/20 text-tagma-warning/90 text-tiny font-mono whitespace-pre-wrap break-words max-h-16 overflow-y-auto">
               {upstreamWarning}
             </pre>
           </div>
@@ -114,15 +114,15 @@ export function MarketplacePanel({
         {loading ? (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
             <Loader2 size={32} className="animate-spin opacity-70" />
-            <p className="text-[11px] tracking-wide">Searching npm…</p>
+            <p className="text-body tracking-wide">Searching npm…</p>
           </div>
         ) : loadError ? (
           <div className="h-full flex flex-col items-center justify-center gap-3">
             <AlertCircle size={32} className="text-tagma-error opacity-70" />
-            <p className="text-[11px] tracking-wide text-tagma-error">{loadError}</p>
+            <p className="text-body tracking-wide text-tagma-error">{loadError}</p>
             <button
               onClick={onRetry}
-              className="mt-1 px-3 py-1.5 text-[11px] tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
+              className="mt-1 px-3 py-1.5 text-body tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
             >
               Retry
             </button>
@@ -130,21 +130,21 @@ export function MarketplacePanel({
         ) : entries.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
             <Package size={32} className="opacity-30" />
-            <p className="text-[11px] tracking-wide text-tagma-muted">
+            <p className="text-body tracking-wide text-tagma-muted">
               {query
                 ? `No ${category === 'all' ? '' : `${category.replace(/s$/, '')} `}plugins match "${query}"`
                 : category === 'all'
                   ? 'No plugins found in the marketplace.'
                   : `No ${category} plugins found in the marketplace.`}
             </p>
-            <p className="text-[10px] text-tagma-muted-dim max-w-sm text-center leading-relaxed">
+            <p className="text-caption text-tagma-muted-dim max-w-sm text-center leading-relaxed">
               Plugin authors tag packages with{' '}
               <code className="font-mono text-tagma-muted">keywords: ["tagma-plugin"]</code> in{' '}
               <code className="font-mono text-tagma-muted">package.json</code>.
             </p>
             <button
               onClick={onRetry}
-              className="mt-1 px-3 py-1.5 text-[11px] tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
+              className="mt-1 px-3 py-1.5 text-body tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
             >
               Retry search
             </button>
@@ -423,17 +423,17 @@ function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismis
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-tagma-text truncate">{state.name}</span>
-          <span className="text-[10px] text-tagma-muted-dim">
+          <span className="font-mono text-body text-tagma-text truncate">{state.name}</span>
+          <span className="text-caption text-tagma-muted-dim">
             {isError ? `${capitalize(state.action)} failed` : state.message}
           </span>
         </div>
         {isError && (
           <>
-            <div className="mt-1 text-[10px] text-tagma-muted-dim leading-relaxed">
+            <div className="mt-1 text-caption text-tagma-muted-dim leading-relaxed">
               {errorHint(state.kind)}
             </div>
-            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-error/20 text-tagma-error/90 text-[9px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-error/20 text-tagma-error/90 text-tiny font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
               {state.message}
             </pre>
           </>

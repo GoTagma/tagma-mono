@@ -46,11 +46,7 @@ export function SaveAsDialog({
               {title}
             </h2>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-1 text-tagma-muted hover:text-tagma-text"
-            aria-label="Close dialog"
-          >
+          <button onClick={onCancel} className="icon-btn" aria-label="Close dialog">
             <XIcon size={14} />
           </button>
         </div>

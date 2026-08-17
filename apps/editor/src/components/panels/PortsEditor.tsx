@@ -173,7 +173,7 @@ export function PortsEditor({
             {syncNewCount > 0 && (
               <button
                 onClick={onSyncFromUpstream}
-                className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+                className="flex items-center gap-1 text-caption text-tagma-accent hover:text-tagma-text transition-colors"
                 title="Import upstream outputs as inputs on this task"
               >
                 <ArrowDownToLine size={10} />
@@ -182,14 +182,14 @@ export function PortsEditor({
             )}
             <button
               onClick={addInput}
-              className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+              className="flex items-center gap-1 text-caption text-tagma-accent hover:text-tagma-text transition-colors"
             >
               <Plus size={10} /> Add
             </button>
           </div>
         </div>
         {unifiedView.inputs.length === 0 && (
-          <p className="text-[10px] text-tagma-muted">
+          <p className="text-caption text-tagma-muted">
             No inputs. Reference values in{' '}
             <code className="text-tagma-text/80">{'{{inputs.name}}'}</code> to start.
           </p>
@@ -224,7 +224,7 @@ export function PortsEditor({
               {syncNewOutputCount > 0 && (
                 <button
                   onClick={onSyncFromDownstream}
-                  className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+                  className="flex items-center gap-1 text-caption text-tagma-accent hover:text-tagma-text transition-colors"
                   title="Adopt downstream inputs as outputs on this task"
                 >
                   <ArrowUpFromLine size={10} />
@@ -233,14 +233,14 @@ export function PortsEditor({
               )}
               <button
                 onClick={addOutput}
-                className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+                className="flex items-center gap-1 text-caption text-tagma-accent hover:text-tagma-text transition-colors"
               >
                 <Plus size={10} /> Add
               </button>
             </div>
           </div>
           {unifiedView.outputs.length === 0 && (
-            <p className="text-[10px] text-tagma-muted">
+            <p className="text-caption text-tagma-muted">
               No outputs. Declare what downstream tasks can read from this one — the engine injects
               an Output Format block so the model emits final-line JSON.
             </p>
@@ -337,7 +337,7 @@ function PortRow({
         {canCustomize && (
           <button
             onClick={onCustomize}
-            className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+            className="text-caption text-tagma-accent hover:text-tagma-text transition-colors"
             title={`Create a manual ${kind} binding from this row`}
           >
             Customize
@@ -359,14 +359,14 @@ function PortRow({
       <div className="flex items-end gap-1.5 pr-16">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
-            <label className="text-[10px] text-tagma-muted">Name</label>
+            <label className="text-caption text-tagma-muted">Name</label>
             <StatusBadge status={row.status} />
           </div>
           {isEditable ? (
             <CopyableField value={name} label={`Copy ${kind} name`}>
               <input
                 type="text"
-                className="field-input font-mono text-[11px]"
+                className="field-input font-mono text-body"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={blurName}
@@ -375,7 +375,7 @@ function PortRow({
             </CopyableField>
           ) : (
             <div
-              className="field-input font-mono text-[11px] bg-tagma-surface/40 truncate"
+              className="field-input font-mono text-body bg-tagma-surface/40 truncate"
               title={row.name}
             >
               {row.name}
@@ -383,10 +383,10 @@ function PortRow({
           )}
         </div>
         <div className="w-[96px]">
-          <label className="block text-[10px] text-tagma-muted mb-0.5">Type</label>
+          <label className="block text-caption text-tagma-muted mb-0.5">Type</label>
           {isEditable ? (
             <select
-              className="field-input text-[11px]"
+              className="field-input text-body"
               value={port.type ?? ''}
               onChange={(e) =>
                 onUpdate({
@@ -405,19 +405,19 @@ function PortRow({
               ))}
             </select>
           ) : (
-            <div className="field-input text-[11px] bg-tagma-surface/40">{port.type ?? 'json'}</div>
+            <div className="field-input text-body bg-tagma-surface/40">{port.type ?? 'json'}</div>
           )}
         </div>
       </div>
 
       {/* Row 2: description */}
       <div>
-        <label className="block text-[10px] text-tagma-muted mb-0.5">Description</label>
+        <label className="block text-caption text-tagma-muted mb-0.5">Description</label>
         {isEditable ? (
           <CopyableField value={description} label={`Copy ${kind} description`}>
             <input
               type="text"
-              className="field-input text-[11px]"
+              className="field-input text-body"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onBlur={blurDescription}
@@ -429,7 +429,7 @@ function PortRow({
             />
           </CopyableField>
         ) : (
-          <div className="field-input text-[11px] bg-tagma-surface/40 break-words">
+          <div className="field-input text-body bg-tagma-surface/40 break-words">
             {description || 'No description'}
           </div>
         )}
@@ -438,14 +438,14 @@ function PortRow({
       {/* Row 3 (enum only): comma-separated values */}
       {port.type === 'enum' && (
         <div>
-          <label className="block text-[10px] text-tagma-muted mb-0.5">
+          <label className="block text-caption text-tagma-muted mb-0.5">
             Allowed values <span className="text-tagma-muted/60">(comma-separated)</span>
           </label>
           {isEditable ? (
             <CopyableField value={enumStr} label={`Copy ${kind} enum values`}>
               <input
                 type="text"
-                className="field-input font-mono text-[11px]"
+                className="field-input font-mono text-body"
                 value={enumStr}
                 onChange={(e) => setEnumStr(e.target.value)}
                 onBlur={blurEnumStr}
@@ -453,7 +453,7 @@ function PortRow({
               />
             </CopyableField>
           ) : (
-            <div className="field-input font-mono text-[11px] bg-tagma-surface/40">
+            <div className="field-input font-mono text-body bg-tagma-surface/40">
               {enumStr || 'none'}
             </div>
           )}
@@ -463,7 +463,7 @@ function PortRow({
       {/* Row 4: required / source */}
       <div className="grid grid-cols-1 gap-1.5">
         {kind === 'input' && (
-          <label className="text-[11px] text-tagma-text flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+          <label className="text-body text-tagma-text flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             <input
               type="checkbox"
               checked={(port as InputRow).required === true}
@@ -498,7 +498,7 @@ function PortRow({
 
       {kind === 'input' && isEditable && sourceMode === 'specific' && fromOptions.length > 0 && (
         <div>
-          <label className="block text-[10px] text-tagma-muted mb-0.5">Upstream candidates</label>
+          <label className="block text-caption text-tagma-muted mb-0.5">Upstream candidates</label>
           <div className="flex flex-wrap gap-1">
             {fromOptions.map((c) => {
               const source = sourceForUpstreamCandidate(c, upstreamCandidates ?? []);
@@ -506,7 +506,7 @@ function PortRow({
                 <button
                   key={source}
                   type="button"
-                  className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+                  className="text-caption text-tagma-accent hover:text-tagma-text transition-colors"
                   onClick={() => onUpdate({ from: source })}
                 >
                   {source}
@@ -518,7 +518,7 @@ function PortRow({
       )}
 
       {row.conflict && (
-        <div className="flex items-start gap-1 text-[10px] text-tagma-warning">
+        <div className="flex items-start gap-1 text-caption text-tagma-warning">
           <AlertTriangle size={10} className="mt-0.5 shrink-0" />
           <span>{row.conflict.reason}</span>
         </div>
@@ -530,7 +530,7 @@ function PortRow({
         ambiguousProducers &&
         ambiguousProducers.length > 1 &&
         (!port.from || port.from === `outputs.${port.name}`) && (
-          <div className="flex items-start gap-1 text-[10px] text-tagma-warning">
+          <div className="flex items-start gap-1 text-caption text-tagma-warning">
             <AlertTriangle size={10} className="mt-0.5 shrink-0" />
             <span>
               Ambiguous: {ambiguousProducers.join(', ')} all export <code>{port.name}</code>. Pick a
@@ -541,7 +541,7 @@ function PortRow({
 
       {/* Drift hint — the upstream changed since this input was synced */}
       {kind === 'input' && drift && (
-        <div className="flex items-start gap-1 text-[10px] text-tagma-warning">
+        <div className="flex items-start gap-1 text-caption text-tagma-warning">
           <RefreshCw size={10} className="mt-0.5 shrink-0" />
           <span>
             Upstream{' '}
@@ -637,11 +637,11 @@ function SourceEditor({
     return (
       <div>
         <div className="flex items-center justify-between mb-0.5">
-          <label className="text-[10px] text-tagma-muted">Source</label>
-          <span className="text-[10px] text-tagma-muted">{row.source.label}</span>
+          <label className="text-caption text-tagma-muted">Source</label>
+          <span className="text-caption text-tagma-muted">{row.source.label}</span>
         </div>
         <div
-          className="field-input font-mono text-[11px] bg-tagma-surface/40 truncate"
+          className="field-input font-mono text-body bg-tagma-surface/40 truncate"
           title={row.source.detail ?? row.source.label}
         >
           {row.source.detail ?? row.source.label}
@@ -653,14 +653,14 @@ function SourceEditor({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2 mb-0.5">
-        <label className="text-[10px] text-tagma-muted">Source</label>
-        <span className="text-[10px] text-tagma-muted truncate">
+        <label className="text-caption text-tagma-muted">Source</label>
+        <span className="text-caption text-tagma-muted truncate">
           {row.source.label}
           {row.source.detail ? `: ${row.source.detail}` : ''}
         </span>
       </div>
       <select
-        className="field-input text-[11px]"
+        className="field-input text-body"
         value={sourceMode}
         onChange={(e) => changeSourceMode(e.target.value as SourceMode)}
       >
@@ -685,7 +685,7 @@ function SourceEditor({
         <CopyableField value={fromStr} label={`Copy ${kind} source`}>
           <input
             type="text"
-            className="field-input font-mono text-[11px]"
+            className="field-input font-mono text-body"
             value={fromStr}
             onChange={(e) => setFromStr(e.target.value)}
             onBlur={blurFromStr}
@@ -698,7 +698,7 @@ function SourceEditor({
         <CopyableField value={fromStr} label={`Copy ${kind} JSON source`}>
           <input
             type="text"
-            className="field-input font-mono text-[11px]"
+            className="field-input font-mono text-body"
             value={fromStr}
             onChange={(e) => setFromStr(e.target.value)}
             onBlur={blurFromStr}
@@ -712,7 +712,7 @@ function SourceEditor({
           <CopyableField value={fromStr} label={`Copy ${kind} stream source`}>
             <input
               type="text"
-              className="field-input font-mono text-[11px]"
+              className="field-input font-mono text-body"
               value={fromStr}
               onChange={(e) => setFromStr(e.target.value)}
               onBlur={blurFromStr}
@@ -724,7 +724,7 @@ function SourceEditor({
               <button
                 key={source}
                 type="button"
-                className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+                className="text-caption text-tagma-accent hover:text-tagma-text transition-colors"
                 onClick={() => {
                   setFromStr(source);
                   onUpdate({ from: source, value: undefined, default: undefined });
@@ -741,7 +741,7 @@ function SourceEditor({
         <CopyableField value={valueStr} label={`Copy ${kind} literal value`}>
           <input
             type="text"
-            className="field-input font-mono text-[11px]"
+            className="field-input font-mono text-body"
             value={valueStr}
             onChange={(e) => setValueStr(e.target.value)}
             onBlur={blurValueStr}
@@ -754,7 +754,7 @@ function SourceEditor({
         <CopyableField value={defaultStr} label={`Copy ${kind} default value`}>
           <input
             type="text"
-            className="field-input font-mono text-[11px]"
+            className="field-input font-mono text-body"
             value={defaultStr}
             onChange={(e) => setDefaultStr(e.target.value)}
             onBlur={blurDefaultStr}

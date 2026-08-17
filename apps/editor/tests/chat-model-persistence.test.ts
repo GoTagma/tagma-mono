@@ -1894,6 +1894,7 @@ describe('chat model persistence', () => {
       agent: 'tagma-router',
       currentSessionId: 'existing',
     } as never);
+    sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
 
     let stagedSnapshot: ChatYamlSnapshot | null = null;
     try {

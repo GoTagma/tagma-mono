@@ -109,7 +109,7 @@ export function ZoomControls() {
       <button
         type="button"
         onClick={zoomReset}
-        className="px-1.5 h-full text-[10px] font-mono text-tagma-muted hover:text-tagma-text tabular-nums"
+        className="px-1.5 h-full text-caption font-mono text-tagma-muted hover:text-tagma-text tabular-nums"
         title="Reset zoom"
         style={{ minWidth: 34 }}
       >

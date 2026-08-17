@@ -10,7 +10,7 @@ function InfoChip({ icon, label, color }: { icon: React.ReactNode; label: string
   return (
     <div className="inline-flex h-[16px] min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border border-tagma-border/50 bg-tagma-elevated/60 px-1.5">
       <span className={`inline-flex items-center justify-center shrink-0 ${color}`}>{icon}</span>
-      <span className="text-[9px] font-mono text-tagma-muted/80 whitespace-nowrap">{label}</span>
+      <span className="text-tiny font-mono text-tagma-muted/80 whitespace-nowrap">{label}</span>
     </div>
   );
 }
@@ -73,7 +73,7 @@ export function PipelineSummaryBar({ config }: PipelineSummaryBarProps) {
       <div className="hide-scrollbar flex h-full min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
         {chips}
       </div>
-      <span className="hidden sm:inline shrink-0 pl-2 text-[9px] font-mono tracking-wide text-tagma-muted/30">
+      <span className="hidden sm:inline shrink-0 pl-2 text-tiny font-mono tracking-wide text-tagma-muted/30">
         {config.tracks.length} track{config.tracks.length !== 1 ? 's' : ''}
         {' · '}
         {totalTasks} task{totalTasks !== 1 ? 's' : ''}

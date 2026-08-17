@@ -272,7 +272,7 @@ describe('HistoryFlowView', () => {
     ).text();
 
     expect(source).toContain(
-      'className="text-[11px] font-mono text-tagma-muted [overflow-wrap:anywhere]"',
+      'className="text-body font-mono text-tagma-muted [overflow-wrap:anywhere]"',
     );
     expect(source).toContain(
       'className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] text-tagma-text"',

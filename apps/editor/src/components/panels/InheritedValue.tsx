@@ -95,13 +95,13 @@ export function InheritedValue({
   const shown = displayValue ?? resolved.value;
   if (shown === undefined || shown === '') {
     return (
-      <p className="text-[10px] text-tagma-muted mt-1 italic">
+      <p className="text-caption text-tagma-muted mt-1 italic">
         &rarr; not set (uses {sourceLabel(resolved.source, trackName, pipelineName)})
       </p>
     );
   }
   return (
-    <p className="text-[10px] text-tagma-muted mt-1">
+    <p className="text-caption text-tagma-muted mt-1">
       &rarr; {prefix}: <span className="font-mono text-tagma-text/80">{shown}</span>
       <span className="ml-1">(from {sourceLabel(resolved.source, trackName, pipelineName)})</span>
     </p>

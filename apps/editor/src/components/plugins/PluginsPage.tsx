@@ -651,10 +651,10 @@ export function PluginsPage({
         />
         <div className="flex-1 flex flex-col items-center justify-center text-tagma-muted gap-3">
           <Package size={36} className="opacity-30" />
-          <p className="text-[11px] tracking-wide">Open a workspace to manage plugins.</p>
+          <p className="text-body tracking-wide">Open a workspace to manage plugins.</p>
           <button
             onClick={onBack}
-            className="px-3 py-1.5 text-[11px] tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
+            className="px-3 py-1.5 text-body tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
           >
             Back to Editor
           </button>
@@ -788,7 +788,7 @@ function UpgradeConfirmDialog({
           </h2>
         </div>
         <div className="modal-viewport-body space-y-3 px-4 py-3">
-          <div className="text-[11px] text-tagma-muted leading-relaxed">
+          <div className="text-body text-tagma-muted leading-relaxed">
             This upgrade will resolve each plugin inside its own isolated dependency store.
           </div>
 
@@ -799,14 +799,12 @@ function UpgradeConfirmDialog({
                 className="px-3 py-2 border-b border-tagma-border last:border-b-0"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-[11px] text-tagma-text truncate">
-                    {entry.name}
-                  </span>
-                  <span className="font-mono text-[10px] text-tagma-accent shrink-0">
+                  <span className="font-mono text-body text-tagma-text truncate">{entry.name}</span>
+                  <span className="font-mono text-caption text-tagma-accent shrink-0">
                     v{entry.fromVersion ?? '?'} → v{entry.toVersion}
                   </span>
                 </div>
-                <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
+                <div className="mt-1 text-caption font-mono text-tagma-muted-dim">
                   {entry.reason}
                 </div>
               </div>
@@ -814,7 +812,7 @@ function UpgradeConfirmDialog({
           </div>
 
           {plan.warnings.length > 0 && (
-            <div className="space-y-1 text-[10px] text-tagma-muted-dim leading-relaxed">
+            <div className="space-y-1 text-caption text-tagma-muted-dim leading-relaxed">
               {plan.warnings.map((warning) => (
                 <div key={warning}>{warning}</div>
               ))}
@@ -880,7 +878,7 @@ function UninstallConfirmDialog({
           </h2>
         </div>
         <div className="modal-viewport-body space-y-3 px-4 py-3">
-          <div className="text-[11px] text-tagma-text">
+          <div className="text-body text-tagma-text">
             <span className="font-mono text-tagma-accent">{impact.name}</span>
             {impact.category && impact.type && (
               <span className="text-tagma-muted">
@@ -890,7 +888,7 @@ function UninstallConfirmDialog({
               </span>
             )}
           </div>
-          <div className="text-[11px] text-tagma-warning">
+          <div className="text-body text-tagma-warning">
             {total} reference{total === 1 ? '' : 's'} in {fileCount} file
             {fileCount === 1 ? '' : 's'} will be left dangling. The pipeline will still save, but
             affected runs may fail until the plugin is reinstalled or the reference is removed.
@@ -898,14 +896,14 @@ function UninstallConfirmDialog({
           <div className="border border-tagma-border bg-tagma-bg">
             {byFile.map(([file, entries]) => (
               <div key={file} className="border-b border-tagma-border last:border-b-0">
-                <div className="px-3 py-1.5 bg-tagma-surface/40 text-[10px] font-mono text-tagma-text">
+                <div className="px-3 py-1.5 bg-tagma-surface/40 text-caption font-mono text-tagma-text">
                   {file}
                 </div>
                 <ul className="px-3 py-1.5 space-y-0.5">
                   {entries.map((entry) => (
                     <li
                       key={`${entry.file}:${entry.location}`}
-                      className="text-[10px] font-mono text-tagma-muted"
+                      className="text-caption font-mono text-tagma-muted"
                     >
                       <span className="text-tagma-accent">{entry.trackId}</span>
                       {entry.taskId && (
@@ -953,7 +951,7 @@ function CategorySidebar({
 }) {
   return (
     <aside className="w-full shrink-0 border-b border-tagma-border bg-tagma-surface/25 py-2 md:w-48 md:border-b-0 md:border-r md:py-5">
-      <div className="hidden px-5 pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim md:block">
+      <div className="hidden px-5 pb-3 text-tiny tracking-[0.22em] uppercase text-tagma-muted-dim md:block">
         Categories
       </div>
       <nav className="flex overflow-x-auto md:flex-col md:overflow-x-visible">
@@ -977,15 +975,15 @@ function CategorySidebar({
                 />
               )}
               <span
-                className={`w-5 text-[9px] font-mono tabular-nums leading-none ${
+                className={`w-5 text-tiny font-mono tabular-nums leading-none ${
                   isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
                 }`}
               >
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="flex-1 text-[12px] tracking-wide leading-tight">{c.label}</span>
+              <span className="flex-1 text-label tracking-wide leading-tight">{c.label}</span>
               <span
-                className={`text-[10px] font-mono tabular-nums leading-none ${
+                className={`text-caption font-mono tabular-nums leading-none ${
                   isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
                 }`}
               >
@@ -1049,7 +1047,7 @@ function PluginsHeader({
           <div className="w-px h-5 bg-tagma-border shrink-0" />
           <div className="flex items-center gap-1.5 px-2 shrink-0">
             <Package size={13} className="text-tagma-accent" />
-            <span className="text-xs font-medium text-tagma-text truncate max-w-[200px]">
+            <span className="text-label font-medium text-tagma-text truncate max-w-[200px]">
               Plugins
             </span>
           </div>
@@ -1101,7 +1099,7 @@ function PluginsHeader({
                   value={searchQuery ?? ''}
                   onChange={(e) => onSearchQueryChange(e.target.value)}
                   placeholder={searchPlaceholder}
-                  className="w-full pl-7 pr-2 py-1 text-[11px] bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
+                  className="w-full pl-7 pr-2 py-1 text-body bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
                 />
               </div>
             </div>
@@ -1113,7 +1111,7 @@ function PluginsHeader({
 }
 
 // Matches the button style used by the Back to Editor / toolbar controls in
-// RunView and RunHistoryBrowser: plain `text-xs` in `tagma-muted`, hover to
+// RunView and RunHistoryBrowser: plain `text-label` in `tagma-muted`, hover to
 // `tagma-text`, with `px-2 py-1 gap-1.5` padding. Keeping the three pages
 // visually unified so switching between Editor / Run / History / Plugins
 // feels like a single toolbar shifting contents, not four redesigns.
@@ -1135,7 +1133,7 @@ function UtilityLink({
       onClick={onClick}
       disabled={disabled}
       title={title ?? label}
-      className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+      className="flex items-center gap-1.5 text-label text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
     >
       {icon}
       <span className="hidden md:inline">{label}</span>
@@ -1157,7 +1155,7 @@ function HeaderTab({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-0.5 pb-2.5 text-[12px] font-medium tracking-wide transition-colors border-b-2 ${
+      className={`flex items-center gap-2 px-0.5 pb-2.5 text-label font-medium tracking-wide transition-colors border-b-2 ${
         active
           ? 'text-tagma-text border-tagma-accent'
           : 'text-tagma-muted border-transparent hover:text-tagma-text hover:border-tagma-border'

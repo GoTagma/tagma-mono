@@ -170,7 +170,7 @@ function Chip({ children, className = '' }: { children: React.ReactNode; classNa
     <span
       className={`inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden ${className}`}
     >
-      <span className="truncate text-[7.5px] font-mono leading-[14px]">{children}</span>
+      <span className="truncate text-micro font-mono leading-[14px]">{children}</span>
     </span>
   );
 }
@@ -240,7 +240,7 @@ function ErrorTooltip({
     >
       <div className="px-3 py-1.5">
         {messages.map((msg, i) => (
-          <div key={i} className="flex items-start gap-1.5 py-[2px] text-[9px] font-mono">
+          <div key={i} className="flex items-start gap-1.5 py-[2px] text-tiny font-mono">
             <AlertTriangle
               size={8}
               className={`${msg.severity === 'error' ? 'text-tagma-error' : 'text-tagma-warning'} shrink-0 mt-[2px]`}
@@ -429,7 +429,7 @@ function TaskTooltip({
         visibility: pos ? 'visible' : 'hidden',
       }}
     >
-      <div className="px-3 py-1.5 text-[10px] font-semibold text-tagma-text truncate border-b border-tagma-border">
+      <div className="px-3 py-1.5 text-caption font-semibold text-tagma-text truncate border-b border-tagma-border">
         {task.name || task.id}
       </div>
       <div className="px-3 py-1.5">
@@ -441,7 +441,7 @@ function TaskTooltip({
           // the original compact truncated layout.
           if (Array.isArray(value)) {
             return (
-              <div key={label} className="flex py-[1.5px] text-[9px] font-mono gap-2 min-w-0">
+              <div key={label} className="flex py-[1.5px] text-tiny font-mono gap-2 min-w-0">
                 <span className="text-tagma-muted/70 w-[72px] shrink-0 truncate">{label}</span>
                 <div className="text-tagma-text/80 min-w-0 flex-1 space-y-1">
                   {value.map((line, i) => (
@@ -454,7 +454,7 @@ function TaskTooltip({
             );
           }
           return (
-            <div key={label} className="flex py-[1.5px] text-[9px] font-mono gap-2 min-w-0">
+            <div key={label} className="flex py-[1.5px] text-tiny font-mono gap-2 min-w-0">
               <span className="text-tagma-muted/70 w-[72px] shrink-0 truncate">{label}</span>
               <span className="text-tagma-text/80 truncate min-w-0 flex-1">{value}</span>
             </div>
@@ -632,7 +632,7 @@ export const TaskCard = memo(function TaskCard({
     badges.push(
       <span
         key="port-in"
-        className="inline-block h-[14px] px-[3px] bg-tagma-info/12 text-tagma-info/90 shrink-0 leading-[14px] text-[8px] font-mono font-bold tabular-nums whitespace-nowrap"
+        className="inline-block h-[14px] px-[3px] bg-tagma-info/12 text-tagma-info/90 shrink-0 leading-[14px] text-micro font-mono font-bold tabular-nums whitespace-nowrap"
         title={`${inputCount} input port${inputCount !== 1 ? 's' : ''}`}
       >
         <ArrowDownToLine size={8} strokeWidth={2.5} className="inline-block align-middle" />
@@ -644,7 +644,7 @@ export const TaskCard = memo(function TaskCard({
     badges.push(
       <span
         key="port-out"
-        className="inline-block h-[14px] px-[3px] bg-tagma-accent/12 text-tagma-accent/90 shrink-0 leading-[14px] text-[8px] font-mono font-bold tabular-nums whitespace-nowrap"
+        className="inline-block h-[14px] px-[3px] bg-tagma-accent/12 text-tagma-accent/90 shrink-0 leading-[14px] text-micro font-mono font-bold tabular-nums whitespace-nowrap"
         title={`${outputCount} output port${outputCount !== 1 ? 's' : ''}`}
       >
         <span className="inline-block align-middle mr-[2px]">{outputCount}</span>
@@ -790,7 +790,7 @@ export const TaskCard = memo(function TaskCard({
         </span>
 
         <span
-          className={`text-[10px] font-medium truncate flex-1 leading-[24px] ${isSkipped ? 'text-tagma-muted/50 line-through' : 'text-tagma-text'}`}
+          className={`text-caption font-medium truncate flex-1 leading-[24px] ${isSkipped ? 'text-tagma-muted/50 line-through' : 'text-tagma-text'}`}
         >
           {task.name || task.id}
         </span>
@@ -809,7 +809,7 @@ export const TaskCard = memo(function TaskCard({
               className={`${runtimeCfg.iconColor} ${runtimeStatus === 'running' ? 'animate-spin' : ''}`}
             />
             {runtimeDurationMs != null && (
-              <span className={`text-[8px] font-mono tabular-nums ${runtimeCfg.iconColor}`}>
+              <span className={`text-micro font-mono tabular-nums ${runtimeCfg.iconColor}`}>
                 {formatRuntimeDuration(runtimeDurationMs)}
               </span>
             )}
@@ -852,7 +852,7 @@ export const TaskCard = memo(function TaskCard({
               {(['read', 'write', 'execute'] as const).map((k) => (
                 <span
                   key={k}
-                  className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
+                  className={`text-micro font-mono font-bold w-[10px] text-center leading-[14px]
                   ${k === 'read' && perms.read ? 'text-tagma-success' : ''}
                   ${k === 'write' && perms.write ? 'text-tagma-warning' : ''}
                   ${k === 'execute' && perms.execute ? 'text-tagma-error' : ''}

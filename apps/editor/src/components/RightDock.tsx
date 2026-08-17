@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Code, MessageSquare, PanelLeftClose, PanelLeftOpen, Settings2, X } from 'lucide-react';
+import { viewportW } from '../utils/zoom';
 
 /**
  * Unified right-side dock. Composes three slots:
@@ -359,11 +360,15 @@ export function RightDock({
   const [detachedWidth, setDetachedWidth] = useState<number>(() => loadWidths().detached);
   const [isResizing, setIsResizing] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window === 'undefined' ? RIGHT_DOCK_COMPACT_BREAKPOINT : window.innerWidth,
+    typeof window === 'undefined' ? RIGHT_DOCK_COMPACT_BREAKPOINT : viewportW(),
   );
 
   useEffect(() => {
-    const syncViewportWidth = () => setViewportWidth(window.innerWidth);
+    // viewportW() keeps the compact breakpoint zoom-relative in both zoom
+    // modes: native Electron zoom already shrinks window.innerWidth (and
+    // getZoom() is 1, so the divide is a no-op), while the browser CSS-zoom
+    // fallback leaves innerWidth untouched and needs the divide.
+    const syncViewportWidth = () => setViewportWidth(viewportW());
     window.addEventListener('resize', syncViewportWidth);
     return () => window.removeEventListener('resize', syncViewportWidth);
   }, []);
@@ -503,7 +508,7 @@ export function RightDock({
             onDragLeave={() => setDropActive(false)}
             onDrop={handleDropDetach}
           >
-            <span className="text-[9px] font-mono text-tagma-muted uppercase tracking-widest whitespace-nowrap [writing-mode:vertical-rl] rotate-180">
+            <span className="text-tiny font-mono text-tagma-muted uppercase tracking-widest whitespace-nowrap [writing-mode:vertical-rl] rotate-180">
               Drop to detach
             </span>
           </motion.div>
@@ -624,7 +629,7 @@ function DockTabStrip({
             onDragEnd={onDragEnd}
             onClick={() => onSelect(tab)}
             title={canDetach ? `${meta.label} — drag left of the dock to detach` : meta.label}
-            className={`group relative flex min-w-0 items-center gap-1.5 px-2.5 text-[10px] font-mono border-r border-tagma-border/60 cursor-pointer select-none transition-colors duration-fast ease-smooth ${
+            className={`group relative flex min-w-0 items-center gap-1.5 px-2.5 text-caption font-mono border-r border-tagma-border/60 cursor-pointer select-none transition-colors duration-fast ease-smooth ${
               isActive
                 ? 'bg-tagma-bg text-tagma-text'
                 : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface'
@@ -707,7 +712,7 @@ function DetachedHeader({
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        className="flex items-center gap-1.5 text-[10px] font-mono text-tagma-text cursor-grab active:cursor-grabbing select-none"
+        className="flex items-center gap-1.5 text-caption font-mono text-tagma-text cursor-grab active:cursor-grabbing select-none"
         title="Drag back onto the dock to re-attach"
       >
         <Icon size={11} className="text-tagma-accent" />
@@ -723,13 +728,7 @@ function DetachedHeader({
       >
         <PanelLeftClose size={11} />
       </button>
-      <button
-        type="button"
-        onClick={onClose}
-        title="Close"
-        aria-label="Close"
-        className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-      >
+      <button type="button" onClick={onClose} title="Close" aria-label="Close" className="icon-btn">
         <X size={10} />
       </button>
     </div>

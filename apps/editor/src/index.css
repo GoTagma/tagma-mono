@@ -122,18 +122,14 @@ body,
   --tagma-modal-tone: var(--tagma-accent);
   min-height: 0;
   max-height: calc(100dvh - 1rem);
-  border-color: rgb(var(--tagma-modal-tone) / 0.3);
-  background:
-    linear-gradient(
-      155deg,
-      rgb(var(--tagma-modal-tone) / 0.085),
-      rgb(var(--tagma-modal-tone) / 0.025) 44%,
-      transparent 72%
-    ),
-    rgb(var(--tagma-surface));
+  /* Restrained skin: flat surface, one neutral hairline, and a single tone
+     rail. The semantic hue speaks once through the rail (plus the header icon
+     at call sites) — no tinted gradients on shell, header, or footer, so a
+     warning dialog reads as one clean surface instead of stacked amber layers. */
+  border-color: rgb(var(--tagma-border) / 0.6);
+  background: rgb(var(--tagma-surface));
   box-shadow:
-    inset 2px 0 0 rgb(var(--tagma-modal-tone) / 0.58),
-    0 0 0 1px rgb(var(--tagma-border) / 0.55),
+    inset 2px 0 0 rgb(var(--tagma-modal-tone) / 0.55),
     0 4px 8px rgb(var(--tagma-shadow) / var(--tagma-shadow-contact)),
     0 24px 64px -12px rgb(var(--tagma-shadow) / var(--tagma-shadow-cast));
   /* Dialogs rise a few px as they fade in. Paired with the backdrop's
@@ -159,8 +155,7 @@ body,
 }
 .modal-viewport-shell > .panel-header,
 .modal-viewport-header {
-  border-color: rgb(var(--tagma-modal-tone) / 0.2);
-  background: linear-gradient(90deg, rgb(var(--tagma-modal-tone) / 0.08), transparent 62%);
+  border-color: rgb(var(--tagma-border));
 }
 /* Resting state is `transform: none`, not `translateY(0) scale(1)`. With
    fill-mode `both` the final keyframe persists, and any lingering transform
@@ -186,10 +181,8 @@ body,
 .modal-viewport-footer {
   flex-shrink: 0;
   flex-wrap: wrap;
-  border-color: rgb(var(--tagma-modal-tone) / 0.18);
-  background:
-    linear-gradient(90deg, rgb(var(--tagma-modal-tone) / 0.045), transparent 58%),
-    rgb(var(--tagma-elevated) / 0.32);
+  border-color: rgb(var(--tagma-border));
+  background: rgb(var(--tagma-elevated) / 0.3);
 }
 @media (min-width: 640px) {
   .modal-viewport-backdrop {
@@ -638,8 +631,7 @@ select:focus {
 /* Keyboard-only focus ring. Buttons previously had no visible focus state at
    all, so tabbing through the toolbar or a dialog left no indication of
    where you were. `:focus-visible` keeps mouse clicks ring-free, so this is
-   purely additive for keyboard users. Components that already paint their
-   own focus treatment opt out via `.focus-ring-none`. */
+   purely additive for keyboard users. */
 button:focus-visible,
 [role='button']:focus-visible,
 [role='tab']:focus-visible,
@@ -648,9 +640,6 @@ summary:focus-visible,
 a:focus-visible {
   outline: 1px solid rgb(var(--tagma-accent) / 0.9);
   outline-offset: 1px;
-}
-.focus-ring-none:focus-visible {
-  outline: none;
 }
 
 input[type='checkbox'] {
@@ -666,19 +655,19 @@ input[type='checkbox'] {
     @apply h-14 flex items-center justify-between px-4 border-b border-tagma-border shrink-0;
   }
   .panel-title {
-    @apply text-xs font-semibold text-tagma-text uppercase tracking-widest;
+    @apply text-label font-semibold text-tagma-text uppercase tracking-widest;
   }
   .panel-header-sm {
     @apply h-7 flex items-center justify-between px-3 border-b border-tagma-border shrink-0;
   }
   .panel-title-sm {
-    @apply text-[11px] font-medium text-tagma-text;
+    @apply text-body font-medium text-tagma-text;
   }
   .field-label {
-    @apply block text-[10px] font-medium text-tagma-muted uppercase tracking-wider mb-1;
+    @apply block text-caption font-medium text-tagma-muted uppercase tracking-wider mb-1;
   }
   .field-input {
-    @apply w-full text-[11px] bg-tagma-bg border border-tagma-border px-2.5 py-1.5 text-tagma-text placeholder:text-tagma-muted/50;
+    @apply w-full text-body bg-tagma-bg border border-tagma-border px-2.5 py-1.5 text-tagma-text placeholder:text-tagma-muted/50;
     transition:
       border-color var(--tagma-dur-base) var(--tagma-ease),
       box-shadow var(--tagma-dur-base) var(--tagma-ease),
@@ -692,7 +681,7 @@ input[type='checkbox'] {
      transform blurs the label mid-transition, whereas a whole-pixel shift
      stays crisp and still reads as a physical push. */
   .btn-primary {
-    @apply flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium tracking-wide bg-tagma-accent text-white hover:bg-tagma-accent/85;
+    @apply flex items-center gap-1.5 px-3 py-1 text-body font-medium tracking-wide bg-tagma-accent text-white hover:bg-tagma-accent/85;
     transition:
       background-color var(--tagma-dur-base) var(--tagma-ease),
       box-shadow var(--tagma-dur-base) var(--tagma-ease),
@@ -706,7 +695,7 @@ input[type='checkbox'] {
     box-shadow: none;
   }
   .btn-ghost {
-    @apply flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated;
+    @apply flex items-center gap-1.5 px-2.5 py-1.5 text-label text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated;
     transition:
       color var(--tagma-dur-fast) var(--tagma-ease),
       background-color var(--tagma-dur-fast) var(--tagma-ease),
@@ -716,7 +705,7 @@ input[type='checkbox'] {
     transform: translateY(1px);
   }
   .btn-danger {
-    @apply w-full px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20;
+    @apply w-full px-3 py-1.5 text-label text-tagma-error border border-tagma-error/20;
     transition:
       background-color var(--tagma-dur-base) var(--tagma-ease),
       border-color var(--tagma-dur-base) var(--tagma-ease),
@@ -734,7 +723,7 @@ input[type='checkbox'] {
      dialogs. `.btn-secondary` is the neutral cancel/ghost; semantic outline
      variants carry the same dimensions for approve/warn/destructive paths. */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-muted border border-tagma-border hover:text-tagma-text hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-tagma-muted;
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-body font-medium tracking-wide text-tagma-muted border border-tagma-border hover:text-tagma-text hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-tagma-muted;
     transition:
       color var(--tagma-dur-fast) var(--tagma-ease),
       background-color var(--tagma-dur-fast) var(--tagma-ease),
@@ -745,7 +734,7 @@ input[type='checkbox'] {
     transform: translateY(1px);
   }
   .btn-danger-inline {
-    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-error border border-tagma-error/20 disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-body font-medium tracking-wide text-tagma-error border border-tagma-error/20 disabled:opacity-40 disabled:cursor-not-allowed;
     transition:
       background-color var(--tagma-dur-base) var(--tagma-ease),
       border-color var(--tagma-dur-base) var(--tagma-ease),
@@ -759,7 +748,7 @@ input[type='checkbox'] {
     transform: translateY(1px);
   }
   .btn-warning-inline {
-    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-warning border border-tagma-warning/20 disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-body font-medium tracking-wide text-tagma-warning border border-tagma-warning/20 disabled:opacity-40 disabled:cursor-not-allowed;
     transition:
       background-color var(--tagma-dur-base) var(--tagma-ease),
       border-color var(--tagma-dur-base) var(--tagma-ease),
@@ -773,7 +762,7 @@ input[type='checkbox'] {
     transform: translateY(1px);
   }
   .btn-success-inline {
-    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-success border border-tagma-success/25 disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-body font-medium tracking-wide text-tagma-success border border-tagma-success/25 disabled:opacity-40 disabled:cursor-not-allowed;
     transition:
       background-color var(--tagma-dur-base) var(--tagma-ease),
       border-color var(--tagma-dur-base) var(--tagma-ease),
@@ -787,17 +776,76 @@ input[type='checkbox'] {
     transform: translateY(1px);
   }
   .chip-xs {
-    @apply inline-flex items-center gap-0.5 px-1 py-px text-[9px] font-mono font-semibold border;
+    @apply inline-flex items-center gap-0.5 px-1 py-px text-tiny font-mono font-semibold border;
+  }
+  /* Mono micro section label — the IDE panel-section idiom (VS Code sidebar
+     section headers). `.section-label-rule` adds the hairline underline used
+     by run/history group headers. */
+  .section-label {
+    @apply text-tiny font-mono uppercase tracking-wider text-tagma-muted/60;
+  }
+  .section-label-md {
+    @apply text-caption font-mono uppercase tracking-wide text-tagma-muted;
+  }
+  .section-label-rule {
+    @apply text-tiny font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40;
+  }
+  /* Icon-only button (close, dismiss, secondary glyph actions). One shared
+     metric so every icon button keeps the same hit area, hover, and disabled
+     behavior instead of each call site re-picking them. */
+  .icon-btn {
+    @apply p-1 text-tagma-muted hover:text-tagma-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted;
+  }
+  /* Inline alert line inside dense panels — mono, toned, no box. Boxed
+     alerts keep the established `bg-{tone}/8 border-{tone}/30` vocabulary. */
+  .alert-text-error {
+    @apply flex items-start gap-1.5 text-caption text-tagma-error/90 font-mono;
+  }
+  .alert-text-warning {
+    @apply flex items-start gap-1.5 text-caption text-tagma-warning/90 font-mono;
+  }
+  /* Boxed alert surfaces — one padded tint chip per semantic tone. The text
+     inside keeps its own size/color utilities; the box owns surface, border,
+     and padding. Colors are plain CSS: @apply only accepts opacity steps of
+     5 for the slash modifier, and the alert tint is 8%. */
+  .alert-box-error {
+    @apply border px-2.5 py-1.5;
+    background: rgb(var(--tagma-error) / 0.08);
+    border-color: rgb(var(--tagma-error) / 0.3);
+  }
+  .alert-box-warning {
+    @apply border px-2.5 py-1.5;
+    background: rgb(var(--tagma-warning) / 0.08);
+    border-color: rgb(var(--tagma-warning) / 0.3);
+  }
+  .alert-box-success {
+    @apply border px-2.5 py-1.5;
+    background: rgb(var(--tagma-success) / 0.08);
+    border-color: rgb(var(--tagma-success) / 0.3);
+  }
+  .alert-box-info {
+    @apply border px-2.5 py-1.5;
+    background: rgb(var(--tagma-info) / 0.08);
+    border-color: rgb(var(--tagma-info) / 0.3);
+  }
+  /* Nested-group indent rail — children of a collapsed/expanded group sit
+     under a 2px left hairline instead of repeating the combo per site. */
+  .indent-rail {
+    @apply pl-3 border-l-2 border-tagma-border space-y-2;
+  }
+  /* Empty-state placeholder block for lists and panels with no content. */
+  .empty-state {
+    @apply px-6 py-10 text-body text-tagma-muted-dim;
   }
   .chip-sm {
-    @apply inline-flex items-center gap-1 px-1.5 py-px text-[10px] font-mono font-semibold border;
+    @apply inline-flex items-center gap-1 px-1.5 py-px text-caption font-mono font-semibold border;
   }
   .chip-md {
-    @apply inline-flex items-center gap-2 px-2 py-1 text-[11px] font-medium border;
+    @apply inline-flex items-center gap-2 px-2 py-1 text-body font-medium border;
   }
   /* Unsaved-changes "mod" badge shared by TaskCard and TrackLane. */
   .chip-mod {
-    @apply inline-block h-[14px] px-[3px] bg-tagma-warning/15 text-tagma-warning/90 shrink-0 leading-[14px] text-[8px] font-mono font-bold tabular-nums whitespace-nowrap uppercase tracking-wider;
+    @apply inline-block h-[14px] px-[3px] bg-tagma-warning/15 text-tagma-warning/90 shrink-0 leading-[14px] text-micro font-mono font-bold tabular-nums whitespace-nowrap uppercase tracking-wider;
   }
 }
 
@@ -817,14 +865,12 @@ input[type='checkbox'] {
 }
 
 /* Assistant chat bubbles render as markdown (react-markdown + remark-gfm).
-   Prose reads in the app sans (Outfit) — mono body text was the main
-   "wireframe" tell in long answers. Code spans and fences keep JetBrains
-   Mono below. Tight spacing and scoped code styling without
-   @tailwindcss/typography. */
+   Prose reads in the app sans (the IDE-style system stack from
+   tailwind.config.js) — mono body text was the main "wireframe" tell in long
+   answers. Code spans and fences keep JetBrains Mono below. Tight spacing
+   and scoped code styling without @tailwindcss/typography. */
 .chat-markdown {
-  font-family: 'Outfit', system-ui, sans-serif;
   line-height: 1.72;
-  letter-spacing: 0.01em;
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;

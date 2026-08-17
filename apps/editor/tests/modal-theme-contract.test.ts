@@ -73,8 +73,17 @@ describe('modal theme contract', () => {
     expect(css).toContain('.modal-tone-danger');
     expect(css).toContain('.modal-tone-success');
     expect(css).toContain('.modal-tone-info');
-    expect(css).toMatch(
-      /\.modal-viewport-shell\s*\{[\s\S]*linear-gradient\([\s\S]*--tagma-modal-tone/,
-    );
+
+    // Restrained skin: the semantic tone speaks once via the shell's left rail
+    // (box-shadow), while shell, header, and footer stay flat — decorative
+    // tone gradients and tinted bands must not creep back in.
+    const shellBlock = css.match(/\.modal-viewport-shell\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(shellBlock).toContain('--tagma-modal-tone');
+    expect(shellBlock).toContain('background: rgb(var(--tagma-surface))');
+    expect(shellBlock).not.toContain('linear-gradient');
+    const headerBlock = css.match(/\.modal-viewport-header\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(headerBlock).not.toContain('linear-gradient');
+    const footerBlock = css.match(/\.modal-viewport-footer\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(footerBlock).not.toContain('linear-gradient');
   });
 });

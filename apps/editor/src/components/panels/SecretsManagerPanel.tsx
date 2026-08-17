@@ -307,11 +307,7 @@ export function SecretsManagerPanel({
                 Secrets Manager
               </h2>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-              aria-label="Close"
-            >
+            <button onClick={onClose} className="icon-btn" aria-label="Close">
               <X size={14} />
             </button>
           </div>
@@ -334,12 +330,12 @@ export function SecretsManagerPanel({
                     <AlertTriangle size={12} className="text-tagma-warning shrink-0 mt-[1px]" />
                   )}
                   <div className="min-w-0">
-                    <div className="text-[11px] text-tagma-text">
+                    <div className="text-body text-tagma-text">
                       {data.backend.available
                         ? 'OS credential backend active'
                         : 'OS credential backend unavailable'}
                     </div>
-                    <div className="text-[10px] text-tagma-muted leading-snug">
+                    <div className="text-caption text-tagma-muted leading-snug">
                       {data.backend.message}
                     </div>
                   </div>
@@ -398,10 +394,10 @@ export function SecretsManagerPanel({
                     onClick={() => setBindingOpen((open) => !open)}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[11px] text-tagma-text truncate">
+                      <span className="block text-body text-tagma-text truncate">
                         {selectedBindingDisplay.primary}
                       </span>
-                      <span className="block text-[9px] text-tagma-muted font-mono truncate mt-0.5">
+                      <span className="block text-tiny text-tagma-muted font-mono truncate mt-0.5">
                         {selectedBindingDisplay.secondary}
                       </span>
                     </span>
@@ -439,10 +435,10 @@ export function SecretsManagerPanel({
                           <Check size={9} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-[11px] text-tagma-text truncate">
+                          <span className="block text-body text-tagma-text truncate">
                             Workspace
                           </span>
-                          <span className="block text-[9px] text-tagma-muted font-mono truncate">
+                          <span className="block text-tiny text-tagma-muted font-mono truncate">
                             All pipelines
                           </span>
                         </span>
@@ -469,10 +465,10 @@ export function SecretsManagerPanel({
                               <Check size={9} />
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="block text-[11px] text-tagma-text truncate">
+                              <span className="block text-body text-tagma-text truncate">
                                 {pipelineDisplayName(entry)}
                               </span>
-                              <span className="block text-[9px] text-tagma-muted font-mono truncate">
+                              <span className="block text-tiny text-tagma-muted font-mono truncate">
                                 {entry.path}
                               </span>
                             </span>
@@ -524,12 +520,12 @@ export function SecretsManagerPanel({
             <div className="min-h-0 flex-1 flex flex-col">
               <div className="field-label">Configured Secrets</div>
               {status.kind === 'loading' && (
-                <div className="flex items-center gap-2 text-[11px] text-tagma-muted">
+                <div className="flex items-center gap-2 text-body text-tagma-muted">
                   <Loader2 size={12} className="animate-spin" /> Loading...
                 </div>
               )}
               {status.kind !== 'loading' && secrets.length === 0 && (
-                <div className="text-[11px] text-tagma-muted border border-tagma-border bg-tagma-bg px-2.5 py-2">
+                <div className="text-body text-tagma-muted border border-tagma-border bg-tagma-bg px-2.5 py-2">
                   No secrets are configured for this workspace.
                 </div>
               )}
@@ -543,11 +539,11 @@ export function SecretsManagerPanel({
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-tagma-text font-mono">
+                          <span className="text-body text-tagma-text font-mono">
                             {secret.envName}
                           </span>
                           <span
-                            className={`text-[9px] px-1.5 py-0.5 border ${
+                            className={`text-tiny px-1.5 py-0.5 border ${
                               secret.hasValue
                                 ? 'text-tagma-success border-tagma-success/40 bg-tagma-success/5'
                                 : 'text-tagma-warning border-tagma-warning/40 bg-tagma-warning/5'
@@ -557,15 +553,15 @@ export function SecretsManagerPanel({
                           </span>
                         </div>
                         <div className="mt-1 min-w-0">
-                          <div className="text-[10px] text-tagma-muted truncate">
+                          <div className="text-caption text-tagma-muted truncate">
                             {binding.primary}
                           </div>
-                          <div className="text-[9px] text-tagma-muted font-mono break-all">
+                          <div className="text-tiny text-tagma-muted font-mono break-all">
                             {binding.secondary}
                           </div>
                         </div>
                         {secret.description && (
-                          <div className="mt-1 text-[10px] text-tagma-muted leading-snug">
+                          <div className="mt-1 text-caption text-tagma-muted leading-snug">
                             {secret.description}
                           </div>
                         )}
@@ -589,7 +585,7 @@ export function SecretsManagerPanel({
               </div>
             </div>
 
-            <div className="text-[10px] text-tagma-muted font-mono border-t border-tagma-border pt-3">
+            <div className="text-caption text-tagma-muted font-mono border-t border-tagma-border pt-3">
               Metadata is stored in <code>.tagma/secrets.json</code>; secret values are stored in
               the OS credential backend.
             </div>
@@ -606,10 +602,10 @@ export function SecretsManagerPanel({
                 {bindingConfirmLabel(deleteTargetBinding)}?
               </div>
               <div className="border border-tagma-border bg-tagma-bg px-2.5 py-2">
-                <div className="text-[10px] text-tagma-text truncate">
+                <div className="text-caption text-tagma-text truncate">
                   {deleteTargetBinding.primary}
                 </div>
-                <div className="text-[9px] text-tagma-muted font-mono break-all">
+                <div className="text-tiny text-tagma-muted font-mono break-all">
                   {deleteTargetBinding.secondary}
                 </div>
               </div>
@@ -626,8 +622,8 @@ export function SecretsManagerPanel({
 
 function WarnBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2.5 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono">
+    <div className="alert-box-warning">
+      <div className="alert-text-warning">
         <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>
@@ -637,8 +633,8 @@ function WarnBox({ children }: { children: ReactNode }) {
 
 function ErrorBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-error/8 border border-tagma-error/30 px-2.5 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+    <div className="alert-box-error">
+      <div className="alert-text-error">
         <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>
@@ -648,8 +644,8 @@ function ErrorBox({ children }: { children: ReactNode }) {
 
 function SuccessBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-success/8 border border-tagma-success/30 px-2.5 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-success/90 font-mono">
+    <div className="alert-box-success">
+      <div className="flex items-start gap-1.5 text-caption text-tagma-success/90 font-mono">
         <CheckCircle2 size={10} className="text-tagma-success shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>

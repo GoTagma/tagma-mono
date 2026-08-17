@@ -105,6 +105,7 @@ import {
 } from '../utils/chat-queue';
 import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
+import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 import {
   acquireChatYamlEditLock,
   ensureChatYamlEditLockLease,
@@ -4891,7 +4892,11 @@ async function ensureStagedSseSubscription(
 ): Promise<void> {
   const key = sessionRelocationKey(workspaceKey, sessionId);
   const existing = stagedSseSubscriptions.get(key);
-  if (existing && !existing.controller.signal.aborted && existing.directory === directory) {
+  if (
+    existing &&
+    !existing.controller.signal.aborted &&
+    sameFilesystemPathCoordinate(existing.directory, directory)
+  ) {
     try {
       await waitForStagedSseConnection(existing);
       return;
@@ -5042,9 +5047,9 @@ function assertSessionRelocationBinding(
     binding.relocationId !== relocation.relocationId ||
     binding.stageId !== snapshot.staging.id ||
     binding.sessionId !== relocation.sessionId ||
-    binding.sourceDirectory !== relocation.sourceDirectory ||
-    binding.targetDirectory !== relocation.stageDirectory ||
-    binding.targetDirectory !== snapshot.staging.agentTagmaDir
+    !sameFilesystemPathCoordinate(binding.sourceDirectory, relocation.sourceDirectory) ||
+    !sameFilesystemPathCoordinate(binding.targetDirectory, relocation.stageDirectory) ||
+    !sameFilesystemPathCoordinate(binding.targetDirectory, snapshot.staging.agentTagmaDir)
   ) {
     throw new Error('The authenticated chat-stage relocation does not match this chat turn.');
   }
@@ -5082,7 +5087,7 @@ export function selectTurnSseHealth(
   if (
     !staged ||
     staged.sessionId !== relocation.sessionId ||
-    staged.directory !== relocation.stageDirectory
+    !sameFilesystemPathCoordinate(staged.directory, relocation.stageDirectory)
   ) {
     return { connected: false, lastEventAt: null };
   }
@@ -5107,7 +5112,7 @@ function isCurrentTurnSseSource(
   if (!relocation) return stagedSource === undefined;
   return (
     stagedSource?.sessionId === relocation.sessionId &&
-    stagedSource.directory === relocation.stageDirectory
+    sameFilesystemPathCoordinate(stagedSource.directory, relocation.stageDirectory)
   );
 }
 
@@ -5177,14 +5182,14 @@ async function relocateSessionToStage(
     if (
       relocation.relocationId !== snapshot.staging.id ||
       relocation.sessionId !== sessionId ||
-      relocation.sourceDirectory !== canonicalDirectory ||
-      relocation.stageDirectory !== snapshot.staging.agentTagmaDir
+      !sameFilesystemPathCoordinate(relocation.sourceDirectory, canonicalDirectory) ||
+      !sameFilesystemPathCoordinate(relocation.stageDirectory, snapshot.staging.agentTagmaDir)
     ) {
       throw new Error('Chat session relocation identity does not match the authenticated stage.');
     }
     const relocatedSnapshot: ChatYamlSnapshot = { ...snapshot, sessionRelocation: relocation };
 
-    if (sourceSession.directory === relocation.stageDirectory) {
+    if (sameFilesystemPathCoordinate(sourceSession.directory, relocation.stageDirectory)) {
       const { binding } = await api.readChatYamlStageSessionRelocation(
         snapshot.staging.id,
         snapshot.workDir,
@@ -5222,7 +5227,7 @@ async function relocateSessionToStage(
       );
       return relocatedSnapshot;
     }
-    if (sourceSession.directory !== relocation.sourceDirectory) {
+    if (!sameFilesystemPathCoordinate(sourceSession.directory, relocation.sourceDirectory)) {
       throw new Error(
         `OpenCode session is in an unexpected directory: ${sourceSession.directory ?? '(missing)'}`,
       );
@@ -5351,12 +5356,16 @@ function assertOpencodeSessionTreeDirectories(
   tree: Array<{ session: OpencodeSessionV2; depth: number }>,
   allowedDirectories: readonly string[],
 ): void {
-  const allowed = new Set(allowedDirectories);
   for (const { session } of tree) {
     if (session.workspaceID !== undefined) {
       throw new Error(`Workspace-bound OpenCode session ${session.id} cannot be relocated safely.`);
     }
-    if (!session.directory || !allowed.has(session.directory)) {
+    if (
+      !session.directory ||
+      !allowedDirectories.some((allowed) =>
+        sameFilesystemPathCoordinate(session.directory, allowed),
+      )
+    ) {
       throw new Error(
         `OpenCode session ${session.id} is in an unexpected directory: ${session.directory ?? '(missing)'}`,
       );
@@ -5417,8 +5426,8 @@ async function moveOpencodeSessionTreeDirectory(input: {
         workspaceKey: input.workspaceKey,
         verification: { signal: controller.signal },
       });
-      if (moved.session.directory !== input.destinationDirectory) {
-        throw new Error(`OpenCode session ${session.id} failed exact directory verification.`);
+      if (!sameFilesystemPathCoordinate(moved.session.directory, input.destinationDirectory)) {
+        throw new Error(`OpenCode session ${session.id} failed directory verification.`);
       }
       if (session.id === input.rootSession.id) root = moved.session;
     }
@@ -5541,7 +5550,9 @@ async function waitForRelocatedSessionQuiescence(
           directory,
           kind: 'question',
         })),
-      ].filter(({ id, directory }) => directoryBySession.get(id) !== directory);
+      ].filter(
+        ({ id, directory }) => !sameFilesystemPathCoordinate(directoryBySession.get(id), directory),
+      );
       if (runtimeMismatches.length > 0) {
         throw new OpencodeRelocationRuntimeMismatchError(
           runtimeMismatches
@@ -5776,15 +5787,15 @@ async function restoreSessionHome(
       throw new Error('Workspace-bound OpenCode sessions cannot be restored automatically.');
     }
     if (
-      session.directory !== relocation.sourceDirectory &&
-      session.directory !== relocation.stageDirectory
+      !sameFilesystemPathCoordinate(session.directory, relocation.sourceDirectory) &&
+      !sameFilesystemPathCoordinate(session.directory, relocation.stageDirectory)
     ) {
       throw new Error(
         `OpenCode session is in an unexpected directory: ${session.directory ?? '(missing)'}`,
       );
     }
     if (!binding) {
-      if (session.directory !== relocation.sourceDirectory) {
+      if (!sameFilesystemPathCoordinate(session.directory, relocation.sourceDirectory)) {
         throw new Error('OpenCode is staged but its authenticated relocation binding is missing.');
       }
       clearPersistedChatSessionRelocation(snapshot.workDir, sessionId, relocation.relocationId);
@@ -5835,7 +5846,10 @@ async function restoreSessionHome(
     }
 
     let clearPhase: 'prepared' | 'restoring';
-    if (binding.phase === 'prepared' && session.directory === relocation.sourceDirectory) {
+    if (
+      binding.phase === 'prepared' &&
+      sameFilesystemPathCoordinate(session.directory, relocation.sourceDirectory)
+    ) {
       clearPhase = 'prepared';
     } else if (binding.phase === 'restoring') {
       clearPhase = 'restoring';
@@ -5869,7 +5883,7 @@ async function restoreSessionHome(
       destinationDirectory: relocation.sourceDirectory,
       timeoutMs: 15_000,
     });
-    if (restoredRoot.directory !== relocation.sourceDirectory) {
+    if (!sameFilesystemPathCoordinate(restoredRoot.directory, relocation.sourceDirectory)) {
       throw new Error('OpenCode session home-directory verification failed.');
     }
     const { cleared } = await withSnapshotYamlLock(snapshot, () =>
@@ -5934,8 +5948,8 @@ function sameRelocationIdentity(
   return (
     left.relocationId === right.relocationId &&
     left.sessionId === right.sessionId &&
-    left.sourceDirectory === right.sourceDirectory &&
-    left.stageDirectory === right.stageDirectory
+    sameFilesystemPathCoordinate(left.sourceDirectory, right.sourceDirectory) &&
+    sameFilesystemPathCoordinate(left.stageDirectory, right.stageDirectory)
   );
 }
 
@@ -5998,8 +6012,8 @@ async function claimHostOnlySessionRelocationRecovery(
   if (
     restoring.relocationId !== binding.relocationId ||
     restoring.sessionId !== binding.sessionId ||
-    restoring.sourceDirectory !== binding.sourceDirectory ||
-    restoring.targetDirectory !== binding.targetDirectory ||
+    !sameFilesystemPathCoordinate(restoring.sourceDirectory, binding.sourceDirectory) ||
+    !sameFilesystemPathCoordinate(restoring.targetDirectory, binding.targetDirectory) ||
     restoring.phase !== 'restoring'
   ) {
     throw new Error('Host-only chat-session relocation did not enter the restoring phase.');
@@ -6063,8 +6077,8 @@ async function recoverHostOnlyChatSessionRelocation(
       throw new Error('Workspace-bound OpenCode sessions cannot be recovered automatically.');
     }
     if (
-      session.directory !== binding.sourceDirectory &&
-      session.directory !== binding.targetDirectory
+      !sameFilesystemPathCoordinate(session.directory, binding.sourceDirectory) &&
+      !sameFilesystemPathCoordinate(session.directory, binding.targetDirectory)
     ) {
       throw new Error(
         `OpenCode session ${binding.sessionId} is in an unexpected directory: ${session.directory ?? '(missing)'}`,
@@ -6107,7 +6121,7 @@ async function recoverHostOnlyChatSessionRelocation(
       sourceDirectory: binding.targetDirectory,
       destinationDirectory: binding.sourceDirectory,
     });
-    if (restoredRoot.directory !== binding.sourceDirectory) {
+    if (!sameFilesystemPathCoordinate(restoredRoot.directory, binding.sourceDirectory)) {
       throw new Error('Host-only OpenCode session home-directory verification failed.');
     }
 
@@ -6150,7 +6164,7 @@ async function recoverChatSessionRelocationsWithStore(
   for (const binding of hostResult.bindings) {
     const journal = local[binding.sessionId];
     if (!journal) {
-      if (binding.sourceDirectory !== canonicalDirectory) {
+      if (!sameFilesystemPathCoordinate(binding.sourceDirectory, canonicalDirectory)) {
         throw new Error(
           `Chat stage ${binding.stageId} has a host-only relocation outside the canonical OpenCode directory.`,
         );
@@ -6160,7 +6174,7 @@ async function recoverChatSessionRelocationsWithStore(
     }
     const snapshot = journal.snapshot as ChatYamlSnapshot;
     assertSessionRelocationBinding(binding, snapshot);
-    if (binding.sourceDirectory !== canonicalDirectory) {
+    if (!sameFilesystemPathCoordinate(binding.sourceDirectory, canonicalDirectory)) {
       throw new Error(
         'Chat-stage relocation source does not match the OpenCode canonical directory.',
       );
@@ -6195,7 +6209,7 @@ async function recoverChatSessionRelocationsWithStore(
       if (session.workspaceID !== undefined) {
         throw new Error('Workspace-bound OpenCode sessions cannot be recovered automatically.');
       }
-      if (session.directory !== journal.sourceDirectory) {
+      if (!sameFilesystemPathCoordinate(session.directory, journal.sourceDirectory)) {
         throw new Error(
           `OpenCode session ${journal.sessionId} has no host binding and is not at home.`,
         );

@@ -46,18 +46,18 @@ export function PermissionBubble({ permission }: PermissionBubbleProps) {
     <div className="max-w-[90%] self-start px-3 py-2 chat-permission-card">
       <div className="flex items-center gap-2 mb-2">
         <ShieldCheck size={12} className="text-tagma-warning shrink-0" />
-        <span className="text-[11px] font-medium text-tagma-text">Permission required</span>
-        <span className="text-[10px] font-mono text-tagma-muted truncate">{permission.tool}</span>
+        <span className="text-body font-medium text-tagma-text">Permission required</span>
+        <span className="text-caption font-mono text-tagma-muted truncate">{permission.tool}</span>
       </div>
 
-      <div className="text-[12px] text-tagma-text mb-2 break-words">{permission.title}</div>
+      <div className="text-label text-tagma-text mb-2 break-words">{permission.title}</div>
 
       <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
           disabled={disabled}
           onClick={() => onClick('once')}
-          className="flex items-center gap-1 px-2 py-1 text-[11px] text-tagma-success border border-tagma-success/30 hover:bg-tagma-success/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-body text-tagma-success border border-tagma-success/30 hover:bg-tagma-success/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <Check size={11} />
           <span>{pending === 'once' ? 'Replying…' : 'Allow once'}</span>
@@ -66,7 +66,7 @@ export function PermissionBubble({ permission }: PermissionBubbleProps) {
           type="button"
           disabled={disabled}
           onClick={() => onClick('always')}
-          className="flex items-center gap-1 px-2 py-1 text-[11px] text-tagma-accent border border-tagma-accent/30 hover:bg-tagma-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-body text-tagma-accent border border-tagma-accent/30 hover:bg-tagma-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <InfinityIcon size={11} />
           <span>{pending === 'always' ? 'Replying…' : 'Always for this chat'}</span>
@@ -75,7 +75,7 @@ export function PermissionBubble({ permission }: PermissionBubbleProps) {
           type="button"
           disabled={disabled}
           onClick={() => onClick('reject')}
-          className="flex items-center gap-1 px-2 py-1 text-[11px] text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-body text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <X size={11} />
           <span>{pending === 'reject' ? 'Replying…' : 'Reject'}</span>

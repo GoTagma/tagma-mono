@@ -31,8 +31,8 @@ import {
   type PreparedManagedOpencodeDatabase,
 } from './opencode-database.js';
 import { randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 export interface OpencodeServerAuth {
   username: string;
@@ -63,13 +63,17 @@ export interface OpencodeRuntimeDiagnostics {
   runtimeSource: string | null;
 }
 
+function canonicalOpencodeCwd(cwd: string): string {
+  return realpathSync.native(resolve(cwd));
+}
+
 export function ensureRealTagmaDirectory(workspaceRoot: string): string {
   const tagmaCwd = join(workspaceRoot, '.tagma');
   if (existsSync(tagmaCwd) && lstatSync(tagmaCwd).isSymbolicLink()) {
     throw new Error('Refusing to start opencode with a symlinked .tagma directory');
   }
   mkdirSync(tagmaCwd, { recursive: true });
-  return tagmaCwd;
+  return canonicalOpencodeCwd(tagmaCwd);
 }
 
 // One opencode instance per workspace cwd. The sidecar hosts multiple
@@ -822,6 +826,7 @@ function beginOpencodeStart(cwd: string): Promise<OpencodeHandle> {
 }
 
 export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
+  cwd = canonicalOpencodeCwd(cwd);
   const restart = restarting.get(cwd);
   if (restart) return restart.promise;
 
@@ -934,6 +939,7 @@ function startRestartWorker(cwd: string, coordinator: OpencodeRestartCoordinator
  * SSE consumers reconnect automatically via chat-store's subscribe loop.
  */
 export function restartOpencode(cwd: string): Promise<OpencodeHandle> {
+  cwd = canonicalOpencodeCwd(cwd);
   const existingRestart = restarting.get(cwd);
   if (existingRestart) {
     existingRestart.requestedGeneration += 1;
@@ -1000,7 +1006,11 @@ export function shutdownOpencode(): void {
 }
 
 export function getOpencodeHandle(cwd: string): OpencodeHandle | null {
-  return handles.get(cwd) ?? null;
+  try {
+    return handles.get(canonicalOpencodeCwd(cwd)) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Safe runtime metadata for the read-only production diagnostics surface. */

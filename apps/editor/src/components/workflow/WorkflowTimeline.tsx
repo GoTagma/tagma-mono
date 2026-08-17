@@ -192,7 +192,7 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
 
   if (!timelineBounds || timelineEntries.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-tagma-muted text-sm">
+      <div className="flex items-center justify-center h-32 text-tagma-muted text-heading">
         No execution data available
       </div>
     );
@@ -202,15 +202,15 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
 
   return (
     <div className="space-y-2 p-4 bg-tagma-surface rounded-lg border border-tagma-border">
-      <h3 className="text-sm font-semibold text-tagma-text mb-3">Execution Timeline</h3>
+      <h3 className="text-heading font-semibold text-tagma-text mb-3">Execution Timeline</h3>
 
       {/* Timeline header */}
       <div className="relative h-6 mb-2">
         <div className="absolute inset-x-0 top-1/2 h-px bg-tagma-border" />
-        <div className="absolute left-0 top-0 text-xs text-tagma-muted">
+        <div className="absolute left-0 top-0 text-label text-tagma-muted">
           {formatTimestamp(new Date(minTime))}
         </div>
-        <div className="absolute right-0 top-0 text-xs text-tagma-muted">
+        <div className="absolute right-0 top-0 text-label text-tagma-muted">
           {formatTimestamp(new Date(minTime + duration))}
         </div>
       </div>
@@ -236,14 +236,14 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
           return (
             <div key={entry.pipelineId} className="space-y-1">
               {/* Pipeline label */}
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between text-label">
                 <div className="flex items-center gap-2">
                   <Icon
                     className={`w-3.5 h-3.5 ${config.color} ${isRunning ? 'animate-spin' : ''}`}
                   />
                   <span className="font-medium text-tagma-text">{entry.pipelineId}</span>
                   <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${config.bgColor} ${config.color}`}
+                    className={`px-1.5 py-0.5 rounded text-caption ${config.bgColor} ${config.color}`}
                   >
                     {config.label}
                   </span>
@@ -255,7 +255,7 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
                   {entry.durationMs !== null && (
                     <span className="font-mono">{formatDuration(entry.durationMs)}</span>
                   )}
-                  <span className="font-mono text-[10px]">
+                  <span className="font-mono text-caption">
                     {formatTimestamp(entry.startedAt)} → {formatTimestamp(entry.finishedAt)}
                   </span>
                 </div>
@@ -274,7 +274,7 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
                 >
                   {/* Duration label inside bar if wide enough */}
                   {barWidth > 15 && entry.durationMs !== null && (
-                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-tagma-text">
+                    <div className="absolute inset-0 flex items-center justify-center text-caption font-mono text-tagma-text">
                       {formatDuration(entry.durationMs)}
                     </div>
                   )}
@@ -283,7 +283,7 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
 
               {/* Error message if present */}
               {entry.error && (
-                <div className="text-xs text-tagma-error bg-tagma-error/10 border border-tagma-error/30 rounded px-2 py-1 mt-1">
+                <div className="text-label text-tagma-error bg-tagma-error/10 border border-tagma-error/30 rounded px-2 py-1 mt-1">
                   {entry.error}
                 </div>
               )}
@@ -293,7 +293,7 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
       </div>
 
       {/* Summary stats */}
-      <div className="flex items-center gap-4 pt-3 mt-3 border-t border-tagma-border text-xs text-tagma-muted">
+      <div className="flex items-center gap-4 pt-3 mt-3 border-t border-tagma-border text-label text-tagma-muted">
         <div>
           <span className="font-medium">Total duration:</span>{' '}
           <span className="font-mono">{formatDuration(duration)}</span>

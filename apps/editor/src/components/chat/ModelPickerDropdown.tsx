@@ -134,7 +134,7 @@ export function ModelPickerDropdown({
         type="button"
         onClick={() => setOpen((current) => !current)}
         disabled={disabled}
-        className={`flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors min-w-0 ${buttonClassName}`}
+        className={`flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors min-w-0 ${buttonClassName}`}
         title={label}
         aria-label="Open model picker"
       >
@@ -149,7 +149,7 @@ export function ModelPickerDropdown({
         maxHeight={420}
       >
         {providers.length === 0 ? (
-          <div className="px-3 py-4 text-[10px] font-mono text-tagma-muted">{emptyText}</div>
+          <div className="px-3 py-4 text-caption font-mono text-tagma-muted">{emptyText}</div>
         ) : (
           <>
             {showFilter && (
@@ -170,7 +170,7 @@ export function ModelPickerDropdown({
                   placeholder={`Filter ${totalModels} models...`}
                   spellCheck={false}
                   autoComplete="off"
-                  className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[10px] font-mono text-tagma-text placeholder:text-tagma-muted/50"
+                  className="flex-1 min-w-0 bg-transparent border-0 outline-none text-caption font-mono text-tagma-text placeholder:text-tagma-muted/50"
                   style={{ boxShadow: 'none' }}
                 />
                 {query && (
@@ -193,7 +193,7 @@ export function ModelPickerDropdown({
               {hasNoMatch && (
                 <div className="px-3 py-4 flex flex-col items-center gap-1.5 text-tagma-muted-dim">
                   <Search size={16} className="opacity-40" />
-                  <p className="text-[10px] font-mono">
+                  <p className="text-caption font-mono">
                     No models match <span className="text-tagma-text">"{query}"</span>.
                   </p>
                 </div>
@@ -201,10 +201,10 @@ export function ModelPickerDropdown({
               {groups.map((group) => (
                 <section key={group.provider.id}>
                   <div className="sticky top-0 z-10 px-2 pt-2 pb-1 flex items-center gap-1.5 bg-tagma-bg border-b border-tagma-border/30">
-                    <span className="text-[9px] font-mono font-medium text-tagma-muted uppercase tracking-wider truncate">
+                    <span className="text-tiny font-mono font-medium text-tagma-muted uppercase tracking-wider truncate">
                       {group.providerLabel}
                     </span>
-                    <span className="text-[9px] font-mono text-tagma-muted-dim">
+                    <span className="text-tiny font-mono text-tagma-muted-dim">
                       · {group.models.length}
                     </span>
                   </div>
@@ -219,7 +219,7 @@ export function ModelPickerDropdown({
                           onSelect({ providerID: group.provider.id, modelID: model.id });
                           setOpen(false);
                         }}
-                        className={`w-full flex items-center gap-1.5 text-left pl-3 pr-2 py-1.5 text-[10px] font-mono hover:bg-tagma-border/30 transition-colors ${
+                        className={`w-full flex items-center gap-1.5 text-left pl-3 pr-2 py-1.5 text-caption font-mono hover:bg-tagma-border/30 transition-colors ${
                           active ? 'text-tagma-text bg-tagma-border/20' : 'text-tagma-muted'
                         }`}
                         title={`${model.id} · status: ${model.status} · context: ${model.context.toLocaleString()}`}
@@ -233,7 +233,7 @@ export function ModelPickerDropdown({
                           <Brain size={9} className="shrink-0 text-tagma-muted/70" />
                         )}
                         {model.status !== 'active' && (
-                          <span className="shrink-0 text-[8px] text-tagma-muted/60 uppercase tracking-wider">
+                          <span className="shrink-0 text-micro text-tagma-muted/60 uppercase tracking-wider">
                             {model.status}
                           </span>
                         )}
@@ -251,7 +251,7 @@ export function ModelPickerDropdown({
                     setOpen(false);
                     onManageProviders();
                   }}
-                  className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:bg-tagma-border/30 transition-colors"
+                  className="w-full flex items-center gap-1.5 px-2 py-1.5 text-caption font-mono text-tagma-muted hover:text-tagma-text hover:bg-tagma-border/30 transition-colors"
                 >
                   <Plug size={10} />
                   <span>Manage providers...</span>

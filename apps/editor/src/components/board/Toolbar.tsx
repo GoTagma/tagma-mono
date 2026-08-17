@@ -237,7 +237,7 @@ export function Toolbar({
                   if (e.key === 'Enter') handleSaveName();
                   if (e.key === 'Escape') handleCancel();
                 }}
-                className="w-[clamp(80px,24vw,192px)] min-w-0 text-[11px] font-semibold tracking-wide bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text focus:border-tagma-accent"
+                className="w-[clamp(80px,24vw,192px)] min-w-0 text-body font-semibold tracking-wide bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text focus:border-tagma-accent"
                 autoFocus
               />
               <button
@@ -265,7 +265,7 @@ export function Toolbar({
                 className="min-w-0 shrink text-left group"
                 title={yamlPath ?? 'Inspect pipeline'}
               >
-                <span className="block text-[11px] font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-tagma-accent transition-colors duration-fast ease-smooth">
+                <span className="block text-body font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-tagma-accent transition-colors duration-fast ease-smooth">
                   {pipelineName}
                 </span>
               </button>
@@ -286,7 +286,7 @@ export function Toolbar({
 
           {workDir && (
             <>
-              <span className="text-tagma-muted/30 text-[10px] select-none shrink-0">/</span>
+              <span className="text-tagma-muted/30 text-caption select-none shrink-0">/</span>
               <div className="relative flex items-center gap-1 min-w-0 group/wd">
                 <button
                   type="button"
@@ -295,7 +295,7 @@ export function Toolbar({
                   title={`${workDir}\nClick to browse workspace YAMLs`}
                 >
                   <FolderOpen size={10} className="text-tagma-muted/40 shrink-0" />
-                  <span className="text-[10px] font-mono text-tagma-muted/60 truncate">
+                  <span className="text-caption font-mono text-tagma-muted/60 truncate">
                     {workDir}
                   </span>
                   <ChevronDown size={10} className="text-tagma-muted/40 shrink-0" />
@@ -358,7 +358,7 @@ export function Toolbar({
                   <button
                     type="button"
                     onClick={() => setSearchModeMenuOpen((v) => !v)}
-                    className="flex items-center gap-0.5 h-5 px-1 text-[10px] font-mono uppercase tracking-wide text-tagma-muted/80 hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-accent/30 transition-colors duration-fast ease-smooth"
+                    className="flex items-center gap-0.5 h-5 px-1 text-caption font-mono uppercase tracking-wide text-tagma-muted/80 hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-accent/30 transition-colors duration-fast ease-smooth"
                     title="Search by"
                     aria-label="Change search field"
                   >
@@ -376,7 +376,7 @@ export function Toolbar({
                             setSearchModeMenuOpen(false);
                             searchInputRef.current?.focus();
                           }}
-                          className={`block w-full text-left px-3 py-1.5 text-[11px] font-mono uppercase tracking-wide hover:bg-tagma-bg/60 ${
+                          className={`block w-full text-left px-3 py-1.5 text-body font-mono uppercase tracking-wide hover:bg-tagma-bg/60 ${
                             searchMode === m ? 'text-tagma-accent' : 'text-tagma-text'
                           }`}
                         >
@@ -396,7 +396,7 @@ export function Toolbar({
                     if (e.key === 'Escape') onSearchClose();
                   }}
                   placeholder={searchMode === 'id' ? 'Search by task ID...' : 'Search tasks...'}
-                  className="min-w-0 flex-1 bg-transparent text-[10px] font-mono text-tagma-text placeholder:text-tagma-muted/50"
+                  className="min-w-0 flex-1 bg-transparent text-caption font-mono text-tagma-text placeholder:text-tagma-muted/50"
                   aria-label="Search tasks"
                 />
                 <button
@@ -412,11 +412,11 @@ export function Toolbar({
               <div className="absolute right-0 top-full mt-1 z-[100] w-[340px] max-w-[calc(100vw-24px)] origin-top bg-tagma-surface border border-tagma-border shadow-panel animate-scale-in">
                 <div className="max-h-[240px] overflow-y-auto">
                   {searchQuery.trim() === '' ? (
-                    <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">
+                    <div className="px-3 py-2 text-caption font-mono text-tagma-muted/60">
                       Type to search tasks
                     </div>
                   ) : searchMatches.length === 0 ? (
-                    <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">
+                    <div className="px-3 py-2 text-caption font-mono text-tagma-muted/60">
                       No matches
                     </div>
                   ) : (
@@ -427,11 +427,11 @@ export function Toolbar({
                         className="w-full text-left px-3 py-1.5 border-b border-tagma-border/30 last:border-b-0 transition-colors duration-fast ease-smooth hover:bg-tagma-accent/10"
                         onClick={() => onSelectSearchMatch(match)}
                       >
-                        <div className="text-[11px] font-mono text-tagma-text truncate">
+                        <div className="text-body font-mono text-tagma-text truncate">
                           {match.label}
                         </div>
                         {match.snippet && (
-                          <div className="text-[10px] font-mono text-tagma-muted/60 truncate">
+                          <div className="text-caption font-mono text-tagma-muted/60 truncate">
                             {match.snippet}
                           </div>
                         )}
@@ -445,7 +445,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onSearchOpen}
-              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted transition-[color,background-color,border-color,transform] duration-fast ease-smooth hover:text-tagma-text hover:border-tagma-accent/30 hover:bg-tagma-elevated/50 active:translate-y-px"
+              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-caption border border-tagma-border text-tagma-muted transition-[color,background-color,border-color,transform] duration-fast ease-smooth hover:text-tagma-text hover:border-tagma-accent/30 hover:bg-tagma-elevated/50 active:translate-y-px"
               title="Search tasks (Ctrl+F)"
               aria-label="Search tasks"
             >
@@ -463,7 +463,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onReturnToWorkflowGraph}
-              className="hidden sm:flex items-center justify-center gap-1 h-[24px] px-2 text-[10px] border border-tagma-accent/40 text-tagma-accent transition-[background-color,border-color,transform] duration-fast ease-smooth hover:bg-tagma-accent/10 hover:border-tagma-accent/70 active:translate-y-px shrink-0"
+              className="hidden sm:flex items-center justify-center gap-1 h-[24px] px-2 text-caption border border-tagma-accent/40 text-tagma-accent transition-[background-color,border-color,transform] duration-fast ease-smooth hover:bg-tagma-accent/10 hover:border-tagma-accent/70 active:translate-y-px shrink-0"
               title="Go back to Pipeline Graph"
               aria-label="Go back to Pipeline Graph"
             >

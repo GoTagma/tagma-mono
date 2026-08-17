@@ -250,7 +250,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
             <button
               onClick={onBack}
               title="Back to Editor"
-              className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
+              className="flex items-center gap-1.5 text-label text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
             >
               <ArrowLeft size={12} />
               <span className="hidden md:inline">Back to Editor</span>
@@ -258,7 +258,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
             <div className="w-px h-5 bg-tagma-border shrink-0" />
             <div className="flex items-center gap-1.5 px-2 shrink-0">
               <BarChart3 size={13} className="text-tagma-accent" />
-              <span className="text-xs font-medium text-tagma-text truncate max-w-[200px]">
+              <span className="text-label font-medium text-tagma-text truncate max-w-[200px]">
                 Usage Stats
               </span>
             </div>
@@ -266,7 +266,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
             <button
               onClick={() => void refresh()}
               title="Refresh"
-              className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
+              className="flex items-center gap-1.5 text-label text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
             >
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
               <span className="hidden md:inline">Refresh</span>
@@ -278,7 +278,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
 
       <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto px-2 pb-3 pt-3 sm:px-4">
         {error && (
-          <div className="flex items-center gap-1.5 border border-tagma-error/30 bg-tagma-error/8 px-3 py-2 text-[11px] font-mono text-tagma-error/90 shrink-0">
+          <div className="flex items-center gap-1.5 border border-tagma-error/30 bg-tagma-error/8 px-3 py-2 text-body font-mono text-tagma-error/90 shrink-0">
             <AlertCircle size={12} className="shrink-0" />
             {error}
           </div>
@@ -316,7 +316,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
             <div className="flex items-center justify-between px-3 h-9 border-b border-tagma-border/60 shrink-0">
               <div className="flex min-w-0 items-center gap-2">
                 <BarChart3 size={12} className="text-tagma-muted" />
-                <span className="truncate text-[11px] font-mono text-tagma-muted uppercase tracking-wider">
+                <span className="truncate text-body font-mono text-tagma-muted uppercase tracking-wider">
                   Tokens over time
                 </span>
               </div>
@@ -390,13 +390,13 @@ export function UsagePage({ onBack }: UsagePageProps) {
           {/* ── Per-model breakdown panel ──────────────────────────────── */}
           <section className="max-h-[280px] min-w-0 border border-tagma-border bg-tagma-surface/30 flex flex-col xl:max-h-none">
             <div className="flex items-center px-3 h-9 border-b border-tagma-border/60 shrink-0">
-              <span className="text-[11px] font-mono text-tagma-muted uppercase tracking-wider">
+              <span className="text-body font-mono text-tagma-muted uppercase tracking-wider">
                 By model
               </span>
             </div>
             <div className="flex-1 min-h-0 overflow-auto">
               {modelBreakdown.length === 0 ? (
-                <div className="px-3 py-6 text-[11px] font-mono text-tagma-muted text-center">
+                <div className="px-3 py-6 text-body font-mono text-tagma-muted text-center">
                   {loading ? 'Loading…' : 'No data'}
                 </div>
               ) : (
@@ -411,14 +411,14 @@ export function UsagePage({ onBack }: UsagePageProps) {
                             className="w-2 h-2 shrink-0 rounded-sm"
                             style={{ background: COLORS[i % COLORS.length] }}
                           />
-                          <span className="flex-1 min-w-0 text-[11px] font-mono text-tagma-text truncate">
+                          <span className="flex-1 min-w-0 text-body font-mono text-tagma-text truncate">
                             {row.model}
                           </span>
-                          <span className="text-[10px] font-mono text-tagma-muted shrink-0">
+                          <span className="text-caption font-mono text-tagma-muted shrink-0">
                             {pct}%
                           </span>
                         </div>
-                        <div className="ml-4 flex items-center justify-between text-[10px] font-mono text-tagma-muted-dim">
+                        <div className="ml-4 flex items-center justify-between text-caption font-mono text-tagma-muted-dim">
                           <span>
                             {row.turns} turn{row.turns === 1 ? '' : 's'}
                           </span>
@@ -446,13 +446,13 @@ export function UsagePage({ onBack }: UsagePageProps) {
         {/* ── Records table: fills remaining height with sticky header ─── */}
         <section className="flex min-h-[220px] flex-1 flex-col border border-tagma-border bg-tagma-surface/30">
           <div className="flex items-center justify-between px-3 h-9 border-b border-tagma-border/60 shrink-0">
-            <span className="text-[11px] font-mono text-tagma-muted uppercase tracking-wider">
+            <span className="text-body font-mono text-tagma-muted uppercase tracking-wider">
               Records ({visibleRecords.length})
             </span>
             <select
               value={modelFilter}
               onChange={(e) => setModelFilter(e.target.value)}
-              className="bg-tagma-bg border border-tagma-border text-[11px] font-mono text-tagma-text px-2 py-1 outline-none focus:border-tagma-accent"
+              className="bg-tagma-bg border border-tagma-border text-body font-mono text-tagma-text px-2 py-1 outline-none focus:border-tagma-accent"
             >
               <option value="all">All models</option>
               {models.map((m) => (
@@ -464,7 +464,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
             {visibleRecords.length === 0 ? (
-              <div className="px-4 py-10 text-center text-[11px] font-mono text-tagma-muted">
+              <div className="px-4 py-10 text-center text-body font-mono text-tagma-muted">
                 {loading
                   ? 'Loading…'
                   : records && records.length === 0
@@ -472,8 +472,8 @@ export function UsagePage({ onBack }: UsagePageProps) {
                     : 'No records match the current filter.'}
               </div>
             ) : (
-              <table className="w-full text-[11px] font-mono">
-                <thead className="text-tagma-muted uppercase tracking-wider text-[9px] sticky top-0 bg-tagma-surface z-10">
+              <table className="w-full text-body font-mono">
+                <thead className="text-tagma-muted uppercase tracking-wider text-tiny sticky top-0 bg-tagma-surface z-10">
                   <tr className="border-b border-tagma-border/60">
                     <Th>Time</Th>
                     <Th>Model</Th>
@@ -547,11 +547,11 @@ function SummaryCard({
     <div className="border border-tagma-border bg-tagma-surface/30 px-3 py-2.5">
       <div className="flex items-center gap-1.5 text-tagma-muted">
         {icon}
-        <span className="text-[10px] font-mono uppercase tracking-wider">{label}</span>
+        <span className="text-caption font-mono uppercase tracking-wider">{label}</span>
       </div>
-      <div className="mt-1 text-lg font-medium text-tagma-text">{value}</div>
+      <div className="mt-1 text-display font-medium text-tagma-text">{value}</div>
       {hint && (
-        <div className="mt-0.5 break-words text-[10px] font-mono text-tagma-muted-dim">{hint}</div>
+        <div className="mt-0.5 break-words text-caption font-mono text-tagma-muted-dim">{hint}</div>
       )}
     </div>
   );
@@ -569,7 +569,7 @@ function PillToggle({
   return (
     <button
       onClick={onClick}
-      className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 transition-colors ${
+      className={`text-caption font-mono uppercase tracking-wider px-2 py-0.5 transition-colors ${
         active ? 'bg-tagma-accent/15 text-tagma-accent' : 'text-tagma-muted hover:text-tagma-text'
       }`}
     >
@@ -580,7 +580,7 @@ function PillToggle({
 
 function EmptyChart({ loading }: { loading: boolean }) {
   return (
-    <div className="h-full flex items-center justify-center text-[11px] font-mono text-tagma-muted">
+    <div className="h-full flex items-center justify-center text-body font-mono text-tagma-muted">
       {loading ? 'Loading…' : 'Nothing to chart yet.'}
     </div>
   );

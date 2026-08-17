@@ -94,10 +94,10 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-[11px] font-medium text-tagma-text">
+          <div className="text-body font-medium text-tagma-text">
             {kind === 'inputs' ? 'Lightweight Inputs' : 'Lightweight Outputs'}
           </div>
-          <div className="text-[10px] text-tagma-muted">
+          <div className="text-caption text-tagma-muted">
             {kind === 'inputs'
               ? 'Bind values for {{inputs.name}} without declaring a typed contract.'
               : 'Publish named values without typed port coercion.'}
@@ -114,7 +114,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
       </div>
 
       {entries.length === 0 ? (
-        <div className="text-[10px] text-tagma-muted border border-dashed border-tagma-border px-2 py-2">
+        <div className="text-caption text-tagma-muted border border-dashed border-tagma-border px-2 py-2">
           {emptyText}
         </div>
       ) : (
@@ -124,7 +124,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                 <CopyableField value={name} label={`Copy ${kind} binding name`}>
                   <input
-                    className="field-input text-xs"
+                    className="field-input text-label"
                     value={name}
                     placeholder="name"
                     onChange={(e) => onRename(index, e.target.value)}
@@ -143,7 +143,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
               <div className="grid grid-cols-1 gap-2">
                 <CopyableField value={binding.from ?? ''} label={`Copy ${kind} source`}>
                   <input
-                    className="field-input text-xs"
+                    className="field-input text-label"
                     value={binding.from ?? ''}
                     placeholder={kind === 'inputs' ? 'from: build.path' : 'from: json.path'}
                     onChange={(e) =>
@@ -154,7 +154,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <CopyableField value={formatValue(binding.value)} label={`Copy ${kind} value`}>
                     <input
-                      className="field-input text-xs"
+                      className="field-input text-label"
                       value={formatValue(binding.value)}
                       placeholder="value"
                       onChange={(e) =>
@@ -167,7 +167,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
                     label={`Copy ${kind} default`}
                   >
                     <input
-                      className="field-input text-xs"
+                      className="field-input text-label"
                       value={formatValue(binding.default)}
                       placeholder="default"
                       onChange={(e) =>
@@ -177,7 +177,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
                   </CopyableField>
                 </div>
                 {kind === 'inputs' && (
-                  <label className="inline-flex items-center gap-2 text-[11px] text-tagma-muted">
+                  <label className="inline-flex items-center gap-2 text-body text-tagma-muted">
                     <input
                       type="checkbox"
                       checked={(binding as TaskInputBinding).required === true}

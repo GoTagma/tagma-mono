@@ -32,7 +32,7 @@ export function DiagnosticsSettingsSection({
       <div className="space-y-2 border border-tagma-border bg-tagma-bg px-2.5 py-2">
         <div className="flex items-start gap-2">
           <Bug size={13} className="mt-0.5 shrink-0 text-tagma-accent" />
-          <div className="space-y-1 text-[10px] leading-relaxed text-tagma-muted">
+          <div className="space-y-1 text-caption leading-relaxed text-tagma-muted">
             <p>
               Enable a temporary, loopback-only, read-only connection so Codex or another coding
               agent can inspect this workspace's current editor state, OpenCode chat, active runs,
@@ -46,7 +46,7 @@ export function DiagnosticsSettingsSection({
           </div>
         </div>
 
-        <div className="text-[10px] font-mono text-tagma-muted">
+        <div className="text-caption font-mono text-tagma-muted">
           {status === null
             ? 'Checking status...'
             : status.enabled
@@ -60,7 +60,7 @@ export function DiagnosticsSettingsSection({
               type="button"
               onClick={onEnable}
               disabled={!hasWorkspace || busy}
-              className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-[11px] text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-body text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {busy ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
               {status?.enabled ? 'Enable for this workspace' : 'Enable diagnostics'}
@@ -73,7 +73,7 @@ export function DiagnosticsSettingsSection({
                 type="button"
                 onClick={onCopy}
                 disabled={busy}
-                className="flex items-center gap-1.5 border border-tagma-border px-2.5 py-1 text-[11px] text-tagma-text transition-colors hover:bg-tagma-surface disabled:opacity-40"
+                className="flex items-center gap-1.5 border border-tagma-border px-2.5 py-1 text-body text-tagma-text transition-colors hover:bg-tagma-surface disabled:opacity-40"
               >
                 <Copy size={11} />
                 {copied ? 'Copied' : 'Copy agent instructions'}
@@ -82,7 +82,7 @@ export function DiagnosticsSettingsSection({
                 type="button"
                 onClick={onDisable}
                 disabled={busy}
-                className="border border-tagma-error/40 px-2.5 py-1 text-[11px] text-tagma-error/90 transition-colors hover:bg-tagma-error/10 disabled:opacity-40"
+                className="border border-tagma-error/40 px-2.5 py-1 text-body text-tagma-error/90 transition-colors hover:bg-tagma-error/10 disabled:opacity-40"
               >
                 Disable
               </button>
@@ -90,7 +90,7 @@ export function DiagnosticsSettingsSection({
           )}
         </div>
 
-        <p className="text-[9px] leading-relaxed text-tagma-muted/80">
+        <p className="text-tiny leading-relaxed text-tagma-muted/80">
           The random token is rotated each time diagnostics are enabled and is revoked when disabled
           or when Tagma closes. It cannot call the editor's write APIs.
         </p>

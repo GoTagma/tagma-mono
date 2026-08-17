@@ -15,8 +15,35 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Outfit', 'system-ui', 'sans-serif'],
+        // IDE-style system stack (VS Code / Cursor idiom): the platform UI
+        // font renders controls and prose, so the app reads as a work tool
+        // instead of a marketing page. Order follows VS Code: macOS system
+        // fonts first, then Segoe on Windows, then Linux fallbacks.
+        sans: [
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe WPC',
+          'Segoe UI',
+          'system-ui',
+          'Ubuntu',
+          'Droid Sans',
+          'sans-serif',
+        ],
         mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+      },
+      // Semantic type scale — the only font sizes components may use. Sizes
+      // match the app's dense work-tool metrics (Electron renders the window
+      // at a zoom factor, so 8–16px here reads larger on screen). Pick by
+      // meaning, not pixels; do not reintroduce `text-[Npx]` arbitrary values.
+      fontSize: {
+        micro: '8px', // tiny badges, minimap labels, single-char chips
+        tiny: '9px', // dense meta rows, small chips
+        caption: '10px', // secondary/meta text, dense list rows
+        body: '11px', // primary UI text
+        label: '12px', // emphasized body, panel titles
+        title: '13px', // section titles
+        heading: '14px', // card/page sub-headings
+        display: '16px', // page headings, hero/empty-state titles
       },
       colors: {
         // Theme-aware tokens resolve to CSS variables defined in index.css.

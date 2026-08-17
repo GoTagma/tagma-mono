@@ -107,12 +107,7 @@ export function TrackIODialog({ config, onClose }: TrackIODialogProps) {
           <h2 id="track-io-dialog-title" className="panel-title">
             Track I/O
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-            aria-label="Close dialog"
-          >
+          <button type="button" onClick={onClose} className="icon-btn" aria-label="Close dialog">
             <XIcon size={14} />
           </button>
         </div>
@@ -249,11 +244,11 @@ function Section({
 }) {
   return (
     <div className="border-b border-tagma-border last:border-b-0">
-      <div className="px-4 py-2 text-[10px] font-mono uppercase tracking-wider text-tagma-muted bg-tagma-bg/40 border-b border-tagma-border">
+      <div className="px-4 py-2 text-caption font-mono uppercase tracking-wider text-tagma-muted bg-tagma-bg/40 border-b border-tagma-border">
         {title} ({rows.length})
       </div>
       {rows.length === 0 ? (
-        <div className="px-4 py-3 text-[11px] font-mono text-tagma-muted/70">{emptyText}</div>
+        <div className="px-4 py-3 text-body font-mono text-tagma-muted/70">{emptyText}</div>
       ) : (
         <ul>
           {rows.map((row, i) => (
@@ -263,29 +258,29 @@ function Section({
             >
               <div className="flex items-baseline justify-between gap-2">
                 <div className="min-w-0 flex items-baseline gap-2 flex-wrap">
-                  <span className="text-[11px] font-mono font-semibold text-tagma-text">
+                  <span className="text-body font-mono font-semibold text-tagma-text">
                     {row.port.name}
                   </span>
-                  <span className="text-[10px] font-mono text-tagma-muted/70 shrink-0">
+                  <span className="text-caption font-mono text-tagma-muted/70 shrink-0">
                     {row.port.type}
                   </span>
                   {row.port.required && (
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-warning/80 bg-tagma-warning/8 px-1 py-px shrink-0">
+                    <span className="text-tiny font-mono uppercase tracking-wider text-tagma-warning/80 bg-tagma-warning/8 px-1 py-px shrink-0">
                       required
                     </span>
                   )}
                   {row.port.default !== undefined && (
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/70 bg-tagma-bg/60 px-1 py-px shrink-0">
+                    <span className="section-label bg-tagma-bg/60 px-1 py-px shrink-0">
                       default
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] font-mono text-tagma-muted/70 shrink-0 truncate max-w-[40%] text-right">
+                <span className="text-caption font-mono text-tagma-muted/70 shrink-0 truncate max-w-[40%] text-right">
                   {mode === 'all' ? `${row.trackName}/${row.taskId}` : row.taskId}
                 </span>
               </div>
               {row.port.description && (
-                <div className="mt-1 text-[11px] text-tagma-muted/80">{row.port.description}</div>
+                <div className="mt-1 text-body text-tagma-muted/80">{row.port.description}</div>
               )}
             </li>
           ))}

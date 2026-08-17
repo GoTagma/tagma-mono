@@ -101,7 +101,7 @@ const STATUS_STYLES: Record<StatusVariant, { dot: string; text: string; label: s
 export function StatusBadge({ variant }: { variant: StatusVariant }) {
   const s = STATUS_STYLES[variant];
   return (
-    <span className="flex items-center gap-1.5 text-[9px] tracking-[0.22em] uppercase font-medium whitespace-nowrap">
+    <span className="flex items-center gap-1.5 text-tiny tracking-[0.22em] uppercase font-medium whitespace-nowrap">
       <span className={`w-1.5 h-1.5 ${s.dot}`} />
       <span className={s.text}>{s.label}</span>
     </span>
@@ -117,7 +117,7 @@ export function StatusBadge({ variant }: { variant: StatusVariant }) {
 export function MetaItem({ children, title }: { children: ReactNode; title?: string }) {
   return (
     <span
-      className="flex items-center gap-1 text-[10px] text-tagma-muted-dim whitespace-nowrap"
+      className="flex items-center gap-1 text-caption text-tagma-muted-dim whitespace-nowrap"
       title={title}
     >
       {children}
@@ -127,7 +127,7 @@ export function MetaItem({ children, title }: { children: ReactNode; title?: str
 
 export function MetaBullet() {
   return (
-    <span className="text-[8px] text-tagma-muted-dim leading-none" aria-hidden="true">
+    <span className="text-micro text-tagma-muted-dim leading-none" aria-hidden="true">
       •
     </span>
   );
@@ -141,7 +141,7 @@ export function MetaBullet() {
 // like a real call-to-action instead of an afterthought buried in the
 // corner of a thin strip.
 const ACTION_BUTTON_BASE =
-  'inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wide border transition-[color,background-color,border-color,opacity] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap';
+  'inline-flex items-center gap-1.5 px-3 py-1.5 text-body font-medium tracking-wide border transition-[color,background-color,border-color,opacity] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap';
 
 const ACTION_BUTTON_VARIANTS = {
   primary:
@@ -277,24 +277,24 @@ export function PluginCardShell({
 
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-baseline gap-2 min-w-0">
-          <h3 className="text-[13px] font-semibold text-tagma-text truncate tracking-tight leading-tight">
+          <h3 className="text-title font-semibold text-tagma-text truncate tracking-tight leading-tight">
             {name}
           </h3>
           {version && (
-            <span className="shrink-0 text-[10px] font-mono text-tagma-muted-dim leading-tight">
+            <span className="shrink-0 text-caption font-mono text-tagma-muted-dim leading-tight">
               v{version}
             </span>
           )}
         </div>
 
         {typeLabel && (
-          <div className="mt-0.5 text-[10px] font-mono text-tagma-accent/80 tracking-wide truncate">
+          <div className="mt-0.5 text-caption font-mono text-tagma-accent/80 tracking-wide truncate">
             {typeLabel}
           </div>
         )}
 
         {description && (
-          <p className="mt-2 text-[11px] text-tagma-muted leading-[1.55] line-clamp-2">
+          <p className="mt-2 text-body text-tagma-muted leading-[1.55] line-clamp-2">
             {description}
           </p>
         )}

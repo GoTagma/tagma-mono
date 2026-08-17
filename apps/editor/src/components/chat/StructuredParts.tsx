@@ -93,7 +93,7 @@ export function FilePartView({ part }: { part: FilePart }) {
 
   return (
     <div className="w-full flex flex-col gap-1 border border-tagma-border bg-tagma-surface/40 px-2 py-1.5">
-      <div className="flex items-center gap-1.5 text-[10px] font-mono">
+      <div className="flex items-center gap-1.5 text-caption font-mono">
         {isImage ? (
           <ImageIcon size={10} className="text-tagma-accent shrink-0" />
         ) : isPdf ? (
@@ -110,7 +110,7 @@ export function FilePartView({ part }: { part: FilePart }) {
         >
           {name}
         </a>
-        {mime && <span className="shrink-0 text-tagma-muted-dim text-[9px]">{mime}</span>}
+        {mime && <span className="shrink-0 text-tagma-muted-dim text-tiny">{mime}</span>}
       </div>
       {isImage && (
         <a href={part.url} target="_blank" rel="noreferrer noopener" className="block max-w-full">
@@ -130,7 +130,7 @@ export function FilePartView({ part }: { part: FilePart }) {
           href={part.url}
           target="_blank"
           rel="noreferrer noopener"
-          className="text-[10px] font-mono text-tagma-muted hover:text-tagma-text underline underline-offset-2"
+          className="text-caption font-mono text-tagma-muted hover:text-tagma-text underline underline-offset-2"
         >
           Open PDF →
         </a>
@@ -152,12 +152,12 @@ function FileSourceQuote({ source }: { source: NonNullable<FilePart['source']> }
     ? `${source.path}#${source.name} L${source.range.start.line + 1}–${source.range.end.line + 1}`
     : source.path;
   return (
-    <details className="text-[10px] font-mono">
+    <details className="text-caption font-mono">
       <summary className="cursor-pointer flex items-center gap-1 select-none text-tagma-muted/80 hover:text-tagma-text">
         <ChevronRight size={9} />
         <span className="truncate">{meta}</span>
       </summary>
-      <pre className="select-text mt-1 px-2 py-1 text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-y-auto max-h-[200px] border-l border-tagma-accent/40 bg-tagma-bg">
+      <pre className="select-text mt-1 px-2 py-1 text-tiny text-tagma-text/85 whitespace-pre-wrap break-all overflow-y-auto max-h-[200px] border-l border-tagma-accent/40 bg-tagma-bg">
         {text || '(empty)'}
       </pre>
     </details>
@@ -176,18 +176,18 @@ export function PatchPartView({ part }: { part: PatchPart }) {
   if (files.length === 0) return null;
   return (
     <div className="w-full flex flex-col gap-1 border border-tagma-accent/40 bg-tagma-accent/5 px-2 py-1.5">
-      <div className="flex items-center gap-1.5 text-[10px] font-mono text-tagma-text">
+      <div className="flex items-center gap-1.5 text-caption font-mono text-tagma-text">
         <GitBranch size={11} className="text-tagma-accent shrink-0" />
         <span>Patch</span>
         <span className="text-tagma-muted-dim">·</span>
         <span className="text-tagma-muted">
           {files.length} file{files.length === 1 ? '' : 's'}
         </span>
-        <span className="text-tagma-muted-dim text-[9px] ml-auto" title={part.hash}>
+        <span className="text-tagma-muted-dim text-tiny ml-auto" title={part.hash}>
           {shortHash(part.hash)}
         </span>
       </div>
-      <ul className="select-text space-y-px pl-4 text-[9px] font-mono text-tagma-text/85 max-h-[160px] overflow-y-auto">
+      <ul className="select-text space-y-px pl-4 text-tiny font-mono text-tagma-text/85 max-h-[160px] overflow-y-auto">
         {files.map((f, i) => (
           <li key={`${f}-${i}`} className="truncate" title={f}>
             {f}
@@ -206,7 +206,7 @@ export function PatchPartView({ part }: { part: PatchPart }) {
 export function AgentPartView({ part }: { part: AgentPart }) {
   if (!part.name) return null;
   return (
-    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-tagma-accent/40 bg-tagma-accent/10 text-[10px] font-mono text-tagma-accent">
+    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-tagma-accent/40 bg-tagma-accent/10 text-caption font-mono text-tagma-accent">
       <Bot size={10} />
       <span>@{part.name}</span>
     </div>
@@ -223,22 +223,22 @@ export function SubtaskPartView({ part }: { part: SubtaskPart }) {
   if (!part.description && !part.prompt) return null;
   return (
     <div className="w-full flex flex-col gap-1 border border-tagma-accent/40 bg-tagma-accent/5 px-2 py-1.5">
-      <div className="flex items-center gap-1.5 text-[10px] font-mono">
+      <div className="flex items-center gap-1.5 text-caption font-mono">
         <Sparkles size={11} className="text-tagma-accent shrink-0" />
         <span className="text-tagma-text truncate">{part.description || '(subtask)'}</span>
         {part.agent && (
-          <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px border border-tagma-accent/40 text-tagma-accent text-[9px]">
+          <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px border border-tagma-accent/40 text-tagma-accent text-tiny">
             <Bot size={9} />
             {part.agent}
           </span>
         )}
       </div>
       {part.prompt && (
-        <details className="text-[10px] font-mono">
+        <details className="text-caption font-mono">
           <summary className="cursor-pointer text-tagma-muted/80 hover:text-tagma-text select-none">
             prompt
           </summary>
-          <pre className="select-text mt-1 px-2 py-1 text-[9px] text-tagma-muted/90 whitespace-pre-wrap break-all overflow-y-auto max-h-[200px] border-l border-tagma-accent/40 bg-tagma-bg">
+          <pre className="select-text mt-1 px-2 py-1 text-tiny text-tagma-muted/90 whitespace-pre-wrap break-all overflow-y-auto max-h-[200px] border-l border-tagma-accent/40 bg-tagma-bg">
             {part.prompt}
           </pre>
         </details>
@@ -256,7 +256,7 @@ export function SubtaskPartView({ part }: { part: SubtaskPart }) {
 export function SnapshotPartView({ part }: { part: SnapshotPart }) {
   if (!part.snapshot) return null;
   return (
-    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-tagma-border/60 bg-tagma-surface/40 text-[9px] font-mono text-tagma-muted-dim">
+    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-tagma-border/60 bg-tagma-surface/40 text-tiny font-mono text-tagma-muted-dim">
       <Camera size={9} />
       <span title={part.snapshot}>snapshot {shortHash(part.snapshot)}</span>
     </div>
@@ -275,7 +275,7 @@ export function StepStartView(_props: { part: StepStartPart }) {
   return (
     <div className="w-full flex items-center gap-1.5 my-0.5 select-none" aria-hidden>
       <span className="flex-1 h-px bg-tagma-border/40" />
-      <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted-dim">
+      <span className="text-tiny font-mono uppercase tracking-wider text-tagma-muted-dim">
         step
       </span>
       <span className="flex-1 h-px bg-tagma-border/40" />
@@ -291,7 +291,7 @@ export function StepStartView(_props: { part: StepStartPart }) {
 
 export function RetryPartView({ part }: { part: RetryPart }) {
   return (
-    <div className="w-full flex items-start gap-1.5 px-2 py-1 border-l-2 border-tagma-error/60 bg-tagma-error/8 text-[10px] font-mono">
+    <div className="w-full flex items-start gap-1.5 px-2 py-1 border-l-2 border-tagma-error/60 bg-tagma-error/8 text-caption font-mono">
       <RotateCcw size={11} className="text-tagma-error/80 shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0 flex flex-col gap-0.5">
         <div className="text-tagma-error/90">
@@ -316,7 +316,7 @@ export function CompactionPartView({ part }: { part: CompactionPart }) {
   return (
     <div className="w-full flex items-center gap-1.5 my-0.5 select-none">
       <span className="flex-1 h-px bg-tagma-border/40" />
-      <span className="inline-flex items-center gap-1 text-[9px] font-mono text-tagma-muted">
+      <span className="inline-flex items-center gap-1 text-tiny font-mono text-tagma-muted">
         <Minimize2 size={9} />
         <span>{part.auto ? 'auto-compacted' : 'compacted'}</span>
       </span>
@@ -358,7 +358,7 @@ export function AssistantMessageFooter({ info }: { info: AssistantMessage }) {
   const hasUsage = outputTokens > 0 || inputTokens > 0 || info.cost > 0;
   if (!hasUsage && !info.error && !info.finish) return null;
   return (
-    <div className="w-full flex flex-wrap items-center gap-1.5 text-[9px] font-mono text-tagma-muted-dim">
+    <div className="w-full flex flex-wrap items-center gap-1.5 text-tiny font-mono text-tagma-muted-dim">
       {hasUsage && (
         <span
           className="inline-flex items-center gap-1 tabular-nums"

@@ -91,7 +91,7 @@ export function JsonOutputView({ label, raw, preClassName }: JsonOutputViewProps
       <div className="flex items-center justify-between gap-2 mb-1">
         <label className="field-label !mb-0">{label}</label>
         <div className="flex items-center gap-1.5">
-          <div className="inline-flex border border-tagma-border text-[9px] font-mono uppercase tracking-wider">
+          <div className="inline-flex border border-tagma-border text-tiny font-mono uppercase tracking-wider">
             <button
               type="button"
               onClick={() => setMode('formatted')}

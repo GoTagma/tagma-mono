@@ -512,7 +512,7 @@ export function VersionStatusBar() {
         : '...';
 
   return (
-    <div className="h-6 shrink-0 border-t border-tagma-border bg-tagma-bg flex items-center px-2 text-[10px] font-mono text-tagma-muted select-none gap-2">
+    <div className="h-6 shrink-0 border-t border-tagma-border bg-tagma-bg flex items-center px-2 text-caption font-mono text-tagma-muted select-none gap-2">
       <div className="flex items-center gap-1 shrink-0">
         <VersionChip
           label={`tagma ${tagmaActiveVersion}`}
@@ -711,7 +711,7 @@ function PopoverShell({ title, onClose, children }: PopoverShellProps) {
 
   return (
     <div ref={ref} className={VERSION_STATUS_POPOVER_CLASSES}>
-      <div className="text-[11px] font-semibold uppercase tracking-widest text-tagma-text mb-2">
+      <div className="text-body font-semibold uppercase tracking-widest text-tagma-text mb-2">
         {title}
       </div>
       {children}
@@ -721,7 +721,7 @@ function PopoverShell({ title, onClose, children }: PopoverShellProps) {
 
 function LoadingRow({ text }: { text: string }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-tagma-muted font-sans">
+    <div className="flex items-center gap-2 text-body text-tagma-muted font-sans">
       <Loader2 size={12} className="animate-spin" />
       {text}
     </div>
@@ -729,7 +729,7 @@ function LoadingRow({ text }: { text: string }) {
 }
 
 function ErrorRow({ text }: { text: string }) {
-  return <div className="text-[11px] text-tagma-error font-mono break-words">{text}</div>;
+  return <div className="text-body text-tagma-error font-mono break-words">{text}</div>;
 }
 
 interface TagmaBundleBodyProps {
@@ -816,7 +816,7 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1 text-[10px] font-mono">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption font-mono">
         <span className="whitespace-nowrap text-tagma-muted">Component</span>
         <span className="text-tagma-muted">Running</span>
         <span className="text-tagma-muted">Latest</span>
@@ -930,7 +930,7 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
 
       <button
         onClick={() => setShowAdvanced((v) => !v)}
-        className="flex items-center gap-1 text-[11px] text-tagma-muted hover:text-tagma-text transition-colors"
+        className="flex items-center gap-1 text-body text-tagma-muted hover:text-tagma-text transition-colors"
       >
         {showAdvanced ? 'Hide advanced recovery' : 'Advanced recovery'}
         <ChevronDown
@@ -940,7 +940,7 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
       </button>
       {showAdvanced && (
         <div className="border-t border-tagma-border/60 pt-2 space-y-2">
-          <div className="text-[10px] text-tagma-muted font-sans">
+          <div className="text-caption text-tagma-muted font-sans">
             Single-component hot updates are disabled for OpenCode-pinned releases. Run Update Tagma
             again to recover from a partial update; it stages editor, sidecar, and OpenCode
             together.
@@ -994,7 +994,7 @@ function OpencodeInfoBody({ info, onRefresh }: OpencodeInfoBodyProps) {
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[10px] font-mono">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption font-mono">
         <span className="whitespace-nowrap text-tagma-muted">Running</span>
         <span className="min-w-0 break-all text-tagma-text">
           {activeVersion ?? <span className="text-tagma-warning">not found</span>}
@@ -1018,7 +1018,7 @@ function OpencodeInfoBody({ info, onRefresh }: OpencodeInfoBodyProps) {
       </div>
 
       <div className="bg-tagma-elevated/60 border border-tagma-border/40 px-2 py-1.5">
-        <div className="flex items-start gap-1.5 text-[10px] text-tagma-muted/90 font-sans">
+        <div className="flex items-start gap-1.5 text-caption text-tagma-muted/90 font-sans">
           <Info size={10} className="text-tagma-muted shrink-0 mt-[1px]" />
           <span>
             OpenCode ships with each Tagma release and is upgraded together with the editor — update
@@ -1055,7 +1055,7 @@ function CancelUpdateButton({ onCancel }: { onCancel: () => void }) {
         onCancel();
       }}
       disabled={clicked}
-      className="flex items-center gap-1 text-[11px] px-2 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-error hover:border-tagma-error/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+      className="flex items-center gap-1 text-body px-2 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-error hover:border-tagma-error/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
       title="Abort the download and discard any staged bytes"
       aria-label="Cancel update"
     >
@@ -1067,8 +1067,8 @@ function CancelUpdateButton({ onCancel }: { onCancel: () => void }) {
 
 function SuccessBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-success/8 border border-tagma-success/30 px-2 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-success/90 font-mono">
+    <div className="alert-box-success">
+      <div className="flex items-start gap-1.5 text-caption text-tagma-success/90 font-mono">
         <CheckCircle2 size={10} className="text-tagma-success shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>
@@ -1078,8 +1078,8 @@ function SuccessBox({ children }: { children: ReactNode }) {
 
 function InfoBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-info/8 border border-tagma-info/30 px-2 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-info/90 font-mono">
+    <div className="alert-box-info">
+      <div className="flex items-start gap-1.5 text-caption text-tagma-info/90 font-mono">
         <Info size={10} className="text-tagma-info shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>
@@ -1089,8 +1089,8 @@ function InfoBox({ children }: { children: ReactNode }) {
 
 function WarnBox({ message }: { message: string }) {
   return (
-    <div className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+    <div className="alert-box-error">
+      <div className="alert-text-error">
         <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
         <span>{message}</span>
       </div>

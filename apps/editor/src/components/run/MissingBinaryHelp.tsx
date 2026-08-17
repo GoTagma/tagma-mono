@@ -107,14 +107,14 @@ export function MissingBinaryHelp({ binary }: MissingBinaryHelpProps) {
 
   if (loading) {
     return (
-      <div className="border border-tagma-warning/30 bg-tagma-warning/5 px-2.5 py-2 text-[11px] text-tagma-warning">
+      <div className="border border-tagma-warning/30 bg-tagma-warning/5 px-2.5 py-2 text-body text-tagma-warning">
         <div className="flex items-center gap-1.5">
           <Terminal size={11} />
           <span>
             <code className="font-mono">{binary}</code> not found in PATH
           </span>
         </div>
-        <p className="mt-1 text-[10px] text-tagma-text/70">Loading install instructions…</p>
+        <p className="mt-1 text-caption text-tagma-text/70">Loading install instructions…</p>
       </div>
     );
   }
@@ -122,13 +122,13 @@ export function MissingBinaryHelp({ binary }: MissingBinaryHelpProps) {
   if (!section || !section.hasContent) {
     return (
       <div className="border border-tagma-warning/30 bg-tagma-warning/5 px-2.5 py-2 space-y-1.5">
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-tagma-warning">
+        <div className="flex items-center gap-1.5 text-body font-medium text-tagma-warning">
           <Terminal size={11} />
           <span>
             <code className="font-mono">{binary}</code> not found in PATH
           </span>
         </div>
-        <p className="text-[10px] text-tagma-text/70 leading-relaxed">
+        <p className="text-caption text-tagma-text/70 leading-relaxed">
           Install the CLI, restart the editor so the new PATH is picked up, then re-run the
           pipeline. Open the chat and ask the agent to add install instructions to
           <code className="font-mono"> .requirements.md</code> so this panel can guide the next
@@ -138,7 +138,7 @@ export function MissingBinaryHelp({ binary }: MissingBinaryHelpProps) {
           <button
             type="button"
             onClick={() => openLocalFilePath(requirementsPath)}
-            className="flex items-center gap-1 text-[10px] text-tagma-accent hover:underline"
+            className="flex items-center gap-1 text-caption text-tagma-accent hover:underline"
           >
             <ExternalLink size={10} />
             <span>Open requirements file</span>
@@ -150,7 +150,7 @@ export function MissingBinaryHelp({ binary }: MissingBinaryHelpProps) {
 
   return (
     <div className="border border-tagma-warning/30 bg-tagma-warning/5 px-2.5 py-2 space-y-2">
-      <div className="flex items-center gap-1.5 text-[11px] font-medium text-tagma-warning">
+      <div className="flex items-center gap-1.5 text-body font-medium text-tagma-warning">
         <Download size={11} />
         <span>
           <code className="font-mono">{binary}</code> not found on PATH
@@ -160,10 +160,8 @@ export function MissingBinaryHelp({ binary }: MissingBinaryHelpProps) {
       <div className="space-y-1.5">
         {section.commands.map((c, idx) => (
           <div key={`${c.platform}-${idx}`}>
-            <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-0.5">
-              {c.platform}
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2 py-1.5">
+            <div className="section-label mb-0.5">{c.platform}</div>
+            <div className="flex items-center gap-1.5 text-caption font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2 py-1.5">
               <span className="flex-1 min-w-0 truncate select-text" title={c.command}>
                 {c.command}
               </span>
@@ -174,7 +172,7 @@ export function MissingBinaryHelp({ binary }: MissingBinaryHelpProps) {
       </div>
 
       {section.verify && (
-        <p className="text-[10px] text-tagma-muted/80">
+        <p className="text-caption text-tagma-muted/80">
           Verify: <code className="font-mono text-tagma-text/80">{section.verify}</code>
         </p>
       )}
@@ -183,14 +181,14 @@ export function MissingBinaryHelp({ binary }: MissingBinaryHelpProps) {
         <button
           type="button"
           onClick={() => openLocalFilePath(requirementsPath)}
-          className="flex items-center gap-1 text-[10px] text-tagma-accent hover:underline"
+          className="flex items-center gap-1 text-caption text-tagma-accent hover:underline"
         >
           <ExternalLink size={10} />
           <span>Open requirements file</span>
         </button>
       )}
 
-      <p className="text-[10px] text-tagma-muted/80 leading-relaxed">
+      <p className="text-caption text-tagma-muted/80 leading-relaxed">
         After installing, restart this app so the updated PATH is picked up, then re-run the
         pipeline.
       </p>

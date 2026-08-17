@@ -44,7 +44,7 @@ export function EditorSettingsPage({ workDir, onRegistryUpdate, onBack }: Editor
             <button
               onClick={onBack}
               title="Back to Editor"
-              className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
+              className="flex items-center gap-1.5 text-label text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
             >
               <ArrowLeft size={12} />
               <span className="hidden md:inline">Back to Editor</span>
@@ -52,7 +52,7 @@ export function EditorSettingsPage({ workDir, onRegistryUpdate, onBack }: Editor
             <div className="w-px h-5 bg-tagma-border shrink-0" />
             <div className="flex items-center gap-1.5 px-2 shrink-0">
               <Settings2 size={13} className="text-tagma-accent" />
-              <span className="text-xs font-medium text-tagma-text truncate max-w-[200px]">
+              <span className="text-label font-medium text-tagma-text truncate max-w-[200px]">
                 Editor Settings
               </span>
             </div>
@@ -64,7 +64,7 @@ export function EditorSettingsPage({ workDir, onRegistryUpdate, onBack }: Editor
 
       <div className="flex-1 min-h-0 flex flex-col md:flex-row">
         <aside className="w-full shrink-0 border-b border-tagma-border bg-tagma-surface/25 py-2 md:w-48 md:border-b-0 md:border-r md:py-5">
-          <div className="hidden px-5 pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim md:block">
+          <div className="hidden px-5 pb-3 text-tiny tracking-[0.22em] uppercase text-tagma-muted-dim md:block">
             Categories
           </div>
           <nav className="flex overflow-x-auto md:flex-col md:overflow-x-visible">
@@ -87,13 +87,13 @@ export function EditorSettingsPage({ workDir, onRegistryUpdate, onBack }: Editor
                     />
                   )}
                   <span
-                    className={`w-5 text-[9px] font-mono tabular-nums leading-none ${
+                    className={`w-5 text-tiny font-mono tabular-nums leading-none ${
                       isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
                     }`}
                   >
                     {String(i + 1).padStart(2, '0')}
                   </span>
-                  <span className="flex-1 text-[12px] tracking-wide leading-tight">{c.label}</span>
+                  <span className="flex-1 text-label tracking-wide leading-tight">{c.label}</span>
                 </button>
               );
             })}
@@ -103,7 +103,7 @@ export function EditorSettingsPage({ workDir, onRegistryUpdate, onBack }: Editor
         <section className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="mx-auto w-full max-w-[760px] px-4 py-5 sm:px-8">
-              <div className="pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
+              <div className="pb-3 text-tiny tracking-[0.22em] uppercase text-tagma-muted-dim">
                 {activeLabel}
               </div>
               <div className="space-y-4">

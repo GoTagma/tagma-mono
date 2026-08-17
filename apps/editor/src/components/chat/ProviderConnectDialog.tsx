@@ -176,7 +176,7 @@ export function ProviderConnectDialog() {
             <Plug size={14} className="text-tagma-accent shrink-0" />
             <h2 className="panel-title truncate">Connect providers</h2>
             {totalCount > 0 && (
-              <span className="text-[10px] font-mono text-tagma-muted-dim ml-1">
+              <span className="text-caption font-mono text-tagma-muted-dim ml-1">
                 {connected.length}/{totalCount}
               </span>
             )}
@@ -190,16 +190,12 @@ export function ProviderConnectDialog() {
               }}
               disabled={blocked}
               title="Register a local Ollama, LM Studio, or other OpenAI-compatible endpoint"
-              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 text-caption font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Plus size={10} />
               Add custom
             </button>
-            <button
-              onClick={close}
-              className="p-1 text-tagma-muted hover:text-tagma-text"
-              aria-label="Close dialog"
-            >
+            <button onClick={close} className="icon-btn" aria-label="Close dialog">
               <XIcon size={14} />
             </button>
           </div>
@@ -216,7 +212,7 @@ export function ProviderConnectDialog() {
               placeholder={`Search ${totalCount} providers — name, id, or env var`}
               spellCheck={false}
               autoComplete="off"
-              className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[11px] font-mono text-tagma-text placeholder:text-tagma-muted/50 focus:shadow-none"
+              className="flex-1 min-w-0 bg-transparent border-0 outline-none text-body font-mono text-tagma-text placeholder:text-tagma-muted/50 focus:shadow-none"
             />
             {query && (
               <button
@@ -239,10 +235,10 @@ export function ProviderConnectDialog() {
           {isEmptyCatalog && (
             <div className="px-4 py-10 flex flex-col items-center gap-2 text-tagma-muted-dim">
               <Plug size={24} className="opacity-40" />
-              <p className="text-[11px] font-mono text-tagma-muted">
+              <p className="text-body font-mono text-tagma-muted">
                 opencode reports no configurable providers.
               </p>
-              <p className="text-[10px] font-mono">
+              <p className="text-caption font-mono">
                 The catalog failed to load — try reopening the chat panel.
               </p>
             </div>
@@ -250,7 +246,7 @@ export function ProviderConnectDialog() {
           {hasNoMatch && (
             <div className="px-4 py-10 flex flex-col items-center gap-2 text-tagma-muted-dim">
               <Search size={24} className="opacity-40" />
-              <p className="text-[11px] font-mono">
+              <p className="text-body font-mono">
                 No providers match <span className="text-tagma-text">“{query}”</span>.
               </p>
               <button
@@ -259,7 +255,7 @@ export function ProviderConnectDialog() {
                   setQuery('');
                   searchRef.current?.focus();
                 }}
-                className="text-[10px] font-mono text-tagma-muted hover:text-tagma-text underline"
+                className="text-caption font-mono text-tagma-muted hover:text-tagma-text underline"
               >
                 Clear search
               </button>
@@ -301,7 +297,7 @@ export function ProviderConnectDialog() {
         </div>
 
         <div className="modal-viewport-footer flex items-center justify-between gap-3 border-t border-tagma-border px-4 py-3">
-          <div className="text-[10px] font-mono text-tagma-muted-dim truncate min-w-0 flex-1">
+          <div className="text-caption font-mono text-tagma-muted-dim truncate min-w-0 flex-1">
             Stored locally by opencode. No restart required.
           </div>
           <button onClick={close} className="btn-primary min-w-24 justify-center">
@@ -341,10 +337,10 @@ function Section({
   return (
     <section>
       <div className="px-4 py-2 flex items-center gap-2 border-b border-tagma-border/30">
-        <span className="text-[10px] font-mono font-medium text-tagma-muted uppercase tracking-wider">
+        <span className="text-caption font-mono font-medium text-tagma-muted uppercase tracking-wider">
           {title}
         </span>
-        <span className="text-[10px] font-mono text-tagma-muted-dim">· {count}</span>
+        <span className="text-caption font-mono text-tagma-muted-dim">· {count}</span>
       </div>
       <div>{children}</div>
     </section>
@@ -389,18 +385,18 @@ function ProviderRow({
   return (
     <div
       className={`relative border-b border-tagma-border/30 last:border-b-0 ${
-        entry.connected ? 'bg-tagma-ready/5' : ''
+        entry.connected ? 'bg-tagma-success/5' : ''
       }`}
     >
       {entry.connected && (
         <span
-          className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-ready"
+          className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-success"
           aria-hidden="true"
         />
       )}
       <div className="flex items-center gap-2 px-4 py-3">
         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-mono font-medium text-tagma-text">{entry.name}</span>
+          <span className="text-body font-mono font-medium text-tagma-text">{entry.name}</span>
           <span className="chip-xs border-tagma-border text-tagma-muted-dim">{entry.id}</span>
           {isCustom && (
             <span
@@ -509,7 +505,7 @@ function CustomProviderActions({
         onClick={onEdit}
         disabled={blocked || working}
         title="Edit this custom provider"
-        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-caption font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <Pencil size={10} />
         Edit
@@ -519,7 +515,7 @@ function CustomProviderActions({
         onClick={handleDelete}
         disabled={blocked || working}
         title={confirming ? 'Click again to confirm deletion' : 'Remove this custom provider entry'}
-        className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono border disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+        className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 text-caption font-mono border disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
           confirming
             ? 'text-tagma-error border-tagma-error/60 bg-tagma-error/8 hover:bg-tagma-error/15'
             : 'text-tagma-muted hover:text-tagma-error border-tagma-border hover:border-tagma-error/60'
@@ -530,7 +526,7 @@ function CustomProviderActions({
       </button>
       {error && (
         <span
-          className="text-[10px] font-mono text-tagma-error/90 truncate flex-1 min-w-0"
+          className="text-caption font-mono text-tagma-error/90 truncate flex-1 min-w-0"
           title={error}
         >
           {error}
@@ -565,14 +561,14 @@ function DisconnectButton({ providerId, blocked }: { providerId: string; blocked
         onClick={handle}
         disabled={working || blocked}
         title="Disconnect (remove stored credential)"
-        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-caption font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         {working ? <Loader2 size={10} className="animate-spin" /> : <LogOut size={10} />}
         Disconnect
       </button>
       {error && (
         <span
-          className="text-[10px] font-mono text-tagma-error/90 truncate flex-1 min-w-0"
+          className="text-caption font-mono text-tagma-error/90 truncate flex-1 min-w-0"
           title={error}
         >
           {error}
@@ -585,7 +581,7 @@ function DisconnectButton({ providerId, blocked }: { providerId: string; blocked
 function StatusBadge({ connected }: { connected: boolean }) {
   if (connected) {
     return (
-      <span className="chip-xs border-tagma-ready/40 text-tagma-ready uppercase tracking-wider">
+      <span className="chip-xs border-tagma-success/40 text-tagma-success uppercase tracking-wider">
         <CheckCircle2 size={9} />
         Connected
       </span>
@@ -644,7 +640,7 @@ function MethodBlock({
   // this stub rather than crashing. Show something so users know an option
   // exists upstream that this UI hasn't learned yet.
   return (
-    <div className="text-[10px] font-mono text-tagma-muted-dim italic">
+    <div className="text-caption font-mono text-tagma-muted-dim italic">
       Unsupported auth method: {(method as { type: string }).type} — use the opencode CLI.
     </div>
   );
@@ -749,7 +745,7 @@ function PromptsSection({
                       type="button"
                       onClick={() => setAnswer(p.key, opt.value)}
                       title={opt.hint}
-                      className={`inline-flex flex-col items-start px-2 py-1 text-[10px] font-mono border transition-colors ${
+                      className={`inline-flex flex-col items-start px-2 py-1 text-caption font-mono border transition-colors ${
                         active
                           ? 'border-tagma-accent/60 bg-tagma-accent/10 text-tagma-text'
                           : 'border-tagma-border/60 text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60'
@@ -757,7 +753,7 @@ function PromptsSection({
                     >
                       <span>{opt.label}</span>
                       {opt.hint && (
-                        <span className="text-tagma-muted-dim text-[9px]">{opt.hint}</span>
+                        <span className="text-tagma-muted-dim text-tiny">{opt.hint}</span>
                       )}
                     </button>
                   );
@@ -838,7 +834,7 @@ function ApiKeyRow({
             type="button"
             onClick={submit}
             disabled={!value.trim() || !allFilled || saving || blocked}
-            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-body font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {saving && <Loader2 size={10} className="animate-spin" />}
             Save
@@ -847,7 +843,7 @@ function ApiKeyRow({
       </div>
       {error && <InlineError message={error} />}
       {saved && !error && (
-        <div className="flex items-center gap-1 text-[10px] font-mono text-tagma-ready">
+        <div className="flex items-center gap-1 text-caption font-mono text-tagma-success">
           <CheckCircle2 size={10} />
           Saved — models should appear in the picker.
         </div>
@@ -950,7 +946,7 @@ function OauthRow({
             type="button"
             onClick={start}
             disabled={working === 'start' || !allFilled || blocked}
-            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-body font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {working === 'start' ? (
               <Loader2 size={10} className="animate-spin" />
@@ -969,14 +965,14 @@ function OauthRow({
             aria-hidden="true"
           />
           {auth.instructions && (
-            <div className="text-[10px] font-mono text-tagma-muted whitespace-pre-wrap break-words">
+            <div className="text-caption font-mono text-tagma-muted whitespace-pre-wrap break-words">
               {auth.instructions}
             </div>
           )}
           <button
             type="button"
             onClick={() => openExternalUrl(auth.url)}
-            className="self-start flex items-center gap-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text underline underline-offset-2"
+            className="self-start flex items-center gap-1 text-caption font-mono text-tagma-muted hover:text-tagma-text underline underline-offset-2"
             title={auth.url}
           >
             <ExternalLink size={10} />
@@ -1005,7 +1001,7 @@ function OauthRow({
                 type="button"
                 onClick={complete}
                 disabled={!code.trim() || working === 'complete' || blocked}
-                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-body font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {working === 'complete' && <Loader2 size={10} className="animate-spin" />}
                 Complete
@@ -1013,7 +1009,7 @@ function OauthRow({
               <button
                 type="button"
                 onClick={cancel}
-                className="shrink-0 px-2 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
+                className="shrink-0 px-2 py-1.5 text-body font-mono text-tagma-muted hover:text-tagma-text transition-colors"
               >
                 Cancel
               </button>
@@ -1028,7 +1024,7 @@ function OauthRow({
                 type="button"
                 onClick={finishAuto}
                 disabled={working === 'complete' || blocked}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-body font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {working === 'complete' ? (
                   <Loader2 size={10} className="animate-spin" />
@@ -1040,7 +1036,7 @@ function OauthRow({
               <button
                 type="button"
                 onClick={cancel}
-                className="px-2 py-1 text-[11px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
+                className="px-2 py-1 text-body font-mono text-tagma-muted hover:text-tagma-text transition-colors"
               >
                 Cancel
               </button>
@@ -1055,8 +1051,8 @@ function OauthRow({
 
 function InlineError({ message }: { message: string }) {
   return (
-    <div className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono break-words">
+    <div className="alert-box-error">
+      <div className="alert-text-error break-words">
         <AlertCircle size={10} className="shrink-0 mt-[1px]" />
         <span>{message}</span>
       </div>

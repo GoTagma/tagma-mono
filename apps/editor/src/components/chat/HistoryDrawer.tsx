@@ -30,7 +30,7 @@ export function HistoryPipelineLink({
         event.stopPropagation();
         void openPipelineTarget(deploymentTarget);
       }}
-      className="mt-1 flex max-w-full items-center gap-1 text-[9px] font-mono text-tagma-muted/80 hover:text-tagma-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-tagma-muted/80 transition-colors"
+      className="mt-1 flex max-w-full items-center gap-1 text-tiny font-mono text-tagma-muted/80 hover:text-tagma-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-tagma-muted/80 transition-colors"
       title={`Open ${pipelineName}`}
     >
       <FileText size={10} className="shrink-0" />
@@ -95,12 +95,12 @@ export function HistorySessionRow({
           onClick={onSelect}
           className="block w-full min-w-0 cursor-pointer text-left disabled:cursor-wait"
         >
-          <div className="text-[11px] font-mono text-tagma-text truncate">
+          <div className="text-body font-mono text-tagma-text truncate">
             {active ? '\u25cf ' : '  '}
             {title}
           </div>
           {session.time?.updated && (
-            <div className="text-[9px] font-mono text-tagma-muted/60">
+            <div className="text-tiny font-mono text-tagma-muted/60">
               {new Date(session.time.updated).toLocaleString()}
             </div>
           )}
@@ -109,7 +109,7 @@ export function HistorySessionRow({
           <div
             role="status"
             aria-live="polite"
-            className="mt-1 flex items-center gap-1 text-[9px] font-mono text-tagma-muted"
+            className="mt-1 flex items-center gap-1 text-tiny font-mono text-tagma-muted"
           >
             <Loader2 size={10} aria-hidden="true" className="animate-spin" />
             <span className="sr-only">Switching to conversation {title}</span>
@@ -203,14 +203,14 @@ export function HistoryDrawerPanel() {
     >
       <div className="flex items-center gap-2 px-3 h-7 border-b border-tagma-border bg-tagma-surface">
         <History size={12} className="text-tagma-muted" />
-        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">
+        <span className="text-caption font-medium text-tagma-muted uppercase tracking-wider">
           History
         </span>
         <div className="flex-1" />
         <button
           type="button"
           onClick={closeHistory}
-          className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
+          className="icon-btn"
           title="Close history"
           aria-label="Close history"
         >
@@ -219,7 +219,7 @@ export function HistoryDrawerPanel() {
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {sessions.length === 0 && (
-          <div className="p-3 text-[11px] font-mono text-tagma-muted/70">
+          <div className="p-3 text-body font-mono text-tagma-muted/70">
             No previous conversations.
           </div>
         )}

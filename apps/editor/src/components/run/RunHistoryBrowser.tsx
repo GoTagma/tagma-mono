@@ -1015,17 +1015,15 @@ export function RunHistoryBrowser({
       <div className="flex-1 min-h-0 flex flex-col md:flex-row">
         <div className="max-h-[min(16rem,40%)] w-full shrink-0 border-b border-tagma-border flex flex-col bg-tagma-surface/25 overflow-hidden md:max-h-none md:w-72 md:border-b-0 md:border-r">
           <div className="shrink-0 h-11 px-5 flex items-center justify-between border-b border-tagma-border/60">
-            <span className="text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
-              Runs
-            </span>
-            <span className="text-[10px] font-mono tabular-nums text-tagma-muted-dim">
+            <span className="text-tiny tracking-[0.22em] uppercase text-tagma-muted-dim">Runs</span>
+            <span className="text-caption font-mono tabular-nums text-tagma-muted-dim">
               {visibleRuns.length}
             </span>
           </div>
 
           <div className="flex-1 overflow-y-auto">
             {error && (
-              <div className="px-5 py-3 text-[10px] text-tagma-error font-mono">{error}</div>
+              <div className="px-5 py-3 text-caption text-tagma-error font-mono">{error}</div>
             )}
             {!loading && !error && visibleRuns.length === 0 && (
               <EmptyRunList outcome={outcome} query={query} totalRuns={runs.length} />
@@ -1159,7 +1157,7 @@ function HistoryHeader({
                 value={query}
                 onChange={(e) => onQuery(e.target.value)}
                 placeholder="Search by pipeline name…"
-                className="w-full pl-7 pr-2 py-1 text-[11px] bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
+                className="w-full pl-7 pr-2 py-1 text-body bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
               />
             </div>
           </div>
@@ -1184,7 +1182,7 @@ function HeaderTab({
     <button
       onClick={onClick}
       title={label}
-      className={`flex items-center gap-2 px-0.5 pb-2.5 text-[12px] font-medium tracking-wide transition-colors border-b-2 shrink-0 whitespace-nowrap ${
+      className={`flex items-center gap-2 px-0.5 pb-2.5 text-label font-medium tracking-wide transition-colors border-b-2 shrink-0 whitespace-nowrap ${
         active
           ? 'text-tagma-text border-tagma-accent'
           : 'text-tagma-muted border-transparent hover:text-tagma-text hover:border-tagma-border'
@@ -1217,12 +1215,12 @@ function RunListItem({
   const progressLabel = running ? formatRunProgressLabel(run) : null;
   const kindChip =
     kind === 'graph' ? (
-      <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-mono uppercase tracking-wider border border-tagma-ready/40 text-tagma-ready/90 bg-tagma-ready/5">
+      <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-micro font-mono uppercase tracking-wider border border-tagma-ready/40 text-tagma-ready/90 bg-tagma-ready/5">
         <Workflow size={7} />
         graph
       </span>
     ) : (
-      <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-mono uppercase tracking-wider border border-tagma-muted/25 text-tagma-muted/80 bg-tagma-muted/5">
+      <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-micro font-mono uppercase tracking-wider border border-tagma-muted/25 text-tagma-muted/80 bg-tagma-muted/5">
         <GitBranch size={7} />
         pipeline
       </span>
@@ -1257,7 +1255,7 @@ function RunListItem({
       )}
       <div className="flex items-center gap-2">
         {statusIcon}
-        <span className="text-[12px] tracking-wide text-tagma-text flex-1 truncate">
+        <span className="text-label tracking-wide text-tagma-text flex-1 truncate">
           {formatAbsTime(run.startedAt)}
         </span>
         {run.replayedFromRunId && (
@@ -1265,7 +1263,7 @@ function RunListItem({
           // so the user can scan the list and see provenance at a glance.
           // Full source id is in the Detail pane; here we only need a flag.
           <span
-            className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-mono uppercase tracking-wider border border-tagma-accent/40 text-tagma-accent/90"
+            className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-micro font-mono uppercase tracking-wider border border-tagma-accent/40 text-tagma-accent/90"
             title={`Replay of ${run.replayedFromRunId}`}
           >
             <Play size={7} />
@@ -1273,7 +1271,7 @@ function RunListItem({
           </span>
         )}
         {kindChip}
-        <span className="text-[9px] font-mono tabular-nums text-tagma-muted-dim shrink-0">
+        <span className="text-tiny font-mono tabular-nums text-tagma-muted-dim shrink-0">
           {running
             ? progressLabel
               ? `Running ${progressLabel}`
@@ -1281,7 +1279,7 @@ function RunListItem({
             : computeRunDuration(run)}
         </span>
       </div>
-      <div className="pl-5 mt-1 flex items-center gap-1.5 min-w-0 text-[10px]">
+      <div className="pl-5 mt-1 flex items-center gap-1.5 min-w-0 text-caption">
         {run.pipelineName && (
           <>
             <span className="truncate text-tagma-muted">{run.pipelineName}</span>
@@ -1325,12 +1323,12 @@ function RunListItem({
         </div>
       )}
       {!run.taskCounts && (
-        <div className="text-[9px] font-mono text-tagma-muted-dim pl-5 mt-1">
+        <div className="text-tiny font-mono text-tagma-muted-dim pl-5 mt-1">
           {formatSize(run.sizeBytes)} log
         </div>
       )}
       <div
-        className="text-[8px] font-mono text-tagma-muted-dim/70 pl-5 mt-1 truncate"
+        className="text-micro font-mono text-tagma-muted-dim/70 pl-5 mt-1 truncate"
         title={run.runId}
       >
         {run.runId}
@@ -1353,14 +1351,14 @@ function EmptyRunList({
   const hasQuery = trimmedQuery.length > 0;
   if (totalRuns === 0) {
     return (
-      <div className="px-5 py-6 text-[10px] text-tagma-muted-dim leading-relaxed">
+      <div className="px-5 py-6 text-caption text-tagma-muted-dim leading-relaxed">
         No past runs found in <span className="font-mono text-tagma-muted">.tagma/logs/</span>. Runs
         are recorded once you execute a pipeline.
       </div>
     );
   }
   return (
-    <div className="px-5 py-6 text-[10px] text-tagma-muted-dim leading-relaxed">
+    <div className="px-5 py-6 text-caption text-tagma-muted-dim leading-relaxed">
       {hasQuery ? (
         <>
           No runs match{' '}
@@ -1408,7 +1406,7 @@ function GraphRunDetailPane({
   if (!selectedRunId) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
-        <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+        <div className="empty-state leading-relaxed max-w-md">
           Select a run from the list to see its execution detail.
         </div>
       </div>
@@ -1418,7 +1416,7 @@ function GraphRunDetailPane({
   if (loading) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
-        <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+        <div className="empty-state">
           <Loader2 size={12} className="animate-spin inline mr-2" />
           Loading graph run...
         </div>
@@ -1430,7 +1428,7 @@ function GraphRunDetailPane({
     return (
       <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
         <div className="px-6 py-5">
-          <div className="p-3 bg-tagma-warning/5 border border-tagma-warning/20 text-[10px] text-tagma-warning font-mono leading-relaxed">
+          <div className="p-3 bg-tagma-warning/5 border border-tagma-warning/20 text-caption text-tagma-warning font-mono leading-relaxed">
             {error}
           </div>
         </div>
@@ -1441,9 +1439,7 @@ function GraphRunDetailPane({
   if (!detail) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
-        <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
-          No graph run detail available.
-        </div>
+        <div className="empty-state">No graph run detail available.</div>
       </div>
     );
   }
@@ -1538,13 +1534,11 @@ export function DetailPane({
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
       <div className="min-h-11 shrink-0 flex flex-wrap items-center gap-2 border-b border-tagma-border/60 px-3 py-2 sm:px-5">
-        <div className="text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
-          Run Detail
-        </div>
+        <div className="text-tiny tracking-[0.22em] uppercase text-tagma-muted-dim">Run Detail</div>
         <div className="flex-1 min-w-[8px]" />
         <FileText size={11} className="text-tagma-muted-dim shrink-0" />
         <span
-          className="text-[11px] font-mono text-tagma-muted truncate max-w-[360px] select-text"
+          className="text-body font-mono text-tagma-muted truncate max-w-[360px] select-text"
           title={selectedRunId ?? undefined}
         >
           {selectedRunId ?? 'Select a run'}
@@ -1555,7 +1549,7 @@ export function DetailPane({
             <div className="max-w-full overflow-x-auto flex items-stretch border border-tagma-border sm:ml-2">
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider flex items-center justify-center gap-1 ${
+                className={`px-2.5 py-0.5 text-tiny font-mono uppercase tracking-wider flex items-center justify-center gap-1 ${
                   viewMode === 'flow'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -1568,7 +1562,7 @@ export function DetailPane({
               </button>
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center ${
+                className={`px-2.5 py-0.5 text-tiny font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center ${
                   viewMode === 'summary'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -1579,7 +1573,7 @@ export function DetailPane({
               </button>
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center ${
+                className={`px-2.5 py-0.5 text-tiny font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center ${
                   viewMode === 'log'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -1590,7 +1584,7 @@ export function DetailPane({
               </button>
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center gap-1 ${
+                className={`px-2.5 py-0.5 text-tiny font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center gap-1 ${
                   viewMode === 'yaml'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -1657,7 +1651,7 @@ export function DetailPane({
                 type="button"
                 onClick={onPrimaryAction}
                 disabled={primaryAction.disabled}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-caption font-mono uppercase tracking-wider border disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
                   primaryAction.kind === 'stop'
                     ? 'border-tagma-error/40 text-tagma-error hover:bg-tagma-error/10'
                     : 'border-tagma-accent/40 text-tagma-accent hover:bg-tagma-accent/10'
@@ -1681,7 +1675,7 @@ export function DetailPane({
         )}
       </div>
       {actionError && (
-        <div className="shrink-0 px-5 py-1.5 text-[10px] font-mono text-tagma-error bg-tagma-error/5 border-b border-tagma-error/20">
+        <div className="shrink-0 px-5 py-1.5 text-caption font-mono text-tagma-error bg-tagma-error/5 border-b border-tagma-error/20">
           Run action failed: {actionError}
         </div>
       )}
@@ -1690,7 +1684,7 @@ export function DetailPane({
         className={`flex-1 min-h-0 ${viewMode === 'flow' ? 'overflow-hidden flex' : 'overflow-auto'}`}
       >
         {!selectedRunId && (
-          <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+          <div className="empty-state leading-relaxed max-w-md">
             Select a run from the list to see its per-task timeline. Each run stores a{' '}
             <span className="font-mono text-tagma-muted">summary.json</span> alongside its raw{' '}
             <span className="font-mono text-tagma-muted">pipeline.log</span>.
@@ -1700,7 +1694,7 @@ export function DetailPane({
         {viewMode === 'summary' && selectedRunId && (
           <div className="px-5 py-4">
             {summaryError && (
-              <div className="mb-4 p-3 bg-tagma-warning/5 border border-tagma-warning/20 text-[10px] text-tagma-warning font-mono leading-relaxed">
+              <div className="mb-4 p-3 bg-tagma-warning/5 border border-tagma-warning/20 text-caption text-tagma-warning font-mono leading-relaxed">
                 {summaryError}. Older runs (pre-summary.json) will only have a pipeline.log
                 available.
               </div>
@@ -1716,11 +1710,11 @@ export function DetailPane({
                     ) : (
                       <X size={14} className="text-tagma-error" />
                     )}
-                    <span className="text-[14px] font-medium text-tagma-text truncate">
+                    <span className="text-heading font-medium text-tagma-text truncate">
                       {summary.pipelineName}
                     </span>
                   </div>
-                  <div className="text-[10px] font-mono text-tagma-muted flex items-center gap-2 flex-wrap">
+                  <div className="text-caption font-mono text-tagma-muted flex items-center gap-2 flex-wrap">
                     <span>{new Date(summary.startedAt).toLocaleString()}</span>
                     <span className="text-tagma-muted-dim">→</span>
                     <span>
@@ -1745,7 +1739,7 @@ export function DetailPane({
                     // through to the source reveals ITS origin, and so on.
                     // That keeps the UI linear and avoids implying there's
                     // some canonical root ancestor.
-                    <div className="mt-2 flex items-center gap-2 text-[10px] font-mono">
+                    <div className="mt-2 flex items-center gap-2 text-caption font-mono">
                       <span className="chip-sm border-tagma-accent/40 text-tagma-accent/90 uppercase tracking-wider">
                         <Play size={8} />
                         replayed from
@@ -1767,7 +1761,7 @@ export function DetailPane({
                     </div>
                   )}
                   {summary.error && (
-                    <div className="mt-3 text-[10px] font-mono text-tagma-error/90 bg-tagma-error/5 border border-tagma-error/20 px-2.5 py-1.5">
+                    <div className="mt-3 text-caption font-mono text-tagma-error/90 bg-tagma-error/5 border border-tagma-error/20 px-2.5 py-1.5">
                       {summary.error}
                     </div>
                   )}
@@ -1775,14 +1769,14 @@ export function DetailPane({
 
                 {Array.from(tasksByTrack.entries()).map(([trackId, tasks]) => (
                   <div key={trackId} className="mb-5">
-                    <div className="text-[9px] font-mono uppercase tracking-[0.22em] text-tagma-muted-dim mb-2">
+                    <div className="text-tiny font-mono uppercase tracking-[0.22em] text-tagma-muted-dim mb-2">
                       {tasks[0]?.trackName ?? trackId}
                     </div>
                     <div className="border border-tagma-border/60 bg-tagma-bg/40">
                       {tasks.map((task, i) => (
                         <div
                           key={task.taskId}
-                          className={`flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono ${
+                          className={`flex items-center gap-2 px-3 py-1.5 text-caption font-mono ${
                             i > 0 ? 'border-t border-tagma-border/40' : ''
                           }`}
                         >
@@ -1796,19 +1790,19 @@ export function DetailPane({
                             {task.taskName}
                           </span>
                           {task.command ? (
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-tagma-ready/80 text-[9px]">
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-tagma-ready/80 text-tiny">
                               <Terminal size={8} />
                               shell
                             </span>
                           ) : (
                             <>
                               {task.driver && (
-                                <span className="shrink-0 text-tagma-accent/70 text-[9px]">
+                                <span className="shrink-0 text-tagma-accent/70 text-tiny">
                                   {task.driver}
                                 </span>
                               )}
                               {task.model && (
-                                <span className="shrink-0 text-tagma-muted text-[9px]">
+                                <span className="shrink-0 text-tagma-muted text-tiny">
                                   {task.model}
                                 </span>
                               )}
@@ -1816,7 +1810,7 @@ export function DetailPane({
                           )}
                           {task.exitCode != null && (
                             <span
-                              className={`shrink-0 text-[9px] ${
+                              className={`shrink-0 text-tiny ${
                                 task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'
                               }`}
                             >
@@ -1834,7 +1828,7 @@ export function DetailPane({
               </>
             )}
             {!summary && !summaryLoading && !summaryError && (
-              <div className="text-[10px] font-mono text-tagma-muted-dim">Loading summary...</div>
+              <div className="text-caption font-mono text-tagma-muted-dim">Loading summary...</div>
             )}
           </div>
         )}
@@ -1852,24 +1846,22 @@ export function DetailPane({
           ) : summary ? (
             <HistoryFlowView summary={summary} />
           ) : summaryLoading ? (
-            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+            <div className="empty-state">
               <Loader2 size={12} className="animate-spin inline mr-2" />
               Loading flow...
             </div>
           ) : (
-            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
-              No summary data available for flow view.
-            </div>
+            <div className="empty-state">No summary data available for flow view.</div>
           ))}
 
         {viewMode === 'log' && selectedRunId && !logLoading && (
           <div>
             {logReadNotice && (
-              <div className="mx-5 mt-4 px-3 py-2 bg-tagma-warning/5 border border-tagma-warning/20 text-[10px] text-tagma-warning font-mono leading-relaxed">
+              <div className="mx-5 mt-4 px-3 py-2 bg-tagma-warning/5 border border-tagma-warning/20 text-caption text-tagma-warning font-mono leading-relaxed">
                 {logReadNotice}
               </div>
             )}
-            <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
+            <pre className="text-caption font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
               {logContent || '(empty)'}
             </pre>
           </div>
@@ -1878,18 +1870,18 @@ export function DetailPane({
         {viewMode === 'yaml' &&
           selectedRunId &&
           (yamlLoading ? (
-            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+            <div className="empty-state">
               <Loader2 size={12} className="animate-spin inline mr-2" />
               Loading yaml snapshot...
             </div>
           ) : yamlContent === null ? null : yamlContent === '' ? (
-            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+            <div className="empty-state leading-relaxed max-w-md">
               No yaml snapshot for this run. Older runs (before snapshotting was added) only have a{' '}
               <span className="font-mono text-tagma-muted">summary.json</span> and{' '}
               <span className="font-mono text-tagma-muted">pipeline.log</span>.
             </div>
           ) : (
-            <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
+            <pre className="text-caption font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
               {yamlContent}
             </pre>
           ))}

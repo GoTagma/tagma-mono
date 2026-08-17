@@ -123,9 +123,9 @@ export async function openTaskOutputPath(
 // the JSON-formatted view and its plain fallback stay byte-for-byte visually
 // identical to how these panes rendered before this feature.
 const OUTPUT_PRE_CLASS =
-  'select-text text-[10px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[300px] whitespace-pre-wrap break-words';
+  'select-text text-caption font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[300px] whitespace-pre-wrap break-words';
 const NORMALIZED_PRE_CLASS =
-  'select-text text-[10px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[200px] whitespace-pre-wrap break-words';
+  'select-text text-caption font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[200px] whitespace-pre-wrap break-words';
 
 /**
  * Whether the Output pane should swap the plain <pre> for the pretty/raw
@@ -153,7 +153,7 @@ function ConfigRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-2 py-[2px] text-[10px]">
+    <div className="flex min-w-0 items-start gap-2 py-[2px] text-caption">
       <span
         className="text-tagma-muted/70 w-[68px] shrink-0 font-mono tracking-tight truncate"
         title={label}
@@ -288,14 +288,12 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
         {/* ─── Section 1: Runtime state ─── */}
         <section>
-          <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
-            Runtime
-          </div>
+          <div className="section-label-rule">Runtime</div>
           <div className="pt-2.5 space-y-3">
             {/* Task ID */}
             <div>
               <label className="field-label">Task ID</label>
-              <div className="flex items-center gap-1.5 text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
+              <div className="flex items-center gap-1.5 text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
                 <span className="flex-1 min-w-0 truncate select-text" title={task.taskId}>
                   {task.taskId}
                 </span>
@@ -339,7 +337,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                 }
               >
                 <label className="field-label">Waiting on</label>
-                <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-2 text-[10px] text-tagma-muted space-y-1.5">
+                <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-2 text-caption text-tagma-muted space-y-1.5">
                   {task.waitReason?.kind === 'dependencies' ? (
                     <>
                       <div className="font-medium text-tagma-text/80">
@@ -397,7 +395,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
             {task.startedAt && (
               <div>
                 <label className="field-label">Started</label>
-                <div className="text-[11px] font-mono text-tagma-muted">
+                <div className="text-body font-mono text-tagma-muted">
                   {new Date(task.startedAt).toLocaleTimeString()}
                 </div>
               </div>
@@ -405,7 +403,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
             {task.finishedAt && (
               <div>
                 <label className="field-label">Finished</label>
-                <div className="text-[11px] font-mono text-tagma-muted">
+                <div className="text-body font-mono text-tagma-muted">
                   {new Date(task.finishedAt).toLocaleTimeString()}
                 </div>
               </div>
@@ -413,7 +411,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
             {task.durationMs != null && (
               <div>
                 <label className="field-label">Duration</label>
-                <div className="text-[11px] font-mono text-tagma-muted">
+                <div className="text-body font-mono text-tagma-muted">
                   {formatDuration(task.durationMs)}
                 </div>
               </div>
@@ -424,7 +422,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
               <div>
                 <label className="field-label">Exit Code</label>
                 <div
-                  className={`text-[11px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}
+                  className={`text-body font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}
                 >
                   {task.exitCode}
                 </div>
@@ -437,7 +435,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                 <label className="field-label flex items-center gap-1">
                   <Hash size={9} /> Session
                 </label>
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
+                <div className="flex items-center gap-1.5 text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
                   <span className="flex-1 min-w-0 truncate select-text" title={task.sessionId}>
                     {task.sessionId}
                   </span>
@@ -456,7 +454,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                 <button
                   type="button"
                   onClick={() => handleOpenPath(task.stdoutPath)}
-                  className="w-full flex items-center gap-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text bg-tagma-bg border border-tagma-border hover:border-tagma-accent px-2.5 py-1.5 truncate transition-colors"
+                  className="w-full flex items-center gap-1.5 text-body font-mono text-tagma-muted hover:text-tagma-text bg-tagma-bg border border-tagma-border hover:border-tagma-accent px-2.5 py-1.5 truncate transition-colors"
                 >
                   <ExternalLink size={9} className="shrink-0" />
                   <span className="truncate">{task.stdoutPath}</span>
@@ -471,7 +469,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                 <button
                   type="button"
                   onClick={() => handleOpenPath(task.stderrPath)}
-                  className="w-full flex items-center gap-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text bg-tagma-bg border border-tagma-border hover:border-tagma-accent px-2.5 py-1.5 truncate transition-colors"
+                  className="w-full flex items-center gap-1.5 text-body font-mono text-tagma-muted hover:text-tagma-text bg-tagma-bg border border-tagma-border hover:border-tagma-accent px-2.5 py-1.5 truncate transition-colors"
                 >
                   <ExternalLink size={9} className="shrink-0" />
                   <span className="truncate">{task.stderrPath}</span>
@@ -497,7 +495,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                     {task.status === 'running' && (
                       <span className="inline-flex items-center gap-1 text-tagma-ready normal-case">
                         <span className="w-1.5 h-1.5 rounded-full bg-tagma-ready animate-pulse" />
-                        <span className="text-[9px] font-mono uppercase tracking-wider">live</span>
+                        <span className="text-tiny font-mono uppercase tracking-wider">live</span>
                       </span>
                     )}
                   </label>
@@ -506,7 +504,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                       {task.stdout}
                     </pre>
                   ) : (
-                    <div className="text-[10px] font-mono text-tagma-muted/60 bg-tagma-bg border border-tagma-border px-2.5 py-2">
+                    <div className="text-caption font-mono text-tagma-muted/60 bg-tagma-bg border border-tagma-border px-2.5 py-2">
                       Waiting for output…
                     </div>
                   )}
@@ -524,7 +522,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
             {task.stderr && (
               <div>
                 <label className="field-label">Errors</label>
-                <pre className="select-text text-[10px] font-mono text-tagma-error/80 bg-tagma-error/5 border border-tagma-error/20 px-2.5 py-2 overflow-auto max-h-[200px] whitespace-pre-wrap break-words">
+                <pre className="select-text text-caption font-mono text-tagma-error/80 bg-tagma-error/5 border border-tagma-error/20 px-2.5 py-2 overflow-auto max-h-[200px] whitespace-pre-wrap break-words">
                   {task.stderr}
                 </pre>
               </div>
@@ -534,7 +532,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
               <button
                 type="button"
                 onClick={handleAskChatForTaskError}
-                className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-tagma-accent border border-tagma-accent/30 hover:bg-tagma-accent/10 px-2.5 py-1.5 transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 text-body font-medium text-tagma-accent border border-tagma-accent/30 hover:bg-tagma-accent/10 px-2.5 py-1.5 transition-colors"
                 title="Ask AI to fix this task error"
               >
                 <MessageSquare size={11} />
@@ -562,7 +560,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
         {/* ─── Section 2: Process log (live stream from SDK Logger) ─── */}
         {task.logs.length > 0 && (
           <section>
-            <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40 flex items-center gap-1.5">
+            <div className="section-label-rule flex items-center gap-1.5">
               <Activity size={9} />
               <span>Process</span>
               <span className="text-tagma-muted/40 font-normal normal-case tracking-normal">
@@ -581,7 +579,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
             <div
               ref={logRef}
               onScroll={handleLogScroll}
-              className="select-text mt-2 text-[10px] font-mono bg-tagma-bg border border-tagma-border max-h-[320px] overflow-auto"
+              className="select-text mt-2 text-caption font-mono bg-tagma-bg border border-tagma-border max-h-[320px] overflow-auto"
             >
               {task.logs.map((line, i) => (
                 <div
@@ -598,12 +596,10 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
         {/* ─── Section 3: Task configuration (read-only snapshot) ─── */}
         {taskConfig && (
           <section>
-            <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
-              Configuration (read-only)
-            </div>
+            <div className="section-label-rule">Configuration (read-only)</div>
             <div className="pt-2.5 space-y-3">
               {/* Type banner */}
-              <div className="flex items-center gap-2 text-[10px] text-tagma-muted">
+              <div className="flex items-center gap-2 text-caption text-tagma-muted">
                 {isCommand ? (
                   <>
                     <Terminal size={11} className="text-tagma-ready" /> Shell command
@@ -619,7 +615,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
               {promptBody && (
                 <div>
                   <label className="field-label">Prompt</label>
-                  <pre className="select-text text-[10px] font-mono text-tagma-text/90 bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[200px] whitespace-pre-wrap break-words">
+                  <pre className="select-text text-caption font-mono text-tagma-text/90 bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[200px] whitespace-pre-wrap break-words">
                     {promptBody}
                   </pre>
                 </div>
@@ -627,7 +623,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
               {commandBody && (
                 <div>
                   <label className="field-label">Command</label>
-                  <pre className="select-text text-[10px] font-mono text-tagma-text/90 bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[160px] whitespace-pre-wrap break-words">
+                  <pre className="select-text text-caption font-mono text-tagma-text/90 bg-tagma-bg border border-tagma-border px-2.5 py-2 overflow-auto max-h-[160px] whitespace-pre-wrap break-words">
                     {commandBody}
                   </pre>
                 </div>
@@ -748,7 +744,7 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                     {taskConfig.depends_on.map((dep) => (
                       <div
                         key={dep}
-                        className="text-[10px] font-mono text-tagma-muted whitespace-normal [overflow-wrap:anywhere]"
+                        className="text-caption font-mono text-tagma-muted whitespace-normal [overflow-wrap:anywhere]"
                       >
                         {dep}
                       </div>

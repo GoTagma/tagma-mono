@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   ensureOpencode,
+  ensureRealTagmaDirectory,
   resolveOpencodePathFallback,
   restartOpencode,
   stopOpencodeProcesses,
@@ -123,6 +132,19 @@ afterEach(async () => {
     delete process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION;
   else process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = originalDatabaseSchemaVersion;
   rmSync(tempRoot, { recursive: true, force: true });
+});
+
+describe('managed OpenCode directory coordinates', () => {
+  test('returns the native real path when the workspace is opened through an alias', () => {
+    const workspace = join(tempRoot, 'workspace');
+    const workspaceAlias = join(tempRoot, 'workspace-alias');
+    mkdirSync(workspace, { recursive: true });
+    symlinkSync(workspace, workspaceAlias, process.platform === 'win32' ? 'junction' : 'dir');
+
+    const tagmaDirectory = ensureRealTagmaDirectory(workspaceAlias);
+
+    expect(tagmaDirectory).toBe(realpathSync.native(join(workspace, '.tagma')));
+  });
 });
 
 describe('ensureOpencode health probing', () => {

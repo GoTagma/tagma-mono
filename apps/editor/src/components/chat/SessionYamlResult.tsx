@@ -145,7 +145,7 @@ function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
               if (latest.available) void openTarget(latest.target);
             });
           }}
-          className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+          className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-caption text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
           title={`Open ${name}`}
         >
           <FileText size={11} />
@@ -153,7 +153,7 @@ function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
         </button>
       )}
       {unavailableReason && (
-        <div role={'status'} className={'select-text text-[9px] text-tagma-warning break-words'}>
+        <div role={'status'} className={'select-text text-tiny text-tagma-warning break-words'}>
           {unavailableReason}
         </div>
       )}
@@ -169,10 +169,8 @@ function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
 export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionResult }) {
   return (
     <div className="flex flex-col gap-1 items-start">
-      <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60">
-        pipeline result
-      </div>
-      <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-[10px] font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
+      <div className="section-label">pipeline result</div>
+      <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-caption font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
         <SessionYamlResultBody result={result} />
       </div>
     </div>
@@ -194,8 +192,8 @@ export function SessionYamlResultFooter({
     // Self-framed strip: the assistant message itself is box-free, so the
     // fused footer carries its own quiet frame instead of the old in-card
     // divider. It still renders inside the owning message's flow.
-    <div className="mt-1.5 border border-tagma-border/50 bg-tagma-surface px-3 py-2 text-[10px] font-mono text-tagma-muted flex flex-col gap-1.5">
-      <div className="text-[8px] uppercase tracking-widest text-tagma-muted-dim">
+    <div className="mt-1.5 border border-tagma-border/50 bg-tagma-surface px-3 py-2 text-caption font-mono text-tagma-muted flex flex-col gap-1.5">
+      <div className="text-micro uppercase tracking-widest text-tagma-muted-dim">
         pipeline result
       </div>
       {results.map((result, index) => (
@@ -226,7 +224,7 @@ function TrialPlanningTelemetryDetails({
     telemetry.inputTokens + telemetry.cacheReadTokens + telemetry.cacheWriteTokens;
   const outputTokens = telemetry.outputTokens + telemetry.reasoningTokens;
   return (
-    <details className="select-text border-t border-tagma-border/60 pt-1.5 text-[9px]">
+    <details className="select-text border-t border-tagma-border/60 pt-1.5 text-tiny">
       <summary className="cursor-pointer text-tagma-muted/80">
         Trial planning: {prompts} / {toolAttempts} / {rejections}
       </summary>

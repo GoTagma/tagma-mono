@@ -88,12 +88,9 @@ export function PipelineConfigPanel({
             return (
               <>
                 {errs.length > 0 && (
-                  <div className="bg-tagma-error/8 border border-tagma-error/30 px-2.5 py-1.5 space-y-1">
+                  <div className="alert-box-error space-y-1">
                     {errs.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono"
-                      >
+                      <div key={i} className="alert-text-error">
                         <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
                         <span>{d.message}</span>
                       </div>
@@ -101,12 +98,9 @@ export function PipelineConfigPanel({
                   </div>
                 )}
                 {warns.length > 0 && (
-                  <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2.5 py-1.5 space-y-1">
+                  <div className="alert-box-warning space-y-1">
                     {warns.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono"
-                      >
+                      <div key={i} className="alert-text-warning">
                         <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
                         <span>{d.message}</span>
                       </div>
@@ -175,7 +169,7 @@ export function PipelineConfigPanel({
               }
               enableOpencodeModels={isBuiltinOpencodeDriver(config.driver || 'opencode')}
             />
-            <p className="text-[10px] text-tagma-muted mt-1">
+            <p className="text-caption text-tagma-muted mt-1">
               Exact model name passed to the driver CLI. Inherited by tracks and tasks.
             </p>
           </div>
@@ -205,7 +199,7 @@ export function PipelineConfigPanel({
               <FieldHelpButton field="hooks" scope="pipeline" />
               <ModifiedBadge visible={isFieldModified('hooks')} />
             </label>
-            <p className="text-[10px] text-tagma-muted mb-2">
+            <p className="text-caption text-tagma-muted mb-2">
               Shell commands to run at lifecycle events. One command per line; multiple lines are
               executed sequentially. Hooks tagged{' '}
               <span className="text-tagma-warning/80">gate</span> (<code>pipeline_start</code>,{' '}
@@ -231,7 +225,7 @@ export function PipelineConfigPanel({
 
             <div>
               <label className="field-label">Summary</label>
-              <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 flex flex-wrap gap-x-4 gap-y-1">
+              <div className="text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 flex flex-wrap gap-x-4 gap-y-1">
                 <span>
                   {config.tracks.length} track{config.tracks.length !== 1 ? 's' : ''}
                 </span>
@@ -254,7 +248,7 @@ export function PipelineConfigPanel({
                   {config.plugins.map((p) => (
                     <div
                       key={p}
-                      className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1"
+                      className="text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1"
                     >
                       {p}
                     </div>
@@ -347,17 +341,17 @@ function HookField({
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
-        <label className="text-[10px] font-mono text-tagma-muted">{hookKey}</label>
+        <label className="text-caption font-mono text-tagma-muted">{hookKey}</label>
         <FieldHelpButton field={hookKey} scope="pipeline `hooks` block" />
         {isGate && (
           <span
-            className="text-[9px] px-1 py-px bg-tagma-warning/10 text-tagma-warning/70 border border-tagma-warning/20 cursor-help"
+            className="text-tiny px-1 py-px bg-tagma-warning/10 text-tagma-warning/70 border border-tagma-warning/20 cursor-help"
             title="Gate hook: a non-zero exit code blocks the entire pipeline. Use carefully."
           >
             gate
           </span>
         )}
-        {lineCount > 1 && <span className="text-[9px] text-tagma-muted">{lineCount} cmds</span>}
+        {lineCount > 1 && <span className="text-tiny text-tagma-muted">{lineCount} cmds</span>}
       </div>
       <CopyableField
         value={val}
@@ -365,7 +359,7 @@ function HookField({
         buttonClassName="top-2 translate-y-0"
       >
         <textarea
-          className="field-input font-mono text-[11px] resize-y"
+          className="field-input font-mono text-body resize-y"
           value={val}
           onChange={(e) => setVal(e.target.value)}
           onBlur={blurVal}

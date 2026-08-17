@@ -25,28 +25,26 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="h-screen overflow-y-auto bg-tagma-elevated font-sans text-tagma-text">
           <div className="min-h-full flex flex-col items-center justify-center gap-4 p-4 sm:p-6">
-            <h1 className="m-0 text-center text-xl font-semibold sm:text-2xl">
-              Something went wrong
-            </h1>
-            <p className="m-0 max-w-[480px] text-center text-tagma-muted">
+            <h1 className="m-0 text-center text-display font-semibold">Something went wrong</h1>
+            <p className="m-0 max-w-[480px] text-center text-heading text-tagma-muted">
               An unexpected error occurred in the editor. You can try reloading, or click the button
               below to recover.
             </p>
             {this.state.error && (
-              <pre className="max-h-[min(40dvh,20rem)] w-full max-w-[600px] overflow-auto border border-tagma-border bg-tagma-bg p-3 px-4 text-sm text-tagma-error">
+              <pre className="max-h-[min(40dvh,20rem)] w-full max-w-[600px] overflow-auto border border-tagma-border bg-tagma-bg p-3 px-4 text-heading text-tagma-error">
                 {this.state.error.message}
               </pre>
             )}
             <div className="flex flex-wrap justify-center gap-2">
               <button
                 onClick={this.handleReset}
-                className="btn-primary px-5 py-2 text-sm justify-center"
+                className="btn-primary px-5 py-2 text-heading justify-center"
               >
                 Try again
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="px-5 py-2 border border-tagma-border bg-transparent text-tagma-text cursor-pointer text-sm hover:border-tagma-muted/60 transition-colors"
+                className="px-5 py-2 border border-tagma-border bg-transparent text-tagma-text cursor-pointer text-heading hover:border-tagma-muted/60 transition-colors"
               >
                 Reload page
               </button>

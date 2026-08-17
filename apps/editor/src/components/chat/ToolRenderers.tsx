@@ -177,7 +177,7 @@ function TodoList({ items }: { items: TodoItem[] }) {
   return (
     <ul className="select-text space-y-1 py-0.5">
       {items.map((t, i) => (
-        <li key={t.id ?? `${i}-${t.content}`} className="flex items-start gap-1.5 text-[10px]">
+        <li key={t.id ?? `${i}-${t.content}`} className="flex items-start gap-1.5 text-caption">
           <TodoStatusIcon status={t.status} />
           <span
             className={
@@ -219,21 +219,21 @@ const BashRenderer: ToolRenderer = ({ state }) => {
   const output = state.status === 'completed' ? state.output : undefined;
   return (
     <div className="space-y-1">
-      {description && <div className="text-[9px] text-tagma-muted/80 italic">{description}</div>}
+      {description && <div className="text-tiny text-tagma-muted/80 italic">{description}</div>}
       <div className="flex gap-1.5 items-start">
         <Terminal size={10} className="text-tagma-muted/70 shrink-0 mt-0.5" />
-        <pre className="select-text flex-1 text-[10px] text-tagma-text/90 whitespace-pre-wrap break-all">
+        <pre className="select-text flex-1 text-caption text-tagma-text/90 whitespace-pre-wrap break-all">
           <span className="text-tagma-muted/60">$ </span>
           {command}
         </pre>
       </div>
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-tiny text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {output}
         </pre>
       )}
       {state.status === 'error' && (
-        <pre className="select-text text-[9px] text-tagma-error/90 whitespace-pre-wrap break-all pl-3 border-l border-tagma-error/40">
+        <pre className="select-text text-tiny text-tagma-error/90 whitespace-pre-wrap break-all pl-3 border-l border-tagma-error/40">
           {state.error}
         </pre>
       )}
@@ -255,10 +255,10 @@ function FileHeader({
   meta?: string;
 }) {
   return (
-    <div className="flex items-center gap-1.5 text-[10px]">
+    <div className="flex items-center gap-1.5 text-caption">
       {icon}
       <span className="select-text font-mono text-tagma-text/90 truncate">{filePath}</span>
-      {meta && <span className="text-tagma-muted/60 text-[9px] shrink-0">{meta}</span>}
+      {meta && <span className="text-tagma-muted/60 text-tiny shrink-0">{meta}</span>}
     </div>
   );
 }
@@ -281,7 +281,7 @@ const ReadRenderer: ToolRenderer = ({ state }) => {
         meta={meta}
       />
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-tiny text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {output}
         </pre>
       )}
@@ -301,7 +301,7 @@ const WriteRenderer: ToolRenderer = ({ state }) => {
         meta={content ? `${content.split('\n').length} lines` : undefined}
       />
       {content && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-ready/40">
+        <pre className="select-text text-tiny text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-ready/40">
           {content}
         </pre>
       )}
@@ -321,12 +321,12 @@ const EditRenderer: ToolRenderer = ({ state }) => {
         filePath={filePath}
       />
       {oldStr != null && (
-        <pre className="select-text text-[9px] whitespace-pre-wrap break-all overflow-x-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-error/50 text-tagma-error/85">
+        <pre className="select-text text-tiny whitespace-pre-wrap break-all overflow-x-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-error/50 text-tagma-error/85">
           {oldStr || '(empty)'}
         </pre>
       )}
       {newStr != null && (
-        <pre className="select-text text-[9px] whitespace-pre-wrap break-all overflow-x-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-ready/50 text-tagma-ready">
+        <pre className="select-text text-tiny whitespace-pre-wrap break-all overflow-x-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-ready/50 text-tagma-ready">
           {newStr || '(empty)'}
         </pre>
       )}
@@ -346,12 +346,12 @@ const GrepRenderer: ToolRenderer = ({ state }) => {
   const lines = output.split('\n').filter(Boolean);
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-1.5 text-[10px]">
+      <div className="flex items-center gap-1.5 text-caption">
         <Search size={10} className="text-tagma-muted/70 shrink-0" />
         <code className="select-text font-mono text-tagma-text/90 truncate">/{pattern}/</code>
-        {path && <span className="text-tagma-muted/60 text-[9px] min-w-0 truncate">in {path}</span>}
+        {path && <span className="text-tagma-muted/60 text-tiny min-w-0 truncate">in {path}</span>}
         {lines.length > 0 && (
-          <span className="text-tagma-muted/60 text-[9px] shrink-0">
+          <span className="text-tagma-muted/60 text-tiny shrink-0">
             {lines.length} match{lines.length === 1 ? '' : 'es'}
           </span>
         )}
@@ -361,7 +361,7 @@ const GrepRenderer: ToolRenderer = ({ state }) => {
           {lines.map((line, i) => (
             <li
               key={i}
-              className="text-[9px] font-mono text-tagma-text/85 whitespace-pre-wrap break-all"
+              className="text-tiny font-mono text-tagma-text/85 whitespace-pre-wrap break-all"
             >
               {line}
             </li>
@@ -378,13 +378,13 @@ const PathListRenderer: ToolRenderer = ({ state }) => {
   const lines = output.split('\n').filter(Boolean);
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-1.5 text-[10px]">
+      <div className="flex items-center gap-1.5 text-caption">
         <Folder size={10} className="text-tagma-muted/70 shrink-0" />
         <code className="select-text font-mono text-tagma-text/90 truncate">
           {pattern || '(root)'}
         </code>
         {lines.length > 0 && (
-          <span className="text-tagma-muted/60 text-[9px] shrink-0">{lines.length} entries</span>
+          <span className="text-tagma-muted/60 text-tiny shrink-0">{lines.length} entries</span>
         )}
       </div>
       {lines.length > 0 && (
@@ -392,7 +392,7 @@ const PathListRenderer: ToolRenderer = ({ state }) => {
           {lines.map((line, i) => (
             <li
               key={i}
-              className="text-[9px] font-mono text-tagma-text/85 whitespace-pre-wrap break-all"
+              className="text-tiny font-mono text-tagma-text/85 whitespace-pre-wrap break-all"
             >
               {line}
             </li>
@@ -414,15 +414,15 @@ const WebfetchRenderer: ToolRenderer = ({ state }) => {
   const output = state.status === 'completed' ? state.output : undefined;
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-1.5 text-[10px]">
+      <div className="flex items-center gap-1.5 text-caption">
         <Globe size={10} className="text-tagma-muted/70 shrink-0" />
         <span className="select-text font-mono text-tagma-text/90 truncate">{url}</span>
       </div>
       {prompt && (
-        <div className="text-[9px] text-tagma-muted/80 italic pl-3.5 truncate">{prompt}</div>
+        <div className="text-tiny text-tagma-muted/80 italic pl-3.5 truncate">{prompt}</div>
       )}
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-tiny text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {output}
         </pre>
       )}
@@ -443,29 +443,29 @@ const TaskRenderer: ToolRenderer = ({ state }) => {
   const output = completion?.kind === 'returned' ? completion.result : undefined;
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-1.5 text-[10px]">
+      <div className="flex items-center gap-1.5 text-caption">
         <Bot size={10} className="text-tagma-accent shrink-0" />
         <span className="select-text font-mono text-tagma-text/90 truncate">
           {description ?? '(subagent)'}
         </span>
-        {subagent && <span className="text-tagma-muted/60 text-[9px] shrink-0">@{subagent}</span>}
+        {subagent && <span className="text-tagma-muted/60 text-tiny shrink-0">@{subagent}</span>}
       </div>
       {prompt && (
-        <pre className="select-text text-[9px] text-tagma-muted/80 whitespace-pre-wrap break-all overflow-x-hidden max-h-[120px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-tiny text-tagma-muted/80 whitespace-pre-wrap break-all overflow-x-hidden max-h-[120px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {prompt}
         </pre>
       )}
       {completion?.kind === 'no-usable-result' && (
         <div
           role="status"
-          className="flex items-start gap-1.5 border-l border-tagma-warning/40 pl-3 text-[9px] text-tagma-warning"
+          className="flex items-start gap-1.5 border-l border-tagma-warning/40 pl-3 text-tiny text-tagma-warning"
         >
           <AlertTriangle size={10} className="mt-0.5 shrink-0" />
           <span>Child task returned without a usable result.</span>
         </div>
       )}
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-accent/40">
+        <pre className="select-text text-tiny text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-accent/40">
           {output}
         </pre>
       )}
@@ -490,16 +490,16 @@ const SkillRenderer: ToolRenderer = ({ state }) => {
   const description = asString(state.input.description);
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-1.5 text-[10px]">
+      <div className="flex items-center gap-1.5 text-caption">
         <BookOpen size={10} className="text-tagma-accent shrink-0" />
         <span className="text-tagma-muted/80">{label}</span>
         <code className="select-text font-mono text-tagma-text truncate">
           {skillName ?? 'unknown'}
         </code>
       </div>
-      {description && <div className="text-[9px] text-tagma-muted/80 italic">{description}</div>}
+      {description && <div className="text-tiny text-tagma-muted/80 italic">{description}</div>}
       {state.status === 'error' && (
-        <pre className="select-text text-[9px] text-tagma-error/90 whitespace-pre-wrap break-all pl-3 border-l border-tagma-error/40">
+        <pre className="select-text text-tiny text-tagma-error/90 whitespace-pre-wrap break-all pl-3 border-l border-tagma-error/40">
           {state.error}
         </pre>
       )}

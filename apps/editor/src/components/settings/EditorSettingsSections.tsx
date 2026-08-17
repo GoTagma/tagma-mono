@@ -124,7 +124,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
       {error && <ErrorBox>{error}</ErrorBox>}
 
       {loading && (
-        <div className="flex items-center gap-2 text-[11px] text-tagma-muted">
+        <div className="flex items-center gap-2 text-body text-tagma-muted">
           <Loader2 size={12} className="animate-spin" /> Loading…
         </div>
       )}
@@ -133,8 +133,8 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
         <div>
           <label className="field-label">OpenCode agents</label>
           <div className="space-y-2 border border-tagma-border bg-tagma-bg p-2.5">
-            <div className="text-[11px] text-tagma-text">Agent max steps</div>
-            <p className="text-[10px] leading-relaxed text-tagma-muted">
+            <div className="text-body text-tagma-text">Agent max steps</div>
+            <p className="text-caption leading-relaxed text-tagma-muted">
               Machine-wide upper limit for every Tagma-managed agent. Agents that finish early stop
               immediately; this value does not force extra work. Applying a change restarts OpenCode
               for the current workspace.
@@ -165,19 +165,19 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                     setAgentMaxStepsSaved(false);
                   }
                 }}
-                className="text-[11px] w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
+                className="text-body w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={() => void saveGlobalAgentMaxSteps()}
                 disabled={globalSettingsInputsDisabled || !agentMaxStepsChanged}
-                className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-[11px] text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-body text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
               >
                 {globalSaving && <Loader2 size={11} className="animate-spin" />}
                 Apply
               </button>
             </div>
-            <div className="min-h-4 text-[10px] text-tagma-muted/70">
+            <div className="min-h-4 text-caption text-tagma-muted/70">
               {opencodeSettingsMutationBlockMessage
                 ? opencodeSettingsMutationBlockMessage
                 : !agentMaxStepsDraftValid
@@ -259,7 +259,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 borderless
               />
             </div>
-            <div className={'flex items-center gap-2 text-[11px]'}>
+            <div className={'flex items-center gap-2 text-body'}>
               <label
                 htmlFor={'chat-trial-plan-attempts'}
                 className={'w-44 shrink-0 text-tagma-muted'}
@@ -288,12 +288,12 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                   'w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50'
                 }
               />
-              <span className={'text-[10px] text-tagma-muted/70'}>
+              <span className={'text-caption text-tagma-muted/70'}>
                 default {DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}; each attempt is one hidden
                 planner continuation for the same YAML revision.
               </span>
             </div>
-            <div className="flex items-center gap-2 text-[11px]">
+            <div className="flex items-center gap-2 text-body">
               <label
                 htmlFor="chat-pipeline-repair-attempts"
                 className="w-44 shrink-0 text-tagma-muted"
@@ -320,7 +320,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 }}
                 className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
-              <span className="text-[10px] text-tagma-muted/70">
+              <span className="text-caption text-tagma-muted/70">
                 0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; compile and executed-trial
                 repair budget; it does not run the pipeline this many times.
               </span>
@@ -333,7 +333,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               onChange={(v) => updateField('chatContextLimitEnabled', v)}
               borderless
             />
-            <div className="flex items-center gap-2 text-[11px]">
+            <div className="flex items-center gap-2 text-body">
               <label htmlFor="context-rounds" className="w-44 shrink-0 text-tagma-muted">
                 Context rounds:
               </label>
@@ -354,7 +354,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 }}
                 className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
-              <span className="text-[10px] text-tagma-muted/70">
+              <span className="text-caption text-tagma-muted/70">
                 {settings.chatContextLimitEnabled
                   ? '0 = current message only; conversation history remains saved.'
                   : 'Off = full history sent; OpenCode may still compact it.'}
@@ -368,7 +368,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
         <div>
           <label className={'field-label'}>Execution</label>
           <div className={'space-y-2 border border-tagma-border bg-tagma-bg p-2.5'}>
-            <p className={'text-[10px] leading-relaxed text-tagma-muted'}>
+            <p className={'text-caption leading-relaxed text-tagma-muted'}>
               Workspace defaults for long-running tasks. Explicit YAML timeouts take precedence. The
               server keeps each outer lifecycle at least 30 minutes above the default task timeout
               so the host does not cut off a valid task first.
@@ -421,11 +421,11 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
           />
           {settings.pythonAgent.enabled && (
             <div className="mt-2 border border-tagma-border bg-tagma-bg p-2.5 space-y-1.5">
-              <div className="text-[10px] text-tagma-muted font-mono">
+              <div className="text-caption text-tagma-muted font-mono">
                 {settings.pythonAgent.interpreterCommand ?? 'python'}{' '}
                 {settings.pythonAgent.interpreterArgs.join(' ')}
               </div>
-              <div className="text-[10px] text-tagma-muted font-mono">
+              <div className="text-caption text-tagma-muted font-mono">
                 venv: {settings.pythonAgent.venvPath ?? '.tagma/.python-agent/venv'}
               </div>
               <button
@@ -436,7 +436,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                   globalSaving ||
                   opencodeSettingsMutationBlocked
                 }
-                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-border text-tagma-text hover:bg-tagma-surface disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                className="flex items-center gap-1.5 text-body px-2.5 py-1 border border-tagma-border text-tagma-text hover:bg-tagma-surface disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
               >
                 <Terminal size={11} />
                 Reconfigure
@@ -463,7 +463,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               <button
                 onClick={handleApply}
                 disabled={!hasWorkspace || applyStatus.kind === 'running'}
-                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                className="flex items-center gap-1.5 text-body px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
                 title="Re-scan all YAMLs in this workspace and install/load any missing plugins. Affects plugins only — other settings above save instantly."
               >
                 {applyStatus.kind === 'running' ? (
@@ -474,7 +474,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 Install / Load Plugins
               </button>
               {!settings.autoInstallDeclaredPlugins && (
-                <span className="text-[10px] text-tagma-muted/70">
+                <span className="text-caption text-tagma-muted/70">
                   (toggle is off — only loads already-installed plugins)
                 </span>
               )}
@@ -520,7 +520,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
             disabled={settingsInputsDisabled}
             onChange={(v) => updateField('autoSaveEnabled', v)}
           />
-          <div className="mt-2 flex items-center gap-2 text-[11px] border border-tagma-border bg-tagma-bg p-2.5">
+          <div className="mt-2 flex items-center gap-2 text-body border border-tagma-border bg-tagma-bg p-2.5">
             <label htmlFor="autosave-interval" className="text-tagma-muted">
               Interval (seconds):
             </label>
@@ -541,7 +541,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               }}
               className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
             />
-            <span className="text-[10px] text-tagma-muted/70">(default 30, range 5–600)</span>
+            <span className="text-caption text-tagma-muted/70">(default 30, range 5–600)</span>
           </div>
         </div>
       )}
@@ -557,7 +557,7 @@ export function SettingsStorageFooter({ controller }: { controller: EditorSettin
   const { saving, pythonSaving, globalSaving } = controller;
   return (
     <div className="shrink-0 border-t border-tagma-border bg-tagma-surface/25 px-4 py-2 sm:px-8">
-      <div className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-6 gap-y-0.5 text-[10px] text-tagma-muted font-mono">
+      <div className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-6 gap-y-0.5 text-caption text-tagma-muted font-mono">
         <div>
           Global: <code>~/.tagma/global-settings.json</code>
           {globalSaving ? ' · saving…' : ''}
@@ -624,12 +624,7 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
           <h3 id="python-agent-wizard-title" className="panel-title">
             Python AI Agent
           </h3>
-          <button
-            onClick={onClose}
-            className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-            aria-label="Close"
-            disabled={busy}
-          >
+          <button onClick={onClose} className="icon-btn" aria-label="Close" disabled={busy}>
             <X size={14} />
           </button>
         </div>
@@ -667,9 +662,9 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
             <div className="border border-tagma-border bg-tagma-bg p-2.5 space-y-2">
               {detected.length > 0 ? (
                 <div className="space-y-1">
-                  <div className="text-[10px] text-tagma-muted">Detected versions</div>
+                  <div className="text-caption text-tagma-muted">Detected versions</div>
                   <select
-                    className="w-full px-2 py-1 bg-tagma-surface border border-tagma-border text-[11px] text-tagma-text"
+                    className="w-full px-2 py-1 bg-tagma-surface border border-tagma-border text-body text-tagma-text"
                     value={selectedId}
                     disabled={busy}
                     onChange={(e) => onSelectedId(e.target.value)}
@@ -684,12 +679,12 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <label htmlFor="python-path" className="text-[10px] text-tagma-muted">
+                  <label htmlFor="python-path" className="text-caption text-tagma-muted">
                     Python interpreter path
                   </label>
                   <input
                     id="python-path"
-                    className="w-full px-2 py-1 bg-tagma-surface border border-tagma-border text-[11px] text-tagma-text font-mono"
+                    className="w-full px-2 py-1 bg-tagma-surface border border-tagma-border text-body text-tagma-text font-mono"
                     value={manualPath}
                     disabled={busy}
                     onChange={(e) => onManualPath(e.target.value)}
@@ -704,7 +699,7 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
                   !!opencodeSettingsMutationBlockMessage ||
                   (!selected && manualPath.trim().length === 0)
                 }
-                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                className="flex items-center gap-1.5 text-body px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
               >
                 {status.kind === 'configuring' ? (
                   <Loader2 size={11} className="animate-spin" />
@@ -719,26 +714,26 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
           {choice === 'no' && (
             <div className="border border-tagma-border bg-tagma-bg p-2.5 space-y-2">
               <div className="flex items-center gap-2">
-                <label htmlFor="python-version" className="text-[10px] text-tagma-muted">
+                <label htmlFor="python-version" className="text-caption text-tagma-muted">
                   Version
                 </label>
                 <input
                   id="python-version"
-                  className="w-20 px-2 py-1 bg-tagma-surface border border-tagma-border text-[11px] text-tagma-text"
+                  className="w-20 px-2 py-1 bg-tagma-surface border border-tagma-border text-body text-tagma-text"
                   value={installVersion}
                   disabled={busy}
                   onChange={(e) => onInstallVersion(e.target.value)}
                 />
               </div>
               {installPlan && (
-                <div className="font-mono text-[10px] text-tagma-muted border border-tagma-border/60 bg-tagma-bg px-2 py-1 break-all">
+                <div className="font-mono text-caption text-tagma-muted border border-tagma-border/60 bg-tagma-bg px-2 py-1 break-all">
                   {installPlan.command.join(' ')}
                 </div>
               )}
               <button
                 onClick={() => void installPython()}
                 disabled={busy || !installPlan}
-                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                className="flex items-center gap-1.5 text-body px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
               >
                 {status.kind === 'installing' ? (
                   <Loader2 size={11} className="animate-spin" />
@@ -751,18 +746,18 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
           )}
 
           {commandPreview && (
-            <div className="text-[10px] text-tagma-muted font-mono break-all">
+            <div className="text-caption text-tagma-muted font-mono break-all">
               command: {commandPreview}
             </div>
           )}
           {status.kind === 'detecting' && (
-            <div className="flex items-center gap-1.5 text-[10px] text-tagma-muted">
+            <div className="flex items-center gap-1.5 text-caption text-tagma-muted">
               <Loader2 size={10} className="animate-spin" />
               Detecting Python...
             </div>
           )}
           {status.kind === 'installed' && (
-            <div className="bg-tagma-success/8 border border-tagma-success/30 px-2 py-1.5 text-[10px] text-tagma-success/90">
+            <div className="alert-box-success text-caption text-tagma-success/90">
               {status.message}
             </div>
           )}
@@ -775,11 +770,11 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
 
 function DeclaredPreview({ declared }: { declared: PluginDeclaredResult | null }) {
   if (!declared) {
-    return <div className="text-[10px] text-tagma-muted">Scanning workspace YAMLs…</div>;
+    return <div className="text-caption text-tagma-muted">Scanning workspace YAMLs…</div>;
   }
   if (declared.declared.length === 0) {
     return (
-      <div className="text-[10px] text-tagma-muted">
+      <div className="text-caption text-tagma-muted">
         No plugins declared in any YAML under <code>.tagma/</code> in this workspace.
       </div>
     );
@@ -787,7 +782,7 @@ function DeclaredPreview({ declared }: { declared: PluginDeclaredResult | null }
   const installedSet = new Set(declared.installed);
   return (
     <div className="space-y-1.5">
-      <div className="text-[10px] text-tagma-muted">
+      <div className="text-caption text-tagma-muted">
         {declared.declared.length} declared plugin{declared.declared.length !== 1 ? 's' : ''}
         {' across all YAMLs · '}
         <span className="text-tagma-success">{declared.installed.length} installed</span>
@@ -803,7 +798,7 @@ function DeclaredPreview({ declared }: { declared: PluginDeclaredResult | null }
             <span
               key={name}
               className={
-                'text-[9px] font-mono px-1.5 py-0.5 border ' +
+                'text-tiny font-mono px-1.5 py-0.5 border ' +
                 (isInstalled
                   ? 'text-tagma-success border-tagma-success/40 bg-tagma-success/5'
                   : 'text-tagma-warning border-tagma-warning/40 bg-tagma-warning/5')
@@ -843,7 +838,7 @@ function TimeoutMinutesRow({
   onChange,
 }: TimeoutMinutesRowProps) {
   return (
-    <div className={'flex items-center gap-2 text-[11px]'}>
+    <div className={'flex items-center gap-2 text-body'}>
       <label htmlFor={id} className={'w-56 shrink-0 text-tagma-muted'}>
         {label}:
       </label>
@@ -865,7 +860,7 @@ function TimeoutMinutesRow({
           'w-20 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50'
         }
       />
-      <span className={'text-[10px] text-tagma-muted/70'}>
+      <span className={'text-caption text-tagma-muted/70'}>
         default {defaultValue.toLocaleString()}; range {minimum.toLocaleString()}-
         {maximum.toLocaleString()} minutes.
       </span>
@@ -904,8 +899,8 @@ function RadioGroupRow<T extends string>({
     <div
       className={`px-2.5 py-2 border border-tagma-border bg-tagma-bg ${disabled ? 'opacity-60' : ''}`}
     >
-      <div className="text-[11px] text-tagma-text">{label}</div>
-      <div className="text-[10px] text-tagma-muted mt-0.5 mb-2 leading-snug">{description}</div>
+      <div className="text-body text-tagma-text">{label}</div>
+      <div className="text-caption text-tagma-muted mt-0.5 mb-2 leading-snug">{description}</div>
       <div className="space-y-1">
         {options.map((opt) => {
           const checked = opt.value === value;
@@ -922,8 +917,8 @@ function RadioGroupRow<T extends string>({
                 onChange={() => onChange(opt.value)}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] text-tagma-text">{opt.label}</div>
-                <div className="text-[10px] text-tagma-muted leading-snug">{opt.hint}</div>
+                <div className="text-body text-tagma-text">{opt.label}</div>
+                <div className="text-caption text-tagma-muted leading-snug">{opt.hint}</div>
               </div>
             </label>
           );
@@ -953,8 +948,8 @@ function ToggleRow({
         onChange={(e) => onChange(e.target.checked)}
       />
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] text-tagma-text">{label}</div>
-        <div className="text-[10px] text-tagma-muted mt-0.5 leading-snug">{description}</div>
+        <div className="text-body text-tagma-text">{label}</div>
+        <div className="text-caption text-tagma-muted mt-0.5 leading-snug">{description}</div>
       </div>
     </label>
   );
@@ -965,8 +960,8 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
 
   if (status.kind === 'error') {
     return (
-      <div className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
-        <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+      <div className="alert-box-error">
+        <div className="alert-text-error">
           <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
           <span>{status.message}</span>
         </div>
@@ -984,8 +979,8 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
 
   return (
     <div className="space-y-1.5">
-      <div className="bg-tagma-success/8 border border-tagma-success/30 px-2 py-1.5">
-        <div className="flex items-start gap-1.5 text-[10px] text-tagma-success/90 font-mono">
+      <div className="alert-box-success">
+        <div className="flex items-start gap-1.5 text-caption text-tagma-success/90 font-mono">
           <CheckCircle2 size={10} className="text-tagma-success shrink-0 mt-[1px]" />
           <div className="space-y-0.5">
             {installedCount > 0 && (
@@ -1009,8 +1004,8 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
         </div>
       </div>
       {missingCount > 0 && (
-        <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2 py-1.5">
-          <div className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono">
+        <div className="alert-box-warning">
+          <div className="alert-text-warning">
             <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
             <div className="space-y-0.5">
               <div>
@@ -1026,8 +1021,8 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
         </div>
       )}
       {errorCount > 0 && (
-        <div className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
-          <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+        <div className="alert-box-error">
+          <div className="alert-text-error">
             <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
             <div className="space-y-0.5">
               {result.errors.map((err, i) => (
@@ -1045,8 +1040,8 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
 
 function WarnBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2.5 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono">
+    <div className="alert-box-warning">
+      <div className="alert-text-warning">
         <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>
@@ -1056,8 +1051,8 @@ function WarnBox({ children }: { children: ReactNode }) {
 
 function ErrorBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-error/8 border border-tagma-error/30 px-2.5 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+    <div className="alert-box-error">
+      <div className="alert-text-error">
         <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>

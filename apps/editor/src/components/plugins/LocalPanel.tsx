@@ -90,7 +90,7 @@ export function LocalPanel({
           />
           <AlertCircle size={13} className="shrink-0 mt-0.5 text-tagma-error" />
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-medium text-tagma-error tracking-wide">
+            <p className="text-body font-medium text-tagma-error tracking-wide">
               {autoLoadErrors.length} plugin{autoLoadErrors.length === 1 ? '' : 's'} failed to
               auto-load
             </p>
@@ -98,7 +98,7 @@ export function LocalPanel({
               {autoLoadErrors.map((err) => (
                 <li
                   key={err.name}
-                  className="text-[10px] font-mono text-tagma-muted-dim truncate"
+                  className="text-caption font-mono text-tagma-muted-dim truncate"
                   title={err.message}
                 >
                   <span className="text-tagma-error/80">{err.name}</span>
@@ -115,7 +115,7 @@ export function LocalPanel({
         {loading && plugins.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
             <Loader2 size={32} className="animate-spin opacity-70" />
-            <p className="text-[11px] tracking-wide">Loading plugins…</p>
+            <p className="text-body tracking-wide">Loading plugins…</p>
           </div>
         ) : filtered.length > 0 ? (
           <div className={PLUGIN_CARD_GRID_CLASSES}>
@@ -136,14 +136,14 @@ export function LocalPanel({
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
             <Package size={32} className="opacity-30" />
-            <p className="text-[11px] tracking-wide text-tagma-muted">
+            <p className="text-body tracking-wide text-tagma-muted">
               {query
                 ? 'No plugins match your search.'
                 : category !== 'all'
                   ? `No ${category} plugins installed.`
                   : 'No plugins installed in this workspace.'}
             </p>
-            <p className="text-[10px] text-tagma-muted-dim">
+            <p className="text-caption text-tagma-muted-dim">
               Open the <span className="text-tagma-accent">Marketplace</span> tab to discover and
               install plugins.
             </p>
@@ -301,17 +301,17 @@ function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismis
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-tagma-text truncate">{state.name}</span>
-          <span className="text-[10px] text-tagma-muted-dim">
+          <span className="font-mono text-body text-tagma-text truncate">{state.name}</span>
+          <span className="text-caption text-tagma-muted-dim">
             {isError ? `${capitalize(state.action)} failed` : state.message}
           </span>
         </div>
         {isError && (
           <>
-            <div className="mt-1 text-[10px] text-tagma-muted-dim leading-relaxed">
+            <div className="mt-1 text-caption text-tagma-muted-dim leading-relaxed">
               {errorHint(state.kind)}
             </div>
-            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-error/20 text-tagma-error/90 text-[9px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-error/20 text-tagma-error/90 text-tiny font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
               {state.message}
             </pre>
           </>

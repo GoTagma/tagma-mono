@@ -60,8 +60,8 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
             <ProductLogo size={32} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-[15px] font-semibold tracking-wide text-tagma-text">Tagma</h1>
-            <p className="text-[10px] font-mono uppercase tracking-widest text-tagma-muted-dim mt-0.5">
+            <h1 className="text-display font-semibold tracking-wide text-tagma-text">Tagma</h1>
+            <p className="text-caption font-mono uppercase tracking-widest text-tagma-muted-dim mt-0.5">
               Pipeline Editor
             </p>
           </div>
@@ -74,8 +74,8 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
         >
           <FolderOpen size={16} className="text-tagma-accent shrink-0" />
           <div className="flex-1 text-left min-w-0">
-            <div className="text-[12px] font-medium text-tagma-text">Open Workspace</div>
-            <div className="text-[10px] font-mono text-tagma-muted-dim mt-0.5">
+            <div className="text-label font-medium text-tagma-text">Open Workspace</div>
+            <div className="text-caption font-mono text-tagma-muted-dim mt-0.5">
               Select a folder to start working
             </div>
           </div>
@@ -88,17 +88,17 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
         <div>
           <div className="flex items-center gap-2 mb-3 px-0.5">
             <Clock size={10} className="text-tagma-muted-dim" />
-            <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-widest">
+            <span className="text-caption font-medium text-tagma-muted uppercase tracking-widest">
               Recent
             </span>
           </div>
 
           {loading ? (
-            <div className="text-[11px] font-mono text-tagma-muted-dim px-1 py-4">Loading...</div>
+            <div className="text-body font-mono text-tagma-muted-dim px-1 py-4">Loading...</div>
           ) : loadError ? (
             <div
               role="alert"
-              className="flex items-center gap-3 px-3 py-3 border border-tagma-error/30 bg-tagma-error/5 text-[11px] text-tagma-error"
+              className="flex items-center gap-3 px-3 py-3 border border-tagma-error/30 bg-tagma-error/5 text-body text-tagma-error"
             >
               <AlertCircle size={13} className="shrink-0" />
               <span className="flex-1 min-w-0 break-words">{loadError}</span>
@@ -111,7 +111,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
               </button>
             </div>
           ) : recent.length === 0 ? (
-            <div className="text-[11px] font-mono text-tagma-muted-dim px-1 py-4">
+            <div className="text-body font-mono text-tagma-muted-dim px-1 py-4">
               No recent workspaces.
             </div>
           ) : (
@@ -145,7 +145,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`text-[12px] font-medium truncate ${
+                            className={`text-label font-medium truncate ${
                               disabled ? 'text-tagma-muted-dim line-through' : 'text-tagma-text'
                             }`}
                           >
@@ -155,11 +155,11 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
                             <AlertCircle size={10} className="text-tagma-muted-dim/70 shrink-0" />
                           )}
                         </div>
-                        <div className="text-[10px] font-mono text-tagma-muted-dim truncate mt-0.5">
+                        <div className="text-caption font-mono text-tagma-muted-dim truncate mt-0.5">
                           {entry.path}
                         </div>
                       </div>
-                      <span className="text-[10px] font-mono text-tagma-muted-dim shrink-0 tabular-nums">
+                      <span className="text-caption font-mono text-tagma-muted-dim shrink-0 tabular-nums">
                         {formatRelative(entry.openedAt)}
                       </span>
                     </button>
@@ -180,7 +180,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
         </div>
 
         <div className="mt-6 text-center sm:mt-10">
-          <p className="text-[10px] font-mono text-tagma-muted-dim/70 tracking-wide">
+          <p className="text-caption font-mono text-tagma-muted-dim/70 tracking-wide">
             Config stored in{' '}
             <span className="text-tagma-muted-dim">~/.tagma/recent-workspaces.json</span>
           </p>

@@ -191,7 +191,7 @@ export function ConversationFlowBarView({
       aria-label="Conversation flow"
       className="shrink-0 border-b border-tagma-border/60 bg-tagma-bg px-3 py-1.5"
     >
-      <div className="flex items-center gap-2 text-[10px] font-mono text-tagma-muted min-w-0">
+      <div className="flex items-center gap-2 text-caption font-mono text-tagma-muted min-w-0">
         <span
           className={`h-1 w-1 shrink-0 ${
             terminalStatus === 'error'
@@ -396,7 +396,7 @@ export function ChatTrialProgressView({
   const segments = chatTrialProgressSegments(progress);
   if (segments.length === 0) return null;
   return (
-    <div className="select-text break-words text-[9px] text-tagma-muted/70">
+    <div className="select-text break-words text-tiny text-tagma-muted/70">
       {segments.join(' / ')}
     </div>
   );
@@ -657,9 +657,9 @@ export function BootstrapOverlay() {
         {isError ? (
           <>
             <AlertTriangle size={18} className="text-tagma-error" />
-            <div className="text-[11px] font-mono text-tagma-text">Couldn't start OpenCode.</div>
+            <div className="text-body font-mono text-tagma-text">Couldn't start OpenCode.</div>
             {error && (
-              <div className="text-[10px] font-mono text-tagma-muted/90 break-words max-w-full">
+              <div className="text-caption font-mono text-tagma-muted/90 break-words max-w-full">
                 {error}
               </div>
             )}
@@ -670,7 +670,7 @@ export function BootstrapOverlay() {
                   /* error already surfaced via bootstrapError */
                 });
               }}
-              className="mt-1 px-2 py-1 border border-tagma-border text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+              className="mt-1 px-2 py-1 border border-tagma-border text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
             >
               Retry
             </button>
@@ -678,8 +678,8 @@ export function BootstrapOverlay() {
         ) : (
           <>
             <Loader2 size={16} className="text-tagma-muted animate-spin" />
-            <div className="text-[11px] font-mono text-tagma-text">Starting OpenCode…</div>
-            <div className="text-[10px] font-mono text-tagma-muted/70">
+            <div className="text-body font-mono text-tagma-text">Starting OpenCode…</div>
+            <div className="text-caption font-mono text-tagma-muted/70">
               First launch can take a few seconds.
             </div>
           </>
@@ -800,7 +800,7 @@ function ChatHeader() {
         onClick={openConnect}
         disabled={providerBlocked}
         title="Connect providers"
-        className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
+        className="shrink-0 icon-btn"
       >
         <Plug size={14} />
       </button>
@@ -811,7 +811,7 @@ function ChatHeader() {
         }}
         disabled={navigationBlocked}
         title="New conversation"
-        className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
+        className="shrink-0 icon-btn"
       >
         <Plus size={14} />
       </button>
@@ -821,7 +821,7 @@ function ChatHeader() {
         disabled={navigationBlocked}
         title="History"
         aria-label="Conversation history"
-        className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
+        className="shrink-0 icon-btn"
       >
         <History size={14} />
       </button>
@@ -873,7 +873,7 @@ function ConversationExportButton({
         disabled={disabled}
         title="Export conversation"
         aria-label="Export conversation"
-        className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
+        className="shrink-0 icon-btn"
       >
         <Download size={14} />
       </button>
@@ -898,7 +898,7 @@ function ExportFormatButton({ label, onClick }: { label: string; onClick: () => 
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:bg-tagma-border/30 transition-colors"
+      className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-caption font-mono text-tagma-muted hover:text-tagma-text hover:bg-tagma-border/30 transition-colors"
     >
       <FileText size={11} className="shrink-0" />
       <span className="truncate">{label}</span>
@@ -960,7 +960,7 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
         disabled={disabled}
         title={`Model variant: ${selected.label}`}
         aria-label="Select model variant"
-        className="shrink-0 flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
+        className="shrink-0 flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
       >
         <Brain size={10} className="shrink-0" />
         <span>{selected.label}</span>
@@ -984,7 +984,7 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
                   setReasoningEffort(option.value);
                   setOpen(false);
                 }}
-                className={`w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-[10px] font-mono hover:bg-tagma-border/30 transition-colors ${
+                className={`w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-caption font-mono hover:bg-tagma-border/30 transition-colors ${
                   active ? 'text-tagma-text bg-tagma-border/20' : 'text-tagma-muted'
                 }`}
                 title={
@@ -1195,10 +1195,10 @@ function ChatMessages() {
               <div className="flex h-9 w-9 items-center justify-center border border-tagma-accent/25 bg-tagma-accent/10 shadow-glow-accent">
                 <Terminal size={15} className="text-tagma-accent" />
               </div>
-              <div className="text-[13px] font-sans text-tagma-text">
+              <div className="text-title font-sans text-tagma-text">
                 Ask opencode anything about YAML pipelines.
               </div>
-              <div className="text-[10px] font-mono text-tagma-muted/70">
+              <div className="text-caption font-mono text-tagma-muted/70">
                 House rules and your current file are loaded automatically.
               </div>
             </div>
@@ -1353,13 +1353,13 @@ export function ChatCompletionToastCard({
           <AlertTriangle size={14} className="text-tagma-error shrink-0 mt-0.5" />
         )}
         <div className="min-w-0 flex-1 font-mono">
-          <div className="text-[11px] text-tagma-text truncate" title={pipelineName}>
+          <div className="text-body text-tagma-text truncate" title={pipelineName}>
             {pipelineName}
           </div>
-          <div className="mt-0.5 text-[9px] text-tagma-muted/70 truncate" title={sessionTitle}>
+          <div className="mt-0.5 text-tiny text-tagma-muted/70 truncate" title={sessionTitle}>
             {sessionTitle}
           </div>
-          <div className="mt-1 text-[9px] text-tagma-muted/80 break-words">
+          <div className="mt-1 text-tiny text-tagma-muted/80 break-words">
             {presentation.outcome}
           </div>
           {(deploymentTarget || invalidTargetReason) && (
@@ -1371,7 +1371,7 @@ export function ChatCompletionToastCard({
                   if (latest.available) onOpen?.(latest.target);
                 });
               }}
-              className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+              className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-caption text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
               title={`Open ${pipelineName}`}
             >
               <FileText size={11} />
@@ -1379,7 +1379,7 @@ export function ChatCompletionToastCard({
             </button>
           )}
           {unavailableReason && (
-            <div role={'status'} className={'mt-1 text-[9px] text-tagma-warning break-words'}>
+            <div role={'status'} className={'mt-1 text-tiny text-tagma-warning break-words'}>
               {unavailableReason}
             </div>
           )}
@@ -1387,7 +1387,7 @@ export function ChatCompletionToastCard({
         <button
           type="button"
           onClick={onDismiss}
-          className="p-1 text-tagma-muted hover:text-tagma-text shrink-0 transition-colors"
+          className="icon-btn shrink-0"
           aria-label="Dismiss completion"
         >
           <X size={12} />
@@ -1605,8 +1605,8 @@ function YamlActionBubble() {
 
   return (
     <div className="flex flex-col gap-1 items-start">
-      <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60">yaml</div>
-      <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-[10px] font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
+      <div className="section-label">yaml</div>
+      <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-caption font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
         <div className="flex items-center gap-1.5 min-w-0">
           {action.status === 'ready' ? (
             <CheckCircle2 size={12} className="text-tagma-ready shrink-0" />
@@ -1625,7 +1625,7 @@ function YamlActionBubble() {
           type="button"
           onClick={onClick}
           disabled={action.status === 'repairing'}
-          className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-caption text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {action.status === 'repairing' ? (
             <Loader2 size={11} className="animate-spin" />
@@ -1652,7 +1652,7 @@ export function PendingUserBubble({ text }: { text: string }) {
     <div className="flex flex-col items-end">
       <div className="max-w-[85%] min-w-0 flex flex-col gap-1.5 items-end">
         <div className="min-w-0 max-w-full">
-          <div className="select-text px-3 py-2 text-[12px] font-sans whitespace-pre-wrap break-words chat-user-bubble text-tagma-text opacity-80 animate-pulse">
+          <div className="select-text px-3 py-2 text-label font-sans whitespace-pre-wrap break-words chat-user-bubble text-tagma-text opacity-80 animate-pulse">
             {text}
           </div>
         </div>
@@ -1670,7 +1670,7 @@ function ForcePushButton() {
         type="button"
         onClick={() => void flushQueueNow()}
         disabled={flushing}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide border border-tagma-muted/30 bg-tagma-surface/40 text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1 text-caption font-mono uppercase tracking-wide border border-tagma-muted/30 bg-tagma-surface/40 text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         title="Interrupt current turn and send queued messages now"
         aria-label="Interrupt current turn and send queued messages now"
       >
@@ -1693,7 +1693,7 @@ export function QueuedUserBubble({
   const cancelQueuedMessage = useChatStore((s) => s.cancelQueuedMessage);
   return (
     <div className="flex flex-col gap-1 items-end">
-      <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60 flex items-center gap-2">
+      <div className="section-label flex items-center gap-2">
         <span>queued #{position}</span>
         <button
           type="button"
@@ -1707,7 +1707,7 @@ export function QueuedUserBubble({
       </div>
       <div className="max-w-[85%] min-w-0 flex flex-col gap-1.5 items-end">
         <div className="min-w-0 max-w-full">
-          <div className="select-text px-3 py-2 text-[12px] font-sans whitespace-pre-wrap break-words chat-user-bubble-queued text-tagma-muted">
+          <div className="select-text px-3 py-2 text-label font-sans whitespace-pre-wrap break-words chat-user-bubble-queued text-tagma-muted">
             {text}
           </div>
         </div>

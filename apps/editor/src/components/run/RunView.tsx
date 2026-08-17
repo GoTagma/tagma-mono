@@ -503,7 +503,7 @@ export function RunView({
         <div className="flex items-center gap-2 flex-1 min-w-0 h-full">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
+            className="flex items-center gap-1.5 text-label text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
             title="Back to Editor"
           >
             <ArrowLeft size={12} />
@@ -513,7 +513,7 @@ export function RunView({
 
           <div className="hidden items-center gap-1.5 px-2 min-w-0 shrink sm:flex">
             <ProductLogo size={14} />
-            <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
+            <span className="text-label font-medium text-tagma-text truncate max-w-[160px]">
               {config.name}
             </span>
           </div>
@@ -530,7 +530,7 @@ export function RunView({
                 onClick={() => setHistoryRefreshToken((t) => t + 1)}
                 disabled={historyLoading}
                 title="Reload run history"
-                className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 text-label text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RefreshCw size={12} className={historyLoading ? 'animate-spin' : ''} />
                 <span className="hidden md:inline">Refresh</span>
@@ -543,7 +543,7 @@ export function RunView({
               <div className="hidden w-px h-4 bg-tagma-border/60 sm:block" />
 
               {/* Run status */}
-              <div className="flex items-center gap-2 text-[10px] font-medium">
+              <div className="flex items-center gap-2 text-caption font-medium">
                 {status === 'running' && (
                   <span
                     className="chip-sm gap-1.5 px-2 bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready"
@@ -648,7 +648,7 @@ export function RunView({
               {/* Plugins (read-only) */}
               <button
                 onClick={() => setShowPlugins(true)}
-                className="flex shrink-0 items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
+                className="flex shrink-0 items-center gap-1.5 px-2 py-1 text-label text-tagma-muted hover:text-tagma-text transition-colors"
                 title="View loaded plugins (read-only)"
                 aria-label="View loaded plugins"
               >
@@ -658,7 +658,7 @@ export function RunView({
               {/* Search */}
               <button
                 onClick={() => setSearchVisible(true)}
-                className="flex shrink-0 items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
+                className="flex shrink-0 items-center gap-1.5 px-2 py-1 text-label text-tagma-muted hover:text-tagma-text transition-colors"
                 title="Search tasks (Ctrl+F)"
                 aria-label="Search tasks"
               >
@@ -669,7 +669,7 @@ export function RunView({
               {isLive && !showAbortConfirm && (
                 <button
                   onClick={handleAbortClick}
-                  className="flex items-center gap-1.5 px-3 py-1 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1 shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1 text-label text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1 shrink-0"
                   title="Abort run"
                   aria-label="Abort run"
                 >
@@ -679,16 +679,16 @@ export function RunView({
               )}
               {showAbortConfirm && (
                 <div className="absolute right-2 top-full z-[120] flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-2 border border-tagma-error/20 bg-tagma-surface px-2 py-1 shadow-panel sm:static sm:mr-1 sm:bg-tagma-error/5 sm:shadow-none">
-                  <span className="text-[10px] font-medium text-tagma-error">Stop all?</span>
+                  <span className="text-caption font-medium text-tagma-error">Stop all?</span>
                   <button
                     onClick={handleAbortConfirm}
-                    className="px-2 py-0.5 text-[10px] font-medium bg-tagma-error/20 text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/30 transition-colors"
+                    className="px-2 py-0.5 text-caption font-medium bg-tagma-error/20 text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/30 transition-colors"
                   >
                     Confirm
                   </button>
                   <button
                     onClick={handleAbortCancel}
-                    className="px-2 py-0.5 text-[10px] text-tagma-muted border border-tagma-border hover:bg-tagma-elevated transition-colors"
+                    className="px-2 py-0.5 text-caption text-tagma-muted border border-tagma-border hover:bg-tagma-elevated transition-colors"
                   >
                     Cancel
                   </button>
@@ -704,7 +704,7 @@ export function RunView({
         <div className="flex items-center gap-2 px-3 bg-tagma-error/5 border-b border-tagma-error/20">
           <div className="w-[2px] self-stretch shrink-0 bg-tagma-error" />
           <span
-            className="flex-1 min-w-0 text-[11px] text-tagma-error font-mono py-2 truncate"
+            className="flex-1 min-w-0 text-body text-tagma-error font-mono py-2 truncate"
             title={error ?? undefined}
           >
             {error}
@@ -712,7 +712,7 @@ export function RunView({
           <button
             type="button"
             onClick={handleAskChatForRunError}
-            className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-2 py-1 text-body font-medium text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors shrink-0"
             title="Ask AI to diagnose this run error"
             aria-label="Ask AI to diagnose this run error"
           >
@@ -727,7 +727,7 @@ export function RunView({
         <div className="border-b border-tagma-border">
           <button
             onClick={() => setPipelineLogExpanded(!pipelineLogExpanded)}
-            className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
+            className="w-full flex items-center gap-1.5 px-3 py-1.5 text-caption font-mono text-tagma-muted hover:text-tagma-text transition-colors"
           >
             {pipelineLogExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
             <span>Pipeline Log ({pipelineLogs.length})</span>
@@ -737,7 +737,7 @@ export function RunView({
               {pipelineLogs.map((line, i) => (
                 <div
                   key={i}
-                  className={`text-[10px] font-mono leading-relaxed ${
+                  className={`text-caption font-mono leading-relaxed ${
                     line.level === 'error'
                       ? 'text-tagma-error'
                       : line.level === 'warn'
@@ -1014,14 +1014,14 @@ export function RunView({
                 }
               }}
               placeholder="Search tasks by name or prompt..."
-              className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-border focus:border-tagma-accent px-2 py-1 text-tagma-text outline-none"
+              className="flex-1 text-body font-mono bg-tagma-bg border border-tagma-border focus:border-tagma-accent px-2 py-1 text-tagma-text outline-none"
             />
             <button
               onClick={() => {
                 setSearchVisible(false);
                 setSearchQuery('');
               }}
-              className="p-1 text-tagma-muted hover:text-tagma-text"
+              className="icon-btn"
               aria-label="Close search"
             >
               <X size={12} />
@@ -1029,12 +1029,12 @@ export function RunView({
           </div>
           <div className="max-h-[min(240px,calc(100dvh-7rem))] overflow-y-auto">
             {searchQuery.trim() === '' && (
-              <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">
+              <div className="px-3 py-2 text-caption font-mono text-tagma-muted/60">
                 Type to search tasks
               </div>
             )}
             {searchQuery.trim() !== '' && searchMatches.length === 0 && (
-              <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">No matches</div>
+              <div className="px-3 py-2 text-caption font-mono text-tagma-muted/60">No matches</div>
             )}
             {searchMatches.map((m) => (
               <button
@@ -1050,9 +1050,9 @@ export function RunView({
                   });
                 }}
               >
-                <div className="text-[11px] font-mono text-tagma-text truncate">{m.label}</div>
+                <div className="text-body font-mono text-tagma-text truncate">{m.label}</div>
                 {m.snippet && (
-                  <div className="text-[10px] font-mono text-tagma-muted/60 truncate">
+                  <div className="text-caption font-mono text-tagma-muted/60 truncate">
                     {m.snippet}
                   </div>
                 )}

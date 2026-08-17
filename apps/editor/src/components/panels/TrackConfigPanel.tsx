@@ -185,12 +185,9 @@ export function TrackConfigPanel({
             return (
               <>
                 {errs.length > 0 && (
-                  <div className="bg-tagma-error/8 border border-tagma-error/30 px-2.5 py-1.5 space-y-1">
+                  <div className="alert-box-error space-y-1">
                     {errs.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono"
-                      >
+                      <div key={i} className="alert-text-error">
                         <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
                         <span>{d.message}</span>
                       </div>
@@ -198,12 +195,9 @@ export function TrackConfigPanel({
                   </div>
                 )}
                 {warns.length > 0 && (
-                  <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2.5 py-1.5 space-y-1">
+                  <div className="alert-box-warning space-y-1">
                     {warns.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono"
-                      >
+                      <div key={i} className="alert-text-warning">
                         <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
                         <span>{d.message}</span>
                       </div>
@@ -224,7 +218,7 @@ export function TrackConfigPanel({
               <button
                 type="button"
                 onClick={() => setTaskListSort('execution')}
-                className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
+                className={`px-2 py-0.5 text-caption font-mono uppercase tracking-wider transition-colors ${
                   taskListSort === 'execution'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -236,7 +230,7 @@ export function TrackConfigPanel({
               <button
                 type="button"
                 onClick={() => setTaskListSort('alphabetical')}
-                className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border-l border-tagma-border transition-colors ${
+                className={`px-2 py-0.5 text-caption font-mono uppercase tracking-wider border-l border-tagma-border transition-colors ${
                   taskListSort === 'alphabetical'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -277,7 +271,7 @@ export function TrackConfigPanel({
             Track ID <span className="text-tagma-error">*</span>
           </label>
           <div
-            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1 truncate"
+            className="text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1 truncate"
             title={track.id}
           >
             {track.id}
@@ -447,7 +441,7 @@ export function TrackConfigPanel({
                   buttonClassName="top-2 translate-y-0"
                 >
                   <textarea
-                    className="field-input min-h-[60px] resize-y font-mono text-[11px]"
+                    className="field-input min-h-[60px] resize-y font-mono text-body"
                     value={agentProfile}
                     onChange={(e) => setAgentProfile(e.target.value)}
                     onBlur={blurAgentProfile}
@@ -476,7 +470,7 @@ export function TrackConfigPanel({
             <CopyableField value={cwd} label="Copy track working directory">
               <input
                 type="text"
-                className="field-input font-mono text-[11px]"
+                className="field-input font-mono text-body"
                 value={cwd}
                 onChange={(e) => setCwd(e.target.value)}
                 onBlur={blurCwd}
@@ -525,7 +519,7 @@ export function TrackConfigPanel({
                         className="accent-tagma-accent"
                       />
                       <span
-                        className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
+                        className={`text-body capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
                       >
                         {key}
                       </span>
@@ -555,7 +549,7 @@ export function TrackConfigPanel({
               <option value="ignore">ignore</option>
             </select>
             <p
-              className={`text-[10px] mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-tagma-warning' : 'text-tagma-muted'}`}
+              className={`text-caption mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-tagma-warning' : 'text-tagma-muted'}`}
             >
               {ON_FAILURE_DESCRIPTIONS[track.on_failure ?? '']}
             </p>
@@ -567,7 +561,7 @@ export function TrackConfigPanel({
           <label className="field-label">
             Tasks <span className="text-tagma-error">*</span>
           </label>
-          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
+          <div className="text-body font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
             {track.tasks.length} task{track.tasks.length !== 1 ? 's' : ''}
           </div>
         </div>
@@ -615,7 +609,7 @@ export function TrackConfigPanel({
               {track.tasks.length > 0 && (
                 <ul className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
                   {track.tasks.map((t) => (
-                    <li key={t.id} className="font-mono text-[11px] text-tagma-text/80">
+                    <li key={t.id} className="font-mono text-body text-tagma-text/80">
                       &bull; {track.id}.{t.id}
                     </li>
                   ))}

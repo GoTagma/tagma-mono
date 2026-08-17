@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { JsonOutputView } from '../src/components/run/JsonOutputView';
 
-const PRE = 'select-text text-[10px] font-mono text-tagma-text';
+const PRE = 'select-text text-caption font-mono text-tagma-text';
 
 describe('JsonOutputView — non-JSON passthrough (zero regression)', () => {
   const html = renderToStaticMarkup(

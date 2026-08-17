@@ -3406,7 +3406,7 @@ export function App() {
       <div className="h-full flex items-center justify-center bg-tagma-bg">
         <div className="flex items-center gap-2 text-tagma-muted">
           <Loader2 size={16} className="animate-spin" />
-          <span className="text-xs font-mono">Loading...</span>
+          <span className="text-label font-mono">Loading...</span>
         </div>
       </div>
     );
@@ -3650,7 +3650,7 @@ export function App() {
             </div>
 
             {yamlEditLocked && (
-              <div className="flex items-center gap-2 border-b border-tagma-info/20 bg-tagma-info/8 px-3 py-1.5 text-[11px] font-mono text-tagma-text">
+              <div className="flex items-center gap-2 border-b border-tagma-info/20 bg-tagma-info/8 px-3 py-1.5 text-body font-mono text-tagma-text">
                 <ShieldCheck size={13} className="text-tagma-info" />
                 <span>{yamlEditLockReason || YAML_EDIT_LOCK_MESSAGE}</span>
               </div>
@@ -3756,7 +3756,7 @@ export function App() {
                     />
                   ) : (
                     <div className="h-full flex items-center justify-center px-6 text-center">
-                      <p className="text-[11px] font-mono text-tagma-muted leading-relaxed">
+                      <p className="text-body font-mono text-tagma-muted leading-relaxed">
                         Select the pipeline name, a task, or a track to inspect its configuration.
                       </p>
                     </div>

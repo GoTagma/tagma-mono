@@ -52,12 +52,12 @@ export function InspectorModelField({
             }}
             placeholder="Pick model"
             fallbackLabel={value}
-            buttonClassName="field-input inspector-model-input w-full pr-7 justify-between font-mono text-[11px]"
+            buttonClassName="field-input inspector-model-input w-full pr-7 justify-between font-mono text-body"
           />
         ) : (
           <input
             type="text"
-            className="inspector-model-input field-input font-mono text-[11px] pr-7"
+            className="inspector-model-input field-input font-mono text-body pr-7"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}

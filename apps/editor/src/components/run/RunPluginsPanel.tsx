@@ -28,12 +28,12 @@ function Section({
   if (items.length === 0) {
     return (
       <div>
-        <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-1">
+        <div className="flex items-center gap-1.5 section-label-md mb-1">
           {icon}
           <span>{label}</span>
           <span className="text-tagma-muted/40">(0)</span>
         </div>
-        <div className="text-[10px] font-mono text-tagma-muted/40 italic pl-5">
+        <div className="text-caption font-mono text-tagma-muted/40 italic pl-5">
           — none registered —
         </div>
       </div>
@@ -41,7 +41,7 @@ function Section({
   }
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-1">
+      <div className="flex items-center gap-1.5 section-label-md mb-1">
         {icon}
         <span>{label}</span>
         <span className="text-tagma-muted/40">({items.length})</span>
@@ -50,7 +50,7 @@ function Section({
         {items.map((name) => (
           <span
             key={name}
-            className="text-[10px] font-mono text-tagma-text/80 bg-tagma-bg border border-tagma-border/60 px-2 py-[2px]"
+            className="text-caption font-mono text-tagma-text/80 bg-tagma-bg border border-tagma-border/60 px-2 py-[2px]"
           >
             {name}
           </span>
@@ -82,16 +82,12 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
       >
         <div className="panel-header">
           <div className="flex items-center gap-2">
-            <Package size={14} className="text-tagma-accent" />
+            <Package size={14} className="text-tagma-info" />
             <h2 id="run-plugins-panel-title" className="panel-title">
               Plugins (read-only)
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-            aria-label="Close"
-          >
+          <button onClick={onClose} className="icon-btn" aria-label="Close">
             <X size={14} />
           </button>
         </div>
@@ -99,13 +95,13 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
         <div className="modal-viewport-body space-y-5 px-5 py-4">
           {/* Declared (from config.plugins) */}
           <div>
-            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-1.5">
+            <div className="flex items-center gap-1.5 section-label-md mb-1.5">
               <Package size={9} />
               <span>Declared packages</span>
               <span className="text-tagma-muted/40">({declaredPlugins.length})</span>
             </div>
             {declaredPlugins.length === 0 ? (
-              <div className="text-[10px] font-mono text-tagma-muted/50 italic pl-5">
+              <div className="text-caption font-mono text-tagma-muted/50 italic pl-5">
                 No third-party plugin packages declared in this pipeline.
               </div>
             ) : (
@@ -113,7 +109,7 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
                 {declaredPlugins.map((name) => (
                   <div
                     key={name}
-                    className="text-[11px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1"
+                    className="text-body font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1"
                   >
                     {name}
                   </div>
@@ -126,7 +122,7 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
 
           {/* Registered handlers — what the SDK actually loaded */}
           <div className="space-y-4">
-            <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/50">
+            <div className="text-tiny font-mono uppercase tracking-wider text-tagma-muted/50">
               Registered handlers (builtin + declared packages)
             </div>
             <Section icon={<Cpu size={9} />} label="Drivers" items={registry.drivers} />

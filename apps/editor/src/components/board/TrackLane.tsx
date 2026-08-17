@@ -33,7 +33,7 @@ function Chip({ children, className = '' }: { children: React.ReactNode; classNa
     <span
       className={`inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden ${className}`}
     >
-      <span className="truncate text-[7.5px] font-mono leading-[14px]">{children}</span>
+      <span className="truncate text-micro font-mono leading-[14px]">{children}</span>
     </span>
   );
 }
@@ -60,12 +60,12 @@ function TrackTooltip({ track, anchorRect }: { track: RawTrackConfig; anchorRect
 
   return (
     <FloatingPanel anchorRect={anchorRect} width={260} borderClass="border-tagma-border">
-      <div className="px-3 py-1.5 text-[10px] font-semibold text-tagma-text truncate border-b border-tagma-border">
+      <div className="px-3 py-1.5 text-caption font-semibold text-tagma-text truncate border-b border-tagma-border">
         {track.name}
       </div>
       <div className="px-3 py-1.5">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex py-[1.5px] text-[9px] font-mono gap-2 min-w-0">
+          <div key={label} className="flex py-[1.5px] text-tiny font-mono gap-2 min-w-0">
             <span className="text-tagma-muted/70 w-[72px] shrink-0 truncate">{label}</span>
             <span className="text-tagma-text/80 truncate min-w-0 flex-1">{value}</span>
           </div>
@@ -91,7 +91,7 @@ function ErrorTooltipPanel({
     >
       <div className="px-3 py-1.5">
         {messages.map((msg, i) => (
-          <div key={i} className="flex items-start gap-1.5 py-[2px] text-[9px] font-mono">
+          <div key={i} className="flex items-start gap-1.5 py-[2px] text-tiny font-mono">
             <AlertTriangle
               size={8}
               className={`${msg.severity === 'error' ? 'text-tagma-error' : 'text-tagma-warning'} shrink-0 mt-[2px]`}
@@ -235,7 +235,7 @@ export const TrackLane = memo(function TrackLane({
           style={{ backgroundColor: track.color || 'transparent' }}
         />
         <span
-          className={`text-[11px] font-semibold truncate flex-1 leading-[22px] tracking-tight ${hasError ? 'text-tagma-error' : hasWarningOnly ? 'text-tagma-warning' : track.color ? '' : 'text-tagma-text'}`}
+          className={`text-body font-semibold truncate flex-1 leading-[22px] tracking-tight ${hasError ? 'text-tagma-error' : hasWarningOnly ? 'text-tagma-warning' : track.color ? '' : 'text-tagma-text'}`}
           style={!hasError && !hasWarningOnly && track.color ? { color: track.color } : undefined}
         >
           {track.name}
@@ -269,7 +269,7 @@ export const TrackLane = memo(function TrackLane({
           ) : null}
         </span>
 
-        <span className="text-[9px] font-mono text-tagma-muted/50 tabular-nums shrink-0 leading-[22px]">
+        <span className="text-tiny font-mono text-tagma-muted/50 tabular-nums shrink-0 leading-[22px]">
           {taskCount}
         </span>
       </div>
@@ -292,7 +292,7 @@ export const TrackLane = memo(function TrackLane({
             {(['read', 'write', 'execute'] as const).map((k) => (
               <span
                 key={k}
-                className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
+                className={`text-micro font-mono font-bold w-[10px] text-center leading-[14px]
                   ${k === 'read' && perms.read ? 'text-tagma-success' : ''}
                   ${k === 'write' && perms.write ? 'text-tagma-warning' : ''}
                   ${k === 'execute' && perms.execute ? 'text-tagma-error' : ''}
@@ -319,7 +319,7 @@ export const TrackLane = memo(function TrackLane({
         )}
         {track.agent_profile && (
           <span
-            className="inline-flex items-center h-[14px] text-[7.5px] font-mono text-tagma-muted/50 truncate max-w-[44px] leading-[14px] shrink-0"
+            className="inline-flex items-center h-[14px] text-micro font-mono text-tagma-muted/50 truncate max-w-[44px] leading-[14px] shrink-0"
             title={`Profile: ${track.agent_profile}`}
           >
             {track.agent_profile}

@@ -80,13 +80,13 @@ export function PlatformExportProgressToast({
       <div className="flex items-start gap-2.5 px-3 py-2.5">
         <Loader2 size={15} className="mt-0.5 shrink-0 text-tagma-accent animate-spin" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3 text-[11px] font-mono text-tagma-text">
+          <div className="flex items-center justify-between gap-3 text-body font-mono text-tagma-text">
             <span className="truncate">Exporting for {targetLabel}</span>
-            <span className="shrink-0 text-[10px] text-tagma-muted">
+            <span className="shrink-0 text-caption text-tagma-muted">
               {stageIndex + 1}/{PLATFORM_EXPORT_STAGES.length}
             </span>
           </div>
-          <div className="mt-1 break-words text-[10px] font-mono text-tagma-muted">
+          <div className="mt-1 break-words text-caption font-mono text-tagma-muted">
             <span className="text-tagma-text">{stageLabel}</span>
             {progress.detail ? ` - ${progress.detail}` : ''}
           </div>
@@ -108,7 +108,7 @@ export function PlatformExportProgressToast({
               {progress.messages.map((message, index) => (
                 <div
                   key={`${index}-${message}`}
-                  className="flex items-start gap-1.5 text-[9px] font-mono leading-snug text-tagma-muted"
+                  className="flex items-start gap-1.5 text-tiny font-mono leading-snug text-tagma-muted"
                 >
                   <span className="mt-[5px] h-[3px] w-[3px] shrink-0 bg-tagma-muted/60" />
                   <span className="min-w-0 break-words">{message}</span>
@@ -159,16 +159,12 @@ export function UnsavedChangesModal({
       >
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">
-            <ShieldCheck size={14} className="text-tagma-accent shrink-0" />
+            <ShieldCheck size={14} className="text-tagma-warning shrink-0" />
             <h2 id="unsaved-changes-modal-title" className="panel-title truncate">
               {action.title}
             </h2>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-1 text-tagma-muted hover:text-tagma-text"
-            aria-label="Close dialog"
-          >
+          <button onClick={onCancel} className="icon-btn" aria-label="Close dialog">
             <XIcon size={14} />
           </button>
         </div>
@@ -176,7 +172,7 @@ export function UnsavedChangesModal({
           {action.details.map((detail, i) => (
             <div
               key={i}
-              className="px-4 py-3 border-b border-tagma-border/30 last:border-b-0 text-[11px] text-tagma-text font-mono break-words"
+              className="px-4 py-3 border-b border-tagma-border/30 last:border-b-0 text-body text-tagma-text font-mono break-words"
             >
               {detail}
             </div>

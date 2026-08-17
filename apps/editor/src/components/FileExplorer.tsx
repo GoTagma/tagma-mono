@@ -303,11 +303,7 @@ export function FileExplorer({
           <h2 id="file-explorer-title" className="panel-title">
             {title ?? defaultTitle}
           </h2>
-          <button
-            onClick={onCancel}
-            className="p-1 text-tagma-muted hover:text-tagma-text"
-            aria-label="Close"
-          >
+          <button onClick={onCancel} className="icon-btn" aria-label="Close">
             <X size={14} />
           </button>
         </div>
@@ -317,7 +313,7 @@ export function FileExplorer({
           {parentPath && (
             <button
               onClick={() => loadDir(parentPath)}
-              className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
+              className="icon-btn shrink-0"
               title="Go up"
               aria-label="Go to parent directory"
             >
@@ -338,7 +334,7 @@ export function FileExplorer({
               setNewFolderName('');
               setTimeout(() => newFolderRef.current?.focus(), 0);
             }}
-            className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
+            className="icon-btn shrink-0"
             title="New Folder"
             aria-label="New folder"
           >
@@ -353,7 +349,7 @@ export function FileExplorer({
               <button
                 key={root}
                 onClick={() => loadDir(root)}
-                className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono transition-colors ${currentPath.startsWith(root) ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated'}`}
+                className={`flex items-center gap-1 px-2 py-0.5 text-caption font-mono transition-colors ${currentPath.startsWith(root) ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated'}`}
               >
                 <HardDrive size={10} /> {root.replace('\\', '')}
               </button>
@@ -380,24 +376,24 @@ export function FileExplorer({
                   if (e.key === 'Escape') setNewFolderName(null);
                 }}
                 onBlur={() => setNewFolderName(null)}
-                className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-accent/40 px-2.5 py-1.5 text-tagma-text"
+                className="flex-1 text-body font-mono bg-tagma-bg border border-tagma-accent/40 px-2.5 py-1.5 text-tagma-text"
                 placeholder="New folder name..."
                 autoFocus
               />
             </div>
           )}
           {loading && (
-            <div className="flex items-center justify-center py-8 text-tagma-muted text-[11px]">
+            <div className="flex items-center justify-center py-8 text-tagma-muted text-body">
               Loading...
             </div>
           )}
           {error && (
-            <div className="flex items-center justify-center py-8 text-[11px] text-tagma-error">
+            <div className="flex items-center justify-center py-8 text-body text-tagma-error">
               {error}
             </div>
           )}
           {!loading && !error && entries.length === 0 && (
-            <div className="flex items-center justify-center py-8 text-tagma-muted text-[11px]">
+            <div className="flex items-center justify-center py-8 text-tagma-muted text-body">
               Empty directory
             </div>
           )}
@@ -411,7 +407,7 @@ export function FileExplorer({
                   key={entry.path}
                   onClick={(e) => handleEntryClick(entry, e)}
                   onDoubleClick={() => handleEntryDblClick(entry)}
-                  className={`w-full flex items-center gap-2 px-4 py-1.5 text-left text-[11px] transition-colors group ${
+                  className={`w-full flex items-center gap-2 px-4 py-1.5 text-left text-body transition-colors group ${
                     isSelected
                       ? 'bg-tagma-accent/25 hover:bg-tagma-accent/30'
                       : 'hover:bg-tagma-elevated'
@@ -455,24 +451,22 @@ export function FileExplorer({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleConfirm();
                   }}
-                  className="flex-1 text-[11px] font-mono bg-transparent px-2 py-1 text-tagma-text outline-none"
+                  className="flex-1 text-body font-mono bg-transparent px-2 py-1 text-tagma-text outline-none"
                   placeholder="pipeline"
                   autoFocus
                 />
-                <span className="text-[11px] font-mono text-tagma-muted pr-2 select-none">
-                  .yaml
-                </span>
+                <span className="text-body font-mono text-tagma-muted pr-2 select-none">.yaml</span>
               </div>
             </div>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {directorySelectionIssue && (
-              <span className="mr-auto max-w-[360px] text-[10px] text-tagma-error" role="status">
+              <span className="mr-auto max-w-[360px] text-caption text-tagma-error" role="status">
                 {directorySelectionIssue}
               </span>
             )}
             {multi && (
-              <span className="text-[10px] text-tagma-muted mr-auto">
+              <span className="text-caption text-tagma-muted mr-auto">
                 {selected.length === 0
                   ? 'Click to select; Shift-click for range; double-click to open one'
                   : `${selected.length} selected`}
@@ -506,7 +500,7 @@ export function FileExplorer({
                   Select Directory
                 </button>
               ) : (
-                <span className="text-[10px] text-tagma-muted self-center">
+                <span className="text-caption text-tagma-muted self-center">
                   Click a file to open
                 </span>
               )

@@ -65,11 +65,7 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
               {info.title}
             </h2>
           </div>
-          <button
-            onClick={handleDismiss}
-            className="p-1 text-tagma-muted hover:text-tagma-text"
-            aria-label="Close dialog"
-          >
+          <button onClick={handleDismiss} className="icon-btn" aria-label="Close dialog">
             <XIcon size={14} />
           </button>
         </div>
@@ -77,7 +73,7 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
           {info.details.map((detail, i) => (
             <div
               key={i}
-              className="px-4 py-3 border-b border-tagma-border/30 last:border-b-0 text-[11px] text-tagma-text font-mono break-words"
+              className="px-4 py-3 border-b border-tagma-border/30 last:border-b-0 text-body text-tagma-text font-mono break-words"
             >
               {detail}
             </div>

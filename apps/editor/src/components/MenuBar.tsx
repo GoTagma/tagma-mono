@@ -22,7 +22,7 @@ export function MenuBar({ menus }: MenuBarProps) {
       {menus.map((menu, mi) => (
         <div key={mi} className="relative h-full flex items-center">
           <button
-            className={`h-full px-2.5 text-[11px] tracking-wide transition-colors flex items-center gap-1 ${openIdx === mi ? 'bg-tagma-elevated text-tagma-text' : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated'}`}
+            className={`h-full px-2.5 text-body tracking-wide transition-colors flex items-center gap-1 ${openIdx === mi ? 'bg-tagma-elevated text-tagma-text' : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated'}`}
             onClick={() => setOpenIdx(openIdx === mi ? null : mi)}
             onMouseEnter={() => {
               if (openIdx !== null) setOpenIdx(mi);
