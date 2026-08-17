@@ -5471,7 +5471,7 @@ async function settleRelocationPendingRequest(
   }
 }
 
-async function waitForRelocatedSessionQuiescence(
+export async function waitForRelocatedSessionQuiescence(
   workspaceKey: string,
   sessionId: string,
   routingDirectory: string,
@@ -5482,10 +5482,22 @@ async function waitForRelocatedSessionQuiescence(
 ): Promise<void> {
   const client = await getOpencodeV2Client(workspaceKey);
   const controller = new AbortController();
-  const timeoutError = new Error(
-    'OpenCode did not become idle before the staged session restore deadline.',
-  );
-  const timer = setTimeout(() => controller.abort(timeoutError), timeoutMs);
+  // The deadline error must report what the wait was blocked on. A bare
+  // "not idle" message discards the only evidence that identifies the
+  // blocking session — the live incident had a delegated child report busy
+  // for over a minute while the renderer observed the root as idle, and the
+  // static message made the failure undiagnosable from renderer logs alone.
+  let lastObservedBlockers: string[] = [];
+  const deadlineError = () => {
+    const base = 'OpenCode did not become idle before the staged session restore deadline.';
+    if (lastObservedBlockers.length === 0) return new Error(base);
+    const shown = lastObservedBlockers.slice(0, 5).join('; ');
+    const remaining = lastObservedBlockers.length - 5;
+    return new Error(
+      `${base} Still blocking: ${shown}${remaining > 0 ? `; +${remaining} more` : ''}.`,
+    );
+  };
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   unrefTimerForTests(timer);
   const abortedSessionIds = new Set<string>();
   try {
@@ -5535,7 +5547,7 @@ async function waitForRelocatedSessionQuiescence(
       const runningSessions = instanceStates.flatMap(({ directory, statuses }) =>
         [...sessionIds].flatMap((id) => {
           const status = statuses[id];
-          return status && status.type !== 'idle' ? [{ id, directory }] : [];
+          return status && status.type !== 'idle' ? [{ id, directory, type: status.type }] : [];
         }),
       );
       const runtimeMismatches = [
@@ -5561,6 +5573,20 @@ async function waitForRelocatedSessionQuiescence(
         );
       }
       const runningSessionIds = [...new Set(runningSessions.map(({ id }) => id))];
+      const observedBlockers = [
+        ...runningSessions.map(
+          ({ id, directory, type }) => `session ${id} status=${type} in ${directory}`,
+        ),
+        ...pendingPermissions.map(
+          ({ item, directory }) =>
+            `session ${item.sessionID} has a pending permission in ${directory}`,
+        ),
+        ...pendingQuestions.map(
+          ({ item, directory }) =>
+            `session ${item.sessionID} has a pending question in ${directory}`,
+        ),
+      ];
+      if (observedBlockers.length > 0) lastObservedBlockers = observedBlockers;
 
       if (forceStop) {
         const firstPermissionBySession = new Map<string, (typeof pendingPermissions)[number]>();
@@ -5649,9 +5675,9 @@ async function waitForRelocatedSessionQuiescence(
       }
       await waitForSseReconnectDelay(100, controller.signal);
     }
-    throw timeoutError;
+    throw deadlineError();
   } catch (err) {
-    if (controller.signal.aborted) throw timeoutError;
+    if (controller.signal.aborted) throw deadlineError();
     throw err;
   } finally {
     clearTimeout(timer);

@@ -1,5 +1,7 @@
 import type express from 'express';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+
+import { normalizeWorkspaceKey } from '@tagma/types/workspace-key';
 
 import { DIAGNOSTICS_PROTOCOL_VERSION, sanitizeDiagnosticValue } from '../../shared/diagnostics.js';
 import {
@@ -198,14 +200,31 @@ function parseMetadata(): unknown {
   }
 }
 
+/**
+ * Visible for tests: scope managed-runtime metadata to one workspace's `.tagma`
+ * cwd. The runtime registry keys cwds by realpath casing while workspace keys
+ * are canonicalized by `normalizeWorkspaceKey` (Windows drive root lowercased,
+ * remaining segments preserved), so the comparison must run both sides through
+ * the same canonical form — strict equality silently emptied this section when
+ * only the drive-letter casing differed.
+ */
+export function filterOpencodeDiagnosticsRuntimes<T extends { cwd: string }>(
+  runtimes: readonly T[],
+  workspaceWorkDir: string | null,
+): T[] {
+  if (!workspaceWorkDir) return [...runtimes];
+  const expectedOpencodeCwd = normalizeWorkspaceKey(join(workspaceWorkDir, '.tagma'));
+  return runtimes.filter((runtime) => normalizeWorkspaceKey(runtime.cwd) === expectedOpencodeCwd);
+}
+
 export function buildDefaultDiagnosticsContext(
   hub: DiagnosticsHub,
   workspaceKey: string | null,
 ): unknown {
   const ws = workspaceKey ? (workspaceRegistry.get(workspaceKey) ?? null) : null;
-  const expectedOpencodeCwd = ws?.workDir ? resolve(join(ws.workDir, '.tagma')) : null;
-  const opencode = getOpencodeRuntimeDiagnostics().filter(
-    (runtime) => expectedOpencodeCwd === null || resolve(runtime.cwd) === expectedOpencodeCwd,
+  const opencode = filterOpencodeDiagnosticsRuntimes(
+    getOpencodeRuntimeDiagnostics(),
+    ws?.workDir ?? null,
   );
   const memory = process.memoryUsage();
   const desktopLogEvidence = readDesktopLogTailEvidence();

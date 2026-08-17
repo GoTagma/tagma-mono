@@ -9,7 +9,10 @@ import {
   diagnosticsAgentAuthorization,
   isDiagnosticsAgentPath,
 } from '../server/diagnostics.js';
-import { buildDefaultDiagnosticsContext } from '../server/routes/diagnostics.js';
+import {
+  buildDefaultDiagnosticsContext,
+  filterOpencodeDiagnosticsRuntimes,
+} from '../server/routes/diagnostics.js';
 import { redactDiagnosticText, sanitizeDiagnosticValue } from '../shared/diagnostics.js';
 
 describe('diagnostics value sanitizing', () => {
@@ -1206,5 +1209,29 @@ describe('diagnostics agent authorization boundary', () => {
       status: 403,
       error: 'Invalid diagnostics token.',
     });
+  });
+});
+
+describe('diagnostics opencode runtime scoping', () => {
+  const runtime = { cwd: 'E:\\tagma-04\\.tagma' };
+
+  test('keeps a managed runtime when only the workspace drive-letter casing differs', () => {
+    // Live incident: the user opened the workspace as `e:\tagma-04` while the
+    // managed runtime registered under its realpath casing `E:\...`; a
+    // strict-equality filter silently emptied context.opencode on Windows.
+    const kept = filterOpencodeDiagnosticsRuntimes([runtime], 'e:\\tagma-04');
+    expect(kept).toHaveLength(process.platform === 'win32' ? 1 : 0);
+  });
+
+  test('keeps a runtime whose cwd matches exactly on every platform', () => {
+    expect(filterOpencodeDiagnosticsRuntimes([runtime], 'E:\\tagma-04')).toHaveLength(1);
+  });
+
+  test('drops runtimes belonging to other workspaces', () => {
+    expect(filterOpencodeDiagnosticsRuntimes([runtime], 'e:\\elsewhere')).toHaveLength(0);
+  });
+
+  test('returns every runtime when no workspace is scoped', () => {
+    expect(filterOpencodeDiagnosticsRuntimes([runtime], null)).toHaveLength(1);
   });
 });

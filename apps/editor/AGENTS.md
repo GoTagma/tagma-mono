@@ -183,6 +183,10 @@
   must still recover from the signed host record; a lost HTTP response must never delete a local
   journal after the corresponding host mutation may have committed. Keep the finished-turn queue
   and stage intact on any unverified restore or cleanup failure.
+- A quiescence deadline error must name the evidence it waited on: the blocking session ids,
+  their status/permission/question kind, and the owning directory. A bare "did not become idle"
+  message discards the only clue that distinguishes a stuck delegated child from a renderer-side
+  observation bug, and made a live restore failure undiagnosable from logs alone.
 - Run canonical and exact stage-directory event streams concurrently while a session is relocated;
   prompt only after the stage stream's first event and generation/liveness check. Health,
   reconnect readiness, abort ownership, and idle timers are directory/generation scoped. Current
@@ -734,6 +738,12 @@
   A tail-read or response-size limit is diagnostic-interface truncation, not proof that the
   underlying runtime, file, task output, or persisted record was truncated. Locate and test the
   exact layer before changing source behavior.
+- Workspace-scoped diagnostics filters must compare paths through the shared canonical form
+  (`normalizeWorkspaceKey`: resolve + realpath + Windows drive-root lowercasing), never strict
+  string equality and never full-path lowercasing (NTFS can host case-sensitive directories):
+  the OpenCode runtime registry keys cwds by realpath casing while workspace keys keep the
+  canonical spelling, and strict equality silently emptied `context.opencode` when only the
+  drive-letter casing differed.
 - Conversation exports are also a bounded read-only evidence view. Label their own clipping as
   `chat-export`, include the omitted character count, and preserve Trial planned/returned/not-run
   cases, task status totals/omissions, repair scopes, selected stderr/stdout, stream truncation
