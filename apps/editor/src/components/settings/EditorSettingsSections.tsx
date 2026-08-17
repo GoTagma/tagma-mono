@@ -419,6 +419,11 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
             }
             onChange={(v) => void handlePythonToggle(v)}
           />
+          {opencodeSettingsMutationBlockMessage && (
+            <div className="pt-1 text-caption text-tagma-muted/70">
+              {opencodeSettingsMutationBlockMessage}
+            </div>
+          )}
           {settings.pythonAgent.enabled && (
             <div className="mt-2 border border-tagma-border bg-tagma-bg p-2.5 space-y-1.5">
               <div className="text-caption text-tagma-muted font-mono">
