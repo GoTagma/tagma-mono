@@ -1224,7 +1224,13 @@ describe('diagnostics opencode runtime scoping', () => {
   });
 
   test('keeps a runtime whose cwd matches exactly on every platform', () => {
-    expect(filterOpencodeDiagnosticsRuntimes([runtime], 'E:\\tagma-04')).toHaveLength(1);
+    // Build the exact-match cwd with the same join() coordinate the filter
+    // uses: on POSIX a Windows-shaped literal ('E:\tagma-04\.tagma') resolves
+    // as one relative segment while join() inserts a real separator, so the
+    // two sides would normalize differently and the exact match would be lost.
+    const workDir = 'E:\\tagma-04';
+    const exact = { cwd: join(workDir, '.tagma') };
+    expect(filterOpencodeDiagnosticsRuntimes([exact], workDir)).toHaveLength(1);
   });
 
   test('drops runtimes belonging to other workspaces', () => {
