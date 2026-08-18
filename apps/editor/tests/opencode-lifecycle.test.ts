@@ -149,8 +149,8 @@ describe('managed OpenCode directory coordinates', () => {
 });
 
 describe('ensureOpencode health probing', () => {
-  test('keeps interactive OpenCode startup readiness bounded', () => {
-    expect(OPENCODE_STARTUP_READINESS_TIMEOUT_MS).toBe(30_000);
+  test('allows five minutes for first-workspace OpenCode database initialization', () => {
+    expect(OPENCODE_STARTUP_READINESS_TIMEOUT_MS).toBe(300_000);
   });
 
   test('accepts a complete HTTP health response before the socket closes', async () => {
@@ -480,7 +480,7 @@ describe('ensureOpencode health probing', () => {
     expect(databaseProbeCount).toBe(1);
   });
 
-  test('fails a hung database probe within the interactive startup budget', async () => {
+  test('honors an explicit short budget for a hung database probe', async () => {
     const cwd = join(tempRoot, '.tagma');
     mkdirSync(cwd, { recursive: true });
     let databaseProbeStarted = false;
@@ -524,13 +524,13 @@ describe('ensureOpencode health probing', () => {
       return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
     }) as typeof Bun.connect;
 
-    await expect(ensureOpencode(cwd)).rejects.toThrow(
+    await expect(ensureOpencode(cwd, { readinessTimeoutMs: 30_000 })).rejects.toThrow(
       'workspace database did not become ready within 30 seconds',
     );
     expect(killed).toBe(true);
   });
 
-  test('honors an explicit cold-start readiness budget without changing the interactive default', async () => {
+  test('uses the five-minute default for a cold database response beyond thirty seconds', async () => {
     const cwd = join(tempRoot, '.tagma');
     mkdirSync(cwd, { recursive: true });
     let logicalNow = 0;
@@ -583,11 +583,11 @@ describe('ensureOpencode health probing', () => {
       return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
     }) as typeof Bun.connect;
 
-    const handle = await ensureOpencode(cwd, { readinessTimeoutMs: 60_000 });
+    const handle = await ensureOpencode(cwd);
 
     expect(handle.baseUrl).toBe('http://127.0.0.1:45124');
     expect(databaseProbeCount).toBe(1);
-    expect(OPENCODE_STARTUP_READINESS_TIMEOUT_MS).toBe(30_000);
+    expect(OPENCODE_STARTUP_READINESS_TIMEOUT_MS).toBe(300_000);
   });
 
   test('restart redirects an in-flight health startup to its replacement', async () => {

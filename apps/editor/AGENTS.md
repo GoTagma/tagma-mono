@@ -2,6 +2,11 @@
 
 ## Chat Session Concurrency
 
+- Size OpenCode's default startup readiness budget for a fresh workspace, not a warmed one. The
+  first `/session` request may initialize the managed database, so the default full-sequence budget
+  is five minutes; tests and specialized callers may pass `readinessTimeoutMs` for a shorter bounded
+  failure. Let that single database request finish instead of abandoning it and issuing overlapping
+  initialization probes.
 - Treat History selection as a latest-intent-wins async transition. Keep the current conversation
   visible until the target messages load, expose the pending target immediately, and invalidate
   it on a newer selection, workspace change, or target deletion. Selecting the already-visible

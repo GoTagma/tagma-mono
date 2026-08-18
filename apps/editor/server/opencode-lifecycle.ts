@@ -63,7 +63,11 @@ export interface OpencodeRuntimeDiagnostics {
   runtimeSource: string | null;
 }
 
-export const OPENCODE_STARTUP_READINESS_TIMEOUT_MS = 30_000;
+// A fresh workspace can require a cold OpenCode database initialization before
+// `/session` returns for the first time. Keep one startup budget for the full
+// health -> database -> managed-tools sequence, sized from that cold path rather
+// than a previously initialized workspace.
+export const OPENCODE_STARTUP_READINESS_TIMEOUT_MS = 5 * 60_000;
 
 export interface EnsureOpencodeOptions {
   readonly readinessTimeoutMs?: number;
