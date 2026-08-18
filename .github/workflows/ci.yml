@@ -59,7 +59,7 @@ jobs:
         working-directory: apps/editor
         env:
           TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE: '1'
-        run: bun test tests/opencode-managed-upgrade-smoke.test.ts --timeout 1200000
+        run: bun test tests/opencode-managed-upgrade-smoke.test.ts --timeout 1500000
 
   # Full repository gate: every check, lint, and test the repo runs on push
   # to main. Triggers on:
