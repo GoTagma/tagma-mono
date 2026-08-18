@@ -65,6 +65,18 @@ export interface OpencodeRuntimeDiagnostics {
 
 export const OPENCODE_STARTUP_READINESS_TIMEOUT_MS = 30_000;
 
+export interface EnsureOpencodeOptions {
+  readonly readinessTimeoutMs?: number;
+}
+
+function resolveOpencodeReadinessTimeout(options: EnsureOpencodeOptions): number {
+  const timeoutMs = options.readinessTimeoutMs ?? OPENCODE_STARTUP_READINESS_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error('OpenCode readiness timeout must be a positive integer in milliseconds.');
+  }
+  return timeoutMs;
+}
+
 function canonicalOpencodeCwd(cwd: string): string {
   return realpathSync.native(resolve(cwd));
 }
@@ -643,7 +655,10 @@ async function waitForManagedToolRegistry(
   console.log(`[opencode] managed tool registry check passed via ${path} (${res.status})`);
 }
 
-function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
+function createOpencodeStartAttempt(
+  cwd: string,
+  readinessTimeoutMs = OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
+): OpencodeStartAttempt {
   const attempt: OpencodeStartAttempt = {
     canceledByRestart: false,
     rawPromise: null,
@@ -759,7 +774,7 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
     // underlying cause. proc.exited winning the race gives us the exit code
     // + last stderr and lets callers fail fast.
     let healthResult: { kind: 'healthy' } | { kind: 'exited'; exitCode: number };
-    const readinessDeadline = Date.now() + OPENCODE_STARTUP_READINESS_TIMEOUT_MS;
+    const readinessDeadline = Date.now() + readinessTimeoutMs;
     const remainingReadinessMs = (): number => Math.max(1, readinessDeadline - Date.now());
     try {
       healthResult = await Promise.race([
@@ -831,12 +846,16 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
   return attempt;
 }
 
-function beginOpencodeStart(cwd: string): Promise<OpencodeHandle> {
-  return createOpencodeStartAttempt(cwd).sharedPromise!;
+function beginOpencodeStart(cwd: string, readinessTimeoutMs: number): Promise<OpencodeHandle> {
+  return createOpencodeStartAttempt(cwd, readinessTimeoutMs).sharedPromise!;
 }
 
-export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
+export async function ensureOpencode(
+  cwd: string,
+  options: EnsureOpencodeOptions = {},
+): Promise<OpencodeHandle> {
   cwd = canonicalOpencodeCwd(cwd);
+  const readinessTimeoutMs = resolveOpencodeReadinessTimeout(options);
   const restart = restarting.get(cwd);
   if (restart) return restart.promise;
 
@@ -848,7 +867,7 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
   }
 
   const inFlight = starting.get(cwd);
-  const handle = await (inFlight ?? beginOpencodeStart(cwd));
+  const handle = await (inFlight ?? beginOpencodeStart(cwd, readinessTimeoutMs));
   const replacement = restarting.get(cwd);
   return replacement ? await replacement.promise : handle;
 }

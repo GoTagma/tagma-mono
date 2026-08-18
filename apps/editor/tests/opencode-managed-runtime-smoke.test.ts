@@ -37,6 +37,7 @@ const ENV_KEYS = [
   'XDG_DATA_HOME',
   'XDG_STATE_HOME',
 ] as const;
+const NATIVE_SMOKE_READINESS_TIMEOUT_MS = 120_000;
 
 function restoreEnv(previous: Map<(typeof ENV_KEYS)[number], string | undefined>): void {
   for (const key of ENV_KEYS) {
@@ -206,7 +207,9 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         expect(existsSync(join(tagmaCwd, '.opencode', 'tools', filename))).toBe(false);
       }
 
-      const handle = await ensureOpencode(tagmaCwd);
+      const handle = await ensureOpencode(tagmaCwd, {
+        readinessTimeoutMs: NATIVE_SMOKE_READINESS_TIMEOUT_MS,
+      });
       expect(handle.cwd).toBe(tagmaCwd);
       expect(readOpencodeContextWindowPluginReady(tagmaCwd)).toEqual({
         ready: true,

@@ -600,6 +600,8 @@
 - Interactive ensure/restart readiness has one 30-second budget shared by health, database, and
   managed-tool checks. Keep detailed probe failures in sidecar logs, but return a short actionable
   error to Chat/Settings; never restore independent multi-minute waits for each readiness phase.
+  Native cold-start CI smokes may pass an explicit longer bounded budget without changing that
+  interactive default; Windows runners can spend more than 30 seconds initializing a fresh profile.
 - Pin operational browser SDK clients and the primary history query to the server-returned
   canonical `<workspace>/.tagma` directory. Also use an unscoped discovery query to recover
   Tagma-marked legacy sessions that predate canonical directory pinning; accept those only when

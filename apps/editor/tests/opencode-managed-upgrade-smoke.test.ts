@@ -21,6 +21,8 @@ import { createStreamingLoopbackFetch } from '../server/loopback-fetch';
 import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
 
+const NATIVE_SMOKE_READINESS_TIMEOUT_MS = 120_000;
+
 const UPGRADE_FROM_VERSION = '1.17.8';
 const UPGRADE_FROM_SCHEMA_VERSION = 1;
 const REQUIRED_NEW_MIGRATIONS = [
@@ -486,7 +488,9 @@ if (process.env.TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE === '1') {
 
       // Establish a real 1.17.8 database and session on epoch 1.
       configureRuntime(oldRuntimeDir, UPGRADE_FROM_VERSION, UPGRADE_FROM_SCHEMA_VERSION);
-      const original = await ensureOpencode(tagmaCwd);
+      const original = await ensureOpencode(tagmaCwd, {
+        readinessTimeoutMs: NATIVE_SMOKE_READINESS_TIMEOUT_MS,
+      });
       expect(original.database.initialization).toBe('fresh');
       expect(original.database.schemaVersion).toBe(UPGRADE_FROM_SCHEMA_VERSION);
       const originalSessionTree = await createSessionTree(
@@ -515,7 +519,9 @@ if (process.env.TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE === '1') {
       // retained canonical session row. Native-v2 projections are intentionally
       // reset by this upstream migration and are not a preservation contract.
       configureRuntime(currentRuntimeDir, currentVersion, schemaVersion);
-      const upgraded = await ensureOpencode(tagmaCwd);
+      const upgraded = await ensureOpencode(tagmaCwd, {
+        readinessTimeoutMs: NATIVE_SMOKE_READINESS_TIMEOUT_MS,
+      });
       expect(upgraded.database.initialization).toBe('copied-forward');
       expect(upgraded.database.copiedFromSchemaVersion).toBe(UPGRADE_FROM_SCHEMA_VERSION);
       expect(upgraded.database.parentGenerationId).toBe(originalGenerationID);
@@ -563,7 +569,9 @@ if (process.env.TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE === '1') {
       // A downgrade must fork an empty epoch-1 database; copying the epoch-2
       // database backward would expose the dropped-column schema to 1.17.8.
       configureRuntime(oldRuntimeDir, UPGRADE_FROM_VERSION, UPGRADE_FROM_SCHEMA_VERSION);
-      const downgraded = await ensureOpencode(tagmaCwd);
+      const downgraded = await ensureOpencode(tagmaCwd, {
+        readinessTimeoutMs: NATIVE_SMOKE_READINESS_TIMEOUT_MS,
+      });
       expect(downgraded.database.initialization).toBe('fresh');
       expect(downgraded.database.forkedFromGenerationId).toBe(firstUpgradeGenerationID);
       expect(downgraded.database.databasePath).not.toBe(originalDatabasePath);
@@ -591,7 +599,9 @@ if (process.env.TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE === '1') {
       // Re-entering the new epoch must follow the active downgrade branch and
       // create a new descendant instead of resurrecting the stale epoch-2 head.
       configureRuntime(currentRuntimeDir, currentVersion, schemaVersion);
-      const reupgraded = await ensureOpencode(tagmaCwd);
+      const reupgraded = await ensureOpencode(tagmaCwd, {
+        readinessTimeoutMs: NATIVE_SMOKE_READINESS_TIMEOUT_MS,
+      });
       expect(reupgraded.database.initialization).toBe('copied-forward');
       expect(reupgraded.database.parentGenerationId).toBe(downgradedGenerationID);
       expect(reupgraded.database.generationId).not.toBe(firstUpgradeGenerationID);

@@ -530,6 +530,66 @@ describe('ensureOpencode health probing', () => {
     expect(killed).toBe(true);
   });
 
+  test('honors an explicit cold-start readiness budget without changing the interactive default', async () => {
+    const cwd = join(tempRoot, '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    let logicalNow = 0;
+    let databaseProbeCount = 0;
+    Date.now = () => logicalNow;
+    globalThis.setTimeout = ((
+      handler: Parameters<typeof setTimeout>[0],
+      timeout?: number,
+      ...args: unknown[]
+    ) => {
+      if (timeout !== undefined && timeout >= 60_000) {
+        return realSetTimeout(handler, 100, ...args);
+      }
+      if (timeout !== undefined && timeout >= 30_000) {
+        return realSetTimeout(() => {
+          logicalNow = 31_000;
+          if (typeof handler === 'function') {
+            (handler as (...callbackArgs: unknown[]) => void)(...args);
+          }
+        }, 10);
+      }
+      return realSetTimeout(handler, timeout, ...args);
+    }) as typeof setTimeout;
+
+    (Bun as BunLike).listen = (() =>
+      ({
+        port: 45124,
+        stop() {},
+      }) as unknown as ReturnType<typeof Bun.listen>) as unknown as typeof Bun.listen;
+    (Bun as BunLike).spawn = (() => mockOpencodeProcess()) as typeof Bun.spawn;
+    (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
+      queueMicrotask(() => {
+        const socket = {
+          write(request: string | Uint8Array) {
+            const path = String(request).split(' ')[1] ?? '';
+            const respond = () => {
+              options.socket.data?.(socket as never, successfulProbeResponse(request));
+            };
+            if (path === '/session?limit=1') {
+              databaseProbeCount += 1;
+              realSetTimeout(respond, 20);
+              return;
+            }
+            respond();
+          },
+          end() {},
+        };
+        options.socket.open?.(socket as never);
+      });
+      return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
+    }) as typeof Bun.connect;
+
+    const handle = await ensureOpencode(cwd, { readinessTimeoutMs: 60_000 });
+
+    expect(handle.baseUrl).toBe('http://127.0.0.1:45124');
+    expect(databaseProbeCount).toBe(1);
+    expect(OPENCODE_STARTUP_READINESS_TIMEOUT_MS).toBe(30_000);
+  });
+
   test('restart redirects an in-flight health startup to its replacement', async () => {
     const cwd = join(tempRoot, '.tagma');
     mkdirSync(cwd, { recursive: true });
