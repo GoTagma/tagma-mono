@@ -1167,6 +1167,11 @@ function compactChatTrialRepairResult(
     plannedCaseCount: result.plannedCaseCount,
     caseResultCount: result.caseResultCount,
     notRunCaseCount: result.notRunCaseCount,
+    notRunCases: result.notRunCases?.map((testCase) => ({
+      ...testCase,
+      title: clipChatTrialRepairEvidenceText(testCase.title, 200),
+      detail: clipChatTrialRepairEvidenceText(testCase.detail, 500),
+    })),
     trialMode: result.trialMode,
     verificationMode: result.verificationMode,
     trialabilityReport: compactChatTrialabilityRepairReport(result.trialabilityReport, {
@@ -1483,6 +1488,7 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
       plannedCaseCount: evidence.result.plannedCaseCount,
       caseResultCount: evidence.result.caseResultCount,
       notRunCaseCount: evidence.result.notRunCaseCount,
+      notRunCases: fallbackCompact.notRunCases,
       trialMode: evidence.result.trialMode,
       verificationMode: evidence.result.verificationMode,
       trialabilityReport: fallbackCompact.trialabilityReport,

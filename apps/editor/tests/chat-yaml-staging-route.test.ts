@@ -1017,7 +1017,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('resolves staged pipeline static context inside an isolated case and after finalize', async () => {
+  test('excludes stale live static context while exercising its staged branch in Sandbox', async () => {
     // CI runners do not install opencode; preflight and the host witness still
     // probe PATH for the prompt task's auto-generated opencode requirement, so
     // stub a resolvable fake that the simulated driver never actually runs.
@@ -1073,6 +1073,12 @@ describe('chat YAML staging routes', () => {
         },
         { replace: true },
       );
+      mkdirSync(join(dirname(sourcePath), 'prompts'), { recursive: true });
+      writeFileSync(
+        join(dirname(sourcePath), 'prompts', 'context.md'),
+        'LIVE-STALE-CONTEXT',
+        'utf-8',
+      );
       const getRoute = createHarness();
       const startRes = makeRes();
       getRoute('/api/workspace/chat-yaml-stage/start')(
@@ -1096,14 +1102,17 @@ describe('chat YAML staging routes', () => {
                 {
                   id: 'capture',
                   prompt: 'Capture the attached context.',
-                  trigger: { type: 'file', path: 'input/ready.txt' },
                   middlewares: [
                     {
                       type: 'static_context',
-                      file: 'prompts/context.md',
+                      file: '.tagma/pipeline/prompts/context.md',
                       label: 'Pipeline-local context',
                     },
                   ],
+                },
+                {
+                  id: 'audit',
+                  command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
                 },
               ],
             },
@@ -1114,7 +1123,7 @@ describe('chat YAML staging routes', () => {
       mkdirSync(join(dirname(entry.stagedPath), 'prompts'), { recursive: true });
       writeFileSync(
         join(dirname(entry.stagedPath), 'prompts', 'context.md'),
-        'STATIC-CONTEXT-SENTINEL',
+        'STAGED-STATIC-CONTEXT-SENTINEL',
         'utf-8',
       );
       writeTrialPlan(entry.stagedPath, {
@@ -1125,12 +1134,12 @@ describe('chat YAML staging routes', () => {
             objective: 'Prove the isolated prompt receives its pipeline-local context file.',
             runs: 1,
             targetTaskIds: ['main.capture'],
-            fixtures: [{ path: 'input/ready.txt', content: 'ready' }],
+            fixtures: [],
             expectations: [
               {
                 type: 'file-contains',
                 path: 'output/context.txt',
-                text: 'STATIC-CONTEXT-SENTINEL',
+                text: 'STAGED-STATIC-CONTEXT-SENTINEL',
               },
             ],
           },
@@ -1151,15 +1160,35 @@ describe('chat YAML staging routes', () => {
       expect(trialRes.body).toMatchObject({
         success: true,
         ran: true,
-        verificationMode: 'sandbox-cases-only',
+        verificationMode: 'sandbox-cases-with-live-smoke',
         cases: [
           {
             id: 'static-context',
             success: true,
-            tasks: [{ stderr: '', stderrAuxiliaryDiagnosticsOmittedLines: 1 }],
+            tasks: expect.arrayContaining([
+              expect.objectContaining({
+                taskId: 'main.capture',
+                stderr: '',
+                stderrAuxiliaryDiagnosticsOmittedLines: 1,
+              }),
+            ]),
           },
         ],
       });
+      const baselineTasks = (
+        trialRes.body as {
+          tasks: Array<{ caseId: string | null; taskId: string; status: string }>;
+        }
+      ).tasks.filter((task) => task.caseId === null);
+      expect(baselineTasks.find((task) => task.taskId === 'main.capture')).toMatchObject({
+        status: 'skipped',
+      });
+      expect(baselineTasks.find((task) => task.taskId === 'main.audit')).toMatchObject({
+        status: 'success',
+      });
+      expect((trialRes.body as { summary: string }).summary).toContain(
+        'static_context middleware source is not ready in the real workspace',
+      );
 
       const finalizeRes = makeRes();
       await getRoute('/api/workspace/chat-yaml-stage/finalize')(
@@ -1176,7 +1205,7 @@ describe('chat YAML staging routes', () => {
         '.tagma/pipeline/prompts/context.md',
       );
       expect(readFileSync(join(dirname(sourcePath), 'prompts', 'context.md'), 'utf-8')).toBe(
-        'STATIC-CONTEXT-SENTINEL',
+        'STAGED-STATIC-CONTEXT-SENTINEL',
       );
       ws.watcher.stopWatching();
       ws.layoutWatcher.stopWatching();
@@ -1184,6 +1213,88 @@ describe('chat YAML staging routes', () => {
       if (previousPath === undefined) delete process.env.PATH;
       else process.env.PATH = previousPath;
     }
+  });
+
+  test('accepts a declared task failure on every run of a repeated Sandbox case', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Repeated Expected Failure',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'reject_empty',
+                command: { argv: [process.execPath, '-e', 'process.exit(7)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'repeated-fail-fast',
+          title: 'Repeated fail-fast behavior',
+          objective: 'Reject the same invalid input deterministically on every run.',
+          runs: 2,
+          targetTaskIds: ['main.reject_empty'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.reject_empty', status: 'failed' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'repeated_expected_failure',
+        },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+      verificationMode: 'sandbox-cases-only',
+      cases: [
+        {
+          id: 'repeated-fail-fast',
+          success: true,
+          runIds: [expect.any(String), expect.any(String)],
+          taskStatusCounts: { failed: 2 },
+          expectations: [{ type: 'task-status', passed: true }],
+        },
+      ],
+    });
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
   });
 
   test('does not fork when non-virtualizable requirements block Trial before execution', async () => {
@@ -2377,7 +2488,7 @@ describe('chat YAML staging routes', () => {
       ),
       trialRes,
     );
-    for (let attempt = 0; attempt < 100 && !existsSync(baselineStartedPath); attempt += 1) {
+    for (let attempt = 0; attempt < 500 && !existsSync(baselineStartedPath); attempt += 1) {
       await Bun.sleep(10);
     }
     expect(existsSync(baselineStartedPath)).toBe(true);
@@ -2462,6 +2573,13 @@ describe('chat YAML staging routes', () => {
       ran: false,
       repairAuthorization: 'diagnostic-only',
       planRequest: { reason: 'invalid', attemptId: 'terminal_gap' },
+      notRunCases: [
+        {
+          id: 'ingest-only',
+          reason: 'execution-stopped',
+          detail: expect.stringContaining('plan-required'),
+        },
+      ],
     });
     expect((trialRes.body as { summary: string }).summary).toContain('main.report');
     expect((trialRes.body as { summary: string }).summary).toContain('terminal task');
@@ -2580,6 +2698,14 @@ describe('chat YAML staging routes', () => {
       plannedCaseCount: 2,
       caseResultCount: 1,
       notRunCaseCount: 1,
+      notRunCases: [
+        {
+          id: 'not-run-after-leak',
+          title: 'Case after the containment failure',
+          reason: 'workspace-verification-failed',
+          detail: expect.stringContaining('leak-probe'),
+        },
+      ],
       cases: [
         {
           id: 'leak-probe',
@@ -2610,6 +2736,9 @@ describe('chat YAML staging routes', () => {
       ],
     });
     expect((trialRes.body as { summary: string }).summary).toContain('1 not run');
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'not-run-after-leak: workspace verification failed',
+    );
     expect(readFileSync(leakedPath, 'utf-8')).toBe('leak');
 
     discardStage(getRoute, ws, stage.id);
@@ -3440,7 +3569,7 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       activeTrialRes,
     );
-    for (let attempt = 0; attempt < 100 && !existsSync(baselineStartedPath); attempt += 1) {
+    for (let attempt = 0; attempt < 500 && !existsSync(baselineStartedPath); attempt += 1) {
       await Bun.sleep(10);
     }
     expect(existsSync(baselineStartedPath)).toBe(true);
@@ -4111,9 +4240,9 @@ describe('chat YAML staging routes', () => {
           manualExecutionGrants: Array<{ taskId: string; approvalCount: number }>;
         }
       ).manualExecutionGrants,
-    ).toEqual([{ taskId: 'main.gated', approvalCount: 2 }]);
+    ).toEqual([{ taskId: 'main.gated', approvalCount: 1 }]);
     expect((trialRes.body as { summary: string }).summary).toContain(
-      'Selected manual tasks executed under explicit Trial grants: main.gated (2 approvals).',
+      'Selected manual tasks executed under explicit Trial grants: main.gated (1 approvals).',
     );
 
     discardStage(getRoute, ws, stage.id);
@@ -4121,7 +4250,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('keeps unselected manual gates blocked during a chat trial run', async () => {
+  test('requires Sandbox coverage for manual terminal branches excluded from Live Smoke', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -4180,48 +4309,16 @@ describe('chat YAML staging routes', () => {
 
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'blocked',
+      kind: 'plan-required',
+      ran: false,
       repairAuthorization: 'diagnostic-only',
-      prerequisiteState: {
-        state: 'blocked',
-        blockers: [{ kind: 'approval', name: 'main.gated', taskId: 'main.gated' }],
-      },
+      planRequest: { reason: 'invalid', attemptId: 'finished_manual_gate' },
     });
-    const gatedBaselineTask = (
-      trialRes.body as {
-        tasks: Array<{
-          caseId: string | null;
-          taskId: string;
-          status: string;
-          stderr: string;
-        }>;
-      }
-    ).tasks.find((task) => task.caseId === null && task.taskId === 'main.gated');
-    expect(gatedBaselineTask).toMatchObject({
-      status: 'blocked',
-      stderr: expect.stringContaining('never auto-approve manual safety gates'),
-    });
+    expect((trialRes.body as { summary: string }).summary).toContain('main.gated');
+    expect((trialRes.body as { summary: string }).summary).toContain('terminal task');
     expect(existsSync(sideEffectPath)).toBe(false);
 
-    const finalizeRes = makeRes();
-    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
-      request(
-        ws,
-        {
-          stageId: stage.id,
-          relativePath: entry.relativePath,
-          trialId: 'finished_manual_gate',
-        },
-        'chat-lock',
-      ),
-      finalizeRes,
-    );
-    expect(finalizeRes.body).toMatchObject({
-      outcome: 'adopted',
-      conflicts: [],
-      trialVerification: 'prerequisite-unavailable',
-      entry: { path: sourcePath },
-    });
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

@@ -367,6 +367,14 @@ function renderPipelineVerification(
       exportBullet(markdown, `Trial mode: ${trial.trialMode ?? 'unavailable'}`),
       exportBullet(markdown, `Trial verification mode: ${trial.verificationMode ?? 'unavailable'}`),
     );
+    for (const testCase of trial.notRunCases ?? []) {
+      lines.push(
+        exportBullet(
+          markdown,
+          `Trial case not run: ${redactExportText(testCase.id)} — ${redactExportText(testCase.title)} — ${testCase.reason} — ${redactExportText(testCase.detail)}`,
+        ),
+      );
+    }
     if (trial.trialabilityReport) {
       const report = trial.trialabilityReport;
       const sandboxCases = report.enforcement.sandboxCases;

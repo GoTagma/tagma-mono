@@ -60,7 +60,9 @@ import {
   describeUncoveredTrialFixtureInputs,
   findUncoveredTrialFixtureInputs,
   resolveChatPipelineDataReadiness,
+  resolveChatPipelineLiveSmokeBaseline,
   resolveChatPipelineRuntimeReadiness,
+  type ChatPipelineLiveSmokeBaseline,
   type ChatPipelineTrialBlocker,
   type ChatPipelineTrialFixtureInput,
   type ChatPipelineTrialReadiness,
@@ -240,6 +242,16 @@ export interface ChatPipelineTrialManualExecutionGrant {
   approvalCount: number;
 }
 
+export type ChatPipelineTrialNotRunReason =
+  'aborted' | 'timed-out' | 'workspace-verification-failed' | 'execution-stopped';
+
+export interface ChatPipelineTrialNotRunCase {
+  id: string;
+  title: string;
+  reason: ChatPipelineTrialNotRunReason;
+  detail: string;
+}
+
 export interface ChatPipelineTrialRunResult {
   version: typeof TRIAL_CACHE_VERSION;
   success: boolean;
@@ -268,6 +280,7 @@ export interface ChatPipelineTrialRunResult {
   plannedCaseCount?: number;
   caseResultCount?: number;
   notRunCaseCount?: number;
+  notRunCases?: ChatPipelineTrialNotRunCase[];
   cases: ChatPipelineTrialCaseResult[];
 }
 
@@ -823,12 +836,40 @@ function resultWithTrialPlan(
   result: ChatPipelineTrialRunResult,
   plan: ChatPipelineTrialPlan,
 ): ChatPipelineTrialRunResult {
+  const returnedCaseIds = new Set(result.cases.map((testCase) => testCase.id));
+  const defaultReason: ChatPipelineTrialNotRunReason =
+    result.kind === 'timed-out'
+      ? 'timed-out'
+      : result.kind === 'aborted'
+        ? 'aborted'
+        : result.kind === 'witness-failed'
+          ? 'workspace-verification-failed'
+          : 'execution-stopped';
+  const defaultDetail =
+    defaultReason === 'timed-out'
+      ? 'The Trial lifecycle timeout expired before this case could start.'
+      : defaultReason === 'aborted'
+        ? 'The Trial was stopped before this case could start.'
+        : defaultReason === 'workspace-verification-failed'
+          ? 'Host workspace verification failed before this case could start.'
+          : `Trial execution stopped with result kind ${result.kind} before this case could start.`;
+  const notRunCases =
+    result.notRunCases ??
+    plan.cases
+      .filter((testCase) => !returnedCaseIds.has(testCase.id))
+      .map((testCase) => ({
+        id: testCase.id,
+        title: boundedTrialText(testCase.title),
+        reason: defaultReason,
+        detail: defaultDetail,
+      }));
   return {
     ...result,
     plan: trialPlanSummary(plan),
     plannedCaseCount: plan.cases.length,
     caseResultCount: result.cases.length,
-    notRunCaseCount: Math.max(0, plan.cases.length - result.cases.length),
+    notRunCaseCount: notRunCases.length,
+    ...(notRunCases.length > 0 ? { notRunCases } : {}),
   };
 }
 
@@ -1604,7 +1645,7 @@ interface PreparedTrialExecution {
   pipelineConfig: PipelineConfig;
   targetTaskIdsByCase: Map<string, string[]>;
   manualTaskIdsByCase: Map<string, ReadonlySet<string>>;
-  selectedManualTaskIds: ReadonlySet<string>;
+  liveSmokeBaseline: ChatPipelineLiveSmokeBaseline;
   dataReadiness: Exclude<ChatPipelineTrialReadiness, { state: 'blocked' }>;
   trialMode: ChatPipelineTrialMode;
   trialabilityReport: ChatPipelineTrialabilityReport;
@@ -1675,37 +1716,75 @@ function ignoreTrialWorkspaceMutation(path: string): boolean {
   );
 }
 
+export interface TrialWorkspaceMutationEventState {
+  healthy: boolean;
+  reason: string | null;
+  /** Every filesystem event, including ignored paths; drives quiescence tracking. */
+  eventRevision: number;
+  /** Tracked (non-ignored) events only; bounded by the capacity check. */
+  revision: number;
+  recentChanges: Array<{ revision: number; path: string }>;
+}
+
+/**
+ * Applies one filesystem event to the mutation monitor state. Ignored paths
+ * (runtime churn such as `.chat-staging`, `.opencode-runtime`, and `logs`)
+ * never consume the bounded capacity: the capacity exists to bound tracked
+ * change evidence, and ignored events produce none. Only tracked events can
+ * exhaust the capacity and fail the monitor.
+ */
+export function applyTrialWorkspaceMutationEvent(
+  state: TrialWorkspaceMutationEventState,
+  filename: string | null,
+): TrialWorkspaceMutationEventState {
+  if (!state.healthy) return state;
+  const path = trialWorkspaceMutationPath(filename);
+  if (!path) {
+    return {
+      ...state,
+      healthy: false,
+      reason: 'Workspace mutation monitor reported an unknown path.',
+    };
+  }
+  const eventRevision = state.eventRevision + 1;
+  if (ignoreTrialWorkspaceMutation(path)) {
+    return { ...state, eventRevision };
+  }
+  if (state.revision >= MAX_TRIAL_WORKSPACE_MONITOR_EVENTS) {
+    return {
+      ...state,
+      eventRevision,
+      healthy: false,
+      reason: 'Workspace mutation monitor exceeded its bounded event capacity.',
+    };
+  }
+  const revision = state.revision + 1;
+  const recentChanges = [...state.recentChanges, { revision, path: boundedTrialText(path) }];
+  if (recentChanges.length > MAX_TRIAL_WORKSPACE_CHANGE_PATHS) recentChanges.shift();
+  return { ...state, eventRevision, revision, recentChanges };
+}
+
 function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
   monitor: TrialWorkspaceMutationMonitor | null;
   reason: string | null;
 } {
-  let revision = 0;
-  let eventRevision = 0;
-  let healthy = true;
-  let reason: string | null = null;
-  const recentChanges: Array<{ revision: number; path: string }> = [];
+  let state: TrialWorkspaceMutationEventState = {
+    healthy: true,
+    reason: null,
+    eventRevision: 0,
+    revision: 0,
+    recentChanges: [],
+  };
   let closing = false;
   const fail = (message: string): void => {
-    healthy = false;
-    reason ??= message;
+    if (state.healthy) {
+      state = { ...state, healthy: false, reason: state.reason ?? message };
+    }
   };
   let watcher: FSWatcher;
   try {
     watcher = watch(ws.workDir, { persistent: false, recursive: true }, (_eventType, filename) => {
-      const path = trialWorkspaceMutationPath(filename);
-      if (!path) {
-        fail('Workspace mutation monitor reported an unknown path.');
-        return;
-      }
-      if (eventRevision >= MAX_TRIAL_WORKSPACE_MONITOR_EVENTS) {
-        fail('Workspace mutation monitor exceeded its bounded event capacity.');
-        return;
-      }
-      eventRevision += 1;
-      if (ignoreTrialWorkspaceMutation(path)) return;
-      revision += 1;
-      recentChanges.push({ revision, path: boundedTrialText(path) });
-      if (recentChanges.length > MAX_TRIAL_WORKSPACE_CHANGE_PATHS) recentChanges.shift();
+      state = applyTrialWorkspaceMutationEvent(state, filename);
     });
   } catch (err) {
     return {
@@ -1719,9 +1798,14 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
   });
   return {
     monitor: {
-      read: () => ({ revision, healthy, reason, recentChanges: [...recentChanges] }),
+      read: () => ({
+        revision: state.revision,
+        healthy: state.healthy,
+        reason: state.reason,
+        recentChanges: [...state.recentChanges],
+      }),
       settle: async () => {
-        let observedEventRevision = eventRevision;
+        let observedEventRevision = state.eventRevision;
         let quietRounds = 0;
         const maxRounds = Math.ceil(
           TRIAL_WORKSPACE_MONITOR_MAX_SETTLE_MS / TRIAL_WORKSPACE_MONITOR_QUIET_INTERVAL_MS,
@@ -1730,12 +1814,12 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
           await new Promise<void>((resolvePromise) =>
             setTimeout(resolvePromise, TRIAL_WORKSPACE_MONITOR_QUIET_INTERVAL_MS),
           );
-          if (!healthy) return;
-          if (eventRevision === observedEventRevision) {
+          if (!state.healthy) return;
+          if (state.eventRevision === observedEventRevision) {
             quietRounds += 1;
             if (quietRounds >= TRIAL_WORKSPACE_MONITOR_QUIET_ROUNDS) return;
           } else {
-            observedEventRevision = eventRevision;
+            observedEventRevision = state.eventRevision;
             quietRounds = 0;
           }
         }
@@ -1893,6 +1977,71 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
   }
 }
 
+const TRIAL_CASE_FAILURE_STATUSES = new Set(['failed', 'timeout', 'blocked']);
+
+/**
+ * True when a run contains a task in a non-success terminal status
+ * (`failed`, `timeout`, `blocked`) that no `task-status` expectation
+ * declares for the same task and status. Declared expected failures (for
+ * example an empty-input fail-fast gate) must not defeat an otherwise
+ * passing case; undeclared failures always do.
+ */
+function hasUndeclaredTrialCaseTaskFailures(
+  result: EngineResult,
+  testCase: ChatPipelineTrialPlanCase,
+): boolean {
+  const declared = new Set<string>();
+  for (const expectation of testCase.expectations) {
+    if (expectation.type === 'task-status') {
+      declared.add(`${expectation.taskId}\u0000${expectation.status}`);
+    }
+  }
+  for (const [taskId, state] of result.states) {
+    if (
+      TRIAL_CASE_FAILURE_STATUSES.has(state.status) &&
+      !declared.has(`${taskId}\u0000${state.status}`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function trialCaseRunMatchesExpectedTaskStatuses(
+  result: EngineResult,
+  testCase: ChatPipelineTrialPlanCase,
+): boolean {
+  const taskStatusExpectations = testCase.expectations.filter(
+    (expectation) => expectation.type === 'task-status',
+  );
+  if (
+    !taskStatusExpectations.every(
+      (expectation) => result.states.get(expectation.taskId)?.status === expectation.status,
+    )
+  ) {
+    return false;
+  }
+  if (hasUndeclaredTrialCaseTaskFailures(result, testCase)) return false;
+  if (result.success) return true;
+  return taskStatusExpectations.some(
+    (expectation) =>
+      TRIAL_CASE_FAILURE_STATUSES.has(expectation.status) &&
+      result.states.get(expectation.taskId)?.status === expectation.status,
+  );
+}
+
+export function evaluateChatPipelineTrialCaseSuccess(input: {
+  testCase: ChatPipelineTrialPlanCase;
+  runResults: readonly EngineResult[];
+  expectations: ChatPipelineTrialExpectationResult[];
+}): boolean {
+  if (input.runResults.length !== input.testCase.runs) return false;
+  if (!input.expectations.every((item) => item.passed)) return false;
+  return input.runResults.every((result) =>
+    trialCaseRunMatchesExpectedTaskStatuses(result, input.testCase),
+  );
+}
+
 async function executeTargetedTrialCase(
   input: Omit<
     RunTrialPipelineInput,
@@ -1913,8 +2062,8 @@ async function executeTargetedTrialCase(
   const tasks: ChatPipelineTrialTaskResult[] = [];
   let totalTaskCount = 0;
   const taskStatusCounts: Record<string, number> = {};
+  const runResults: EngineResult[] = [];
   let lastResult: EngineResult | null = null;
-  let allRunsSucceeded = true;
   let executionError: string | null = null;
   input.progress.update({
     phase: 'running-case',
@@ -1972,7 +2121,7 @@ async function executeTargetedTrialCase(
         testCase: input.testCase,
         onEvent: (event) => updateTrialTaskProgress(input.progress, event),
       });
-      allRunsSucceeded = allRunsSucceeded && lastResult.success;
+      runResults.push(lastResult);
       const evidence = trialTaskResults(
         lastResult,
         casePipelineConfig,
@@ -2021,11 +2170,11 @@ async function executeTargetedTrialCase(
       );
     }
   }
-  const success =
-    !!lastResult &&
-    allRunsSucceeded &&
-    runIds.length === input.testCase.runs &&
-    expectations.every((item) => item.passed);
+  const success = evaluateChatPipelineTrialCaseSuccess({
+    testCase: input.testCase,
+    runResults,
+    expectations,
+  });
   const selectedTasks = selectChatPipelineTrialTaskEvidence(
     tasks,
     success ? new Set() : new Set([input.testCase.id]),
@@ -2056,12 +2205,14 @@ function buildPlannedTrialSummary(
   baselineOmittedTaskCount: number,
   taskStatusCounts: Readonly<Record<string, number>>,
   cases: readonly ChatPipelineTrialCaseResult[],
+  notRunCases: readonly ChatPipelineTrialNotRunCase[],
   plannedCaseCount: number,
   trialMode: ChatPipelineTrialMode,
   warnings: readonly string[],
   manualExecutionGrants: readonly ChatPipelineTrialManualExecutionGrant[],
 ): string {
-  const allPassed = baselineSuccess && cases.every((item) => item.success);
+  const allPassed =
+    baselineSuccess && notRunCases.length === 0 && cases.every((item) => item.success);
   const countText = Object.entries(taskStatusCounts)
     .map(([status, count]) => `${status}=${count}`)
     .join(', ');
@@ -2090,6 +2241,17 @@ function buildPlannedTrialSummary(
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
     }
+  }
+  for (const testCase of notRunCases) {
+    const reason =
+      testCase.reason === 'workspace-verification-failed'
+        ? 'workspace verification failed'
+        : testCase.reason === 'timed-out'
+          ? 'Trial timed out'
+          : testCase.reason === 'aborted'
+            ? 'Trial was aborted'
+            : 'Trial execution stopped';
+    lines.push(`Not-run case ${testCase.id}: ${reason} — ${testCase.detail}`);
   }
   if (manualExecutionGrants.length > 0) {
     lines.push(
@@ -2161,7 +2323,6 @@ async function prepareTrialExecution(
 
   const targetTaskIdsByCase = new Map<string, string[]>();
   const manualTaskIdsByCase = new Map<string, ReadonlySet<string>>();
-  const selectedManualTaskIds = new Set<string>();
   const planDiagnostics = planBlockingDiagnostics(plan);
   for (const testCase of plan.cases) {
     try {
@@ -2172,7 +2333,6 @@ async function prepareTrialExecution(
       const manualTaskIds = manualTaskIdsInTargetClosure(dag, targetTaskIds);
       targetTaskIdsByCase.set(testCase.id, targetTaskIds);
       manualTaskIdsByCase.set(testCase.id, manualTaskIds);
-      for (const taskId of manualTaskIds) selectedManualTaskIds.add(taskId);
     } catch (err) {
       planDiagnostics.push({
         message: `${testCase.id}: ${errorMessage(err)}`,
@@ -2214,48 +2374,65 @@ async function prepareTrialExecution(
       ),
     };
   }
-  const liveSmokeUnavailable =
-    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip';
-  if (!liveSmokeTestEnabled || liveSmokeUnavailable) {
-    const uncoveredTerminalTaskIds = findUncoveredChatPipelineTrialTerminalTaskIds(
-      plan,
-      pipelineConfig,
-    );
-    if (uncoveredTerminalTaskIds.length > 0) {
-      if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
-        return {
-          status: 'result',
-          result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
-        };
-      }
-      issueChatYamlStageTrialPlanAttempt(ws, {
-        stageId: stage.id,
-        relativePath: entry.relativePath,
-        yamlHash: snapshot.contentHash,
-        attemptId: trialId,
-      });
-      const reason = liveSmokeTestEnabled
-        ? 'The requested Live Smoke Test cannot run because its real-workspace data inputs are unavailable'
-        : 'Sandbox Trial does not execute a real-workspace baseline';
+  const liveSmokeBaseline = resolveChatPipelineLiveSmokeBaseline(
+    pipelineConfig,
+    dataReadiness,
+    ws.workDir,
+    {
+      livePipelineDir: dirname(
+        entry.sourcePath ?? resolve(ws.workDir, '.tagma', entry.relativePath),
+      ),
+      stagedPipelineDir: dirname(snapshot.yamlPath),
+    },
+  );
+  const liveSmokeCoveredTaskIds = new Set<string>(
+    !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip'
+      ? []
+      : liveSmokeBaseline.mode === 'run-all'
+        ? dag.nodes.keys()
+        : liveSmokeBaseline.targetTaskIds,
+  );
+  const uncoveredTerminalTaskIds = findUncoveredChatPipelineTrialTerminalTaskIds(
+    plan,
+    pipelineConfig,
+    liveSmokeCoveredTaskIds,
+  );
+  if (uncoveredTerminalTaskIds.length > 0) {
+    if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
       return {
         status: 'result',
-        result: withTrialability(
-          resultForPlanRequest(
-            buildChatPipelineTrialPlanRequest(
-              'invalid',
-              entry.relativePath,
-              snapshot.contentHash,
-              `${reason}, and targeted cases do not execute every terminal task: ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting each terminal task so its dependency closure runs. If a terminal task is unsafe or cannot be executed in Trial, record a blocking diagnostic-only finding instead of claiming Trial passed.`,
-              stage.trialPlanMaxAttempts,
-            ),
-            planTelemetry,
-            startedAt,
-            trialId,
-            dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
-          ),
-        ),
+        result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
       };
     }
+    issueChatYamlStageTrialPlanAttempt(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      yamlHash: snapshot.contentHash,
+      attemptId: trialId,
+    });
+    const reason = !liveSmokeTestEnabled
+      ? 'Sandbox Trial does not execute a real-workspace baseline'
+      : liveSmokeBaseline.mode === 'skip'
+        ? 'The requested Live Smoke Test has no runnable real-workspace branch'
+        : 'The requested Live Smoke Test excludes terminal branches that are not runnable in the real workspace';
+    return {
+      status: 'result',
+      result: withTrialability(
+        resultForPlanRequest(
+          buildChatPipelineTrialPlanRequest(
+            'invalid',
+            entry.relativePath,
+            snapshot.contentHash,
+            `${reason}, and targeted cases do not execute every uncovered terminal task: ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting each terminal task so its dependency closure runs. If a terminal task is unsafe or cannot be executed in Trial, record a blocking diagnostic-only finding instead of claiming Trial passed.`,
+            stage.trialPlanMaxAttempts,
+          ),
+          planTelemetry,
+          startedAt,
+          trialId,
+          dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
+        ),
+      ),
+    };
   }
   if (dataReadiness.state === 'fixture-backed') {
     const uncoveredInputs = findUncoveredTrialFixtureInputs(
@@ -2303,7 +2480,7 @@ async function prepareTrialExecution(
       pipelineConfig,
       targetTaskIdsByCase,
       manualTaskIdsByCase,
-      selectedManualTaskIds,
+      liveSmokeBaseline,
       dataReadiness,
       trialMode,
       trialabilityReport,
@@ -2344,21 +2521,17 @@ async function executeTrial(
     pipelineConfig,
     targetTaskIdsByCase,
     manualTaskIdsByCase,
-    selectedManualTaskIds,
+    liveSmokeBaseline,
     dataReadiness,
     trialMode,
     trialabilityReport,
     liveSmokeTestEnabled,
   } = prepared;
   const fixtureInputs = dataReadiness.state === 'fixture-backed' ? dataReadiness.inputs : [];
-  const baselineSkipped =
-    !liveSmokeTestEnabled ||
-    (dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip');
+  const baselineSkipped = !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip';
   const baselineTargetTaskIds =
-    liveSmokeTestEnabled &&
-    dataReadiness.state === 'fixture-backed' &&
-    dataReadiness.baseline.mode === 'targeted'
-      ? dataReadiness.baseline.targetTaskIds
+    liveSmokeTestEnabled && liveSmokeBaseline.mode === 'targeted'
+      ? liveSmokeBaseline.targetTaskIds
       : undefined;
 
   const pythonSettings = readEditorSettings(ws).pythonAgent;
@@ -2483,7 +2656,10 @@ async function executeTrial(
         runtimeMode,
         runId,
         manualApprovalScopesByRunId,
-        manualApprovalTaskIds: selectedManualTaskIds,
+        // The live smoke never auto-approves manual safety gates: manual
+        // tasks are human boundaries and are exercised through Sandbox
+        // cases instead (the baseline target set already excludes them).
+        manualApprovalTaskIds: new Set<string>(),
         ...(baselineTargetTaskIds ? { targetTaskIds: baselineTargetTaskIds } : {}),
         onEvent: (event) => updateTrialTaskProgress(progress, event),
       });
@@ -2491,6 +2667,7 @@ async function executeTrial(
       baselineEvidence = trialTaskResults(baseline, pipelineConfig, null, 1);
     }
     const cases: ChatPipelineTrialCaseResult[] = [];
+    let caseLoopStop: { reason: ChatPipelineTrialNotRunReason; detail: string } | null = null;
     let totalTaskCount = baselineEvidence.totalTaskCount;
     progress.update({
       phase: 'sealing-baseline',
@@ -2524,9 +2701,24 @@ async function executeTrial(
       hostWitnessCaptureFailure = true;
     }
     for (const [caseOffset, testCase] of plan.cases.entries()) {
-      if (controller.signal.aborted) break;
+      if (controller.signal.aborted) {
+        caseLoopStop = abortState.timedOut
+          ? {
+              reason: 'timed-out',
+              detail: `The Trial lifecycle timeout expired before case ${testCase.id} could start.`,
+            }
+          : {
+              reason: 'aborted',
+              detail: `The Trial was stopped before case ${testCase.id} could start.`,
+            };
+        break;
+      }
       if (pendingWorkspaceWitnessFailure) {
         cases.push(trialCaseForWorkspaceWitnessFailure(testCase, pendingWorkspaceWitnessFailure));
+        caseLoopStop = {
+          reason: 'workspace-verification-failed',
+          detail: `Workspace verification failed while preparing case ${testCase.id}.`,
+        };
         pendingWorkspaceWitnessFailure = null;
         break;
       }
@@ -2605,7 +2797,13 @@ async function executeTrial(
             };
       cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
-      if (workspaceFailures.length > 0) break;
+      if (workspaceFailures.length > 0) {
+        caseLoopStop = {
+          reason: 'workspace-verification-failed',
+          detail: `Workspace verification failed after case ${testCase.id}.`,
+        };
+        break;
+      }
     }
     if (baselineWorkspace.digest) {
       progress.update({
@@ -2647,6 +2845,23 @@ async function executeTrial(
         }
       }
     }
+    if (cases.length < plan.cases.length && !caseLoopStop) {
+      caseLoopStop = {
+        reason: 'execution-stopped',
+        detail: 'Trial execution stopped before the remaining cases could start.',
+      };
+    }
+    const returnedCaseIds = new Set(cases.map((testCase) => testCase.id));
+    const notRunCases: ChatPipelineTrialNotRunCase[] = plan.cases
+      .filter((testCase) => !returnedCaseIds.has(testCase.id))
+      .map((testCase) => ({
+        id: testCase.id,
+        title: boundedTrialText(testCase.title),
+        reason: caseLoopStop?.reason ?? 'execution-stopped',
+        detail: boundedTrialText(
+          caseLoopStop?.detail ?? 'Trial execution stopped before the remaining cases could start.',
+        ),
+      }));
     const success =
       baselineSuccess &&
       !abortState.timedOut &&
@@ -2660,6 +2875,18 @@ async function executeTrial(
             baselineSkipped
               ? `The Live Smoke Test was skipped because its real-workspace data inputs were unavailable. Sandbox cases ran with isolated fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`
               : `The Live Smoke Test ran only prerequisite-ready tasks. Tasks depending on unavailable data were exercised through Sandbox fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`,
+          ]
+        : []),
+      ...(liveSmokeBaseline.manualGatedTaskIds.length > 0 && liveSmokeTestEnabled
+        ? [
+            liveSmokeBaseline.mode === 'skip'
+              ? `The Live Smoke Test was skipped because every eligible task requires a manual approval gate. Manual-gated tasks were exercised through Sandbox cases instead: ${liveSmokeBaseline.manualGatedTaskIds.join(', ')}. No placeholder was written to the real workspace.`
+              : `The Live Smoke Test ran only tasks without manual approval gates. Manual-gated tasks were exercised through Sandbox cases instead: ${liveSmokeBaseline.manualGatedTaskIds.join(', ')}. No placeholder was written to the real workspace.`,
+          ]
+        : []),
+      ...(liveSmokeBaseline.middlewareUnavailableTaskIds.length > 0 && liveSmokeTestEnabled
+        ? [
+            `The Live Smoke Test excluded tasks whose static_context middleware source is not ready in the real workspace (the source is missing or differs from the staged artifact, which merges only after the Trial). Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.middlewareUnavailableTaskIds.join(', ')}. No placeholder was written to the real workspace.`,
           ]
         : []),
     ];
@@ -2743,6 +2970,7 @@ async function executeTrial(
         baselineEvidence.omittedTaskCount,
         taskStatusCounts,
         cases,
+        notRunCases,
         plan.cases.length,
         trialMode,
         planWarnings,
@@ -2757,7 +2985,8 @@ async function executeTrial(
       plan: trialPlanSummary(plan),
       plannedCaseCount: plan.cases.length,
       caseResultCount: visibleCases.length,
-      notRunCaseCount: Math.max(0, plan.cases.length - visibleCases.length),
+      notRunCaseCount: notRunCases.length,
+      ...(notRunCases.length > 0 ? { notRunCases } : {}),
       cases: visibleCases,
     };
     const hasExecutableFailure = allTaskEvidenceCandidates.some(

@@ -9,7 +9,7 @@
   clear pending state and remain handled inside the store.
 - OpenCode task `completed` is only a child-session lifecycle state; its `<task_result>` may still
   be empty, planning-only, or otherwise unusable. Seeded specialists must return a non-empty final
-  report. The router must resume the same `task_id` once, then must make exactly one fresh specialist
+  report. Managed sessions never reuse a `task_id`; the router may make exactly one fresh specialist
   call against the same authenticated staged root so it can inspect and continue partial artifacts.
   If that bounded recovery is also unusable, surface the observed failure without claiming success
   or speculating about an infrastructure cause.
@@ -109,6 +109,10 @@
   is re-exported from ChatPanel because tests import it from there. Result-bearing bubbles get a
   freshly-selected array each ChatMessages render, so they deliberately skip the MessageBubble
   memo win (rare, and always on finished turns).
+- Count a persisted pipeline result as anchored only when its result identity resolves through a
+  currently visible assistant message. Ledger presence alone must not suppress the standalone
+  fallback. A result-bearing assistant message must also render its result when it has no visible
+  text or activity, so tool-only or stale continuation anchors cannot swallow Open Pipeline.
 
 ## Chat Context Attachments
 
@@ -348,11 +352,19 @@
   workspace with bounded helpers/fixtures, contained portable paths, selected task targets,
   repeated-run support, and host-evaluated assertions. Case workspaces must be removed afterward
   and their fixtures/outputs must never leak into the live workspace.
+- A partial Live Smoke target set proves only the terminal tasks it actually contains. Every
+  terminal branch excluded by missing data, a manual gate, or a staged-only/divergent dependency
+  must be directly targeted by a Sandbox case; otherwise request a corrected plan before execution
+  and never finalize the result as verified.
 - Resolve staged pipeline support files identically in isolated Trial and after publication.
   When a short relative file/directory trigger, `file_exists` completion, or `static_context`
   path names an existing regular staged support-tree entry, relocate it to the copied or published
   `.tagma/<pipeline>/` directory before loading the YAML. Never make Trial find an asset that the
   finalized pipeline cannot resolve, or vice versa.
+- Only prompt tasks execute middleware. Live Smoke readiness must ignore inert command-task
+  middleware and compare target-pipeline `static_context` sources in the real workspace with the
+  exact staged Trial snapshot. Missing, deleted, or byte-divergent staged sources exclude that
+  branch from Live Smoke and require Sandbox coverage.
 - Treat each case's `targetTaskIds` as mandatory at the tool schema, persisted-plan parser, and
   execution boundary. Never translate an empty or missing target list to `undefined`, because that
   means a full-pipeline run.
@@ -365,6 +377,11 @@
   every failed case, and only then admit blocked/skipped noise. Return total and omitted task counts
   plus status breakdowns, and report planned/result/not-run case counts, so the bounded view cannot
   silently imply that omitted tasks or cases did not exist.
+- Every planned case without a result must retain its id, title, bounded reason category, and safe
+  detail in the Trial result, repair evidence, diagnostics, and conversation export. A count alone
+  is insufficient for distinguishing timeout, cancellation, or workspace-verification stops.
+- Bump the signed Trial cache protocol whenever verdict, baseline-coverage, or required evidence
+  semantics change; otherwise an older cached pass can bypass the new verification rule.
 - Preserve truncation provenance across every Trial evidence boundary. Distinguish source/runtime
   tail capture, Trial-result field or stream clipping, and repair-prompt clipping. Return produced,
   source-returned, and final-returned byte counts where they are known, and label inline truncation

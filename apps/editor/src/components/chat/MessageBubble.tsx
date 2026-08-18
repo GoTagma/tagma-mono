@@ -136,7 +136,8 @@ export const MessageBubble = memo(function MessageBubble({
   if (
     !shouldRenderMessageBubble({ info: entry.info, parts: renderableParts }) &&
     !hasActivity &&
-    attachmentReferences.length === 0
+    attachmentReferences.length === 0 &&
+    !fusedResults
   ) {
     return null;
   }

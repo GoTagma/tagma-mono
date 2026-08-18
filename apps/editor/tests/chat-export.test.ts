@@ -324,6 +324,14 @@ describe('chat conversation export', () => {
           plannedCaseCount: 2,
           caseResultCount: 1,
           notRunCaseCount: 1,
+          notRunCases: [
+            {
+              id: 'after-witness-failure',
+              title: 'Case after witness failure',
+              reason: 'workspace-verification-failed',
+              detail: 'Workspace verification failed after case basic-run.',
+            },
+          ],
           tasks: [
             {
               caseId: null,
@@ -486,6 +494,9 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('Planning validation rejections: 1');
     expect(exported.content).toContain('Planning token usage: 1.5k input, 100 output');
     expect(exported.content).toContain('Trial cases: 2 planned; 1 returned; 1 not run');
+    expect(exported.content).toContain(
+      'Trial case not run: after-witness-failure — Case after witness failure — workspace-verification-failed — Workspace verification failed after case basic-run.',
+    );
     expect(exported.content).toContain('Trial task status totals: failed=1, skipped=10, success=1');
     expect(exported.content).toContain('Trial task status omitted: skipped=10');
     expect(exported.content).toContain('Trial repair authorization: diagnostic-only');

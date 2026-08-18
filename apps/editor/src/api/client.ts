@@ -428,8 +428,18 @@ export interface ChatPipelineTrialabilityReport {
   warnings: string[];
 }
 
+export type ChatPipelineTrialNotRunReason =
+  'aborted' | 'timed-out' | 'workspace-verification-failed' | 'execution-stopped';
+
+export interface ChatPipelineTrialNotRunCase {
+  id: string;
+  title: string;
+  reason: ChatPipelineTrialNotRunReason;
+  detail: string;
+}
+
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -466,6 +476,7 @@ export interface ChatPipelineTrialRunResult {
   plannedCaseCount?: number;
   caseResultCount?: number;
   notRunCaseCount?: number;
+  notRunCases?: ChatPipelineTrialNotRunCase[];
   cases: ChatPipelineTrialCaseResult[];
 }
 

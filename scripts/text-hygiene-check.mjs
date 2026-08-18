@@ -5,6 +5,7 @@ import { join } from 'node:path';
 const ROOTS = ['README.md', 'docs', 'packages', 'apps', '.github', 'scripts'];
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'coverage', '.turbo']);
 const SKIP_FILES = new Set(['bun.lock']);
+const LOCAL_AGENT_EXPORT_RE = /^apps[\\/]editor[\\/][^\\/]*-local-command-[^\\/]*\.txt$/i;
 const TEXT_EXTENSIONS = new Set([
   '.cjs',
   '.css',
@@ -34,6 +35,7 @@ function* walk(path) {
   if (!existsSync(path)) return;
   const stat = statSync(path);
   if (stat.isFile()) {
+    if (LOCAL_AGENT_EXPORT_RE.test(path)) return;
     if (
       !SKIP_FILES.has(path.split(/[\\/]/).at(-1) ?? '') &&
       TEXT_EXTENSIONS.has(extensionOf(path))

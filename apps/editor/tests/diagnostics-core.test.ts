@@ -384,8 +384,17 @@ describe('temporary diagnostics sessions', () => {
                   ),
                 },
                 plannedCaseCount: 2,
-                caseResultCount: 2,
-                notRunCaseCount: 0,
+                caseResultCount: 1,
+                notRunCaseCount: 1,
+                notRunCases: [
+                  {
+                    id: 'after-witness',
+                    title: 'After witness failure',
+                    reason: 'workspace-verification-failed',
+                    detail: 'Workspace verification failed after case first-case.',
+                    privatePayload: 'must not survive',
+                  },
+                ],
                 planTelemetry: {
                   version: 2,
                   yamlHash: 'private-yaml-hash',
@@ -556,6 +565,19 @@ describe('temporary diagnostics sessions', () => {
             repairAuthorization: 'pipeline-change-allowed',
             trialMode: 'sandbox-with-live-smoke',
             verificationMode: 'sandbox-cases-with-live-smoke',
+            notRunCases: {
+              totalCount: 1,
+              returnedCount: 1,
+              omittedCount: 0,
+              items: [
+                {
+                  id: 'after-witness',
+                  title: 'After witness failure',
+                  reason: 'workspace-verification-failed',
+                  detail: 'Workspace verification failed after case first-case.',
+                },
+              ],
+            },
             trialabilityReport: {
               protocolVersion: 1,
               mode: 'sandbox-with-live-smoke',

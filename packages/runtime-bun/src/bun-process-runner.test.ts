@@ -311,7 +311,15 @@ test('runSpawn classifies an incomplete stream as output_error without parsing p
       },
     }) as unknown as ReturnType<typeof Bun.spawn>) satisfies BunSpawnForRunner;
 
-  const result = await runSpawnWith({ args: ['fixture-command'] }, driver, {}, spawnProcess);
+  // Use a real executable path so Windows preflight reaches the injected
+  // subprocess fixture instead of correctly failing on a made-up binary.
+  const result = await runSpawnWith(
+    { args: [process.execPath] },
+    driver,
+    {},
+    spawnProcess,
+    () => false,
+  );
 
   expect(result.exitCode).toBe(0);
   expect(result.failureKind).toBe('output_error');

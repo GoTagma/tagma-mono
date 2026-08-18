@@ -403,11 +403,18 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 
 #### `static_context` - Prepend file content to prompt
 
-| Field   | Type               | Required | Default                   | Description                                    |
-| ------- | ------------------ | -------- | ------------------------- | ---------------------------------------------- |
-| `type`  | `"static_context"` | Yes      | -                         | Middleware type                                |
-| `file`  | `string`           | Yes      | -                         | Path to the context file (relative to workDir) |
-| `label` | `string`           | No       | `"Reference: {filename}"` | Label for the injected context section         |
+| Field       | Type               | Required | Default                   | Description                                    |
+| ----------- | ------------------ | -------- | ------------------------- | ---------------------------------------------- |
+| `type`      | `"static_context"` | Yes      | -                         | Middleware type                                |
+| `file`      | `string`           | Yes      | -                         | Path to the context file (relative to workDir) |
+| `label`     | `string`           | No       | `"Reference: {filename}"` | Label for the injected context section         |
+| `max_chars` | `number`           | No       | `200000`                  | Maximum number of characters to inject         |
+
+The configured source file is required at execution time. A missing or unreadable source fails the
+task instead of silently running the prompt without its promised context. Pipelines created against
+older SDK behavior that intentionally tolerated an absent reference must either provision the file
+before execution or remove the middleware for runs where the context is not required; there is no
+implicit optional-context fallback.
 
 ## API
 

@@ -758,6 +758,7 @@ export async function runSpawnWith(
   driver: DriverPlugin | null,
   opts: RunOptions,
   spawnProcess: BunSpawnForRunner,
+  killWindowsProcessTree: (pid: number) => boolean = killProcessTree,
 ): Promise<TaskResult> {
   const { timeoutMs, signal } = opts;
   const start = performance.now();
@@ -847,7 +848,7 @@ export async function runSpawnWith(
     if (process.platform === 'win32') {
       // On Windows, kill the entire process tree via taskkill. This handles
       // .cmd wrappers and nested child processes that proc.kill() misses.
-      const treeKilled = killProcessTree(proc.pid);
+      const treeKilled = killWindowsProcessTree(proc.pid);
       // Some restricted Windows environments deny taskkill even for direct
       // children. Fall back to Bun's direct-child kill so abort/timeout paths
       // can still make progress for non-wrapper commands.

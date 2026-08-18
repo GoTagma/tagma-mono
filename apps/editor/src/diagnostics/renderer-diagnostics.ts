@@ -14,6 +14,7 @@ const MAX_VALIDATION_SUMMARIES = 100;
 const MAX_TRIAL_PLAN_ATTEMPT_IDS = 50;
 const MAX_TRIAL_PLAN_REJECTIONS = 50;
 const MAX_TRIAL_MANUAL_EXECUTION_GRANTS = 32;
+const MAX_TRIAL_NOT_RUN_CASES = 8;
 const MAX_TRIALABILITY_ITEMS = 64;
 const MAX_TRIALABILITY_MESSAGES = 32;
 
@@ -501,6 +502,16 @@ function compactTrial(value: unknown): UnknownRecord | null {
         approvalCount: finiteNumber(grant.approvalCount),
       };
     });
+  const notRunCaseSource = Array.isArray(trial.notRunCases) ? trial.notRunCases : [];
+  const notRunCases = notRunCaseSource.slice(0, MAX_TRIAL_NOT_RUN_CASES).map((item) => {
+    const testCase = record(item);
+    return {
+      id: conciseText(testCase.id),
+      title: conciseText(testCase.title),
+      reason: conciseText(testCase.reason, 64),
+      detail: conciseText(testCase.detail),
+    };
+  });
   return {
     success: trial.success ?? null,
     kind: trial.kind ?? null,
@@ -520,6 +531,7 @@ function compactTrial(value: unknown): UnknownRecord | null {
     plannedCaseCount: trial.plannedCaseCount ?? null,
     caseResultCount: trial.caseResultCount ?? null,
     notRunCaseCount: trial.notRunCaseCount ?? null,
+    notRunCases,
     manualExecutionGrants: {
       totalCount: manualGrantSource.length,
       returnedCount: manualGrantItems.length,

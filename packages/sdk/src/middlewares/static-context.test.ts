@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StaticContextMiddleware } from './static-context';
+import { promptDocumentFromString, serializePromptDocument } from '@tagma/core';
 import type { MiddlewareContext, PromptDocument } from '@tagma/types';
 
 describe('StaticContextMiddleware', () => {
@@ -91,6 +92,66 @@ describe('StaticContextMiddleware', () => {
       await expect(
         StaticContextMiddleware.enhanceDoc(doc, { file: 'missing.txt', label: 42 }, ctx),
       ).rejects.toThrow(/"label" must be a string/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('a missing required source file fails loudly instead of silently skipping', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-static-context-missing-'));
+    try {
+      const doc = promptDocumentFromString('verify the allowlist');
+      const ctx: MiddlewareContext = {
+        workDir: tmp,
+        track: { id: 't', name: 'T', tasks: [] },
+        task: { id: 'a', name: 'A', prompt: 'verify the allowlist' },
+      };
+      await expect(
+        StaticContextMiddleware.enhanceDoc(doc, { file: 'trusted-sources.yaml' }, ctx),
+      ).rejects.toThrow(/static_context middleware: file "trusted-sources\.yaml" not found/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('a present source file is prepended as a labelled context block', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-static-context-present-'));
+    try {
+      writeFileSync(join(tmp, 'trusted-sources.yaml'), 'version: 1\nsources: []\n');
+      const doc = promptDocumentFromString('verify the allowlist');
+      const ctx: MiddlewareContext = {
+        workDir: tmp,
+        track: { id: 't', name: 'T', tasks: [] },
+        task: { id: 'a', name: 'A', prompt: 'verify the allowlist' },
+      };
+      const enhanced = await StaticContextMiddleware.enhanceDoc(
+        doc,
+        { file: 'trusted-sources.yaml' },
+        ctx,
+      );
+      const serialized = serializePromptDocument(enhanced);
+      expect(serialized).toContain('Reference: trusted-sources.yaml');
+      expect(serialized).toContain('version: 1');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('config validation still fails before any file access', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-static-context-config-'));
+    try {
+      const doc = promptDocumentFromString('work');
+      const ctx: MiddlewareContext = {
+        workDir: tmp,
+        track: { id: 't', name: 'T', tasks: [] },
+        task: { id: 'a', name: 'A', prompt: 'work' },
+      };
+      await expect(
+        StaticContextMiddleware.enhanceDoc(doc, { file: 'x.yaml', max_chars: 0 }, ctx),
+      ).rejects.toThrow(/max_chars/);
+      await expect(StaticContextMiddleware.enhanceDoc(doc, {}, ctx)).rejects.toThrow(
+        /"file" is required/,
+      );
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

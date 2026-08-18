@@ -458,3 +458,53 @@ test('trial repair evidence prioritizes actionable stderr and keeps failed-case 
     tasks: [{ taskId: 'main.emit_json' }],
   });
 });
+
+test('trial repair evidence names every case that did not run and why', () => {
+  const prompt = buildChatYamlRepairPrompt(
+    TARGET,
+    {
+      kind: 'trial-run',
+      result: {
+        version: 13,
+        success: false,
+        kind: 'failed',
+        repairAuthorization: 'diagnostic-only',
+        ran: true,
+        runId: 'run_not_run_reason',
+        summary: 'Workspace verification stopped the remaining case.',
+        durationMs: 10,
+        totalTaskCount: 1,
+        omittedTaskCount: 0,
+        tasks: [],
+        plannedCaseCount: 2,
+        caseResultCount: 1,
+        notRunCaseCount: 1,
+        notRunCases: [
+          {
+            id: 'after-containment-failure',
+            title: 'Case after containment failure',
+            reason: 'workspace-verification-failed',
+            detail: 'Workspace verification failed after case leak-probe.',
+          },
+        ],
+        cases: [],
+      },
+    },
+    1,
+    2,
+  );
+
+  const evidence = JSON.parse(
+    prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim(),
+  ) as {
+    notRunCases?: Array<{ id: string; title: string; reason: string; detail: string }>;
+  };
+  expect(evidence.notRunCases).toEqual([
+    {
+      id: 'after-containment-failure',
+      title: 'Case after containment failure',
+      reason: 'workspace-verification-failed',
+      detail: 'Workspace verification failed after case leak-probe.',
+    },
+  ]);
+});

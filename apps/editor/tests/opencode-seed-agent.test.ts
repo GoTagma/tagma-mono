@@ -302,7 +302,8 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('tagma-trial-planner');
   expect(doc).toContain('Host `<tagma-internal>` targeted Trial Plan');
   expect(doc).toContain('same staged path and YAML hash');
-  expect(doc).toContain('resume the prior planner task');
+  expect(doc).toContain('pass the prior rejection evidence to a fresh planner');
+  expect(doc).toContain('never reuse a `task_id`');
   expect(doc).toContain('tagma_trial_plan: false');
   expect(doc).toContain('tagma_trial_plan: deny');
   expect(doc).toContain('Never forward raw full transcript excerpts');
@@ -416,7 +417,7 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
   expect(doc).toContain('A task lifecycle state of `completed` is not deliverable success');
   expect(doc).toContain('empty, planning-only, or otherwise unusable');
-  expect(doc).toContain('resume the same `task_id` exactly once');
+  expect(doc).toContain('Managed sessions never allow `task_id` reuse');
   expect(doc).toContain('launch exactly one fresh `tagma-pipeline` child');
   expect(doc).toContain('same staged root and handoff');
   expect(doc).toContain('inspect and continue any partial staged artifacts');
@@ -426,6 +427,18 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   expect(doc).toContain('`pipeline_work`: relay');
   expect(doc).toContain('authoring complete; host verification pending');
   expect(doc).toContain('compilation cannot mean built, ready, successful, or verified');
+});
+
+test('router recovery never instructs task_id reuse that the context-window plugin blocks', () => {
+  // The seeded context-window plugin rejects every task call with a non-empty
+  // task_id ("Tagma managed OpenCode sessions do not allow task_id reuse").
+  // The router prompt must not prescribe a recovery step that is guaranteed
+  // to fail; recovery is one fresh child that continues partial artifacts.
+  const doc = buildTagmaRouterAgent();
+  expect(doc).not.toContain('resume the same');
+  expect(doc).not.toContain('resume the prior planner task');
+  expect(doc).toContain('Managed sessions never allow `task_id` reuse');
+  expect(doc).toContain('never reuse a `task_id`');
 });
 
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
@@ -629,7 +642,10 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain(
       'configured finite commit budget for each exact staged path and YAML hash',
     );
-    expect(planner).toContain('subsequent same-key request resumes this planner task');
+    expect(planner).toContain(
+      'subsequent same-key request continues this planner work through the matching draft',
+    );
+    expect(planner).toContain('never by reusing a `task_id`');
     expect(planner).not.toContain('two-call budget');
     expect(planner).not.toContain('Never attempt a third same-key call');
     expect(planner).not.toContain('the one remaining attempt');

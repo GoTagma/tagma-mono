@@ -1023,6 +1023,29 @@ export function selectAssistantMessageYamlResults({
   return (turnYamlResults[entry.info.id] ?? []).filter((result) => result.sessionId === sessionId);
 }
 
+export function isSessionYamlResultAnchoredToVisibleMessage({
+  result,
+  sessionId,
+  messages,
+  turnYamlResults,
+}: {
+  result: ChatYamlSessionResult | null;
+  sessionId: string | null;
+  messages: readonly OpencodeThreadEntry[];
+  turnYamlResults: Record<string, ChatYamlSessionResult[]>;
+}): boolean {
+  if (!result || !sessionId) return false;
+  return messages.some((entry) =>
+    selectAssistantMessageYamlResults({ entry, sessionId, turnYamlResults }).some((candidate) =>
+      candidate.resultId && result.resultId
+        ? candidate.resultId === result.resultId
+        : candidate.completedAt === result.completedAt &&
+          (candidate.reconcile?.resultPath ?? candidate.path) ===
+            (result.reconcile?.resultPath ?? result.path),
+    ),
+  );
+}
+
 function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
@@ -1040,19 +1063,12 @@ function ChatMessages() {
   const contentRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const sessionYamlResult = sessionId ? (sessionYamlResults[sessionId] ?? null) : null;
-  const sessionYamlResultIsAnchored =
-    !!sessionYamlResult &&
-    Object.values(turnYamlResults).some((results) =>
-      results.some(
-        (result) =>
-          result.sessionId === sessionId &&
-          (result.resultId && sessionYamlResult.resultId
-            ? result.resultId === sessionYamlResult.resultId
-            : result.completedAt === sessionYamlResult.completedAt &&
-              (result.reconcile?.resultPath ?? result.path) ===
-                (sessionYamlResult.reconcile?.resultPath ?? sessionYamlResult.path)),
-      ),
-    );
+  const sessionYamlResultIsAnchored = isSessionYamlResultAnchoredToVisibleMessage({
+    result: sessionYamlResult,
+    sessionId,
+    messages,
+    turnYamlResults,
+  });
 
   // Expanded-state for activity panels lives at this layer (not as
   // component-local useState in MessageBubble) so the '__pending__'

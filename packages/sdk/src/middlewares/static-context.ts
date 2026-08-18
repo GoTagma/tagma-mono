@@ -65,8 +65,14 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
     const file = Bun.file(safePath);
 
     if (!(await file.exists())) {
-      console.warn(`static_context: file ${filePath} not found, skipping`);
-      return doc;
+      // The configured source is required (schema: required) and the task
+      // prompt promises its content is injected on every run. Silently
+      // skipping would hand the model a prompt whose promised context is
+      // missing, so fail loudly at the middleware layer instead.
+      throw new Error(
+        `static_context middleware: file "${filePath}" not found at "${safePath}". ` +
+          'Restore the configured context source or fix the pipeline reference.',
+      );
     }
 
     // max_chars is a *character* count, not a byte count. Blob.slice() is

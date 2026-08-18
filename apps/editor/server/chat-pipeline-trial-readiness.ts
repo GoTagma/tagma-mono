@@ -1,4 +1,4 @@
-import { lstatSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 
 import type { PipelineConfig } from '@tagma/sdk';
@@ -28,6 +28,175 @@ export type ChatPipelineTrialReadiness =
       inputs: ChatPipelineTrialFixtureInput[];
     }
   | { state: 'blocked'; blockers: ChatPipelineTrialBlocker[] };
+
+export type ChatPipelineLiveSmokeBaseline =
+  | { mode: 'run-all'; manualGatedTaskIds: string[]; middlewareUnavailableTaskIds: string[] }
+  | {
+      mode: 'targeted';
+      targetTaskIds: string[];
+      manualGatedTaskIds: string[];
+      middlewareUnavailableTaskIds: string[];
+    }
+  | { mode: 'skip'; manualGatedTaskIds: string[]; middlewareUnavailableTaskIds: string[] };
+
+export interface ChatPipelineLiveSmokeArtifactProjection {
+  livePipelineDir: string;
+  stagedPipelineDir: string;
+}
+
+function isRegularFile(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function projectedStaticContextMatches(
+  liveFile: string,
+  projection: ChatPipelineLiveSmokeArtifactProjection,
+): boolean {
+  if (!isPathWithin(liveFile, projection.livePipelineDir)) return isRegularFile(liveFile);
+  const stagedFile = resolve(
+    projection.stagedPipelineDir,
+    relative(projection.livePipelineDir, liveFile),
+  );
+  if (!isPathWithin(stagedFile, projection.stagedPipelineDir)) return false;
+  if (!isRegularFile(liveFile) || !isRegularFile(stagedFile)) return false;
+  try {
+    return readFileSync(liveFile).equals(readFileSync(stagedFile));
+  } catch {
+    return false;
+  }
+}
+
+function missingStaticContextSources(
+  workDir: string,
+  node: {
+    track: { cwd?: string; middlewares?: readonly unknown[] };
+    task: { cwd?: string; prompt?: string; middlewares?: readonly unknown[] };
+  },
+  projection?: ChatPipelineLiveSmokeArtifactProjection,
+  availabilityCache?: Map<string, boolean>,
+): string[] {
+  if (typeof node.task.prompt !== 'string') return [];
+  const mws = node.task.middlewares ?? node.track.middlewares ?? [];
+  const effectiveCwd = resolve(workDir, node.task.cwd ?? node.track.cwd ?? '.');
+  const missing: string[] = [];
+  for (const mw of mws) {
+    const record = mw as { type?: unknown; file?: unknown };
+    if (record.type !== 'static_context') continue;
+    if (typeof record.file !== 'string' || record.file.trim().length === 0) continue;
+    const resolvedFile = resolve(effectiveCwd, record.file);
+    if (!isPathWithin(resolvedFile, workDir)) {
+      missing.push(record.file);
+      continue;
+    }
+    let available = availabilityCache?.get(resolvedFile);
+    if (available === undefined) {
+      available = projection
+        ? projectedStaticContextMatches(resolvedFile, projection)
+        : isRegularFile(resolvedFile);
+      availabilityCache?.set(resolvedFile, available);
+    }
+    if (!available) missing.push(record.file);
+  }
+  return missing;
+}
+
+/**
+ * Resolves which tasks the optional Live Smoke Test may execute in the real
+ * workspace. Manual-trigger tasks are human approval boundaries: the Trial
+ * never fabricates approval for them in the live smoke, so they and every
+ * task that (transitively) depends on them are excluded from the baseline
+ * and must be exercised through Sandbox cases instead. Tasks whose
+ * `static_context` source is missing from the real workspace or differs
+ * from the staged pipeline artifact are excluded the same way: running
+ * them would use absent or stale promised context. Fixture-backed data
+ * constraints from {@link resolveChatPipelineDataReadiness} are intersected
+ * with both exclusions.
+ */
+export function resolveChatPipelineLiveSmokeBaseline(
+  pipelineConfig: PipelineConfig,
+  dataReadiness: ChatPipelineTrialReadiness,
+  workDir: string,
+  projection?: ChatPipelineLiveSmokeArtifactProjection,
+): ChatPipelineLiveSmokeBaseline {
+  const dag = buildDag(pipelineConfig);
+  const manualGatedTaskIds = [...dag.nodes.entries()]
+    .filter(([, node]) => node.task.trigger?.type === 'manual')
+    .map(([taskId]) => taskId)
+    .sort();
+  const middlewareAvailability = new Map<string, boolean>();
+  const middlewareUnavailableTaskIds = [...dag.nodes.entries()]
+    .filter(
+      ([, node]) =>
+        missingStaticContextSources(workDir, node, projection, middlewareAvailability).length > 0,
+    )
+    .map(([taskId]) => taskId)
+    .sort();
+  const gatedTaskIds = [
+    ...new Set([...manualGatedTaskIds, ...middlewareUnavailableTaskIds]),
+  ].sort();
+  if (dataReadiness.state === 'blocked') {
+    return { mode: 'skip', manualGatedTaskIds, middlewareUnavailableTaskIds };
+  }
+  if (gatedTaskIds.length === 0) {
+    if (dataReadiness.state === 'fixture-backed') {
+      return dataReadiness.baseline.mode === 'skip'
+        ? { mode: 'skip', manualGatedTaskIds, middlewareUnavailableTaskIds }
+        : {
+            mode: 'targeted',
+            targetTaskIds: dataReadiness.baseline.targetTaskIds,
+            manualGatedTaskIds,
+            middlewareUnavailableTaskIds,
+          };
+    }
+    return { mode: 'run-all', manualGatedTaskIds, middlewareUnavailableTaskIds };
+  }
+
+  const dependents = new Map<string, string[]>();
+  for (const [taskId, node] of dag.nodes) {
+    for (const dependency of node.dependsOn) {
+      const list = dependents.get(dependency);
+      if (list) list.push(taskId);
+      else dependents.set(dependency, [taskId]);
+    }
+  }
+  const gated = new Set(gatedTaskIds);
+  const pending = [...gatedTaskIds];
+  while (pending.length > 0) {
+    const taskId = pending.pop()!;
+    for (const dependent of dependents.get(taskId) ?? []) {
+      if (gated.has(dependent)) continue;
+      gated.add(dependent);
+      pending.push(dependent);
+    }
+  }
+
+  const eligible =
+    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip'
+      ? []
+      : [...dag.nodes.keys()].filter(
+          (taskId) =>
+            !gated.has(taskId) &&
+            (dataReadiness.state !== 'fixture-backed' ||
+              dataReadiness.baseline.mode !== 'targeted' ||
+              dataReadiness.baseline.targetTaskIds.includes(taskId)),
+        );
+  if (eligible.length === 0) {
+    return { mode: 'skip', manualGatedTaskIds, middlewareUnavailableTaskIds };
+  }
+  if (dataReadiness.state === 'runnable' && eligible.length === dag.nodes.size) {
+    return { mode: 'run-all', manualGatedTaskIds, middlewareUnavailableTaskIds };
+  }
+  return {
+    mode: 'targeted',
+    targetTaskIds: eligible,
+    manualGatedTaskIds,
+    middlewareUnavailableTaskIds,
+  };
+}
 
 export type ChatPipelineTrialRecordedPrerequisiteState = Exclude<
   ChatPipelineTrialReadiness,

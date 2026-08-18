@@ -69,6 +69,14 @@ Do not amend the same commit to include these files after naming them with the c
   compile log before finalize, while preserving an explicit `./` (`.\\` on Windows) opt-in for an
   intentionally nested same-name path.
 
+## Static Context Source Integrity
+
+- `static_context.file` is a required runtime dependency for prompt tasks. Missing or unreadable
+  sources must fail the task; never silently run a prompt after dropping its promised context.
+- Live Smoke may use a target-pipeline static-context source only when its real-workspace bytes
+  match the authenticated staged Trial snapshot. Missing, deleted, or divergent staged sources
+  require Sandbox coverage of the excluded terminal branch. Command tasks ignore middleware.
+
 ## Runtime Waiting-State Observability
 
 - Represent a waiting cause with the safe `TaskWaitReason` wire shape only: qualified dependency

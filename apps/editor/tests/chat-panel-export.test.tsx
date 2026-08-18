@@ -12,11 +12,13 @@ import {
   selectConversationFlowActivity,
   PendingUserBubble,
   QueuedUserBubble,
+  isSessionYamlResultAnchoredToVisibleMessage,
   selectAssistantMessageYamlResults,
   SessionYamlResultBubble,
   shouldShowChatCompletionToast,
   shouldShowSessionYamlResult,
 } from '../src/components/chat/ChatPanel';
+import { MessageBubble } from '../src/components/chat/MessageBubble';
 import { useChatStore } from '../src/store/chat-store';
 import {
   chatPipelineDisplayName,
@@ -1311,6 +1313,106 @@ describe('ChatPanel export affordance', () => {
     expect(secondMessage).toBeGreaterThan(beta);
     expect(gamma).toBeGreaterThan(secondMessage);
     expect(html.match(/pipeline result/g)?.length).toBe(3);
+  });
+
+  test('does not suppress the Open pipeline fallback for a missing message anchor', () => {
+    const result = {
+      resultId: 'fact-checker-result',
+      messageId: 'missing-assistant-message',
+      turnId: 'turn-fact-checker',
+      sessionId: 's1',
+      workspaceKey: 'C:\\workspace',
+      kind: 'open-created',
+      path: 'C:\\workspace\\.tagma\\fact-checker\\fact-checker.yaml',
+      name: 'fact-checker.yaml',
+      pipelineName: 'Fact Checker',
+      status: 'failed',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded; Trial failed.',
+        validation: { errors: [], warnings: [] },
+      },
+      reconcile: {
+        outcome: 'forked',
+        conflicts: ['trial-run-failed'],
+        localBranchPersisted: true,
+        resultPath: 'C:\\workspace\\.tagma\\fact-checker\\fact-checker.yaml',
+        compileSuccess: true,
+        trialRunSuccess: false,
+      },
+      completedAt: 2_000,
+    } as ChatYamlSessionResult;
+    const anchored = isSessionYamlResultAnchoredToVisibleMessage({
+      result,
+      sessionId: 's1',
+      messages: [visibleThread],
+      turnYamlResults: { 'missing-assistant-message': [result] },
+    });
+
+    expect(anchored).toBe(false);
+    expect(
+      shouldShowSessionYamlResult({
+        hasResult: !anchored,
+        sending: false,
+        reconciling: false,
+        hasPostChatAction: false,
+      }),
+    ).toBe(true);
+
+    const matchingAssistant = {
+      ...visibleThread,
+      info: { ...visibleThread.info, id: 'missing-assistant-message' },
+      parts: visibleThread.parts.map((part) => ({
+        ...part,
+        id: 'matching-part',
+        messageID: 'missing-assistant-message',
+      })),
+    } as OpencodeThreadEntry;
+    expect(
+      isSessionYamlResultAnchoredToVisibleMessage({
+        result,
+        sessionId: 's1',
+        messages: [matchingAssistant],
+        turnYamlResults: { 'missing-assistant-message': [result] },
+      }),
+    ).toBe(true);
+  });
+
+  test('renders an anchored Open pipeline result on an assistant message without text', () => {
+    const result = {
+      resultId: 'tool-only-result',
+      messageId: 'tool-only-assistant',
+      turnId: 'turn-tool-only',
+      sessionId: 's1',
+      workspaceKey: 'C:\\workspace',
+      kind: 'open-created',
+      path: 'C:\\workspace\\.tagma\\tool-only\\tool-only.yaml',
+      name: 'tool-only.yaml',
+      pipelineName: 'Tool-only Pipeline',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      },
+      reconcile: {
+        outcome: 'created',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: 'C:\\workspace\\.tagma\\tool-only\\tool-only.yaml',
+        compileSuccess: true,
+      },
+      completedAt: 3_000,
+    } as ChatYamlSessionResult;
+    const entry = {
+      info: { id: 'tool-only-assistant', sessionID: 's1', role: 'assistant' },
+      parts: [],
+    } as unknown as OpencodeThreadEntry;
+
+    const html = renderToStaticMarkup(<MessageBubble entry={entry} yamlResults={[result]} />);
+
+    expect(html).toContain('Tool-only Pipeline');
+    expect(html).toContain('Open pipeline');
   });
 
   test('links forked and compile-failed host results while rejecting staging targets', () => {

@@ -15,6 +15,7 @@ export const DIAGNOSTICS_AGENT_BASE_PATH = '/api/diagnostics/v1';
 const MAX_TIMELINE_TRIALABILITY_ITEMS = 32;
 const MAX_TIMELINE_TRIALABILITY_MESSAGES = 32;
 const MAX_TIMELINE_TRIAL_MANUAL_GRANTS = 32;
+const MAX_TIMELINE_TRIAL_NOT_RUN_CASES = 8;
 
 export interface DiagnosticLogEntry {
   cursor: number;
@@ -505,6 +506,18 @@ function trialManualExecutionGrantsTimelineSummary(value: unknown): UnknownRecor
   });
 }
 
+function trialNotRunCasesTimelineSummary(value: unknown): UnknownRecord {
+  return trialTimelineCollection(value, MAX_TIMELINE_TRIAL_NOT_RUN_CASES, (rawCase) => {
+    const testCase = record(rawCase);
+    return {
+      id: conciseDiagnosticText(testCase.id, 160),
+      title: conciseDiagnosticText(testCase.title, 256),
+      reason: conciseDiagnosticText(testCase.reason, 64),
+      detail: conciseDiagnosticText(testCase.detail, 512),
+    };
+  });
+}
+
 function trialTimelineSummary(value: unknown): UnknownRecord | null {
   const trial = record(value);
   if (Object.keys(trial).length === 0) return null;
@@ -532,6 +545,7 @@ function trialTimelineSummary(value: unknown): UnknownRecord | null {
     omittedTaskStatusCounts: numericRecord(trial.omittedTaskStatusCounts),
     trialabilityReport: trialabilityTimelineSummary(trial.trialabilityReport),
     manualExecutionGrants: trialManualExecutionGrantsTimelineSummary(trial.manualExecutionGrants),
+    notRunCases: trialNotRunCasesTimelineSummary(trial.notRunCases),
     planTelemetry: trialPlanTelemetryTimelineSummary(trial.planTelemetry),
     plan:
       Object.keys(plan).length > 0
