@@ -1,14 +1,16 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
+import type { PipelineConfig } from '@tagma/sdk';
 
 import {
   CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS,
   parseChatPipelineTrialPlan,
   pipelineTrialPlanPath,
   readChatPipelineTrialPlan,
+  validateChatPipelineTrialPlanTaskPathCoordinates,
   validateChatPipelineTrialPlanTargetPaths,
 } from '../server/chat-pipeline-trial-plan';
 
@@ -73,6 +75,46 @@ function completePlan(): Record<string, unknown> {
           },
           { type: 'file-equals', path: 'outputs/c-empty.txt', text: '' },
           { type: 'task-status', taskId: 'main.process', status: 'success' },
+        ],
+      },
+    ],
+  };
+}
+
+function taskLocalPipelineConfig(workDir: string): PipelineConfig {
+  return {
+    name: 'Task-local paths',
+    tracks: [
+      {
+        id: 'ingest',
+        name: 'Ingest',
+        cwd: join(workDir, '.tagma', 'sample'),
+        tasks: [
+          {
+            id: 'ingest',
+            name: 'Ingest',
+            command: 'write work/target.txt',
+            outputs: { target_path: { from: 'json.target_path' } },
+          },
+        ],
+      },
+      {
+        id: 'claims',
+        name: 'Claims',
+        cwd: join(workDir, '.tagma', 'sample'),
+        tasks: [
+          {
+            id: 'extract',
+            name: 'Extract',
+            depends_on: ['ingest.ingest'],
+            prompt: 'Read the target.',
+            inputs: {
+              target_path: {
+                from: 'ingest.target_path',
+                default: 'work/target.txt',
+              },
+            },
+          },
         ],
       },
     ],
@@ -310,6 +352,73 @@ describe('chat pipeline trial plan', () => {
     expect(() => validateChatPipelineTrialPlanTargetPaths(plan, 'sample/sample.yaml')).toThrow(
       'must target case fixtures or outputs, not staged pipeline artifacts',
     );
+  });
+
+  test('rejects task-local artifact assertions authored at the case root', () => {
+    const candidate = structuredClone(completePlan());
+    const testCase = (
+      candidate.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    testCase.expectations.push({ type: 'path-exists', path: 'work/target.txt' });
+    const plan = parseChatPipelineTrialPlan(candidate);
+    const workDir = resolve('test-workspace');
+    const pipelineConfig = taskLocalPipelineConfig(workDir);
+
+    expect(() =>
+      validateChatPipelineTrialPlanTaskPathCoordinates(
+        plan,
+        pipelineConfig,
+        'sample/sample.yaml',
+        workDir,
+      ),
+    ).toThrow('sample/work/target.txt');
+
+    testCase.expectations[testCase.expectations.length - 1] = {
+      type: 'path-exists',
+      path: 'sample/work/target.txt',
+    };
+    expect(() =>
+      validateChatPipelineTrialPlanTaskPathCoordinates(
+        parseChatPipelineTrialPlan(candidate),
+        pipelineConfig,
+        'sample/sample.yaml',
+        workDir,
+      ),
+    ).not.toThrow();
+  });
+
+  test('host reader requests a corrected plan before task-local assertions can run', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-trial-plan-coordinate-reader-'));
+    try {
+      const stagedYamlPath = join(root, 'sample.yaml');
+      const candidate = structuredClone(completePlan());
+      const testCase = (
+        candidate.cases as Array<{ expectations: Array<Record<string, unknown>> }>
+      )[0]!;
+      testCase.expectations.push({ type: 'path-exists', path: 'work/target.txt' });
+      writeFileSync(pipelineTrialPlanPath(stagedYamlPath), JSON.stringify(candidate), 'utf8');
+
+      expect(
+        readChatPipelineTrialPlan(
+          stagedYamlPath,
+          'sample/sample.yaml',
+          'a'.repeat(40),
+          3,
+          taskLocalPipelineConfig(root),
+          root,
+        ),
+      ).toMatchObject({
+        status: 'required',
+        request: {
+          reason: 'invalid',
+          message: expect.stringContaining('sample/work/target.txt'),
+        },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('host reader rejects staged-artifact expectations before a trial can run', () => {

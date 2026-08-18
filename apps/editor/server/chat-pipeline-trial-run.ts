@@ -3151,6 +3151,8 @@ export async function trialRunChatYamlStage(
       entry.relativePath,
       snapshot.contentHash,
       stage.trialPlanMaxAttempts,
+      pipelineConfig,
+      ws.workDir,
     );
     if (planRead.status === 'required') {
       const dataReadiness = resolveChatPipelineDataReadiness(

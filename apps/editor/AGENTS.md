@@ -492,6 +492,10 @@
   plans, never a literal `.tagma/<stem>/...` path. Readiness must translate a missing real path
   under `.tagma/<stem>/` into that logical namespace, and isolated execution must map the same
   namespace back for both fixture writes and expectation reads.
+- When a task's effective cwd is `.tagma/<stem>`, a task-local runtime path such as
+  `work/result.json` must therefore be authored as `<stem>/work/result.json` in the Trial plan.
+  Validate known trigger, completion, static-context, and input-binding paths before execution and
+  request a corrected plan; never use file-existence fallback or blame the pipeline artifact.
 - Treat Stop as cancellation of the entire staged logical chat lifecycle, not only the current OpenCode physical turn: a user-stopped finished turn or host-trial cancellation must abort the active host trial, discard the stage, clear post-chat action, release the YAML lease, and acknowledge exactly once, without planning, repair, trial retry, or finalize. Keep queued force-push continuation semantics unchanged.
 - An unexpected pre-finalize reconciliation failure must preserve the stage, exact snapshot, repair
   state, and finished-turn queue head for an explicit retry. It must also offer an explicit
@@ -593,6 +597,9 @@
 - Await the database-backed readiness query with one overall deadline instead of repeatedly
   abandoning short requests while OpenCode initializes SQLite. Every loopback probe must close its
   socket on timeout and must not write after the request has already settled.
+- Interactive ensure/restart readiness has one 30-second budget shared by health, database, and
+  managed-tool checks. Keep detailed probe failures in sidecar logs, but return a short actionable
+  error to Chat/Settings; never restore independent multi-minute waits for each readiness phase.
 - Pin operational browser SDK clients and the primary history query to the server-returned
   canonical `<workspace>/.tagma` directory. Also use an unscoped discovery query to recover
   Tagma-marked legacy sessions that predate canonical directory pinning; accept those only when
@@ -870,6 +877,10 @@
 ## Workspace Roots
 
 - Filesystem, Windows drive, and UNC share roots are navigation-only and must never be accepted as Tagma workspaces. Enforce this in both the workspace picker and the sidecar boundary; ordinary project directories beneath those roots remain valid.
+- Renderer stores that retain workspace-owned state must register a synchronous reset through
+  `workspace-store-reset.ts`. Reset them after the server accepts a workspace switch and before the
+  renderer adopts the new workspace key; clearing the workspace uses the same boundary so an old
+  run, SSE subscription, task snapshot, or History focus cannot leak into the next workspace.
 
 ## Workflow Self-Repair
 

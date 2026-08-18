@@ -51,6 +51,7 @@ import {
   isYamlEditLocked,
   YAML_EDIT_LOCK_MESSAGE,
 } from './yaml-edit-lock-store';
+import { resetWorkspaceStores } from './workspace-store-reset';
 
 /**
  * D9: Diff-based Undo/Redo Implementation
@@ -2001,6 +2002,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         }
 
         const nextWorkDir = state.workDir || wd;
+        resetWorkspaceStores();
         await commitWorkspaceSwitch(nextWorkDir);
         setClientWorkspace(nextWorkDir);
         const registry = await fetchRegistrySnapshot();
@@ -2020,6 +2022,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       // if the API client still carries the old workspace key during the
       // re-subscribe window, the server replays the prior workspace's state
       // and re-hydrates workDir back to the old path.
+      resetWorkspaceStores();
       setClientWorkspace(null);
       set({
         workDir: '',

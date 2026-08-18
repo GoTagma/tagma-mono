@@ -191,7 +191,7 @@ The host grants Trial-only execution to manual tasks in that explicit target clo
 
 Pre-commit operations validate their proposed section and immediately decidable links before changing the draft; correct a rejected operation and retry it before commit. Every coverage entry must include \`dimension\`, \`status\`, \`caseIds\`, and \`rationale\`; status must be \`covered\`, \`accepted-risk\`, \`blocked\`, or \`not-applicable\`. Every finding must include \`severity\`, \`repairScope\`, \`summary\`, and \`evidence\`.
 
-Fixture and expectation paths are relative to the isolated case project root and may target only fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Host-private files live under case \`.tagma\`.
+Fixture and expectation paths are relative to the isolated case project root and may target only fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Host-private files live under case \`.tagma\`. Translate task-local paths through the effective task cwd: when a task with \`cwd: .tagma/fact-checker\` writes \`work/result.json\`, the Trial path is \`fact-checker/work/result.json\`, not case-root \`work/result.json\`.
 
 Use file-equals when exact text preservation matters, including an empty expected string for empty-content cases. Use exact text or later-paragraph markers so a first-line-only implementation cannot pass.
 

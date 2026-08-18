@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
   ensureOpencode,
   ensureRealTagmaDirectory,
   resolveOpencodePathFallback,
@@ -148,6 +149,10 @@ describe('managed OpenCode directory coordinates', () => {
 });
 
 describe('ensureOpencode health probing', () => {
+  test('keeps interactive OpenCode startup readiness bounded', () => {
+    expect(OPENCODE_STARTUP_READINESS_TIMEOUT_MS).toBe(30_000);
+  });
+
   test('accepts a complete HTTP health response before the socket closes', async () => {
     const cwd = join(tempRoot, 'workspace with spaces 中文', '.tagma');
     mkdirSync(cwd, { recursive: true });
@@ -473,6 +478,56 @@ describe('ensureOpencode health probing', () => {
 
     expect(handle.baseUrl).toBe('http://127.0.0.1:45124');
     expect(databaseProbeCount).toBe(1);
+  });
+
+  test('fails a hung database probe within the interactive startup budget', async () => {
+    const cwd = join(tempRoot, '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    let databaseProbeStarted = false;
+    let killed = false;
+    Date.now = () => (databaseProbeStarted ? 31_000 : 0);
+    globalThis.setTimeout = ((
+      handler: Parameters<typeof setTimeout>[0],
+      timeout?: number,
+      ...args: unknown[]
+    ) =>
+      realSetTimeout(
+        handler,
+        timeout !== undefined && timeout >= 3_000 ? 10 : timeout,
+        ...args,
+      )) as typeof setTimeout;
+
+    (Bun as BunLike).listen = (() =>
+      ({
+        port: 45124,
+        stop() {},
+      }) as unknown as ReturnType<typeof Bun.listen>) as unknown as typeof Bun.listen;
+    (Bun as BunLike).spawn = (() =>
+      mockOpencodeProcess(() => {
+        killed = true;
+      })) as typeof Bun.spawn;
+    (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
+      queueMicrotask(() => {
+        const socket = {
+          write(request: string | Uint8Array) {
+            const path = String(request).split(' ')[1] ?? '';
+            if (path === '/session?limit=1') {
+              databaseProbeStarted = true;
+              return;
+            }
+            options.socket.data?.(socket as never, successfulProbeResponse(request));
+          },
+          end() {},
+        };
+        options.socket.open?.(socket as never);
+      });
+      return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
+    }) as typeof Bun.connect;
+
+    await expect(ensureOpencode(cwd)).rejects.toThrow(
+      'workspace database did not become ready within 30 seconds',
+    );
+    expect(killed).toBe(true);
   });
 
   test('restart redirects an in-flight health startup to its replacement', async () => {

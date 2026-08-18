@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 import type { PipelineConfig } from '@tagma/sdk';
 import { buildDag } from '@tagma/sdk/config';
@@ -11,6 +11,7 @@ import {
   MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   isValidChatPipelineTrialPlanAttempts,
 } from '../shared/chat-pipeline-trial-plan-limit.js';
+import { sameFilesystemPathCoordinate } from '../shared/filesystem-paths.js';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
   version: 4,
@@ -858,6 +859,118 @@ export function validateChatPipelineTrialPlanTargetPaths(
   }
 }
 
+interface TaskLocalTrialPath {
+  readonly path: string;
+  readonly cwd: string;
+  readonly descendants: boolean;
+}
+
+function normalizeTrialCoordinate(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+}
+
+function taskLocalTrialPaths(
+  pipelineConfig: PipelineConfig,
+  relativeYamlPath: string,
+  workDir: string,
+): TaskLocalTrialPath[] {
+  const namespace = normalizeTrialCoordinate(dirname(relativeYamlPath));
+  if (!namespace || namespace === '.') return [];
+  const rootCwd = resolve(workDir);
+  const pipelineCwd = resolve(workDir, '.tagma', ...namespace.split('/'));
+  const paths: TaskLocalTrialPath[] = [];
+  const add = (value: unknown, cwd: string, descendants = false): void => {
+    if (typeof value !== 'string') return;
+    const path = normalizeTrialCoordinate(value);
+    if (!path || path.startsWith('/') || /^[A-Za-z]:\//.test(path) || path.startsWith('../'))
+      return;
+    paths.push({ path, cwd, descendants });
+  };
+
+  for (const track of pipelineConfig.tracks) {
+    for (const task of track.tasks) {
+      const resolvedCwd = resolve(workDir, task.cwd ?? track.cwd ?? '.');
+      const cwd = sameFilesystemPathCoordinate(resolvedCwd, rootCwd)
+        ? '.'
+        : sameFilesystemPathCoordinate(resolvedCwd, pipelineCwd)
+          ? `.tagma/${namespace}`
+          : null;
+      if (cwd === null) continue;
+      const trigger = task.trigger as { type?: unknown; path?: unknown } | undefined;
+      add(trigger?.path, cwd, trigger?.type === 'directory');
+      const completion = task.completion as { path?: unknown } | undefined;
+      add(completion?.path, cwd);
+      const middlewares = task.middlewares ?? track.middlewares ?? [];
+      for (const middleware of middlewares) {
+        const record = middleware as { type?: unknown; file?: unknown };
+        if (record.type === 'static_context') add(record.file, cwd);
+      }
+      for (const binding of Object.values(task.inputs ?? {})) {
+        const record = binding as { value?: unknown; default?: unknown };
+        for (const value of [record.value, record.default]) {
+          if (
+            typeof value !== 'string' ||
+            !(/[\\/]/.test(value) || /\.[A-Za-z0-9]+$/.test(value))
+          ) {
+            continue;
+          }
+          add(value, cwd);
+        }
+      }
+    }
+  }
+  return paths;
+}
+
+/**
+ * Trial fixture/assertion paths use case-root coordinates, while runtime paths
+ * inside a task use that task's effective cwd. Reject the common ambiguous
+ * plan shape before execution so the planner corrects it instead of blaming a
+ * successfully produced pipeline artifact.
+ */
+export function validateChatPipelineTrialPlanTaskPathCoordinates(
+  plan: ChatPipelineTrialPlan,
+  pipelineConfig: PipelineConfig,
+  relativeYamlPath: string,
+  workDir: string,
+): void {
+  const namespace = normalizeTrialCoordinate(dirname(relativeYamlPath));
+  if (!namespace || namespace === '.') return;
+  const taskLocalPaths = taskLocalTrialPaths(pipelineConfig, relativeYamlPath, workDir);
+  for (const [caseIndex, testCase] of plan.cases.entries()) {
+    const paths = [
+      ...testCase.fixtures.map((fixture, index) => ({
+        label: `cases[${caseIndex}].fixtures[${index}].path`,
+        path: fixture.path,
+      })),
+      ...testCase.expectations.flatMap((expectation, index) =>
+        'path' in expectation
+          ? [{ label: `cases[${caseIndex}].expectations[${index}].path`, path: expectation.path }]
+          : [],
+      ),
+    ];
+    for (const item of paths) {
+      const path = normalizeTrialCoordinate(item.path);
+      if (path === namespace || path.startsWith(`${namespace}/`)) continue;
+      const matches = taskLocalPaths.filter(
+        (candidate) =>
+          path === candidate.path ||
+          (candidate.descendants && path.startsWith(`${candidate.path}/`)),
+      );
+      if (matches.some((candidate) => candidate.cwd === '.')) continue;
+      const match = matches.find(
+        (candidate) => candidate.cwd.toLowerCase() === `.tagma/${namespace}`.toLowerCase(),
+      );
+      if (!match) continue;
+      const expected = `${namespace}/${path}`;
+      throw new Error(
+        `${item.label} (${item.path}) uses a task-local path from effective cwd ${match.cwd}, ` +
+          `but Trial paths are relative to the isolated case root. Use ${expected}.`,
+      );
+    }
+  }
+}
+
 export function buildChatPipelineTrialPlanRequest(
   reason: ChatPipelineTrialPlanRequest['reason'],
   relativeYamlPath: string,
@@ -899,6 +1012,8 @@ export function readChatPipelineTrialPlan(
   relativeYamlPath: string,
   pipelineHash: string,
   maxAttempts = DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  pipelineConfig?: PipelineConfig,
+  workDir?: string,
 ): ChatPipelineTrialPlanReadResult {
   if (!isValidChatPipelineTrialPlanAttempts(maxAttempts)) {
     throw new Error('Trial plan max attempts is invalid.');
@@ -950,6 +1065,14 @@ export function readChatPipelineTrialPlan(
     }
     const plan = parseChatPipelineTrialPlan(parsed);
     validateChatPipelineTrialPlanTargetPaths(plan, relativeYamlPath);
+    if (pipelineConfig && workDir) {
+      validateChatPipelineTrialPlanTaskPathCoordinates(
+        plan,
+        pipelineConfig,
+        relativeYamlPath,
+        workDir,
+      );
+    }
     if (plan.yamlHash !== pipelineHash) {
       return planRequest(
         'stale',

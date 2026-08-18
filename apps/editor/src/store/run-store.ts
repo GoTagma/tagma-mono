@@ -9,6 +9,7 @@ import type {
 } from '../api/client';
 import { usePipelineStore, type TaskPosition } from './pipeline-store';
 import { foldRunEvent, type RunFoldState } from './run-event-reducer';
+import { registerWorkspaceStoreReset } from './workspace-store-reset';
 
 /**
  * Optional bundle passed to startRun when launching a run whose config
@@ -508,3 +509,5 @@ export const useRunStore = create<RunStoreState>((set, get) => {
     },
   };
 });
+
+registerWorkspaceStoreReset('run', () => useRunStore.getState().reset());

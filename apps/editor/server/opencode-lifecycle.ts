@@ -63,6 +63,8 @@ export interface OpencodeRuntimeDiagnostics {
   runtimeSource: string | null;
 }
 
+export const OPENCODE_STARTUP_READINESS_TIMEOUT_MS = 30_000;
+
 function canonicalOpencodeCwd(cwd: string): string {
   return realpathSync.native(resolve(cwd));
 }
@@ -528,7 +530,7 @@ function decodeCompleteChunkedBody(body: Buffer, allowIncompleteBody: boolean): 
 
 async function waitForHealth(
   baseUrl: string,
-  timeoutMs = 300_000,
+  timeoutMs = OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
   authorization?: string,
 ): Promise<void> {
   const { hostname, port } = new URL(baseUrl);
@@ -565,7 +567,7 @@ async function waitForHealth(
 
 async function waitForDatabaseAccess(
   baseUrl: string,
-  timeoutMs = 300_000,
+  timeoutMs = OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
   authorization?: string,
 ): Promise<void> {
   const { hostname, port } = new URL(baseUrl);
@@ -594,16 +596,20 @@ async function waitForDatabaseAccess(
       await new Promise((r) => setTimeout(r, Math.min(500, remainingMs)));
     }
   }
+  console.error(
+    `[opencode] database readiness failed after ${timeoutMs}ms ` +
+      `(lastStatus=${lastStatus}, lastErr=${String(lastErr)})`,
+  );
   throw new Error(
-    `opencode database did not become accessible within ${timeoutMs}ms` +
-      ` (lastStatus=${lastStatus}, lastErr=${String(lastErr)})`,
+    `OpenCode started, but its workspace database did not become ready within ` +
+      `${Math.ceil(timeoutMs / 1000)} seconds. Retry the operation or reopen the workspace.`,
   );
 }
 
 async function waitForManagedToolRegistry(
   baseUrl: string,
   cwd: string,
-  timeoutMs = 300_000,
+  timeoutMs = OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
   authorization?: string,
 ): Promise<void> {
   const { hostname, port } = new URL(baseUrl);
@@ -753,11 +759,15 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
     // underlying cause. proc.exited winning the race gives us the exit code
     // + last stderr and lets callers fail fast.
     let healthResult: { kind: 'healthy' } | { kind: 'exited'; exitCode: number };
+    const readinessDeadline = Date.now() + OPENCODE_STARTUP_READINESS_TIMEOUT_MS;
+    const remainingReadinessMs = (): number => Math.max(1, readinessDeadline - Date.now());
     try {
       healthResult = await Promise.race([
-        waitForHealth(baseUrl, 300_000, auth.authorization)
-          .then(() => waitForDatabaseAccess(baseUrl, 300_000, auth.authorization))
-          .then(() => waitForManagedToolRegistry(baseUrl, cwd, 300_000, auth.authorization))
+        waitForHealth(baseUrl, remainingReadinessMs(), auth.authorization)
+          .then(() => waitForDatabaseAccess(baseUrl, remainingReadinessMs(), auth.authorization))
+          .then(() =>
+            waitForManagedToolRegistry(baseUrl, cwd, remainingReadinessMs(), auth.authorization),
+          )
           .then(() => ({
             kind: 'healthy' as const,
           })),

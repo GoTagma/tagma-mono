@@ -123,6 +123,7 @@ mock.module('../src/hooks/use-local-field', () => ({
 }));
 
 const { usePipelineStore } = await import('../src/store/pipeline-store');
+const { useRunStore } = await import('../src/store/run-store');
 const { useYamlEditLockStore, YAML_EDIT_LOCK_MESSAGE } =
   await import('../src/store/yaml-edit-lock-store');
 
@@ -193,6 +194,7 @@ describe('pipeline store plugin registry sync', () => {
       expiresAt: null,
       local: false,
     });
+    useRunStore.getState().reset();
     resetStore();
   });
 
@@ -213,6 +215,46 @@ describe('pipeline store plugin registry sync', () => {
     expect(getRegistryCalls).toBe(1);
     expect(state.workDir).toBe('D:/workspace-a');
     expect(state.registry).toEqual(nextRegistry);
+  });
+
+  test('setWorkDir clears run state owned by the previous workspace', async () => {
+    nextWorkDirState = makeState({ workDir: 'D:/workspace-a' });
+    useRunStore.setState({
+      active: true,
+      runId: 'run-old-workspace',
+      status: 'running',
+      tasks: new Map([['old.waiting-task', null as never]]),
+      historySelectedRunId: 'run-old-workspace',
+      yamlPath: 'C:/previous/.tagma/old.yaml',
+    });
+
+    const switched = await usePipelineStore.getState().setWorkDir('D:/workspace-a');
+
+    const run = useRunStore.getState();
+    expect(switched).toBe(true);
+    expect(run.active).toBe(false);
+    expect(run.runId).toBeNull();
+    expect(run.status).toBe('idle');
+    expect(run.tasks.size).toBe(0);
+    expect(run.historySelectedRunId).toBeNull();
+    expect(run.yamlPath).toBeNull();
+  });
+
+  test('clearWorkspace clears run state owned by the previous workspace', () => {
+    useRunStore.setState({
+      active: true,
+      runId: 'run-old-workspace',
+      status: 'running',
+      tasks: new Map([['old.waiting-task', null as never]]),
+    });
+
+    usePipelineStore.getState().clearWorkspace();
+
+    const run = useRunStore.getState();
+    expect(run.active).toBe(false);
+    expect(run.runId).toBeNull();
+    expect(run.status).toBe('idle');
+    expect(run.tasks.size).toBe(0);
   });
 
   test('setWorkDir aborts when Electron reports the workspace is already open in another window', async () => {
