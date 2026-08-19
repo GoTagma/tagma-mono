@@ -28,6 +28,7 @@ coverage/
 
 # Local exported agent conversations can contain temporary diagnostics credentials.
 apps/editor/*-local-command-*.txt
+/*-local-command-*.txt
 
 # Local Codex browser profiles and smoke-test artifacts
 .codex-*-profile/

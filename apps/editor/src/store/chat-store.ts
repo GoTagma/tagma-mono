@@ -106,6 +106,7 @@ import {
 import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
+import { TRIAL_STREAM_EVIDENCE_BYTES } from '../../shared/chat-pipeline-trial-evidence.js';
 import {
   acquireChatYamlEditLock,
   ensureChatYamlEditLockLease,
@@ -921,7 +922,13 @@ function restoredFinishedTurnReconcileFailure(
 const MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES = 64 * 1024;
 const MAX_CHAT_TRIAL_REPAIR_TASKS = 8;
 const MAX_CHAT_TRIAL_REPAIR_CASE_TASKS = 2;
-const MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS = 2_000;
+// Same bound as the trial-run layer (`TRIAL_STREAM_EVIDENCE_BYTES`), expressed
+// as a character ceiling. Every character is >= 1 UTF-8 byte, so a stream the
+// trial already bounded to N bytes is at most N characters and passes through
+// here intact; the head+tail clip below is only a safety net for a stream that
+// still exceeds it. This single shared constant is what guarantees the repair
+// prompt never hides a diagnostic tail behind a second, tighter truncation.
+const MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS = TRIAL_STREAM_EVIDENCE_BYTES;
 const MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_ITEMS = 32;
 const MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_MESSAGES = 16;
 const MAX_CHAT_TRIAL_REPAIR_MANUAL_GRANTS = 32;
@@ -936,6 +943,29 @@ function clipChatTrialRepairEvidenceText(value: string, maxLength: number): stri
   return (
     value.slice(0, limit - CHAT_TRIAL_REPAIR_TRUNCATION_MARKER.length) +
     CHAT_TRIAL_REPAIR_TRUNCATION_MARKER
+  );
+}
+
+/**
+ * Bounds a stdout/stderr stream for the repair prompt without hiding the tail.
+ * The previous head-only clip kept only the stream's prefix and dropped the
+ * end, which is exactly where a verbose serializer (e.g. PowerShell CLIXML)
+ * places the actionable error message and its PositionMessage/InvocationInfo.
+ * Head-only truncation therefore made a repairable syntax error invisible and
+ * left the repair agent to guess. This preserves both ends (like the
+ * trial-run layer's `boundedTrialText`), biasing retention toward the tail.
+ */
+function clipChatTrialRepairStreamEvidence(value: string, maxLength: number): string {
+  const limit = Math.max(0, Math.trunc(maxLength));
+  if (value.length <= limit) return value;
+  if (limit <= CHAT_TRIAL_REPAIR_TRUNCATION_MARKER.length) {
+    return CHAT_TRIAL_REPAIR_TRUNCATION_MARKER.slice(0, limit);
+  }
+  const budget = limit - CHAT_TRIAL_REPAIR_TRUNCATION_MARKER.length;
+  const head = Math.floor(budget / 3);
+  const tail = budget - head;
+  return (
+    value.slice(0, head) + CHAT_TRIAL_REPAIR_TRUNCATION_MARKER + value.slice(value.length - tail)
   );
 }
 
@@ -1105,8 +1135,8 @@ function compactChatTrialRepairTask(
   task: ChatPipelineTrialRunResult['tasks'][number],
   streamLimitChars = MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS,
 ) {
-  const stdout = clipChatTrialRepairEvidenceText(task.stdout, streamLimitChars);
-  const stderr = clipChatTrialRepairEvidenceText(task.stderr, streamLimitChars);
+  const stdout = clipChatTrialRepairStreamEvidence(task.stdout, streamLimitChars);
+  const stderr = clipChatTrialRepairStreamEvidence(task.stderr, streamLimitChars);
   const stdoutTruncated = stdout !== task.stdout;
   const stderrTruncated = stderr !== task.stderr;
   return {
@@ -1472,7 +1502,7 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
     return encoded;
   }
   const fallbackCompact = compactChatTrialRepairResult(evidence.result, {
-    streamLimitChars: 500,
+    streamLimitChars: MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS,
     caseTaskLimit: 1,
     trialabilityItemLimit: 8,
     trialabilityMessageLimit: 4,

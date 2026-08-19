@@ -68,13 +68,13 @@ test('stream evidence distinguishes runtime truncation from Trial response trunc
   expect(runtimeTail.truncation.sourceReturnedBytes).toBeGreaterThan(0);
   expect(runtimeTail.text).not.toContain('[trial-result truncated]');
 
-  const trialTail = buildChatPipelineTrialStreamEvidence('x'.repeat(5_000), 5_000);
+  const trialTail = buildChatPipelineTrialStreamEvidence('x'.repeat(10_000), 10_000);
   expect(trialTail.truncation).toEqual({
     source: 'not-truncated',
     trialResult: true,
-    producedBytes: 5_000,
-    sourceReturnedBytes: 5_000,
-    returnedBytes: 4_096,
+    producedBytes: 10_000,
+    sourceReturnedBytes: 10_000,
+    returnedBytes: 8_192,
   });
   expect(trialTail.text).toContain('[trial-result truncated]');
 
@@ -190,7 +190,7 @@ test('Trial output diagnostics are cloned, frozen, bounded, redacted, and basena
   expect(Object.isFrozen(diagnostics?.[0])).toBe(true);
   expect(diagnostics?.[0]?.message).toContain('token=[REDACTED]');
   expect(new TextEncoder().encode(diagnostics?.[0]?.message ?? '').length).toBeLessThanOrEqual(
-    4_096,
+    8_192,
   );
   expect(diagnostics?.[0]?.path).toBe('stdout.log');
   expect(diagnostics?.[1]?.path).toBe('stderr.log');

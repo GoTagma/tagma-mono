@@ -434,29 +434,72 @@ test('trial repair evidence prioritizes actionable stderr and keeps failed-case 
   const actionable = evidence.tasks.find((task) => task.taskId === 'main.actual_failure');
   expect(actionable).toMatchObject({
     taskId: 'main.actual_failure',
-    stderrRepairEvidenceTruncated: true,
-    stderrRepairEvidenceTruncation: {
-      layer: 'repair-prompt',
-      reason: 'character-limit',
-      limitChars: 2_000,
-    },
+    stderrRepairEvidenceTruncated: false,
+    stderrRepairEvidenceTruncation: null,
   });
   expect(actionable?.stderr).toContain('the actionable failure from the real task');
-  expect(actionable?.stderr).toContain('truncation-layer: repair-prompt');
-  expect(actionable?.stderr.length).toBeLessThanOrEqual(2_000);
-  expect(typeof actionable?.stderrRepairEvidenceTruncation?.sourceChars).toBe('number');
-  expect(actionable?.stderrRepairEvidenceTruncation?.returnedChars).toBe(actionable?.stderr.length);
+  expect(actionable?.stderr.length).toBeLessThanOrEqual(8_192);
   expect(evidence.omittedTaskCount).toBe(4);
   expect(evidence.omittedTaskStatusCounts).toEqual({ skipped: 4 });
   expect(evidence.evidenceBounds).toMatchObject({
     layer: 'repair-prompt',
     selectedTaskLimit: 8,
-    taskStreamLimitChars: 2_000,
+    taskStreamLimitChars: 8_192,
   });
   expect(evidence.cases[0]).toMatchObject({
     id: 'semantic-json',
     tasks: [{ taskId: 'main.emit_json' }],
   });
+});
+
+test('trial repair stream evidence preserves the tail where the actionable error lives', () => {
+  const actionableError =
+    'Variable reference is not valid. ":" was not followed by a valid variable name character.';
+  const verbosePrefix = '#< CLIXML\n' + 'serialized-error-record '.repeat(800);
+  const stderr = `${verbosePrefix}\n${actionableError}`;
+  expect(stderr.length).toBeGreaterThan(8_192);
+  const prompt = buildChatYamlRepairPrompt(
+    TARGET,
+    {
+      kind: 'trial-run',
+      result: {
+        version: 9,
+        success: false,
+        kind: 'failed',
+        repairAuthorization: 'pipeline-change-allowed',
+        ran: true,
+        runId: 'run_tail',
+        summary: 'A completion script failed to parse.',
+        durationMs: 10,
+        totalTaskCount: 1,
+        omittedTaskCount: 0,
+        tasks: [
+          {
+            caseId: null,
+            runNumber: 1,
+            taskId: 'main.completion',
+            status: 'failed',
+            exitCode: 1,
+            failureKind: 'exit_nonzero',
+            stdout: '',
+            stderr,
+          },
+        ],
+        cases: [],
+      },
+    },
+    1,
+    2,
+  );
+
+  const evidence = JSON.parse(
+    prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim(),
+  ) as { tasks: Array<{ stderr: string; stderrRepairEvidenceTruncated?: boolean }> };
+  const task = evidence.tasks[0];
+  expect(task.stderrRepairEvidenceTruncated).toBe(true);
+  expect(task.stderr).toContain('Variable reference is not valid');
+  expect(task.stderr).toContain('truncation-layer: repair-prompt');
+  expect(task.stderr.length).toBeLessThanOrEqual(8_192);
 });
 
 test('trial repair evidence names every case that did not run and why', () => {

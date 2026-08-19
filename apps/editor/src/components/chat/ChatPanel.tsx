@@ -1063,12 +1063,6 @@ function ChatMessages() {
   const contentRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const sessionYamlResult = sessionId ? (sessionYamlResults[sessionId] ?? null) : null;
-  const sessionYamlResultIsAnchored = isSessionYamlResultAnchoredToVisibleMessage({
-    result: sessionYamlResult,
-    sessionId,
-    messages,
-    turnYamlResults,
-  });
 
   // Expanded-state for activity panels lives at this layer (not as
   // component-local useState in MessageBubble) so the '__pending__'
@@ -1274,7 +1268,12 @@ function ChatMessages() {
             <QueuedUserBubble key={item.id} id={item.id} text={item.text} position={idx + 1} />
           ))}
           {shouldShowSessionYamlResult({
-            hasResult: !!sessionYamlResult && !sessionYamlResultIsAnchored,
+            // A session result renders as a standalone bubble at the end of the
+            // conversation even when it is also fused into its owning (possibly
+            // much earlier) assistant message, so the "Open pipeline" action is
+            // always visible at the bottom where a user expects it after a long
+            // multi-round turn.
+            hasResult: !!sessionYamlResult,
             sending,
             reconciling,
             hasPostChatAction: !!postChatYamlAction,

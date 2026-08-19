@@ -244,6 +244,31 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     expect(storage.getItem('tagma.chat.v2')).not.toContain('result-mismatch');
   });
 
+  test('round-trips an unchanged reconcile result instead of dropping it', () => {
+    const unchanged = {
+      ...pipelineResult({
+        resultId: 'result-unchanged',
+        turnId: 'turn-unchanged',
+        messageId: 'assistant-unchanged',
+      }),
+      reconcile: {
+        outcome: 'unchanged' as const,
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: 'C:/repo/.tagma/build/build.yaml',
+        compileSuccess: true,
+      },
+    };
+
+    savePersistedChatYamlResults('C:/repo', {
+      'assistant-unchanged': [unchanged],
+    });
+
+    expect(loadPersistedChatYamlResults('C:/repo')).toMatchObject({
+      'assistant-unchanged': [unchanged],
+    });
+  });
+
   test('hydrates a legacy message-anchored result by assigning stable identities', () => {
     const legacy = pipelineResult({
       resultId: 'discarded',

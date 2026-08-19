@@ -535,7 +535,10 @@ function isPersistedReconcileResult(
   if (!isRecord(value)) return false;
   const resultPath = value.resultPath;
   return (
-    (value.outcome === 'adopted' || value.outcome === 'forked' || value.outcome === 'created') &&
+    (value.outcome === 'adopted' ||
+      value.outcome === 'forked' ||
+      value.outcome === 'created' ||
+      value.outcome === 'unchanged') &&
     isStringArray(value.conflicts) &&
     typeof value.localBranchPersisted === 'boolean' &&
     isNonEmptyString(resultPath) &&

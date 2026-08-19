@@ -37,6 +37,7 @@ import {
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
+import { TRIAL_STREAM_EVIDENCE_BYTES } from '../shared/chat-pipeline-trial-evidence.js';
 import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
 import {
   hasCurrentChatPipelineTrialConsent,
@@ -113,7 +114,7 @@ import type { WorkspaceState } from './workspace-state.js';
 import { timeoutMinutesToMs } from '../shared/execution-timeout-settings.js';
 
 const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
-const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
+const MAX_TRIAL_STREAM_BYTES = TRIAL_STREAM_EVIDENCE_BYTES;
 const MAX_TRIAL_SUMMARY_BYTES = 32 * 1024;
 const MAX_TRIAL_TASK_RESULTS = 32;
 const MAX_TRIAL_OUTPUT_DIAGNOSTICS = 2;
