@@ -601,7 +601,9 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain(
     'When repairing a trial-run failure, compilation is not your acceptance signal',
   );
-  expect(doc).toContain('author a small runnable verification the way you author an edge-case test');
+  expect(doc).toContain(
+    'author a small runnable verification the way you author an edge-case test',
+  );
 });
 
 test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', () => {
