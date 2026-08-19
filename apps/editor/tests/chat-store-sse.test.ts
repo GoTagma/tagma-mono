@@ -186,6 +186,8 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
   expect(prompt).toContain('keep the safe configuration');
   expect(prompt).toContain('only after a material staged artifact change');
   expect(prompt).toContain('ends this repair chain');
+  expect(prompt).toContain('compilation is not your acceptance signal');
+  expect(prompt).toContain('author a small runnable verification that reproduces the failure');
 });
 
 test('trial-run repair prompt globally bounds expanded case and task evidence', () => {

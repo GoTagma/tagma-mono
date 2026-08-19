@@ -1586,7 +1586,7 @@ export function buildChatYamlRepairPrompt(
     `Target file: ${target.path}`,
     '',
     trialRun
-      ? 'The staged YAML compiled, but its host trial run did not pass. Use the task evidence below to repair only supported pipeline defects, then read the sibling .compile.log again.'
+      ? 'The staged YAML already compiles, so compilation is not your acceptance signal here. Pin the exact reproduction of each failed case from the evidence (its fixture inputs and the expectation that failed), author a small runnable verification that reproduces the failure, repair only supported pipeline defects, then report how the change makes that verification pass — never claim the repair succeeded merely because the compile passed.'
       : 'The last compile failed. Edit only the target YAML file, then read its sibling .compile.log again.',
     trialRun
       ? 'Preserve legitimate manual approvals, destructive-operation guards, triggers, secrets, and external prerequisites. If the failure is an external/manual boundary rather than a pipeline defect, keep the safe configuration and report that limitation precisely.'

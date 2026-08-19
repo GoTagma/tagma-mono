@@ -445,7 +445,9 @@ test('tagma-pipeline agent stays compact and keeps schema detail out of the base
   const doc = buildTagmaPipelineAgent('Windows');
 
   // Keep the explicit design gate and edge-case matrix bounded with the rest of the base contract.
-  expect(doc.length).toBeLessThan(19_500);
+  // The trial-run repair acceptance guidance (compilation is not repair success) is core behavior,
+  // so it lives in the base prompt rather than a skill and is accounted for in this bound.
+  expect(doc.length).toBeLessThan(20_000);
   expect(doc).toContain('Keep context small');
   expect(doc).toContain('schema source of truth');
   expect(doc).toContain('YAML Contract Quick Reference');
@@ -596,6 +598,10 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain('Do not ask whether the user wants the host to verify or compile');
   expect(doc).toContain('authoring complete; host verification pending');
   expect(doc).toContain('distinguish missing or malformed artifacts from valid empty collections');
+  expect(doc).toContain(
+    'When repairing a trial-run failure, compilation is not your acceptance signal',
+  );
+  expect(doc).toContain('author a small runnable verification the way you author an edge-case test');
 });
 
 test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', () => {

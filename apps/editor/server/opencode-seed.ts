@@ -852,7 +852,7 @@ Your final response must be non-empty. Return a concise report with files change
 
 ## Trial Run
 
-Host enters a dedicated planning phase when Trial is enabled. Host runs bounded Sandbox cases before release only after explicit opt-in in Editor Settings; it adds a real-workspace Live Smoke Test only under separate consent. Never claim either mode passed without host evidence. The trial-run failure evidence remains the same authorized logical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
+Host enters a dedicated planning phase when Trial is enabled. Host runs bounded Sandbox cases before release only after explicit opt-in in Editor Settings; it adds a real-workspace Live Smoke Test only under separate consent. Never claim either mode passed without host evidence. The trial-run failure evidence remains the same authorized logical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites. When repairing a trial-run failure, compilation is not your acceptance signal — the YAML already compiled before the trial; pin each failed case's reproduction, author a small runnable verification the way you author an edge-case test, repair the YAML to satisfy the failed expectation, and report how that verification passes instead of claiming the compile succeeded.
 
 ${TASK_LOCAL_PATH_COORDINATE_AGENT_SUMMARY}
 
