@@ -203,26 +203,35 @@ function makeWorkspace(
   const yaml = yamlFor('Pipeline', 'base');
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, yaml, 'utf-8');
-  if (authorizeTrial) {
-    writeFileSync(
-      join(root, '.tagma', 'editor-settings.json'),
-      JSON.stringify({
-        opencodeChatTrialRunEnabled: true,
-        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        opencodeChatTrialLiveSmokeTestEnabled: authorizeLiveSmokeTest,
-        ...(authorizeLiveSmokeTest
-          ? {
-              opencodeChatTrialLiveSmokeTestConsentVersion:
-                CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-            }
-          : {}),
-        ...(trialPlanMaxAttempts === undefined
-          ? {}
-          : { opencodeChatTrialPlanMaxAttempts: trialPlanMaxAttempts }),
-      }),
-      'utf-8',
-    );
-  }
+  // Explicitly stamp the trial authorization either way so `makeWorkspace(false)`
+  // stays "trial disabled" regardless of the editor default (`opencodeChatTrialRunEnabled`
+  // is now true by default); relying on the absence of a settings file would
+  // silently opt the test back into a Trial run and fork the finalize outcome.
+  writeFileSync(
+    join(root, '.tagma', 'editor-settings.json'),
+    JSON.stringify(
+      authorizeTrial
+        ? {
+            opencodeChatTrialRunEnabled: true,
+            opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+            opencodeChatTrialLiveSmokeTestEnabled: authorizeLiveSmokeTest,
+            ...(authorizeLiveSmokeTest
+              ? {
+                  opencodeChatTrialLiveSmokeTestConsentVersion:
+                    CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+                }
+              : {}),
+            ...(trialPlanMaxAttempts === undefined
+              ? {}
+              : { opencodeChatTrialPlanMaxAttempts: trialPlanMaxAttempts }),
+          }
+        : {
+            opencodeChatTrialRunEnabled: false,
+            opencodeChatTrialRunConsentVersion: 0,
+          }
+    ),
+    'utf-8',
+  );
   const ws = new WorkspaceState(root);
   workspaces.push(ws);
   ws.workDir = root;
