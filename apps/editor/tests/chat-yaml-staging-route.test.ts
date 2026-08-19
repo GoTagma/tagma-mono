@@ -228,7 +228,7 @@ function makeWorkspace(
         : {
             opencodeChatTrialRunEnabled: false,
             opencodeChatTrialRunConsentVersion: 0,
-          }
+          },
     ),
     'utf-8',
   );
