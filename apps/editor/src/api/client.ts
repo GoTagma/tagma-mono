@@ -1146,7 +1146,7 @@ export interface EditorSettings {
   opencodeChatModel: OpenCodeChatModelSelection | null;
   /** Last OpenCode chat reasoning effort selection for this workspace. */
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
-  /** Enables the application-contained Sandbox Trial. Default false. */
+  /** Enables the application-contained Sandbox Trial. Default true. */
   opencodeChatTrialRunEnabled: boolean;
   /** Server-stamped acknowledgement version for the Sandbox Trial policy. */
   opencodeChatTrialRunConsentVersion: number;

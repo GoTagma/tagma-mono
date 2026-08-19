@@ -1051,8 +1051,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   pythonAgent: DEFAULT_PYTHON_AGENT_SETTINGS,
   opencodeChatModel: null,
   opencodeChatReasoningEffort: null,
-  opencodeChatTrialRunEnabled: false,
-  opencodeChatTrialRunConsentVersion: 0,
+  opencodeChatTrialRunEnabled: true,
+  opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
   opencodeChatTrialLiveSmokeTestEnabled: false,
   opencodeChatTrialLiveSmokeTestConsentVersion: 0,
   opencodeChatTrialPlanMaxAttempts: DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
@@ -1086,7 +1086,7 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
       Number.isInteger(raw.opencodeChatTrialRunConsentVersion) &&
       raw.opencodeChatTrialRunConsentVersion >= 0
         ? raw.opencodeChatTrialRunConsentVersion
-        : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion;
+        : 0;
     const opencodeChatTrialRunEnabled = hasCurrentChatPipelineTrialConsent({
       opencodeChatTrialRunEnabled: raw.opencodeChatTrialRunEnabled === true,
       opencodeChatTrialRunConsentVersion,

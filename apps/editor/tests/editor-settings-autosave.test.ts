@@ -39,8 +39,10 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.pythonAgent.enabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatModel).toBe(null);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort).toBeNull();
-    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled).toBe(false);
-    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion).toBe(0);
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled).toBe(true);
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion).toBe(
+      CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+    );
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialLiveSmokeTestConsentVersion).toBe(0);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialPlanMaxAttempts).toBe(2);
@@ -60,8 +62,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.pythonAgent.enabled).toBe(false);
     expect(s.opencodeChatModel).toBe(null);
     expect(s.opencodeChatReasoningEffort).toBeNull();
-    expect(s.opencodeChatTrialRunEnabled).toBe(false);
-    expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
+    expect(s.opencodeChatTrialRunEnabled).toBe(true);
+    expect(s.opencodeChatTrialRunConsentVersion).toBe(CHAT_PIPELINE_TRIAL_CONSENT_VERSION);
     expect(s.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
     expect(s.opencodeChatTrialLiveSmokeTestConsentVersion).toBe(0);
     expect(s.opencodeChatTrialPlanMaxAttempts).toBe(2);
