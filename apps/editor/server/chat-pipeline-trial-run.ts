@@ -967,30 +967,32 @@ function resultForPlanFailure(
   };
 }
 
-interface TrialPlanBlockingDiagnostic {
+export interface TrialPlanBlockingDiagnostic {
   message: string;
   scope: 'pipeline-artifact' | 'diagnostic-only';
 }
 
-function planBlockingDiagnostics(plan: ChatPipelineTrialPlan): TrialPlanBlockingDiagnostic[] {
-  return [
-    ...plan.findings
-      .filter((item) => item.severity === 'blocking')
-      .map((item) => ({
-        message: `${item.summary}: ${item.evidence}`,
-        scope: item.repairScope,
-      })),
-    ...plan.coverage
-      .filter((item) => item.status === 'blocked')
-      .map((item) => ({
-        message: `${item.dimension} is blocked: ${item.rationale}`,
-        scope: 'diagnostic-only' as const,
-      })),
-  ];
+/**
+ * Only genuine pipeline findings block the plan. Blocked coverage is an
+ * observation limit (the harness cannot observe a required dimension), not a
+ * defect: it must never fail the plan, only surface as a non-fatal warning.
+ */
+export function planBlockingDiagnostics(
+  plan: ChatPipelineTrialPlan,
+): TrialPlanBlockingDiagnostic[] {
+  return plan.findings
+    .filter((item) => item.severity === 'blocking')
+    .map((item) => ({
+      message: `${item.summary}: ${item.evidence}`,
+      scope: item.repairScope,
+    }));
 }
 
-function planWarningDiagnostics(plan: ChatPipelineTrialPlan): string[] {
+export function planWarningDiagnostics(plan: ChatPipelineTrialPlan): string[] {
   return [
+    ...plan.coverage
+      .filter((item) => item.status === 'blocked')
+      .map((item) => `Coverage not verifiable (${item.dimension}): ${item.rationale}`),
     ...plan.coverage
       .filter((item) => item.status === 'accepted-risk')
       .map((item) => `Accepted risk ${item.dimension}: ${item.rationale}`),
@@ -1163,6 +1165,7 @@ export function evaluateTrialExpectation(
               state.status,
               state.result?.failureKind ?? null,
               state.result?.outputDiagnostics,
+              isExternalDriverStreamFailure(state.result?.failureKind ?? null, state.result?.stderr),
             ) ?? 'pipeline-artifact'),
     };
   }
@@ -1387,10 +1390,25 @@ export function buildChatPipelineTrialOutputDiagnostics(
   return Object.freeze(projected);
 }
 
+function isExternalDriverStreamFailure(
+  failureKind: string | null,
+  stderr: string | null | undefined,
+): boolean {
+  if (failureKind !== 'exit_nonzero') return false;
+  const text = stderr ?? '';
+  if (text.includes('[editor] OpenCode primary model error:')) return true;
+  return (
+    text.includes('message="stream error"') &&
+    /\bmode=primary\b/u.test(text) &&
+    /\bsmall=false\b/u.test(text)
+  );
+}
+
 export function trialTaskRepairScope(
   status: string,
   failureKind: string | null,
   outputDiagnostics?: readonly ChatPipelineTrialOutputDiagnostic[],
+  externalDriverStreamFailure = false,
 ): ChatPipelineTrialTaskResult['repairScope'] {
   if (status === 'success') return null;
   if (
@@ -1401,6 +1419,7 @@ export function trialTaskRepairScope(
     failureKind === 'aborted' ||
     failureKind === 'spawn_error' ||
     failureKind === 'binary_missing' ||
+    externalDriverStreamFailure ||
     (failureKind === 'output_error' && !!outputDiagnostics?.length)
   ) {
     return 'diagnostic-only';
@@ -1534,7 +1553,12 @@ function trialTaskResults(
       ...(filteredStderr.omittedAuxiliaryDiagnosticLines > 0
         ? { stderrAuxiliaryDiagnosticsOmittedLines: filteredStderr.omittedAuxiliaryDiagnosticLines }
         : {}),
-      repairScope: trialTaskRepairScope(state.status, failureKind, outputDiagnostics),
+      repairScope: trialTaskRepairScope(
+        state.status,
+        failureKind,
+        outputDiagnostics,
+        isExternalDriverStreamFailure(failureKind, rawStderr),
+      ),
       stdoutTruncation: stdout.truncation,
       stderrTruncation: stderr.truncation,
     };

@@ -70,10 +70,14 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
     attempts > 0
       ? `Pipeline repair did not succeed after ${attemptLabel}.`
       : 'Pipeline verification failed.';
+  const failedHint =
+    result.trial?.repairAuthorization === 'diagnostic-only'
+      ? ' The failure is a non-pipeline limitation (unavailable driver, credential, environment, or a harness observation limit); check the environment and retry.'
+      : ' Open the saved copy to inspect the remaining pipeline defects.';
   if (result.reconcile?.outcome === 'forked') {
     return {
       verb: 'Saved failed draft',
-      outcome: `${failed} No live pipeline was overwritten. The unverified draft was saved as ${name}.`,
+      outcome: `${failed}${failedHint} No live pipeline was overwritten. The unverified draft was saved as ${name}.`,
       detail,
     };
   }
@@ -81,13 +85,13 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
     return {
       verb:
         result.reconcile?.outcome === 'created' ? 'Created failed draft' : 'Updated failed draft',
-      outcome: `${failed} The host kept the final pipeline at ${name} for inspection.`,
+      outcome: `${failed}${failedHint} The host kept the final pipeline at ${name} for inspection.`,
       detail,
     };
   }
   return {
     verb: 'Pipeline verification failed',
-    outcome: `${failed} No pipeline changes were published.`,
+    outcome: `${failed}${failedHint} No pipeline changes were published.`,
     detail,
   };
 }

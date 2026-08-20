@@ -260,6 +260,18 @@ describe('chat pipeline trial plan', () => {
     );
   });
 
+  test('coverage rejection names the exact evidence required for empty-content', () => {
+    const candidate = structuredClone(completePlan());
+    const emptyFixture = (
+      candidate.cases as Array<{ fixtures: Array<{ path: string; content: string }> }>
+    )[0]!.fixtures.find((fixture) => fixture.content === '')!;
+    emptyFixture.content = 'not-empty';
+
+    expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
+      'marks empty-content covered without concrete linked-case evidence: needs an empty fixture plus a file-equals expectation with empty expected text',
+    );
+  });
+
   test('requires at least one explicit behavior goal', () => {
     const candidate = structuredClone(completePlan());
     candidate.goals = [];

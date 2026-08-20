@@ -644,6 +644,23 @@ function validateJsonArtifactExpectations(cases: ChatPipelineTrialPlanCase[]): v
   }
 }
 
+function coverageEvidenceHint(dimension: ChatPipelineTrialCoverageDimension): string {
+  if (dimension === 'multiple-inputs') return 'needs at least two fixtures in the linked case';
+  if (dimension === 'duplicate-input-names')
+    return 'needs same-basename fixtures in different folders';
+  if (dimension === 'multiline-content') return 'needs a fixture containing a newline';
+  if (dimension === 'inter-task-output-collision')
+    return 'needs at least two target task ids plus distinct-output expectations';
+  if (dimension === 'repeat-run-output-collision')
+    return 'needs runs >= 2 plus distinct-output expectations';
+  if (dimension === 'repeat-run') return 'needs runs >= 2';
+  if (dimension === 'empty-content')
+    return 'needs an empty fixture plus a file-equals expectation with empty expected text';
+  if (dimension === 'special-characters')
+    return 'needs a fixture containing a non-ASCII or non-alphanumeric character';
+  return 'needs concrete linked-case evidence';
+}
+
 function validateCoveredCaseEvidence(
   coverage: ChatPipelineTrialPlanCoverage[],
   cases: ChatPipelineTrialPlanCase[],
@@ -701,7 +718,9 @@ function validateCoveredCaseEvidence(
       throw new Error(
         'trial plan coverage marks ' +
           entry.dimension +
-          ' covered without concrete linked-case evidence.',
+          ' covered without concrete linked-case evidence: ' +
+          coverageEvidenceHint(entry.dimension) +
+          '. Add that evidence, or mark the dimension blocked when the harness cannot observe it, or accepted-risk when it is an accepted unverified risk.',
       );
     }
   }

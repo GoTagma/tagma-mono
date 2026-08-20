@@ -1734,13 +1734,17 @@ describe('chat YAML staging routes', () => {
       ),
       diagnosticOnlyRes,
     );
+    // Blocked coverage is a non-fatal observation limit: the plan no longer
+    // short-circuits, so the Trial actually runs. In this fixture the isolated
+    // case writes to an absolute real-workspace path and is caught as a
+    // diagnostic-only failure; the live-smoke baseline still writes the marker.
     expect(diagnosticOnlyRes.body).toMatchObject({
       success: false,
-      kind: 'plan-failed',
-      ran: false,
+      kind: 'failed',
+      ran: true,
       repairAuthorization: 'diagnostic-only',
     });
-    expect(existsSync(markerPath)).toBe(false);
+    expect(existsSync(markerPath)).toBe(true);
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();

@@ -830,6 +830,12 @@
   on the backdrop's common ancestor, so shell-level click propagation guards are insufficient.
   Reuse `useModalBackdropDismiss` for these provider modals.
 
+## Chat Trial Plan Semantics
+
+- Blocked coverage is a diagnostic-only observation limit, never a pipeline defect: it must not fail the trial plan, only surface as a non-fatal `passed-with-warnings` warning. Only `blocking` findings block the plan.
+- A required coverage dimension that cannot be covered because the pipeline persists no deterministic artifact is a fixable verifiability gap: record a `blocking` finding with `repairScope: pipeline-artifact` naming the missing artifact, so the host repair loop can author it. Mark a dimension `blocked` only when no pipeline repair can expose it to the harness.
+- `trialTaskRepairScope` must map managed OpenCode primary-model stream failures (billing/network) to `diagnostic-only` via `isExternalDriverStreamFailure`, never to `pipeline-artifact`; a command task's genuine `exit_nonzero` remains `pipeline-artifact`.
+
 ## Targeted Pipeline Runs
 
 - Run and Run Selected controls must not bubble into parent selection-clearing handlers before
