@@ -385,6 +385,19 @@ async function pickFreePort(): Promise<number> {
 }
 
 /**
+ * Raised when an OpenCode readiness probe is abandoned because the process it
+ * was probing exited. Distinct from a genuine readiness timeout so the pollers
+ * can stop silently instead of logging a misleading "readiness failed" error
+ * for a process that was deliberately replaced by a restart.
+ */
+class OpencodeReadinessAbortedError extends Error {
+  constructor() {
+    super('opencode readiness probe aborted because the process exited');
+    this.name = 'OpencodeReadinessAbortedError';
+  }
+}
+
+/**
  * Loopback GET that bypasses any configured HTTP proxy. We can't use Bun's
  * fetch (or its `node:http` compat layer) here because both honor
  * `http_proxy` even for 127.0.0.1 — common on dev machines with a corporate
@@ -398,6 +411,7 @@ function loopbackGet(
   path: string,
   timeoutMs: number,
   authorization?: string,
+  signal?: AbortSignal,
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const chunks: Uint8Array[] = [];
@@ -426,6 +440,19 @@ function loopbackGet(
       if (!parsed) return;
       done(() => resolve(parsed));
     };
+    if (signal) {
+      if (signal.aborted) {
+        reject(new OpencodeReadinessAbortedError());
+        return;
+      }
+      signal.addEventListener(
+        'abort',
+        () => {
+          done(() => reject(new OpencodeReadinessAbortedError()));
+        },
+        { once: true },
+      );
+    }
     timer = setTimeout(() => {
       done(() => reject(new Error(`timeout after ${timeoutMs}ms`)));
     }, timeoutMs);
@@ -548,6 +575,7 @@ async function waitForHealth(
   baseUrl: string,
   timeoutMs = OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
   authorization?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const { hostname, port } = new URL(baseUrl);
   const portNum = Number(port);
@@ -558,9 +586,10 @@ async function waitForHealth(
   // Try both on each probe; consider the server healthy when either returns OK.
   const healthPaths = ['/global/health', '/health'];
   while (Date.now() < deadline) {
+    if (signal?.aborted) throw new OpencodeReadinessAbortedError();
     for (const path of healthPaths) {
       try {
-        const res = await loopbackGet(hostname, portNum, path, 2_000, authorization);
+        const res = await loopbackGet(hostname, portNum, path, 2_000, authorization, signal);
         lastStatus = res.status;
         lastErr = null;
         if (res.status >= 200 && res.status < 300) {
@@ -569,6 +598,7 @@ async function waitForHealth(
         }
         console.log(`[opencode] ${path} → ${res.status}: ${res.body.slice(0, 200)}`);
       } catch (err) {
+        if (err instanceof OpencodeReadinessAbortedError) throw err;
         lastErr = err;
         lastStatus = null;
       }
@@ -585,6 +615,7 @@ async function waitForDatabaseAccess(
   baseUrl: string,
   timeoutMs = OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
   authorization?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const { hostname, port } = new URL(baseUrl);
   const portNum = Number(port);
@@ -593,9 +624,10 @@ async function waitForDatabaseAccess(
   let lastErr: unknown = null;
   let lastStatus: number | null = null;
   while (Date.now() < deadline) {
+    if (signal?.aborted) throw new OpencodeReadinessAbortedError();
     try {
       const remainingMs = Math.max(1, deadline - Date.now());
-      const res = await loopbackGet(hostname, portNum, path, remainingMs, authorization);
+      const res = await loopbackGet(hostname, portNum, path, remainingMs, authorization, signal);
       lastStatus = res.status;
       lastErr = null;
       if (res.status >= 200 && res.status < 300) {
@@ -604,6 +636,7 @@ async function waitForDatabaseAccess(
       }
       console.log(`[opencode] ${path} -> ${res.status}: ${res.body.slice(0, 200)}`);
     } catch (err) {
+      if (err instanceof OpencodeReadinessAbortedError) throw err;
       lastErr = err;
       lastStatus = null;
     }
@@ -627,12 +660,13 @@ async function waitForManagedToolRegistry(
   cwd: string,
   timeoutMs = OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
   authorization?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const { hostname, port } = new URL(baseUrl);
   const portNum = Number(port);
   const query = new URLSearchParams({ directory: cwd });
   const path = `/experimental/tool/ids?${query.toString()}`;
-  const res = await loopbackGet(hostname, portNum, path, timeoutMs, authorization);
+  const res = await loopbackGet(hostname, portNum, path, timeoutMs, authorization, signal);
   const body = res.body.slice(0, 500);
   if (res.status < 200 || res.status >= 300) {
     throw new Error(
@@ -780,12 +814,32 @@ function createOpencodeStartAttempt(
     let healthResult: { kind: 'healthy' } | { kind: 'exited'; exitCode: number };
     const readinessDeadline = Date.now() + readinessTimeoutMs;
     const remainingReadinessMs = (): number => Math.max(1, readinessDeadline - Date.now());
+    // Abort every readiness probe the moment the process exits. A restart kills
+    // the previous process, so without this its health/database pollers keep
+    // running against the dead port until the full readiness budget expires and
+    // waitForDatabaseAccess logs a misleading "database readiness failed" for a
+    // process that was deliberately replaced.
+    const readinessAbort = new AbortController();
+    void proc.exited.then(() => readinessAbort.abort());
     try {
       healthResult = await Promise.race([
-        waitForHealth(baseUrl, remainingReadinessMs(), auth.authorization)
-          .then(() => waitForDatabaseAccess(baseUrl, remainingReadinessMs(), auth.authorization))
+        waitForHealth(baseUrl, remainingReadinessMs(), auth.authorization, readinessAbort.signal)
           .then(() =>
-            waitForManagedToolRegistry(baseUrl, cwd, remainingReadinessMs(), auth.authorization),
+            waitForDatabaseAccess(
+              baseUrl,
+              remainingReadinessMs(),
+              auth.authorization,
+              readinessAbort.signal,
+            ),
+          )
+          .then(() =>
+            waitForManagedToolRegistry(
+              baseUrl,
+              cwd,
+              remainingReadinessMs(),
+              auth.authorization,
+              readinessAbort.signal,
+            ),
           )
           .then(() => ({
             kind: 'healthy' as const,
@@ -793,9 +847,16 @@ function createOpencodeStartAttempt(
         proc.exited.then((exitCode) => ({ kind: 'exited' as const, exitCode })),
       ]);
     } catch (err) {
-      await terminateOpencodeProcess(proc, cwd, 'failed startup', 3_000);
-      if (children.get(cwd) === proc) children.delete(cwd);
-      throw err;
+      if (err instanceof OpencodeReadinessAbortedError) {
+        // The process exited mid-readiness; the race normally resolves via
+        // proc.exited, but surface the same outcome defensively if the abort
+        // rejection ever wins the race.
+        healthResult = { kind: 'exited', exitCode: await proc.exited };
+      } else {
+        await terminateOpencodeProcess(proc, cwd, 'failed startup', 3_000);
+        if (children.get(cwd) === proc) children.delete(cwd);
+        throw err;
+      }
     }
 
     if (healthResult.kind === 'exited') {

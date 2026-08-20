@@ -8,6 +8,12 @@
   failure. Native managed-runtime smoke tests must exercise the production default instead of
   imposing a shorter local budget. Let that single database request finish instead of abandoning it
   and issuing overlapping initialization probes.
+- Keep the health/database/tool-registry readiness probes abortable and tied to the spawned
+  process's `exited` promise. A restart kills the previous process, so without that abort its
+  pollers keep probing the dead port until the full readiness budget expires and
+  `waitForDatabaseAccess` logs a misleading `database readiness failed` for a process that was
+  deliberately replaced. Preserve the `OpencodeReadinessAbortedError` path; a genuine readiness
+  timeout (process still alive) must still surface the normal failure.
 - Treat History selection as a latest-intent-wins async transition. Keep the current conversation
   visible until the target messages load, expose the pending target immediately, and invalidate
   it on a newer selection, workspace change, or target deletion. Selecting the already-visible

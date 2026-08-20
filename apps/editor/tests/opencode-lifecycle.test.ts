@@ -909,6 +909,93 @@ describe('ensureOpencode health probing', () => {
     await restartOpencode(cwd);
     expect(spawnCount).toBe(3);
   });
+
+  test('a killed process aborts the database readiness poller without a stale timeout', async () => {
+    const cwd = join(tempRoot, '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    let databaseProbeCount = 0;
+    let resolveExit!: (code: number) => void;
+    const staleErrors: string[] = [];
+    const originalConsoleError = console.error;
+    console.error = ((...args: unknown[]) => {
+      if (String(args[0]).includes('database readiness failed')) staleErrors.push(String(args[0]));
+    }) as typeof console.error;
+
+    try {
+      (Bun as BunLike).listen = (() =>
+        ({
+          port: 45210,
+          stop() {},
+        }) as unknown as ReturnType<typeof Bun.listen>) as unknown as typeof Bun.listen;
+
+      (Bun as BunLike).spawn = (() => {
+        const proc = {
+          pid: undefined,
+          stdout: closedStream(),
+          stderr: closedStream(),
+          exited: new Promise<number>((resolve) => {
+            resolveExit = resolve;
+          }),
+          kill() {
+            resolveExit(143);
+          },
+        };
+        return proc;
+      }) as typeof Bun.spawn;
+
+      (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
+        queueMicrotask(() => {
+          const socket = {
+            write(request: string | Uint8Array) {
+              const path = String(request).split(' ')[1] ?? '';
+              if (path === '/session?limit=1') {
+                databaseProbeCount += 1;
+                options.socket.data?.(
+                  socket as never,
+                  Buffer.from(
+                    'HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n',
+                  ),
+                );
+                return;
+              }
+              options.socket.data?.(socket as never, successfulProbeResponse(request));
+            },
+            end() {},
+          };
+          options.socket.open?.(socket as never);
+        });
+        return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
+      }) as typeof Bun.connect;
+
+      // Accelerate the readiness poll interval so post-kill loops are observable
+      // quickly instead of waiting out the production 500ms sleep.
+      const realSetTimeoutFn = globalThis.setTimeout;
+      globalThis.setTimeout = ((
+        handler: Parameters<typeof setTimeout>[0],
+        timeout?: number,
+        ...args: unknown[]
+      ) => realSetTimeoutFn(handler, timeout === 500 ? 5 : timeout, ...args)) as typeof setTimeout;
+
+      const start = ensureOpencode(cwd);
+      const waitDeadline = Date.now() + 5_000;
+      while (databaseProbeCount < 2 && Date.now() < waitDeadline) {
+        await new Promise((resolve) => realSetTimeoutFn(resolve, 5));
+      }
+      expect(databaseProbeCount).toBeGreaterThanOrEqual(2);
+
+      resolveExit(143);
+
+      await expect(start).rejects.toThrow(/exited with code=143/);
+
+      const probesAtExit = databaseProbeCount;
+      await new Promise((resolve) => realSetTimeoutFn(resolve, 60));
+
+      expect(databaseProbeCount).toBe(probesAtExit);
+      expect(staleErrors).toHaveLength(0);
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
 });
 
 describe('OpenCode PATH fallback', () => {
