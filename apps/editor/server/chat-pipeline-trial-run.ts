@@ -1165,7 +1165,10 @@ export function evaluateTrialExpectation(
               state.status,
               state.result?.failureKind ?? null,
               state.result?.outputDiagnostics,
-              isExternalDriverStreamFailure(state.result?.failureKind ?? null, state.result?.stderr),
+              isExternalDriverStreamFailure(
+                state.result?.failureKind ?? null,
+                state.result?.stderr,
+              ),
             ) ?? 'pipeline-artifact'),
     };
   }

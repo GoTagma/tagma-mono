@@ -1,10 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { ChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
-import {
-  planBlockingDiagnostics,
-  planWarningDiagnostics,
-} from '../server/chat-pipeline-trial-run';
+import { planBlockingDiagnostics, planWarningDiagnostics } from '../server/chat-pipeline-trial-run';
 
 function plan(overrides: Partial<ChatPipelineTrialPlan> = {}): ChatPipelineTrialPlan {
   return {
@@ -80,7 +77,7 @@ test('blocked coverage surfaces as a non-fatal warning', () => {
     }),
   );
   expect(warnings.some((message) => message.includes('empty-content'))).toBe(true);
-  expect(warnings.some((message) => message.includes('No deterministic empty-output artifact'))).toBe(
-    true,
-  );
+  expect(
+    warnings.some((message) => message.includes('No deterministic empty-output artifact')),
+  ).toBe(true);
 });
