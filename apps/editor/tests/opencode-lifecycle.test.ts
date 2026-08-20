@@ -928,7 +928,7 @@ describe('ensureOpencode health probing', () => {
           stop() {},
         }) as unknown as ReturnType<typeof Bun.listen>) as unknown as typeof Bun.listen;
 
-      (Bun as BunLike).spawn = (() => {
+      (Bun as BunLike).spawn = ((_command: unknown) => {
         const proc = {
           pid: undefined,
           stdout: closedStream(),
@@ -939,7 +939,7 @@ describe('ensureOpencode health probing', () => {
           kill() {
             resolveExit(143);
           },
-        };
+        } as unknown as ReturnType<typeof Bun.spawn>;
         return proc;
       }) as typeof Bun.spawn;
 
