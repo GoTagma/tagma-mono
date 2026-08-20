@@ -16,12 +16,36 @@ import {
   chatYamlFinalizeForceForkReason,
   chatYamlTargetTrialId,
   shouldTrialRunChatPipeline,
+  shouldCaptureChatYamlTargetLocalBranch,
   shouldPreserveCanvasForChatPipelineEvent,
   type ChatPipelineRepairArtifactState,
   type ChatYamlSnapshot,
   type ChatYamlStageSnapshotEntry,
   type WorkspaceYamlEntry,
 } from '../src/utils/chat-yaml-reconcile';
+
+describe('shouldCaptureChatYamlTargetLocalBranch', () => {
+  test('follows the current staged target instead of the pipeline that started Chat', () => {
+    expect(
+      shouldCaptureChatYamlTargetLocalBranch({
+        targetSourcePath: 'C:/w/.tagma/pipeline-b/pipeline-b.yaml',
+        currentYamlPath: 'c:\\w\\.tagma\\pipeline-b\\pipeline-b.yaml',
+      }),
+    ).toBe(true);
+    expect(
+      shouldCaptureChatYamlTargetLocalBranch({
+        targetSourcePath: 'C:/w/.tagma/pipeline-b/pipeline-b.yaml',
+        currentYamlPath: 'C:/w/.tagma/pipeline-a/pipeline-a.yaml',
+      }),
+    ).toBe(false);
+    expect(
+      shouldCaptureChatYamlTargetLocalBranch({
+        targetSourcePath: null,
+        currentYamlPath: 'C:/w/.tagma/pipeline-b/pipeline-b.yaml',
+      }),
+    ).toBe(false);
+  });
+});
 
 describe('chatYamlTargetTrialId', () => {
   test('keeps long punctuation-distinct targets unique within the server id bound', () => {
@@ -661,5 +685,17 @@ describe('staged finalize adoption wiring', () => {
     expect(appSource).not.toContain('activeLocalBranch,');
     expect(appSource).toContain('retainStage: retainStageForMoreTargets,');
     expect(appSource).toContain('.markFinishedTurnYamlTargetCompleted(');
+  });
+
+  test('captures the visible target branch and globally gates editor writes during Trial', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+
+    expect(appSource).toContain('shouldCaptureChatYamlTargetLocalBranch({');
+    expect(appSource).toContain('targetSourcePath: stagedTarget.sourcePath,');
+    expect(appSource).not.toContain('const targetsStartedPipeline =');
+    expect(appSource).toContain('yamlPath: null,');
+    expect(appSource).toContain('workspaceWideYamlLock = true;');
+    expect(appSource).toContain('await restoreWorkspaceWideYamlLock();');
+    expect(appSource).toContain('forceRefresh: true,');
   });
 });

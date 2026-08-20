@@ -246,7 +246,14 @@
   newly discovered folders, never the already-attached stage baseline.
 - Finalize under the active chat YAML lease with a server-side three-way comparison:
   base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
-  agent branch. A global workspace revision is never a conflict signal for staged turns.
+  agent branch. A global workspace revision is never a conflict signal for staged turns. Capture
+  the renderer branch for the concrete staged target that is currently visible at finalize time,
+  not only for the pipeline that was visible when Chat started; flush that target's pending local
+  edits before capture.
+- Treat a missing live source as an authoritative deletion tombstone. Publish a changed Chat branch
+  as a numbered copy and report `source-deleted`, but never recreate the deleted source from base
+  unless an explicit renderer local branch must itself be persisted. Apply the same rule when
+  reconciling a different deleted active source during another target's finalize.
 - The post-turn stage list may report live source drift from server-owned base hashes, but an
   unchanged staged agent branch must not finalize, fork, run Trial, or publish a pipeline result.
   No-op turns are discarded after diagnostics/bookkeeping. Only staged artifact mutations for a
@@ -460,6 +467,13 @@
   fix. The mutation monitor establishes timing, not causation: label the writer `writer-unknown`
   and never claim that the isolated case caused the change. Such evidence must never by itself
   grant `pipeline-change-allowed` or authorize YAML repair.
+- Promote the Chat YAML lease from its ordinary pipeline scope to workspace-wide before a host Trial
+  request starts, enforce that promotion again at the server route, keep the renderer lease broad
+  through the matching finalize witness, and restore the original path scope in `finally` (or before
+  handing control to a planning/repair continuation). This prevents editor-authored writes to
+  unrelated pipelines from becoming `writer-unknown` Trial failures or invalidating a just-completed
+  witness without weakening containment: direct external filesystem writes during Trial must still
+  fail closed.
 - Pin Trial YAML and requirements to one immutable execution snapshot, and hold the shared
   per-workspace run reservation for the entire host Trial. A completed response retry is keyed by
   stage, trial id, path, and input hash even if the host later drifts; finalize must still verify
@@ -640,6 +654,13 @@
   as Chat. They must also use Chat's `buildOpencodeEnv()` isolation rooted at the workspace
   `.tagma` directory so user-global plugins and config cannot enter editor-owned runs. Do not let
   editor-owned AI runs silently select a different global OpenCode version or environment.
+- Managed prompt CLI runs must force `OPENCODE_DISABLE_PROJECT_CONFIG=true` in both Native Broker
+  and Legacy rollback mode. Otherwise pinned OpenCode discovers the task cwd's project-local
+  `.opencode`, installs its plugin dependency tree there, and lets pipeline-local configuration
+  enter an editor-owned run. Treat `.opencode` directories anywhere in a pipeline support subtree
+  as managed runtime state rather than Chat support artifacts so stale task-cwd trees cannot wedge
+  staging/finalize; keep ordinary support files
+  subject to the existing entry, depth, file-size, and total-size bounds.
 - Managed prompt CLI runs must print error-level OpenCode logs and terminate a hung child when the
   pinned runtime reports `message="stream error" small=false mode=primary`; title-model
   (`small=true`) and subagent errors remain recoverable. Keep Chat sidecar Basic Auth credentials
@@ -853,8 +874,16 @@
 - Keep ordinary per-workspace settings controls responsive while persistence is in flight. Serialize
   their PATCHes, coalesce pending values, rebase them on each server response, and roll back only
   failed fields that have not been superseded by a newer edit.
+- Seed a genuinely new `editor-settings.json` from the complete current defaults before its first
+  sparse PATCH, so defaulted versioned consent is not erased by an unrelated write. Existing legacy
+  or corrupt files with missing consent remain fail-closed and must not be upgraded implicitly.
 - Keep restart-backed global and Python settings mutations mutually exclusive with each other and
   with pending workspace settings saves.
+- Report successful Python configuration before waiting for its OpenCode restart. Close the Python
+  wizard after persistence, keep settings mutations blocked while the runtime applies in the
+  background, and surface that apply as a separate status/error; never relabel runtime cold-start
+  time as Python `Configuring`. Initial bootstrap and restart still converge on the lifecycle's final
+  replacement generation.
 - Keep task, production-pipeline, and Chat-Trial execution budgets workspace-local and adjustable in
   the dedicated Execution category. Server parsing, persistence, UI ranges, ordinary pipelines,
   workflow pipelines, and Trial must share one source of defaults/ranges. Pipeline-authoring agents

@@ -41,6 +41,36 @@ export type PythonWizardStatus =
   | { kind: 'error'; message: string }
   | { kind: 'installed'; message: string };
 
+export type PythonRuntimeApplyStatus =
+  { kind: 'idle' } | { kind: 'applying' } | { kind: 'error'; message: string };
+
+export interface PythonAgentConfigurationCallbacks<T> {
+  onConfigured: (result: T) => void;
+  onApplyStarted: () => void;
+  onApplySucceeded: () => void;
+  onApplyFailed: (error: unknown) => void;
+}
+
+/**
+ * Persists the Python configuration first, reports that user-visible milestone,
+ * then applies it to OpenCode without making configuration completion wait for
+ * runtime cold-start readiness. The callbacks keep the later apply lifecycle
+ * observable without coupling the Python wizard to it.
+ */
+export async function configurePythonAgentWithDeferredOpencodeApply<T>(
+  configurePython: () => Promise<T>,
+  applyOpencode: () => Promise<void>,
+  callbacks: PythonAgentConfigurationCallbacks<T>,
+): Promise<void> {
+  const result = await configurePython();
+  callbacks.onConfigured(result);
+  callbacks.onApplyStarted();
+
+  void Promise.resolve()
+    .then(applyOpencode)
+    .then(callbacks.onApplySucceeded, callbacks.onApplyFailed);
+}
+
 const OPENCODE_SETTINGS_LOCK_MESSAGE =
   'Wait for the active OpenCode chat to finish before changing OpenCode settings.';
 
@@ -78,6 +108,8 @@ export function useEditorSettingsController(
   const [installVersion, setInstallVersion] = useState('3.13');
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
+  const [pythonRuntimeApplyStatus, setPythonRuntimeApplyStatus] =
+    useState<PythonRuntimeApplyStatus>({ kind: 'idle' });
   const [diagnosticsStatus, setDiagnosticsStatus] = useState<DiagnosticsSessionStatus | null>(null);
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
@@ -417,32 +449,50 @@ export function useEditorSettingsController(
       setPythonStatus({ kind: 'error', message: opencodeSettingsMutationBlockMessage });
       return;
     }
-    if (!settings) return;
+    if (!settings || pythonSaving || globalSavingRef.current || workspaceSavingRef.current) {
+      return;
+    }
     const command = pythonChoice === 'yes' ? (selectedPython?.command ?? manualPythonPath) : '';
     const args = pythonChoice === 'yes' ? (selectedPython?.args ?? []) : [];
     if (!command.trim()) {
       setPythonStatus({ kind: 'error', message: 'Select a Python version or paste a path.' });
       return;
     }
+    setPythonSaving(true);
+    setPythonRuntimeApplyStatus({ kind: 'idle' });
     setPythonStatus({ kind: 'configuring' });
     try {
-      const result = await api.configurePythonAgent(command.trim(), args);
-      settingsSaveQueue.reset(result.settings);
-      try {
-        await restartOpencodeForConfig();
-      } catch (e) {
-        setPythonStatus({
-          kind: 'error',
-          message:
-            e instanceof Error
-              ? `Python configured, but OpenCode restart failed: ${e.message}`
-              : 'Python configured, but OpenCode restart failed',
-        });
-        return;
-      }
-      setPythonWizardOpen(false);
-      setPythonStatus({ kind: 'idle' });
+      await configurePythonAgentWithDeferredOpencodeApply(
+        () => api.configurePythonAgent(command.trim(), args),
+        () => restartOpencodeForConfig(),
+        {
+          onConfigured(result) {
+            settingsSaveQueue.reset(result.settings);
+            setPythonWizardOpen(false);
+            setPythonStatus({ kind: 'idle' });
+          },
+          onApplyStarted() {
+            setPythonRuntimeApplyStatus({ kind: 'applying' });
+          },
+          onApplySucceeded() {
+            if (!mountedRef.current) return;
+            setPythonRuntimeApplyStatus({ kind: 'idle' });
+            setPythonSaving(false);
+          },
+          onApplyFailed(applyError) {
+            const message =
+              applyError instanceof Error
+                ? `Python configured, but OpenCode apply failed: ${applyError.message}`
+                : 'Python configured, but OpenCode apply failed';
+            if (!mountedRef.current) return;
+            setPythonRuntimeApplyStatus({ kind: 'error', message });
+            setError(message);
+            setPythonSaving(false);
+          },
+        },
+      );
     } catch (e) {
+      setPythonSaving(false);
       setPythonStatus({
         kind: 'error',
         message: e instanceof Error ? e.message : 'Failed to configure Python AI Agent',
@@ -520,6 +570,7 @@ export function useEditorSettingsController(
     installVersion,
     installPlan,
     pythonStatus,
+    pythonRuntimeApplyStatus,
     selectedPython,
     setPythonChoice,
     setSelectedPythonId,

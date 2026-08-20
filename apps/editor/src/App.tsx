@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getLocalPipelineEditRevision, usePipelineStore } from './store/pipeline-store';
+import { usePipelineStore } from './store/pipeline-store';
 import { BoardCanvas } from './components/board/BoardCanvas';
 import { Toolbar } from './components/board/Toolbar';
 import { TaskConfigPanel } from './components/panels/TaskConfigPanel';
@@ -89,6 +89,7 @@ import {
   shouldReverifyChatPipelineAfterRepair,
   shouldQueueTrialPlanPrompt,
   shouldTrialRunChatPipeline,
+  shouldCaptureChatYamlTargetLocalBranch,
   shouldPreserveCanvasForChatPipelineEvent,
   sameChatYamlRelativePath,
   type ChatPipelineRepairArtifactState,
@@ -111,6 +112,7 @@ import {
   type WorkflowReturnPathNavigation,
 } from './utils/workflow-return-state';
 import {
+  ensureChatYamlEditLockLease,
   releaseChatYamlEditLock,
   useYamlEditLockStore,
   withChatYamlEditLockLeaseRecovery,
@@ -1372,6 +1374,8 @@ export function App() {
       let reconciliationTelemetryKey: string | null = null;
       let clearRepairAttemptsOnSuccess = false;
       let stagedFinalizeCommitted = false;
+      let workspaceWideYamlLock = false;
+      let restoreWorkspaceWideYamlLock: (() => Promise<void>) | null = null;
       const finishedSessionId = finishedTurn.sessionId;
       const setFinishedPostChatYamlAction = (action: ChatYamlPostAction | null) =>
         useChatStore.getState().setPostChatYamlAction(action, finishedSessionId);
@@ -1445,6 +1449,25 @@ export function App() {
                 yamlPath: snapshot.activePath,
               },
             );
+          const underWorkspaceWideChatLock = <T,>(op: () => Promise<T>) =>
+            withChatYamlEditLockLeaseRecovery(
+              requiredChatYamlLockLease,
+              (lease) => withYamlEditLockRequestBypass(lease.id, op),
+              {
+                reason: YAML_EDIT_LOCK_MESSAGE,
+                yamlPath: null,
+              },
+            );
+          const restoreTrialWorkspaceLock = async (): Promise<void> => {
+            if (!workspaceWideYamlLock) return;
+            await ensureChatYamlEditLockLease(requiredChatYamlLockLease, {
+              reason: YAML_EDIT_LOCK_MESSAGE,
+              yamlPath: snapshot.activePath,
+              forceRefresh: true,
+            });
+            workspaceWideYamlLock = false;
+          };
+          restoreWorkspaceWideYamlLock = restoreTrialWorkspaceLock;
           useChatStore.getState().beginChatYamlLifecycle({
             turnId: finishedTurn.id,
             sessionId: finishedSessionId,
@@ -1618,8 +1641,14 @@ export function App() {
               reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,
             })
           ) {
-            const trialOnce = () =>
-              underChatLock(() =>
+            const trialOnce = async () => {
+              await ensureChatYamlEditLockLease(requiredChatYamlLockLease, {
+                reason: YAML_EDIT_LOCK_MESSAGE,
+                yamlPath: null,
+                forceRefresh: true,
+              });
+              workspaceWideYamlLock = true;
+              return underWorkspaceWideChatLock(() =>
                 api.trialRunChatYamlStage(
                   snapshot.staging.id,
                   stagedTarget.relativePath,
@@ -1627,6 +1656,7 @@ export function App() {
                   snapshot.workDir,
                 ),
               );
+            };
             let trialError: unknown;
             setFinishedPostChatYamlAction({
               ...stagedTarget,
@@ -1641,7 +1671,7 @@ export function App() {
             let trialProgressTimer: ReturnType<typeof setTimeout> | null = null;
             const pollTrialProgress = async (): Promise<void> => {
               try {
-                const { progress } = await underChatLock(() =>
+                const { progress } = await underWorkspaceWideChatLock(() =>
                   api.getChatYamlStageTrialProgress(
                     snapshot.staging.id,
                     targetTrialId,
@@ -1737,6 +1767,7 @@ export function App() {
                   planningState.currentSessionId === finishedSessionId
                     ? planningState.messages
                     : (planningState.sessionStates[finishedSessionId!]?.messages ?? []);
+                await restoreTrialWorkspaceLock();
                 beginChatTrialPlanningPrompt(planningAccumulator, {
                   sessionId: finishedSessionId!,
                   messages: planningMessages,
@@ -1789,6 +1820,7 @@ export function App() {
                 compile,
                 evidence,
               });
+              await restoreTrialWorkspaceLock();
               try {
                 await useChatStore
                   .getState()
@@ -1814,37 +1846,33 @@ export function App() {
           });
           if (await discardCancelledStage()) return;
 
-          const targetsStartedPipeline =
-            !!snapshot.activePath &&
-            !!stagedTarget.sourcePath &&
-            sameEditorPath(snapshot.activePath, stagedTarget.sourcePath);
           const beforeFlush = usePipelineStore.getState();
-          const userStillOnActivePipeline =
-            targetsStartedPipeline && sameEditorPath(snapshot.activePath, beforeFlush.yamlPath);
-          if (userStillOnActivePipeline) {
+          const userOnStagedTarget = shouldCaptureChatYamlTargetLocalBranch({
+            targetSourcePath: stagedTarget.sourcePath,
+            currentYamlPath: beforeFlush.yamlPath,
+          });
+          if (userOnStagedTarget) {
             await beforeFlush.flushPendingLocalEdits();
             if (cancelled || (await discardCancelledStage())) return;
           }
           const editorState = usePipelineStore.getState();
-          const localRevisionChanged =
-            userStillOnActivePipeline &&
-            snapshot.localEditRevision !== getLocalPipelineEditRevision();
-          const capturedActiveLocalBranch =
-            userStillOnActivePipeline &&
-            snapshot.activePath &&
-            sameEditorPath(snapshot.activePath, editorState.yamlPath)
-              ? {
-                  sourcePath: snapshot.activePath,
-                  yaml: serializePreviewYaml(editorState.config),
-                  layout: {
-                    positions: Object.fromEntries(editorState.positions),
-                    folders: structuredClone(editorState.folders),
-                    trackHeights: Object.fromEntries(editorState.trackHeights),
-                  },
-                  changed: localRevisionChanged || editorState.isDirty || editorState.layoutDirty,
-                }
-              : null;
-          const localBranch = targetsStartedPipeline ? capturedActiveLocalBranch : null;
+          const localBranch = shouldCaptureChatYamlTargetLocalBranch({
+            targetSourcePath: stagedTarget.sourcePath,
+            currentYamlPath: editorState.yamlPath,
+          })
+            ? {
+                sourcePath: stagedTarget.sourcePath!,
+                yaml: serializePreviewYaml(editorState.config),
+                layout: {
+                  positions: Object.fromEntries(editorState.positions),
+                  folders: structuredClone(editorState.folders),
+                  trackHeights: Object.fromEntries(editorState.trackHeights),
+                },
+                // The server compares this branch with its authenticated base;
+                // the renderer dirty hint is compatibility metadata only.
+                changed: editorState.isDirty || editorState.layoutDirty,
+              }
+            : null;
           const forceForkReason = chatYamlFinalizeForceForkReason({
             reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,
             compileSuccess: compile.success,
@@ -1852,7 +1880,7 @@ export function App() {
             pathMoved: false,
           });
           const finalizeOnce = () =>
-            underChatLock(() =>
+            (workspaceWideYamlLock ? underWorkspaceWideChatLock : underChatLock)(() =>
               api.finalizeChatYamlStage(
                 {
                   stageId: snapshot.staging.id,
@@ -2113,38 +2141,44 @@ export function App() {
         }
       } finally {
         try {
-          if (!keepYamlLockForRepair && chatYamlLockLease) {
-            await releaseChatYamlEditLock(chatYamlLockLease);
+          if (restoreWorkspaceWideYamlLock) {
+            await restoreWorkspaceWideYamlLock();
           }
         } finally {
-          if (!keepYamlLockForRepair && !reconciliationFailed && !cancelled && snapshot) {
-            const planningKeyPrefix = `${snapshot.staging.id}:`;
-            for (const key of trialPlanningTelemetryRef.current.keys()) {
-              if (key.startsWith(planningKeyPrefix)) {
-                trialPlanningTelemetryRef.current.delete(key);
+          try {
+            if (!keepYamlLockForRepair && chatYamlLockLease) {
+              await releaseChatYamlEditLock(chatYamlLockLease);
+            }
+          } finally {
+            if (!keepYamlLockForRepair && !reconciliationFailed && !cancelled && snapshot) {
+              const planningKeyPrefix = `${snapshot.staging.id}:`;
+              for (const key of trialPlanningTelemetryRef.current.keys()) {
+                if (key.startsWith(planningKeyPrefix)) {
+                  trialPlanningTelemetryRef.current.delete(key);
+                }
+              }
+              for (const key of trialPlanAttemptsRef.current.keys()) {
+                if (key.startsWith(planningKeyPrefix)) {
+                  trialPlanAttemptsRef.current.delete(key);
+                }
               }
             }
-            for (const key of trialPlanAttemptsRef.current.keys()) {
-              if (key.startsWith(planningKeyPrefix)) {
-                trialPlanAttemptsRef.current.delete(key);
+            if (
+              !keepYamlLockForRepair &&
+              !reconciliationFailed &&
+              !cancelled &&
+              reconciliationTelemetryKey
+            ) {
+              repairCheckpointsRef.current.delete(reconciliationTelemetryKey);
+              if (clearRepairAttemptsOnSuccess) {
+                repairAttemptsRef.current.delete(reconciliationTelemetryKey);
               }
             }
-          }
-          if (
-            !keepYamlLockForRepair &&
-            !reconciliationFailed &&
-            !cancelled &&
-            reconciliationTelemetryKey
-          ) {
-            repairCheckpointsRef.current.delete(reconciliationTelemetryKey);
-            if (clearRepairAttemptsOnSuccess) {
-              repairAttemptsRef.current.delete(reconciliationTelemetryKey);
+            useChatStore.getState().setReconciling(false, finishedSessionId);
+            useChatStore.getState().completeChatYamlLifecycle(finishedTurn.id);
+            if (!reconciliationFailed && !cancelled && !keepFinishedTurnForMoreTargets) {
+              useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);
             }
-          }
-          useChatStore.getState().setReconciling(false, finishedSessionId);
-          useChatStore.getState().completeChatYamlLifecycle(finishedTurn.id);
-          if (!reconciliationFailed && !cancelled && !keepFinishedTurnForMoreTargets) {
-            useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);
           }
         }
       }

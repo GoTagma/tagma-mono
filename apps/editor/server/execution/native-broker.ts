@@ -176,6 +176,9 @@ function mergeManagedOpencodeEnv(
   const managedEnv = buildOpencodeEnv(managedOpencodeCwd, managedDatabase);
   const env = { ...managedEnv, ...(injectedEnv ?? {}) };
   for (const key of MANAGED_OPENCODE_ISOLATION_ENV_KEYS) env[key] = managedEnv[key];
+  // Managed prompt tasks use only the host-authored config. Pinned OpenCode otherwise discovers
+  // each task cwd's `.opencode` and installs its plugin dependency tree into the pipeline.
+  env.OPENCODE_DISABLE_PROJECT_CONFIG = 'true';
   delete env.OPENCODE_SERVER_USERNAME;
   delete env.OPENCODE_SERVER_PASSWORD;
   return env;

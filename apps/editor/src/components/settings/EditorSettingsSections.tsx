@@ -87,6 +87,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
     globalSaving,
     error,
     applyStatus,
+    pythonRuntimeApplyStatus,
     diagnosticsStatus,
     diagnosticsBusy,
     diagnosticsCopied,
@@ -424,6 +425,18 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               {opencodeSettingsMutationBlockMessage}
             </div>
           )}
+          {pythonRuntimeApplyStatus.kind === 'applying' && (
+            <div className="alert-box-info mt-2 flex items-center gap-1.5 text-caption text-tagma-muted">
+              <Loader2 size={10} className="animate-spin" />
+              Python is configured. Applying it to OpenCode in the background; you can leave
+              Settings while Chat finishes starting.
+            </div>
+          )}
+          {pythonRuntimeApplyStatus.kind === 'error' && (
+            <div className="alert-box-error mt-2 text-caption text-tagma-error/90">
+              {pythonRuntimeApplyStatus.message}
+            </div>
+          )}
           {settings.pythonAgent.enabled && (
             <div className="mt-2 border border-tagma-border bg-tagma-bg p-2.5 space-y-1.5">
               <div className="text-caption text-tagma-muted font-mono">
@@ -559,7 +572,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
  * pinned strip below the settings content, independent of the active category.
  */
 export function SettingsStorageFooter({ controller }: { controller: EditorSettingsController }) {
-  const { saving, pythonSaving, globalSaving } = controller;
+  const { saving, pythonSaving, globalSaving, pythonRuntimeApplyStatus } = controller;
   return (
     <div className="shrink-0 border-t border-tagma-border bg-tagma-surface/25 px-4 py-2 sm:px-8">
       <div className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-6 gap-y-0.5 text-caption text-tagma-muted font-mono">
@@ -569,7 +582,11 @@ export function SettingsStorageFooter({ controller }: { controller: EditorSettin
         </div>
         <div>
           Workspace: <code>.tagma/editor-settings.json</code>
-          {saving || pythonSaving ? ' · saving…' : ''}
+          {pythonRuntimeApplyStatus.kind === 'applying'
+            ? ' · applying OpenCode…'
+            : saving || pythonSaving
+              ? ' · saving…'
+              : ''}
         </div>
       </div>
     </div>

@@ -104,8 +104,11 @@ function installHeartbeatRenewalBehavior(
           reason: typeof body.reason === 'string' ? body.reason : 'test',
           acquiredAt: Date.now(),
           expiresAt: Date.now() + 120_000 + renewalAttempts * 1_000,
-          yamlPath:
-            typeof body.yamlPath === 'string' ? body.yamlPath : 'C:/repo-a/.tagma/alpha/alpha.yaml',
+          yamlPath: Object.prototype.hasOwnProperty.call(body, 'yamlPath')
+            ? typeof body.yamlPath === 'string'
+              ? body.yamlPath
+              : null
+            : 'C:/repo-a/.tagma/alpha/alpha.yaml',
         },
       }),
     );
@@ -154,8 +157,11 @@ beforeEach(() => {
           reason: typeof body.reason === 'string' ? body.reason : 'test',
           acquiredAt: Date.now(),
           expiresAt: Date.now() + 120_000,
-          yamlPath:
-            typeof body.yamlPath === 'string' ? body.yamlPath : 'C:/repo-a/.tagma/alpha/alpha.yaml',
+          yamlPath: Object.prototype.hasOwnProperty.call(body, 'yamlPath')
+            ? typeof body.yamlPath === 'string'
+              ? body.yamlPath
+              : null
+            : 'C:/repo-a/.tagma/alpha/alpha.yaml',
         },
       }),
     );
@@ -208,6 +214,33 @@ describe('YAML edit lock store workspace routing', () => {
       workspaceActive: true,
       local: true,
       lockWorkspaceKey: 'C:/repo-a',
+    });
+  });
+
+  test('promotes a path-scoped lease workspace-wide and restores its original path', async () => {
+    const alphaPath = 'C:/repo-a/.tagma/alpha/alpha.yaml';
+    const betaPath = 'C:/repo-a/.tagma/beta/beta.yaml';
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath(alphaPath);
+    const lease = await acquireChatYamlEditLock('initial turn');
+    useYamlEditLockStore.getState().syncActiveYamlPath(betaPath);
+    expect(useYamlEditLockStore.getState().active).toBe(false);
+
+    await ensureChatYamlEditLockLease(lease, { yamlPath: null, forceRefresh: true });
+
+    expect(requests.at(-1)?.body).toMatchObject({ id: 'lock-a', yamlPath: null });
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      workspaceActive: true,
+      yamlPath: null,
+    });
+
+    await ensureChatYamlEditLockLease(lease, { yamlPath: alphaPath, forceRefresh: true });
+
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: false,
+      workspaceActive: true,
+      yamlPath: alphaPath,
     });
   });
 

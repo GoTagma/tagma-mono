@@ -25,6 +25,7 @@ import {
   writeAuthenticatedServerRecordSync,
 } from '../server/server-record-auth';
 import { pipelineYamlPath } from '../server/pipeline-paths';
+import { shouldBlockYamlEditLockMutation } from '../server/yaml-edit-lock';
 import { WorkspaceState } from '../server/workspace-state';
 import {
   CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
@@ -2631,6 +2632,94 @@ describe('chat YAML staging routes', () => {
     });
   });
 
+  test('promotes the YAML lease workspace-wide while Trial cases are running', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const otherPath = pipelineYamlPath(ws.workDir, 'pipeline-b');
+    mkdirSync(dirname(otherPath), { recursive: true });
+    writeFileSync(otherPath, yamlFor('Pipeline B', 'manual'), 'utf-8');
+    const marker = join(ws.workDir, '.tagma', 'logs', 'trial-lock-marker.txt');
+    mkdirSync(dirname(marker), { recursive: true });
+    writeFileSync(marker, 'waiting', 'utf-8');
+
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const command = [
+      "const fs = require('node:fs');",
+      `const marker = ${JSON.stringify(marker)};`,
+      "if (process.env.TAGMA_TRIAL_CASE_ID) { fs.writeFileSync(marker, 'started'); setTimeout(() => process.exit(0), 1000); }",
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Workspace Wide Trial Lock',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'probe', command: { argv: [process.execPath, '-e', command] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'slow-probe',
+          title: 'Slow isolated probe',
+          objective: 'Keep Trial active while checking the editor mutation gate.',
+          runs: 1,
+          targetTaskIds: ['main.probe'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.probe', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    const trialPromise = Promise.resolve(
+      getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+        request(
+          ws,
+          { stageId: stage.id, relativePath: entry.relativePath, trialId: 'workspace_wide_lock' },
+          'chat-lock',
+        ),
+        trialRes,
+      ),
+    );
+    const markerDeadline = Date.now() + 30_000;
+    while (readFileSync(marker, 'utf-8') !== 'started' && Date.now() < markerDeadline) {
+      await Bun.sleep(25);
+    }
+    expect(readFileSync(marker, 'utf-8')).toBe('started');
+    const trialLockPath = ws.yamlEditLock?.yamlPath ?? null;
+    const unrelatedMutationBlocked = shouldBlockYamlEditLockMutation(ws.yamlEditLock, {
+      path: '/api/tasks/main/task',
+      currentYamlPath: otherPath,
+      workDir: ws.workDir,
+    });
+
+    await trialPromise;
+    expect(trialLockPath).toBeNull();
+    expect(unrelatedMutationBlocked).toBe(true);
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed-with-warnings' });
+    expect(ws.yamlEditLock?.yamlPath).toBe(sourcePath);
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('fails an isolated case that writes a persistent artifact into the real workspace', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const gitInit = Bun.spawnSync(['git', '-C', ws.workDir, 'init', '--quiet']);
@@ -3297,6 +3386,7 @@ describe('chat YAML staging routes', () => {
 
     expect(trialRes.statusCode).toBe(400);
     expect(trialRes.body).toMatchObject({ error: expect.stringContaining('Explicit consent') });
+    expect(ws.yamlEditLock?.yamlPath).toBe(sourcePath);
     expect(existsSync(markerPath)).toBe(false);
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();

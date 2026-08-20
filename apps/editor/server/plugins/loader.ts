@@ -1191,16 +1191,20 @@ export function writeEditorSettings(
   mkdirSync(dir, { recursive: true });
   const p = editorSettingsPath(ws);
   // Preserve unknown keys so a newer editor's settings survive a round-trip
-  // through an older client.
-  let existing: Record<string, unknown> = {};
-  if (existsSync(p)) {
+  // through an older client. A genuinely new settings file starts from the
+  // complete current defaults so its first sparse PATCH cannot erase a
+  // defaulted consent. Existing legacy/corrupt files still start fail-closed:
+  // missing consent fields in those files must never be upgraded implicitly.
+  const existingFile = existsSync(p);
+  let existing: Record<string, unknown> = existingFile ? {} : { ...DEFAULT_EDITOR_SETTINGS };
+  if (existingFile) {
     try {
       const parsed = JSON.parse(readContainedTextFileSync(dir, p, '.tagma/editor-settings.json'));
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         existing = parsed as Record<string, unknown>;
       }
     } catch {
-      /* ignore — overwrite a corrupt file */
+      /* ignore — overwrite a corrupt file without granting missing consent */
     }
   }
   const next: Record<string, unknown> = { ...existing };

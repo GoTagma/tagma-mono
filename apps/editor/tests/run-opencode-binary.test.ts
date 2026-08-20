@@ -74,6 +74,7 @@ describe('editor OpenCode runtime selection', () => {
         HOME: join(root, 'unmanaged-home'),
         OPENCODE_DB: join(root, 'unmanaged-opencode.db'),
         OPENCODE_CONFIG_CONTENT: JSON.stringify({ plugin: ['unmanaged-plugin'] }),
+        OPENCODE_DISABLE_PROJECT_CONFIG: 'false',
         OPENAI_API_KEY: 'pipeline-provider-key',
       },
       [],
@@ -99,6 +100,7 @@ describe('editor OpenCode runtime selection', () => {
     ).toBe(true);
     expect(env?.OPENCODE_DB?.endsWith('opencode.db')).toBe(true);
     expect(JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? '{}')).toMatchObject({ plugin: [] });
+    expect(env?.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('true');
     expect(env?.OPENAI_API_KEY).toBe('pipeline-provider-key');
     expect(env?.OPENCODE_SERVER_USERNAME).toBeUndefined();
     expect(env?.OPENCODE_SERVER_PASSWORD).toBeUndefined();
@@ -107,6 +109,43 @@ describe('editor OpenCode runtime selection', () => {
     ) as { schemaVersion: number; generationId: string };
     expect(activeDatabase.schemaVersion).toBe(1);
     expect(activeDatabase.generationId.startsWith('schema-v1-')).toBe(true);
+  });
+
+  test('forces project-local config discovery off in Legacy rollback mode', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-legacy-isolation-'));
+    tempRoots.push(root);
+    const tagmaCwd = join(root, '.tagma');
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+    process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+
+    let captured: SpawnSpec | null = null;
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
+        captured = spec;
+        return taskResult();
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(
+      base,
+      { OPENCODE_DISABLE_PROJECT_CONFIG: 'false' },
+      [],
+      tagmaCwd,
+      { mode: 'legacy' },
+    );
+    const getCaptured = (): SpawnSpec | null => captured;
+
+    await runtime.runSpawn(
+      { args: ['opencode', 'run', '--model', 'opencode/big-pickle'], cwd: root },
+      { name: 'opencode' } as DriverPlugin,
+    );
+
+    expect(getCaptured()?.env?.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('true');
   });
 
   test('concurrent first prompt tasks serialize generation initialization and then share the ready DB', async () => {

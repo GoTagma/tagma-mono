@@ -217,6 +217,22 @@ describe('EditorSettings autosave + viewMode fields', () => {
     });
   });
 
+  test('a first patch over a corrupt settings file does not grant missing consent', () => {
+    writeFileSync(resolve(tmp, '.tagma', 'editor-settings.json'), '{not-json');
+
+    const next = writeEditorSettings(ws as unknown as WorkspaceState, {
+      opencodeChatTrialLiveSmokeTestEnabled: true,
+    });
+
+    expect(next).toMatchObject({
+      opencodeChatTrialRunEnabled: false,
+      opencodeChatTrialRunConsentVersion: 0,
+      opencodeChatTrialLiveSmokeTestEnabled: false,
+      opencodeChatTrialLiveSmokeTestConsentVersion:
+        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+    });
+  });
+
   test('explicitly enabling trial execution stamps the current consent version', () => {
     const next = writeEditorSettings(ws as unknown as WorkspaceState, {
       opencodeChatTrialRunEnabled: true,
@@ -280,15 +296,13 @@ describe('EditorSettings autosave + viewMode fields', () => {
     );
   });
 
-  test('explicitly enabling Live Smoke Test stamps its independent consent version', () => {
-    writeEditorSettings(ws as unknown as WorkspaceState, {
-      opencodeChatTrialRunEnabled: true,
-    });
+  test('first sparse write can enable Live Smoke without dropping the default Sandbox consent', () => {
     const next = writeEditorSettings(ws as unknown as WorkspaceState, {
       opencodeChatTrialLiveSmokeTestEnabled: true,
     });
     expect(next).toMatchObject({
       opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
       opencodeChatTrialLiveSmokeTestEnabled: true,
       opencodeChatTrialLiveSmokeTestConsentVersion:
         CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
@@ -296,6 +310,29 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(
       JSON.parse(readFileSync(resolve(tmp, '.tagma', 'editor-settings.json'), 'utf-8')),
     ).toMatchObject({
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+      opencodeChatTrialLiveSmokeTestEnabled: true,
+      opencodeChatTrialLiveSmokeTestConsentVersion:
+        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+    });
+  });
+
+  test('first unrelated sparse write materializes defaults for a later Live Smoke opt-in', () => {
+    const first = writeEditorSettings(ws as unknown as WorkspaceState, {
+      autoSaveEnabled: false,
+    });
+    expect(first).toMatchObject({
+      autoSaveEnabled: false,
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+    });
+
+    const live = writeEditorSettings(ws as unknown as WorkspaceState, {
+      opencodeChatTrialLiveSmokeTestEnabled: true,
+    });
+    expect(live).toMatchObject({
+      opencodeChatTrialRunEnabled: true,
       opencodeChatTrialLiveSmokeTestEnabled: true,
       opencodeChatTrialLiveSmokeTestConsentVersion:
         CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,

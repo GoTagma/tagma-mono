@@ -109,6 +109,13 @@ export type ChatStagedYamlTarget = ChatYamlTarget & {
   reconcileActiveSourceDrift?: boolean;
 };
 
+export function shouldCaptureChatYamlTargetLocalBranch(args: {
+  targetSourcePath: string | null;
+  currentYamlPath: string | null;
+}): boolean {
+  return !!args.targetSourcePath && samePath(args.targetSourcePath, args.currentYamlPath);
+}
+
 function stableTrialIdHash(value: string, seed: bigint): string {
   let hash = seed;
   for (let index = 0; index < value.length; index += 1) {

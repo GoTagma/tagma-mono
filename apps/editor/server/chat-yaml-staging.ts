@@ -86,6 +86,9 @@ const MAX_PIPELINE_SUPPORT_FILE_BYTES = 16 * 1024 * 1024;
 const MAX_PIPELINE_SUPPORT_TREE_BYTES = 64 * 1024 * 1024;
 const MAX_PIPELINE_SUPPORT_TREE_ENTRIES = 1_024;
 const MAX_PIPELINE_SUPPORT_TREE_DEPTH = 32;
+// Managed OpenCode may have left project runtime state at an older task cwd. It is never a
+// publishable pipeline support artifact, regardless of where that cwd sits in the support tree.
+const PIPELINE_SUPPORT_RUNTIME_DIRECTORY_NAMES = new Set(['.opencode']);
 const STAGE_TTL_MS = 8 * 24 * 60 * 60 * 1_000;
 const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
@@ -820,6 +823,12 @@ function readPipelineSupportTree(yamlPath: string): PipelineSupportTree {
     }
     const entries = readdirSync(directory, { withFileTypes: true }).sort(compareManifestEntryNames);
     for (const entry of entries) {
+      if (
+        entry.isDirectory() &&
+        PIPELINE_SUPPORT_RUNTIME_DIRECTORY_NAMES.has(entry.name.toLowerCase())
+      ) {
+        continue;
+      }
       if (!relativeDir && reservedRootNames.has(entry.name.toLowerCase())) continue;
       if (/\.trial-plan\.json$/i.test(entry.name)) continue;
       entryCount += 1;
@@ -2272,7 +2281,11 @@ function reconcileDifferentActiveSourceDrift(
     }
     copyPreservedPipelineAsNumbered(ws, sourcePath, sourcePath, sourceCompile, trackPipeline);
   }
-  restoreRendererBranchFromBase(ws, baseYamlPath, sourcePath, activeLocalBranch);
+  // Preserve a user deletion when there is no explicit renderer branch to
+  // persist. A missing source is a tombstone, not a request to restore base.
+  if (sourceExisted || activeLocalBranch) {
+    restoreRendererBranchFromBase(ws, baseYamlPath, sourcePath, activeLocalBranch);
+  }
 
   const conflicts: ChatYamlStageConflict[] = ['source-changed-on-disk'];
   if (!sourceExisted) conflicts.push('source-deleted');
@@ -2762,8 +2775,10 @@ export async function finalizeChatYamlStage(
         relativePath,
         input.localBranch,
       );
+      const sourceDeleted = !existsSync(sourcePath);
       if (!diskMatchesBase && !diskMatchesCapturedLocal) {
         conflicts.push('source-changed-on-disk');
+        if (sourceDeleted) conflicts.push('source-deleted');
       }
       const mustFork = conflicts.length > 0;
       if (!mustFork) {
@@ -2781,36 +2796,41 @@ export async function finalizeChatYamlStage(
         resultCompile = runCompileAndWriteLog(destinationPath, ws.registry);
         if (!diskMatchesBase && !diskMatchesCapturedLocal) {
           trackPipeline(sourcePath);
-          let sourceCompile: ReturnType<typeof runCompileAndWriteLog> | null = null;
-          if (existsSync(sourcePath)) {
-            sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
-            if (!hasReadableLayoutArtifact(sourcePath)) {
-              sourceCompile = {
-                ...sourceCompile,
-                success: false,
-                summary: 'Source layout could not be read safely.',
-              };
+          // A missing live source is an authoritative user deletion. Preserve that
+          // tombstone while publishing Chat's branch as a numbered copy; restoring
+          // the base here would silently undo the user's delete operation.
+          if (!sourceDeleted || input.localBranch) {
+            let sourceCompile: ReturnType<typeof runCompileAndWriteLog> | null = null;
+            if (existsSync(sourcePath)) {
+              sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
+              if (!hasReadableLayoutArtifact(sourcePath)) {
+                sourceCompile = {
+                  ...sourceCompile,
+                  success: false,
+                  summary: 'Source layout could not be read safely.',
+                };
+              }
             }
-          }
-          if (input.localBranch || !sourceCompile?.success) {
-            if (sourceCompile) {
-              copyPreservedPipelineAsNumbered(
+            if (input.localBranch || !sourceCompile?.success) {
+              if (sourceCompile) {
+                copyPreservedPipelineAsNumbered(
+                  ws,
+                  sourcePath,
+                  sourcePath,
+                  sourceCompile,
+                  trackPipeline,
+                );
+              }
+              restoreRendererBranchFromBase(
                 ws,
+                resolveRelativeInside(paths.baseTagmaDir, relativePath),
                 sourcePath,
-                sourcePath,
-                sourceCompile,
-                trackPipeline,
+                input.localBranch,
               );
+              localBranchPersisted = localBranchPersisted || !!input.localBranch;
+            } else {
+              refreshCurrentWorkspaceState(ws, sourcePath);
             }
-            restoreRendererBranchFromBase(
-              ws,
-              resolveRelativeInside(paths.baseTagmaDir, relativePath),
-              sourcePath,
-              input.localBranch,
-            );
-            localBranchPersisted = localBranchPersisted || !!input.localBranch;
-          } else {
-            refreshCurrentWorkspaceState(ws, sourcePath);
           }
         } else if (input.localBranch && localBranchChanged) {
           trackPipeline(sourcePath);

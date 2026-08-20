@@ -32,6 +32,7 @@ import { authorizeChatYamlStagePaths } from '../chat-yaml-write-policy.js';
 import { errorMessage } from '../path-utils.js';
 import { requireWorkspace } from '../require-workspace.js';
 import {
+  acquireYamlEditLock,
   canBypassYamlEditLock,
   getActiveYamlEditLock,
   publicYamlEditLock,
@@ -225,6 +226,34 @@ function assertRequestOwnsChatYamlStage(
   stageId: string,
 ): void {
   assertChatYamlStageLockOwner(ws, stageId, req.get('X-Tagma-Yaml-Lock-Id'));
+}
+
+async function underWorkspaceWideYamlEditLock<T>(
+  ws: WorkspaceState,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const lock = getActiveYamlEditLock(ws);
+  if (!lock) throw new Error('An active OpenCode YAML edit lock is required for Trial.');
+  const originalYamlPath = lock.yamlPath ?? null;
+  const lockId = lock.id;
+  const promoted = acquireYamlEditLock(ws, {
+    id: lockId,
+    reason: lock.reason,
+    yamlPath: null,
+  });
+  if (!promoted.ok) throw new Error('The OpenCode YAML edit lock changed before Trial started.');
+  try {
+    return await operation();
+  } finally {
+    const current = getActiveYamlEditLock(ws);
+    if (current?.id === lockId) {
+      acquireYamlEditLock(ws, {
+        id: lockId,
+        reason: current.reason,
+        yamlPath: originalYamlPath,
+      });
+    }
+  }
 }
 
 function stageErrorStatus(err: unknown): number {
@@ -441,14 +470,18 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'trialId is required.' });
     }
     const stageId = body.stageId.trim();
+    const relativePath = body.relativePath.trim();
+    const trialId = body.trialId.trim();
     try {
       assertRequestOwnsChatYamlStage(req, ws, stageId);
       return res.json(
-        await trialRunChatYamlStage(ws, {
-          stageId,
-          relativePath: body.relativePath.trim(),
-          trialId: body.trialId.trim(),
-        }),
+        await underWorkspaceWideYamlEditLock(ws, () =>
+          trialRunChatYamlStage(ws, {
+            stageId,
+            relativePath,
+            trialId,
+          }),
+        ),
       );
     } catch (err) {
       return respondStageError(res, err);

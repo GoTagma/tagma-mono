@@ -1095,6 +1095,28 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('preserves a deleted active source while publishing a different staged target', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const relativePath = 'created/created.yaml';
+    const stagedPath = join(stage.agentTagmaDir, 'created', 'created.yaml');
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(stagedPath, yamlFor('Created Pipeline', 'created'), 'utf-8');
+    rmSync(dirname(sourcePath), { recursive: true, force: true });
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath,
+    });
+
+    expect(result.outcome).toBe('created');
+    expect(result.conflicts).toContain('source-changed-on-disk');
+    expect(result.conflicts).toContain('source-deleted');
+    expect(existsSync(sourcePath)).toBe(false);
+    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('prompt: created');
+    stopWorkspace(ws);
+  });
+
   test('rolls back active drift reconciliation and a different created target together', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
@@ -1454,6 +1476,27 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('preserves a user-deleted source as a tombstone when publishing the changed Chat branch', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    rmSync(dirname(sourcePath), { recursive: true, force: true });
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('source-changed-on-disk');
+    expect(result.conflicts).toContain('source-deleted');
+    expect(existsSync(sourcePath)).toBe(false);
+    expect(result.entry?.path).toBe(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'));
+    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('prompt: agent');
+    stopWorkspace(ws);
+  });
+
   test('does not run Trial or fork an escaped live write when the stage is unchanged', async () => {
     const { ws, sourcePath } = setupWorkspace();
     writeEditorSettings(ws, { opencodeChatTrialRunEnabled: true });
@@ -1642,6 +1685,119 @@ describe('chat YAML staging', () => {
     expect([...readFileSync(join(publishedDir, 'assets', 'policy.bin'))]).toEqual([0, 255, 1]);
     expect(existsSync(result.entry!.path.replace(/\.ya?ml$/i, '.trial-plan.json'))).toBe(false);
     stopWorkspace(ws);
+  });
+
+  test('finalizes authored changes when Live Smoke leaves managed OpenCode project state in the live pipeline folder', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const stagedDir = dirname(staged.stagedPath);
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    mkdirSync(join(stagedDir, 'prompts'), { recursive: true });
+    writeFileSync(join(stagedDir, 'prompts', 'policy.md'), 'agent policy\n', 'utf-8');
+    mkdirSync(join(stagedDir, '.opencode'), { recursive: true });
+    writeFileSync(join(stagedDir, '.opencode', 'stage-only.marker'), 'internal\n', 'utf-8');
+
+    const liveOpencodeModules = join(dirname(sourcePath), '.opencode', 'node_modules', 'generated');
+    mkdirSync(liveOpencodeModules, { recursive: true });
+    for (let index = 0; index < 1_025; index += 1) {
+      writeFileSync(join(liveOpencodeModules, `entry-${index}.js`), '', 'utf-8');
+    }
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('name: Agent Pipeline');
+    expect(readFileSync(join(dirname(sourcePath), 'prompts', 'policy.md'), 'utf-8')).toBe(
+      'agent policy\n',
+    );
+    expect(existsSync(join(dirname(sourcePath), '.opencode'))).toBe(true);
+    expect(existsSync(join(dirname(sourcePath), '.opencode', 'stage-only.marker'))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('finalizes when managed OpenCode project state is nested under a task cwd', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    mkdirSync(join(dirname(sourcePath), 'work'), { recursive: true });
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+
+    const liveOpencodeModules = join(
+      dirname(sourcePath),
+      'work',
+      '.opencode',
+      'node_modules',
+      'generated',
+    );
+    mkdirSync(liveOpencodeModules, { recursive: true });
+    for (let index = 0; index < 1_025; index += 1) {
+      writeFileSync(join(liveOpencodeModules, `entry-${index}.js`), '', 'utf-8');
+    }
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('name: Agent Pipeline');
+    stopWorkspace(ws);
+  });
+
+  test('keeps ordinary pipeline support files subject to the entry-count boundary', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    const generatedDir = join(dirname(staged.stagedPath), 'generated');
+    mkdirSync(generatedDir, { recursive: true });
+    for (let index = 0; index < 1_025; index += 1) {
+      writeFileSync(join(generatedDir, `entry-${index}.txt`), '', 'utf-8');
+    }
+
+    try {
+      await expect(
+        finalizeChatYamlStage(ws, {
+          stageId: stage.id,
+          relativePath: staged.relativePath,
+        }),
+      ).rejects.toThrow('Pipeline support tree exceeds the maximum entry count.');
+      expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+      expect(existsSync(stage.agentWorkspaceDir)).toBe(true);
+    } finally {
+      discardChatYamlStage(ws, stage.id);
+      stopWorkspace(ws);
+    }
+  });
+
+  test('does not let a managed runtime directory name bypass support-tree symlink rejection', async () => {
+    const { root, ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    const outside = join(root, 'outside-opencode');
+    mkdirSync(outside, { recursive: true });
+    symlinkSync(
+      outside,
+      join(dirname(staged.stagedPath), '.opencode'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    try {
+      await expect(
+        finalizeChatYamlStage(ws, {
+          stageId: stage.id,
+          relativePath: staged.relativePath,
+        }),
+      ).rejects.toThrow('Pipeline support artifacts must not contain symlinks: .opencode');
+    } finally {
+      discardChatYamlStage(ws, stage.id);
+      stopWorkspace(ws);
+    }
   });
 
   test('stages and adopts support-only edits for an existing pipeline', async () => {
