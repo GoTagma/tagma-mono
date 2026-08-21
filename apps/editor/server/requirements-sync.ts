@@ -36,6 +36,12 @@ export interface RequirementsBinary {
   readonly fromDriver?: string;
 }
 
+export function isTagmaManagedDriverBinary(
+  requirement: Pick<RequirementsBinary, 'name' | 'fromDriver'>,
+): boolean {
+  return requirement.name === 'opencode' && requirement.fromDriver === 'opencode';
+}
+
 export interface RequirementsEnvVar {
   readonly name: string;
   readonly required?: boolean;
@@ -348,7 +354,8 @@ function shellCommandTokens(s: string): string[] {
   let expectingCommand = true;
 
   const command = s.trim().replace(TAGMA_INPUT_PLACEHOLDER_RE, TAGMA_INPUT_SENTINEL);
-  for (const rawTok of splitShellTokens(command)) {
+  const tokens = splitShellTokens(command);
+  for (const [index, rawTok] of tokens.entries()) {
     const tok = rawTok.trim();
     if (!tok) continue;
     if (COMMAND_SEPARATORS.has(tok)) {
@@ -368,6 +375,14 @@ function shellCommandTokens(s: string): string[] {
       continue;
     }
     if (isEnvAssignmentToken(tok)) {
+      continue;
+    }
+    // YAML folded scalars turn PowerShell script blocks into one physical
+    // line. A semicolon inside `@{ key = value; next = value }` then looks
+    // like a command separator to this shallow scanner. A token immediately
+    // followed by `=` is an assignment target / hashtable key, not a command.
+    if (tokens[index + 1]?.trim() === '=') {
+      expectingCommand = false;
       continue;
     }
     // PowerShell constructs are filtered unconditionally: authored one-liners
@@ -426,13 +441,18 @@ interface MutableBinary {
   fromDriver?: string;
 }
 
+function binaryRequirementKey(name: string, fromDriver?: string): string {
+  return `${name}\u0000${fromDriver ?? ''}`;
+}
+
 function addBinary(
   binaries: Map<string, MutableBinary>,
   name: string,
   usedBy: string,
   fromDriver?: string,
 ): void {
-  let entry = binaries.get(name);
+  const key = binaryRequirementKey(name, fromDriver);
+  let entry = binaries.get(key);
   if (!entry) {
     entry = {
       name,
@@ -440,7 +460,7 @@ function addBinary(
       usedBy: [],
       ...(fromDriver !== undefined ? { fromDriver } : {}),
     };
-    binaries.set(name, entry);
+    binaries.set(key, entry);
   }
   if (!entry.usedBy.includes(usedBy)) entry.usedBy.push(usedBy);
 }
@@ -524,7 +544,10 @@ export function extractBinariesFromYaml(yamlPath: string): RequirementsBinary[] 
     }
   }
 
-  return [...binaries.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...binaries.values()].sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) || (a.fromDriver ?? '').localeCompare(b.fromDriver ?? ''),
+  );
 }
 
 // ── Markdown + YAML frontmatter parse / serialize ──────────────────────────
@@ -686,11 +709,21 @@ export function assertRequirementsConsistentWithYamlChange(
 
 // ── Initial body template (used when the file doesn't exist yet) ───────────
 
+function externalBinaryBodyEntries(binaries: readonly RequirementsBinary[]): RequirementsBinary[] {
+  const seen = new Set<string>();
+  return binaries.filter((binary) => {
+    if (isTagmaManagedDriverBinary(binary) || seen.has(binary.name)) return false;
+    seen.add(binary.name);
+    return true;
+  });
+}
+
 function buildInitialBody(yamlBasename: string, binaries: readonly RequirementsBinary[]): string {
+  const externalBinaries = externalBinaryBodyEntries(binaries);
   const cliSection =
-    binaries.length === 0
+    externalBinaries.length === 0
       ? '<!-- No CLI tools required yet. -->'
-      : binaries.map(buildBinaryBodySection).join('\n\n');
+      : externalBinaries.map(buildBinaryBodySection).join('\n\n');
 
   return `# Requirements for \`${yamlBasename}\`
 
@@ -733,7 +766,9 @@ function hasBinaryBodySection(body: string, name: string): boolean {
 }
 
 function ensureBinaryBodySections(body: string, binaries: readonly RequirementsBinary[]): string {
-  const missing = binaries.filter((binary) => !hasBinaryBodySection(body, binary.name));
+  const missing = externalBinaryBodyEntries(binaries).filter(
+    (binary) => !hasBinaryBodySection(body, binary.name),
+  );
   if (missing.length === 0) return body;
 
   const additions = missing.map(buildBinaryBodySection).join('\n\n');

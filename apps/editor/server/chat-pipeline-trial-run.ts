@@ -271,6 +271,8 @@ export interface ChatPipelineTrialRunResult {
   taskStatusCounts?: Record<string, number>;
   omittedTaskStatusCounts?: Record<string, number>;
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
+  /** Fresh Host authority for correcting this failed run's Trial Plan in the next physical turn. */
+  trialPlanRepairAttemptId?: string;
   prerequisiteState?: ChatPipelineTrialRecordedPrerequisiteState;
   trialMode?: ChatPipelineTrialMode;
   trialabilityReport?: ChatPipelineTrialabilityReport;
@@ -835,6 +837,18 @@ function trialPlanSummary(plan: ChatPipelineTrialPlan): ChatPipelineTrialPlanSum
       targetTaskIds: [...item.targetTaskIds],
     })),
   };
+}
+
+function trialPlanRepairAttemptId(
+  trialId: string,
+  yamlHash: string,
+  toolAttemptCount: number,
+): string {
+  const ordinal = toolAttemptCount + 1;
+  const identityHash = createHash('sha256')
+    .update(trialId + String.fromCharCode(0) + yamlHash + String.fromCharCode(0) + ordinal)
+    .digest('hex');
+  return `trial_plan_repair_${ordinal}_${identityHash}`;
 }
 
 function resultWithTrialPlan(
@@ -1416,9 +1430,11 @@ export function trialTaskRepairScope(
   failureKind: string | null,
   outputDiagnostics?: readonly ChatPipelineTrialOutputDiagnostic[],
   externalDriverStreamFailure = false,
+  evidenceSource: 'sandbox-case' | 'live-smoke' = 'sandbox-case',
 ): ChatPipelineTrialTaskResult['repairScope'] {
   if (status === 'success') return null;
   if (
+    evidenceSource === 'live-smoke' ||
     status === 'skipped' ||
     status === 'blocked' ||
     status === 'timeout' ||
@@ -1565,6 +1581,7 @@ function trialTaskResults(
         failureKind,
         outputDiagnostics,
         isExternalDriverStreamFailure(failureKind, rawStderr),
+        caseId === null ? 'live-smoke' : 'sandbox-case',
       ),
       stdoutTruncation: stdout.truncation,
       stderrTruncation: stderr.truncation,
@@ -2526,7 +2543,9 @@ async function executeTrial(
   stage: ReturnType<typeof listChatYamlStage>,
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
   snapshot: TrialPipelineSnapshot,
+  trialId: string,
   plan: ChatPipelineTrialPlan,
+  planTelemetry: ChatPipelineTrialPlanToolTelemetry,
   prepared: PreparedTrialExecution,
   controller: AbortController,
   abortState: { timedOut: boolean },
@@ -3047,6 +3066,20 @@ async function executeTrial(
         ),
       );
     const ran = !baselineSkipped || executedCaseCount > 0;
+    const trialPlanRepairAttempt =
+      kind === 'failed' &&
+      hasPipelineArtifactFailure &&
+      planTelemetry.toolAttemptCount < stage.trialPlanMaxAttempts
+        ? trialPlanRepairAttemptId(trialId, snapshot.contentHash, planTelemetry.toolAttemptCount)
+        : null;
+    if (trialPlanRepairAttempt) {
+      issueChatYamlStageTrialPlanAttempt(ws, {
+        stageId: stage.id,
+        relativePath: entry.relativePath,
+        yamlHash: snapshot.contentHash,
+        attemptId: trialPlanRepairAttempt,
+      });
+    }
     const plannedSummary = buildPlannedTrialSummary(
       baselineSuccess,
       abortState.timedOut,
@@ -3070,6 +3103,7 @@ async function executeTrial(
             repairAuthorization: hasPipelineArtifactFailure
               ? ('pipeline-change-allowed' as const)
               : ('diagnostic-only' as const),
+            ...(trialPlanRepairAttempt ? { trialPlanRepairAttemptId: trialPlanRepairAttempt } : {}),
           }
         : kind === 'timed-out' || kind === 'witness-failed' || kind === 'blocked'
           ? { repairAuthorization: 'diagnostic-only' as const }
@@ -3267,6 +3301,7 @@ export async function trialRunChatYamlStage(
       stage.trialPlanMaxAttempts,
       pipelineConfig,
       ws.workDir,
+      planTelemetry.committedPlanHash,
     );
     if (planRead.status === 'required') {
       const dataReadiness = resolveChatPipelineDataReadiness(
@@ -3455,7 +3490,9 @@ export async function trialRunChatYamlStage(
           stage,
           entry,
           executionSnapshot,
+          trialId,
           plan,
+          planTelemetry,
           preparedExecution,
           controller,
           abortState,

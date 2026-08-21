@@ -209,6 +209,140 @@ test('runPreflight refreshes existing stale binaries before probing', () => {
   expect(parsed.frontmatter?.binaries.map((b) => b.name)).toEqual([knownBinary]);
 });
 
+test('runPreflight resolves the built-in opencode driver through the managed runtime outside PATH', () => {
+  const { root, tagmaDir } = makeWorkspace();
+  const yamlPath = join(tagmaDir, 'managed-opencode.yaml');
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: Managed OpenCode',
+      '  tracks:',
+      '    - id: review',
+      '      name: Review',
+      '      tasks:',
+      '        - id: check',
+      '          prompt: "Check the supplied text"',
+      '          driver: opencode',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  const bundledDir = join(root, 'bundled-opencode');
+  const bundledBinDir = join(bundledDir, 'bin');
+  mkdirSync(bundledBinDir, { recursive: true });
+  writeFileSync(
+    join(bundledBinDir, process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+    'managed runtime fixture',
+    'utf-8',
+  );
+  const emptyPathDir = join(root, 'empty-path');
+  mkdirSync(emptyPathDir);
+
+  const previousBundledDir = process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+  const previousSkipUserDir = process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+  const pathKey = process.platform === 'win32' && process.env.Path !== undefined ? 'Path' : 'PATH';
+  const previousPath = process.env[pathKey];
+  try {
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = bundledDir;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env[pathKey] = emptyPathDir;
+
+    const result = runPreflight(yamlPath);
+
+    expect(result.skipped).toBe(false);
+    expect(result.missing.binaries).toEqual([]);
+    const parsed = parseRequirementsMd(readFileSync(requirementsPath(yamlPath), 'utf-8'));
+    expect(parsed.frontmatter?.binaries).toEqual([
+      expect.objectContaining({
+        name: 'opencode',
+        fromDriver: 'opencode',
+        usedBy: ['review.check'],
+      }),
+    ]);
+  } finally {
+    if (previousBundledDir === undefined) delete process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+    else process.env.TAGMA_OPENCODE_BUNDLED_DIR = previousBundledDir;
+    if (previousSkipUserDir === undefined) delete process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+    else process.env.TAGMA_OPENCODE_SKIP_USER_DIR = previousSkipUserDir;
+    if (previousPath === undefined) delete process.env[pathKey];
+    else process.env[pathKey] = previousPath;
+  }
+});
+
+test('runPreflight keeps PATH commands separate from the managed opencode driver', () => {
+  const { root, tagmaDir } = makeWorkspace();
+  const yamlPath = join(tagmaDir, 'mixed-opencode.yaml');
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: Mixed OpenCode',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: cli',
+      '          command: "opencode --version"',
+      '        - id: prompt',
+      '          prompt: "Check the supplied text"',
+      '          driver: opencode',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  const bundledDir = join(root, 'bundled-opencode');
+  const bundledBinDir = join(bundledDir, 'bin');
+  mkdirSync(bundledBinDir, { recursive: true });
+  writeFileSync(
+    join(bundledBinDir, process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+    'managed runtime fixture',
+    'utf-8',
+  );
+  const emptyPathDir = join(root, 'empty-path');
+  mkdirSync(emptyPathDir);
+
+  const previousBundledDir = process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+  const previousSkipUserDir = process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+  const pathKey = process.platform === 'win32' && process.env.Path !== undefined ? 'Path' : 'PATH';
+  const previousPath = process.env[pathKey];
+  try {
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = bundledDir;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env[pathKey] = emptyPathDir;
+
+    const result = runPreflight(yamlPath);
+
+    expect(result.missing.binaries).toEqual(['opencode']);
+    expect(result.missingBinaryRequirements).toEqual([
+      expect.objectContaining({
+        name: 'opencode',
+        usedBy: ['main.cli'],
+      }),
+    ]);
+    expect(result.missingBinaryRequirements[0]).not.toHaveProperty('fromDriver');
+    const parsed = parseRequirementsMd(readFileSync(requirementsPath(yamlPath), 'utf-8'));
+    expect(parsed.frontmatter?.binaries).toEqual([
+      expect.objectContaining({ name: 'opencode', usedBy: ['main.cli'] }),
+      expect.objectContaining({
+        name: 'opencode',
+        fromDriver: 'opencode',
+        usedBy: ['main.prompt'],
+      }),
+    ]);
+    expect(parsed.body.match(/^### `opencode`$/gm)).toHaveLength(1);
+  } finally {
+    if (previousBundledDir === undefined) delete process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+    else process.env.TAGMA_OPENCODE_BUNDLED_DIR = previousBundledDir;
+    if (previousSkipUserDir === undefined) delete process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+    else process.env.TAGMA_OPENCODE_SKIP_USER_DIR = previousSkipUserDir;
+    if (previousPath === undefined) delete process.env[pathKey];
+    else process.env[pathKey] = previousPath;
+  }
+});
+
 test('runPreflight does not require PowerShell cmdlets used by output_check', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = join(tagmaDir, 'select-string.yaml');

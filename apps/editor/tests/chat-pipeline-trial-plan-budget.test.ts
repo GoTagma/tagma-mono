@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { readChatPipelineTrialPlanToolTelemetry } from '../server/chat-pipeline-trial-plan';
+import {
+  readChatPipelineTrialPlan,
+  readChatPipelineTrialPlanToolTelemetry,
+} from '../server/chat-pipeline-trial-plan';
 import { buildTagmaTrialPlanTool } from '../server/opencode-trial-plan-tool';
 
 async function loadGeneratedTool(root: string) {
@@ -176,6 +179,91 @@ function writeStageAttemptLimit(agentTagmaDir: string, maxAttempts: number): voi
     'utf8',
   );
 }
+
+test('host rejects a directly written trial plan without an authenticated tool commit', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-unprovenanced-plan-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    const yaml = ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n');
+    writeFileSync(yamlPath, yaml, 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 2);
+    const yamlHash = createHash('sha1').update(yaml).digest('hex');
+    const args = invalidPlanArgs(yamlPath);
+    writeFileSync(
+      yamlPath.replace(/\.yaml$/u, '.trial-plan.json'),
+      JSON.stringify({
+        version: 5,
+        yamlHash,
+        summary: args.summary,
+        goals: args.goals,
+        coverage: acceptedRiskCoverage(),
+        findings: [],
+        cases: args.cases,
+      }),
+      'utf8',
+    );
+
+    expect(readChatPipelineTrialPlan(yamlPath, 'demo/demo.yaml', yamlHash, 2)).toMatchObject({
+      status: 'required',
+      request: {
+        reason: 'invalid',
+        message: expect.stringContaining('host-authorized trial plan tool'),
+      },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('host accepts the exact authenticated plan and rejects later direct changes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-plan-content-binding-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    const yaml = ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n');
+    writeFileSync(yamlPath, yaml, 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 2);
+    const tool = await loadGeneratedTool(root);
+    const args = invalidPlanArgs(yamlPath);
+    args.coverage = acceptedRiskCoverage();
+    await submitTrialPlan(tool, args, { directory: agentTagmaDir }, 'host-content-binding');
+    const yamlHash = createHash('sha1').update(yaml).digest('hex');
+
+    expect(readChatPipelineTrialPlan(yamlPath, 'demo/demo.yaml', yamlHash, 2).status).toBe('ready');
+
+    const planPath = yamlPath.replace(/\.yaml$/u, '.trial-plan.json');
+    const plan = JSON.parse(readFileSync(planPath, 'utf8')) as Record<string, unknown>;
+    plan.summary = 'Changed directly after the authenticated commit.';
+    writeFileSync(planPath, JSON.stringify(plan), 'utf8');
+
+    expect(readChatPipelineTrialPlan(yamlPath, 'demo/demo.yaml', yamlHash, 2)).toMatchObject({
+      status: 'required',
+      request: {
+        reason: 'invalid',
+        message: expect.stringContaining('exact content'),
+      },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('generated trial plan tool rejects malformed coverage entries before commit and preserves the attempt budget', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-precommit-coverage-'));

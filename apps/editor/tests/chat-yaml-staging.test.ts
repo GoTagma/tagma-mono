@@ -230,6 +230,59 @@ describe('chat YAML staging', () => {
     ).toBe(true);
   });
 
+  test('reserves distinct staged targets and protects existing pipelines for concurrent create-new turns', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const first = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'create-new-pipeline',
+    });
+    const second = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'create-new-pipeline',
+    });
+
+    expect(first.activeRelativePath).not.toBe('pipeline/pipeline.yaml');
+    expect(second.activeRelativePath).not.toBe('pipeline/pipeline.yaml');
+    expect(first.activeRelativePath).not.toBe(second.activeRelativePath);
+    expect(first.activeStagedPath).toBe(
+      join(first.agentTagmaDir, ...first.activeRelativePath!.split('/')),
+    );
+    expect(second.activeStagedPath).toBe(
+      join(second.agentTagmaDir, ...second.activeRelativePath!.split('/')),
+    );
+    expect(existsSync(first.activeStagedPath!)).toBe(false);
+    expect(existsSync(second.activeStagedPath!)).toBe(false);
+
+    const existing = first.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(existing.stagedPath, yamlFor('Wrongly Replaced Pipeline', 'wrong'), 'utf-8');
+    await expect(
+      finalizeChatYamlStage(ws, {
+        stageId: first.id,
+        relativePath: existing.relativePath,
+      }),
+    ).rejects.toThrow('create-new pipeline turn cannot modify an existing pipeline');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+
+    mkdirSync(dirname(second.activeStagedPath!), { recursive: true });
+    writeFileSync(
+      second.activeStagedPath!,
+      yamlFor('Actually New Pipeline', 'new target'),
+      'utf-8',
+    );
+    const created = await finalizeChatYamlStage(ws, {
+      stageId: second.id,
+      relativePath: second.activeRelativePath!,
+    });
+    expect(created.outcome).toBe('created');
+    expect(created.entry?.path).toBe(
+      join(ws.workDir!, '.tagma', ...second.activeRelativePath!.split('/')),
+    );
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+
+    expect(discardChatYamlStage(ws, first.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
   test('isolates agent writes and adopts them only when the source still matches base', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });

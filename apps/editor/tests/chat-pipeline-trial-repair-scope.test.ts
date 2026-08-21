@@ -6,6 +6,12 @@ test('command task non-zero exit stays a pipeline-artifact defect', () => {
   expect(trialTaskRepairScope('failed', 'exit_nonzero')).toBe('pipeline-artifact');
 });
 
+test('real-workspace Live Smoke failures are diagnostic-only evidence', () => {
+  expect(trialTaskRepairScope('failed', 'exit_nonzero', undefined, false, 'live-smoke')).toBe(
+    'diagnostic-only',
+  );
+});
+
 test('managed opencode primary stream error is diagnostic-only (external billing/network)', () => {
   const stderr =
     'timestamp=... level=ERROR message="stream error" mode=primary small=false error.error="AI_APICallError: Insufficient balance. ..."';

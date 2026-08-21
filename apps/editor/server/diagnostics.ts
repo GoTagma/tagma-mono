@@ -532,6 +532,7 @@ function trialTimelineSummary(value: unknown): UnknownRecord | null {
       'totalTaskCount',
       'omittedTaskCount',
       'repairAuthorization',
+      'trialPlanRepairAttemptId',
       'trialMode',
       'verificationMode',
       'plannedCaseCount',

@@ -9,6 +9,7 @@ import {
   CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
   CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
 } from '../shared/chat-pipeline-trial-consent';
+import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 const SECRET_NAME = 'TAGMA_TRIAL_TASK_ONLY_SECRET';
 const SECRET_VALUE = 'trial-secret-must-not-leak';
@@ -64,7 +65,7 @@ function writeTrialPlan(
     stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify(
       {
-        version: 4,
+        version: 5,
         yamlHash,
         summary: 'Verify task-scoped secret isolation and redaction.',
         goals: ['Keep task secrets out of unrelated task environments.'],
@@ -98,6 +99,7 @@ function writeTrialPlan(
     ) + '\n',
     'utf-8',
   );
+  writeAuthenticatedTrialPlanTelemetry(stagedPath);
 }
 
 afterEach(() => {

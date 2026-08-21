@@ -24,6 +24,16 @@ describe('renderer diagnostics snapshot', () => {
             messages: [{ info: { id: 'background-message' }, parts: [] }],
             pendingPermissions: [],
             queuedMessages: [],
+            postChatYamlAction: {
+              sessionId: 'session-2',
+              workspaceKey: 'D:\\repo',
+              kind: 'refresh-current',
+              path: 'D:\\repo\\.tagma\\background\\background.yaml',
+              name: 'background.yaml',
+              pipelineName: 'Background',
+              status: 'trial-running',
+              phase: 'trial-running',
+            },
           },
         },
         sessionYamlResults: {
@@ -42,6 +52,35 @@ describe('renderer diagnostics snapshot', () => {
               summary: 'Trial plan attempt budget exhausted.',
             },
             completedAt: 180,
+          },
+          'session-2': {
+            sessionId: 'session-2',
+            workspaceKey: 'D:\\repo',
+            kind: 'refresh-current',
+            path: 'D:\\repo\\.tagma\\background\\background.yaml',
+            name: 'background.yaml',
+            pipelineName: 'Background',
+            status: 'blocked',
+            compile: { success: true, summary: 'Compilation passed.', validation: [] },
+            trial: {
+              success: false,
+              kind: 'blocked',
+              summary: 'A runtime prerequisite was unavailable.',
+              repairAuthorization: 'diagnostic-only',
+            },
+            completedAt: 190,
+          },
+          'session-3': {
+            sessionId: 'session-3',
+            workspaceKey: 'D:\\repo',
+            kind: 'created',
+            path: 'D:\\repo\\.tagma\\created\\created.yaml',
+            name: 'created.yaml',
+            pipelineName: 'Created',
+            status: 'success',
+            compile: { success: true, summary: 'Compilation passed.', validation: [] },
+            trial: { success: true, kind: 'passed', summary: 'Trial passed.' },
+            completedAt: 195,
           },
         },
         messages: Array.from({ length: 35 }, (_, index) => ({
@@ -108,16 +147,53 @@ describe('renderer diagnostics snapshot', () => {
     expect(snapshot.page.href).toBe('http://127.0.0.1:43123/editor?ws=D%3A%5Crepo');
     expect(snapshot.chat.messages).toHaveLength(25);
     expect(snapshot.chat.messages[0]).toMatchObject({ info: { id: 'message-10' } });
-    expect(snapshot.chat.backgroundSessions).toEqual([
+    expect(snapshot.chat.backgroundSessions).toMatchObject([
+      {
+        sessionId: 'session-3',
+        sending: false,
+        messageCount: 0,
+        pendingPermissionCount: 0,
+        queuedMessageCount: 0,
+        postChatYamlActionSummary: null,
+        sessionYamlResultSummary: {
+          sessionId: 'session-3',
+          status: 'success',
+          trial: { success: true, kind: 'passed', summary: 'Trial passed.' },
+        },
+      },
       {
         sessionId: 'session-2',
         sending: true,
         messageCount: 1,
         pendingPermissionCount: 0,
         queuedMessageCount: 0,
+        postChatYamlActionSummary: {
+          sessionId: 'session-2',
+          status: 'trial-running',
+          phase: 'trial-running',
+        },
+        sessionYamlResultSummary: {
+          sessionId: 'session-2',
+          status: 'blocked',
+          trial: {
+            success: false,
+            kind: 'blocked',
+            summary: 'A runtime prerequisite was unavailable.',
+            repairAuthorization: 'diagnostic-only',
+          },
+        },
       },
     ]);
     expect(snapshot.chat).toMatchObject({
+      backgroundSessionCount: 2,
+      returnedBackgroundSessionCount: 2,
+      omittedBackgroundSessionCount: 0,
+      backgroundSessionEvidence: {
+        layer: 'renderer-diagnostics-background-session-window',
+        limit: 100,
+        truncated: false,
+        omittedBackgroundSessionCount: 0,
+      },
       reconciling: true,
       reconcilingSessionId: 'session-1',
       sessionYamlResult: {
@@ -157,7 +233,14 @@ describe('renderer diagnostics snapshot', () => {
     const snapshot = buildRendererDiagnosticsSnapshot({
       page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
       chat: {
+        currentSessionId: 'session-0',
         sessions: Array.from({ length: 120 }, (_, index) => ({ id: `session-${index}` })),
+        sessionStates: Object.fromEntries(
+          Array.from({ length: 120 }, (_, index) => [
+            `session-${index}`,
+            { sending: false, messages: [] },
+          ]),
+        ),
         messages: Array.from({ length: 30 }, (_, index) => ({ id: `message-${index}` })),
       },
       pipeline: {},
@@ -178,10 +261,18 @@ describe('renderer diagnostics snapshot', () => {
       omittedSessionCount: number;
       sessionEvidence: Record<string, unknown>;
       sessions: Array<{ id: string }>;
+      backgroundSessions: Array<{ sessionId: string }>;
+      backgroundSessionCount: number;
+      returnedBackgroundSessionCount: number;
+      omittedBackgroundSessionCount: number;
+      backgroundSessionEvidence: Record<string, unknown>;
     };
     expect(chat.sessions).toHaveLength(100);
     expect(chat.sessions[0]?.id).toBe('session-20');
     expect(chat.sessions.at(-1)?.id).toBe('session-119');
+    expect(chat.backgroundSessions).toHaveLength(100);
+    expect(chat.backgroundSessions[0]?.sessionId).toBe('session-20');
+    expect(chat.backgroundSessions.at(-1)?.sessionId).toBe('session-119');
     expect(chat).toMatchObject({
       messageCount: 30,
       returnedMessageCount: 25,
@@ -200,6 +291,15 @@ describe('renderer diagnostics snapshot', () => {
         limit: 100,
         truncated: true,
         omittedSessionCount: 20,
+      },
+      backgroundSessionCount: 119,
+      returnedBackgroundSessionCount: 100,
+      omittedBackgroundSessionCount: 19,
+      backgroundSessionEvidence: {
+        layer: 'renderer-diagnostics-background-session-window',
+        limit: 100,
+        truncated: true,
+        omittedBackgroundSessionCount: 19,
       },
     });
 
@@ -243,6 +343,43 @@ describe('renderer diagnostics snapshot', () => {
         omittedLogCount: 30,
       },
     });
+  });
+
+  test('retains active and recently completed background sessions when the diagnostics window is full', () => {
+    const sessionStates = Object.fromEntries(
+      Array.from({ length: 102 }, (_, index) => [
+        `session-${index}`,
+        {
+          sending: index === 0,
+          messages: [],
+          lastActivityAt: index,
+        },
+      ]),
+    );
+    const snapshot = buildRendererDiagnosticsSnapshot({
+      page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+      chat: {
+        currentSessionId: 'current-session',
+        sessionStates,
+        sessionYamlResults: {
+          'session-1': {
+            sessionId: 'session-1',
+            status: 'success',
+            completedAt: 10_000,
+          },
+        },
+        messages: [],
+      },
+      pipeline: {},
+      run: {},
+      capturedAt: 20_000,
+    });
+
+    const backgroundSessions = snapshot.chat.backgroundSessions as Array<{ sessionId: string }>;
+    expect(backgroundSessions).toHaveLength(100);
+    expect(backgroundSessions.map((session) => session.sessionId)).toContain('session-0');
+    expect(backgroundSessions.map((session) => session.sessionId)).toContain('session-1');
+    expect(backgroundSessions.at(-1)?.sessionId).toBe('session-0');
   });
 
   test('adds bounded content-minimized chat, pipeline, task, and approval summaries', () => {

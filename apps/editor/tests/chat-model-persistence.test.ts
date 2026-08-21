@@ -71,6 +71,7 @@ const restartRequests: string[] = [];
 const promptAsyncRequests: string[] = [];
 const promptAsyncBodies: Array<Record<string, unknown>> = [];
 const promptAsyncHeaders: Headers[] = [];
+const stageStartBodies: Array<Record<string, unknown>> = [];
 const sessionDeleteRequests: string[] = [];
 const sessionCreateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 const sessionUpdateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
@@ -202,6 +203,9 @@ beforeAll(() => {
     const request = input instanceof Request ? input : null;
     const url = request?.url ?? String(input);
     const method = init?.method ?? request?.method ?? 'GET';
+    if (url === '/api/workspace/chat-yaml-stage/start' && method === 'POST') {
+      stageStartBodies.push(await jsonRequestBody(request, init));
+    }
     if (url === '/api/editor-settings' && method === 'GET') {
       return Promise.resolve(jsonResponse(makeEditorSettings(editorSettingsModel)));
     }
@@ -867,6 +871,7 @@ afterEach(async () => {
   promptAsyncRequests.length = 0;
   promptAsyncBodies.length = 0;
   promptAsyncHeaders.length = 0;
+  stageStartBodies.length = 0;
   sessionDeleteRequests.length = 0;
   sessionCreateRequests.length = 0;
   sessionUpdateRequests.length = 0;
@@ -1901,6 +1906,7 @@ describe('chat model persistence', () => {
       await useChatStore.getState().send('create a simple reporting pipeline');
 
       expect(promptAsyncRequests).toHaveLength(1);
+      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
       expect(new URL(promptAsyncRequests[0]!).searchParams.get('directory')).toBe(agentTagmaDir);
       expect(decodeURIComponent(promptAsyncHeaders[0]?.get('x-opencode-directory') ?? '')).toBe(
         agentTagmaDir,
@@ -1943,6 +1949,27 @@ describe('chat model persistence', () => {
         yamlPath: null,
         manualNewPipelineYamlPath: null,
       } as never);
+    }
+  });
+
+  test('passes create-new intent to the Host before staging starts', async () => {
+    const { baseUrl, sourcePath } = configureStagedPromptSendFixture();
+    usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
+    sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
+
+    try {
+      await useChatStore
+        .getState()
+        .send('create a separate new reporting pipeline without changing the current pipeline');
+
+      expect(stageStartBodies).toEqual([
+        { activePath: sourcePath, requestedAction: 'create-new-pipeline' },
+      ]);
+      const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
+      expect(parts[0]?.text).toContain('<requested-action kind="create-new-pipeline">');
+      expect(parts[0]?.text).not.toContain('<requested-action kind="fill-manual-new-pipeline">');
+    } finally {
+      await cleanupStagedPromptSendFixture();
     }
   });
 

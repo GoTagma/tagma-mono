@@ -18,7 +18,11 @@ import type { Stats } from 'node:fs';
 import { extname, isAbsolute, join, parse, relative, resolve, sep, win32 } from 'node:path';
 
 import { errorMessage } from './path-utils.js';
-import { requirementsPath, parseRequirementsMd } from './requirements-sync.js';
+import {
+  isTagmaManagedDriverBinary,
+  parseRequirementsMd,
+  requirementsPath,
+} from './requirements-sync.js';
 import { buildPipelineSecretEnv } from './secrets.js';
 import { readEditorSettings } from './plugins/loader.js';
 import { buildPythonAgentRunEnv } from './python-agent.js';
@@ -257,7 +261,11 @@ function readRequirementsWitnessConfig(stagedYamlPath: string): TrialRequirement
   }
   const binaryNames = Array.isArray(frontmatter.binaries)
     ? [
-        ...new Set(frontmatter.binaries.flatMap((entry) => (entry?.name ? [entry.name] : []))),
+        ...new Set(
+          frontmatter.binaries.flatMap((entry) =>
+            entry?.name && !isTagmaManagedDriverBinary(entry) ? [entry.name] : [],
+          ),
+        ),
       ].sort()
     : [];
   const driverNames = Array.isArray(frontmatter.binaries)

@@ -188,6 +188,44 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
   expect(prompt).toContain('ends this repair chain');
   expect(prompt).toContain('compilation is not your acceptance signal');
   expect(prompt).toContain('author a small runnable verification that reproduces the failure');
+  expect(prompt).toContain('The Host did not authorize a Trial Plan revision for this turn.');
+  expect(prompt).not.toContain('Pass attempt_id=');
+});
+
+test('trial-run repair prompt carries a fresh host attempt id for trial-plan corrections', () => {
+  const prompt = buildChatYamlRepairPrompt(
+    {
+      kind: 'refresh-current',
+      path: 'C:/repo/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+    },
+    {
+      kind: 'trial-run',
+      result: {
+        version: 14,
+        success: false,
+        kind: 'failed',
+        repairAuthorization: 'pipeline-change-allowed',
+        ran: true,
+        runId: 'run_plan_expectation_failure',
+        summary: 'file-equals expected LF text but the Windows task produced CRLF text.',
+        durationMs: 12,
+        totalTaskCount: 1,
+        omittedTaskCount: 0,
+        tasks: [],
+        cases: [],
+        trialPlanRepairAttemptId: 'host_trial_plan_repair_2',
+      } as never,
+    },
+    1,
+    2,
+  );
+
+  expect(prompt).toContain('Host trial-plan repair attempt ID: host_trial_plan_repair_2');
+  expect(prompt).toContain(
+    'Pass attempt_id="host_trial_plan_repair_2" on every tagma_trial_plan call',
+  );
 });
 
 test('trial-run repair prompt globally bounds expanded case and task evidence', () => {
@@ -336,7 +374,8 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('json-valid or json-pointer-equals');
   expect(prompt).toContain('text-only checks cannot prove valid JSON');
   expect(prompt).toContain('RFC 8259 JSON');
-  expect(prompt).toContain('Inter-task collision coverage requires at least two target task ids');
+  expect(prompt).toContain('Inter-task collision needs two target task ids');
+  expect(prompt).toContain('repeat-run-output-collision must never be marked covered');
   expect(prompt).toContain('concurrent-run-output-collision must never be marked covered');
   expect(prompt).toContain('accepted-risk');
   expect(prompt).toContain('passed-with-warnings');

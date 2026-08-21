@@ -188,6 +188,8 @@ export interface ChatYamlStageDescriptor {
   trialPlanMaxAttempts?: number;
   activeRelativePath: string | null;
   activeStagedPath: string | null;
+  requestedAction: 'create-new-pipeline' | null;
+  createTargetRelativePath: string | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
 }
@@ -443,7 +445,7 @@ export interface ChatPipelineTrialNotRunCase {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
+  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -456,6 +458,7 @@ export interface ChatPipelineTrialRunResult {
   taskStatusCounts?: Record<string, number>;
   omittedTaskStatusCounts?: Record<string, number>;
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
+  trialPlanRepairAttemptId?: string;
   prerequisiteState?: ChatPipelineTrialPrerequisiteState;
   trialMode?: ChatPipelineTrialMode;
   trialabilityReport?: ChatPipelineTrialabilityReport;
@@ -470,6 +473,7 @@ export interface ChatPipelineTrialRunResult {
     validationRejectionCount: number;
     repeatedValidationRejectionCount: number;
     successfulWriteCount: number;
+    committedPlanHash?: string | null;
     firstAttemptAt: number | null;
     lastAttemptAt: number | null;
     elapsedMs: number;
@@ -2110,12 +2114,19 @@ export const api = {
   listWorkspaceYamls: (workspaceKeyOverride?: string | null) =>
     request<{ entries: WorkspaceYamlEntry[] }>('/workspace/yamls', undefined, workspaceKeyOverride),
 
-  startChatYamlStage: (activePath?: string | null, workspaceKeyOverride?: string | null) =>
+  startChatYamlStage: (
+    activePath?: string | null,
+    workspaceKeyOverride?: string | null,
+    requestedAction?: 'create-new-pipeline' | null,
+  ) =>
     request<ChatYamlStageDescriptor>(
       '/workspace/chat-yaml-stage/start',
       {
         method: 'POST',
-        body: jsonBody({ activePath: activePath ?? null }),
+        body: jsonBody({
+          activePath: activePath ?? null,
+          requestedAction: requestedAction ?? null,
+        }),
       },
       workspaceKeyOverride,
     ),

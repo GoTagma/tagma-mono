@@ -17,17 +17,17 @@ import {
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 4,
+    version: 5,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],
     coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) =>
-      dimension === 'concurrent-run-output-collision'
+      dimension === 'repeat-run-output-collision' || dimension === 'concurrent-run-output-collision'
         ? {
             dimension,
             status: 'accepted-risk',
             caseIds: [],
-            rationale: 'The host harness is sequential; concurrent writes remain an explicit risk.',
+            rationale: 'The host harness cannot observe this collision boundary.',
           }
         : {
             dimension,
@@ -142,12 +142,154 @@ describe('chat pipeline trial plan', () => {
       runs: 2,
       targetTaskIds: ['main.process', 'main.publish'],
     });
-    expect(
-      plan.coverage.find((item) => item.dimension === 'concurrent-run-output-collision'),
-    ).toMatchObject({
-      status: 'accepted-risk',
-      caseIds: [],
+    for (const dimension of ['repeat-run-output-collision', 'concurrent-run-output-collision']) {
+      expect(plan.coverage.find((item) => item.dimension === dimension)).toMatchObject({
+        status: 'accepted-risk',
+        caseIds: [],
+      });
+    }
+  });
+
+  test('accepts observable pipeline-generated inputs without pre-seeding them as case fixtures', () => {
+    const candidate = structuredClone(completePlan());
+    const testCase = (
+      candidate.cases as Array<{
+        fixtures: Array<{ path: string; content: string }>;
+        expectations: Array<Record<string, unknown>>;
+        generatedInputPaths?: string[];
+      }>
+    )[0]!;
+    testCase.fixtures = [];
+    testCase.generatedInputPaths = [
+      'acceptance-fixtures/a/report.txt',
+      'acceptance-fixtures/b/report.txt',
+      'acceptance-fixtures/empty.txt',
+    ];
+    testCase.expectations = [
+      {
+        type: 'file-equals',
+        path: 'acceptance-fixtures/a/report.txt',
+        text: ['first', '', 'second [x] 中文'].join(String.fromCharCode(10)),
+      },
+      {
+        type: 'file-equals',
+        path: 'acceptance-fixtures/b/report.txt',
+        text: ['other', '', 'later'].join(String.fromCharCode(10)),
+      },
+      { type: 'file-equals', path: 'acceptance-fixtures/empty.txt', text: '' },
+      { type: 'task-status', taskId: 'main.process', status: 'success' },
+    ];
+    for (const coverage of candidate.coverage as Array<{
+      dimension: string;
+      status: string;
+      caseIds: string[];
+    }>) {
+      const generatedInputDimension = [
+        'multiple-inputs',
+        'duplicate-input-names',
+        'multiline-content',
+        'empty-content',
+        'special-characters',
+      ].includes(coverage.dimension);
+      coverage.status = generatedInputDimension ? 'covered' : 'not-applicable';
+      coverage.caseIds = generatedInputDimension ? ['all-file-boundaries'] : [];
+    }
+
+    const plan = parseChatPipelineTrialPlan(candidate);
+
+    expect(plan.cases[0]?.fixtures).toEqual([]);
+    expect(plan.cases[0]?.generatedInputPaths).toEqual(testCase.generatedInputPaths);
+  });
+
+  test('rejects generated-input evidence that the Host would pre-seed or cannot verify exactly', () => {
+    const preseeded = structuredClone(completePlan());
+    (
+      preseeded.cases as Array<{
+        fixtures: Array<{ path: string }>;
+        generatedInputPaths?: string[];
+      }>
+    )[0]!.generatedInputPaths = [
+      (preseeded.cases as Array<{ fixtures: Array<{ path: string }> }>)[0]!.fixtures[0]!.path,
+    ];
+    expect(() => parseChatPipelineTrialPlan(preseeded)).toThrow(
+      'generatedInputPaths must not also be pre-seeded through fixtures',
+    );
+
+    const overlapping = structuredClone(completePlan());
+    const overlappingCase = (
+      overlapping.cases as Array<{
+        fixtures: Array<{ path: string }>;
+        generatedInputPaths?: string[];
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    const nestedGeneratedPath = `${overlappingCase.fixtures[0]!.path}/generated.txt`;
+    overlappingCase.generatedInputPaths = [nestedGeneratedPath];
+    overlappingCase.expectations.push({
+      type: 'file-equals',
+      path: nestedGeneratedPath,
+      text: 'generated',
     });
+    expect(() => parseChatPipelineTrialPlan(overlapping)).toThrow(
+      'generatedInputPaths must not overlap fixtures or each other',
+    );
+
+    const overlappingGeneratedInputs = structuredClone(completePlan());
+    const overlappingGeneratedCase = (
+      overlappingGeneratedInputs.cases as Array<{
+        fixtures: Array<{ path: string; content: string }>;
+        generatedInputPaths?: string[];
+      }>
+    )[0]!;
+    overlappingGeneratedCase.fixtures = [];
+    overlappingGeneratedCase.generatedInputPaths = [
+      'generated/input.txt',
+      'generated/input.txt/nested',
+    ];
+    expect(() => parseChatPipelineTrialPlan(overlappingGeneratedInputs)).toThrow(
+      'generatedInputPaths must not overlap fixtures or each other',
+    );
+
+    const unverified = structuredClone(completePlan());
+    const unverifiedCase = (
+      unverified.cases as Array<{
+        generatedInputPaths?: string[];
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    unverifiedCase.generatedInputPaths = ['generated/missing.txt'];
+    unverifiedCase.expectations.push({ type: 'path-exists', path: 'generated/missing.txt' });
+    expect(() => parseChatPipelineTrialPlan(unverified)).toThrow(
+      'generatedInputPaths requires a file-equals expectation for generated/missing.txt',
+    );
+
+    const duplicateAssertions = structuredClone(completePlan());
+    const duplicateAssertionCase = (
+      duplicateAssertions.cases as Array<{
+        fixtures: Array<{ path: string; content: string }>;
+        generatedInputPaths?: string[];
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    duplicateAssertionCase.fixtures = [];
+    duplicateAssertionCase.generatedInputPaths = ['generated/only.txt'];
+    duplicateAssertionCase.expectations = [
+      { type: 'file-equals', path: 'generated/only.txt', text: 'first' },
+      { type: 'file-equals', path: 'generated/only.txt', text: 'first' },
+      { type: 'task-status', taskId: 'main.process', status: 'success' },
+    ];
+    for (const coverage of duplicateAssertions.coverage as Array<{
+      dimension: string;
+      status: string;
+      caseIds: string[];
+    }>) {
+      const covered = coverage.dimension === 'multiple-inputs';
+      coverage.status = covered ? 'covered' : 'not-applicable';
+      coverage.caseIds = covered ? ['all-file-boundaries'] : [];
+    }
+    expect(() => parseChatPipelineTrialPlan(duplicateAssertions)).toThrow(
+      'marks multiple-inputs covered without concrete linked-case evidence',
+    );
   });
 
   test('does not let a sequential harness claim concurrent-write coverage', () => {
@@ -172,17 +314,16 @@ describe('chat pipeline trial plan', () => {
     );
   });
 
-  test('requires repeated execution and distinct outputs for repeat-run collision coverage', () => {
+  test('does not let final-state assertions claim repeat-run output collision coverage', () => {
     const candidate = structuredClone(completePlan());
-    (candidate.cases as Array<{ runs: number }>)[0]!.runs = 1;
-    const repeatRun = (
+    const repeatCollision = (
       candidate.coverage as Array<{ dimension: string; status: string; caseIds: string[] }>
-    ).find((item) => item.dimension === 'repeat-run')!;
-    repeatRun.status = 'not-applicable';
-    repeatRun.caseIds = [];
+    ).find((item) => item.dimension === 'repeat-run-output-collision')!;
+    repeatCollision.status = 'covered';
+    repeatCollision.caseIds = ['all-file-boundaries'];
 
     expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
-      'marks repeat-run-output-collision covered without concrete linked-case evidence',
+      'repeat-run-output-collision cannot be covered without run-scoped artifact evidence',
     );
   });
 
@@ -234,15 +375,25 @@ describe('chat pipeline trial plan', () => {
     }
   });
 
-  test('rejects duplicate fixture destinations even when path case differs', () => {
-    const candidate = structuredClone(completePlan());
-    const fixtures = (
-      candidate.cases as Array<{ fixtures: Array<{ path: string; content: string }> }>
+  test('rejects duplicate and parent-child fixture destinations', () => {
+    const duplicate = structuredClone(completePlan());
+    const duplicateFixtures = (
+      duplicate.cases as Array<{ fixtures: Array<{ path: string; content: string }> }>
     )[0]!.fixtures;
-    fixtures[1]!.path = 'INPUTS/A/REPORT.TXT';
+    duplicateFixtures[1]!.path = 'INPUTS/A/REPORT.TXT';
 
-    expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
+    expect(() => parseChatPipelineTrialPlan(duplicate)).toThrow(
       'fixtures must not write the same path twice',
+    );
+
+    const overlapping = structuredClone(completePlan());
+    const overlappingFixtures = (
+      overlapping.cases as Array<{ fixtures: Array<{ path: string; content: string }> }>
+    )[0]!.fixtures;
+    overlappingFixtures[1]!.path = `${overlappingFixtures[0]!.path}/nested.txt`;
+
+    expect(() => parseChatPipelineTrialPlan(overlapping)).toThrow(
+      'fixtures must not write overlapping file paths',
     );
   });
 
@@ -268,7 +419,7 @@ describe('chat pipeline trial plan', () => {
     emptyFixture.content = 'not-empty';
 
     expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
-      'marks empty-content covered without concrete linked-case evidence: needs an empty fixture plus a file-equals expectation with empty expected text',
+      'marks empty-content covered without concrete linked-case evidence: needs an empty pre-seeded or pipeline-generated input with exact file evidence',
     );
   });
 

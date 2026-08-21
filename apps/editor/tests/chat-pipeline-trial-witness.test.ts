@@ -29,6 +29,7 @@ import {
   type PreparedTrialHostWitnessInputs,
 } from '../server/chat-pipeline-trial-witness';
 import { hashChatPipelineTrialTree } from '../server/chat-yaml-staging';
+import { requirementsPath, serializeRequirementsMd } from '../server/requirements-sync';
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
@@ -731,6 +732,45 @@ describe('chat pipeline trial host witness', () => {
       if (originalPath === undefined) delete process.env[pathKey];
       else process.env[pathKey] = originalPath;
     }
+  });
+
+  test('treats a managed opencode prompt driver as a driver witness, not a PATH binary', () => {
+    const { root, ws } = makeWorkspace();
+    const pipelineDir = join(root, '.tagma', 'pipeline');
+    const stagedYamlPath = join(pipelineDir, 'pipeline.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(stagedYamlPath, 'pipeline:\n  name: Managed OpenCode\n', 'utf-8');
+    writeFileSync(
+      requirementsPath(stagedYamlPath),
+      serializeRequirementsMd({
+        frontmatter: {
+          schemaVersion: 1,
+          generatedFor: 'pipeline.yaml',
+          generatedAt: new Date().toISOString(),
+          binaries: [
+            {
+              name: 'opencode',
+              probe: 'opencode --version',
+              usedBy: ['main.prompt'],
+              fromDriver: 'opencode',
+            },
+          ],
+          env: [],
+          services: [],
+        },
+        body: '# Managed OpenCode\n',
+      }),
+      'utf-8',
+    );
+
+    const inputs = prepareTrialHostWitnessInputs(ws, {
+      relativePath: 'pipeline/pipeline.yaml',
+      sourcePath: stagedYamlPath,
+      stagedYamlPath,
+    });
+
+    expect(inputs.binaryNames).toEqual([]);
+    expect(inputs.driverNames).toEqual(['opencode']);
   });
 
   test('fingerprints the actual editor OpenCode driver binary in addition to PATH lookup', () => {

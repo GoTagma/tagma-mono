@@ -38,6 +38,7 @@ import {
   publicYamlEditLock,
 } from '../yaml-edit-lock.js';
 import type { WorkspaceState } from '../workspace-state.js';
+import { CREATE_NEW_PIPELINE_ACTION_KIND } from '../../shared/requested-action.js';
 
 type FinalizeLocalBranch = NonNullable<ChatYamlStageFinalizeInput['localBranch']>;
 
@@ -290,7 +291,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
   app.post('/api/workspace/chat-yaml-stage/start', (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
-    const body = (req.body ?? {}) as { activePath?: unknown };
+    const body = (req.body ?? {}) as { activePath?: unknown; requestedAction?: unknown };
     if (
       body.activePath !== undefined &&
       body.activePath !== null &&
@@ -298,10 +299,21 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     ) {
       return res.status(400).json({ error: 'activePath must be a string or null.' });
     }
+    if (
+      body.requestedAction !== undefined &&
+      body.requestedAction !== null &&
+      body.requestedAction !== CREATE_NEW_PIPELINE_ACTION_KIND
+    ) {
+      return res.status(400).json({ error: 'requestedAction is invalid.' });
+    }
     try {
       return res.json(
         createChatYamlStage(ws, {
           activePath: typeof body.activePath === 'string' ? body.activePath : null,
+          requestedAction:
+            body.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+              ? CREATE_NEW_PIPELINE_ACTION_KIND
+              : null,
         }),
       );
     } catch (err) {

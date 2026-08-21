@@ -158,12 +158,12 @@ function completeTrialPlanToolArgs(pipelinePath: string): Record<string, unknown
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],
     coverage: coverageDimensions.map((dimension) =>
-      dimension === 'concurrent-run-output-collision'
+      dimension === 'repeat-run-output-collision' || dimension === 'concurrent-run-output-collision'
         ? {
             dimension,
             status: 'accepted-risk',
             caseIds: [],
-            rationale: 'The sequential harness cannot exercise concurrent writers.',
+            rationale: 'The harness cannot observe this collision boundary.',
           }
         : {
             dimension,
@@ -1181,6 +1181,68 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
   }
 });
 
+test('trial-plan tool preserves observable pipeline-generated inputs without pre-seeding fixtures', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const args = completeTrialPlanToolArgs('sample/sample.yaml');
+    const testCase = (
+      args.cases as Array<{
+        fixtures: Array<{ path: string; content: string }>;
+        expectations: Array<Record<string, unknown>>;
+        generatedInputPaths?: string[];
+      }>
+    )[0]!;
+    testCase.fixtures = [];
+    testCase.generatedInputPaths = [
+      'acceptance-fixtures/a/report.txt',
+      'acceptance-fixtures/b/report.txt',
+      'acceptance-fixtures/empty.txt',
+    ];
+    testCase.expectations = [
+      {
+        type: 'file-equals',
+        path: 'acceptance-fixtures/a/report.txt',
+        text: ['first', '', 'second [x] 中文'].join('\n'),
+      },
+      {
+        type: 'file-equals',
+        path: 'acceptance-fixtures/b/report.txt',
+        text: ['other', '', 'later'].join('\n'),
+      },
+      { type: 'file-equals', path: 'acceptance-fixtures/empty.txt', text: '' },
+      { type: 'task-status', taskId: 'main.process', status: 'success' },
+    ];
+    for (const coverage of args.coverage as Array<{
+      dimension: string;
+      status: string;
+      caseIds: string[];
+    }>) {
+      const generatedInputDimension = [
+        'multiple-inputs',
+        'duplicate-input-names',
+        'multiline-content',
+        'empty-content',
+        'special-characters',
+      ].includes(coverage.dimension);
+      coverage.status = generatedInputDimension ? 'covered' : 'not-applicable';
+      coverage.caseIds = generatedInputDimension ? ['all-file-boundaries'] : [];
+    }
+
+    await submitTrialPlanToolArgs(generated.tool, args, { directory: stage.agentTagmaDir });
+
+    expect(
+      parseChatPipelineTrialPlan(JSON.parse(readFileSync(stage.planPath, 'utf8'))).cases[0],
+    ).toMatchObject({
+      fixtures: [],
+      generatedInputPaths: testCase.generatedInputPaths,
+    });
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
 test('trial-plan begin resumes the same revision unless reset is explicit', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();
@@ -1236,6 +1298,28 @@ test('trial-plan tool rejects host-invalid plans before writing any file', async
     await expect(
       submitTrialPlanToolArgs(generated.tool, args, { directory: stage.agentTagmaDir }),
     ).rejects.toThrow('expectations[0].type is unsupported');
+    expect(existsSync(stage.planPath)).toBe(false);
+
+    const overlappingArgs = completeTrialPlanToolArgs('sample/sample.yaml');
+    const overlappingCase = (
+      overlappingArgs.cases as Array<{
+        fixtures: Array<{ path: string }>;
+        generatedInputPaths?: string[];
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    const nestedGeneratedPath = `${overlappingCase.fixtures[0]!.path}/generated.txt`;
+    overlappingCase.generatedInputPaths = [nestedGeneratedPath];
+    overlappingCase.expectations.push({
+      type: 'file-equals',
+      path: nestedGeneratedPath,
+      text: 'generated',
+    });
+    await expect(
+      submitTrialPlanToolArgs(generated.tool, overlappingArgs, {
+        directory: stage.agentTagmaDir,
+      }),
+    ).rejects.toThrow('generatedInputPaths must not overlap fixtures or each other');
     expect(existsSync(stage.planPath)).toBe(false);
   } finally {
     stage.cleanup();
@@ -1353,6 +1437,21 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
     );
     expect(existsSync(stage.planPath)).toBe(false);
 
+    const repeatCollisionArgs = completeTrialPlanToolArgs('sample/sample.yaml');
+    const repeatCollisionCoverage = (
+      repeatCollisionArgs.coverage as Array<Record<string, unknown>>
+    ).find((entry) => entry.dimension === 'repeat-run-output-collision')!;
+    repeatCollisionCoverage.status = 'covered';
+    repeatCollisionCoverage.caseIds = ['all-file-boundaries'];
+    await expect(
+      submitTrialPlanToolArgs(generated.tool, repeatCollisionArgs, {
+        directory: stage.agentTagmaDir,
+      }),
+    ).rejects.toThrow(
+      'repeat-run-output-collision cannot be covered without run-scoped artifact evidence',
+    );
+    expect(existsSync(stage.planPath)).toBe(false);
+
     const emptyContentArgs = completeTrialPlanToolArgs('sample/sample.yaml');
     const emptyContentCase = (
       emptyContentArgs.cases as Array<{
@@ -1398,7 +1497,7 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
   }
 });
 
-test('trial-plan coverage setter reports every unsupported covered dimension before commit', async () => {
+test('trial-plan coverage setter reports unsupported covered dimensions before commit', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();
   try {
@@ -1424,9 +1523,7 @@ test('trial-plan coverage setter reports every unsupported covered dimension bef
 
     await expect(
       submitTrialPlanToolArgs(generated.tool, args, { directory: stage.agentTagmaDir }),
-    ).rejects.toThrow(
-      /repeat-run-output-collision covered without concrete linked-case evidence[\s\S]*empty-content covered without concrete linked-case evidence/,
-    );
+    ).rejects.toThrow('empty-content covered without concrete linked-case evidence');
     expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
       toolAttemptCount: 0,
       validationRejectionCount: 0,

@@ -75,6 +75,7 @@ import {
   DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   isValidChatPipelineTrialPlanAttempts,
 } from '../shared/chat-pipeline-trial-plan-limit.js';
+import { CREATE_NEW_PIPELINE_ACTION_KIND } from '../shared/requested-action.js';
 
 const STAGING_DIR_NAME = '.chat-staging';
 const STAGE_METADATA_FILE = 'stage.json';
@@ -275,6 +276,8 @@ interface ChatYamlStageMetadata {
     attemptId: string;
   } | null;
   activeRelativePath: string | null;
+  requestedAction: typeof CREATE_NEW_PIPELINE_ACTION_KIND | null;
+  createTargetRelativePath: string | null;
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
@@ -317,6 +320,8 @@ export interface ChatYamlStageDescriptor {
   trialPlanMaxAttempts: number;
   activeRelativePath: string | null;
   activeStagedPath: string | null;
+  requestedAction: typeof CREATE_NEW_PIPELINE_ACTION_KIND | null;
+  createTargetRelativePath: string | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
 }
@@ -976,6 +981,14 @@ function readMetadata(
           attemptId: rawTrialPlanAttempt.attemptId,
         }
       : null;
+  const requestedAction =
+    raw.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+      ? CREATE_NEW_PIPELINE_ACTION_KIND
+      : null;
+  const createTargetRelativePath =
+    typeof raw.createTargetRelativePath === 'string'
+      ? assertPortableRelativePath(raw.createTargetRelativePath)
+      : null;
   let sessionRelocation: ChatYamlStageSessionRelocationBinding | undefined;
   if (raw.sessionRelocation !== undefined && raw.sessionRelocation !== null) {
     sessionRelocation = parseSessionRelocationBinding(raw.sessionRelocation, paths);
@@ -987,6 +1000,10 @@ function readMetadata(
     !Array.isArray(raw.sourceRelativePaths) ||
     !raw.sourceRelativePaths.every((item) => typeof item === 'string') ||
     trialPlanMaxAttempts === null ||
+    (requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+      ? createTargetRelativePath === null || raw.activeRelativePath !== createTargetRelativePath
+      : createTargetRelativePath !== null ||
+        (raw.requestedAction !== null && raw.requestedAction !== undefined)) ||
     !Array.isArray(raw.baseEntries) ||
     !raw.baseEntries.every(isBaseEntry)
   ) {
@@ -1006,6 +1023,8 @@ function readMetadata(
       trialPlanAttempt,
       activeRelativePath:
         typeof raw.activeRelativePath === 'string' ? raw.activeRelativePath : null,
+      requestedAction,
+      createTargetRelativePath,
       sourceRelativePaths: raw.sourceRelativePaths.map(assertPortableRelativePath),
       baseEntries: raw.baseEntries.map((entry) => ({
         relativePath: assertPortableRelativePath(entry.relativePath),
@@ -1172,6 +1191,9 @@ function descriptor(
         samePipelineRelativePath(entry.relativePath, metadata.activeRelativePath!),
       )
     : null;
+  const reservedCreateTarget = metadata.createTargetRelativePath
+    ? resolveRelativeInside(paths.agentTagmaDir, metadata.createTargetRelativePath)
+    : null;
   return {
     id: metadata.id,
     rootDir: paths.rootDir,
@@ -1180,7 +1202,9 @@ function descriptor(
     agentTagmaDir: paths.agentTagmaDir,
     trialPlanMaxAttempts: metadata.trialPlanMaxAttempts,
     activeRelativePath: metadata.activeRelativePath,
-    activeStagedPath: active?.stagedPath ?? null,
+    activeStagedPath: active?.stagedPath ?? reservedCreateTarget,
+    requestedAction: metadata.requestedAction,
+    createTargetRelativePath: metadata.createTargetRelativePath,
     entries,
     ...(metadata.sessionRelocation ? { sessionRelocation: metadata.sessionRelocation } : {}),
   };
@@ -1208,9 +1232,22 @@ function runChatStageCompileAndWriteLog(
   });
 }
 
+function reserveCreateTargetRelativePath(sourceRelativePaths: readonly string[]): string {
+  const unavailable = new Set(sourceRelativePaths.map((path) => path.toLowerCase()));
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const stem = `pipeline-${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const relativePath = `${stem}/${stem}.yaml`;
+    if (!unavailable.has(relativePath.toLowerCase())) return relativePath;
+  }
+  throw new Error('Could not reserve a unique staged path for the new pipeline.');
+}
+
 export function createChatYamlStage(
   ws: WorkspaceState,
-  options: { activePath?: string | null } = {},
+  options: {
+    activePath?: string | null;
+    requestedAction?: typeof CREATE_NEW_PIPELINE_ACTION_KIND | null;
+  } = {},
 ): ChatYamlStageDescriptor {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
   cleanupExpiredStages(ws.workDir);
@@ -1239,6 +1276,14 @@ export function createChatYamlStage(
       baseEntries.push({ relativePath: relativeYamlPath, ...hashes });
       if (samePath(options.activePath, source.yamlPath)) activeRelativePath = relativeYamlPath;
     }
+    const requestedAction =
+      options.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+        ? CREATE_NEW_PIPELINE_ACTION_KIND
+        : null;
+    const createTargetRelativePath = requestedAction
+      ? reserveCreateTargetRelativePath(sourceRelativePaths)
+      : null;
+    if (createTargetRelativePath) activeRelativePath = createTargetRelativePath;
     const metadata: ChatYamlStageMetadata = {
       version: STAGE_VERSION,
       id,
@@ -1249,6 +1294,8 @@ export function createChatYamlStage(
       trialPlanMaxAttempts: readEditorSettings(ws).opencodeChatTrialPlanMaxAttempts,
       trialPlanAttempt: null,
       activeRelativePath,
+      requestedAction,
+      createTargetRelativePath,
       sourceRelativePaths,
       baseEntries,
     };
@@ -2656,14 +2703,29 @@ export async function finalizeChatYamlStage(
     return { ...previousResult, revision: state.revision, state };
   }
 
+  const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
+    samePipelineRelativePath(candidate, relativePath),
+  );
+  if (metadata.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND) {
+    if (sourceRelativePath) {
+      throw new Error(
+        'A create-new pipeline turn cannot modify an existing pipeline; write the reserved current-file target instead.',
+      );
+    }
+    if (
+      !metadata.createTargetRelativePath ||
+      !samePipelineRelativePath(metadata.createTargetRelativePath, relativePath)
+    ) {
+      throw new Error(
+        'A create-new pipeline turn may finalize only its Host-reserved current-file target.',
+      );
+    }
+  }
   const stagedPath = resolveStagedYamlPath(paths, relativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
   const changed = stageTargetChanged(paths, metadata, relativePath);
   const compile = compileChatYamlStage(ws, input.stageId, relativePath);
 
-  const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
-    samePipelineRelativePath(candidate, relativePath),
-  );
   const sourcePath = sourceRelativePath
     ? resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath)
     : null;

@@ -162,6 +162,10 @@ function validateExpectation(value, label) {
   return raw;
 }
 
+function relativeFilePathsOverlap(left, right) {
+  return left === right || left.startsWith(right + "/") || right.startsWith(left + "/");
+}
+
 function validateCase(value, index) {
   const label = "cases[" + index + "]";
   const raw = asRecord(value, label);
@@ -191,6 +195,38 @@ function validateCase(value, index) {
   if (new Set(fixturePaths).size !== fixturePaths.length) {
     throw new Error(label + ".fixtures must not write the same path twice.");
   }
+  if (
+    fixturePaths.some((path, index) =>
+      fixturePaths.slice(0, index).some((candidate) => relativeFilePathsOverlap(path, candidate)),
+    )
+  ) {
+    throw new Error(label + ".fixtures must not write overlapping file paths.");
+  }
+  const generatedInputPaths = asArray(
+    raw.generatedInputPaths || [],
+    label + ".generatedInputPaths",
+    CONTRACT.limits.generatedInputPathsPerCase,
+  ).map((path, pathIndex) =>
+    normalizeRelativeCasePath(path, label + ".generatedInputPaths[" + pathIndex + "]"),
+  );
+  const normalizedGeneratedInputPaths = generatedInputPaths.map((path) => path.toLowerCase());
+  if (new Set(normalizedGeneratedInputPaths).size !== normalizedGeneratedInputPaths.length) {
+    throw new Error(label + ".generatedInputPaths must not name the same path twice.");
+  }
+  if (normalizedGeneratedInputPaths.some((path) => fixturePaths.includes(path))) {
+    throw new Error(label + ".generatedInputPaths must not also be pre-seeded through fixtures.");
+  }
+  if (
+    normalizedGeneratedInputPaths.some(
+      (path, index) =>
+        fixturePaths.some((candidate) => relativeFilePathsOverlap(path, candidate)) ||
+        normalizedGeneratedInputPaths
+          .slice(0, index)
+          .some((candidate) => relativeFilePathsOverlap(path, candidate)),
+    )
+  ) {
+    throw new Error(label + ".generatedInputPaths must not overlap fixtures or each other.");
+  }
   const expectations = asArray(
     raw.expectations,
     label + ".expectations",
@@ -200,6 +236,18 @@ function validateCase(value, index) {
   );
   if (expectations.length === 0) {
     throw new Error(label + ".expectations must not be empty.");
+  }
+  const generatedInputExpectationPaths = new Set(
+    expectations.flatMap((expectation) =>
+      expectation.type === "file-equals" ? [expectation.path.toLowerCase()] : [],
+    ),
+  );
+  for (const generatedInputPath of normalizedGeneratedInputPaths) {
+    if (!generatedInputExpectationPaths.has(generatedInputPath)) {
+      throw new Error(
+        label + ".generatedInputPaths requires a file-equals expectation for " + generatedInputPath + ".",
+      );
+    }
   }
   const jsonAwarePaths = new Set(
     expectations
@@ -254,6 +302,7 @@ function validateCase(value, index) {
         : asInteger(raw.runs, label + ".runs", 1, CONTRACT.limits.runs),
     targetTaskIds,
     fixtures,
+    generatedInputPaths,
     expectations,
   };
 }
@@ -286,10 +335,23 @@ function validateCaseEntries(value, requireNonEmpty) {
   return cases;
 }
 
-function hasDuplicateFixtureBasenames(cases) {
+function inputEvidence(testCase) {
+  const generated = testCase.generatedInputPaths.flatMap((path) => {
+    const expectation = testCase.expectations.find(
+      (candidate) =>
+        candidate.type === "file-equals" && candidate.path.toLowerCase() === path.toLowerCase(),
+    );
+    return expectation && expectation.type === "file-equals"
+      ? [{ path, content: expectation.text }]
+      : [];
+  });
+  return [...testCase.fixtures, ...generated];
+}
+
+function hasDuplicateInputBasenames(cases) {
   return cases.some((item) => {
-    const basenames = item.fixtures.map(
-      (fixture) => fixture.path.split("/").at(-1).toLowerCase(),
+    const basenames = inputEvidence(item).map(
+      (input) => input.path.split("/").at(-1).toLowerCase(),
     );
     return new Set(basenames).size !== basenames.length;
   });
@@ -322,14 +384,14 @@ function hasDistinctOutputExpectation(cases) {
 }
 
 function coverageEvidenceHint(dimension) {
-  if (dimension === "multiple-inputs") return "needs at least two fixtures in the linked case";
-  if (dimension === "duplicate-input-names") return "needs same-basename fixtures in different folders";
-  if (dimension === "multiline-content") return "needs a fixture containing a newline";
+  if (dimension === "multiple-inputs") return "needs at least two pre-seeded or pipeline-generated inputs in the linked case";
+  if (dimension === "duplicate-input-names") return "needs same-basename pre-seeded or pipeline-generated inputs in different folders";
+  if (dimension === "multiline-content") return "needs a pre-seeded or pipeline-generated input containing a newline";
   if (dimension === "inter-task-output-collision") return "needs at least two target task ids plus distinct-output expectations";
-  if (dimension === "repeat-run-output-collision") return "needs runs >= 2 plus distinct-output expectations";
+  if (dimension === "repeat-run-output-collision") return "cannot be covered without run-scoped artifact evidence";
   if (dimension === "repeat-run") return "needs runs >= 2";
-  if (dimension === "empty-content") return "needs an empty fixture plus a file-equals expectation with empty expected text";
-  if (dimension === "special-characters") return "needs a fixture containing a non-ASCII or non-alphanumeric character";
+  if (dimension === "empty-content") return "needs an empty pre-seeded or pipeline-generated input with exact file evidence";
+  if (dimension === "special-characters") return "needs a pre-seeded or pipeline-generated input containing a non-ASCII or non-alphanumeric character";
   return "needs concrete linked-case evidence";
 }
 
@@ -341,20 +403,20 @@ function validateCoveredCaseEvidence(coverage, cases) {
     const linkedCases = entry.caseIds.map((caseId) => casesById.get(caseId)).filter(Boolean);
     let evidenced = true;
     if (entry.dimension === "multiple-inputs") {
-      evidenced = linkedCases.some((item) => item.fixtures.length >= 2);
+      evidenced = linkedCases.some((item) => inputEvidence(item).length >= 2);
     } else if (entry.dimension === "duplicate-input-names") {
-      evidenced = hasDuplicateFixtureBasenames(linkedCases);
+      evidenced = hasDuplicateInputBasenames(linkedCases);
     } else if (entry.dimension === "multiline-content") {
       evidenced = linkedCases.some((item) =>
-        item.fixtures.some((fixture) => fixture.content.includes(String.fromCharCode(10))),
+        inputEvidence(item).some((input) => input.content.includes(String.fromCharCode(10))),
       );
     } else if (entry.dimension === "inter-task-output-collision") {
       evidenced = linkedCases.some(
         (item) => item.targetTaskIds.length >= 2 && hasDistinctOutputExpectation([item]),
       );
     } else if (entry.dimension === "repeat-run-output-collision") {
-      evidenced = linkedCases.some(
-        (item) => item.runs >= 2 && hasDistinctOutputExpectation([item]),
+      throw new Error(
+        "trial plan coverage repeat-run-output-collision cannot be covered without run-scoped artifact evidence; the harness checks artifact expectations only after the final run. Use accepted-risk, blocked, or not-applicable.",
       );
     } else if (entry.dimension === "concurrent-run-output-collision") {
       failures.push(
@@ -366,7 +428,7 @@ function validateCoveredCaseEvidence(coverage, cases) {
     } else if (entry.dimension === "empty-content") {
       evidenced = linkedCases.some(
         (item) =>
-          item.fixtures.some((fixture) => fixture.content.length === 0) &&
+          inputEvidence(item).some((input) => input.content.length === 0) &&
           item.expectations.some(
             (expectation) =>
               expectation.type === "file-equals" && expectation.text.length === 0,
@@ -374,8 +436,8 @@ function validateCoveredCaseEvidence(coverage, cases) {
       );
     } else if (entry.dimension === "special-characters") {
       evidenced = linkedCases.some((item) =>
-        item.fixtures.some((fixture) =>
-          [...fixture.content].some((character) => {
+        inputEvidence(item).some((input) =>
+          [...input.content].some((character) => {
             const codePoint = character.codePointAt(0) || 0;
             return (
               codePoint > 127 ||
@@ -775,6 +837,7 @@ function newTrialPlanAttemptTelemetry(yamlHash, relativeYamlPath) {
     validationRejectionCount: 0,
     repeatedValidationRejectionCount: 0,
     successfulWriteCount: 0,
+    committedPlanHash: null,
     firstAttemptAt: null,
     lastAttemptAt: null,
     rejections: [],
@@ -802,6 +865,10 @@ function isValidTrialPlanAttemptTelemetry(parsed, paths, yamlHash) {
     !isTelemetryInteger(parsed.repeatedValidationRejectionCount, parsed.validationRejectionCount) ||
     !isTelemetryInteger(parsed.successfulWriteCount, parsed.toolAttemptCount) ||
     parsed.validationRejectionCount + parsed.successfulWriteCount !== parsed.toolAttemptCount ||
+    (parsed.successfulWriteCount === 0
+      ? parsed.committedPlanHash !== null
+      : typeof parsed.committedPlanHash !== "string" ||
+        !/^[0-9a-f]{64}$/.test(parsed.committedPlanHash)) ||
     !Array.isArray(parsed.rejections) ||
     parsed.rejections.length > MAX_REJECTION_SUMMARIES
   ) {
@@ -925,9 +992,10 @@ function recordTrialPlanRejection(attempt, error) {
   }
 }
 
-function recordTrialPlanSuccess(attempt) {
+function recordTrialPlanSuccess(attempt, committedPlanHash) {
   try {
     attempt.telemetry.successfulWriteCount += 1;
+    attempt.telemetry.committedPlanHash = committedPlanHash;
     writeTrialPlanAttemptTelemetry(attempt.paths, attempt.telemetry);
   } finally {
     rmSync(attempt.paths.lockPath, { force: true });
@@ -1010,6 +1078,11 @@ const caseSchema = tool.schema.object({
       }),
     )
     .max(CONTRACT.limits.fixturesPerCase),
+  generatedInputPaths: tool.schema
+    .array(tool.schema.string())
+    .max(CONTRACT.limits.generatedInputPathsPerCase)
+    .optional()
+    .describe("Files the targeted closure must generate before consuming them as downstream inputs; the Host does not pre-seed them and requires exact file-equals evidence."),
   expectations: tool.schema
     .array(expectationSchema)
     .min(1)
@@ -1020,6 +1093,7 @@ function commitTrialPlanDraft(input) {
   const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
   const planPath =
     input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
+  let committedPlanHash;
   try {
     const draft = attempt.draft;
     const plan = {
@@ -1043,10 +1117,11 @@ function commitTrialPlanDraft(input) {
     const tempPath = planPath + '.' + randomUUID() + '.tmp';
     writeFileSync(tempPath, serialized, 'utf8');
     renameSync(tempPath, planPath);
+    committedPlanHash = createHash('sha256').update(serialized).digest('hex');
   } catch (error) {
     return recordTrialPlanRejection(attempt, error);
   }
-  recordTrialPlanSuccess(attempt);
+  recordTrialPlanSuccess(attempt, committedPlanHash);
   return JSON.stringify(
     {
       path: relative(input.root, planPath).replaceAll(String.fromCharCode(92), '/'),

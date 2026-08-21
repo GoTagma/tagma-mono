@@ -14,11 +14,12 @@ import {
 import { sameFilesystemPathCoordinate } from '../shared/filesystem-paths.js';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 4,
+  version: 5,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,
     fixturesPerCase: 24,
+    generatedInputPathsPerCase: 24,
     expectationsPerCase: 32,
     fixtureBytes: 64 * 1024,
     totalFixtureBytes: 256 * 1024,
@@ -72,6 +73,8 @@ const TRIAL_PLAN_VERSION = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.version;
 const MAX_PLAN_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.planBytes;
 const MAX_CASES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.cases;
 const MAX_FIXTURES_PER_CASE = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.fixturesPerCase;
+const MAX_GENERATED_INPUT_PATHS_PER_CASE =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.generatedInputPathsPerCase;
 const MAX_EXPECTATIONS_PER_CASE = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.expectationsPerCase;
 const MAX_FIXTURE_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.fixtureBytes;
 const MAX_TOTAL_FIXTURE_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.totalFixtureBytes;
@@ -149,6 +152,8 @@ export interface ChatPipelineTrialPlanCase {
   runs: number;
   targetTaskIds: string[];
   fixtures: ChatPipelineTrialFixture[];
+  /** Files the targeted closure must generate before consuming them as downstream inputs. */
+  generatedInputPaths?: string[];
   expectations: ChatPipelineTrialExpectation[];
 }
 
@@ -200,6 +205,7 @@ export interface ChatPipelineTrialPlanToolTelemetry {
   validationRejectionCount: number;
   repeatedValidationRejectionCount: number;
   successfulWriteCount: number;
+  committedPlanHash: string | null;
   firstAttemptAt: number | null;
   lastAttemptAt: number | null;
   elapsedMs: number;
@@ -223,6 +229,7 @@ function emptyTrialPlanToolTelemetry(
     validationRejectionCount: 0,
     repeatedValidationRejectionCount: 0,
     successfulWriteCount: 0,
+    committedPlanHash: null,
     firstAttemptAt: null,
     lastAttemptAt: null,
     elapsedMs: 0,
@@ -297,6 +304,14 @@ export function readChatPipelineTrialPlanToolTelemetry(
   if (validationRejectionCount + successfulWriteCount !== toolAttemptCount) {
     throw new Error('Trial plan tool telemetry counters are inconsistent.');
   }
+  const committedPlanHash = raw.committedPlanHash;
+  if (
+    (successfulWriteCount === 0 && committedPlanHash !== null) ||
+    (successfulWriteCount > 0 &&
+      (typeof committedPlanHash !== 'string' || !/^[0-9a-f]{64}$/.test(committedPlanHash)))
+  ) {
+    throw new Error('Trial plan committed hash telemetry is invalid.');
+  }
   if (!Array.isArray(raw.rejections)) throw new Error('Trial plan rejection telemetry is invalid.');
   const rejections = raw.rejections.map((value, index) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -345,6 +360,7 @@ export function readChatPipelineTrialPlanToolTelemetry(
     validationRejectionCount,
     repeatedValidationRejectionCount,
     successfulWriteCount,
+    committedPlanHash: committedPlanHash as string | null,
     firstAttemptAt,
     lastAttemptAt,
     elapsedMs:
@@ -519,6 +535,10 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
   throw new Error(`${label}.type is unsupported.`);
 }
 
+function relativeFilePathsOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
 function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
   const label = `cases[${index}]`;
   const raw = asRecord(value, label);
@@ -545,6 +565,38 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
   if (new Set(fixturePaths).size !== fixturePaths.length) {
     throw new Error(label + '.fixtures must not write the same path twice.');
   }
+  if (
+    fixturePaths.some((path, index) =>
+      fixturePaths.slice(0, index).some((candidate) => relativeFilePathsOverlap(path, candidate)),
+    )
+  ) {
+    throw new Error(`${label}.fixtures must not write overlapping file paths.`);
+  }
+  const generatedInputPaths = asArray(
+    raw.generatedInputPaths ?? [],
+    `${label}.generatedInputPaths`,
+    MAX_GENERATED_INPUT_PATHS_PER_CASE,
+  ).map((path, pathIndex) =>
+    normalizeRelativeCasePath(path, `${label}.generatedInputPaths[${pathIndex}]`),
+  );
+  const normalizedGeneratedInputPaths = generatedInputPaths.map((path) => path.toLowerCase());
+  if (new Set(normalizedGeneratedInputPaths).size !== normalizedGeneratedInputPaths.length) {
+    throw new Error(`${label}.generatedInputPaths must not name the same path twice.`);
+  }
+  if (normalizedGeneratedInputPaths.some((path) => fixturePaths.includes(path))) {
+    throw new Error(`${label}.generatedInputPaths must not also be pre-seeded through fixtures.`);
+  }
+  if (
+    normalizedGeneratedInputPaths.some(
+      (path, index) =>
+        fixturePaths.some((candidate) => relativeFilePathsOverlap(path, candidate)) ||
+        normalizedGeneratedInputPaths
+          .slice(0, index)
+          .some((candidate) => relativeFilePathsOverlap(path, candidate)),
+    )
+  ) {
+    throw new Error(`${label}.generatedInputPaths must not overlap fixtures or each other.`);
+  }
   const expectations = asArray(
     raw.expectations,
     `${label}.expectations`,
@@ -553,6 +605,18 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     parseExpectation(item, `${label}.expectations[${expectationIndex}]`),
   );
   if (expectations.length === 0) throw new Error(`${label}.expectations must not be empty.`);
+  const generatedInputExpectationPaths = new Set(
+    expectations.flatMap((expectation) =>
+      expectation.type === 'file-equals' ? [expectation.path.toLowerCase()] : [],
+    ),
+  );
+  for (const generatedInputPath of normalizedGeneratedInputPaths) {
+    if (!generatedInputExpectationPaths.has(generatedInputPath)) {
+      throw new Error(
+        `${label}.generatedInputPaths requires a file-equals expectation for ${generatedInputPath}.`,
+      );
+    }
+  }
   const targetTaskIds = [
     ...new Set(
       asArray(raw.targetTaskIds, `${label}.targetTaskIds`, 32).map((item, taskIndex) => {
@@ -576,14 +640,31 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     runs: raw.runs === undefined ? 1 : asInteger(raw.runs, `${label}.runs`, 1, 3),
     targetTaskIds,
     fixtures,
+    generatedInputPaths,
     expectations,
   };
 }
 
-function hasDuplicateFixtureBasenames(cases: ChatPipelineTrialPlanCase[]): boolean {
+interface ChatPipelineTrialInputEvidence {
+  path: string;
+  content: string;
+}
+
+function inputEvidence(testCase: ChatPipelineTrialPlanCase): ChatPipelineTrialInputEvidence[] {
+  const generated = (testCase.generatedInputPaths ?? []).flatMap((path) => {
+    const expectation = testCase.expectations.find(
+      (candidate) =>
+        candidate.type === 'file-equals' && candidate.path.toLowerCase() === path.toLowerCase(),
+    );
+    return expectation?.type === 'file-equals' ? [{ path, content: expectation.text }] : [];
+  });
+  return [...testCase.fixtures, ...generated];
+}
+
+function hasDuplicateInputBasenames(cases: ChatPipelineTrialPlanCase[]): boolean {
   return cases.some((item) => {
-    const basenames = item.fixtures.map(
-      (fixture) => fixture.path.split('/').at(-1)?.toLowerCase() ?? '',
+    const basenames = inputEvidence(item).map(
+      (input) => input.path.split('/').at(-1)?.toLowerCase() ?? '',
     );
     return new Set(basenames).size !== basenames.length;
   });
@@ -645,19 +726,21 @@ function validateJsonArtifactExpectations(cases: ChatPipelineTrialPlanCase[]): v
 }
 
 function coverageEvidenceHint(dimension: ChatPipelineTrialCoverageDimension): string {
-  if (dimension === 'multiple-inputs') return 'needs at least two fixtures in the linked case';
+  if (dimension === 'multiple-inputs')
+    return 'needs at least two pre-seeded or pipeline-generated inputs in the linked case';
   if (dimension === 'duplicate-input-names')
-    return 'needs same-basename fixtures in different folders';
-  if (dimension === 'multiline-content') return 'needs a fixture containing a newline';
+    return 'needs same-basename pre-seeded or pipeline-generated inputs in different folders';
+  if (dimension === 'multiline-content')
+    return 'needs a pre-seeded or pipeline-generated input containing a newline';
   if (dimension === 'inter-task-output-collision')
     return 'needs at least two target task ids plus distinct-output expectations';
   if (dimension === 'repeat-run-output-collision')
-    return 'needs runs >= 2 plus distinct-output expectations';
+    return 'cannot be covered without run-scoped artifact evidence';
   if (dimension === 'repeat-run') return 'needs runs >= 2';
   if (dimension === 'empty-content')
-    return 'needs an empty fixture plus a file-equals expectation with empty expected text';
+    return 'needs an empty pre-seeded or pipeline-generated input with exact file evidence';
   if (dimension === 'special-characters')
-    return 'needs a fixture containing a non-ASCII or non-alphanumeric character';
+    return 'needs a pre-seeded or pipeline-generated input containing a non-ASCII or non-alphanumeric character';
   return 'needs concrete linked-case evidence';
 }
 
@@ -673,20 +756,20 @@ function validateCoveredCaseEvidence(
       .filter((item): item is ChatPipelineTrialPlanCase => !!item);
     let evidenced = true;
     if (entry.dimension === 'multiple-inputs') {
-      evidenced = linkedCases.some((item) => item.fixtures.length >= 2);
+      evidenced = linkedCases.some((item) => inputEvidence(item).length >= 2);
     } else if (entry.dimension === 'duplicate-input-names') {
-      evidenced = hasDuplicateFixtureBasenames(linkedCases);
+      evidenced = hasDuplicateInputBasenames(linkedCases);
     } else if (entry.dimension === 'multiline-content') {
       evidenced = linkedCases.some((item) =>
-        item.fixtures.some((fixture) => fixture.content.includes(String.fromCharCode(10))),
+        inputEvidence(item).some((input) => input.content.includes(String.fromCharCode(10))),
       );
     } else if (entry.dimension === 'inter-task-output-collision') {
       evidenced = linkedCases.some(
         (item) => item.targetTaskIds.length >= 2 && hasDistinctOutputExpectation([item]),
       );
     } else if (entry.dimension === 'repeat-run-output-collision') {
-      evidenced = linkedCases.some(
-        (item) => item.runs >= 2 && hasDistinctOutputExpectation([item]),
+      throw new Error(
+        'trial plan coverage repeat-run-output-collision cannot be covered without run-scoped artifact evidence; the harness checks artifact expectations only after the final run. Use accepted-risk, blocked, or not-applicable.',
       );
     } else if (entry.dimension === 'concurrent-run-output-collision') {
       throw new Error(
@@ -697,15 +780,15 @@ function validateCoveredCaseEvidence(
     } else if (entry.dimension === 'empty-content') {
       evidenced = linkedCases.some(
         (item) =>
-          item.fixtures.some((fixture) => fixture.content.length === 0) &&
+          inputEvidence(item).some((input) => input.content.length === 0) &&
           item.expectations.some(
             (expectation) => expectation.type === 'file-equals' && expectation.text.length === 0,
           ),
       );
     } else if (entry.dimension === 'special-characters') {
       evidenced = linkedCases.some((item) =>
-        item.fixtures.some((fixture) =>
-          [...fixture.content].some((character) => {
+        inputEvidence(item).some((input) =>
+          [...input.content].some((character) => {
             const codePoint = character.codePointAt(0) ?? 0;
             return (
               codePoint > 127 || (character.trim().length > 0 && !/[A-Za-z0-9]/.test(character))
@@ -1033,6 +1116,7 @@ export function readChatPipelineTrialPlan(
   maxAttempts = DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   pipelineConfig?: PipelineConfig,
   workDir?: string,
+  authenticatedPlanHash?: string | null,
 ): ChatPipelineTrialPlanReadResult {
   if (!isValidChatPipelineTrialPlanAttempts(maxAttempts)) {
     throw new Error('Trial plan max attempts is invalid.');
@@ -1101,10 +1185,24 @@ export function readChatPipelineTrialPlan(
         maxAttempts,
       );
     }
+    const planHash = createHash('sha256').update(content).digest('hex');
+    const committedPlanHash =
+      authenticatedPlanHash === undefined
+        ? readChatPipelineTrialPlanToolTelemetry(stagedYamlPath, maxAttempts).committedPlanHash
+        : authenticatedPlanHash;
+    if (committedPlanHash !== planHash) {
+      return planRequest(
+        'invalid',
+        relativeYamlPath,
+        pipelineHash,
+        'The trial plan was not committed by the host-authorized trial plan tool for this exact content.',
+        maxAttempts,
+      );
+    }
     return {
       status: 'ready',
       plan,
-      planHash: createHash('sha256').update(content).digest('hex'),
+      planHash,
     };
   } catch (err) {
     return planRequest(

@@ -4,20 +4,23 @@
 //
 // Runs once before /api/run/start launches the engine. Reads the sibling
 // `*.requirements.md` for the workspace's pipeline YAML, parses its
-// frontmatter, then probes every declared binary against PATH and every
-// declared `required: true` env var against process.env. Returns the union of
+// frontmatter, then probes every declared external binary against PATH,
+// resolves Tagma-managed driver binaries through their runtime resolver, and
+// checks every declared `required: true` env var against process.env. Returns the union of
 // what's missing so the editor can surface it (and the install snippets from
 // the requirements body) before tasks start failing with cryptic ENOENTs.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import {
+  isTagmaManagedDriverBinary,
   parseRequirementsMd,
   requirementsPath,
   runRequirementsSync,
   type RequirementsBinary,
   type RequirementsEnvVar,
 } from './requirements-sync.js';
+import { resolveOpencodeBinary } from './opencode-lifecycle.js';
 
 export interface PreflightMissing {
   readonly binaries: readonly string[];
@@ -90,6 +93,23 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
+function probeRequirementBinary(
+  requirement: RequirementsBinary,
+  options: PreflightOptions,
+): boolean {
+  if (isTagmaManagedDriverBinary(requirement)) {
+    try {
+      const resolved = resolveOpencodeBinary();
+      return resolved.includes('/') || resolved.includes('\\')
+        ? existsSync(resolved)
+        : probeBinary(resolved, options);
+    } catch {
+      return false;
+    }
+  }
+  return probeBinary(requirement.name, options);
+}
+
 export function probeEnvVar(name: string): boolean {
   return typeof process.env[name] === 'string' && process.env[name]!.length > 0;
 }
@@ -150,7 +170,7 @@ export function runPreflight(yamlPath: string, options: PreflightOptions = {}): 
   const missingBinaryRequirements: RequirementsBinary[] = [];
   for (const b of binaries) {
     if (!b || typeof b.name !== 'string') continue;
-    if (!probeBinary(b.name, options)) {
+    if (!probeRequirementBinary(b, options)) {
       missingBinaries.push(b.name);
       missingBinaryRequirements.push({
         ...b,

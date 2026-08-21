@@ -106,6 +106,10 @@ import {
 import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
+import {
+  CREATE_NEW_PIPELINE_ACTION_KIND,
+  createNewPipelineRequestedActionLines,
+} from '../../shared/requested-action.js';
 import { TRIAL_STREAM_EVIDENCE_BYTES } from '../../shared/chat-pipeline-trial-evidence.js';
 import {
   acquireChatYamlEditLock,
@@ -1580,6 +1584,15 @@ export function buildChatYamlRepairPrompt(
 ): string {
   const trialRun = evidence.kind === 'trial-run';
   const resultTag = trialRun ? 'trial-run-result' : 'compile-result';
+  const trialPlanRepairAttemptId = trialRun
+    ? evidence.result.trialPlanRepairAttemptId?.trim()
+    : undefined;
+  if (
+    trialPlanRepairAttemptId !== undefined &&
+    !/^[A-Za-z0-9_-]{1,128}$/.test(trialPlanRepairAttemptId)
+  ) {
+    throw new Error('Trial repair received an invalid host-issued Trial Plan attempt ID.');
+  }
   return [
     '<tagma-internal>',
     `Automatic pipeline ${trialRun ? 'trial-run' : 'compile'} repair attempt ${attempt}/${maxAttempts}.`,
@@ -1594,6 +1607,17 @@ export function buildChatYamlRepairPrompt(
     trialRun
       ? 'Items marked diagnostic-only are context, not mutation authority, and must never be repaired by weakening or redirecting the pipeline. Change only defects covered by pipeline-change-allowed evidence.'
       : 'Keep the sibling requirements companion consistent with the repaired YAML.',
+    ...(trialRun
+      ? trialPlanRepairAttemptId
+        ? [
+            `Host trial-plan repair attempt ID: ${trialPlanRepairAttemptId}`,
+            'If the reproduction proves that a Trial Plan fixture or expectation is wrong rather than the pipeline, delegate that plan-only correction to the trial planner. Do not edit the plan through filesystem tools.',
+            `Pass attempt_id="${trialPlanRepairAttemptId}" on every tagma_trial_plan call in that physical turn.`,
+          ]
+        : [
+            'The Host did not authorize a Trial Plan revision for this turn. Do not call tagma_trial_plan or edit the plan file; repair only an evidenced pipeline artifact defect.',
+          ]
+      : []),
     'If a YAML change adds, removes, or redirects environment variables, commands, tools, paths, services, or prerequisites, update the sibling .requirements.md in the same continuation.',
     'The host runs another verification only after a material staged artifact change (YAML, layout, requirements, or trial plan). A report-only response with no such change ends this repair chain and preserves the failure instead of consuming another attempt.',
     '',
@@ -1644,7 +1668,7 @@ export function buildChatYamlTrialPlanPrompt(
         ]
       : []),
     'Fixture and expectation paths are relative to the isolated case project root and may target only fixtures or outputs; never assert staged YAML or its companion artifacts: .compile.log, .layout.json, .manifest.json, .requirements.md, or .trial-plan.json.',
-    'Inter-task collision coverage requires at least two target task ids plus distinct output assertions. Repeat-run collision coverage requires at least two runs plus distinct output assertions.',
+    'Inter-task collision needs two target task ids and outputs. repeat-run-output-collision must never be marked covered; use accepted-risk/blocked/not-applicable. repeat-run needs 2+ runs and task-status evidence.',
     'The host harness is sequential, so concurrent-run-output-collision must never be marked covered. Use accepted-risk for a known unverified concurrency risk, blocked for a required observation the harness cannot make, or not-applicable only when concurrent writers are genuinely outside the design.',
     'For file workflows, include same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a marker from a later paragraph so fixed output names and single-line parsing fail visibly.',
     'Use file-equals for exact text preservation and an empty expected string when empty-content is covered. If no deterministic artifact can assert a required dimension, record a blocking pipeline-artifact finding naming it.',
@@ -4403,6 +4427,17 @@ async function promptOpencode(
   if (inheritedSnapshot && inheritedSnapshot.workDir !== workspaceKeyAtStart) {
     throw new ChatWorkspaceChangedError();
   }
+  const requestedAction =
+    !opts.internal &&
+    !inheritedSnapshot &&
+    createNewPipelineRequestedActionLines(text, {
+      currentPipelineIsManualNewDraft: sameFilesystemPathCoordinate(
+        pipeline.manualNewPipelineYamlPath,
+        pipeline.yamlPath,
+      ),
+    }).length > 0
+      ? CREATE_NEW_PIPELINE_ACTION_KIND
+      : null;
   // Capture pipeline identity and the local edit revision synchronously. The
   // async lock, save, bootstrap, and stage setup can all take long enough for
   // the user to switch pipelines or make another edit.
@@ -4545,7 +4580,11 @@ async function promptOpencode(
     if (!preSendSnapshot && initialEditorBaseline) {
       if (!lockLease) throw new Error('The OpenCode YAML lock was lost before staging.');
       const stage = await withYamlEditLockRequestBypass(lockLease.id, () =>
-        api.startChatYamlStage(initialEditorBaseline.activePath, lockLease!.workspaceKey),
+        api.startChatYamlStage(
+          initialEditorBaseline.activePath,
+          lockLease!.workspaceKey,
+          requestedAction,
+        ),
       );
       createdStageHere = { id: stage.id, workspaceKey: lockLease.workspaceKey };
       preSendSnapshot = {

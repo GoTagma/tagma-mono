@@ -524,6 +524,7 @@ function compactTrial(value: unknown): UnknownRecord | null {
     taskStatusCounts: trial.taskStatusCounts ?? null,
     omittedTaskStatusCounts: trial.omittedTaskStatusCounts ?? null,
     repairAuthorization: trial.repairAuthorization ?? null,
+    trialPlanRepairAttemptId: conciseText(trial.trialPlanRepairAttemptId, 128),
     prerequisiteState: compactPrerequisiteState(trial.prerequisiteState),
     trialMode: trial.trialMode ?? null,
     trialabilityReport: compactTrialabilityReport(trial.trialabilityReport),
@@ -630,13 +631,58 @@ function cleanPageHref(rawHref: string): string {
   }
 }
 
-function backgroundSessionSummaries(chat: UnknownRecord): UnknownRecord[] {
+function backgroundSessionRecency(state: UnknownRecord, yamlResult: UnknownRecord): number {
+  const postChatYamlAction = record(state.postChatYamlAction);
+  if (
+    state.sending === true ||
+    state.flushing === true ||
+    (Array.isArray(state.pendingPermissions) && state.pendingPermissions.length > 0) ||
+    (Array.isArray(state.queuedMessages) && state.queuedMessages.length > 0) ||
+    Object.keys(postChatYamlAction).length > 0
+  ) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const postChatProgress = record(postChatYamlAction.progress);
+  const resultProgress = record(yamlResult.progress);
+  return Math.max(
+    finiteNumber(state.lastActivityAt) ?? Number.NEGATIVE_INFINITY,
+    finiteNumber(state.turnStartedAt) ?? Number.NEGATIVE_INFINITY,
+    finiteNumber(postChatYamlAction.completedAt) ?? Number.NEGATIVE_INFINITY,
+    finiteNumber(postChatProgress.startedAt) ?? Number.NEGATIVE_INFINITY,
+    finiteNumber(yamlResult.completedAt) ?? Number.NEGATIVE_INFINITY,
+    finiteNumber(resultProgress.startedAt) ?? Number.NEGATIVE_INFINITY,
+  );
+}
+
+function backgroundSessionSummaries(chat: UnknownRecord): {
+  sourceCount: number;
+  summaries: UnknownRecord[];
+} {
   const currentSessionId = typeof chat.currentSessionId === 'string' ? chat.currentSessionId : null;
   const states = record(chat.sessionStates);
-  return Object.entries(states)
-    .filter(([sessionId]) => sessionId !== currentSessionId)
-    .map(([sessionId, rawState]) => {
-      const state = record(rawState);
+  const sessionYamlResults = record(chat.sessionYamlResults);
+  const backgroundSessionIds = [
+    ...new Set([...Object.keys(states), ...Object.keys(sessionYamlResults)]),
+  ].filter((sessionId) => sessionId !== currentSessionId);
+  const returnedSessionIds = backgroundSessionIds
+    .map((sessionId, insertionIndex) => ({
+      sessionId,
+      insertionIndex,
+      recency: backgroundSessionRecency(
+        record(states[sessionId]),
+        record(sessionYamlResults[sessionId]),
+      ),
+    }))
+    .sort((left, right) => {
+      if (left.recency !== right.recency) return left.recency < right.recency ? -1 : 1;
+      return left.insertionIndex - right.insertionIndex;
+    })
+    .slice(-MAX_CHAT_SESSIONS)
+    .map((item) => item.sessionId);
+  return {
+    sourceCount: backgroundSessionIds.length,
+    summaries: returnedSessionIds.map((sessionId) => {
+      const state = record(states[sessionId]);
       return {
         sessionId,
         sending: state.sending === true,
@@ -645,8 +691,11 @@ function backgroundSessionSummaries(chat: UnknownRecord): UnknownRecord[] {
           ? state.pendingPermissions.length
           : 0,
         queuedMessageCount: Array.isArray(state.queuedMessages) ? state.queuedMessages.length : 0,
+        postChatYamlActionSummary: compactSessionYamlResult(state.postChatYamlAction),
+        sessionYamlResultSummary: compactSessionYamlResult(sessionYamlResults[sessionId] ?? null),
       };
-    });
+    }),
+  };
 }
 
 export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnapshotInput) {
@@ -674,6 +723,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
   const summarizedValidation = validationSummary(pipeline.validationErrors);
   const summarizedTasks = taskStatusSummaries(run.tasks);
   const summarizedApprovals = pendingApprovalSummaries(run.pendingApprovals);
+  const summarizedBackgroundSessions = backgroundSessionSummaries(chat);
 
   return sanitizeDiagnosticValue(
     {
@@ -700,7 +750,25 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
           truncated: sourceSessions.length > sessions.length,
           omittedSessionCount: Math.max(0, sourceSessions.length - sessions.length),
         },
-        backgroundSessions: backgroundSessionSummaries(chat),
+        backgroundSessions: summarizedBackgroundSessions.summaries,
+        backgroundSessionCount: summarizedBackgroundSessions.sourceCount,
+        returnedBackgroundSessionCount: summarizedBackgroundSessions.summaries.length,
+        omittedBackgroundSessionCount: Math.max(
+          0,
+          summarizedBackgroundSessions.sourceCount - summarizedBackgroundSessions.summaries.length,
+        ),
+        backgroundSessionEvidence: {
+          layer: 'renderer-diagnostics-background-session-window',
+          limit: MAX_CHAT_SESSIONS,
+          truncated:
+            summarizedBackgroundSessions.sourceCount >
+            summarizedBackgroundSessions.summaries.length,
+          omittedBackgroundSessionCount: Math.max(
+            0,
+            summarizedBackgroundSessions.sourceCount -
+              summarizedBackgroundSessions.summaries.length,
+          ),
+        },
         messages,
         messageSummaries: summarizedMessages,
         messageCount,

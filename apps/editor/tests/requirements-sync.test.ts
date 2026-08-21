@@ -381,6 +381,37 @@ test('extractBinariesFromYaml ignores raw single-line PowerShell command stateme
   expect(binaries!.map((binary) => binary.name)).toEqual([]);
 });
 
+test('extractBinariesFromYaml ignores PowerShell hashtable fields in folded single-line commands', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'folded-powershell-hashtables.yaml',
+    [
+      'pipeline:',
+      '  name: Folded PowerShell hashtables',
+      '  tracks:',
+      '    - id: ingest',
+      '      name: Ingest',
+      '      tasks:',
+      '        - id: locate_input',
+      '          command: >-',
+      "            $all = Get-ChildItem -Path 'input' -Recurse -File; $sel = $all | Select-Object -First 1; $base = (Get-Location).Path; $rel =",
+      "            $sel.FullName.Substring($base.Length + 1); $meta = @{ 'input_path' = $rel; 'input_name' = $sel.Name;",
+      "            'input_ext' = $sel.Extension }; $j = $meta | ConvertTo-Json -Compress; Write-Output $j",
+      '        - id: extract_text',
+      '          command: >-',
+      "            $m = Get-Content -Path 'work/input-manifest.json' | ConvertFrom-Json; $raw = Get-Content -Path",
+      "            $m.input_path -Raw; $p = @{ 'source' = $m.input_name; 'text' = $raw }; $j = $p | ConvertTo-Json",
+      '            -Compress; Write-Output $j',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual([]);
+});
+
 test('extractBinariesFromYaml still detects real binaries inside raw PowerShell one-liners', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(

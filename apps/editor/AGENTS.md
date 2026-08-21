@@ -290,7 +290,10 @@
   staged mutation, adopt in place when the live and renderer branches still match base; fork only
   for a real conflicting branch or a compile-failure preservation path. Switching the visible
   canvas is navigation, not a path-moved conflict. A genuinely new staged pipeline is created
-  normally unless its destination already exists.
+  normally unless its destination already exists. For an explicit create-new Chat turn, reserve a
+  unique nonexistent staged `current-file` before prompting and persist that intent in authenticated
+  stage metadata; finalize may publish only that target and must reject edits to copied existing
+  pipelines.
 - Chat pipeline Trial is fail-closed and default-off. `opencodeChatTrialRunEnabled` plus its
   current server-stamped consent authorizes Sandbox Trial only. Live Smoke Test is a separate,
   default-off setting with its own current consent, and is effective only while Sandbox Trial is
@@ -327,7 +330,10 @@
   planner continuation one host-issued attempt ID and require that exact ID on every tool operation.
   At most one `commit` for an ID may consume the budget; a repeated `begin` or `commit` in the
   same physical continuation must be rejected without incrementing counters. Only a later host
-  continuation with a fresh ID may consume the next attempt. Accumulate prompts, tool attempts,
+  continuation with a fresh ID may consume the next attempt. When an executed Trial failure allows
+  pipeline repair and the plan budget remains, issue that next ID before the generic repair turn and
+  include it in the repair prompt so a delegated planner can correct bad fixtures/expectations; when
+  no ID is issued, the prompt must explicitly forbid Trial Plan mutation. Accumulate prompts, tool attempts,
   rejections, elapsed time, and
   unique assistant token/cost evidence across repair revisions. Never publish the plan file.
   Generate the tool's enums and limits from the authoritative host contract, expose discriminated
@@ -680,7 +686,9 @@
   `.tagma/opencode.json`; that host-only event is inside Trial's real-workspace witness scope and
   would be misclassified as an isolated case leak.
 - Command tasks remain host commands and must keep their normal PATH resolution, even when the
-  command itself invokes `opencode`.
+  command itself invokes `opencode`. Requirements and preflight must keep that PATH-owned entry
+  separate from a prompt task's `fromDriver: opencode` entry: the latter resolves through
+  `resolveOpencodeBinary()` and the managed driver witness, never through an unrelated PATH probe.
 - The sidecar-private Workspace Runtime uses the Native Broker by default. Treat
   `TAGMA_WORKSPACE_RUNTIME=legacy` only as an explicit rollback choice: snapshot the mode once at
   the start of each pipeline, workflow, or Trial run and pass that value to every runtime created
@@ -753,9 +761,11 @@
   which must only emit tokens that can be PATH-resolvable bare command names: filter shell
   control words plus PowerShell keywords, curated cmdlets, `$`/`@` expressions (including
   parenthesized forms like `($null ...)` or `(-not ...)`), `Type::Member` access, stranded
-  dash flags, and path-shaped tokens unconditionally — do not gate PowerShell filtering on
-  spotting a `powershell`/`pwsh` prefix, because authored one-liners are routinely raw
-  PowerShell. Keep discovering real external commands elsewhere in the same line.
+  dash flags, path-shaped tokens, and assignment/hashtable keys immediately followed by `=`
+  unconditionally — do not gate PowerShell filtering on spotting a `powershell`/`pwsh` prefix,
+  because authored one-liners are routinely raw PowerShell. A semicolon inside `@{ ... }` is not
+  evidence that the following field name is a new command. Keep discovering real external commands
+  elsewhere in the same line.
 - Multiple live `RunSession`s in one workspace are for distinct YAML sources. An equivalent request
   for the same normalized YAML while its session is running or waiting must return that session's
   `runId` with `alreadyRunning`; reject a different config/target request with 409, and allow a new
@@ -799,6 +809,12 @@
 - Diagnostics sanitization must detect cycles against the active recursion path, not all objects
   visited during traversal. Repeated references in an acyclic object graph must serialize in every
   location; only ancestor back-references become `__circular`.
+- Background Chat diagnostics must carry the same compact, bounded pipeline-action and durable
+  result summaries as the current session. Build the background id set from both transient
+  `sessionStates` and durable `sessionYamlResults`, so switching conversations cannot hide a
+  completed Trial/finalize outcome from read-only monitoring. When the bounded window is full,
+  retain active and most-recently completed/updated sessions rather than relying on object-key
+  insertion order.
 - Preserve the stable manifest/context/log/session-history protocol when adding coverage. Put
   feature-specific state under the contributor `features` namespace instead of coupling it into
   the diagnostics bridge or route. Keep diagnostics isolation, contributor, auth-boundary, and
@@ -871,6 +887,12 @@
 ## Chat Trial Plan Semantics
 
 - Blocked coverage is a diagnostic-only observation limit, never a pipeline defect: it must not fail the trial plan, only surface as a non-fatal `passed-with-warnings` warning. Only `blocking` findings block the plan.
+- A self-contained pipeline may generate deterministic files that downstream tasks consume. Express
+  those as `generatedInputPaths`, never as dummy `fixtures`: the Host does not pre-seed them,
+  requires a same-path exact `file-equals` assertion, and counts their asserted bytes as
+  input-boundary coverage. All fixture and generated-input file destinations must be pairwise
+  non-overlapping, including parent/child paths that cannot both be files. Bump both the Trial
+  Plan contract and signed Trial cache protocol when changing this evidence semantics.
 - A required coverage dimension that cannot be covered because the pipeline persists no deterministic artifact is a fixable verifiability gap: record a `blocking` finding with `repairScope: pipeline-artifact` naming the missing artifact, so the host repair loop can author it. Mark a dimension `blocked` only when no pipeline repair can expose it to the harness.
 - `trialTaskRepairScope` must map managed OpenCode primary-model stream failures (billing/network) to `diagnostic-only` via `isExternalDriverStreamFailure`, never to `pipeline-artifact`; a command task's genuine `exit_nonzero` remains `pipeline-artifact`.
 

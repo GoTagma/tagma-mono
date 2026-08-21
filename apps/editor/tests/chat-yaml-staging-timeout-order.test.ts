@@ -20,6 +20,7 @@ import {
   CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
   CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
 } from '../shared/chat-pipeline-trial-consent';
+import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 type MockResponse = ReturnType<typeof makeRes>;
 type MockRequest = {
@@ -158,7 +159,7 @@ function writeTrialPlan(
     stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify(
       {
-        version: 4,
+        version: 5,
         yamlHash,
         summary: 'Focused trial coverage for async witness ordering.',
         goals: ['Ensure trial authorization witness lifecycle behaves deterministically.'],
@@ -185,6 +186,7 @@ function writeTrialPlan(
     ) + '\n',
     'utf-8',
   );
+  writeAuthenticatedTrialPlanTelemetry(stagedPath);
 }
 
 async function startStage(

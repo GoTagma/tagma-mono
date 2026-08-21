@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { delimiter, dirname, join, relative } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import {
   existsSync,
   mkdirSync,
@@ -31,6 +31,7 @@ import {
   CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
   CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
 } from '../shared/chat-pipeline-trial-consent';
+import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 type MockResponse = ReturnType<typeof makeRes>;
 type MockRequest = {
@@ -74,7 +75,7 @@ function writeTrialPlan(
     planPath,
     JSON.stringify(
       {
-        version: 4,
+        version: 5,
         yamlHash,
         summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
         goals: ['Preserve every logical input without silently overwriting output.'],
@@ -115,6 +116,7 @@ function writeTrialPlan(
     ) + '\n',
     'utf-8',
   );
+  writeAuthenticatedTrialPlanTelemetry(stagedPath);
   return planPath;
 }
 
@@ -139,44 +141,7 @@ function writeTrialPlanTelemetry(
   toolAttemptCount = 2,
   successfulWriteCount = 0,
 ): void {
-  const yamlHash = createHash('sha1').update(readFileSync(stagedPath, 'utf-8')).digest('hex');
-  const agentTagmaDir = dirname(dirname(stagedPath));
-  const relativeYamlPath = relative(agentTagmaDir, stagedPath).replace(/\\/g, '/');
-  const stageRoot = dirname(dirname(agentTagmaDir));
-  const key = createHash('sha256')
-    .update(relativeYamlPath + String.fromCharCode(0) + yamlHash)
-    .digest('hex');
-  const telemetryDir = join(stageRoot, '.trial-plan-telemetry');
-  mkdirSync(telemetryDir, { recursive: true });
-  writeFileSync(
-    join(telemetryDir, `${key}.json`),
-    JSON.stringify({
-      version: 2,
-      yamlHash,
-      relativeYamlPath,
-      attemptIds: Array.from(
-        { length: toolAttemptCount },
-        (_, index) => `fixture-attempt-${index + 1}`,
-      ),
-      toolAttemptCount,
-      validationRejectionCount: toolAttemptCount - successfulWriteCount,
-      repeatedValidationRejectionCount: Math.max(0, toolAttemptCount - successfulWriteCount - 1),
-      successfulWriteCount,
-      firstAttemptAt: 100,
-      lastAttemptAt: 100 + toolAttemptCount * 75,
-      rejections:
-        toolAttemptCount === successfulWriteCount
-          ? []
-          : [
-              {
-                fingerprint: 'a'.repeat(64),
-                count: toolAttemptCount - successfulWriteCount,
-                message: 'invalid plan',
-              },
-            ],
-    }),
-    'utf-8',
-  );
+  writeAuthenticatedTrialPlanTelemetry(stagedPath, toolAttemptCount, successfulWriteCount);
 }
 
 function yamlFor(name: string, prompt: string): string {
@@ -540,6 +505,45 @@ describe('chat YAML staging routes', () => {
       reason: expect.stringContaining('outside this turn'),
     });
 
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('keeps unfinished pre-create-intent stages readable as ordinary edit stages', () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as { id: string; rootDir: string };
+    const path = join(stage.rootDir, 'stage.json');
+    const context = {
+      workspaceTagmaDir: join(ws.workDir, '.tagma'),
+      controlRoot: stage.rootDir,
+      stageId: stage.id,
+      kind: 'stage-metadata' as const,
+    };
+    const saved = readAuthenticatedServerRecordSync<Record<string, unknown>>(path, context);
+    const legacy = { ...saved };
+    delete legacy.requestedAction;
+    delete legacy.createTargetRelativePath;
+    writeAuthenticatedServerRecordSync(path, context, legacy);
+
+    const listRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/list')(
+      request(ws, { stageId: stage.id }, 'chat-lock'),
+      listRes,
+    );
+
+    expect(listRes.statusCode).toBe(200);
+    expect(listRes.body).toMatchObject({
+      requestedAction: null,
+      createTargetRelativePath: null,
+      activeRelativePath: 'pipeline/pipeline.yaml',
+    });
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
@@ -1949,6 +1953,7 @@ describe('chat YAML staging routes', () => {
       success: false,
       kind: 'failed',
       repairAuthorization: 'pipeline-change-allowed',
+      trialPlanRepairAttemptId: expect.stringMatching(/^trial_plan_repair_[0-9]+_[0-9a-f]{64}$/),
       cases: [
         {
           id: 'invalid-json',
@@ -1968,6 +1973,27 @@ describe('chat YAML staging routes', () => {
         },
       ],
     });
+
+    writeTrialPlanTelemetry(entry.stagedPath, 2, 1);
+    const exhaustedRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'strict_json_output_budget_exhausted',
+        },
+        'chat-lock',
+      ),
+      exhaustedRes,
+    );
+    expect(exhaustedRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      repairAuthorization: 'pipeline-change-allowed',
+    });
+    expect(exhaustedRes.body).not.toHaveProperty('trialPlanRepairAttemptId');
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
@@ -2106,12 +2132,13 @@ describe('chat YAML staging routes', () => {
         'multiple-inputs': 'all-file-boundaries',
         'duplicate-input-names': 'all-file-boundaries',
         'multiline-content': 'all-file-boundaries',
-        'repeat-run-output-collision': 'all-file-boundaries',
         'repeat-run': 'all-file-boundaries',
         'empty-content': 'all-file-boundaries',
         'special-characters': 'all-file-boundaries',
       },
       acceptedRiskBy: {
+        'repeat-run-output-collision':
+          'The harness has no run-scoped artifact evidence for repeated writes.',
         'concurrent-run-output-collision':
           'The host harness verifies repeated sequential writes but does not schedule concurrent writers.',
       },
@@ -3852,7 +3879,7 @@ describe('chat YAML staging routes', () => {
     expect(first.body).toMatchObject({
       success: false,
       kind: 'failed',
-      repairAuthorization: 'pipeline-change-allowed',
+      repairAuthorization: 'diagnostic-only',
       ran: true,
     });
     const failedBaselineTask = (
@@ -3863,6 +3890,7 @@ describe('chat YAML staging routes', () => {
           status: string;
           exitCode: number | null;
           failureKind: string | null;
+          repairScope: string | null;
           stderr: string;
         }>;
       }
@@ -3871,6 +3899,7 @@ describe('chat YAML staging routes', () => {
       status: 'failed',
       exitCode: 7,
       failureKind: 'exit_nonzero',
+      repairScope: 'diagnostic-only',
       stderr: 'trial assertion failed',
     });
     expect(JSON.stringify(first.body)).not.toContain('json-secret');
@@ -3886,7 +3915,16 @@ describe('chat YAML staging routes', () => {
     const third = await runTrial();
 
     expect(third.body).not.toEqual(first.body);
-    expect(readFileSync(counterPath, 'utf-8')).toBe('2');
+    expect(third.body).toMatchObject({
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      planRequest: {
+        reason: 'invalid',
+        message: expect.stringContaining('host-authorized trial plan tool'),
+      },
+    });
+    expect(readFileSync(counterPath, 'utf-8')).toBe('1');
     expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: base');
     expect(ws.stateRevision).toBe(0);
 

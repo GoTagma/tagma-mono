@@ -1,2 +1,2 @@
 /** Signed staged-trial cache protocol shared by execution and finalization. */
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 15 as const;
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 17 as const;

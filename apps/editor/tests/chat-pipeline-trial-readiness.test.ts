@@ -55,7 +55,7 @@ function pipelineWithMissingInput(
 
 function trialPlan(fixtures: Array<{ path: string; content: string }>): ChatPipelineTrialPlan {
   return {
-    version: 4,
+    version: 5,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise the missing input through an isolated case.',
     goals: ['Run the selected task and all upstream prerequisites.'],
