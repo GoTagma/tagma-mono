@@ -329,6 +329,78 @@ export function resolveChatPipelineRuntimeReadiness(input: {
   return blockers.length > 0 ? { state: 'blocked', blockers } : { state: 'runnable' };
 }
 
+export interface ChatPipelineTrialMissingBinaryRequirement {
+  readonly name: string;
+  readonly usedBy: readonly string[];
+}
+
+function requirementTaskId(dag: ReturnType<typeof buildDag>, usedBy: string): string | null {
+  if (dag.nodes.has(usedBy)) return usedBy;
+  for (const taskId of dag.nodes.keys()) {
+    if (usedBy.startsWith(`${taskId}.`)) return taskId;
+  }
+  return null;
+}
+
+function targetTaskClosure(
+  dag: ReturnType<typeof buildDag>,
+  targetTaskIds: readonly string[],
+): Set<string> {
+  const closure = new Set<string>();
+  const pending = [...targetTaskIds];
+  while (pending.length > 0) {
+    const taskId = pending.pop()!;
+    if (closure.has(taskId)) continue;
+    closure.add(taskId);
+    const node = dag.nodes.get(taskId);
+    if (node) pending.push(...node.dependsOn);
+  }
+  return closure;
+}
+
+/**
+ * Resolves runtime blockers for one executable target closure. Missing
+ * requirements with task-owned `usedBy` entries block only closures that run
+ * those tasks. Hook, malformed, or otherwise unscoped requirements remain
+ * global blockers. Required environment declarations are currently global
+ * because requirements frontmatter does not carry task ownership for them.
+ */
+export function resolveChatPipelineTargetRuntimeReadiness(input: {
+  pipelineConfig: PipelineConfig;
+  targetTaskIds: readonly string[];
+  missingBinaries: readonly ChatPipelineTrialMissingBinaryRequirement[];
+  missingEnvironment: readonly string[];
+}): Exclude<ChatPipelineTrialReadiness, { state: 'fixture-backed' }> {
+  const dag = buildDag(input.pipelineConfig);
+  const closure = targetTaskClosure(dag, input.targetTaskIds);
+  const blockers: ChatPipelineTrialBlocker[] = input.missingEnvironment.map((name) => ({
+    kind: 'environment' as const,
+    name,
+  }));
+
+  for (const requirement of input.missingBinaries) {
+    const taskIds = requirement.usedBy.map((usedBy) => requirementTaskId(dag, usedBy));
+    const isGlobal = taskIds.length === 0 || taskIds.some((taskId) => taskId === null);
+    if (isGlobal) {
+      blockers.push({ kind: 'binary', name: requirement.name });
+      continue;
+    }
+    for (const taskId of new Set(taskIds.filter((value): value is string => value !== null))) {
+      if (closure.has(taskId)) {
+        blockers.push({ kind: 'binary', name: requirement.name, taskId });
+      }
+    }
+  }
+
+  const unique = new Map<string, ChatPipelineTrialBlocker>();
+  for (const blocker of blockers) {
+    unique.set(`${blocker.kind}:${blocker.name}:${blocker.taskId ?? ''}`, blocker);
+  }
+  return unique.size > 0
+    ? { state: 'blocked', blockers: [...unique.values()] }
+    : { state: 'runnable' };
+}
+
 function targetSelectionRunsTask(
   dag: ReturnType<typeof buildDag>,
   targetTaskIds: readonly string[],

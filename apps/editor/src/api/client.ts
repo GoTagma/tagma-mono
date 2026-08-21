@@ -429,7 +429,11 @@ export interface ChatPipelineTrialabilityReport {
 }
 
 export type ChatPipelineTrialNotRunReason =
-  'aborted' | 'timed-out' | 'workspace-verification-failed' | 'execution-stopped';
+  | 'aborted'
+  | 'timed-out'
+  | 'workspace-verification-failed'
+  | 'prerequisite-unavailable'
+  | 'execution-stopped';
 
 export interface ChatPipelineTrialNotRunCase {
   id: string;

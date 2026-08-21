@@ -95,6 +95,12 @@ test('runPreflight reports missing binaries and required env vars', () => {
   const result = runPreflight(yamlPath);
   expect(result.skipped).toBe(false);
   expect(result.missing.binaries).toEqual(['absolutely-not-a-real-cli-tool-9876543210']);
+  expect(result.missingBinaryRequirements).toEqual([
+    expect.objectContaining({
+      name: 'absolutely-not-a-real-cli-tool-9876543210',
+      usedBy: ['main.x'],
+    }),
+  ]);
   expect(result.missing.envs).toEqual(['TAGMA_PREFLIGHT_DEFINITELY_UNSET']);
   expect(result.envKeys).toEqual(['TAGMA_PREFLIGHT_DEFINITELY_UNSET', 'OPTIONAL_THING']);
   expect(result.requirementsPath).toBe(requirementsPath(yamlPath));
@@ -201,6 +207,35 @@ test('runPreflight refreshes existing stale binaries before probing', () => {
 
   const parsed = parseRequirementsMd(readFileSync(requirementsPath(yamlPath), 'utf-8'));
   expect(parsed.frontmatter?.binaries.map((b) => b.name)).toEqual([knownBinary]);
+});
+
+test('runPreflight does not require PowerShell cmdlets used by output_check', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = join(tagmaDir, 'select-string.yaml');
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: Select-String completion',
+      '  tracks:',
+      '    - id: factcheck',
+      '      name: Fact Check',
+      '      tasks:',
+      '        - id: fact_check',
+      '          prompt: "Check the supplied claims"',
+      '          completion:',
+      '            type: output_check',
+      '            check: \'$m = $input | Select-String -Pattern "verdict" -Quiet; if ($m) { exit 0 } else { exit 1 }\'',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  const result = runPreflight(yamlPath);
+  expect(result.missing.binaries).not.toContain('Select-String');
+
+  const parsed = parseRequirementsMd(readFileSync(requirementsPath(yamlPath), 'utf-8'));
+  expect(parsed.frontmatter?.binaries.map((binary) => binary.name)).toEqual(['opencode']);
 });
 
 test('runPreflight auto-generates the file when missing, then probes', () => {

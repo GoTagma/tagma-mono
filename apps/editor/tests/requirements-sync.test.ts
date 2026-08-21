@@ -328,6 +328,32 @@ test('extractBinariesFromYaml ignores raw single-line PowerShell output_check wi
   expect(binaries!.map((binary) => binary.name)).toEqual(['opencode']);
 });
 
+test('extractBinariesFromYaml ignores Select-String in a raw PowerShell output_check', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'select-string-output-check.yaml',
+    [
+      'pipeline:',
+      '  name: Select-String output check',
+      '  tracks:',
+      '    - id: factcheck',
+      '      name: Fact Check',
+      '      tasks:',
+      '        - id: fact_check',
+      '          prompt: "Check the supplied claims"',
+      '          completion:',
+      '            type: output_check',
+      '            check: \'$m = $input | Select-String -Pattern "verdict" -Quiet; if ($m) { exit 0 } else { exit 1 }\'',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['opencode']);
+});
+
 test('extractBinariesFromYaml ignores raw single-line PowerShell command statements', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(

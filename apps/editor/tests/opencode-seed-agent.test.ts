@@ -548,6 +548,8 @@ test('tagma-pipeline completes a design gate before generating a new pipeline', 
   expect(doc).toContain('create-new and fill-manual-new requests');
   expect(doc).toContain('goal and observable success evidence');
   expect(doc).toContain('task graph and typed dataflow');
+  expect(doc).toContain('Trigger acceptance must match every promised input path or variant');
+  expect(doc).toContain('exact file triggers are not globs or extension sets');
   expect(doc).toContain('Do not write the manifest, call `tagma_yaml_skeleton`, or write YAML');
   expect(doc).toContain('complete this gate in the current worker');
   expect(doc).toContain(
@@ -823,6 +825,19 @@ test('tagma-pipeline agent allows external file and directory trigger watch path
   expect(pipelineDoc).toContain('without reading or writing that external path');
   expect(triggerSkill).toContain('file/directory trigger watch paths may be absolute');
   expect(contractSkill).toContain('file/directory trigger watch paths may be absolute');
+});
+
+test('trigger strategy keeps exact trigger paths aligned with advertised input variants', () => {
+  const triggerSkill = buildTagmaTriggerStrategySkill();
+
+  expect(triggerSkill).toContain('A `file` trigger watches one exact path');
+  expect(triggerSkill).toContain('does not match extensions, globs, or alternate filenames');
+  expect(triggerSkill).toContain(
+    'do not gate several accepted filenames or extensions on one arbitrary canonical file',
+  );
+  expect(triggerSkill).toContain(
+    'the trigger acceptance set must match the input contract described to the user',
+  );
 });
 
 test('tagma authoring contracts define one effective cwd coordinate for built-in paths', () => {

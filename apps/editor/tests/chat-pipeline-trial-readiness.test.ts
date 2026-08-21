@@ -11,6 +11,7 @@ import {
   findUncoveredTrialFixtureInputs,
   resolveChatPipelineDataReadiness,
   resolveChatPipelineRuntimeReadiness,
+  resolveChatPipelineTargetRuntimeReadiness,
 } from '../server/chat-pipeline-trial-readiness';
 import type { ChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
 
@@ -212,6 +213,63 @@ describe('chat pipeline Trial readiness', () => {
         { kind: 'binary', name: 'fact-cli' },
         { kind: 'environment', name: 'FACT_API_KEY' },
       ],
+    });
+  });
+
+  test('scopes missing binaries to target closures while retaining global blockers', () => {
+    const config = {
+      name: 'Scoped runtime requirements',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            { id: 'blocked', name: 'Blocked', command: 'fact-cli run' },
+            {
+              id: 'downstream',
+              name: 'Downstream',
+              command: 'echo downstream',
+              depends_on: ['blocked'],
+            },
+            { id: 'independent', name: 'Independent', command: 'echo independent' },
+          ],
+        },
+      ],
+    } as PipelineConfig;
+    const taskRequirement = {
+      name: 'fact-cli',
+      usedBy: ['main.blocked.completion.output_check'],
+    };
+
+    expect(
+      resolveChatPipelineTargetRuntimeReadiness({
+        pipelineConfig: config,
+        targetTaskIds: ['main.independent'],
+        missingBinaries: [taskRequirement],
+        missingEnvironment: [],
+      }),
+    ).toEqual({ state: 'runnable' });
+    expect(
+      resolveChatPipelineTargetRuntimeReadiness({
+        pipelineConfig: config,
+        targetTaskIds: ['main.downstream'],
+        missingBinaries: [taskRequirement],
+        missingEnvironment: [],
+      }),
+    ).toEqual({
+      state: 'blocked',
+      blockers: [{ kind: 'binary', name: 'fact-cli', taskId: 'main.blocked' }],
+    });
+    expect(
+      resolveChatPipelineTargetRuntimeReadiness({
+        pipelineConfig: config,
+        targetTaskIds: ['main.independent'],
+        missingBinaries: [{ name: 'hook-cli', usedBy: ['hooks.pipeline_start'] }],
+        missingEnvironment: [],
+      }),
+    ).toEqual({
+      state: 'blocked',
+      blockers: [{ kind: 'binary', name: 'hook-cli' }],
     });
   });
 });

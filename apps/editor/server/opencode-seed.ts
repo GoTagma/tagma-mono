@@ -796,7 +796,7 @@ For each new prompt task:
 
 ## Design-Before-Generation Gate
 
-For create-new and fill-manual-new requests, complete this gate in the current worker before the first artifact write. Establish the goal and observable success evidence, task graph and typed dataflow, track/persona boundaries, trigger and permission choices, verification and failure behavior, requirements impact, assumptions, and relevant edge-case hypotheses. Resolve only material ambiguity under Implementation Ambiguity; keep a one-task design proportional. Do not write the manifest, call \`tagma_yaml_skeleton\`, or write YAML until the design is coherent. Make required edge-case behavior Trial-observable: prompt tasks consuming variable or empty input must persist a deterministic JSON artifact for key outputs in a typed \`outputs\` binding.
+For create-new and fill-manual-new requests, complete this gate in the current worker before the first artifact write. Establish the goal and observable success evidence, task graph and typed dataflow, track/persona boundaries, triggers/permissions, verification/failure behavior, requirements, assumptions, and relevant edge cases. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write the manifest, call \`tagma_yaml_skeleton\`, or write YAML until the design is coherent. Make required edge-case behavior Trial-observable: prompt tasks consuming variable or empty input must persist a deterministic JSON artifact for key outputs in a typed \`outputs\` binding.
 
 ## Manifest-Guided YAML Edits
 
@@ -1134,12 +1134,13 @@ The chat authoring agent writes YAML. It does not press the editor Run button, c
 
 1. If the user only wants a normal runnable pipeline, omit task triggers and rely on the editor's Run action.
 2. If a task needs planned approval, use the native manual trigger on that task.
-3. If a task should wait for a local or external file artifact, use the native file trigger.
-4. If a task should wait until a local or external folder is created, use the native directory trigger.
-5. If an external system should start or unblock work, use a webhook or similar trigger only when it appears in the current editor context plugins list.
-6. If the user asks for cron, recurring, delayed, or calendar scheduling, use a schedule/cron trigger only when that installed plugin appears in editor context. If no such plugin is listed, do not invent it; write a manual/file/directory-triggered pipeline and tell the user which trigger capability is missing.
-7. Pair non-trivial triggers with meaningful completion checks. Rely on the workspace task timeout by default; add a shorter trigger timeout only when the user or workflow semantics require one.
-8. file/directory trigger watch paths may be absolute or outside the workspace; authoring the reference is allowed without reading or writing that external path.
+3. A \`file\` trigger watches one exact path; it does not match extensions, globs, or alternate filenames. Use it only when that exact artifact is the authored input contract.
+4. If a task accepts several filenames or extensions, do not gate several accepted filenames or extensions on one arbitrary canonical file. Omit the trigger and rely on Run, use a manual gate, or use a directory trigger only when creation of that directory is the real readiness event. After authoring, the trigger acceptance set must match the input contract described to the user.
+5. If a task should wait until a local or external folder is created, use the native directory trigger.
+6. If an external system should start or unblock work, use a webhook or similar trigger only when it appears in the current editor context plugins list.
+7. If the user asks for cron, recurring, delayed, or calendar scheduling, use a schedule/cron trigger only when that installed plugin appears in editor context. If no such plugin is listed, do not invent it; write a manual/file/directory-triggered pipeline and tell the user which trigger capability is missing.
+8. Pair non-trivial triggers with meaningful completion checks. Rely on the workspace task timeout by default; add a shorter trigger timeout only when the user or workflow semantics require one.
+9. file/directory trigger watch paths may be absolute or outside the workspace; authoring the reference is allowed without reading or writing that external path.
 
 ## Wording
 

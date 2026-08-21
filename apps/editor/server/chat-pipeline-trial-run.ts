@@ -62,7 +62,7 @@ import {
   findUncoveredTrialFixtureInputs,
   resolveChatPipelineDataReadiness,
   resolveChatPipelineLiveSmokeBaseline,
-  resolveChatPipelineRuntimeReadiness,
+  resolveChatPipelineTargetRuntimeReadiness,
   type ChatPipelineLiveSmokeBaseline,
   type ChatPipelineTrialBlocker,
   type ChatPipelineTrialFixtureInput,
@@ -244,7 +244,11 @@ export interface ChatPipelineTrialManualExecutionGrant {
 }
 
 export type ChatPipelineTrialNotRunReason =
-  'aborted' | 'timed-out' | 'workspace-verification-failed' | 'execution-stopped';
+  | 'aborted'
+  | 'timed-out'
+  | 'workspace-verification-failed'
+  | 'prerequisite-unavailable'
+  | 'execution-stopped';
 
 export interface ChatPipelineTrialNotRunCase {
   id: string;
@@ -2556,11 +2560,6 @@ async function executeTrial(
     liveSmokeTestEnabled,
   } = prepared;
   const fixtureInputs = dataReadiness.state === 'fixture-backed' ? dataReadiness.inputs : [];
-  const baselineSkipped = !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip';
-  const baselineTargetTaskIds =
-    liveSmokeTestEnabled && liveSmokeBaseline.mode === 'targeted'
-      ? liveSmokeBaseline.targetTaskIds
-      : undefined;
 
   const pythonSettings = readEditorSettings(ws).pythonAgent;
   const pythonRunEnv = buildPythonAgentRunEnv(ws.workDir, pythonSettings);
@@ -2591,20 +2590,50 @@ async function executeTrial(
     }
   }
   const liveGlobalSecretEnv = selectTrialSecretEnv(liveScopedSecretEnv, preflight.envKeys);
-  const runtimeReadiness = resolveChatPipelineRuntimeReadiness({
-    missingBinaries: preflight.missing.binaries,
+  const missingRuntimeRequirements = {
+    pipelineConfig,
+    missingBinaries: preflight.missingBinaryRequirements,
     missingEnvironment: liveSmokeTestEnabled
       ? preflight.missing.envs.filter((name) => !liveGlobalSecretEnv[name])
       : [],
+  };
+  const globalRuntimeReadiness = resolveChatPipelineTargetRuntimeReadiness({
+    ...missingRuntimeRequirements,
+    targetTaskIds: [],
   });
-  if (runtimeReadiness.state === 'blocked') {
+  if (globalRuntimeReadiness.state === 'blocked') {
     return resultForSetupFailure(
       'blocked',
-      `Trial run requirements are unavailable: ${describeTrialBlockers(runtimeReadiness.blockers)}. Preserve legitimate requirements and safety gates; do not invent or remove them merely to make the trial pass.`,
+      `Trial run requirements are unavailable: ${describeTrialBlockers(globalRuntimeReadiness.blockers)}. Preserve legitimate requirements and safety gates; do not invent or remove them merely to make the trial pass.`,
       startedAt,
-      { prerequisiteState: runtimeReadiness, trialMode, trialabilityReport },
+      { prerequisiteState: globalRuntimeReadiness, trialMode, trialabilityReport },
     );
   }
+
+  const dag = buildDag(pipelineConfig);
+  const requestedBaselineTaskIds =
+    !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip'
+      ? []
+      : liveSmokeBaseline.mode === 'targeted'
+        ? liveSmokeBaseline.targetTaskIds
+        : [...dag.nodes.keys()];
+  const baselineRuntimeBlockers: ChatPipelineTrialBlocker[] = [];
+  const runtimeReadyBaselineTaskIds = requestedBaselineTaskIds.filter((taskId) => {
+    const readiness = resolveChatPipelineTargetRuntimeReadiness({
+      ...missingRuntimeRequirements,
+      targetTaskIds: [taskId],
+    });
+    if (readiness.state === 'runnable') return true;
+    baselineRuntimeBlockers.push(...readiness.blockers);
+    return false;
+  });
+  const baselineSkipped = runtimeReadyBaselineTaskIds.length === 0;
+  const baselineTargetTaskIds =
+    baselineSkipped ||
+    (liveSmokeBaseline.mode === 'run-all' &&
+      runtimeReadyBaselineTaskIds.length === requestedBaselineTaskIds.length)
+      ? undefined
+      : runtimeReadyBaselineTaskIds;
 
   const approvalGateway = new InMemoryApprovalGateway();
   const manualApprovalScopesByRunId = new Map<string, ReadonlySet<string>>();
@@ -2695,6 +2724,18 @@ async function executeTrial(
       baselineEvidence = trialTaskResults(baseline, pipelineConfig, null, 1);
     }
     const cases: ChatPipelineTrialCaseResult[] = [];
+    const runtimePrerequisiteBlockers = new Map<string, ChatPipelineTrialBlocker>();
+    const recordRuntimeBlockers = (blockers: readonly ChatPipelineTrialBlocker[]): void => {
+      for (const blocker of blockers) {
+        runtimePrerequisiteBlockers.set(
+          `${blocker.kind}:${blocker.name}:${blocker.taskId ?? ''}`,
+          blocker,
+        );
+      }
+    };
+    recordRuntimeBlockers(baselineRuntimeBlockers);
+    const prerequisiteBlockedCases = new Map<string, ChatPipelineTrialBlocker[]>();
+    let executedCaseCount = 0;
     let caseLoopStop: { reason: ChatPipelineTrialNotRunReason; detail: string } | null = null;
     let totalTaskCount = baselineEvidence.totalTaskCount;
     progress.update({
@@ -2750,8 +2791,19 @@ async function executeTrial(
         pendingWorkspaceWitnessFailure = null;
         break;
       }
+      const targetTaskIds = targetTaskIdsByCase.get(testCase.id) ?? testCase.targetTaskIds;
+      const caseRuntimeReadiness = resolveChatPipelineTargetRuntimeReadiness({
+        ...missingRuntimeRequirements,
+        targetTaskIds,
+      });
+      if (caseRuntimeReadiness.state === 'blocked') {
+        recordRuntimeBlockers(caseRuntimeReadiness.blockers);
+        prerequisiteBlockedCases.set(testCase.id, caseRuntimeReadiness.blockers);
+        continue;
+      }
       const workspaceFailures: ChatPipelineTrialExpectationResult[] = [];
 
+      executedCaseCount += 1;
       const caseExecution = await executeTargetedTrialCase({
         ws,
         pipelineConfig,
@@ -2771,7 +2823,7 @@ async function executeTrial(
         stagedYamlPath: snapshot.yamlPath,
         relativeYamlPath: entry.relativePath,
         testCase,
-        targetTaskIds: targetTaskIdsByCase.get(testCase.id),
+        targetTaskIds,
         caseIndex: caseOffset + 1,
         caseCount: plan.cases.length,
         progress,
@@ -2873,7 +2925,7 @@ async function executeTrial(
         }
       }
     }
-    if (cases.length < plan.cases.length && !caseLoopStop) {
+    if (cases.length + prerequisiteBlockedCases.size < plan.cases.length && !caseLoopStop) {
       caseLoopStop = {
         reason: 'execution-stopped',
         detail: 'Trial execution stopped before the remaining cases could start.',
@@ -2882,14 +2934,23 @@ async function executeTrial(
     const returnedCaseIds = new Set(cases.map((testCase) => testCase.id));
     const notRunCases: ChatPipelineTrialNotRunCase[] = plan.cases
       .filter((testCase) => !returnedCaseIds.has(testCase.id))
-      .map((testCase) => ({
-        id: testCase.id,
-        title: boundedTrialText(testCase.title),
-        reason: caseLoopStop?.reason ?? 'execution-stopped',
-        detail: boundedTrialText(
-          caseLoopStop?.detail ?? 'Trial execution stopped before the remaining cases could start.',
-        ),
-      }));
+      .map((testCase) => {
+        const blockers = prerequisiteBlockedCases.get(testCase.id);
+        return {
+          id: testCase.id,
+          title: boundedTrialText(testCase.title),
+          reason: blockers
+            ? ('prerequisite-unavailable' as const)
+            : (caseLoopStop?.reason ?? 'execution-stopped'),
+          detail: boundedTrialText(
+            blockers
+              ? `The case target closure requires unavailable runtime prerequisites: ${describeTrialBlockers(blockers)}.`
+              : (caseLoopStop?.detail ??
+                  'Trial execution stopped before the remaining cases could start.'),
+          ),
+        };
+      });
+    const runtimeBlockers = [...runtimePrerequisiteBlockers.values()];
     const success =
       baselineSuccess &&
       !abortState.timedOut &&
@@ -2898,6 +2959,11 @@ async function executeTrial(
     const planWarnings = [
       ...planWarningDiagnostics(plan),
       ...trialabilityReport.warnings,
+      ...(runtimeBlockers.length > 0
+        ? [
+            `Trial executed only prerequisite-ready target closures. Other branches retained their runtime blockers without weakening requirements: ${describeTrialBlockers(runtimeBlockers)}.`,
+          ]
+        : []),
       ...(fixtureInputs.length > 0
         ? [
             baselineSkipped
@@ -2950,6 +3016,14 @@ async function executeTrial(
         ),
       };
     });
+    const hasExecutableFailure = allTaskEvidenceCandidates.some(
+      (task) => !['success', 'skipped', 'blocked'].includes(task.status),
+    );
+    const hasUnrelatedCaseFailure = cases.some(
+      (testCase) => !testCase.success && !testCase.tasks.some((task) => task.status === 'blocked'),
+    );
+    const runtimePrerequisiteOnly =
+      runtimeBlockers.length > 0 && !hasExecutableFailure && !hasUnrelatedCaseFailure;
     const kind: ChatPipelineTrialRunKind = abortState.timedOut
       ? 'timed-out'
       : hostWitnessCaptureFailure
@@ -2958,7 +3032,9 @@ async function executeTrial(
           ? planWarnings.length > 0
             ? 'passed-with-warnings'
             : 'passed'
-          : 'failed';
+          : runtimePrerequisiteOnly
+            ? 'blocked'
+            : 'failed';
     const hasPipelineArtifactFailure =
       allTaskEvidenceCandidates.some(
         (task) =>
@@ -2970,6 +3046,21 @@ async function executeTrial(
           (expectation) => !expectation.passed && expectation.repairScope === 'pipeline-artifact',
         ),
       );
+    const ran = !baselineSkipped || executedCaseCount > 0;
+    const plannedSummary = buildPlannedTrialSummary(
+      baselineSuccess,
+      abortState.timedOut,
+      budgets.lifecycleTimeoutMs,
+      baselineEvidence.tasks,
+      baselineEvidence.omittedTaskCount,
+      taskStatusCounts,
+      cases,
+      notRunCases,
+      plan.cases.length,
+      trialMode,
+      planWarnings,
+      manualExecutionGrants,
+    );
     const result: ChatPipelineTrialRunResult = {
       version: TRIAL_CACHE_VERSION,
       success,
@@ -2980,30 +3071,31 @@ async function executeTrial(
               ? ('pipeline-change-allowed' as const)
               : ('diagnostic-only' as const),
           }
-        : kind === 'timed-out' || kind === 'witness-failed'
+        : kind === 'timed-out' || kind === 'witness-failed' || kind === 'blocked'
           ? { repairAuthorization: 'diagnostic-only' as const }
           : {}),
-      ran: true,
+      ran,
       runId: baselineSkipped ? (cases.flatMap((item) => item.runIds)[0] ?? null) : runId,
-      ...(dataReadiness.state === 'fixture-backed' ? { prerequisiteState: dataReadiness } : {}),
+      ...(runtimeBlockers.length > 0
+        ? {
+            prerequisiteState: {
+              state: 'blocked' as const,
+              blockers: runtimeBlockers,
+            },
+          }
+        : dataReadiness.state === 'fixture-backed'
+          ? { prerequisiteState: dataReadiness }
+          : {}),
       trialMode,
       trialabilityReport,
       verificationMode: baselineSkipped ? 'sandbox-cases-only' : 'sandbox-cases-with-live-smoke',
       ...(manualExecutionGrants.length > 0 ? { manualExecutionGrants } : {}),
-      summary: buildPlannedTrialSummary(
-        baselineSuccess,
-        abortState.timedOut,
-        budgets.lifecycleTimeoutMs,
-        baselineEvidence.tasks,
-        baselineEvidence.omittedTaskCount,
-        taskStatusCounts,
-        cases,
-        notRunCases,
-        plan.cases.length,
-        trialMode,
-        planWarnings,
-        manualExecutionGrants,
-      ),
+      summary:
+        kind === 'blocked' && runtimeBlockers.length > 0
+          ? boundedTrialText(
+              `Trial ran every prerequisite-ready target closure, but other branches remain blocked by unavailable runtime requirements: ${describeTrialBlockers(runtimeBlockers)}. Tagma preserved those requirements and did not execute their gated work.\n\n${plannedSummary}`,
+            )
+          : plannedSummary,
       durationMs: Math.max(0, Date.now() - startedAt),
       totalTaskCount,
       omittedTaskCount,
@@ -3017,12 +3109,6 @@ async function executeTrial(
       ...(notRunCases.length > 0 ? { notRunCases } : {}),
       cases: visibleCases,
     };
-    const hasExecutableFailure = allTaskEvidenceCandidates.some(
-      (task) => !['success', 'skipped', 'blocked'].includes(task.status),
-    );
-    const hasUnrelatedCaseFailure = cases.some(
-      (testCase) => !testCase.success && !testCase.tasks.some((task) => task.status === 'blocked'),
-    );
     if (
       manualApprovalBlockers.size > 0 &&
       !abortState.timedOut &&

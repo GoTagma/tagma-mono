@@ -26,6 +26,8 @@ export interface PreflightMissing {
 
 export interface PreflightResult {
   readonly missing: PreflightMissing;
+  /** Missing binary declarations retain task/hook ownership for scoped Trial execution. */
+  readonly missingBinaryRequirements: readonly RequirementsBinary[];
   readonly requirementsPath: string | null;
   /** Env var names declared by requirements.md; callers can pass them through envPolicy. */
   readonly envKeys: readonly string[];
@@ -109,6 +111,7 @@ export function runPreflight(yamlPath: string, options: PreflightOptions = {}): 
   if (!existsSync(target)) {
     return {
       missing: { binaries: [], envs: [] },
+      missingBinaryRequirements: [],
       requirementsPath: null,
       envKeys: [],
       skipped: true,
@@ -122,6 +125,7 @@ export function runPreflight(yamlPath: string, options: PreflightOptions = {}): 
     console.warn(`[preflight] failed to parse ${target}:`, err);
     return {
       missing: { binaries: [], envs: [] },
+      missingBinaryRequirements: [],
       requirementsPath: target,
       envKeys: [],
       skipped: true,
@@ -130,6 +134,7 @@ export function runPreflight(yamlPath: string, options: PreflightOptions = {}): 
   if (!frontmatter) {
     return {
       missing: { binaries: [], envs: [] },
+      missingBinaryRequirements: [],
       requirementsPath: target,
       envKeys: [],
       skipped: true,
@@ -142,9 +147,18 @@ export function runPreflight(yamlPath: string, options: PreflightOptions = {}): 
   const envs: readonly RequirementsEnvVar[] = Array.isArray(frontmatter.env) ? frontmatter.env : [];
 
   const missingBinaries: string[] = [];
+  const missingBinaryRequirements: RequirementsBinary[] = [];
   for (const b of binaries) {
     if (!b || typeof b.name !== 'string') continue;
-    if (!probeBinary(b.name, options)) missingBinaries.push(b.name);
+    if (!probeBinary(b.name, options)) {
+      missingBinaries.push(b.name);
+      missingBinaryRequirements.push({
+        ...b,
+        usedBy: Array.isArray(b.usedBy)
+          ? b.usedBy.filter((value): value is string => typeof value === 'string')
+          : [],
+      });
+    }
   }
   const missingEnvs: string[] = [];
   const envKeys: string[] = [];
@@ -159,6 +173,7 @@ export function runPreflight(yamlPath: string, options: PreflightOptions = {}): 
 
   return {
     missing: { binaries: missingBinaries, envs: missingEnvs },
+    missingBinaryRequirements,
     requirementsPath: target,
     envKeys,
     skipped: false,

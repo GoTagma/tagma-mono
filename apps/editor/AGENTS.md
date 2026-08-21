@@ -444,9 +444,15 @@
   a placeholder into the live workspace. Never fabricate binaries, services, real credentials, or
   human approvals to make Live Smoke appear ready. Sandbox's deterministic synthetic-secret
   substitution is execution isolation, not evidence that a real credential exists. Authenticated
-  absence needed by Live Smoke is a structured, diagnostic-only `blocked` prerequisite state. The
-  sole approval exception is a host-owned, run-ID-scoped Trial execution grant for a manual task in
-  an explicitly selected case target dependency closure. It is not human approval and must never
+  absence needed by Live Smoke is a structured, diagnostic-only `blocked` prerequisite state.
+  Preserve task ownership from requirements `usedBy`: a missing task-owned binary blocks only Live
+  Smoke or Sandbox target closures that execute that task. Run every independent prerequisite-ready
+  closure, retain blocked cases as `prerequisite-unavailable`, and return a blocked diagnostic result
+  with real task evidence when partial execution occurred. Hook-owned, malformed/unscoped binary
+  requirements and required environment declarations remain global blockers. Never execute a
+  blocked closure or reinterpret partial coverage as a pass.
+  The sole approval exception is a host-owned, run-ID-scoped Trial execution grant for a manual task
+  in an explicitly selected case target dependency closure. It is not human approval and must never
   change ordinary-run approval behavior. A manual task outside every explicit case target closure
   remains rejected and diagnostic-only. Changing this grant policy requires a Trial consent version
   bump and updated user-facing disclosure.
@@ -733,6 +739,11 @@
   changes. For staged roots, resolve descendants to the first ancestor carrying the turn snapshot
   and host-authorize write-capable permissions against that authenticated root; a child catalog
   entry must never become a new write root.
+- A built-in file trigger watches one exact path; it is not a glob or extension filter. Pipeline
+  authoring must not promise several filenames/extensions while gating the root task on one arbitrary
+  canonical file. Omit that trigger, use a truthful manual/directory boundary, or narrow and disclose
+  the exact input contract; self-review must keep the trigger acceptance set aligned with user-facing
+  run instructions.
 - Managed Windows command strings run under PowerShell by default. Author PowerShell syntax for
   plain command/shell tasks; invoke CMD-only syntax explicitly through argv with cmd.exe. Generated
   PowerShell helpers must read BOM-less UTF-8 text/JSON with explicit UTF-8 decoding, especially

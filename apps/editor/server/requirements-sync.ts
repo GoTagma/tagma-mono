@@ -309,6 +309,7 @@ const POWERSHELL_BUILTINS = new Set([
   'rename-item',
   'resolve-path',
   'select-object',
+  'select-string',
   'set-content',
   'set-item',
   'sort-object',
