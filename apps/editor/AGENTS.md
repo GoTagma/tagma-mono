@@ -30,6 +30,10 @@
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
 - Model and reasoning-effort selections are preferences for the next prompt; prompt dispatch
   snapshots both when it starts.
+- The Chat header and OpenCode-enabled pipeline/track/task Inspector model fields share
+  `ModelPickerDropdown`. Keep provider groups and models case-insensitively alphabetical by their
+  displayed labels there, and keep its provider input restricted to active/configured runtime
+  providers; the full `/provider` universe belongs only to Connect Providers.
 - For a chat-authored new pipeline, expose that snapped Chat model only in create/fill-new
   context. The production pipeline agent defaults an unspecified prompt driver to `opencode` and
   an unspecified `opencode` model to that snapshot. Explicit user driver/model choices always win;

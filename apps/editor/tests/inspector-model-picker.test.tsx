@@ -77,6 +77,35 @@ afterEach(() => {
 });
 
 describe('Inspector model picker', () => {
+  test('sorts provider groups and models alphabetically by display label', () => {
+    const unsortedProviders = [
+      {
+        id: 'z-provider',
+        name: 'Zulu Provider',
+        models: {
+          'z-model': { id: 'z-model', name: 'Zulu Model' },
+          'a-model': { id: 'a-model', name: 'alpha model' },
+        },
+      },
+      {
+        id: 'a-provider',
+        name: 'alpha Provider',
+        models: {
+          'e-model': { id: 'e-model', name: 'Echo Model' },
+          'b-model': { id: 'b-model', name: 'beta model' },
+        },
+      },
+    ] as unknown as Provider[];
+
+    const groups = buildModelPickerGroups(unsortedProviders, '');
+
+    expect(groups.map((group) => group.providerLabel)).toEqual(['alpha Provider', 'Zulu Provider']);
+    expect(groups.map((group) => group.models.map((model) => model.label))).toEqual([
+      ['beta model', 'Echo Model'],
+      ['alpha model', 'Zulu Model'],
+    ]);
+  });
+
   test('pipeline model field offers opencode provider/model options for the default driver', () => {
     const config = pipeline();
     seedStores(config);

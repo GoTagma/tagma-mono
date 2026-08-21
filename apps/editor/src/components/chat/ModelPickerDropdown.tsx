@@ -23,6 +23,11 @@ export interface ModelPickerGroup {
   models: ModelPickerOption[];
 }
 
+function comparePickerText(left: string, right: string): number {
+  const alphabetical = left.localeCompare(right, undefined, { sensitivity: 'base' });
+  return alphabetical !== 0 ? alphabetical : left.localeCompare(right);
+}
+
 export function parseModelPickerValue(value: string | null | undefined): ModelPickerValue | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
@@ -43,14 +48,19 @@ export function buildModelPickerGroups(
     .map((provider) => {
       const providerLabel = provider.name?.trim() || provider.id;
       const providerModels = provider.models ?? {};
-      const allModels = Object.values(providerModels).map((model) => ({
-        id: model.id,
-        value: `${provider.id}/${model.id}`,
-        label: model.name?.trim() || model.id,
-        status: model.status ?? 'active',
-        context: model.limit?.context ?? 0,
-        reasoning: model.capabilities?.reasoning ?? false,
-      }));
+      const allModels = Object.values(providerModels)
+        .map((model) => ({
+          id: model.id,
+          value: `${provider.id}/${model.id}`,
+          label: model.name?.trim() || model.id,
+          status: model.status ?? 'active',
+          context: model.limit?.context ?? 0,
+          reasoning: model.capabilities?.reasoning ?? false,
+        }))
+        .sort(
+          (left, right) =>
+            comparePickerText(left.label, right.label) || comparePickerText(left.id, right.id),
+        );
       if (!q) return { provider, providerLabel, models: allModels };
       const providerHit =
         provider.id.toLowerCase().includes(q) || providerLabel.toLowerCase().includes(q);
@@ -61,7 +71,12 @@ export function buildModelPickerGroups(
           );
       return { provider, providerLabel, models };
     })
-    .filter((group) => group.models.length > 0);
+    .filter((group) => group.models.length > 0)
+    .sort(
+      (left, right) =>
+        comparePickerText(left.providerLabel, right.providerLabel) ||
+        comparePickerText(left.provider.id, right.provider.id),
+    );
 }
 
 export function modelPickerLabel(
