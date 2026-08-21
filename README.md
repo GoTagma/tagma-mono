@@ -123,9 +123,20 @@ bun run --filter tagma-desktop ensure:electron
 ```bash
 bun run dev:editor     # Start editor (server + client concurrently)
 bun run dev:server     # Start server only (watch mode)
-bun run dev:client     # Start Vite client only
-bun run dev:desktop    # Ensure Electron runtime, build the desktop chain, and launch the Electron shell
+bun run dev:client       # Start Vite client only
+bun run dev:desktop:hmr  # Launch Electron with a Vite renderer and source sidecar; no package/install cycle
+bun run dev:desktop      # Ensure Electron runtime, build the desktop chain, and launch the Electron shell
 ```
+
+For normal editor, Chat, Trial, and server work, use `bun run dev:editor` and open the Vite URL
+(usually `http://127.0.0.1:5173`). Vite hot-reloads renderer changes and the backend runs under
+`bun --watch`; package, publish, installer download, and reinstall steps are unnecessary.
+
+Use `bun run dev:desktop:hmr` only when the Electron shell itself matters. Run
+`bun run --filter tagma-desktop ensure:electron` once first. The HMR launcher uses an isolated
+`apps/electron/.tmp/desktop-hmr-user-data/<pid>` profile and automatically selects free renderer
+and sidecar ports. Renderer edits hot-reload; restart the command after Electron-main or sidecar
+source changes.
 
 ### Build
 

@@ -19,9 +19,18 @@ Electron shell that wraps the [tagma-editor](../editor) into a packaged desktop 
 From the repo root:
 
 ```bash
-bun run dev:desktop      # ensure Electron runtime, full chain build, then launch the shell
+bun run --filter tagma-desktop ensure:electron  # one-time Electron runtime setup
+bun run dev:desktop:hmr  # Vite renderer + source sidecar + Electron; no package/install cycle
+bun run dev:desktop      # full chain build, then launch the shell
 bun run pack:desktop     # electron-builder --dir (unpacked, no installer)
 ```
+
+`dev:desktop:hmr` uses an isolated `apps/electron/.tmp/desktop-hmr-user-data/<pid>` profile, starts
+Vite on the first free port from 5173 through 5183, and allocates a free sidecar port when 3001 is
+busy. Renderer changes hot-reload. The development sidecar runs directly from
+`apps/editor/server/index.ts`, but sidecar and Electron-main source changes require restarting the
+command. For editor/server-only work, `bun run dev:editor` is faster and runs the backend with
+`bun --watch`.
 
 From this package:
 
@@ -33,6 +42,7 @@ bun run check            # tsc --noEmit on the Electron main/preload sources
 bun run test             # bun test (Electron-side tests only)
 bun run ensure:electron  # verify/download the local Electron runtime binary
 bun run dev              # rebuild main, then launch through the Electron runtime guard
+bun run dev:hmr          # package-local form of the root dev:desktop:hmr command
 bun run start            # launch Electron against the existing build through the runtime guard
 bun run fetch:opencode   # download the bundled opencode binary into build/opencode/
 bun run pack             # build:all + fetch:opencode + stage sidecar + electron-builder --dir
@@ -40,7 +50,20 @@ bun run pack             # build:all + fetch:opencode + stage sidecar + electron
 
 The unpacked output lives at `release/` (electron-builder default).
 
-If `ensure:electron` fails with a download `fetch failed` or timeout, check proxy environment variables first. A dead local proxy such as `HTTP_PROXY=http://127.0.0.1:7890` can make Electron's binary download fail before the app starts. Clear the proxy for the retry or set a working `HTTPS_PROXY` / `ELECTRON_MIRROR`, then run `bun run --filter tagma-desktop ensure:electron` again.
+If `ensure:electron` fails with download `fetch failed` or a timeout, check proxy environment
+variables first. The launcher automatically opts Electron's downloader into any configured
+`HTTP_PROXY`/`HTTPS_PROXY` value. Clear every upper- and lowercase proxy variable when a local
+proxy is unavailable. If the proxy works but GitHub release-asset downloads are reset, select a
+trusted Electron mirror for this one-time setup; for example, in environments that trust
+npmmirror:
+
+```powershell
+$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'
+bun run --filter tagma-desktop ensure:electron
+```
+
+After `ensure:electron` succeeds, ordinary local launches reuse the installed runtime and do not
+download it again.
 
 ## Installed-editor diagnostics
 

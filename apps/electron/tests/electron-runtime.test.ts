@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,7 +7,9 @@ import { describe, expect, test } from 'bun:test';
 import {
   defaultElectronExecutable,
   describeElectronRuntimeStatus,
+  electronInstallEnv,
   electronInstallHint,
+  ensureElectronRuntime,
   installTimeoutMs,
   proxyEnvSummary,
 } from '../scripts/electron-runtime.mjs';
@@ -74,6 +76,66 @@ describe('electron runtime launcher', () => {
     }
   });
 
+  test('enables Electron downloader proxy support when proxy variables are present', () => {
+    const source = {
+      HTTPS_PROXY: 'http://127.0.0.1:7890',
+      OTHER_VALUE: 'preserved',
+    };
+
+    expect(electronInstallEnv(source)).toEqual({
+      ...source,
+      ELECTRON_GET_USE_PROXY: '1',
+    });
+    expect(electronInstallEnv({ OTHER_VALUE: 'preserved' })).toEqual({
+      OTHER_VALUE: 'preserved',
+    });
+    expect(
+      electronInstallEnv({
+        HTTPS_PROXY: 'http://127.0.0.1:7890',
+        ELECTRON_GET_USE_PROXY: 'custom',
+      }),
+    ).toEqual({
+      HTTPS_PROXY: 'http://127.0.0.1:7890',
+      ELECTRON_GET_USE_PROXY: 'custom',
+    });
+  });
+
+  test('passes automatic proxy opt-in to the real Electron install subprocess', () => {
+    const root = createElectronPackage('42.6.1');
+    const marker = join(root, 'install-env.txt');
+    try {
+      writeFileSync(
+        join(root, 'install.js'),
+        [
+          "const { mkdirSync, writeFileSync } = require('node:fs');",
+          "const { join } = require('node:path');",
+          `writeFileSync(${JSON.stringify(marker)}, process.env.ELECTRON_GET_USE_PROXY || 'missing');`,
+          "mkdirSync(join(__dirname, 'dist'), { recursive: true });",
+          "writeFileSync(join(__dirname, 'path.txt'), 'electron.exe');",
+          "writeFileSync(join(__dirname, 'dist', 'electron.exe'), '');",
+          "writeFileSync(join(__dirname, 'dist', 'version'), 'v42.6.1');",
+        ].join('\n'),
+        'utf8',
+      );
+
+      const status = ensureElectronRuntime({
+        electronDir: root,
+        env: {
+          ...process.env,
+          HTTPS_PROXY: 'http://127.0.0.1:7890',
+          ELECTRON_GET_USE_PROXY: '',
+        },
+        platform: 'win32',
+        stdio: 'pipe',
+      });
+
+      expect(status.ok).toBe(true);
+      expect(readFileSync(marker, 'utf8')).toBe('1');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('prints proxy-aware recovery guidance for install failures', () => {
     const status = {
       ok: false,
@@ -87,6 +149,8 @@ describe('electron runtime launcher', () => {
 
     expect(hint).toContain('HTTP_PROXY=http://127.0.0.1:7890');
     expect(hint).toContain("$env:HTTP_PROXY=''; $env:HTTPS_PROXY=''");
+    expect(hint).toContain("$env:ELECTRON_GET_USE_PROXY='1'");
+    expect(hint).toContain("$env:ELECTRON_MIRROR='<trusted mirror base URL>'");
     expect(hint).toContain('bun run --filter tagma-desktop ensure:electron');
   });
 

@@ -104,7 +104,10 @@ export function describeElectronRuntimeStatus(
   }
 
   const expectedVersion = readElectronPackageVersion(electronDir);
-  const installedVersion = readTextIfPresent(join(electronDir, 'dist', 'version'))?.replace(/^v/, '');
+  const installedVersion = readTextIfPresent(join(electronDir, 'dist', 'version'))?.replace(
+    /^v/,
+    '',
+  );
   if (expectedVersion && installedVersion !== expectedVersion) {
     return {
       ok: false,
@@ -140,13 +143,23 @@ function sanitizeProxyValue(value) {
   }
 }
 
+const PROXY_URL_ENV_KEYS = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'];
+
 export function proxyEnvSummary(env = process.env) {
-  const keys = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy'];
+  const keys = [...PROXY_URL_ENV_KEYS, 'NO_PROXY', 'no_proxy'];
   const set = keys.filter((key) => typeof env[key] === 'string' && env[key]?.trim());
   if (set.length === 0) return 'No HTTP(S) proxy environment variables are set.';
   return `Proxy environment variables are set: ${set
     .map((key) => `${key}=${sanitizeProxyValue(env[key])}`)
     .join(', ')}`;
+}
+
+export function electronInstallEnv(env = process.env) {
+  const hasProxy = PROXY_URL_ENV_KEYS.some(
+    (key) => typeof env[key] === 'string' && env[key]?.trim(),
+  );
+  const proxyOptIn = env.ELECTRON_GET_USE_PROXY?.trim();
+  return hasProxy && !proxyOptIn ? { ...env, ELECTRON_GET_USE_PROXY: '1' } : env;
 }
 
 export function electronInstallHint(status, env = process.env) {
@@ -155,11 +168,13 @@ export function electronInstallHint(status, env = process.env) {
     `Electron runtime is not ready (${status.reason}).${target}`,
     proxyEnvSummary(env),
     'Fix options:',
-    '  1. If a local proxy is configured but unavailable, clear it and rerun:',
-    "     $env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; bun run --filter tagma-desktop ensure:electron",
-    '  2. If your network needs a proxy or mirror, set HTTPS_PROXY or ELECTRON_MIRROR, then rerun:',
-    '     bun run --filter tagma-desktop ensure:electron',
-    '  3. After dependency reinstall, rerun bun install --force if node_modules/electron was left half-installed.',
+    '  1. If a local proxy is configured but unavailable, clear every proxy spelling and rerun:',
+    "     $env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; $env:http_proxy=''; $env:https_proxy=''; $env:ELECTRON_GET_USE_PROXY=''; bun run --filter tagma-desktop ensure:electron",
+    '  2. If your network needs the configured proxy, opt the Electron downloader into it and rerun:',
+    "     $env:ELECTRON_GET_USE_PROXY='1'; bun run --filter tagma-desktop ensure:electron",
+    '  3. If GitHub asset downloads still fail, configure a trusted Electron mirror and rerun:',
+    "     $env:ELECTRON_GET_USE_PROXY='1'; $env:ELECTRON_MIRROR='<trusted mirror base URL>'; bun run --filter tagma-desktop ensure:electron",
+    '  4. After dependency reinstall, rerun bun install --force if node_modules/electron was left half-installed.',
   ].join('\n');
 }
 
@@ -178,7 +193,7 @@ export function ensureElectronRuntime(options = {}) {
   const timeout = options.timeoutMs ?? installTimeoutMs(env);
   const result = spawnSync(process.execPath, [status.installScript], {
     cwd: electronDir,
-    env,
+    env: electronInstallEnv(env),
     stdio: options.stdio ?? 'inherit',
     timeout,
     windowsHide: true,
@@ -186,17 +201,23 @@ export function ensureElectronRuntime(options = {}) {
 
   if (result.error) {
     const timedOut = result.error.code === 'ETIMEDOUT';
-    const suffix = timedOut ? `\nElectron install timed out after ${timeout}ms.` : `\n${result.error.message}`;
+    const suffix = timedOut
+      ? `\nElectron install timed out after ${timeout}ms.`
+      : `\n${result.error.message}`;
     throw new Error(`${electronInstallHint(status, env)}${suffix}`);
   }
 
   if (result.status !== 0) {
-    throw new Error(`${electronInstallHint(status, env)}\nElectron install exited with code ${result.status}.`);
+    throw new Error(
+      `${electronInstallHint(status, env)}\nElectron install exited with code ${result.status}.`,
+    );
   }
 
   status = describeElectronRuntimeStatus(electronDir, env, platform);
   if (!status.ok) {
-    throw new Error(`${electronInstallHint(status, env)}\nElectron install completed but the runtime is still missing.`);
+    throw new Error(
+      `${electronInstallHint(status, env)}\nElectron install completed but the runtime is still missing.`,
+    );
   }
 
   return status;
@@ -221,7 +242,10 @@ function runElectron(args) {
     process.exit(code ?? 1);
   });
 
-  const signals = process.platform === 'win32' ? ['SIGINT', 'SIGTERM', 'SIGBREAK'] : ['SIGINT', 'SIGTERM', 'SIGUSR2'];
+  const signals =
+    process.platform === 'win32'
+      ? ['SIGINT', 'SIGTERM', 'SIGBREAK']
+      : ['SIGINT', 'SIGTERM', 'SIGUSR2'];
   for (const signal of signals) {
     process.on(signal, () => {
       if (!childClosed) child.kill(signal);
