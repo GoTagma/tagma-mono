@@ -698,6 +698,7 @@ interface SessionCreateBodyWithMetadata {
 }
 
 const FORCED_CHAT_AGENT = 'tagma-router';
+const TRIAL_PLANNER_AGENT = 'tagma-trial-planner';
 const DESKTOP_CHAT_TITLE_MAX_LENGTH = 80;
 const DEFAULT_CHAT_REASONING_EFFORT: ChatReasoningEffort = null;
 let finishedTurnSeq = 0;
@@ -1654,9 +1655,9 @@ export function buildChatYamlTrialPlanPrompt(
     'begin requires both summary (a non-empty string) and goals; goals must be a non-empty string array, even when resuming.',
     'Every coverage entry needs dimension, status, caseIds, and rationale. Coverage status must be one of covered, accepted-risk, blocked, or not-applicable. Every finding needs severity, repairScope, summary, and evidence.',
     'Never copy YAML or plan files between staging and live .tagma. Only commit consumes the formal attempt and validates the complete plan before writing.',
-    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors. Correct and retry only that failed bounded operation before commit, never with filesystem copies.',
-    'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn. Report the exact result and stop. The host schedules any remaining attempt.',
-    'Create 1-8 small isolated cases with concrete fixtures and host-checkable expectations. Prefer the smallest targetTaskIds closure that exercises the behavior.',
+    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors. Correct that operation before commit; never copy files.',
+    'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn. The host schedules any remaining attempt.',
+    'Create 1-8 isolated cases with concrete fixtures and checks; use the smallest targetTaskIds closure.',
     ...(unavailableBaselineInputs.length > 0
       ? [
           'The real workspace is missing the following data inputs. Supply representative content only as isolated case fixtures; never create placeholder files in the real workspace:',
@@ -1671,10 +1672,10 @@ export function buildChatYamlTrialPlanPrompt(
     'Inter-task collision needs two target task ids and outputs. repeat-run-output-collision must never be marked covered; use accepted-risk/blocked/not-applicable. repeat-run needs 2+ runs and task-status evidence.',
     'The host harness is sequential, so concurrent-run-output-collision must never be marked covered. Use accepted-risk for a known unverified concurrency risk, blocked for a required observation the harness cannot make, or not-applicable only when concurrent writers are genuinely outside the design.',
     'For file workflows, include same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a marker from a later paragraph so fixed output names and single-line parsing fail visibly.',
-    'Use file-equals for exact text preservation and an empty expected string when empty-content is covered. If no deterministic artifact can assert a required dimension, record a blocking pipeline-artifact finding naming it.',
-    'Each checked .json path needs json-valid or json-pointer-equals; text-only checks cannot prove valid JSON. Serialize expectedJson for decoded newlines, quotes, and Unicode; keep the artifact RFC 8259 JSON.',
-    'Every finding needs repairScope: pipeline-artifact for a concrete YAML, agent-owned companion, or missing deterministic-verifiability-artifact defect; harness, environment, service, credential, approval, and unsupported-observation limits are diagnostic-only.',
-    'Blocked coverage is diagnostic-only, does not fail the trial, and cannot authorize YAML repair. accepted-risk is visible as passed-with-warnings. Never turn a harness limit into a pipeline defect, invent a pass, remove prerequisites, or weaken approvals or safety gates.',
+    'Use file-equals for exact text preservation; use an empty expected string for file empty-content. Native declared/inferred outputs are engine-validated: json.* bindings and inferred ports require final-line JSON. Missing without a default or uncoercible bindings fail with `output_error`. Do not require a file unless the user/pipeline promises one or exact-byte or cross-run file semantics need it.',
+    'Each checked .json path needs json-valid or json-pointer-equals; text-only checks cannot prove valid JSON. Serialize expectedJson for decoded newlines, quotes, and Unicode; keep RFC 8259 JSON.',
+    'Every finding needs repairScope: pipeline-artifact for YAML/companion defects or a missing promised file; harness/environment/service/credential/approval/observation limits are diagnostic-only. Native bindings need no duplicate file.',
+    'Blocked coverage is diagnostic-only, does not fail Trial, and cannot authorize YAML repair. accepted-risk yields passed-with-warnings. Never turn harness limits into pipeline defects or weaken prerequisites, approvals, or safety gates.',
     '',
     `Required coverage dimensions: ${request.requiredCoverage.join(', ')}`,
     '</tagma-internal>',
@@ -4345,6 +4346,7 @@ async function promptOpencode(
   text: string,
   opts: {
     internal?: boolean;
+    internalAgent?: string;
     context?: string;
     reuseLogicalTurn?: boolean;
     continuationSnapshot?: ChatYamlSnapshot | null;
@@ -4353,6 +4355,10 @@ async function promptOpencode(
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
   const { model, agent, providers, reasoningEffort } = get();
+  if (opts.internalAgent && !opts.internal) {
+    throw new Error('An internal OpenCode agent override requires an internal prompt.');
+  }
+  const promptAgent = opts.internalAgent ?? agent;
   const sessionIdAtDispatch = opts.targetSessionId ?? get().currentSessionId;
   if (
     opts.targetSessionId &&
@@ -4397,7 +4403,7 @@ async function promptOpencode(
     setSendErrorForDispatch('No model selected - pick one from the header dropdown.');
     throw new Error('No model selected');
   }
-  if (!agent) {
+  if (!promptAgent) {
     const msg = `The ${FORCED_CHAT_AGENT} OpenCode agent is not available. Repair the OpenCode seed before sending.`;
     setSendErrorForDispatch(msg);
     throw new Error(msg);
@@ -4656,7 +4662,7 @@ async function promptOpencode(
       parts: Array<{ type: 'text'; text: string }>;
     } = {
       model,
-      ...(agent ? { agent } : {}),
+      ...(promptAgent ? { agent: promptAgent } : {}),
       ...(reasoningVariant ? { variant: reasoningVariant } : {}),
       parts: [
         {
@@ -8115,6 +8121,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const planningText = buildChatYamlTrialPlanPrompt(target, request, attempt, maxAttempts);
     return promptOpencode(get, set, planningText, {
       internal: true,
+      internalAgent: TRIAL_PLANNER_AGENT,
       reuseLogicalTurn: true,
       continuationSnapshot: snapshot ?? null,
       targetSessionId,

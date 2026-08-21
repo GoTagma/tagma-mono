@@ -167,13 +167,17 @@ describe('chat pipeline trial host witness', () => {
 
       const authoredPath = join(root, '.tagma', 'pipeline', 'pipeline.yaml');
       const runtimePath = join(root, '.tagma', '.opencode-runtime', 'cache.bin');
+      const pythonRuntimePath = join(root, '.tagma', '.python-agent', 'venv', 'runtime.bin');
       mkdirSync(dirname(authoredPath), { recursive: true });
       mkdirSync(dirname(runtimePath), { recursive: true });
+      mkdirSync(dirname(pythonRuntimePath), { recursive: true });
       writeFileSync(authoredPath, 'pipeline-v1\n', 'utf-8');
       writeFileSync(runtimePath, 'runtime-v1\n', 'utf-8');
+      writeFileSync(pythonRuntimePath, 'python-runtime-v1\n', 'utf-8');
 
       const first = captureTrialHostWitness(ws, prepared(root));
       writeFileSync(runtimePath, 'runtime-v2\n', 'utf-8');
+      writeFileSync(pythonRuntimePath, 'python-runtime-v2\n', 'utf-8');
       const runtimeOnlyChange = captureTrialHostWitness(ws, prepared(root));
       expect(runtimeOnlyChange.workspace).toEqual(first.workspace);
 
@@ -847,6 +851,47 @@ describe('chat pipeline trial host witness', () => {
     const third = captureTrialHostWitness(ws, prepared(root, { pythonEnv }));
     expect(third.python?.interpreter.sha256).not.toBe(second.python?.interpreter.sha256);
     expect(third.digest).not.toBe(second.digest);
+  });
+
+  test('fingerprints a managed POSIX venv without treating its interpreter symlink as a workspace escape', () => {
+    if (process.platform === 'win32') return;
+
+    const { root, ws } = makeWorkspace();
+    const systemPythonRoot = makeRoot('system-python');
+    const systemInterpreterPath = join(systemPythonRoot, 'python3');
+    const venvRoot = join(root, '.tagma', '.python-agent', 'venv');
+    const interpreterPath = join(venvRoot, 'bin', 'python');
+    const configPath = join(venvRoot, 'pyvenv.cfg');
+    mkdirSync(dirname(interpreterPath), { recursive: true });
+    writeFileSync(systemInterpreterPath, 'interpreter-v1\n', 'utf-8');
+    symlinkSync(systemInterpreterPath, interpreterPath, 'file');
+    writeFileSync(configPath, 'home = python-v1\n', 'utf-8');
+    const pythonEnv = {
+      TAGMA_PYTHON_AGENT_VENV: venvRoot,
+      TAGMA_PYTHON_AGENT_PYTHON: interpreterPath,
+      VIRTUAL_ENV: venvRoot,
+    };
+
+    const first = captureTrialHostWitness(ws, prepared(root, { pythonEnv }));
+    expect(first.python?.interpreter.sha256).toBe(
+      sha256(readFileSync(systemInterpreterPath, 'utf-8')),
+    );
+
+    writeFileSync(systemInterpreterPath, 'interpreter-v2\n', 'utf-8');
+    const interpreterChanged = captureTrialHostWitness(ws, prepared(root, { pythonEnv }));
+    expect(interpreterChanged.workspace).toEqual(first.workspace);
+    expect(interpreterChanged.python?.interpreter.sha256).not.toBe(
+      first.python?.interpreter.sha256,
+    );
+    expect(interpreterChanged.prerequisiteDigest).not.toBe(first.prerequisiteDigest);
+
+    writeFileSync(configPath, 'home = python-v2\n', 'utf-8');
+    const configChanged = captureTrialHostWitness(ws, prepared(root, { pythonEnv }));
+    expect(configChanged.workspace).toEqual(interpreterChanged.workspace);
+    expect(configChanged.python?.pyvenvCfg?.sha256).not.toBe(
+      interpreterChanged.python?.pyvenvCfg?.sha256,
+    );
+    expect(configChanged.digest).not.toBe(interpreterChanged.digest);
   });
 
   test('streams workspaces above the former file-count and byte limits', () => {

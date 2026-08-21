@@ -81,6 +81,7 @@ describe('logical-turn YAML lease continuation', () => {
       workspace: string | null;
     }> = [];
     const requestPaths: string[] = [];
+    const promptBodies: Array<Record<string, unknown>> = [];
     let releaseEventStream: () => void = () => {};
     const eventStreamGate = new Promise<void>((resolve) => {
       releaseEventStream = resolve;
@@ -200,6 +201,8 @@ describe('logical-turn YAML lease continuation', () => {
         return jsonResponse({ id: 'session-a', directory: sessionDirectory });
       }
       if (parsed.pathname === '/session/session-a/prompt_async' && method === 'POST') {
+        const text = init?.body ? String(init.body) : await request?.clone().text();
+        promptBodies.push(JSON.parse(text || '{}') as Record<string, unknown>);
         return jsonResponse({ ok: true });
       }
       throw new Error(`unexpected fetch ${method} ${url}`);
@@ -256,6 +259,8 @@ describe('logical-turn YAML lease continuation', () => {
       });
       expect(requestPaths).not.toContain('POST /api/workspace/chat-yaml-stage/start');
       expect(requestPaths).toContain('POST /session/session-a/prompt_async');
+      expect(promptBodies).toHaveLength(1);
+      expect(promptBodies[0]?.agent).toBe('tagma-trial-planner');
       const relocated = useChatStore.getState().yamlSnapshotBeforeSend;
       expect(relocated).toMatchObject({
         ...snapshot,

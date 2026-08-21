@@ -201,7 +201,7 @@ test('host rejects a directly written trial plan without an authenticated tool c
     writeFileSync(
       yamlPath.replace(/\.yaml$/u, '.trial-plan.json'),
       JSON.stringify({
-        version: 5,
+        version: 6,
         yamlHash,
         summary: args.summary,
         goals: args.goals,

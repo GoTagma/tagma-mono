@@ -36,7 +36,12 @@ import {
   listChatYamlStage,
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
-import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
+import {
+  buildChatPipelineTrialLiveSmokeReadiness,
+  CHAT_PIPELINE_TRIAL_CACHE_VERSION,
+  isChatPipelineTrialLiveSmokeReadiness,
+  type ChatPipelineTrialLiveSmokeReadiness,
+} from './chat-pipeline-trial-cache.js';
 import { TRIAL_STREAM_EVIDENCE_BYTES } from '../shared/chat-pipeline-trial-evidence.js';
 import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
 import {
@@ -331,6 +336,7 @@ interface CachedTrialResult {
   trialabilityReportHash: string;
   verificationHash: string;
   hostWitness: TrialHostWitness;
+  liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null;
   result: ChatPipelineTrialRunResult;
 }
 
@@ -369,6 +375,7 @@ export const __chatPipelineTrialRunTestHooks: {
     ws: WorkspaceState,
     signal?: AbortSignal,
   ) => Promise<TrialWorkspaceWitnessResult>;
+  afterLiveSmokeReadinessRevalidated?: () => void | Promise<void>;
   timeoutMsOverride?: number;
   taskTimeoutMsOverride?: number;
   onProgress?: (progress: ChatPipelineTrialProgress) => void;
@@ -534,6 +541,7 @@ function readCachedTrial(
   path: string,
   inputHash: string,
   trialabilityReportHash: string,
+  liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null,
 ): ChatPipelineTrialRunResult | null {
   if (!existsSync(path)) return null;
   try {
@@ -547,6 +555,9 @@ function readCachedTrial(
       parsed.trialabilityReportHash !== trialabilityReportHash ||
       typeof parsed.verificationHash !== 'string' ||
       typeof parsed.hostWitness?.digest !== 'string' ||
+      (parsed.liveSmokeReadiness !== null &&
+        !isChatPipelineTrialLiveSmokeReadiness(parsed.liveSmokeReadiness)) ||
+      !isDeepStrictEqual(parsed.liveSmokeReadiness, liveSmokeReadiness) ||
       !parsed.result ||
       parsed.result.version !== TRIAL_CACHE_VERSION ||
       !parsed.result.trialabilityReport ||
@@ -569,6 +580,7 @@ function writeCachedTrial(
   trialabilityReportHash: string,
   verificationHash: string,
   hostWitness: TrialHostWitness,
+  liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null,
   result: ChatPipelineTrialRunResult,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -578,6 +590,7 @@ function writeCachedTrial(
     trialabilityReportHash,
     verificationHash,
     hostWitness,
+    liveSmokeReadiness,
     result,
   } satisfies CachedTrialResult);
 }
@@ -2334,6 +2347,31 @@ async function loadTrialPipelineConfig(
   return pipelineConfig;
 }
 
+function trialLiveSmokeArtifactProjection(
+  ws: WorkspaceState,
+  entry: ReturnType<typeof listChatYamlStage>['entries'][number],
+  snapshot: TrialPipelineSnapshot,
+) {
+  return {
+    livePipelineDir: dirname(entry.sourcePath ?? resolve(ws.workDir, '.tagma', entry.relativePath)),
+    stagedPipelineDir: dirname(snapshot.yamlPath),
+    targetPipelineIsNew: entry.sourcePath === null,
+  };
+}
+
+function trialLiveSmokeReadiness(
+  prepared: PreparedTrialExecution,
+  entry: ReturnType<typeof listChatYamlStage>['entries'][number],
+): ChatPipelineTrialLiveSmokeReadiness | null {
+  return prepared.liveSmokeTestEnabled
+    ? buildChatPipelineTrialLiveSmokeReadiness({
+        targetPipelineIsNew: entry.sourcePath === null,
+        dataReadiness: prepared.dataReadiness,
+        baseline: prepared.liveSmokeBaseline,
+      })
+    : null;
+}
+
 async function prepareTrialExecution(
   ws: WorkspaceState,
   stage: ReturnType<typeof listChatYamlStage>,
@@ -2427,12 +2465,7 @@ async function prepareTrialExecution(
     pipelineConfig,
     dataReadiness,
     ws.workDir,
-    {
-      livePipelineDir: dirname(
-        entry.sourcePath ?? resolve(ws.workDir, '.tagma', entry.relativePath),
-      ),
-      stagedPipelineDir: dirname(snapshot.yamlPath),
-    },
+    trialLiveSmokeArtifactProjection(ws, entry, snapshot),
   );
   const liveSmokeCoveredTaskIds = new Set<string>(
     !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip'
@@ -3002,6 +3035,13 @@ async function executeTrial(
             `The Live Smoke Test excluded tasks whose static_context middleware source is not ready in the real workspace (the source is missing or differs from the staged artifact, which merges only after the Trial). Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.middlewareUnavailableTaskIds.join(', ')}. No placeholder was written to the real workspace.`,
           ]
         : []),
+      ...(liveSmokeBaseline.cwdUnavailableTaskIds.length > 0 && liveSmokeTestEnabled
+        ? [
+            liveSmokeBaseline.mode === 'skip'
+              ? `The Live Smoke Test was skipped because every eligible task uses an effective cwd that exists only in the staged target pipeline and cannot exist in the real workspace until finalize. Sandbox cases exercised those tasks instead: ${liveSmokeBaseline.cwdUnavailableTaskIds.join(', ')}. No placeholder directory was written to the real workspace.`
+              : `The Live Smoke Test excluded tasks whose effective cwd exists only in the staged target pipeline and cannot exist in the real workspace until finalize. Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.cwdUnavailableTaskIds.join(', ')}. No placeholder directory was written to the real workspace.`,
+          ]
+        : []),
     ];
     const manualExecutionGrants: ChatPipelineTrialManualExecutionGrant[] = [
       ...manualExecutionGrantCounts.entries(),
@@ -3350,7 +3390,6 @@ export async function trialRunChatYamlStage(
     if (preparation.status === 'result') {
       return { ...resultWithTrialPlan(preparation.result, plan), planTelemetry };
     }
-    const preparedExecution = preparation.prepared;
     const trialabilityReportHash = hashChatPipelineTrialabilityReport(trialabilityReport);
     const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
@@ -3359,7 +3398,14 @@ export async function trialRunChatYamlStage(
       trialabilityReportHash,
     });
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
-    const cached = readCachedTrial(ws, stage.id, cachePath, inputHash, trialabilityReportHash);
+    const cached = readCachedTrial(
+      ws,
+      stage.id,
+      cachePath,
+      inputHash,
+      trialabilityReportHash,
+      trialLiveSmokeReadiness(preparation.prepared, entry),
+    );
     if (cached) return resultWithTrialPlan(cached, plan);
     const inFlightKey = cachePath;
     const existing = inFlightByCacheKey.get(inFlightKey);
@@ -3485,6 +3531,40 @@ export async function trialRunChatYamlStage(
           );
         }
         const preWitness = currentWitness.witness;
+        // Readiness inspects mutable real-workspace coordinates. Recompute it
+        // after the pre-run witness so a path that appeared, disappeared, or
+        // changed type while the witness was being established cannot inherit
+        // a stale Live Smoke exclusion. The post witness seals later changes.
+        const revalidatedPreparation = await prepareTrialExecution(
+          ws,
+          stage,
+          entry,
+          executionSnapshot,
+          pipelineConfig,
+          trialabilityReport,
+          plan,
+          planTelemetry,
+          trialId,
+          startedAt,
+          trialMode,
+          liveSmokeTestEnabled,
+        );
+        if (controller.signal.aborted) {
+          return {
+            ...resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs),
+            ...preflightMetadata,
+          };
+        }
+        if (revalidatedPreparation.status === 'result') {
+          return revalidatedPreparation.result;
+        }
+        await __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated?.();
+        if (controller.signal.aborted) {
+          return {
+            ...resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs),
+            ...preflightMetadata,
+          };
+        }
         const result = await executeTrial(
           ws,
           stage,
@@ -3493,7 +3573,7 @@ export async function trialRunChatYamlStage(
           trialId,
           plan,
           planTelemetry,
-          preparedExecution,
+          revalidatedPreparation.prepared,
           controller,
           abortState,
           budgets,
@@ -3559,6 +3639,36 @@ export async function trialRunChatYamlStage(
               'Host prerequisites changed during trial execution; rerun is required before finalize.',
             );
           }
+          if (result.success) {
+            const currentDataReadiness = resolveChatPipelineDataReadiness(
+              pipelineConfig,
+              ws.workDir,
+              entry.relativePath,
+            );
+            const currentLiveSmokeBaseline = resolveChatPipelineLiveSmokeBaseline(
+              pipelineConfig,
+              currentDataReadiness,
+              ws.workDir,
+              trialLiveSmokeArtifactProjection(ws, entry, executionSnapshot),
+            );
+            const sealedLiveSmokeReadiness = trialLiveSmokeReadiness(
+              revalidatedPreparation.prepared,
+              entry,
+            );
+            const currentLiveSmokeReadiness = liveSmokeTestEnabled
+              ? buildChatPipelineTrialLiveSmokeReadiness({
+                  targetPipelineIsNew: entry.sourcePath === null,
+                  dataReadiness: currentDataReadiness,
+                  baseline: currentLiveSmokeBaseline,
+                })
+              : null;
+            if (!isDeepStrictEqual(sealedLiveSmokeReadiness, currentLiveSmokeReadiness)) {
+              return resultForHostWitnessFailure(
+                result,
+                'Live Smoke readiness changed during trial execution; rerun is required before finalize.',
+              );
+            }
+          }
           const postVerificationHash = buildChatPipelineTrialVerificationHash({
             inputHash,
             hostWitnessDigest: postWitness.witness.digest,
@@ -3571,6 +3681,7 @@ export async function trialRunChatYamlStage(
             trialabilityReportHash,
             postVerificationHash,
             postWitness.witness,
+            trialLiveSmokeReadiness(revalidatedPreparation.prepared, entry),
             { ...resultWithTrialPlan(result, plan), planTelemetry },
           );
         }

@@ -333,6 +333,28 @@ describe('chat editor context', () => {
     );
   });
 
+  test('preserves creation intent and the selected model for an elliptical manual-new request', () => {
+    const yamlPath = 'C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml';
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath,
+      manualNewPipelineYamlPath: yamlPath,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      userText: 'build me a simple one to ask llm how are you',
+      chatModel: { providerID: 'deepseek', modelID: 'deepseek-v4-flash' },
+      workspaceYamlFilePaths: [yamlPath],
+    });
+
+    expect(context).toContain('<requested-action kind="fill-manual-new-pipeline">');
+    expect(context).toContain(
+      '<opencode-chat-model provider-id="deepseek" model-id="deepseek-v4-flash" />',
+    );
+    expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
+  });
+
   test('keeps create-new marker for separate requests against a manual-new draft', () => {
     const yamlPath = 'C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml';
     usePipelineStore.setState({

@@ -61,6 +61,31 @@ describe('requested action detection', () => {
     ).toEqual([]);
   });
 
+  test('fills a manual-new draft when an imperative creation request omits the repeated pipeline noun', () => {
+    const userText = 'build me a simple one to ask llm how are you';
+
+    expect(fillManualNewPipelineRequestedActionLines(userText, manualNewPipelineContext)).toEqual([
+      '  <requested-action kind="fill-manual-new-pipeline">',
+      '    <target>current-file</target>',
+      '    <reason>current file is the editor-created manual new pipeline draft</reason>',
+      '  </requested-action>',
+    ]);
+    expect(createNewPipelineRequestedActionLines(userText, manualNewPipelineContext)).toEqual([]);
+    expect(
+      fillManualNewPipelineRequestedActionLines(
+        'Can you explain how I could build one?',
+        manualNewPipelineContext,
+      ),
+    ).toEqual([]);
+    expect(
+      createNewPipelineRequestedActionLines('build another simple one', manualNewPipelineContext),
+    ).toEqual([
+      '  <requested-action kind="create-new-pipeline">',
+      '    <collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
+      '  </requested-action>',
+    ]);
+  });
+
   test('keeps true create-new intent for separate pipeline requests', () => {
     expect(
       fillManualNewPipelineRequestedActionLines(

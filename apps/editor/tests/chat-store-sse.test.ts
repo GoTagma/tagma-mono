@@ -371,6 +371,16 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Assert distinct outputs');
   expect(prompt).toContain('Use file-equals for exact text preservation');
   expect(prompt).toContain('empty expected string');
+  expect(prompt).toContain('declared/inferred outputs');
+  expect(prompt).toContain('json.* bindings and inferred ports require final-line JSON');
+  expect(prompt).toContain('Missing without a default');
+  expect(prompt).toContain('`output_error`');
+  expect(prompt).toContain('Do not require a file');
+  expect(prompt).toContain('the user/pipeline promises one');
+  expect(prompt).toContain('exact-byte or cross-run file semantics');
+  expect(prompt).not.toContain(
+    'If no deterministic artifact can assert a required dimension, record a blocking pipeline-artifact finding naming it.',
+  );
   expect(prompt).toContain('json-valid or json-pointer-equals');
   expect(prompt).toContain('text-only checks cannot prove valid JSON');
   expect(prompt).toContain('RFC 8259 JSON');

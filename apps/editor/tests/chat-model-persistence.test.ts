@@ -1903,7 +1903,7 @@ describe('chat model persistence', () => {
 
     let stagedSnapshot: ChatYamlSnapshot | null = null;
     try {
-      await useChatStore.getState().send('create a simple reporting pipeline');
+      await useChatStore.getState().send('build me a simple one to ask llm how are you');
 
       expect(promptAsyncRequests).toHaveLength(1);
       expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);

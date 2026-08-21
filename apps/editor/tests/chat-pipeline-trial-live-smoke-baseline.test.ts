@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -142,6 +142,7 @@ test('a pipeline without manual tasks keeps the run-all baseline', () => {
     mode: 'run-all',
     manualGatedTaskIds: [],
     middlewareUnavailableTaskIds: [],
+    cwdUnavailableTaskIds: [],
   });
 });
 
@@ -154,6 +155,7 @@ test('command tasks ignore inert static_context configuration when selecting Liv
     mode: 'run-all',
     manualGatedTaskIds: [],
     middlewareUnavailableTaskIds: [],
+    cwdUnavailableTaskIds: [],
   });
 });
 
@@ -220,6 +222,7 @@ test('a present static_context source does not gate the live smoke', () => {
       mode: 'run-all',
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
+      cwdUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -245,6 +248,7 @@ test('a staged static_context edit excludes the stale real-workspace branch', ()
     const baseline = resolveChatPipelineLiveSmokeBaseline(config, runnable, liveWorkDir, {
       livePipelineDir,
       stagedPipelineDir,
+      targetPipelineIsNew: false,
     });
 
     expect(baseline.mode).toBe('targeted');
@@ -275,11 +279,208 @@ test('byte-identical staged and live static_context sources remain Live Smoke re
       resolveChatPipelineLiveSmokeBaseline(config, runnable, liveWorkDir, {
         livePipelineDir,
         stagedPipelineDir,
+        targetPipelineIsNew: false,
       }),
     ).toEqual({
       mode: 'run-all',
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
+      cwdUnavailableTaskIds: [],
+    });
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('staged-only effective cwd tasks are excluded from a new-pipeline Live Smoke baseline', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'tagma-trial-baseline-staged-cwd-'));
+  const liveWorkDir = join(temp, 'live');
+  const livePipelineDir = join(liveWorkDir, '.tagma', 'new-pipeline');
+  const stagedPipelineDir = join(temp, 'stage', '.tagma', 'new-pipeline');
+  try {
+    mkdirSync(liveWorkDir, { recursive: true });
+    mkdirSync(join(stagedPipelineDir, 'task-work'), { recursive: true });
+    const config = {
+      name: 'New pipeline staged cwd',
+      tracks: [
+        {
+          id: 'track_cwd',
+          name: 'Track cwd',
+          cwd: '.tagma/new-pipeline',
+          tasks: [plainTask('ask')],
+        },
+        {
+          id: 'task_cwd',
+          name: 'Task cwd',
+          tasks: [{ ...plainTask('ask'), cwd: '.tagma/new-pipeline/task-work' }],
+        },
+        {
+          id: 'workspace',
+          name: 'Workspace',
+          tasks: [plainTask('audit')],
+        },
+      ],
+    } as PipelineConfig;
+
+    const baseline = resolveChatPipelineLiveSmokeBaseline(config, runnable, liveWorkDir, {
+      livePipelineDir,
+      stagedPipelineDir,
+      targetPipelineIsNew: true,
+    });
+
+    expect(baseline.mode).toBe('targeted');
+    expect(baseline.cwdUnavailableTaskIds).toEqual(['task_cwd.ask', 'track_cwd.ask']);
+    if (baseline.mode !== 'targeted') throw new Error('expected targeted');
+    expect(baseline.targetTaskIds).toEqual(['workspace.audit']);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('an existing pipeline losing its cwd remains Live Smoke eligible for the runtime failure', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'tagma-trial-baseline-existing-missing-cwd-'));
+  const liveWorkDir = join(temp, 'live');
+  const livePipelineDir = join(liveWorkDir, '.tagma', 'pipeline');
+  const stagedPipelineDir = join(temp, 'stage', '.tagma', 'pipeline');
+  try {
+    mkdirSync(livePipelineDir, { recursive: true });
+    mkdirSync(join(stagedPipelineDir, 'task-work'), { recursive: true });
+    const config = {
+      name: 'Existing pipeline missing cwd',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ ...plainTask('run'), cwd: '.tagma/pipeline/task-work' }],
+        },
+      ],
+    } as PipelineConfig;
+
+    expect(
+      resolveChatPipelineLiveSmokeBaseline(config, runnable, liveWorkDir, {
+        livePipelineDir,
+        stagedPipelineDir,
+        targetPipelineIsNew: false,
+      }),
+    ).toEqual({
+      mode: 'run-all',
+      manualGatedTaskIds: [],
+      middlewareUnavailableTaskIds: [],
+      cwdUnavailableTaskIds: [],
+    });
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('an arbitrary missing cwd without a staged directory mirror remains Live Smoke eligible', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'tagma-trial-baseline-missing-cwd-'));
+  const liveWorkDir = join(temp, 'live');
+  const livePipelineDir = join(liveWorkDir, '.tagma', 'pipeline');
+  const stagedPipelineDir = join(temp, 'stage', '.tagma', 'pipeline');
+  try {
+    mkdirSync(liveWorkDir, { recursive: true });
+    mkdirSync(stagedPipelineDir, { recursive: true });
+    const config = {
+      name: 'Missing cwd is a pipeline error',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ ...plainTask('run'), cwd: '.tagma/pipeline/missing-runtime-dir' }],
+        },
+      ],
+    } as PipelineConfig;
+
+    expect(
+      resolveChatPipelineLiveSmokeBaseline(config, runnable, liveWorkDir, {
+        livePipelineDir,
+        stagedPipelineDir,
+        targetPipelineIsNew: true,
+      }),
+    ).toEqual({
+      mode: 'run-all',
+      manualGatedTaskIds: [],
+      middlewareUnavailableTaskIds: [],
+      cwdUnavailableTaskIds: [],
+    });
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('a live cwd with the wrong filesystem type is not reclassified as staged-only', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'tagma-trial-baseline-file-cwd-'));
+  const liveWorkDir = join(temp, 'live');
+  const livePipelineDir = join(liveWorkDir, '.tagma', 'pipeline');
+  const stagedPipelineDir = join(temp, 'stage', '.tagma', 'pipeline');
+  try {
+    mkdirSync(livePipelineDir, { recursive: true });
+    writeFileSync(join(livePipelineDir, 'task-work'), 'not a directory', 'utf-8');
+    mkdirSync(join(stagedPipelineDir, 'task-work'), { recursive: true });
+    const config = {
+      name: 'Invalid live cwd type',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ ...plainTask('run'), cwd: '.tagma/pipeline/task-work' }],
+        },
+      ],
+    } as PipelineConfig;
+
+    expect(
+      resolveChatPipelineLiveSmokeBaseline(config, runnable, liveWorkDir, {
+        livePipelineDir,
+        stagedPipelineDir,
+        targetPipelineIsNew: true,
+      }),
+    ).toEqual({
+      mode: 'run-all',
+      manualGatedTaskIds: [],
+      middlewareUnavailableTaskIds: [],
+      cwdUnavailableTaskIds: [],
+    });
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('a live cwd below a dangling symlink is not reclassified as staged-only', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'tagma-trial-baseline-dangling-cwd-'));
+  const liveWorkDir = join(temp, 'live');
+  const livePipelineDir = join(liveWorkDir, '.tagma', 'new-pipeline');
+  const stagedPipelineDir = join(temp, 'stage', '.tagma', 'new-pipeline');
+  try {
+    mkdirSync(livePipelineDir, { recursive: true });
+    symlinkSync(
+      join(temp, 'missing-target'),
+      join(livePipelineDir, 'task-link'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    mkdirSync(join(stagedPipelineDir, 'task-link', 'child'), { recursive: true });
+    const config = {
+      name: 'Dangling live cwd ancestor',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ ...plainTask('run'), cwd: '.tagma/new-pipeline/task-link/child' }],
+        },
+      ],
+    } as PipelineConfig;
+
+    expect(
+      resolveChatPipelineLiveSmokeBaseline(config, runnable, liveWorkDir, {
+        livePipelineDir,
+        stagedPipelineDir,
+        targetPipelineIsNew: true,
+      }),
+    ).toEqual({
+      mode: 'run-all',
+      manualGatedTaskIds: [],
+      middlewareUnavailableTaskIds: [],
+      cwdUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });

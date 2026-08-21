@@ -16,6 +16,7 @@ import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 import type { TrialInteractionDeclaration } from '@tagma/types';
 
 import { stopAllChatCompileWatchers, stopChatCompileWatcher } from '../server/chat-compile-watcher';
+import { __chatPipelineTrialRunTestHooks } from '../server/chat-pipeline-trial-run';
 import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
 import { bypassesRevisionCheck } from '../server/revision-routes';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
@@ -75,7 +76,7 @@ function writeTrialPlan(
     planPath,
     JSON.stringify(
       {
-        version: 5,
+        version: 6,
         yamlHash,
         summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
         goals: ['Preserve every logical input without silently overwriting output.'],
@@ -333,6 +334,8 @@ function trialCacheRecordPath(
 }
 
 afterEach(() => {
+  delete __chatPipelineTrialRunTestHooks.captureHostWitnessAsync;
+  delete __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated;
   for (const ws of workspaces.splice(0)) {
     disposeTrialWitnessWorker(ws);
   }
@@ -3638,6 +3641,457 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id }, 'chat-lock'),
       discardRes,
     );
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('creates a staged-only cwd pipeline after Sandbox covers its Live Smoke exclusions', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const sourceBefore = readFileSync(sourcePath, 'utf-8');
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath, requestedAction: 'create-new-pipeline' }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      activeRelativePath: string;
+      activeStagedPath: string;
+    };
+    const relativePath = stage.activeRelativePath;
+    const stagedPath = stage.activeStagedPath;
+    const reservedStem = relativePath.split('/')[0]!;
+    const pipelineCwd = `.tagma/${reservedStem}`;
+    const primaryPath = join(ws.workDir, '.tagma', ...relativePath.split('/'));
+    const copyPath = pipelineYamlPath(ws.workDir, `${reservedStem}-copy-1`);
+
+    expect(existsSync(dirname(primaryPath))).toBe(false);
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(
+      stagedPath,
+      serializePipeline({
+        name: 'Staged-only cwd pipeline',
+        tracks: [
+          {
+            id: 'track_cwd',
+            name: 'Track cwd',
+            cwd: pipelineCwd,
+            tasks: [
+              {
+                id: 'ask',
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+          {
+            id: 'task_cwd',
+            name: 'Task cwd',
+            tasks: [
+              {
+                id: 'ask',
+                cwd: pipelineCwd,
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, relativePath);
+    writeTrialPlan(stagedPath, {
+      cases: [
+        {
+          id: 'staged-cwd',
+          title: 'Staged-only working directories',
+          objective: 'Exercise every terminal task in the isolated staged pipeline directory.',
+          runs: 1,
+          targetTaskIds: ['track_cwd.ask', 'task_cwd.ask'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'track_cwd.ask', status: 'success' },
+            { type: 'task-status', taskId: 'task_cwd.ask', status: 'success' },
+          ],
+        },
+      ],
+    });
+
+    const trialId = 'create_new_staged_cwd';
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath, trialId }, 'chat-lock'),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+      trialMode: 'sandbox-with-live-smoke',
+      verificationMode: 'sandbox-cases-only',
+      cases: [
+        {
+          id: 'staged-cwd',
+          success: true,
+        },
+      ],
+    });
+    const trialBody = trialRes.body as {
+      summary: string;
+      tasks: Array<{ caseId: string | null; taskId: string; status: string }>;
+      cases: Array<{
+        tasks: Array<{ caseId: string | null; taskId: string; status: string }>;
+      }>;
+    };
+    expect(trialBody.summary).toContain(
+      'effective cwd that exists only in the staged target pipeline and cannot exist in the real workspace until finalize',
+    );
+    expect(
+      new Set(trialBody.cases[0]!.tasks.map((task) => `${task.taskId}:${task.status}`)),
+    ).toEqual(new Set(['track_cwd.ask:success', 'task_cwd.ask:success']));
+    expect(trialBody.tasks.some((task) => task.caseId === null)).toBe(false);
+    expect(existsSync(dirname(primaryPath))).toBe(false);
+
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath, trialId }, 'chat-lock'),
+      finalizeRes,
+    );
+
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'created',
+      conflicts: [],
+      trialVerification: 'verified',
+      entry: { path: primaryPath },
+    });
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(sourceBefore);
+    expect(readFileSync(primaryPath, 'utf-8')).toContain('name: Staged-only cwd pipeline');
+    expect(existsSync(copyPath)).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('rejects staged-only cwd drift after the pre-run host witness', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath, requestedAction: 'create-new-pipeline' }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      activeRelativePath: string;
+      activeStagedPath: string;
+    };
+    const relativePath = stage.activeRelativePath;
+    const stagedPath = stage.activeStagedPath;
+    const reservedStem = relativePath.split('/')[0]!;
+    const livePipelineDir = join(ws.workDir, '.tagma', reservedStem);
+    const liveCwd = join(livePipelineDir, 'task-work');
+
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(
+      stagedPath,
+      serializePipeline({
+        name: 'Staged cwd witness race',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ask',
+                cwd: `.tagma/${reservedStem}/task-work`,
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    mkdirSync(join(dirname(stagedPath), 'task-work'), { recursive: true });
+    compileStage(getRoute, ws, stage.id, relativePath);
+    writeTrialPlan(stagedPath, {
+      cases: [
+        {
+          id: 'staged-cwd',
+          title: 'Staged cwd',
+          objective: 'Exercise the staged cwd in the isolated workspace.',
+          runs: 1,
+          targetTaskIds: ['main.ask'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.ask', status: 'success' }],
+        },
+      ],
+    });
+    expect(existsSync(livePipelineDir)).toBe(false);
+
+    __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated = () => {
+      mkdirSync(livePipelineDir, { recursive: true });
+      writeFileSync(liveCwd, 'not a directory', 'utf-8');
+    };
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath, trialId: 'staged_cwd_witness_race' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({ success: false, kind: 'witness-failed', ran: true });
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'Live Smoke readiness changed during trial execution',
+    );
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('does not verify a cached staged-only cwd trial after an empty live directory appears', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath, requestedAction: 'create-new-pipeline' }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      activeRelativePath: string;
+      activeStagedPath: string;
+    };
+    const relativePath = stage.activeRelativePath;
+    const stagedPath = stage.activeStagedPath;
+    const reservedStem = relativePath.split('/')[0]!;
+    const livePipelineDir = join(ws.workDir, '.tagma', reservedStem);
+
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(
+      stagedPath,
+      serializePipeline({
+        name: 'Staged cwd finalize witness',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ask',
+                cwd: `.tagma/${reservedStem}`,
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, relativePath);
+    writeTrialPlan(stagedPath, {
+      cases: [
+        {
+          id: 'staged-cwd',
+          title: 'Staged cwd',
+          objective: 'Exercise the unpublished cwd in Sandbox.',
+          runs: 1,
+          targetTaskIds: ['main.ask'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.ask', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialId = 'staged_cwd_finalize_empty_dir';
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath, trialId }, 'chat-lock'),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      verificationMode: 'sandbox-cases-only',
+    });
+    expect(existsSync(livePipelineDir)).toBe(false);
+
+    mkdirSync(livePipelineDir, { recursive: true });
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath, trialId }, 'chat-lock'),
+      finalizeRes,
+    );
+
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      trialVerification: 'not-verified',
+      conflicts: expect.arrayContaining(['trial-run-failed']),
+    });
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('rejects directory-trigger readiness drift after the pre-run host witness', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const liveInputDir = join(ws.workDir, 'input', 'articles');
+
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Directory trigger witness race',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ingest',
+                trigger: { type: 'directory', path: 'input/articles' },
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'directory-input',
+          title: 'Directory input',
+          objective: 'Exercise the unavailable directory trigger with an isolated fixture.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [{ path: 'input/articles/example.txt', content: 'fixture' }],
+          expectations: [{ type: 'task-status', taskId: 'main.ingest', status: 'success' }],
+        },
+      ],
+    });
+    expect(existsSync(liveInputDir)).toBe(false);
+
+    __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated = () => {
+      mkdirSync(liveInputDir, { recursive: true });
+    };
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'directory_trigger_witness_race',
+        },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({ success: false, kind: 'witness-failed', ran: true });
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'Live Smoke readiness changed during trial execution',
+    );
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('does not verify a cached trial after an empty directory trigger becomes ready', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const gitInit = Bun.spawnSync(['git', '-C', ws.workDir, 'init', '--quiet']);
+    expect(gitInit.exitCode).toBe(0);
+    writeFileSync(join(ws.workDir, '.gitignore'), '.tagma/.chat-staging/\n.tagma/logs/\n');
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const liveInputDir = join(ws.workDir, 'input', 'articles');
+
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Directory trigger finalize witness',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ingest',
+                trigger: { type: 'directory', path: 'input/articles' },
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'directory-input',
+          title: 'Directory input',
+          objective: 'Exercise the unavailable directory trigger with an isolated fixture.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [{ path: 'input/articles/example.txt', content: 'fixture' }],
+          expectations: [{ type: 'task-status', taskId: 'main.ingest', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialId = 'directory_trigger_finalize_empty_dir';
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      verificationMode: 'sandbox-cases-only',
+    });
+    expect(existsSync(liveInputDir)).toBe(false);
+
+    mkdirSync(liveInputDir, { recursive: true });
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      finalizeRes,
+    );
+
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      trialVerification: 'not-verified',
+      conflicts: expect.arrayContaining(['trial-run-failed']),
+    });
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

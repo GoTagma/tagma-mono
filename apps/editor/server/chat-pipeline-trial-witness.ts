@@ -33,12 +33,13 @@ import type { WorkspaceState } from './workspace-state.js';
 
 declare const __TAGMA_TRIAL_WITNESS_WORKER_SOURCE__: string | undefined;
 
-const TRIAL_HOST_WITNESS_VERSION = 3;
+const TRIAL_HOST_WITNESS_VERSION = 4;
 const FILE_HASH_BUFFER_BYTES = 1024 * 1024;
 const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
   '.chat-staging',
   '.opencode',
   '.opencode-runtime',
+  '.python-agent',
   '.usage',
   'logs',
   'node_modules',

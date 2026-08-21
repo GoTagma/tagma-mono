@@ -38,7 +38,10 @@
   context. The production pipeline agent defaults an unspecified prompt driver to `opencode` and
   an unspecified `opencode` model to that snapshot. Explicit user driver/model choices always win;
   never inherit the Chat model into a non-`opencode` driver, an existing-pipeline edit, or runtime
-  resolution.
+  resolution. An editor-created manual-new draft is authoritative context for an imperative
+  creation request: the user may refer to it as "one" or omit the repeated pipeline/workflow noun.
+  Preserve the fill-new marker and model snapshot for that elliptical request while keeping
+  conceptual questions and explicit separate/another requests distinct.
 - Keep those selectors enabled when the visible conversation is idle, even if another
   conversation is active or owns the YAML edit lock. The visible conversation's own send,
   pending prompt, queue, reconciliation, or flush may still block them.
@@ -326,7 +329,9 @@
   from the final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a
   dedicated hidden same-turn planning continuation that may only call `tagma_trial_plan` and may
   not edit pipeline artifacts. Ordinary router and pipeline-authoring agents must explicitly deny
-  that tool so build or repair turns cannot consume the planner's revision-bound attempts.
+  that tool so build or repair turns cannot consume the planner's revision-bound attempts. The Host
+  must address that continuation directly to `tagma-trial-planner`; never send it through the LLM
+  router, whose own denied tool view can contaminate or rewrite the child capability contract.
   Enforce the configured per-stage attempt budget in the host tool per relative YAML plus YAML hash,
   not only in prompt text. Snapshot the workspace setting when the authenticated stage is created;
   the default is `2` and the allowed range is `1-3`. Serialize concurrent attempts, fail closed on
@@ -394,6 +399,20 @@
   middleware and compare target-pipeline `static_context` sources in the real workspace with the
   exact staged Trial snapshot. Missing, deleted, or byte-divergent staged sources exclude that
   branch from Live Smoke and require Sandbox coverage.
+- Before finalize, a new target pipeline directory cannot exist in the real workspace. When a
+  task's effective cwd is inside that target directory, the live cwd is verifiably absent, and the
+  exact projected directory exists in the authenticated staged snapshot, exclude that task and its
+  dependents from Live Smoke and require Sandbox coverage. Only a staged target with no live source
+  at stage start is eligible for this classification; an existing pipeline losing its cwd remains a
+  runtime error. A file, broken symlink, unreadable path, or missing cwd without a corresponding
+  staged directory also remains a runtime error. Do not create a real-workspace placeholder or run
+  the task from staging as if it were Live Smoke. Recompute mutable Live Smoke readiness after the
+  pre-run host witness is captured, and compare the complete canonical execution projection again
+  after the post witness before caching success: data-readiness state and unavailable task ids,
+  baseline mode and target ids, manual/middleware/cwd exclusion ids, and new-target identity.
+  Persist that entire projection in the authenticated Trial cache, then re-resolve it on cache reuse
+  and Finalize; Git witnesses do not represent empty directories. Never carry a stale readiness
+  decision across either witness boundary or Finalize into execution or cached verification.
 - Treat each case's `targetTaskIds` as mandatory at the tool schema, persisted-plan parser, and
   execution boundary. Never translate an empty or missing target list to `undefined`, because that
   means a full-pipeline run.
@@ -425,8 +444,11 @@
 - For an exact Git-root workspace, witness actual bytes for tracked and non-ignored untracked
   source files, authored `.tagma` files, and ignored root dependency/environment descriptors.
   Bind Git HEAD/index/status/flags/config/locks, ignored-root presence, the Git binary, declared
-  binaries, minimal environment, and Python identity. Use a full filesystem witness outside an
-  exact Git root, and never reuse an in-process manifest cache across a fresh `WorkspaceState`.
+  binaries, minimal environment, and Python identity. Treat `.tagma/.python-agent` as generated,
+  host-managed runtime outside the workspace byte manifest; bind its environment, interpreter
+  target bytes, and `pyvenv.cfg` through the dedicated Python witness so standard POSIX venv
+  symlinks do not weaken the generic external-symlink fence. Use a full filesystem witness outside
+  an exact Git root, and never reuse an in-process manifest cache across a fresh `WorkspaceState`.
 - When that fallback scope is a volume root or UNC share root, fail before recursive capture and
   tell the user to select a narrower project directory. Do not silently narrow the witness; an
   exact Git root must still get the Git witness attempt before this filesystem-root guard.
@@ -897,7 +919,16 @@
   input-boundary coverage. All fixture and generated-input file destinations must be pairwise
   non-overlapping, including parent/child paths that cannot both be files. Bump both the Trial
   Plan contract and signed Trial cache protocol when changing this evidence semantics.
-- A required coverage dimension that cannot be covered because the pipeline persists no deterministic artifact is a fixable verifiability gap: record a `blocking` finding with `repairScope: pipeline-artifact` naming the missing artifact, so the host repair loop can author it. Mark a dimension `blocked` only when no pipeline repair can expose it to the harness.
+- A successful prompt task proves its declared or inferred output bindings resolved from authored
+  `value` or `from`, used an absent-source `default` where applicable, and passed type coercion. An
+  unresolved binding without a default, or a resolved/default value that cannot be coerced, fails
+  with `output_error`. Declared implicit/explicit `json.*` bindings and inferred output ports use
+  final-line JSON; declared `stdout`/`stderr`/`normalizedOutput` sources, explicit values, and
+  defaults do not. Never require a duplicate persisted file merely to verify a native output
+  binding. Require an artifact only when the user or pipeline promises a file, or exact-byte/
+  cross-run filesystem behavior needs evidence; a missing artifact required by that contract is a
+  blocking `pipeline-artifact` finding. Mark a dimension `blocked` only when no pipeline repair can
+  expose it to the harness.
 - `trialTaskRepairScope` must map managed OpenCode primary-model stream failures (billing/network) to `diagnostic-only` via `isExternalDriverStreamFailure`, never to `pipeline-artifact`; a command task's genuine `exit_nonzero` remains `pipeline-artifact`.
 
 ## Targeted Pipeline Runs

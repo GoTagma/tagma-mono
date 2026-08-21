@@ -684,6 +684,19 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     );
     expect(planner).toContain('Use file-equals when exact text preservation matters');
     expect(planner).toContain('an empty expected string for empty-content cases');
+    expect(planner).toContain('declared or inferred prompt outputs');
+    expect(planner).toContain('implicit or explicit `json.*` sources and inferred output ports');
+    expect(planner).toContain('An unresolved binding without a default');
+    expect(planner).toContain('`output_error`');
+    expect(planner).toContain('Do not require an additional persisted file');
+    expect(planner).toContain('the user or pipeline explicitly promises a file');
+    expect(planner).toContain('exact-byte or cross-run file semantics');
+    expect(planner).not.toContain(
+      'When a required dimension cannot be covered because the pipeline persists no deterministic artifact to observe it',
+    );
+    expect(planner).not.toContain(
+      'If empty-content (or any other required dimension) cannot be asserted because the pipeline persists no deterministic artifact',
+    );
     expect(planner).toContain('Every .json artifact checked');
     expect(planner).toContain('Text matches alone cannot prove valid JSON');
     expect(planner).toContain('serialized JSON value');

@@ -65,7 +65,7 @@ function writeTrialPlan(
     stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify(
       {
-        version: 5,
+        version: 6,
         yamlHash,
         summary: 'Verify task-scoped secret isolation and redaction.',
         goals: ['Keep task secrets out of unrelated task environments.'],

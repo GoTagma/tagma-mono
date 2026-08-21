@@ -127,7 +127,7 @@ test('trial repair prompt treats diagnostic-only evidence as non-authorizing con
     {
       kind: 'trial-run',
       result: {
-        version: 5,
+        version: 6,
         success: false,
         kind: 'plan-failed',
         repairAuthorization: 'pipeline-change-allowed',

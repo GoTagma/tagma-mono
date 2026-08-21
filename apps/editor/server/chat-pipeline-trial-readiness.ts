@@ -1,5 +1,5 @@
-import { lstatSync, readFileSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { lstatSync, readFileSync, statSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 
 import type { PipelineConfig } from '@tagma/sdk';
 import { buildDag } from '@tagma/sdk/config';
@@ -30,18 +30,30 @@ export type ChatPipelineTrialReadiness =
   | { state: 'blocked'; blockers: ChatPipelineTrialBlocker[] };
 
 export type ChatPipelineLiveSmokeBaseline =
-  | { mode: 'run-all'; manualGatedTaskIds: string[]; middlewareUnavailableTaskIds: string[] }
+  | {
+      mode: 'run-all';
+      manualGatedTaskIds: string[];
+      middlewareUnavailableTaskIds: string[];
+      cwdUnavailableTaskIds: string[];
+    }
   | {
       mode: 'targeted';
       targetTaskIds: string[];
       manualGatedTaskIds: string[];
       middlewareUnavailableTaskIds: string[];
+      cwdUnavailableTaskIds: string[];
     }
-  | { mode: 'skip'; manualGatedTaskIds: string[]; middlewareUnavailableTaskIds: string[] };
+  | {
+      mode: 'skip';
+      manualGatedTaskIds: string[];
+      middlewareUnavailableTaskIds: string[];
+      cwdUnavailableTaskIds: string[];
+    };
 
 export interface ChatPipelineLiveSmokeArtifactProjection {
   livePipelineDir: string;
   stagedPipelineDir: string;
+  targetPipelineIsNew: boolean;
 }
 
 function isRegularFile(path: string): boolean {
@@ -50,6 +62,58 @@ function isRegularFile(path: string): boolean {
   } catch {
     return false;
   }
+}
+
+function directoryState(path: string): 'directory' | 'missing' | 'other' {
+  try {
+    return statSync(path).isDirectory() ? 'directory' : 'other';
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return 'other';
+  }
+
+  // `lstat(path)` also reports ENOENT when an ancestor is a dangling symlink.
+  // Walk to the nearest lexical entry so only a genuinely absent suffix below
+  // a usable directory is classified as unpublished staged state.
+  let candidate = path;
+  while (true) {
+    try {
+      const entry = lstatSync(candidate);
+      if (candidate === path) return 'other';
+      if (entry.isSymbolicLink()) {
+        try {
+          return statSync(candidate).isDirectory() ? 'missing' : 'other';
+        } catch {
+          return 'other';
+        }
+      }
+      return entry.isDirectory() ? 'missing' : 'other';
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return 'other';
+    }
+    const parent = dirname(candidate);
+    if (parent === candidate) return 'other';
+    candidate = parent;
+  }
+}
+
+function effectiveCwdIsStagedOnly(
+  workDir: string,
+  node: { track: { cwd?: string }; task: { cwd?: string } },
+  projection: ChatPipelineLiveSmokeArtifactProjection | undefined,
+): boolean {
+  if (!projection?.targetPipelineIsNew) return false;
+  const liveCwd = resolve(workDir, node.task.cwd ?? node.track.cwd ?? '.');
+  if (!isPathWithin(liveCwd, projection.livePipelineDir) || directoryState(liveCwd) !== 'missing') {
+    return false;
+  }
+  const stagedCwd = resolve(
+    projection.stagedPipelineDir,
+    relative(projection.livePipelineDir, liveCwd),
+  );
+  return (
+    isPathWithin(stagedCwd, projection.stagedPipelineDir) &&
+    directoryState(stagedCwd) === 'directory'
+  );
 }
 
 function projectedStaticContextMatches(
@@ -112,9 +176,12 @@ function missingStaticContextSources(
  * and must be exercised through Sandbox cases instead. Tasks whose
  * `static_context` source is missing from the real workspace or differs
  * from the staged pipeline artifact are excluded the same way: running
- * them would use absent or stale promised context. Fixture-backed data
- * constraints from {@link resolveChatPipelineDataReadiness} are intersected
- * with both exclusions.
+ * them would use absent or stale promised context. An effective cwd that is
+ * present only in the staged target pipeline is also excluded: it cannot be
+ * spawned in the real workspace until publication, while an arbitrary missing
+ * cwd without a staged directory mirror remains an executable pipeline error.
+ * Fixture-backed data constraints from
+ * {@link resolveChatPipelineDataReadiness} are intersected with all exclusions.
  */
 export function resolveChatPipelineLiveSmokeBaseline(
   pipelineConfig: PipelineConfig,
@@ -135,24 +202,32 @@ export function resolveChatPipelineLiveSmokeBaseline(
     )
     .map(([taskId]) => taskId)
     .sort();
+  const cwdUnavailableTaskIds = [...dag.nodes.entries()]
+    .filter(([, node]) => effectiveCwdIsStagedOnly(workDir, node, projection))
+    .map(([taskId]) => taskId)
+    .sort();
+  const exclusions = {
+    manualGatedTaskIds,
+    middlewareUnavailableTaskIds,
+    cwdUnavailableTaskIds,
+  };
   const gatedTaskIds = [
-    ...new Set([...manualGatedTaskIds, ...middlewareUnavailableTaskIds]),
+    ...new Set([...manualGatedTaskIds, ...middlewareUnavailableTaskIds, ...cwdUnavailableTaskIds]),
   ].sort();
   if (dataReadiness.state === 'blocked') {
-    return { mode: 'skip', manualGatedTaskIds, middlewareUnavailableTaskIds };
+    return { mode: 'skip', ...exclusions };
   }
   if (gatedTaskIds.length === 0) {
     if (dataReadiness.state === 'fixture-backed') {
       return dataReadiness.baseline.mode === 'skip'
-        ? { mode: 'skip', manualGatedTaskIds, middlewareUnavailableTaskIds }
+        ? { mode: 'skip', ...exclusions }
         : {
             mode: 'targeted',
             targetTaskIds: dataReadiness.baseline.targetTaskIds,
-            manualGatedTaskIds,
-            middlewareUnavailableTaskIds,
+            ...exclusions,
           };
     }
-    return { mode: 'run-all', manualGatedTaskIds, middlewareUnavailableTaskIds };
+    return { mode: 'run-all', ...exclusions };
   }
 
   const dependents = new Map<string, string[]>();
@@ -185,16 +260,15 @@ export function resolveChatPipelineLiveSmokeBaseline(
               dataReadiness.baseline.targetTaskIds.includes(taskId)),
         );
   if (eligible.length === 0) {
-    return { mode: 'skip', manualGatedTaskIds, middlewareUnavailableTaskIds };
+    return { mode: 'skip', ...exclusions };
   }
   if (dataReadiness.state === 'runnable' && eligible.length === dag.nodes.size) {
-    return { mode: 'run-all', manualGatedTaskIds, middlewareUnavailableTaskIds };
+    return { mode: 'run-all', ...exclusions };
   }
   return {
     mode: 'targeted',
     targetTaskIds: eligible,
-    manualGatedTaskIds,
-    middlewareUnavailableTaskIds,
+    ...exclusions,
   };
 }
 

@@ -12,6 +12,12 @@ const CREATE_PIPELINE_PATTERNS = [
   /(?:新的?|新).{0,24}(?:pipeline|流水线|管线)/iu,
 ] as const;
 
+const MANUAL_NEW_PIPELINE_IMPERATIVE_PATTERNS = [
+  /^\s*(?:(?:please|kindly)\s+)?(?:create|generate|scaffold|set\s+up|build|make)\b/i,
+  /^\s*(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:create|generate|scaffold|set\s+up|build|make)\b/i,
+  /^\s*(?:(?:请|麻烦|帮我|请帮我)\s*)?(?:创建|新建|新增|生成|建立|搭建|做一个|建一个)/u,
+] as const;
+
 const PIPELINE_TARGET_RE = /(?:pipeline|流水线|管线)/iu;
 const WORKFLOW_TARGET_RE = /workflow/iu;
 const NON_PIPELINE_OBJECT_BEFORE_RE =
@@ -21,8 +27,10 @@ const NON_PIPELINE_OBJECT_AFTER_RE =
 const SEPARATE_NEW_PIPELINE_PATTERNS = [
   /\b(?:another|separate|different|sibling|second)\b.{0,48}\b(?:pipeline|workflow)\b/i,
   /\b(?:pipeline|workflow)\b.{0,48}\b(?:another|separate|different|sibling|second)\b/i,
+  /\b(?:another|separate|different|sibling|second)\b.{0,24}\bone\b/i,
   /(?:另一个|另外|再(?:创建|新建|新增|生成|建立|搭建|做一个|建一个|来一个)|单独|独立|第二个|不要当前|不是当前|别改当前).{0,48}(?:pipeline|流水线|管线)/iu,
   /(?:pipeline|流水线|管线).{0,48}(?:另一个|另外|单独|独立|第二个|不要当前|不是当前|别改当前)/iu,
+  /(?:另一个|另外一个|再来一个|第二个)/u,
 ] as const;
 function looksLikePipelineSubobjectCreation(
   text: string,
@@ -57,12 +65,17 @@ export function isExplicitSeparateNewPipelineRequest(text: string | undefined): 
   return SEPARATE_NEW_PIPELINE_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+function isImperativeManualNewPipelineRequest(text: string | undefined): boolean {
+  if (!text?.trim()) return false;
+  return MANUAL_NEW_PIPELINE_IMPERATIVE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export function shouldFillManualNewPipeline(
   text: string | undefined,
   context: PipelineRequestContext | undefined,
 ): boolean {
   return (
-    isCreateNewPipelineRequest(text) &&
+    (isCreateNewPipelineRequest(text) || isImperativeManualNewPipelineRequest(text)) &&
     !isExplicitSeparateNewPipelineRequest(text) &&
     context?.currentPipelineIsManualNewDraft === true
   );
@@ -86,7 +99,11 @@ export function createNewPipelineRequestedActionLines(
   context?: PipelineRequestContext,
 ): string[] {
   if (shouldFillManualNewPipeline(text, context)) return [];
-  if (!isCreateNewPipelineRequest(text)) return [];
+  const manualNewSeparateRequest =
+    context?.currentPipelineIsManualNewDraft === true &&
+    isImperativeManualNewPipelineRequest(text) &&
+    isExplicitSeparateNewPipelineRequest(text);
+  if (!isCreateNewPipelineRequest(text) && !manualNewSeparateRequest) return [];
   return [
     `  <requested-action kind="${CREATE_NEW_PIPELINE_ACTION_KIND}">`,
     '    <collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
