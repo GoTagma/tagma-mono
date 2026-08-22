@@ -26,6 +26,109 @@ const ctx = {
 } as unknown as Parameters<typeof OpenCodeDriver.buildCommand>[2];
 
 describe('OpenCodeDriver buildCommand', () => {
+  test('runs default restricted tasks with a task-scoped deny policy', async () => {
+    const spec = await OpenCodeDriver.buildCommand(task(), track, ctx);
+
+    const agentIndex = spec.args.indexOf('--agent');
+    expect(agentIndex).toBeGreaterThan(-1);
+    const agentName = spec.args[agentIndex + 1];
+    expect(agentName).toMatch(/^tagma-pipeline-task-[0-9a-f]{32}$/);
+    expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
+      edit: 'deny',
+      bash: 'deny',
+      task: 'deny',
+      tagma_yaml_skeleton: 'deny',
+      tagma_placement_plan: 'deny',
+      tagma_trial_plan: 'deny',
+    });
+    expect(JSON.parse(spec.env?.OPENCODE_CONFIG_CONTENT ?? '{}')).toMatchObject({
+      default_agent: agentName,
+      agent: {
+        [agentName]: {
+          mode: 'primary',
+          permission: { edit: 'deny', bash: 'deny', task: 'deny' },
+        },
+      },
+    });
+  });
+
+  test('uses a fresh restricted agent identity for every task invocation', async () => {
+    const first = await OpenCodeDriver.buildCommand(task(), track, ctx);
+    const second = await OpenCodeDriver.buildCommand(task(), track, ctx);
+
+    const firstAgent = first.args[first.args.indexOf('--agent') + 1];
+    const secondAgent = second.args[second.args.indexOf('--agent') + 1];
+    expect(firstAgent).not.toBe(secondAgent);
+  });
+
+  test('denies every read-like OpenCode tool when task read access is disabled', async () => {
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ permissions: { read: false, write: false, execute: false } }),
+      track,
+      ctx,
+    );
+
+    expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
+      read: 'deny',
+      glob: 'deny',
+      grep: 'deny',
+      list: 'deny',
+      lsp: 'deny',
+      skill: 'deny',
+      edit: 'deny',
+      bash: 'deny',
+      task: 'deny',
+      tagma_yaml_skeleton: 'deny',
+      tagma_placement_plan: 'deny',
+      tagma_trial_plan: 'deny',
+    });
+  });
+
+  test('does not copy ambient OpenCode config or permissions past the runtime env policy', async () => {
+    const originalConfig = process.env.OPENCODE_CONFIG_CONTENT;
+    const originalPermission = process.env.OPENCODE_PERMISSION;
+    process.env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
+      model: 'provider/existing-model',
+      plugin: ['ambient-plugin'],
+      agent: {
+        'tagma-pipeline-task': {
+          mode: 'primary',
+          permission: { bash: 'allow', edit: 'allow', task: 'allow' },
+        },
+      },
+    });
+    process.env.OPENCODE_PERMISSION = JSON.stringify({ webfetch: 'allow' });
+
+    try {
+      const spec = await OpenCodeDriver.buildCommand(task(), track, ctx);
+      const agentName = spec.args[spec.args.indexOf('--agent') + 1];
+      const config = JSON.parse(spec.env?.OPENCODE_CONFIG_CONTENT ?? '{}');
+      expect(Object.keys(config).sort()).toEqual(['agent', 'default_agent']);
+      expect(config.default_agent).toBe(agentName);
+      expect(config.agent[agentName]).toMatchObject({
+        mode: 'primary',
+        permission: { edit: 'deny', bash: 'deny', task: 'deny' },
+      });
+      expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).not.toHaveProperty('webfetch');
+    } finally {
+      if (originalConfig === undefined) delete process.env.OPENCODE_CONFIG_CONTENT;
+      else process.env.OPENCODE_CONFIG_CONTENT = originalConfig;
+      if (originalPermission === undefined) delete process.env.OPENCODE_PERMISSION;
+      else process.env.OPENCODE_PERMISSION = originalPermission;
+    }
+  });
+
+  test('keeps unrestricted tasks on the user-selected OpenCode agent', async () => {
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ permissions: { read: true, write: true, execute: true } }),
+      track,
+      ctx,
+    );
+
+    expect(spec.args).not.toContain('--agent');
+    expect(spec.env).toBeUndefined();
+  });
+
   test('does not probe the opencode binary when a model is explicit', async () => {
     const original = Bun.spawn;
     let called = false;
@@ -89,6 +192,31 @@ describe('OpenCodeDriver buildCommand', () => {
     expect(spec.args).not.toContain('--session');
     expect(spec.args.at(-1)).toContain('[Previous Output]');
     expect(spec.args.at(-1)).toContain('previous text');
+  });
+
+  test('reapplies a fresh restricted agent when resuming a Tagma OpenCode session', async () => {
+    const resumeCtx = {
+      ...ctx,
+      sessionMap: new Map([['k.up', 'tagma-session']]),
+      sessionDriverMap: new Map([['k.up', 'opencode']]),
+    } as unknown as Parameters<typeof OpenCodeDriver.buildCommand>[2];
+
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ continue_from: 'k.up' }),
+      track,
+      resumeCtx,
+    );
+
+    expect(spec.args).toContain('--session');
+    expect(spec.args[spec.args.indexOf('--session') + 1]).toBe('tagma-session');
+    expect(spec.args[spec.args.indexOf('--agent') + 1]).toMatch(
+      /^tagma-pipeline-task-[0-9a-f]{32}$/,
+    );
+    expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toMatchObject({
+      edit: 'deny',
+      bash: 'deny',
+      task: 'deny',
+    });
   });
 });
 

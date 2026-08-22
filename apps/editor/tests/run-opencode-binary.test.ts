@@ -111,7 +111,125 @@ describe('editor OpenCode runtime selection', () => {
     expect(activeDatabase.generationId.startsWith('schema-v1-')).toBe(true);
   });
 
-  test('forces project-local config discovery off in Legacy rollback mode', async () => {
+  test('keeps the Tagma task agent deny policy inside the managed OpenCode config', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-permissions-'));
+    tempRoots.push(root);
+    const tagmaCwd = join(root, '.tagma');
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+    process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+
+    let captured: SpawnSpec | null = null;
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
+        captured = spec;
+        return taskResult();
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], tagmaCwd, { mode: 'broker' });
+    const taskAgentName = 'tagma-pipeline-task-0123456789abcdef0123456789abcdef';
+
+    await runtime.runSpawn(
+      {
+        args: [
+          'opencode',
+          'run',
+          '--model',
+          'opencode/big-pickle',
+          '--agent',
+          taskAgentName,
+          '--',
+          'hello',
+        ],
+        cwd: root,
+        env: {
+          OPENCODE_PERMISSION: JSON.stringify({ edit: 'deny', bash: 'deny', task: 'deny' }),
+          OPENCODE_CONFIG_CONTENT: JSON.stringify({
+            plugin: ['unmanaged-plugin'],
+            arbitrary: 'must-not-survive',
+            agent: {
+              [taskAgentName]: {
+                mode: 'primary',
+                permission: { edit: 'allow', bash: 'allow', task: 'allow' },
+              },
+              evil: { mode: 'primary', permission: { bash: 'allow' } },
+            },
+          }),
+        },
+      },
+      { name: 'opencode' } as DriverPlugin,
+    );
+
+    const env = (captured as SpawnSpec | null)?.env;
+    const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? '{}');
+    expect(config.plugin).toEqual([]);
+    expect(config.default_agent).toBe(taskAgentName);
+    expect(config.agent?.[taskAgentName]).toMatchObject({
+      mode: 'primary',
+      permission: { edit: 'deny', bash: 'deny', task: 'deny' },
+    });
+    expect(config.agent?.evil).toBeUndefined();
+    expect(config.arbitrary).toBeUndefined();
+    expect(JSON.parse(env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
+      edit: 'deny',
+      bash: 'deny',
+      task: 'deny',
+    });
+  });
+
+  test('fails closed before spawn when a managed task agent policy is contaminated', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-invalid-permissions-'));
+    tempRoots.push(root);
+    const tagmaCwd = join(root, '.tagma');
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+    process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+
+    let spawnCalls = 0;
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(): Promise<TaskResult> {
+        spawnCalls += 1;
+        return taskResult();
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], tagmaCwd, { mode: 'broker' });
+    const taskAgentName = 'tagma-pipeline-task-fedcba9876543210fedcba9876543210';
+    const invalidPolicies = [
+      { edit: 'deny', bash: 'allow', task: 'deny' },
+      { edit: 'deny', bash: 'deny' },
+      { edit: 'deny', bash: 'deny', task: 'deny', unknown: 'deny' },
+    ];
+
+    for (const permission of invalidPolicies) {
+      await expect(
+        runtime.runSpawn(
+          {
+            args: ['opencode', 'run', '--agent', taskAgentName, '--', 'hello'],
+            cwd: root,
+            env: {
+              OPENCODE_PERMISSION: JSON.stringify(permission),
+              OPENCODE_CONFIG_CONTENT: '{}',
+            },
+          },
+          { name: 'opencode' } as DriverPlugin,
+        ),
+      ).rejects.toThrow(/must deny delegated agents/);
+    }
+    expect(spawnCalls).toBe(0);
+  });
+
+  test('preserves task permissions and disables project config in Legacy rollback mode', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-legacy-isolation-'));
     tempRoots.push(root);
     const tagmaCwd = join(root, '.tagma');
@@ -139,13 +257,28 @@ describe('editor OpenCode runtime selection', () => {
       { mode: 'legacy' },
     );
     const getCaptured = (): SpawnSpec | null => captured;
+    const taskAgentName = 'tagma-pipeline-task-11111111111111111111111111111111';
 
     await runtime.runSpawn(
-      { args: ['opencode', 'run', '--model', 'opencode/big-pickle'], cwd: root },
+      {
+        args: ['opencode', 'run', '--model', 'opencode/big-pickle', '--agent', taskAgentName],
+        cwd: root,
+        env: {
+          OPENCODE_PERMISSION: JSON.stringify({ edit: 'deny', bash: 'deny', task: 'deny' }),
+          OPENCODE_CONFIG_CONTENT: '{}',
+        },
+      },
       { name: 'opencode' } as DriverPlugin,
     );
 
     expect(getCaptured()?.env?.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('true');
+    const config = JSON.parse(getCaptured()?.env?.OPENCODE_CONFIG_CONTENT ?? '{}');
+    expect(config.default_agent).toBe(taskAgentName);
+    expect(config.agent?.[taskAgentName]?.permission).toEqual({
+      edit: 'deny',
+      bash: 'deny',
+      task: 'deny',
+    });
   });
 
   test('concurrent first prompt tasks serialize generation initialization and then share the ready DB', async () => {

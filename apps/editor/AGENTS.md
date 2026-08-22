@@ -699,6 +699,19 @@
   as managed runtime state rather than Chat support artifacts so stale task-cwd trees cannot wedge
   staging/finalize; keep ordinary support files
   subject to the existing entry, depth, file-size, and total-size bounds.
+- Built-in OpenCode prompt tasks must enforce resolved task permissions with a deny-only
+  `OPENCODE_PERMISSION` policy and a fresh, unpredictable primary agent selected by both
+  `--agent` and `default_agent`. Apply the same policy to that agent because OpenCode merges
+  agent-specific rules after top-level rules. A restricted task must deny `task`; `read: false`
+  also denies read/search/list/LSP/skill tools, `write: false` denies edit and Tagma's managed
+  authoring tools, and `execute: false` denies Bash. Do not copy ambient
+  `OPENCODE_CONFIG_CONTENT` or `OPENCODE_PERMISSION` from `process.env` into a SpawnSpec, because
+  doing so bypasses the runtime environment policy. Native Broker and Legacy rollback must discard
+  arbitrary inline config, rebuild only the nonce agent inside the host-authored managed config,
+  and fail before spawn on an unknown permission key, a non-deny action, or missing `task: deny`.
+  Same-driver session resume may reuse only a session id produced by an upstream Tagma task and
+  must reapply a fresh restricted agent on every turn; importing an external interactive session
+  requires separate provenance and permission handling.
 - Managed prompt CLI runs must print error-level OpenCode logs and terminate a hung child when the
   pinned runtime reports `message="stream error" small=false mode=primary`; title-model
   (`small=true`) and subagent errors remain recoverable. Keep Chat sidecar Basic Auth credentials

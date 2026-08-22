@@ -2,13 +2,59 @@ import type {
   DriverPlugin,
   DriverCapabilities,
   DriverResultMeta,
+  Permissions,
   TaskConfig,
   TrackConfig,
   DriverContext,
   SpawnSpec,
 } from '@tagma/types';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_MODEL = 'opencode/big-pickle';
+const TAGMA_PIPELINE_TASK_AGENT_PREFIX = 'tagma-pipeline-task-';
+const DEFAULT_PERMISSIONS: Permissions = { read: true, write: false, execute: false };
+
+type OpenCodePermission = Record<string, unknown>;
+
+function buildPermissionRestrictions(permissions: Permissions): OpenCodePermission {
+  const policy: OpenCodePermission = {};
+  if (!permissions.read) {
+    for (const tool of ['read', 'glob', 'grep', 'list', 'lsp', 'skill']) policy[tool] = 'deny';
+  }
+  if (!permissions.write) {
+    policy.edit = 'deny';
+    // These Editor-managed authoring tools can persist chat staging state and
+    // are not ordinary pipeline-task capabilities.
+    policy.tagma_yaml_skeleton = 'deny';
+    policy.tagma_placement_plan = 'deny';
+    policy.tagma_trial_plan = 'deny';
+  }
+  if (!permissions.execute) policy.bash = 'deny';
+  // A delegated agent has its own tool policy, so allowing `task` would let a
+  // restricted prompt escape the current task's read/write/execute envelope.
+  if (!permissions.read || !permissions.write || !permissions.execute) policy.task = 'deny';
+  return policy;
+}
+
+function buildRestrictedTaskEnv(
+  restrictions: OpenCodePermission,
+  taskAgentName: string,
+): Record<string, string> {
+  const config = {
+    default_agent: taskAgentName,
+    agent: {
+      [taskAgentName]: {
+        description: 'Execute one Tagma pipeline prompt task with task-scoped permissions.',
+        mode: 'primary',
+        permission: restrictions,
+      },
+    },
+  };
+  return {
+    OPENCODE_PERMISSION: JSON.stringify(restrictions),
+    OPENCODE_CONFIG_CONTENT: JSON.stringify(config),
+  };
+}
 
 // NOTE on Windows multi-line prompts: `opencode` resolves to `opencode.cmd`,
 // an npm-generated batch wrapper. cmd.exe silently truncates argv elements
@@ -61,6 +107,9 @@ export const OpenCodeDriver: DriverPlugin = {
     sessionResume: true, // supports --session
     systemPrompt: false, // no --system-prompt flag; prepend to prompt instead
     outputFormat: true, // supports --format json
+    // Standard OpenCode tools are restricted below. Keep this coarse capability
+    // false because arbitrary project/MCP tools are outside Tagma's three-bit
+    // permission vocabulary and must not be advertised as fully sandboxed.
     enforcesPermissions: false,
   } satisfies DriverCapabilities,
 
@@ -79,6 +128,12 @@ export const OpenCodeDriver: DriverPlugin = {
       ? rawEffort in EFFORT_TO_VARIANT
         ? EFFORT_TO_VARIANT[rawEffort]
         : rawEffort
+      : null;
+    const permissions = task.permissions ?? track.permissions ?? DEFAULT_PERMISSIONS;
+    const permissionRestrictions = buildPermissionRestrictions(permissions);
+    const restricted = Object.keys(permissionRestrictions).length > 0;
+    const taskAgentName = restricted
+      ? `${TAGMA_PIPELINE_TASK_AGENT_PREFIX}${randomUUID().replaceAll('-', '')}`
       : null;
 
     let prompt = task.prompt!;
@@ -129,6 +184,11 @@ export const OpenCodeDriver: DriverPlugin = {
       args.push('--variant', variant);
     }
 
+    // OpenCode applies agent-specific rules after its top-level permission
+    // policy. Select a Tagma-owned agent carrying the same deny policy so a
+    // user-defined build agent cannot turn a denied tool back on.
+    if (taskAgentName) args.push('--agent', taskAgentName);
+
     // session resume (must appear before --)
     if (sessionId) {
       args.push('--session', sessionId);
@@ -137,7 +197,13 @@ export const OpenCodeDriver: DriverPlugin = {
     // `--` (POSIX end-of-options) isolates prompt from flag parsing
     args.push('--', prompt);
 
-    return { args, cwd: task.cwd ?? ctx.workDir };
+    return {
+      args,
+      cwd: task.cwd ?? ctx.workDir,
+      ...(taskAgentName
+        ? { env: buildRestrictedTaskEnv(permissionRestrictions, taskAgentName) }
+        : {}),
+    };
   },
 
   parseResult(stdout: string): DriverResultMeta {

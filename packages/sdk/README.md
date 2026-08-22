@@ -220,12 +220,19 @@ Each hook value can be a single command string or an array of commands.
 
 | Field     | Type      | Default | Description                                        |
 | --------- | --------- | ------- | -------------------------------------------------- |
-| `read`    | `boolean` | -       | Allow the AI driver/agent to read files            |
-| `write`   | `boolean` | -       | Allow the AI driver/agent to write files           |
-| `execute` | `boolean` | -       | Allow the AI driver/agent to execute tool commands |
+| `read`    | `boolean` | `true`  | Allow the AI driver/agent to read files            |
+| `write`   | `boolean` | `false` | Allow the AI driver/agent to write files           |
+| `execute` | `boolean` | `false` | Allow the AI driver/agent to execute tool commands |
 
 `permissions` are passed to AI drivers that support them. They do not sandbox
 YAML `command` tasks; command tasks execute through the host shell.
+
+The built-in OpenCode driver maps denied capabilities to a task-scoped OpenCode policy. In
+particular, `execute: false` disables Bash and delegated agents for that task. This is tool-policy
+enforcement, not an operating-system sandbox: when `execute: true` grants a host shell, that shell
+can itself read and write files regardless of the `read` and `write` bits. Prefer the monotonic
+tiers none, read-only, read/write without shell, or full access. Third-party drivers must document
+whether and how they enforce these fields.
 
 ### Inheritance
 

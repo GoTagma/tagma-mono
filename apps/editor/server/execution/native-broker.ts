@@ -167,15 +167,92 @@ const MANAGED_OPENCODE_ISOLATION_ENV_KEYS = [
   'OPENCODE_DB',
   'OPENCODE_CONFIG_CONTENT',
 ] as const;
+const TAGMA_PIPELINE_TASK_AGENT_PATTERN = /^tagma-pipeline-task-[0-9a-f]{32}$/u;
+const TAGMA_PIPELINE_TASK_PERMISSION_KEYS = new Set([
+  'read',
+  'glob',
+  'grep',
+  'list',
+  'lsp',
+  'skill',
+  'edit',
+  'bash',
+  'task',
+  'tagma_yaml_skeleton',
+  'tagma_placement_plan',
+  'tagma_trial_plan',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function selectedOpencodeAgent(args: readonly string[]): string | null {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--') break;
+    if (arg === '--agent') return args[index + 1] ?? null;
+    if (arg.startsWith('--agent=')) return arg.slice('--agent='.length) || null;
+  }
+  return null;
+}
+
+function installManagedTaskAgent(
+  managedConfigContent: string,
+  permissionContent: string | undefined,
+  taskAgentName: string,
+): string {
+  let config: unknown;
+  let permission: unknown;
+  try {
+    config = JSON.parse(managedConfigContent);
+    permission = JSON.parse(permissionContent ?? '');
+  } catch {
+    throw new Error('Managed OpenCode task permissions must be valid JSON objects.');
+  }
+  const validPermission =
+    isRecord(permission) &&
+    permission.task === 'deny' &&
+    Object.entries(permission).every(
+      ([key, value]) => TAGMA_PIPELINE_TASK_PERMISSION_KEYS.has(key) && value === 'deny',
+    );
+  if (!isRecord(config) || !validPermission) {
+    throw new Error(
+      'Managed OpenCode task permissions must deny delegated agents before execution.',
+    );
+  }
+  const existingAgents = isRecord(config.agent) ? config.agent : {};
+  return JSON.stringify({
+    ...config,
+    default_agent: taskAgentName,
+    agent: {
+      ...existingAgents,
+      [taskAgentName]: {
+        description: 'Execute one Tagma pipeline prompt task with task-scoped permissions.',
+        mode: 'primary',
+        permission,
+      },
+    },
+  });
+}
 
 function mergeManagedOpencodeEnv(
   injectedEnv: Readonly<Record<string, string>> | undefined,
   managedOpencodeCwd: string,
   managedDatabase: PreparedManagedOpencodeDatabase,
+  args: readonly string[],
 ): Record<string, string> {
   const managedEnv = buildOpencodeEnv(managedOpencodeCwd, managedDatabase);
   const env = { ...managedEnv, ...(injectedEnv ?? {}) };
   for (const key of MANAGED_OPENCODE_ISOLATION_ENV_KEYS) env[key] = managedEnv[key];
+  const taskAgentName = selectedOpencodeAgent(args);
+  if (taskAgentName && TAGMA_PIPELINE_TASK_AGENT_PATTERN.test(taskAgentName)) {
+    env.OPENCODE_CONFIG_CONTENT = installManagedTaskAgent(
+      managedEnv.OPENCODE_CONFIG_CONTENT,
+      env.OPENCODE_PERMISSION,
+      taskAgentName,
+    );
+  }
   // Managed prompt tasks use only the host-authored config. Pinned OpenCode otherwise discovers
   // each task cwd's `.opencode` and installs its plugin dependency tree into the pipeline.
   env.OPENCODE_DISABLE_PROJECT_CONFIG = 'true';
@@ -323,7 +400,7 @@ async function resolveBrokerSpawn(
       kind: 'spawn',
       spec: withManagedOpencodeDiagnostics({
         ...resolvedSpec,
-        env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, database),
+        env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, database, resolvedSpec.args),
       }),
       driver,
       options: runOptions,
@@ -449,7 +526,7 @@ export function createDirectLegacyRuntime(
         );
         const spawnSpec = {
           ...resolvedSpec,
-          env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, database),
+          env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, database, resolvedSpec.args),
         };
         let published = false;
         try {
