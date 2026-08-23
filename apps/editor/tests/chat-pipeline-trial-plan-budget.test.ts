@@ -891,7 +891,9 @@ test('generated trial plan tool consumes at most one commit per begun draft life
         },
         context,
       ),
-    ).rejects.toThrow('attempt_id was not issued by the host for this staged YAML revision');
+    ).rejects.toThrow(
+      'attempt_id was not issued by the host for this staged YAML revision. Do not change pipeline_path, reset, or attempt_id, and do not retry; end this planner turn so the Host can issue an attempt for the current revision.',
+    );
     expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2).toolAttemptCount).toBe(1);
 
     await expect(

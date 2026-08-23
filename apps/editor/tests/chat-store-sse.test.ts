@@ -226,6 +226,14 @@ test('trial-run repair prompt carries a fresh host attempt id for trial-plan cor
   expect(prompt).toContain(
     'Pass attempt_id="host_trial_plan_repair_2" on every tagma_trial_plan call',
   );
+  expect(prompt).toContain('Choose exactly one repair path before changing anything');
+  expect(prompt).toContain('change YAML or companions only; do not delegate the trial planner');
+  expect(prompt).toContain(
+    'leave YAML, layout, and requirements unchanged and delegate the trial planner',
+  );
+  expect(prompt).toContain(
+    'After any pipeline artifact write, do not call or delegate tagma_trial_plan with this ID',
+  );
 });
 
 test('trial-run repair prompt globally bounds expanded case and task evidence', () => {
@@ -362,6 +370,14 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Every finding needs severity, repairScope, summary, and evidence');
   expect(prompt).toContain('Never send the whole plan or multiple cases in one call');
   expect(prompt).toContain('Pass the exact staged Target YAML path');
+  expect(prompt).toContain(
+    'An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error',
+  );
+  expect(prompt).toContain('stop after its first rejection');
+  expect(prompt).toContain('Minimize case count and task executions');
+  expect(prompt).toContain(
+    'A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case',
+  );
   expect(prompt).toContain('Never copy YAML or plan files');
   expect(prompt).toContain('validates the complete plan before writing');
   expect(prompt).toContain('relative to the isolated case project root');

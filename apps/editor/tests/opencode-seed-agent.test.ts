@@ -557,6 +557,30 @@ test('tagma-pipeline completes a design gate before generating a new pipeline', 
   );
 });
 
+test('pipeline authoring uses native prompt outputs without inventing duplicate files', () => {
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  const nativePrimitives = buildTagmaNativePrimitivesSkill();
+
+  expect(pipeline).toContain(
+    'Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient',
+  );
+  expect(pipeline).toContain(
+    'Do not turn “capture”, “return”, or “make observable” into a file-write requirement',
+  );
+  expect(pipeline).toContain(
+    'A prompt task that truly must create or edit a file needs explicit write permission',
+  );
+  expect(nativePrimitives).toContain(
+    'Prefer native outputs for generated values; Tagma injects the Output Format contract',
+  );
+  expect(nativePrimitives).toContain(
+    'Do not duplicate or contradict that contract in the prompt or invent a companion file',
+  );
+  expect(nativePrimitives).toContain(
+    'A prompt task that must create or edit files needs write permission',
+  );
+});
+
 test('seed prompts require a scope-aware edge-case review after pipeline creation', () => {
   const pipeline = buildTagmaPipelineAgent('Windows');
   const createWrite = pipeline.indexOf(
@@ -1624,6 +1648,14 @@ test('tagma-trial-planner instructs host trial-plan failure handling for live .t
 
     expect(doc).toContain('If a pre-commit `tagma_trial_plan` operation fails');
     expect(doc).toContain('Pass the exact staged YAML path');
+    expect(doc).toContain(
+      'An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error',
+    );
+    expect(doc).toContain('stop after the first rejection');
+    expect(doc).toContain('Minimize case count and task executions');
+    expect(doc).toContain(
+      'A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case',
+    );
     expect(doc).toContain('let `commit` validate the complete plan before writing');
     expect(doc).toContain('relative to the isolated case project root');
     expect(doc).toContain('never assert staged YAML or its companion artifacts');

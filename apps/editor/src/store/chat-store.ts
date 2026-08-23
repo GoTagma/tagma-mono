@@ -1612,8 +1612,11 @@ export function buildChatYamlRepairPrompt(
       ? trialPlanRepairAttemptId
         ? [
             `Host trial-plan repair attempt ID: ${trialPlanRepairAttemptId}`,
-            'If the reproduction proves that a Trial Plan fixture or expectation is wrong rather than the pipeline, delegate that plan-only correction to the trial planner. Do not edit the plan through filesystem tools.',
+            'Choose exactly one repair path before changing anything:',
+            '1. Pipeline artifact defect: change YAML or companions only; do not delegate the trial planner. The Host will request a fresh plan for the changed revision.',
+            '2. Trial Plan defect: leave YAML, layout, and requirements unchanged and delegate the trial planner with this attempt ID. Do not edit the plan through filesystem tools.',
             `Pass attempt_id="${trialPlanRepairAttemptId}" on every tagma_trial_plan call in that physical turn.`,
+            'After any pipeline artifact write, do not call or delegate tagma_trial_plan with this ID; it is intentionally bound to the prior YAML hash.',
           ]
         : [
             'The Host did not authorize a Trial Plan revision for this turn. Do not call tagma_trial_plan or edit the plan file; repair only an evidenced pipeline artifact defect.',
@@ -1653,15 +1656,16 @@ export function buildChatYamlTrialPlanPrompt(
     `Current YAML hash: ${request.pipelineHash}`,
     `Reason: ${request.reason} — ${request.message}`,
     '',
-    'Read the final YAML, manifest, and user intent. Do not edit YAML, layout, requirements, helpers, or compile.log.',
-    'Use tagma_trial_plan in order: begin, one upsert-case per case, set-coverage, set-findings, then commit exactly once. Begin resumes a matching path-and-hash draft by default; reset true rebuilds. Never send the whole plan or multiple cases in one call. Pass the exact staged Target YAML path.',
+    'Read final YAML, manifest, and user intent. Do not edit YAML, layout, requirements, helpers, or compile.log.',
+    'Use tagma_trial_plan: begin, one upsert-case per case, set-coverage, set-findings, then commit exactly once. Begin resumes a matching path-and-hash draft by default; reset rebuilds. Never send the whole plan or multiple cases in one call. Pass the exact staged Target YAML path.',
     `Pass attempt_id="${hostAttemptId}" on every tagma_trial_plan call in this physical turn.`,
-    'begin requires both summary (a non-empty string) and goals; goals must be a non-empty string array, even when resuming.',
+    'begin requires both summary (a non-empty string) and goals; goals must be a non-empty string array.',
     'Every coverage entry needs dimension, status, caseIds, and rationale. Coverage status must be one of covered, accepted-risk, blocked, or not-applicable. Every finding needs severity, repairScope, summary, and evidence.',
-    'Never copy YAML or plan files between staging and live .tagma. Only commit consumes the formal attempt and validates the complete plan before writing.',
-    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors. Correct that operation before commit; never copy files.',
+    'Never copy YAML or plan files between staging and live .tagma. Only commit consumes the attempt and validates the complete plan before writing.',
+    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors.',
+    'An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error; do not vary inputs or retry—stop after its first rejection.',
     'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn. The host schedules any remaining attempt.',
-    'Create 1-8 isolated cases with concrete fixtures and checks; use the smallest targetTaskIds closure.',
+    'Minimize case count and task executions; use the smallest targetTaskIds closure. A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case; keep both only for distinct first-run evidence.',
     ...(requiredSandboxInputs.length > 0
       ? [
           'Host-derived required Sandbox input fixtures:',
@@ -1684,10 +1688,10 @@ export function buildChatYamlTrialPlanPrompt(
           'Use each advertised fixture path exactly as shown; do not add a leading .tagma/ or remove the pipeline stem.',
         ]
       : []),
-    'Fixture and expectation paths are relative to the isolated case project root and may target only fixtures or outputs; never assert staged YAML or its companion artifacts: .compile.log, .layout.json, .manifest.json, .requirements.md, or .trial-plan.json.',
+    'Fixture/expectation paths are relative to the isolated case project root and target only fixtures/outputs; never assert staged YAML or its companion artifacts: .compile.log, .layout.json, .manifest.json, .requirements.md, .trial-plan.json.',
     'Inter-task collision needs two target task ids and outputs. repeat-run-output-collision must never be marked covered; use accepted-risk/blocked/not-applicable. repeat-run needs 2+ runs and task-status evidence.',
-    'The host harness is sequential, so concurrent-run-output-collision must never be marked covered. Use accepted-risk for a known unverified concurrency risk, blocked for a required observation the harness cannot make, or not-applicable only when concurrent writers are genuinely outside the design.',
-    'For file workflows, include same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a marker from a later paragraph so fixed output names and single-line parsing fail visibly.',
+    'The sequential harness means concurrent-run-output-collision must never be marked covered; use accepted-risk, blocked, or genuinely not-applicable.',
+    'File workflows need same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a later-paragraph marker.',
     'Use file-equals for exact text preservation; use an empty expected string for file empty-content. Native declared/inferred outputs are engine-validated: json.* bindings and inferred ports require final-line JSON. Missing without a default or uncoercible bindings fail with `output_error`. Do not require a file unless the user/pipeline promises one or exact-byte or cross-run file semantics need it.',
     'Each checked .json path needs json-valid or json-pointer-equals; text-only checks cannot prove valid JSON. Serialize expectedJson for decoded newlines, quotes, and Unicode; keep RFC 8259 JSON.',
     'Every finding needs repairScope: pipeline-artifact for YAML/companion defects or a missing promised file; harness/environment/service/credential/approval/observation limits are diagnostic-only. Native bindings need no duplicate file.',

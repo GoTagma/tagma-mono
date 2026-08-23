@@ -170,12 +170,15 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 - Use the exact staged Target YAML path and YAML hash from the host request. Never substitute a live \`.tagma\` path, another pipeline, or a newer YAML revision.
 - Inspect only that staged YAML and the smallest relevant companions inside \`<agent-root>\` needed to make its cases executable. Never edit pipeline artifacts or call another tool.
 - Every physical turn is one formal attempt. Assemble the draft sequentially with bounded \`tagma_trial_plan\` operations in this order: \`begin\` once, \`upsert-case\` once per case, \`set-coverage\` once, \`set-findings\` once, then \`commit\` exactly once. \`begin\` resumes a matching path-and-hash draft by default; use \`reset: true\` only when intentionally rebuilding it from scratch. Never submit the whole plan or multiple cases in one call.
-- Only \`commit\` consumes the configured attempt budget and runs complete validation. A failed pre-commit operation may be corrected and retried, but after \`commit\` succeeds or fails, stop the physical turn.
+- Only \`commit\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after \`commit\` succeeds or fails, stop the physical turn.
+- An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error. Do not vary the path, reset flag, or attempt id; report it and stop after the first rejection.
 - The host enforces a configured finite commit budget for each exact staged path and YAML hash. A subsequent same-key request continues this planner work through the matching draft (reopened with \`begin\`, never by reusing a \`task_id\`); use its prior rejection evidence, update the bounded draft or explicitly reset and rebuild it, commit exactly once, and stop. Never evade the stated budget with path aliases, copies, or a fresh task.
 
 - The begin operation requires a non-empty summary and a non-empty string-array goals; resubmit both fields when resuming a matching draft. Every operation also requires the exact staged pipeline_path.
 
 ## Trial Plan Contract And Edge Cases
+
+Minimize case count and task executions while preserving required terminal and edge-case coverage. Merge compatible checks. A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case; keep both only for a distinct first-run assertion.
 
 Plan multiple inputs, duplicate input names, multi-paragraph and empty content, special characters and Unicode, repeated runs, and output collisions; preserve input identity and complete text.
 
@@ -798,7 +801,7 @@ For each new prompt task:
 
 ## Design-Before-Generation Gate
 
-For create-new and fill-manual-new requests, complete this gate in the current worker before the first artifact write. Establish the goal and observable success evidence, task graph and typed dataflow, track/persona boundaries, triggers/permissions, verification/failure behavior, requirements, assumptions, and relevant edge cases. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write the manifest, call \`tagma_yaml_skeleton\`, or write YAML until the design is coherent. Make required edge-case behavior Trial-observable: prompt tasks consuming variable or empty input must persist a deterministic JSON artifact for key outputs in a typed \`outputs\` binding.
+For create-new and fill-manual-new requests, complete this gate in the current worker before writing. Establish the goal and observable success evidence, task graph and typed dataflow, permissions, verification, and requirements. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write the manifest, call \`tagma_yaml_skeleton\`, or write YAML until the design is coherent. Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient. Do not turn “capture”, “return”, or “make observable” into a file-write requirement. A prompt task that truly must create or edit a file needs explicit write permission.
 
 ## Manifest-Guided YAML Edits
 
@@ -1043,7 +1046,8 @@ ${WINDOWS_COMMAND_AUTHORING_CONTRACT}
 ## Prompt tasks
 
 - Use prompt when the work requires an AI to decide, write, review, summarize, diagnose, or edit.
-- Put permission intent on the prompt task: read-only for planning/review, write for editing, execute only when the runtime agent truly needs tools or tests.
+- Prefer native outputs for generated values; Tagma injects the Output Format contract and validates its final-line JSON. Do not duplicate or contradict that contract in the prompt or invent a companion file just to capture, return, or observe the value.
+- Put permission intent on the prompt task: read-only for planning/review, write for editing, execute only when the runtime agent truly needs tools or tests. A prompt task that must create or edit files needs write permission; the default read-only task cannot satisfy a file contract.
 - In the prompt text, tell the runtime OpenCode agent to use native file/search/edit/bash tools, native subagents, approved skills, and the host-native-command-then-Python rule before creating ad hoc scripts.
 - Keep prompt tasks bounded: state the target files, expected output, acceptance criteria, and what native checks to run when execute permission is granted.
 

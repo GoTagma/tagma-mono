@@ -1187,7 +1187,7 @@ function executeTrialPlanOperation(args, context) {
     paths.hostAttempt.relativePath.replace(/\\\\/g, '/') !== paths.relativeYamlPath
   ) {
     throw new Error(
-      'attempt_id was not issued by the host for this staged YAML revision; use the exact current host prompt',
+      'attempt_id was not issued by the host for this staged YAML revision. Do not change pipeline_path, reset, or attempt_id, and do not retry; end this planner turn so the Host can issue an attempt for the current revision.',
     );
   }
 

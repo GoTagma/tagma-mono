@@ -348,8 +348,13 @@
   same physical continuation must be rejected without incrementing counters. Only a later host
   continuation with a fresh ID may consume the next attempt. When an executed Trial failure allows
   pipeline repair and the plan budget remains, issue that next ID before the generic repair turn and
-  include it in the repair prompt so a delegated planner can correct bad fixtures/expectations; when
-  no ID is issued, the prompt must explicitly forbid Trial Plan mutation. Accumulate prompts, tool attempts,
+  require one mutually exclusive path: either edit pipeline artifacts, or leave YAML/layout/requirements
+  unchanged and delegate a plan-only correction. Any pipeline-artifact write changes the revision and
+  invalidates that hash-bound ID; do not delegate the planner afterward in the same physical turn—let
+  the Host issue a fresh plan request for the new revision. An authorization, attempt-id, path/hash, or
+  revision mismatch is non-correctable in the planner; report the first rejection and stop rather than
+  varying paths/reset or retrying. When no ID is issued, the prompt must explicitly forbid Trial Plan
+  mutation. Accumulate prompts, tool attempts,
   rejections, elapsed time, and
   unique assistant token/cost evidence across repair revisions. Never publish the plan file.
   Generate the tool's enums and limits from the authoritative host contract, expose discriminated
@@ -952,10 +957,13 @@
   unresolved binding without a default, or a resolved/default value that cannot be coerced, fails
   with `output_error`. Declared implicit/explicit `json.*` bindings and inferred output ports use
   final-line JSON; declared `stdout`/`stderr`/`normalizedOutput` sources, explicit values, and
-  defaults do not. Never require a duplicate persisted file merely to verify a native output
-  binding. Require an artifact only when the user or pipeline promises a file, or exact-byte/
-  cross-run filesystem behavior needs evidence; a missing artifact required by that contract is a
-  blocking `pipeline-artifact` finding. Mark a dimension `blocked` only when no pipeline repair can
+  defaults do not. “Capture”, “return”, or “make observable” means a native output binding unless
+  the user or downstream explicitly requires a file; never make a default read-only prompt task
+  promise a duplicate persisted artifact. Require a file only for that explicit contract or when
+  exact-byte/cross-run filesystem behavior needs evidence; a missing required artifact is a
+  blocking `pipeline-artifact` finding. Minimize Trial executions without weakening coverage: a
+  repeat-run case subsumes an otherwise identical single-run case when targets, fixtures, checks,
+  and first-run semantics are the same. Mark a dimension `blocked` only when no pipeline repair can
   expose it to the harness.
 - `trialTaskRepairScope` must map managed OpenCode primary-model stream failures (billing/network) to `diagnostic-only` via `isExternalDriverStreamFailure`, never to `pipeline-artifact`; a command task's genuine `exit_nonzero` remains `pipeline-artifact`.
 
