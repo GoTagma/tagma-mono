@@ -325,7 +325,7 @@ test('tagma-router separates concrete read-only diagnosis from authorized pipeli
   expect(doc).toContain('with no explicit request to change files');
   expect(doc).toContain('Debug, explain, review, and "how can I fix this?" do not authorize edits');
   expect(doc).toContain(
-    'A conceptual question about Tagma product behavior with no concrete artifact to inspect is `general_discussion`',
+    'Conceptual product behavior without a concrete artifact is `general_discussion`',
   );
 });
 
@@ -412,8 +412,10 @@ test('router prompt stays compact with the read-only diagnosis lane', () => {
 test('router keeps one bounded implementation handoff before result synthesis', () => {
   const doc = buildTagmaRouterAgent();
 
-  expect(doc).toContain('Never delegate preliminary inspection or workspace discovery');
-  expect(doc).toContain('one specialist call owns both lookup and implementation');
+  expect(doc).toContain('For `pipeline_work`, call `tagma-pipeline` first and only');
+  expect(doc).toContain('never pre-read through diagnosis or relay artifact contents');
+  expect(doc).toContain('the worker owns lookup and implementation');
+  expect(doc).toContain('Only Result recovery may add a call');
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
   expect(doc).toContain('A task lifecycle state of `completed` is not deliverable success');
   expect(doc).toContain('empty, planning-only, or otherwise unusable');
@@ -466,6 +468,9 @@ test('routine pipeline authoring stays in one worker model without nested task f
     'Do not call the task tool for planning, command evidence, safety, or review',
   );
   expect(doc).toContain('make the smallest safe, reversible implementation choice');
+  expect(doc).toContain(
+    'For a routine create covered by these rules, do not load `tagma-yaml-contract`',
+  );
   expect(doc).not.toContain('## Subagent Dispatch');
   expect(doc).not.toContain('## Manifest Step Implementation Protocol');
   expect(doc).not.toContain('## Review Agent Loop');
@@ -579,6 +584,11 @@ test('pipeline authoring uses native prompt outputs without inventing duplicate 
   expect(nativePrimitives).toContain(
     'A prompt task that must create or edit files needs write permission',
   );
+  expect(nativePrimitives).toContain(
+    "For a fixed conversational question with no downstream data contract, use the user's question itself as the prompt",
+  );
+  expect(nativePrimitives).toContain('write `{"positions": <returned positions>, "folders": []}`');
+  expect(nativePrimitives).toContain('does not require the full YAML contract skill');
 });
 
 test('seed prompts require a scope-aware edge-case review after pipeline creation', () => {
@@ -941,7 +951,9 @@ test('tagma-pipeline agent exposes direct tools and focused skills without advis
   expect(doc).toContain('tagma_placement_plan: allow');
   expect(doc).toContain('tagma-python-tools: "deny"');
   expect(doc).toContain('tagma-yaml-contract: "allow"');
-  expect(doc).toContain('do not front-load the full schema for a routine create');
+  expect(doc).toContain(
+    'For a routine create covered by these rules, do not load `tagma-yaml-contract`',
+  );
   expect(doc).toContain('tagma-native-primitives: "allow"');
   expect(doc).toContain('tagma-trigger-strategy: "allow"');
   expect(doc).toContain('## Single-Worker Authoring');
@@ -1673,6 +1685,16 @@ test('tagma-trial-planner instructs host trial-plan failure handling for live .t
       'Pre-commit operations validate their proposed section and immediately decidable links',
     );
     expect(doc).toContain('Blocked coverage is diagnostic-only');
+    expect(doc).toContain('## Minimal Fixed-Prompt Fast Lane');
+    expect(doc).toContain('Read only the target YAML and manifest');
+    expect(doc).toContain('one case targeting the sole qualified task with `runs: 2`');
+    expect(doc).toContain('mark every other required dimension `not-applicable`');
+    expect(doc).toContain(
+      'Use `findings: []` unless the supplied evidence shows a current mismatch',
+    );
+    expect(doc).toContain(
+      'Normal declared binary, model, credential, or network requirements are not findings',
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

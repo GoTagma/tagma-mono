@@ -25,6 +25,10 @@
   call against the same authenticated staged root so it can inspect and continue partial artifacts.
   If that bounded recovery is also unusable, surface the observed failure without claiming success
   or speculating about an infrastructure cause.
+- For `pipeline_work`, the router's first and only normal specialist call is `tagma-pipeline`.
+  Never use the diagnosis or discussion agents to pre-read artifacts for an authoring handoff; the
+  pipeline worker owns lookup and implementation. Only the existing one-call unusable-result
+  recovery may add another authoring specialist.
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
@@ -380,6 +384,11 @@
   repeat-run collision coverage needs two runs plus distinct-output evidence. The sequential
   harness can never mark concurrent collision covered: use accepted-risk, blocked, or genuinely
   not-applicable. Accepted risk and warning findings produce `passed-with-warnings`.
+- Optimize a genuinely fixed, read-only, single-prompt/no-I/O graph inside the authenticated
+  planner lifecycle, never by bypassing it: inspect only YAML plus manifest, author one two-run
+  task-status case, mark structurally irrelevant dimensions not-applicable, and leave findings
+  empty unless current evidence shows a mismatch. Normal driver prerequisites and hypothetical
+  unavailability belong to Host trialability reporting, not planner findings.
 - Default Sandbox Trial never runs a real-workspace baseline and never injects real pipeline
   credentials into execution; it uses deterministic synthetic values for every declared or
   required secret. Host-witness preparation may resolve real credentials only to bind prerequisite
