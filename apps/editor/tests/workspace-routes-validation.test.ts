@@ -1055,6 +1055,53 @@ describe('workspace route validation', () => {
     ).toBeNull();
   });
 
+  test('POST /api/open stays navigation-only while a Chat YAML lock is active', async () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'view-only');
+    const yamlPath = join(pipelineDir, 'view-only.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(
+      yamlPath,
+      'pipeline:\n  name: View Only\n  tracks:\n    - id: main\n      name: Main\n      tasks:\n        - id: task\n          prompt: Hello\n',
+      'utf-8',
+    );
+    S.yamlEditLock = {
+      id: 'workspace-wide-trial-lock',
+      owner: 'chat',
+      reason: 'Chat Trial is running',
+      yamlPath: null,
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    };
+
+    const revisionBefore = S.stateRevision;
+    const res = makeRes();
+    await createRouteHarness().post('/api/open')({ workspace: S, body: { path: yamlPath } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(S.stateRevision).toBe(revisionBefore + 1);
+    expect((res.body as { revision?: number }).revision).toBe(revisionBefore + 1);
+    expect(S.yamlPath).toBe(yamlPath);
+    expect((res.body as { config?: { name?: string } }).config?.name).toBe('View Only');
+    const compilePath = join(pipelineDir, 'view-only.compile.log');
+    const manifestPath = join(pipelineDir, 'view-only.manifest.json');
+    expect(existsSync(compilePath)).toBe(false);
+    expect(existsSync(manifestPath)).toBe(false);
+    expect(S.yamlEditLock?.id).toBe('workspace-wide-trial-lock');
+
+    S.yamlEditLock = null;
+    const unlockedRes = makeRes();
+    await createRouteHarness().post('/api/open')(
+      { workspace: S, body: { path: yamlPath } },
+      unlockedRes,
+    );
+
+    expect(unlockedRes.statusCode).toBe(200);
+    expect(S.stateRevision).toBe(revisionBefore + 2);
+    expect(existsSync(compilePath)).toBe(true);
+    expect(existsSync(manifestPath)).toBe(true);
+  });
+
   test('POST /api/create-from-manifest reports a fresh stem for create-intent name collisions', () => {
     S.workDir = makeTempDir();
     mkdirSync(join(S.workDir, '.tagma', 'deploy'), { recursive: true });

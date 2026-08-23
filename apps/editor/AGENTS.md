@@ -33,7 +33,10 @@
 - The Chat header and OpenCode-enabled pipeline/track/task Inspector model fields share
   `ModelPickerDropdown`. Keep provider groups and models case-insensitively alphabetical by their
   displayed labels there, and keep its provider input restricted to active/configured runtime
-  providers; the full `/provider` universe belongs only to Connect Providers.
+  providers; the full `/provider` universe belongs only to Connect Providers. Treat
+  `/config/providers` membership as authoritative: native-v2 `/api/provider` and `/api/model` are
+  metadata overlays and can transiently be broader or incomplete during cold initialization, so
+  never let a v2-only provider enter the picker or let missing v2 metadata hide a runtime provider.
 - For a chat-authored new pipeline, expose that snapped Chat model only in create/fill-new
   context. The production pipeline agent defaults an unspecified prompt driver to `opencode` and
   an unspecified `opencode` model to that snapshot. Explicit user driver/model choices always win;
@@ -132,6 +135,10 @@
   currently visible assistant message. Ledger presence alone must not suppress the standalone
   fallback. A result-bearing assistant message must also render its result when it has no visible
   text or activity, so tool-only or stale continuation anchors cannot swallow Open Pipeline.
+- A ready pipeline result always uses a success-shaped check icon. Keep a
+  `passed-with-warnings` result amber, but do not use the failure-shaped warning triangle for it;
+  reserve amber triangles for blocked results and red triangles for failures. Keep the fused
+  result and completion toast presentations aligned.
 
 ## Chat Context Attachments
 
@@ -464,16 +471,24 @@
   minutes above the default task budget. Explicit YAML task/pipeline timeouts remain authoritative;
   never reintroduce a hidden Trial-specific task cap.
 - Model Trial prerequisite readiness in one host-owned discriminated state:
-  `runnable | fixture-backed | blocked`. Missing workspace-contained built-in file/directory root
-  inputs are fixture-backed data, not pipeline failures. For a mixed DAG with Live Smoke enabled,
-  its real-workspace baseline must target only tasks whose dependency closure excludes every
-  unavailable input; test the fixture-dependent branches in Sandbox cases. When every branch
-  depends on unavailable data, skip Live Smoke instead of starting an all-skipped run. Expose the
-  exact fixture paths to the planner, and require every unavailable input in a case whose target
-  closure runs its root task. Validate this pure plan/readiness phase before reserving a run session
-  or capturing a host witness. An incomplete fixture plan requests another bounded, host-issued
-  plan continuation as `diagnostic-only`; it must not execute, authorize pipeline repair, or write
-  a placeholder into the live workspace. Never fabricate binaries, services, real credentials, or
+  `runnable | fixture-backed | blocked`. Missing workspace-contained built-in file/directory
+  inputs are fixture-backed data, not pipeline failures, whether the trigger task is a DAG root or
+  has dependencies. Keep Live Smoke availability separate from Sandbox input synthesis: every
+  workspace-contained built-in file/directory trigger is a Host-derived Sandbox fixture
+  requirement even when its live path exists, because fresh case workspaces never inherit live
+  user data. Require the exact file fixture, or a descendant file for a directory trigger, in every
+  case whose target closure executes that task; accept `generatedInputPaths` only when the same
+  case's upstream closure genuinely creates and exactly asserts the path. For a mixed DAG with Live
+  Smoke enabled, its real-workspace baseline must target only tasks whose dependency closure
+  excludes every unavailable input; test the fixture-dependent branches in Sandbox cases. When
+  every branch depends on unavailable data, skip Live Smoke instead of starting an all-skipped
+  run. Expose both the exact Sandbox fixture contract and the unavailable Live Smoke inputs to the
+  planner. Validate this pure plan/readiness phase before reserving a run session or capturing a
+  host witness. An incomplete fixture plan requests another bounded, host-issued plan continuation
+  as `diagnostic-only`; it must not execute, authorize pipeline repair, or write a placeholder into
+  the live workspace. External trigger paths remain valid production coordinates but cannot be
+  synthesized without leaving the case workspace, so Trial must block them rather than touch live
+  data. Never fabricate binaries, services, real credentials, or
   human approvals to make Live Smoke appear ready. Sandbox's deterministic synthetic-secret
   substitution is execution isolation, not evidence that a real credential exists. Authenticated
   absence needed by Live Smoke is a structured, diagnostic-only `blocked` prerequisite state.
@@ -1003,6 +1018,12 @@
 - Picker opens must compare the post-open YAML path with those same platform rules, suppress
   same-tick duplicate opens, and remain visible on failure. Keep plugin registry refresh after
   `openFile`; opening a pipeline can change the server-side plugin set.
+- Treat `/api/open` as revision-advancing navigation, not YAML editing: it bypasses Chat's YAML
+  write lock and stale prior-canvas `If-Match`, stays in the client revision sequence, and advances
+  revision exactly once after a successful load. While any Chat YAML lock is active, opening may
+  replace in-memory canvas/watch state but must not regenerate compile/manifest companions, because
+  those writes can enter a workspace-wide Trial witness. Keep one bounded client replay for older
+  sidecars that still answer navigation with a revision conflict.
 
 ## Workspace Roots
 

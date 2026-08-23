@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -8,9 +8,11 @@ import type { PipelineConfig } from '@tagma/sdk';
 import {
   chatPipelineTrialCasePathFromWorkspacePath,
   chatPipelineTrialWorkspacePathFromCasePath,
+  findUncoveredTrialCaseFixtureInputs,
   findUncoveredTrialFixtureInputs,
   resolveChatPipelineDataReadiness,
   resolveChatPipelineRuntimeReadiness,
+  resolveChatPipelineSandboxFixtureInputs,
   resolveChatPipelineTargetRuntimeReadiness,
 } from '../server/chat-pipeline-trial-readiness';
 import type { ChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
@@ -55,7 +57,7 @@ function pipelineWithMissingInput(
 
 function trialPlan(fixtures: Array<{ path: string; content: string }>): ChatPipelineTrialPlan {
   return {
-    version: 6,
+    version: 7,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise the missing input through an isolated case.',
     goals: ['Run the selected task and all upstream prerequisites.'],
@@ -98,7 +100,7 @@ describe('chat pipeline Trial readiness', () => {
     }
   });
 
-  test('requires every fixture-backed input in a case whose target closure runs its task', () => {
+  test('requires every fixture-backed input in each case whose target closure runs its task', () => {
     const workDir = mkdtempSync(join(tmpdir(), 'tagma-trial-readiness-'));
     try {
       const config = pipelineWithMissingInput();
@@ -115,6 +117,80 @@ describe('chat pipeline Trial readiness', () => {
           config,
         ),
       ).toEqual([]);
+
+      const firstCaseCovered = trialPlan([
+        { path: 'input/article.md', content: 'Representative claim.' },
+      ]);
+      firstCaseCovered.cases.push({
+        ...firstCaseCovered.cases[0]!,
+        id: 'second-input-case',
+        title: 'Second input case',
+        fixtures: [],
+      });
+      expect(
+        findUncoveredTrialCaseFixtureInputs(firstCaseCovered, readiness.inputs, config),
+      ).toEqual([{ caseId: 'second-input-case', input: readiness.inputs[0] }]);
+
+      firstCaseCovered.cases[1]!.generatedInputPaths = ['input/article.md'];
+      expect(
+        findUncoveredTrialCaseFixtureInputs(firstCaseCovered, readiness.inputs, config),
+      ).toEqual([{ caseId: 'second-input-case', input: readiness.inputs[0] }]);
+
+      const track = config.tracks[0]!;
+      const generatedByDependency = {
+        ...config,
+        tracks: [
+          {
+            ...track,
+            tasks: track.tasks.map((task) =>
+              task.id === 'ingest' ? { ...task, depends_on: ['independent'] } : task,
+            ),
+          },
+        ],
+      } as PipelineConfig;
+      expect(
+        findUncoveredTrialCaseFixtureInputs(
+          firstCaseCovered,
+          readiness.inputs,
+          generatedByDependency,
+        ),
+      ).toEqual([]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('requires isolated fixtures even when the live input exists and the trigger is not a DAG root', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-trial-readiness-'));
+    try {
+      mkdirSync(join(workDir, 'input'), { recursive: true });
+      writeFileSync(join(workDir, 'input', 'article.md'), 'live user data', 'utf-8');
+      const baseConfig = pipelineWithMissingInput();
+      const track = baseConfig.tracks[0]!;
+      const config = {
+        ...baseConfig,
+        tracks: [
+          {
+            ...track,
+            tasks: track.tasks.map((task) =>
+              task.id === 'ingest' ? { ...task, depends_on: ['independent'] } : task,
+            ),
+          },
+        ],
+      } as PipelineConfig;
+
+      expect(resolveChatPipelineDataReadiness(config, workDir)).toEqual({ state: 'runnable' });
+      expect(resolveChatPipelineSandboxFixtureInputs(config, workDir)).toEqual({
+        inputs: [
+          {
+            taskId: 'main.ingest',
+            type: 'file',
+            path: 'input/article.md',
+            fixturePath: 'input/article.md',
+          },
+        ],
+        blockers: [],
+      });
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }
@@ -199,6 +275,31 @@ describe('chat pipeline Trial readiness', () => {
         relativeYamlPath,
       ),
     ).toBe('pipeline-other/output/report.json');
+  });
+
+  test('does not treat an existing external trigger path as a Sandbox fixture destination', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-trial-readiness-'));
+    const externalDir = mkdtempSync(join(tmpdir(), 'tagma-trial-external-input-'));
+    try {
+      const externalPath = join(externalDir, 'article.md');
+      writeFileSync(externalPath, 'external user data', 'utf-8');
+      const config = pipelineWithMissingInput(undefined, { type: 'file', path: externalPath });
+
+      expect(resolveChatPipelineDataReadiness(config, workDir)).toEqual({ state: 'runnable' });
+      expect(resolveChatPipelineSandboxFixtureInputs(config, workDir)).toEqual({
+        inputs: [],
+        blockers: [
+          {
+            kind: 'external-data-path',
+            name: externalPath,
+            taskId: 'main.ingest',
+          },
+        ],
+      });
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(externalDir, { recursive: true, force: true });
+    }
   });
 
   test('models non-virtualizable runtime requirements as blockers', () => {

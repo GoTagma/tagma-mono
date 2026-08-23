@@ -14,6 +14,16 @@ export interface ChatPipelineTrialFixtureInput {
   fixturePath: string;
 }
 
+export interface ChatPipelineTrialSandboxFixtureAnalysis {
+  inputs: ChatPipelineTrialFixtureInput[];
+  blockers: ChatPipelineTrialBlocker[];
+}
+
+export interface ChatPipelineTrialCaseFixtureGap {
+  caseId: string;
+  input: ChatPipelineTrialFixtureInput;
+}
+
 export interface ChatPipelineTrialBlocker {
   kind: 'binary' | 'environment' | 'external-data-path' | 'service' | 'credential' | 'approval';
   name: string;
@@ -280,7 +290,7 @@ export type ChatPipelineTrialRecordedPrerequisiteState = Exclude<
 function inputIsReady(path: string, type: ChatPipelineTrialFixtureInput['type']): boolean {
   try {
     const stat = lstatSync(path);
-    return type === 'directory' ? stat.isDirectory() : !stat.isDirectory();
+    return type === 'directory' ? stat.isDirectory() : stat.isFile();
   } catch {
     return false;
   }
@@ -323,17 +333,26 @@ export function chatPipelineTrialWorkspacePathFromCasePath(
   return namespace && pathUsesNamespace(path, namespace) ? `.tagma/${path}` : path;
 }
 
-export function resolveChatPipelineDataReadiness(
+interface ResolvedChatPipelineTriggerInput {
+  input: ChatPipelineTrialFixtureInput | null;
+  blocker: ChatPipelineTrialBlocker | null;
+  ready: boolean;
+}
+
+/**
+ * Resolve every built-in file/directory trigger into both its real-workspace
+ * coordinate and its isolated-case coordinate. Trial cases never inherit
+ * arbitrary live workspace data, so a ready live path still needs an authored
+ * fixture whenever a case executes the owning task. External paths cannot be
+ * synthesized without writing outside the case workspace and fail closed.
+ */
+function resolveChatPipelineTriggerInputs(
   pipelineConfig: PipelineConfig,
   workDir: string,
   relativeYamlPath?: string,
-): ChatPipelineTrialReadiness {
-  const roots = [...buildDag(pipelineConfig).nodes.values()].filter(
-    (node) => node.dependsOn.length === 0,
-  );
-  const inputs: ChatPipelineTrialFixtureInput[] = [];
-  const blockers: ChatPipelineTrialBlocker[] = [];
-  for (const { track, task } of roots) {
+): ResolvedChatPipelineTriggerInput[] {
+  const resolved: ResolvedChatPipelineTriggerInput[] = [];
+  for (const [taskId, { track, task }] of buildDag(pipelineConfig).nodes) {
     const trigger = task.trigger;
     if (
       (trigger?.type !== 'file' && trigger?.type !== 'directory') ||
@@ -345,26 +364,73 @@ export function resolveChatPipelineDataReadiness(
 
     const taskWorkDir = resolve(workDir, task.cwd ?? track.cwd ?? '.');
     const inputPath = resolve(taskWorkDir, trigger.path);
-    if (inputIsReady(inputPath, trigger.type)) {
+    const ready = inputIsReady(inputPath, trigger.type);
+    const workspaceRelativePath = relative(workDir, inputPath).replace(/\\/g, '/');
+
+    // The isolated workspace root already exists and therefore needs no
+    // synthetic directory entry. A file trigger at that coordinate is invalid
+    // for fixture purposes and follows the unvirtualizable path below.
+    if (!workspaceRelativePath && trigger.type === 'directory' && ready) {
       continue;
     }
 
-    const taskId = `${track.id}.${task.id}`;
-    const workspaceRelativePath = relative(workDir, inputPath).replace(/\\/g, '/');
     if (!workspaceRelativePath || !isPathWithin(inputPath, workDir)) {
-      blockers.push({ kind: 'external-data-path', name: trigger.path, taskId });
+      resolved.push({
+        input: null,
+        blocker: { kind: 'external-data-path', name: trigger.path, taskId },
+        ready,
+      });
       continue;
     }
     const fixturePath = relativeYamlPath
       ? chatPipelineTrialCasePathFromWorkspacePath(workspaceRelativePath, relativeYamlPath)
       : workspaceRelativePath;
-    inputs.push({
-      taskId,
-      type: trigger.type,
-      path: trigger.path,
-      fixturePath,
+    // Trial plans deliberately cannot address host-private .tagma paths. The
+    // current pipeline namespace is translated above; another pipeline's
+    // internal tree is not a valid input-fixture destination.
+    if (fixturePath.toLowerCase().startsWith('.tagma/')) {
+      resolved.push({
+        input: null,
+        blocker: { kind: 'external-data-path', name: trigger.path, taskId },
+        ready,
+      });
+      continue;
+    }
+    resolved.push({
+      input: {
+        taskId,
+        type: trigger.type,
+        path: trigger.path,
+        fixturePath,
+      },
+      blocker: null,
+      ready,
     });
   }
+  return resolved;
+}
+
+export function resolveChatPipelineSandboxFixtureInputs(
+  pipelineConfig: PipelineConfig,
+  workDir: string,
+  relativeYamlPath?: string,
+): ChatPipelineTrialSandboxFixtureAnalysis {
+  const resolved = resolveChatPipelineTriggerInputs(pipelineConfig, workDir, relativeYamlPath);
+  return {
+    inputs: resolved.flatMap((item) => (item.input ? [item.input] : [])),
+    blockers: resolved.flatMap((item) => (item.blocker ? [item.blocker] : [])),
+  };
+}
+
+export function resolveChatPipelineDataReadiness(
+  pipelineConfig: PipelineConfig,
+  workDir: string,
+  relativeYamlPath?: string,
+): ChatPipelineTrialReadiness {
+  const resolved = resolveChatPipelineTriggerInputs(pipelineConfig, workDir, relativeYamlPath);
+  const unavailable = resolved.filter((item) => !item.ready);
+  const inputs = unavailable.flatMap((item) => (item.input ? [item.input] : []));
+  const blockers = unavailable.flatMap((item) => (item.blocker ? [item.blocker] : []));
 
   if (blockers.length > 0) return { state: 'blocked', blockers };
   if (inputs.length > 0) {
@@ -493,24 +559,73 @@ function targetSelectionRunsTask(
   return false;
 }
 
+function comparableTrialCasePath(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function suppliedPathMatchesInput(path: string, input: ChatPipelineTrialFixtureInput): boolean {
+  const suppliedPath = comparableTrialCasePath(path);
+  const expectedPath = comparableTrialCasePath(input.fixturePath);
+  return input.type === 'file'
+    ? suppliedPath === expectedPath
+    : suppliedPath.startsWith(`${expectedPath}/`);
+}
+
+function trialCaseSuppliesInput(
+  testCase: ChatPipelineTrialPlan['cases'][number],
+  input: ChatPipelineTrialFixtureInput,
+  dag: ReturnType<typeof buildDag>,
+): boolean {
+  if (testCase.fixtures.some((fixture) => suppliedPathMatchesInput(fixture.path, input))) {
+    return true;
+  }
+  // A generated input can satisfy a non-root trigger only: at least one
+  // dependency runs before that trigger starts and can create the path. A root
+  // trigger has no producer opportunity, so accepting generatedInputPaths there
+  // would merely defer the error into an indefinite watcher wait.
+  const inputNode = dag.nodes.get(input.taskId);
+  return (
+    !!inputNode &&
+    inputNode.dependsOn.length > 0 &&
+    (testCase.generatedInputPaths ?? []).some((path) => suppliedPathMatchesInput(path, input))
+  );
+}
+
+/**
+ * Return every case/input pair that would otherwise wait on data absent from
+ * its fresh isolated workspace. Checking each case (rather than whether one
+ * case somewhere in the plan has a fixture) prevents a later edge-case run
+ * from hanging behind the same trigger. A pipeline-generated path is accepted
+ * when an upstream task intentionally creates and asserts it.
+ */
+export function findUncoveredTrialCaseFixtureInputs(
+  plan: ChatPipelineTrialPlan,
+  inputs: readonly ChatPipelineTrialFixtureInput[],
+  pipelineConfig: PipelineConfig,
+): ChatPipelineTrialCaseFixtureGap[] {
+  const dag = buildDag(pipelineConfig);
+  return plan.cases.flatMap((testCase) =>
+    inputs.flatMap((input) =>
+      targetSelectionRunsTask(dag, testCase.targetTaskIds, input.taskId) &&
+      !trialCaseSuppliesInput(testCase, input, dag)
+        ? [{ caseId: testCase.id, input }]
+        : [],
+    ),
+  );
+}
+
 export function findUncoveredTrialFixtureInputs(
   plan: ChatPipelineTrialPlan,
   inputs: readonly ChatPipelineTrialFixtureInput[],
   pipelineConfig: PipelineConfig,
 ): ChatPipelineTrialFixtureInput[] {
-  const dag = buildDag(pipelineConfig);
-  return inputs.filter((input) => {
-    const expectedPath = input.fixturePath.replace(/\\/g, '/').replace(/^\.\//, '');
-    return !plan.cases.some((testCase) => {
-      if (!targetSelectionRunsTask(dag, testCase.targetTaskIds, input.taskId)) return false;
-      return testCase.fixtures.some((fixture) => {
-        const fixturePath = fixture.path.replace(/\\/g, '/').replace(/^\.\//, '');
-        return input.type === 'file'
-          ? fixturePath === expectedPath
-          : fixturePath.startsWith(`${expectedPath}/`);
-      });
-    });
-  });
+  const uncoveredTaskIds = new Set(
+    findUncoveredTrialCaseFixtureInputs(plan, inputs, pipelineConfig).map(
+      (item) => item.input.taskId,
+    ),
+  );
+  return inputs.filter((input) => uncoveredTaskIds.has(input.taskId));
 }
 
 export function describeTrialFixtureInputs(
@@ -527,6 +642,18 @@ export function describeUncoveredTrialFixtureInputs(
       input.type === 'file'
         ? `${input.taskId} needs the exact isolated fixture ${input.fixturePath}`
         : `${input.taskId} needs at least one isolated file fixture below ${input.fixturePath}/`,
+    )
+    .join('; ');
+}
+
+export function describeUncoveredTrialCaseFixtureInputs(
+  gaps: readonly ChatPipelineTrialCaseFixtureGap[],
+): string {
+  return gaps
+    .map(({ caseId, input }) =>
+      input.type === 'file'
+        ? `case ${caseId} needs the exact isolated fixture ${input.fixturePath} for ${input.taskId}`
+        : `case ${caseId} needs at least one isolated file fixture below ${input.fixturePath}/ for ${input.taskId}`,
     )
     .join('; ');
 }

@@ -9,6 +9,7 @@ import type { ChatFinishedTurn, ChatYamlSessionResult } from '../src/store/chat-
 import type { ChatYamlSnapshot } from '../src/utils/chat-yaml-reconcile';
 import {
   buildProvidersFromV2Catalog,
+  fetchConfiguredProviderModels,
   fetchProviderCatalog,
   modelVariantIds,
   reconcileModelPick,
@@ -44,6 +45,8 @@ const providerBodiesByBaseUrl = new Map<
   string,
   { providers: unknown[]; default: Record<string, string> }
 >();
+const v2ProviderBodiesByBaseUrl = new Map<string, ProviderModelCatalogV2Snapshot['providers']>();
+const v2ModelBodiesByBaseUrl = new Map<string, ProviderModelCatalogV2Snapshot['models']>();
 const providerCatalogBodiesByBaseUrl = new Map<
   string,
   {
@@ -503,7 +506,12 @@ beforeAll(() => {
         return Promise.reject(new Error('provider catalog unavailable'));
       }
       return Promise.resolve(
-        jsonResponse(v2CatalogBody(v2ProviderBase, v2ProvidersBody(v2ProviderBase))),
+        jsonResponse(
+          v2CatalogBody(
+            v2ProviderBase,
+            v2ProviderBodiesByBaseUrl.get(v2ProviderBase) ?? v2ProvidersBody(v2ProviderBase),
+          ),
+        ),
       );
     }
     const v2ModelBase = endpointBase(url, '/api/model');
@@ -511,7 +519,14 @@ beforeAll(() => {
       if (providersShouldFail) {
         return Promise.reject(new Error('provider catalog unavailable'));
       }
-      return Promise.resolve(jsonResponse(v2CatalogBody(v2ModelBase, v2ModelsBody(v2ModelBase))));
+      return Promise.resolve(
+        jsonResponse(
+          v2CatalogBody(
+            v2ModelBase,
+            v2ModelBodiesByBaseUrl.get(v2ModelBase) ?? v2ModelsBody(v2ModelBase),
+          ),
+        ),
+      );
     }
     if (endpointBase(url, '/agent')) {
       if (agentsShouldFail) {
@@ -855,6 +870,8 @@ afterEach(async () => {
   workspaceBaseUrls.clear();
   ensureResponsesByWorkspace.clear();
   providerBodiesByBaseUrl.clear();
+  v2ProviderBodiesByBaseUrl.clear();
+  v2ModelBodiesByBaseUrl.clear();
   providerCatalogBodiesByBaseUrl.clear();
   providerAuthBodiesByBaseUrl.clear();
   providerAuthRequests.length = 0;
@@ -1294,6 +1311,32 @@ describe('chat model persistence', () => {
     expect(useChatStore.getState().sessionParentById).toEqual({});
   });
 
+  test('keeps v2-only unconfigured providers out of the model picker catalog', async () => {
+    const repo = 'C:/configured-provider-filter-repo';
+    const baseUrl = 'http://opencode-configured-provider-filter.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    providerBodiesByBaseUrl.set(baseUrl, {
+      providers: [
+        {
+          id: 'anthropic',
+          name: 'Anthropic',
+          models: { claude: modelDef('claude') },
+        },
+      ],
+      default: { anthropic: 'claude' },
+    });
+    v2ProviderBodiesByBaseUrl.set(baseUrl, [v2Provider('anthropic'), v2Provider('openai')]);
+    v2ModelBodiesByBaseUrl.set(baseUrl, [
+      v2Model('anthropic', 'claude'),
+      v2Model('openai', 'gpt-5'),
+    ]);
+
+    const result = await fetchConfiguredProviderModels(repo);
+
+    expect(result.providers.map((provider) => provider.id)).toEqual(['anthropic']);
+    expect(Object.keys(result.providers[0]?.models ?? {})).toEqual(['claude']);
+  });
+
   test('maps v2 provider/model catalog into the existing picker provider shape', () => {
     const providers = buildProvidersFromV2Catalog({
       providers: [v2Provider('anthropic')],
@@ -1404,6 +1447,21 @@ describe('chat model persistence', () => {
     });
   });
 
+  test('keeps configured runtime models while the v2 model projection is still empty', () => {
+    const runtimeProvider = providerWithVariants('anthropic', 'claude', ['high']);
+
+    const providers = buildProvidersFromV2Catalog(
+      {
+        providers: [v2Provider('anthropic')],
+        models: [],
+      },
+      [runtimeProvider],
+    );
+
+    expect(providers.map((provider) => provider.id)).toEqual(['anthropic']);
+    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['claude']);
+  });
+
   test('keeps configured providers that are only present in the legacy catalog', () => {
     const legacyCustomProvider = {
       id: 'ollama',
@@ -1432,8 +1490,8 @@ describe('chat model persistence', () => {
       [legacyCustomProvider],
     );
 
-    expect(providers.map((provider) => provider.id)).toEqual(['anthropic', 'ollama']);
-    expect(providers[1]?.models['llama3.1:8b']?.name).toBe('Llama 3.1 8B');
+    expect(providers.map((provider) => provider.id)).toEqual(['ollama']);
+    expect(providers[0]?.models['llama3.1:8b']?.name).toBe('Llama 3.1 8B');
     expect(modelVariantIds(providers, { providerID: 'ollama', modelID: 'llama3.1:8b' })).toEqual([
       'low',
       'high',

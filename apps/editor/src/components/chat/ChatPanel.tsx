@@ -1346,8 +1346,9 @@ export function ChatCompletionToastCard({
     invalidTargetReason ??
     (deploymentTarget && !availability.available ? availability.reason : null);
   const ok = result.status === 'ready';
-  const warning =
-    result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
+  const blocked = result.status === 'blocked';
+  const passedWithWarnings = ok && result.trial?.kind === 'passed-with-warnings';
+  const warning = blocked || passedWithWarnings;
   const presentation = describeSessionYamlResult(result);
 
   return (
@@ -1360,12 +1361,16 @@ export function ChatCompletionToastCard({
         <div
           className={`w-1 self-stretch shrink-0 ${warning ? 'bg-tagma-warning' : ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
         />
-        {warning ? (
-          <AlertTriangle size={14} className="text-tagma-warning shrink-0 mt-0.5" />
-        ) : ok ? (
-          <CheckCircle2 size={14} className="text-tagma-ready shrink-0 mt-0.5" />
+        {ok ? (
+          <CheckCircle2
+            size={14}
+            className={`${passedWithWarnings ? 'text-tagma-warning' : 'text-tagma-ready'} shrink-0 mt-0.5`}
+          />
         ) : (
-          <AlertTriangle size={14} className="text-tagma-error shrink-0 mt-0.5" />
+          <AlertTriangle
+            size={14}
+            className={`${blocked ? 'text-tagma-warning' : 'text-tagma-error'} shrink-0 mt-0.5`}
+          />
         )}
         <div className="min-w-0 flex-1 font-mono">
           <div className="text-body text-tagma-text truncate" title={pipelineName}>

@@ -1640,6 +1640,10 @@ export function buildChatYamlTrialPlanPrompt(
     throw new Error('Trial planning requires a valid host-issued attempt ID.');
   }
   const unavailableBaselineInputs = request.unavailableBaselineInputs ?? [];
+  // Older sidecars exposed only unavailableBaselineInputs. Those inputs are
+  // necessarily required in isolated cases too, so retain a safe planning
+  // fallback across renderer/sidecar version skew.
+  const requiredSandboxInputs = request.requiredSandboxInputs ?? unavailableBaselineInputs;
   return [
     '<tagma-internal>',
     `Targeted trial planning attempt ${attempt}/${maxAttempts}.`,
@@ -1658,13 +1662,25 @@ export function buildChatYamlTrialPlanPrompt(
     'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors. Correct that operation before commit; never copy files.',
     'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn. The host schedules any remaining attempt.',
     'Create 1-8 isolated cases with concrete fixtures and checks; use the smallest targetTaskIds closure.',
+    ...(requiredSandboxInputs.length > 0
+      ? [
+          'Host-derived required Sandbox input fixtures:',
+          ...requiredSandboxInputs.map((input) =>
+            input.type === 'file'
+              ? `- ${input.taskId}: file ${input.path} (fixture path: ${input.fixturePath})`
+              : `- ${input.taskId}: directory ${input.path} (file below: ${input.fixturePath}/)`,
+          ),
+          'Supply each input in every case whose target closure executes the owning task. Use generatedInputPaths only when that case upstream genuinely creates and asserts it.',
+          'Choose valid representative content grounded in the task parser, prompt, manifest, and user intent; a meaningless placeholder is not acceptance evidence.',
+        ]
+      : []),
     ...(unavailableBaselineInputs.length > 0
       ? [
-          'The real workspace is missing the following data inputs. Supply representative content only as isolated case fixtures; never create placeholder files in the real workspace:',
-          ...unavailableBaselineInputs.map(
-            (input) =>
-              `- ${input.taskId}: ${input.type} ${input.path} (fixture path: ${input.fixturePath})`,
-          ),
+          'The real workspace is missing these inputs, so Live Smoke cannot supply them. Keep all representative data inside Sandbox cases; never write placeholders to the real workspace.',
+        ]
+      : []),
+    ...(requiredSandboxInputs.length > 0 || unavailableBaselineInputs.length > 0
+      ? [
           'Use each advertised fixture path exactly as shown; do not add a leading .tagma/ or remove the pipeline stem.',
         ]
       : []),

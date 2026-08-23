@@ -76,7 +76,7 @@ function writeTrialPlan(
     planPath,
     JSON.stringify(
       {
-        version: 6,
+        version: 7,
         yamlHash,
         summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
         goals: ['Preserve every logical input without silently overwriting output.'],
@@ -800,6 +800,14 @@ describe('chat YAML staging routes', () => {
       planTelemetry: { toolAttemptCount: 0 },
       planRequest: {
         attemptId: 'missing_before_plan',
+        requiredSandboxInputs: [
+          {
+            taskId: 'main.ingest',
+            type: 'file',
+            path: 'input/text-to-check.md',
+            fixturePath: 'input/text-to-check.md',
+          },
+        ],
         unavailableBaselineInputs: [
           {
             taskId: 'main.ingest',
@@ -846,6 +854,13 @@ describe('chat YAML staging routes', () => {
       planRequest: {
         reason: 'invalid',
         attemptId: 'missing_fixture_plan',
+        requiredSandboxInputs: [
+          {
+            taskId: 'main.ingest',
+            type: 'file',
+            fixturePath: 'input/text-to-check.md',
+          },
+        ],
         unavailableBaselineInputs: [
           {
             taskId: 'main.ingest',
@@ -938,6 +953,104 @@ describe('chat YAML staging routes', () => {
       entry: { path: sourcePath },
     });
     expect(readFileSync(sourcePath, 'utf-8')).toContain('name: Missing Baseline Input');
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('requires an authored Sandbox fixture even when the live trigger input exists', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const getRoute = createHarness();
+    const liveInputPath = join(ws.workDir, 'input', 'existing.md');
+    mkdirSync(dirname(liveInputPath), { recursive: true });
+    writeFileSync(liveInputPath, 'private live input', 'utf-8');
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Existing live input still needs a Sandbox fixture',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ingest',
+                trigger: { type: 'file', path: 'input/existing.md', timeout: '0.05s' },
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'covered-live-input',
+          title: 'Covered isolated input',
+          objective: 'Provide one valid representative input without reusing live user data.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [{ path: 'input/existing.md', content: 'synthetic representative input' }],
+          expectations: [{ type: 'task-status', taskId: 'main.ingest', status: 'success' }],
+        },
+        {
+          id: 'forgot-live-input',
+          title: 'Missing isolated input',
+          objective: 'Prove every targeted case receives its own trigger input.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.ingest', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'existing_input_requires_sandbox_fixture',
+        },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      planRequest: {
+        reason: 'invalid',
+        requiredSandboxInputs: [
+          {
+            taskId: 'main.ingest',
+            type: 'file',
+            path: 'input/existing.md',
+            fixturePath: 'input/existing.md',
+          },
+        ],
+      },
+    });
+    expect((trialRes.body as { summary: string }).summary).toContain('forgot-live-input');
+    expect(readFileSync(liveInputPath, 'utf-8')).toBe('private live input');
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

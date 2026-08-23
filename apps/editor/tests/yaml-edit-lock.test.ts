@@ -89,7 +89,7 @@ describe('YAML edit lock', () => {
         body: { path: '/ws/.tagma/current/current.yaml' },
         currentYamlPath: '/ws/.tagma/other/other.yaml',
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldBlockYamlEditLockMutation(lock, {
         path: '/api/new',
@@ -157,13 +157,6 @@ describe('YAML edit lock', () => {
 
     expect(
       shouldBlockYamlEditLockMutation(lock, {
-        path: '/api/open',
-        body: { path: '.tagma/current/../current/current.yaml' },
-        workDir: '/ws',
-      }),
-    ).toBe(true);
-    expect(
-      shouldBlockYamlEditLockMutation(lock, {
         path: '/api/delete-file',
         body: { path: '/ws/.tagma/current/../current' },
         workDir: '/ws',
@@ -220,8 +213,26 @@ describe('YAML edit lock', () => {
     ).toBe(true);
   });
 
-  test('does not classify workspace switching as a YAML edit mutation', () => {
+  test('keeps pipeline and workspace navigation outside YAML edit mutations', () => {
+    const workspaceWideLock = {
+      id: 'turn-workspace',
+      owner: 'chat' as const,
+      reason: 'chat trial running',
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 30_000,
+      yamlPath: null,
+    };
+
+    expect(
+      shouldBlockYamlEditLockMutation(workspaceWideLock, {
+        path: '/api/open',
+        body: { path: '/ws/.tagma/other/other.yaml' },
+        currentYamlPath: '/ws/.tagma/current/current.yaml',
+        workDir: '/ws',
+      }),
+    ).toBe(false);
     expect(isYamlEditLockProtectedMutation('/api/workspace')).toBe(false);
+    expect(isYamlEditLockProtectedMutation('/api/open')).toBe(false);
     expect(isYamlEditLockProtectedMutation('/api/save')).toBe(true);
     expect(isYamlEditLockProtectedMutation('/api/layout')).toBe(true);
     expect(isYamlEditLockProtectedMutation('/api/export-file/platform')).toBe(true);

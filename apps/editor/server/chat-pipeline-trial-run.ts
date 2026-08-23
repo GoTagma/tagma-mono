@@ -63,10 +63,11 @@ import {
   chatPipelineTrialWorkspacePathFromCasePath,
   describeTrialBlockers,
   describeTrialFixtureInputs,
-  describeUncoveredTrialFixtureInputs,
-  findUncoveredTrialFixtureInputs,
+  describeUncoveredTrialCaseFixtureInputs,
+  findUncoveredTrialCaseFixtureInputs,
   resolveChatPipelineDataReadiness,
   resolveChatPipelineLiveSmokeBaseline,
+  resolveChatPipelineSandboxFixtureInputs,
   resolveChatPipelineTargetRuntimeReadiness,
   type ChatPipelineLiveSmokeBaseline,
   type ChatPipelineTrialBlocker,
@@ -286,6 +287,8 @@ export interface ChatPipelineTrialRunResult {
   planTelemetry?: ChatPipelineTrialPlanToolTelemetry;
   planRequest?: ChatPipelineTrialPlanRequest & {
     attemptId: string;
+    /** Inputs every isolated case must synthesize when its target closure executes the owner. */
+    requiredSandboxInputs?: ChatPipelineTrialUnavailableBaselineInput[];
     unavailableBaselineInputs?: ChatPipelineTrialUnavailableBaselineInput[];
   };
   plan?: ChatPipelineTrialPlanSummary;
@@ -914,6 +917,7 @@ function resultForPlanRequest(
     ChatPipelineTrialRecordedPrerequisiteState,
     { state: 'fixture-backed' }
   >,
+  requiredSandboxInputs: readonly ChatPipelineTrialFixtureInput[] = [],
 ): ChatPipelineTrialRunResult {
   return {
     version: TRIAL_CACHE_VERSION,
@@ -934,6 +938,9 @@ function resultForPlanRequest(
     planRequest: {
       ...request,
       attemptId,
+      ...(requiredSandboxInputs.length > 0
+        ? { requiredSandboxInputs: [...requiredSandboxInputs] }
+        : {}),
       ...(prerequisiteState ? { unavailableBaselineInputs: prerequisiteState.inputs } : {}),
     },
     cases: [],
@@ -2445,6 +2452,27 @@ async function prepareTrialExecution(
     };
   }
 
+  const sandboxFixtureAnalysis = resolveChatPipelineSandboxFixtureInputs(
+    pipelineConfig,
+    ws.workDir,
+    entry.relativePath,
+  );
+  if (sandboxFixtureAnalysis.blockers.length > 0) {
+    const prerequisiteState = {
+      state: 'blocked' as const,
+      blockers: sandboxFixtureAnalysis.blockers,
+    };
+    return {
+      status: 'result',
+      result: resultForSetupFailure(
+        'blocked',
+        `Trial cannot safely create isolated fixtures for file or directory triggers outside its temporary workspace: ${describeTrialBlockers(sandboxFixtureAnalysis.blockers)}. Keep intentional external paths for production, but use a workspace-contained input coordinate when the pipeline must be Sandbox-testable.`,
+        startedAt,
+        { prerequisiteState, trialMode, trialabilityReport },
+      ),
+    };
+  }
+
   const dataReadiness = resolveChatPipelineDataReadiness(
     pipelineConfig,
     ws.workDir,
@@ -2512,48 +2540,49 @@ async function prepareTrialExecution(
           startedAt,
           trialId,
           dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
+          sandboxFixtureAnalysis.inputs,
         ),
       ),
     };
   }
-  if (dataReadiness.state === 'fixture-backed') {
-    const uncoveredInputs = findUncoveredTrialFixtureInputs(
-      plan,
-      dataReadiness.inputs,
-      pipelineConfig,
-    );
-    if (uncoveredInputs.length > 0) {
-      if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
-        return {
-          status: 'result',
-          result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
-        };
-      }
-      issueChatYamlStageTrialPlanAttempt(ws, {
-        stageId: stage.id,
-        relativePath: entry.relativePath,
-        yamlHash: snapshot.contentHash,
-        attemptId: trialId,
-      });
+
+  const uncoveredFixtureCases = findUncoveredTrialCaseFixtureInputs(
+    plan,
+    sandboxFixtureAnalysis.inputs,
+    pipelineConfig,
+  );
+  if (uncoveredFixtureCases.length > 0) {
+    if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
       return {
         status: 'result',
-        result: withTrialability(
-          resultForPlanRequest(
-            buildChatPipelineTrialPlanRequest(
-              'invalid',
-              entry.relativePath,
-              snapshot.contentHash,
-              `The current trial plan does not cover unavailable baseline data inputs: ${describeUncoveredTrialFixtureInputs(uncoveredInputs)}. Correct the Trial Plan only; preserve the pipeline requirements and do not write placeholders to the real workspace.`,
-              stage.trialPlanMaxAttempts,
-            ),
-            planTelemetry,
-            startedAt,
-            trialId,
-            dataReadiness,
-          ),
-        ),
+        result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
       };
     }
+    issueChatYamlStageTrialPlanAttempt(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      yamlHash: snapshot.contentHash,
+      attemptId: trialId,
+    });
+    return {
+      status: 'result',
+      result: withTrialability(
+        resultForPlanRequest(
+          buildChatPipelineTrialPlanRequest(
+            'invalid',
+            entry.relativePath,
+            snapshot.contentHash,
+            `The current Trial Plan would execute file or directory trigger tasks without the required isolated input in one or more cases: ${describeUncoveredTrialCaseFixtureInputs(uncoveredFixtureCases)}. Add a semantically representative fixture to every affected case, or use generatedInputPaths only when that case's upstream closure genuinely creates and asserts the path. Correct the Trial Plan only; preserve the pipeline requirements and do not write placeholders to the real workspace.`,
+            stage.trialPlanMaxAttempts,
+          ),
+          planTelemetry,
+          startedAt,
+          trialId,
+          dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
+          sandboxFixtureAnalysis.inputs,
+        ),
+      ),
+    };
   }
 
   return {
@@ -3344,6 +3373,26 @@ export async function trialRunChatYamlStage(
       planTelemetry.committedPlanHash,
     );
     if (planRead.status === 'required') {
+      const sandboxFixtureAnalysis = resolveChatPipelineSandboxFixtureInputs(
+        pipelineConfig,
+        ws.workDir,
+        entry.relativePath,
+      );
+      if (sandboxFixtureAnalysis.blockers.length > 0) {
+        const prerequisiteState = {
+          state: 'blocked' as const,
+          blockers: sandboxFixtureAnalysis.blockers,
+        };
+        return {
+          ...resultForSetupFailure(
+            'blocked',
+            `Trial cannot safely create isolated fixtures for file or directory triggers outside its temporary workspace: ${describeTrialBlockers(sandboxFixtureAnalysis.blockers)}. Keep intentional external paths for production, but use a workspace-contained input coordinate when the pipeline must be Sandbox-testable.`,
+            startedAt,
+            { prerequisiteState, ...preflightMetadata },
+          ),
+          planTelemetry,
+        };
+      }
       const dataReadiness = resolveChatPipelineDataReadiness(
         pipelineConfig,
         ws.workDir,
@@ -3368,6 +3417,7 @@ export async function trialRunChatYamlStage(
           startedAt,
           trialId,
           dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
+          sandboxFixtureAnalysis.inputs,
         ),
         ...preflightMetadata,
       };

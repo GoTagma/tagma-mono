@@ -159,7 +159,7 @@ function writeTrialPlan(
     stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify(
       {
-        version: 6,
+        version: 7,
         yamlHash,
         summary: 'Focused trial coverage for async witness ordering.',
         goals: ['Ensure trial authorization witness lifecycle behaves deterministically.'],
@@ -667,6 +667,14 @@ describe('chat YAML staging async witness ordering', () => {
       planRequest: {
         reason: 'invalid',
         attemptId: 'missing_input_preflight',
+        requiredSandboxInputs: [
+          {
+            taskId: 'main.verify',
+            type: 'file',
+            path: 'input/text-to-check.md',
+            fixturePath: 'input/text-to-check.md',
+          },
+        ],
         unavailableBaselineInputs: [
           {
             taskId: 'main.verify',
@@ -687,7 +695,7 @@ describe('chat YAML staging async witness ordering', () => {
       },
     });
     const result = trialRes.body as { summary: string; durationMs: number };
-    expect(result.summary).toContain('does not cover unavailable baseline data inputs');
+    expect(result.summary).toContain('without the required isolated input');
     expect(result.summary).toContain('input/text-to-check.md');
     expect(result.durationMs).toBeLessThan(500);
     expect(witnessCaptureCalls).toBe(0);

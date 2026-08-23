@@ -112,8 +112,8 @@ function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
     invalidTargetReason ??
     (deploymentTarget && !availability.available ? availability.reason : null);
   const ok = result.status === 'ready';
-  const warning =
-    result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
+  const blocked = result.status === 'blocked';
+  const passedWithWarnings = ok && result.trial?.kind === 'passed-with-warnings';
   const presentation = describeSessionYamlResult(result);
   const verb = presentation.verb;
   const summary =
@@ -124,12 +124,16 @@ function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
   return (
     <>
       <div className="flex items-center gap-1.5 min-w-0">
-        {warning ? (
-          <AlertTriangle size={12} className="text-tagma-warning shrink-0" />
-        ) : ok ? (
-          <CheckCircle2 size={12} className="text-tagma-ready shrink-0" />
+        {ok ? (
+          <CheckCircle2
+            size={12}
+            className={`${passedWithWarnings ? 'text-tagma-warning' : 'text-tagma-ready'} shrink-0`}
+          />
         ) : (
-          <AlertTriangle size={12} className="text-tagma-error shrink-0" />
+          <AlertTriangle
+            size={12}
+            className={`${blocked ? 'text-tagma-warning' : 'text-tagma-error'} shrink-0`}
+          />
         )}
         <span className="shrink-0 text-tagma-muted/80">{verb}</span>
         <span className="truncate text-tagma-text" title={name}>

@@ -4,7 +4,7 @@ import type {
   ChatPipelineTrialReadiness,
 } from './chat-pipeline-trial-readiness.js';
 
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 20 as const;
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 21 as const;
 
 export interface ChatPipelineTrialLiveSmokeReadiness {
   targetPipelineIsNew: boolean;

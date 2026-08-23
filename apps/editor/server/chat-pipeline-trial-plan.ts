@@ -14,7 +14,7 @@ import {
 import { sameFilesystemPathCoordinate } from '../shared/filesystem-paths.js';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 6,
+  version: 7,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,

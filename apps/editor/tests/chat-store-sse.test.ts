@@ -393,7 +393,7 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt.length).toBeLessThan(4_000);
 });
 
-test('trial planning prompt preserves the advertised fixture namespace', () => {
+test('trial planning prompt requires semantic Sandbox fixtures at the advertised coordinates', () => {
   const prompt = buildChatYamlTrialPlanPrompt(
     {
       kind: 'refresh-current',
@@ -407,6 +407,20 @@ test('trial planning prompt preserves the advertised fixture namespace', () => {
       pipelineHash: 'a'.repeat(40),
       message: 'No trial plan was written.',
       requiredCoverage: ['multiple-inputs'],
+      requiredSandboxInputs: [
+        {
+          taskId: 'main.ingest',
+          type: 'file',
+          path: 'input/claim.txt',
+          fixturePath: 'build/input/claim.txt',
+        },
+        {
+          taskId: 'main.scan',
+          type: 'directory',
+          path: 'input/articles',
+          fixturePath: 'build/input/articles',
+        },
+      ],
       unavailableBaselineInputs: [
         {
           taskId: 'main.ingest',
@@ -421,7 +435,11 @@ test('trial planning prompt preserves the advertised fixture namespace', () => {
     2,
   );
 
+  expect(prompt).toContain('required Sandbox input fixtures');
   expect(prompt).toContain('fixture path: build/input/claim.txt');
+  expect(prompt).toContain('file below: build/input/articles/');
+  expect(prompt).toContain('every case whose target closure executes the owning task');
+  expect(prompt).toContain('valid representative content grounded in the task');
   expect(prompt).toContain('Use each advertised fixture path exactly as shown');
   expect(prompt).toContain('do not add a leading .tagma/ or remove the pipeline stem');
 });

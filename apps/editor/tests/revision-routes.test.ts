@@ -48,6 +48,8 @@ describe('revision route bypass', () => {
   });
 
   test('sequences checked mutations and bypass routes that manually advance revision', () => {
+    expect(bypassesRevisionCheck('/api/open')).toBe(true);
+    expect(participatesInWorkspaceRevisionSequence('/api/open', 'POST')).toBe(true);
     expect(participatesInWorkspaceRevisionSequence('/api/tasks/track/task', 'PATCH')).toBe(true);
     expect(
       participatesInWorkspaceRevisionSequence('/api/workspace/chat-yaml-stage/finalize', 'POST'),

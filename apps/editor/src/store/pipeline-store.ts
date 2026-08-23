@@ -2048,7 +2048,18 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     openFile: async (path, opts) => {
       await withOptionalYamlEditLockBypass(opts, async () => {
         try {
-          const state = await api.openFile(path);
+          let state: ServerState;
+          try {
+            state = await api.openFile(path);
+          } catch (e) {
+            if (!(e instanceof RevisionConflictError)) throw e;
+            // Opening is an idempotent navigation intent. Chat finalize may
+            // advance the workspace revision without adopting its result onto
+            // the current canvas; the conflict response refreshes the API
+            // baseline, so one bounded replay opens the requested latest file
+            // without making the user click twice. Never replay content edits.
+            state = await api.openFile(path);
+          }
           const registry = await fetchRegistrySnapshot();
           set({
             selectedTaskId: null,

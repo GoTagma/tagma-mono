@@ -83,38 +83,43 @@ export async function fetchConfiguredProviderModels(
       .catch((error) => ({ ok: false as const, error })),
   ]);
 
-  if (v2Load.ok) {
-    const providers = buildProvidersFromV2Catalog(
-      v2Load.value,
-      legacyLoad.ok ? legacyLoad.value.providers : [],
-    );
-    if (providers.length > 0 || !legacyLoad.ok) {
-      return {
-        providers,
-        default: legacyLoad.ok ? (legacyLoad.value.default ?? {}) : {},
-      };
-    }
-  } else if (legacyLoad.ok) {
+  // `/config/providers` is the authoritative configured/runtime provider
+  // membership. OpenCode's native-v2 projection is metadata-only here: while
+  // its catalog initializes it can be broader or incomplete, including
+  // providers with no credential or providers whose model metadata is absent.
+  if (!legacyLoad.ok) throw legacyLoad.error;
+  if (!v2Load.ok) {
     console.warn(
       '[chat] v2 provider/model catalog failed; falling back to config.providers:',
       v2Load.error,
     );
-  }
-
-  if (legacyLoad.ok) {
     return legacyLoad.value;
   }
-  if (!v2Load.ok) throw v2Load.error;
-  return { providers: [], default: {} };
+
+  return {
+    providers: buildProvidersFromV2Catalog(v2Load.value, legacyLoad.value.providers),
+    default: legacyLoad.value.default ?? {},
+  };
 }
 
+/**
+ * Project native-v2 model metadata onto the picker provider shape. When
+ * `runtimeProviders` is supplied, its provider IDs are authoritative even
+ * when the array is empty; omit it only when projecting a standalone catalog.
+ */
 export function buildProvidersFromV2Catalog(
   catalog: ProviderModelCatalogV2Snapshot,
-  legacyProviders: Provider[] = [],
+  runtimeProviders?: Provider[],
 ): Provider[] {
+  const legacyProviders = runtimeProviders ?? [];
+  const runtimeProviderIds = runtimeProviders
+    ? new Set(runtimeProviders.map((provider) => provider.id))
+    : null;
+  const catalogProviders = runtimeProviderIds
+    ? catalog.providers.filter((provider) => runtimeProviderIds.has(provider.id))
+    : catalog.providers;
   const legacyById = new Map(legacyProviders.map((provider) => [provider.id, provider]));
-  const v2ProviderIds = new Set(catalog.providers.map((provider) => provider.id));
-  const v2ProviderById = new Map(catalog.providers.map((provider) => [provider.id, provider]));
+  const v2ProviderById = new Map(catalogProviders.map((provider) => [provider.id, provider]));
   const modelsByProvider = new Map<string, Provider['models']>();
 
   for (const model of catalog.models) {
@@ -165,7 +170,7 @@ export function buildProvidersFromV2Catalog(
     modelsByProvider.set(model.providerID, providerModels);
   }
 
-  const providers = catalog.providers.flatMap((provider) => {
+  const providers = catalogProviders.flatMap((provider) => {
     const models = modelsByProvider.get(provider.id);
     if (!models || Object.keys(models).length === 0) return [];
     const legacyProvider = legacyById.get(provider.id);
@@ -182,10 +187,12 @@ export function buildProvidersFromV2Catalog(
     ];
   });
 
+  const projectedProviderIds = new Set(providers.map((provider) => provider.id));
   for (const legacyProvider of legacyProviders) {
-    if (v2ProviderIds.has(legacyProvider.id)) continue;
+    if (projectedProviderIds.has(legacyProvider.id)) continue;
     if (Object.keys(legacyProvider.models ?? {}).length === 0) continue;
     providers.push(legacyProvider);
+    projectedProviderIds.add(legacyProvider.id);
   }
 
   return providers;

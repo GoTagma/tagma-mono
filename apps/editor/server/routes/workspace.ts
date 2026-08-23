@@ -37,6 +37,7 @@ import {
   lenientParseYaml,
   withDefaultTrackColors,
   broadcastStateEvent,
+  bumpRevision,
   sameFilesystemPath,
 } from '../state.js';
 import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
@@ -1585,6 +1586,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       if (!existsSync(absPath)) {
         return res.status(404).json({ error: `File not found: ${absPath}` });
       }
+      // A pipeline open remains available as navigation while Chat owns the
+      // YAML lease. Remember both ends of this async route: a lock can be
+      // acquired while installed plugins are loading, and generated compile
+      // or manifest writes must not enter an active Trial workspace witness.
+      const openedWhileYamlLocked = !!getActiveYamlEditLock(ws);
       assertFileSizeAtMost(absPath, MAX_YAML_FILE_BYTES, 'YAML file');
       const content = readFileSync(absPath, 'utf-8');
       try {
@@ -1601,8 +1607,14 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       loadLayout(ws);
       beginWatching(ws, absPath, content);
       await withWorkspacePluginMutationLock(ws, () => autoLoadInstalledPlugins(ws));
-      runCompileAndWriteLog(absPath, ws.registry);
-      runPipelineManifestSync(absPath);
+      if (!openedWhileYamlLocked && !getActiveYamlEditLock(ws)) {
+        runCompileAndWriteLog(absPath, ws.registry);
+        runPipelineManifestSync(absPath);
+      }
+      // /api/open bypasses stale-canvas If-Match checks because it is an
+      // explicit replacement/navigation intent. It still participates in the
+      // workspace mutation sequence and must advance the baseline exactly once.
+      bumpRevision(ws);
       res.json(getState(ws));
     } catch (err: unknown) {
       res.status(400).json({ error: errorMessage(err) || 'Failed to open file' });

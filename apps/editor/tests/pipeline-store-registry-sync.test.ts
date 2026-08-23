@@ -29,6 +29,7 @@ let nextRegistry = EMPTY_REGISTRY;
 let getRegistryCalls = 0;
 let setWorkDirCalls = 0;
 let openFileCalls = 0;
+let openFileImpl: (path: string) => Promise<ServerState>;
 let importFileCalls = 0;
 let operationOrder: string[] = [];
 let mockClientWorkspace: string | null = null;
@@ -51,10 +52,10 @@ mock.module('../src/api/client', () => ({
       setWorkDirCalls += 1;
       return nextWorkDirState;
     },
-    openFile: async (_path: string) => {
+    openFile: async (path: string) => {
       openFileCalls += 1;
       operationOrder.push('openFile');
-      return nextOpenFileState;
+      return openFileImpl(path);
     },
     importFile: async (_sourcePath: string, _capabilityToken: string) => {
       importFileCalls += 1;
@@ -122,6 +123,7 @@ mock.module('../src/hooks/use-local-field', () => ({
   getLastLocalFieldEditAt: () => null,
 }));
 
+const { RevisionConflictError } = await import('../src/api/client');
 const { usePipelineStore } = await import('../src/store/pipeline-store');
 const { useRunStore } = await import('../src/store/run-store');
 const { useYamlEditLockStore, YAML_EDIT_LOCK_MESSAGE } =
@@ -182,6 +184,7 @@ describe('pipeline store plugin registry sync', () => {
     getRegistryCalls = 0;
     setWorkDirCalls = 0;
     openFileCalls = 0;
+    openFileImpl = async () => nextOpenFileState;
     importFileCalls = 0;
     operationOrder = [];
     mockClientWorkspace = null;
@@ -396,6 +399,36 @@ describe('pipeline store plugin registry sync', () => {
     expect(state.registry).toEqual(nextRegistry);
     expect(state.selectedTaskId).toBeNull();
     expect(state.pinnedTaskId).toBeNull();
+  });
+
+  test('openFile transparently retries one stale revision after Chat finalizes', async () => {
+    const targetPath = 'D:/workspace-a/.tagma/deploy/deploy.yaml';
+    nextOpenFileState = makeState({
+      workDir: 'D:/workspace-a',
+      yamlPath: targetPath,
+      revision: 8,
+    });
+    let firstAttempt = true;
+    openFileImpl = async () => {
+      if (firstAttempt) {
+        firstAttempt = false;
+        throw new RevisionConflictError(
+          makeState({ workDir: 'D:/workspace-a', revision: 7 }),
+          3,
+          7,
+        );
+      }
+      return nextOpenFileState;
+    };
+
+    await usePipelineStore.getState().openFile(targetPath);
+
+    const state = usePipelineStore.getState();
+    expect(openFileCalls).toBe(2);
+    expect(operationOrder).toEqual(['openFile', 'openFile', 'getRegistry']);
+    expect(getRegistryCalls).toBe(1);
+    expect(state.yamlPath).toBe(targetPath);
+    expect(state.errorMessage).toBeNull();
   });
 
   test('importFile also refreshes the registry after importing a pipeline with plugins', async () => {

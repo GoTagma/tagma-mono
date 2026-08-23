@@ -367,6 +367,8 @@ describe('ChatPanel export affordance', () => {
     const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
 
     expect(html).toContain('Saved failed draft');
+    expect(html).toContain('lucide-triangle-alert');
+    expect(html).not.toContain('lucide-circle-check');
     expect(html).toContain('Pipeline repair did not succeed after 2 cycles.');
     expect(html).toContain('No live pipeline was overwritten.');
     expect(html).toContain('Trial run failed: main.test exited 7.');
@@ -374,7 +376,7 @@ describe('ChatPanel export affordance', () => {
     expect(isChatPipelineDeployed(result)).toBe(true);
   });
 
-  test('renders accepted trial risk as a warning without treating the pipeline as failed', () => {
+  test('renders a trial pass with warnings as an amber success instead of a failure-style triangle', () => {
     const result: ChatYamlSessionResult = {
       sessionId: 's1',
       kind: 'refresh-current',
@@ -420,6 +422,8 @@ describe('ChatPanel export affordance', () => {
     for (const html of [bubbleHtml, toastHtml]) {
       expect(html).toContain('trial run passed with warnings');
       expect(html).toContain('text-tagma-warning');
+      expect(html).toContain('lucide-circle-check');
+      expect(html).not.toContain('lucide-triangle-alert');
       expect(html).not.toContain('text-tagma-error');
     }
     expect(bubbleHtml).toContain('Open pipeline');
@@ -471,6 +475,8 @@ describe('ChatPanel export affordance', () => {
     const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
     expect(html).toContain('runtime prerequisites are unavailable');
     expect(html).toContain('without creating a copy');
+    expect(html).toContain('lucide-triangle-alert');
+    expect(html).not.toContain('lucide-circle-check');
     expect(html).toContain('text-tagma-warning');
     expect(html).not.toContain('text-tagma-error');
     expect(html).toContain('Open pipeline');
@@ -714,6 +720,9 @@ describe('ChatPanel export affordance', () => {
     const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
 
     expect(html).toContain('Updated pipeline');
+    expect(html).toContain('lucide-circle-check');
+    expect(html).not.toContain('lucide-triangle-alert');
+    expect(html).toContain('text-tagma-ready');
     expect(html).toContain('Pipeline repair succeeded after 1 cycle.');
     expect(html).toContain('Compile and trial run passed.');
     expect(html).toContain('Trial planning');

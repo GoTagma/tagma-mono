@@ -296,6 +296,8 @@ export interface ChatPipelineTrialPlanRequest {
   maxAttempts?: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
   attemptId?: string;
+  /** Inputs each targeted Sandbox case must fixture (or genuinely generate upstream). */
+  requiredSandboxInputs?: ChatPipelineTrialFixtureInput[];
   unavailableBaselineInputs?: ChatPipelineTrialFixtureInput[];
 }
 

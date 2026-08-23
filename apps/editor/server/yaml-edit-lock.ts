@@ -122,6 +122,12 @@ export function shouldBlockYamlEditLockMutation(
   },
 ): boolean {
   if (!lock) return false;
+  // Opening a pipeline is a navigation intent, not a YAML/layout write. It
+  // must remain available even while Trial temporarily promotes a path lock
+  // to workspace-wide. The route suppresses its generated companion writes
+  // while the lock is held, so this exception cannot mutate Trial's witness.
+  if (context.path === '/api/open') return false;
+
   const lockedYamlPath = normalizeLockPath(lock.yamlPath);
   if (!lockedYamlPath) return true;
 
@@ -129,8 +135,6 @@ export function shouldBlockYamlEditLockMutation(
     case '/api/new':
     case '/api/import-file':
       return false;
-    case '/api/open':
-      return pathHitsLockedYaml(bodyPath(context.body), lockedYamlPath, context.workDir);
     case '/api/delete-file':
       return pathHitsLockedYaml(bodyPath(context.body), lockedYamlPath, context.workDir);
     case '/api/save-as':
@@ -152,7 +156,6 @@ export function shouldBlockYamlEditLockMutation(
 
 export function isYamlEditLockProtectedMutation(path: string): boolean {
   const exact = new Set([
-    '/api/open',
     '/api/save',
     '/api/save-as',
     '/api/new',

@@ -596,6 +596,8 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
     'staged pipeline support file does not satisfy the optional Live Smoke baseline',
   );
   expect(doc).toContain('missing file or directory input is fixture-backed for host Trial');
+  expect(doc).toContain('default to a workspace-contained relative trigger path');
+  expect(doc).toContain('external trigger coordinate cannot be synthesized inside a Sandbox case');
   expect(doc).toContain('Host verification starts automatically after your response');
   expect(doc).toContain('Do not ask whether the user wants the host to verify or compile');
   expect(doc).toContain('authoring complete; host verification pending');
@@ -682,6 +684,11 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain(
       'Never use accepted-risk or a warning to turn an unexecuted terminal task into a passing Trial',
     );
+    expect(planner).toContain('Host-derived required Sandbox input');
+    expect(planner).toContain('every case whose target closure executes that task');
+    expect(planner).toContain('exact advertised fixture path');
+    expect(planner).toContain('at least one representative file below the advertised directory');
+    expect(planner).toContain('valid representative content grounded in');
     expect(planner).toContain('Use file-equals when exact text preservation matters');
     expect(planner).toContain('an empty expected string for empty-content cases');
     expect(planner).toContain('declared or inferred prompt outputs');

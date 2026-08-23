@@ -3,6 +3,10 @@ const REVISION_BYPASS_PREFIXES = [
   '/api/fs/',
   '/api/state/events',
   '/api/state/reload',
+  // Opening replaces the in-memory canvas with the latest requested file. It
+  // is navigation, so a stale prior-canvas revision must not reject it; the
+  // route advances revision explicitly after the load succeeds.
+  '/api/open',
   '/api/opencode/',
   '/api/global-settings',
   '/api/recent-workspaces',
@@ -30,6 +34,7 @@ const REVISION_BYPASS_PREFIXES = [
 ] as const;
 
 const REVISION_ADVANCING_BYPASS_PATHS = new Set([
+  '/api/open',
   '/api/state/reload',
   '/api/workspace/chat-yaml-stage/finalize',
   '/api/plugins/import-local',
