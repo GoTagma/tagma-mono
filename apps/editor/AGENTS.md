@@ -994,7 +994,10 @@
 - For fast regressions, pass repeatable unique selectors such as
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
 - Keep prerequisite assertions independent of unrelated CLI availability. Prompt tasks default to
-  the `opencode` driver, so use a command task when a test intends to isolate another blocker.
+  the `opencode` driver, so use a command task when a test intends to isolate another blocker. When
+  an integration test must execute a prompt through a stubbed `opencode` driver, put a fake
+  executable on `PATH` and restore `PATH` afterward: runtime readiness still evaluates the
+  generated managed-driver requirement, and full-check CI intentionally does not stage OpenCode.
 - Seeded pipeline-agent documents follow the current host contract. Keep seed assertions
   host-aware; verify Windows-only command guidance through `buildTagmaPipelineAgent('Windows')`
   instead of requiring it from Linux or macOS seed output.

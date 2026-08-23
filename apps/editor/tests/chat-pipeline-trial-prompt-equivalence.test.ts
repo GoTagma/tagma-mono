@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { DriverPlugin } from '@tagma/types';
@@ -68,6 +68,7 @@ test('Sandbox Trial sends prompt tasks the same business prompt as production', 
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+      opencodeChatTrialLiveSmokeTestEnabled: false,
     }),
     'utf8',
   );
@@ -138,6 +139,23 @@ test('Sandbox Trial sends prompt tasks the same business prompt as production', 
   );
   writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
 
+  // The full-check runner intentionally does not stage OpenCode. Runtime
+  // readiness still validates the built-in driver's generated requirement,
+  // even though this test replaces its execution plugin with a capture stub.
+  const fakeBinDir = mkdtempSync(join(tmpdir(), 'tagma-fake-opencode-'));
+  roots.push(fakeBinDir);
+  const fakeOpencodePath = join(
+    fakeBinDir,
+    process.platform === 'win32' ? 'opencode.cmd' : 'opencode',
+  );
+  writeFileSync(
+    fakeOpencodePath,
+    process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\nexit 0\n',
+    process.platform === 'win32' ? undefined : { mode: 0o755 },
+  );
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${fakeBinDir}${delimiter}${previousPath ?? ''}`;
+
   try {
     const result = await trialRunChatYamlStage(ws, {
       stageId: stage.id,
@@ -145,7 +163,9 @@ test('Sandbox Trial sends prompt tasks the same business prompt as production', 
       trialId: 'prompt_equivalence',
     });
 
-    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error(`Sandbox Trial failed before prompt comparison: ${result.summary}`);
+    }
     expect(result.plan?.cases).toMatchObject([
       { id: 'host-fixed-prompt-repeat', runs: 2, targetTaskIds: ['main.answer'] },
     ]);
@@ -154,6 +174,8 @@ test('Sandbox Trial sends prompt tasks the same business prompt as production', 
     expect(task?.stdout).not.toContain('Targeted Trial Case');
     expect(task?.stdout).not.toContain('Isolated workspace');
   } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
     discardChatYamlStage(ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
