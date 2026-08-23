@@ -579,6 +579,9 @@ export function App() {
           }
           if (resolution.kind === 'finalized') {
             const finalized = resolution.finalizedResult;
+            await useChatStore
+              .getState()
+              .relocateChatYamlResults(snapshot.workDir, finalized.relocations ?? []);
             const finalEntry = finalized.entry;
             const resultTurnId = snapshot.resultTurnId ?? claimedTurn.id;
             const resultMessageId =
@@ -607,6 +610,7 @@ export function App() {
                 messageId: resultMessageId,
                 sessionId: claimedTurn.sessionId,
                 workspaceKey: snapshot.workDir,
+                finalYamlContentHash: finalEntry.contentHash,
                 finalYamlMtimeMs: finalEntry.mtimeMs,
                 status: verificationSucceeded
                   ? 'ready'
@@ -1932,6 +1936,9 @@ export function App() {
           } finally {
             useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, false);
           }
+          await useChatStore
+            .getState()
+            .relocateChatYamlResults(snapshot.workDir, finalized.relocations ?? []);
           compile = finalized.compile;
           if (cancelled || (await discardCancelledStage())) return;
           const finalEntry = finalized.entry;
@@ -1991,6 +1998,7 @@ export function App() {
               messageId: resultMessageId,
               sessionId: finishedSessionId,
               workspaceKey: snapshot.workDir,
+              finalYamlContentHash: finalEntry.contentHash,
               finalYamlMtimeMs: finalEntry.mtimeMs,
               status: verificationSucceeded ? 'ready' : verificationBlocked ? 'blocked' : 'failed',
               compile,

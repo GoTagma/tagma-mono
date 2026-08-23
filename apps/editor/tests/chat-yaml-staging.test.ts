@@ -1215,6 +1215,19 @@ describe('chat YAML staging', () => {
     });
     const escapedCopyPath = pipelineYamlPath(ws.workDir, 'pipeline-copy-1');
     expect(readFileSync(escapedCopyPath, 'utf-8')).toContain('prompt: escaped');
+    expect(result.relocations).toEqual([
+      expect.objectContaining({
+        fromPath: sourcePath,
+        fromContentHash: expect.stringMatching(/^[0-9a-f]{40}$/),
+        fromMtimeMs: expect.any(Number),
+        entry: expect.objectContaining({
+          path: escapedCopyPath,
+          name: 'pipeline-copy-1.yaml',
+          pipelineName: 'Escaped Pipeline Copy 1',
+          mtimeMs: expect.any(Number),
+        }),
+      }),
+    ]);
     expect(ws.config.name).toBe('Base Pipeline');
     expect(ws.layout.positions['main.task']?.x).toBe(85);
     expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);

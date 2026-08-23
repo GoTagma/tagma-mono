@@ -590,6 +590,8 @@ function sessionYamlTimelineSummary(value: unknown): UnknownRecord | null {
             'trialId',
             'phase',
             'startedAt',
+            'updatedAt',
+            'heartbeatAt',
             'caseId',
             'caseIndex',
             'caseCount',
@@ -745,17 +747,22 @@ function chatTimelineSummary(chat: UnknownRecord): UnknownRecord {
     toolCallEvidence: evidenceSummary(chat.toolCallEvidence),
     toolCallSummaries: toolTimelineSummaries(chat.toolCallSummaries),
     backgroundSessions: Array.isArray(chat.backgroundSessions)
-      ? chat.backgroundSessions
-          .slice(-100)
-          .map((rawSession) =>
-            selectedFields(record(rawSession), [
+      ? chat.backgroundSessions.slice(-100).map((rawSession) => {
+          const session = record(rawSession);
+          return {
+            ...selectedFields(session, [
               'sessionId',
               'sending',
               'messageCount',
               'pendingPermissionCount',
               'queuedMessageCount',
             ]),
-          )
+            postChatYamlActionSummary: sessionYamlTimelineSummary(
+              session.postChatYamlActionSummary,
+            ),
+            sessionYamlResultSummary: sessionYamlTimelineSummary(session.sessionYamlResultSummary),
+          };
+        })
       : [],
     abortRecovery: lifecycleTimelineSummary(chat.abortRecovery),
     pendingUserTextSummary: presenceSummary(chat.pendingUserTextSummary),

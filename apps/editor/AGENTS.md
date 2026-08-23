@@ -274,6 +274,10 @@
   agent writes only YAML unless genuine user-owned requirements text, env/services, helper files,
   or non-mechanical layout metadata are required; ordinary existing-pipeline edits retain their
   three-way layout ownership.
+- The managed `tagma_yaml_skeleton` DTO is a fail-closed generation boundary, not a best-effort
+  formatter. Reject unknown section types, tasks whose track is undeclared, duplicate task/track
+  identities, empty tracks, and any received-versus-emitted task-count mismatch. Never silently
+  skip a section or manufacture a placeholder task and report successful YAML.
 - After attaching or replacing the chat compile watcher's root fs.watch, keep one
   identity-guarded deferred reconciliation. Linux may not deliver a pipeline-folder creation that
   happens in the same event-loop turn as watcher startup; the deferred pass may compile only
@@ -310,7 +314,12 @@
 - Conflict forks preserve complete pipeline branches: YAML, layout, requirements, and support
   files. Restore the renderer branch from the server-owned base artifacts before applying its
   YAML/layout, and refresh the optimistic-lock baseline after every successful reconcile or
-  rollback so Save and Run cannot resume against a stale file version.
+  rollback so Save and Run cannot resume against a stale file version. When preserving a live
+  branch by moving it to a numbered copy, return authenticated relocation evidence and rebase every
+  matching durable result/link plus every loaded desktop-chat OpenCode session metadata target
+  before completing reconciliation. Match current results by the Host-observed YAML content hash,
+  with mtime only as a legacy fallback. Treat metadata update failure as retryable reconciliation
+  failure; never leave the moved branch represented as the pipeline now occupying its old path.
 - Treat a missing layout artifact and a layout containing only empty default
   `positions`/`folders`/`trackHeights` as the same semantic absence in base, stage, live,
   branch comparison, hashing, publication, and local-branch persistence. For non-empty layouts,
@@ -353,7 +362,8 @@
   selected Trial mode and a deterministic hash of the full report into the authenticated cache
   key and result, and recompute that report before finalize accepts cached evidence.
 - Before an enabled trial executes, require a transient sibling trial-plan JSON file authored
-  from the final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a
+  from the final compiled YAML and bound to its SHA-1, except for the Host-owned fixed tool-free
+  single-prompt fast lane described below. Missing, stale, or invalid ordinary plans trigger a
   dedicated hidden same-turn planning continuation that may only call `tagma_trial_plan` and may
   not edit pipeline artifacts. Ordinary router and pipeline-authoring agents must explicitly deny
   that tool so build or repair turns cannot consume the planner's revision-bound attempts. The Host
@@ -381,15 +391,21 @@
   expectation schemas, and run the complete semantic validator before the atomic write. The tool
   must accept the exact staged Target YAML path when OpenCode reports a different session directory,
   reject live `.tagma` destinations, and never rely on the agent to copy staging artifacts.
+- For exactly one fixed non-empty built-in OpenCode prompt with explicit all-false permissions and
+  no inputs, outputs, dependencies, trigger, non-default completion, middleware, secrets, hooks,
+  plugin, non-default cwd, or file/side-effect contract, the Host deterministically creates the
+  bounded Trial Plan without an LLM continuation or plan file. Target only the sole qualified task,
+  run it twice, require successful task status, mark only repeat-run covered, and mark every other
+  structural dimension not-applicable. Bind the canonical generated plan hash into Trial cache and
+  finalize verification exactly like an authored plan.
 - Assemble ordinary trial plans through bounded same-tool draft operations: `begin`, one
   `upsert-case` per case, `set-coverage`, `set-findings`, then exactly one `commit`. Only `commit`
   consumes that draft's formal attempt. Keep drafts stage-owned, path-and-hash-bound, locked,
   size-bounded, resumable, resettable, and unpublished. For a new YAML hash, `begin` may seed only
   from the exact prior tool-authenticated plan; planners preserve unaffected cases and update the
-  changed contract rather than rebuilding mechanically. The sole complete-plan exception is the
-  fixed read-only single-prompt/no-I/O fast lane: one `commit-plan` call carries its one case, all
-  coverage, and findings, then performs the same full semantic validation and atomic write. Its
-  invalid submission consumes the attempt and the same attempt id cannot retry.
+  changed contract rather than rebuilding mechanically. Keep `commit-plan` only as a compatibility
+  operation for older hosts; current planner prompts must never call it because the Host resolves
+  the sole fixed-prompt fast lane before planner dispatch.
 - Validate and normalize every proposed case, coverage section, and finding section before
   persisting it. Reject reserved pipeline-artifact paths, incomplete or duplicate coverage,
   unknown case links, unsupported coverage evidence, and a case update that would invalidate
@@ -404,12 +420,17 @@
   repeat-run collision coverage needs two runs plus distinct-output evidence. The sequential
   harness can never mark concurrent collision covered: use accepted-risk, blocked, or genuinely
   not-applicable. Accepted risk and warning findings produce `passed-with-warnings`.
-- Optimize a genuinely fixed, read-only, single-prompt/no-I/O graph inside the authenticated
-  planner lifecycle, never by bypassing it: inspect only YAML plus manifest, author one two-run
-  task-status case, mark structurally irrelevant dimensions not-applicable, leave findings empty
-  unless current evidence shows a mismatch, and submit it through the one counted `commit-plan`
-  call. Normal driver prerequisites and hypothetical unavailability belong to Host trialability
-  reporting, not planner findings.
+- Sandbox case identity, title, objective, fixture paths, and temporary workspace coordinates are
+  Host harness metadata, not pipeline behavior. Never append them through `taskPromptContexts` or
+  otherwise alter a prompt task's authored business prompt; pass case state through Host execution
+  controls and environment only. Prompt-case regression coverage must compare the exact prompt seen
+  by the driver with production prompt serialization.
+- At Chat generation compile time, validate built-in trigger claims against runtime semantics: a
+  file trigger is one literal existence coordinate and a directory trigger gates only directory
+  existence, not child arrival, non-emptiness, or later changes. Also resolve trigger paths from the
+  effective cwd and surface isolated-fixture addressability before Trial: current-pipeline and
+  workspace-root coordinates are addressable, external coordinates require an explicit warning,
+  and host-private or sibling-pipeline `.tagma` coordinates are generation errors.
 - Default Sandbox Trial never runs a real-workspace baseline and never injects real pipeline
   credentials into execution; it uses deterministic synthetic values for every declared or
   required secret. Host-witness preparation may resolve real credentials only to bind prerequisite
@@ -756,19 +777,20 @@
   as managed runtime state rather than Chat support artifacts so stale task-cwd trees cannot wedge
   staging/finalize; keep ordinary support files
   subject to the existing entry, depth, file-size, and total-size bounds.
-- Built-in OpenCode prompt tasks must enforce resolved task permissions with a deny-only
-  `OPENCODE_PERMISSION` policy and a fresh, unpredictable primary agent selected by both
+- Built-in OpenCode prompt tasks must enforce resolved task permissions with a wildcard-default-deny
+  `OPENCODE_PERMISSION` allowlist and a fresh, unpredictable primary agent selected by both
   `--agent` and `default_agent`. Apply the same policy to that agent because OpenCode merges
-  agent-specific rules after top-level rules. A restricted task must deny both `task` and
+  agent-specific rules after top-level rules. Allow only read/search/list/LSP/skill for `read`, edit
+  for `write`, and Bash for `execute`; unrepresented tools such as webfetch, todowrite, MCP tools,
+  and future OpenCode tools remain denied. A restricted task must explicitly deny both `task` and
   `external_directory`; its effective cwd is the filesystem boundary and parent exploration must
-  never become an unattended permission request. `read: false` also denies read/search/list/LSP/
-  skill tools, `write: false` denies edit and Tagma's managed authoring tools, and `execute: false`
-  denies Bash. Author fixed conversational prompts with no workspace/tool dependency using all
-  three permissions false. Do not copy ambient
+  never become an unattended permission request. Author fixed conversational prompts with no
+  workspace/tool dependency using all three permissions false. Do not copy ambient
   `OPENCODE_CONFIG_CONTENT` or `OPENCODE_PERMISSION` from `process.env` into a SpawnSpec, because
   doing so bypasses the runtime environment policy. Native Broker and Legacy rollback must discard
   arbitrary inline config, rebuild only the nonce agent inside the host-authored managed config,
-  and fail before spawn on an unknown permission key, a non-deny action, or missing `task: deny`.
+  and fail before spawn on a missing wildcard deny, unknown permission key, an allow outside the
+  represented capability set, or missing explicit `task`/`external_directory` denial.
   Same-driver session resume may reuse only a session id produced by an upstream Tagma task and
   must reapply a fresh restricted agent on every turn; importing an external interactive session
   requires separate provenance and permission handling.
@@ -894,8 +916,11 @@
 - Use the bounded structured diagnostics timeline for lifecycle evidence. Timeline events must
   exclude raw authored messages, drafts, prompts, tool input/output, and commands. Bounded,
   redacted host error, validation, and Trial diagnostic strings may be included for diagnosis but
-  remain sensitive. Ignore capture-time and turn-health heartbeat-only churn, and report retention
-  loss separately from page-level omission.
+  remain sensitive. Ignore capture-time and turn-health heartbeat-only churn, but preserve the
+  numeric semantic-update and Host-heartbeat timestamps for an active background Trial so a silent
+  model task remains distinguishable from a lost verifier; never include progress detail, case
+  title, prompt, fixture, or workspace text. Report retention loss separately from page-level
+  omission.
 - Keep coding-agent diagnostics disabled by default, loopback-only, session-scoped, and read-only.
   Its random token must remain independent from sidecar/OpenCode credentials and may authorize only
   `GET` below `/api/diagnostics/v1`; rotate on enable and revoke on disable/shutdown. Clear every

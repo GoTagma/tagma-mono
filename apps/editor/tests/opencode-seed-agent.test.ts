@@ -703,6 +703,43 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
   ).rejects.toThrow('must choose one result contract');
 });
 
+test('schema-driven YAML generation fails closed instead of dropping sections or tasks', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Unknown section' },
+        sections: [
+          { id: 'track:main', type: 'track', summary: 'Main' },
+          { id: 'task:main.answer', type: 'mystery', prompt: 'Answer.' },
+        ],
+      },
+    }),
+  ).rejects.toThrow('unsupported section type "mystery"');
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Orphan task' },
+        sections: [
+          { id: 'track:main', type: 'track', summary: 'Main' },
+          { id: 'task:missing.answer', type: 'prompt', prompt: 'Answer.' },
+        ],
+      },
+    }),
+  ).rejects.toThrow('references undeclared track "missing"');
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Empty track' },
+        sections: [{ id: 'track:main', type: 'track', summary: 'Main' }],
+      },
+    }),
+  ).rejects.toThrow('track main must contain at least one task');
+});
+
 test('seed prompts require a scope-aware edge-case review after pipeline creation', () => {
   const pipeline = buildTagmaPipelineAgent('Windows');
   const createWrite = pipeline.indexOf(
@@ -796,7 +833,10 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
       'Every finding must include `severity`, `repairScope`, `summary`, and `evidence`',
     );
     expect(planner).toContain('resubmit both fields when resuming a matching draft');
-    expect(planner).toContain('Minimal Fixed-Prompt Fast Lane below is the sole exception');
+    expect(planner).toContain(
+      'The Host resolves fixed tool-free single-prompt fast lanes deterministically before invoking this planner',
+    );
+    expect(planner).not.toContain('Minimal Fixed-Prompt Fast Lane');
     expect(planner).toContain(
       'configured finite commit budget for each exact staged path and YAML hash',
     );
@@ -1846,14 +1886,11 @@ test('tagma-trial-planner instructs host trial-plan failure handling for live .t
       'Pre-commit operations validate their proposed section and immediately decidable links',
     );
     expect(doc).toContain('Blocked coverage is diagnostic-only');
-    expect(doc).toContain('## Minimal Fixed-Prompt Fast Lane');
-    expect(doc).toContain('Read only the target YAML and manifest');
-    expect(doc).toContain('Submit the complete plan with one `commit-plan` call');
-    expect(doc).toContain('one case targeting the sole qualified task with `runs: 2`');
-    expect(doc).toContain('mark every other required dimension `not-applicable`');
     expect(doc).toContain(
-      'Use `findings: []` unless the supplied evidence shows a current mismatch',
+      'The Host resolves fixed tool-free single-prompt fast lanes deterministically before invoking this planner',
     );
+    expect(doc).not.toContain('## Minimal Fixed-Prompt Fast Lane');
+    expect(doc).not.toContain('Submit the complete plan with one `commit-plan` call');
     expect(doc).toContain(
       'Normal declared binary, model, credential, or network requirements are not findings',
     );

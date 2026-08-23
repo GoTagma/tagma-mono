@@ -26,33 +26,33 @@ const ctx = {
 } as unknown as Parameters<typeof OpenCodeDriver.buildCommand>[2];
 
 describe('OpenCodeDriver buildCommand', () => {
-  test('runs default restricted tasks with a task-scoped deny policy', async () => {
+  test('runs default restricted tasks with a task-scoped allowlist policy', async () => {
     const spec = await OpenCodeDriver.buildCommand(task(), track, ctx);
 
     const agentIndex = spec.args.indexOf('--agent');
     expect(agentIndex).toBeGreaterThan(-1);
     const agentName = spec.args[agentIndex + 1];
     expect(agentName).toMatch(/^tagma-pipeline-task-[0-9a-f]{32}$/);
-    expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
-      edit: 'deny',
-      bash: 'deny',
+    const permission = JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}');
+    expect(permission).toEqual({
+      '*': 'deny',
+      read: 'allow',
+      glob: 'allow',
+      grep: 'allow',
+      list: 'allow',
+      lsp: 'allow',
+      skill: 'allow',
       task: 'deny',
       external_directory: 'deny',
-      tagma_yaml_skeleton: 'deny',
-      tagma_placement_plan: 'deny',
-      tagma_trial_plan: 'deny',
     });
+    expect(permission.webfetch).toBeUndefined();
+    expect(permission.todowrite).toBeUndefined();
     expect(JSON.parse(spec.env?.OPENCODE_CONFIG_CONTENT ?? '{}')).toMatchObject({
       default_agent: agentName,
       agent: {
         [agentName]: {
           mode: 'primary',
-          permission: {
-            edit: 'deny',
-            bash: 'deny',
-            task: 'deny',
-            external_directory: 'deny',
-          },
+          permission,
         },
       },
     });
@@ -81,19 +81,25 @@ describe('OpenCodeDriver buildCommand', () => {
     );
 
     expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
-      read: 'deny',
-      glob: 'deny',
-      grep: 'deny',
-      list: 'deny',
-      lsp: 'deny',
-      skill: 'deny',
-      edit: 'deny',
-      bash: 'deny',
+      '*': 'deny',
       task: 'deny',
       external_directory: 'deny',
-      tagma_yaml_skeleton: 'deny',
-      tagma_placement_plan: 'deny',
-      tagma_trial_plan: 'deny',
+    });
+  });
+
+  test('allows only the capability families enabled on a partially restricted task', async () => {
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ permissions: { read: false, write: true, execute: true } }),
+      track,
+      ctx,
+    );
+
+    expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
+      '*': 'deny',
+      edit: 'allow',
+      bash: 'allow',
+      task: 'deny',
+      external_directory: 'deny',
     });
   });
 
@@ -121,8 +127,13 @@ describe('OpenCodeDriver buildCommand', () => {
       expect(config.agent[agentName]).toMatchObject({
         mode: 'primary',
         permission: {
-          edit: 'deny',
-          bash: 'deny',
+          '*': 'deny',
+          read: 'allow',
+          glob: 'allow',
+          grep: 'allow',
+          list: 'allow',
+          lsp: 'allow',
+          skill: 'allow',
           task: 'deny',
           external_directory: 'deny',
         },
@@ -232,8 +243,7 @@ describe('OpenCodeDriver buildCommand', () => {
       /^tagma-pipeline-task-[0-9a-f]{32}$/,
     );
     expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toMatchObject({
-      edit: 'deny',
-      bash: 'deny',
+      '*': 'deny',
       task: 'deny',
       external_directory: 'deny',
     });

@@ -362,6 +362,13 @@ export interface ChatYamlStageFinalizeInput {
   retainStage?: boolean;
 }
 
+export interface ChatYamlStageResultRelocation {
+  fromPath: string;
+  fromContentHash: string;
+  fromMtimeMs: number;
+  entry: ChatYamlStageEntry;
+}
+
 export interface ChatYamlStageFinalizeResult {
   outcome: 'unchanged' | 'adopted' | 'forked' | 'created';
   entry: ChatYamlStageEntry | null;
@@ -369,6 +376,8 @@ export interface ChatYamlStageFinalizeResult {
   localBranchPersisted: boolean;
   trialVerification: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   compile: ReturnType<typeof runCompileAndWriteLog>;
+  /** Existing published branches moved aside while this result committed. */
+  relocations?: ChatYamlStageResultRelocation[];
   revision: number;
   state: ReturnType<typeof getState>;
 }
@@ -1244,6 +1253,9 @@ function runChatStageCompileAndWriteLog(
         return validateChatPipelinePathCoordinates(parseYaml(content), {
           workspaceRoot: ws.workDir,
           relativeYamlPath,
+          validateTriggerSemantics: true,
+          validateTrialFixtureAddressability: true,
+          stagedPipelineDir: dirname(yamlPath),
         });
       } catch {
         // The base compiler owns YAML/envelope/shape diagnostics. This
@@ -2310,6 +2322,7 @@ interface ActiveSourceDriftReconciliation {
   conflicts: ChatYamlStageConflict[];
   localBranchPersisted: boolean;
   sourcePath: string | null;
+  relocations: ChatYamlStageResultRelocation[];
 }
 
 function reconcileDifferentActiveSourceDrift(
@@ -2322,10 +2335,10 @@ function reconcileDifferentActiveSourceDrift(
 ): ActiveSourceDriftReconciliation {
   const activeRelativePath = metadata.activeRelativePath;
   if (!activeRelativePath || samePipelineRelativePath(activeRelativePath, finalizedRelativePath)) {
-    return { conflicts: [], localBranchPersisted: false, sourcePath: null };
+    return { conflicts: [], localBranchPersisted: false, sourcePath: null, relocations: [] };
   }
   if (readTargetFinalizeResult(paths, activeRelativePath)) {
-    return { conflicts: [], localBranchPersisted: false, sourcePath: null };
+    return { conflicts: [], localBranchPersisted: false, sourcePath: null, relocations: [] };
   }
 
   const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
@@ -2336,7 +2349,7 @@ function reconcileDifferentActiveSourceDrift(
   }
   const sourcePath = resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath);
   if (sourceMatchesBase(metadata, sourcePath, activeRelativePath)) {
-    return { conflicts: [], localBranchPersisted: false, sourcePath: null };
+    return { conflicts: [], localBranchPersisted: false, sourcePath: null, relocations: [] };
   }
 
   let localChanges = { yaml: false, layout: false };
@@ -2354,8 +2367,10 @@ function reconcileDifferentActiveSourceDrift(
 
   const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, activeRelativePath);
   const sourceExisted = existsSync(sourcePath);
+  const relocations: ChatYamlStageResultRelocation[] = [];
   trackPipeline(sourcePath);
   if (sourceExisted) {
+    const sourceEntry = describeRealEntry(ws, sourcePath);
     let sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
     if (!hasReadableLayoutArtifact(sourcePath)) {
       sourceCompile = {
@@ -2364,7 +2379,19 @@ function reconcileDifferentActiveSourceDrift(
         summary: 'Source layout could not be read safely.',
       };
     }
-    copyPreservedPipelineAsNumbered(ws, sourcePath, sourcePath, sourceCompile, trackPipeline);
+    const preserved = copyPreservedPipelineAsNumbered(
+      ws,
+      sourcePath,
+      sourcePath,
+      sourceCompile,
+      trackPipeline,
+    );
+    relocations.push({
+      fromPath: sourcePath,
+      fromContentHash: sourceEntry.contentHash,
+      fromMtimeMs: sourceEntry.mtimeMs,
+      entry: describeRealEntry(ws, preserved.path),
+    });
   }
   // Preserve a user deletion when there is no explicit renderer branch to
   // persist. A missing source is a tombstone, not a request to restore base.
@@ -2379,6 +2406,7 @@ function reconcileDifferentActiveSourceDrift(
     conflicts,
     localBranchPersisted: !!activeLocalBranch,
     sourcePath,
+    relocations,
   };
 }
 
@@ -2639,14 +2667,25 @@ async function verifiedTrialDisposition(
   const normalizedTrialId = normalizeFinalizeTrialId(trialId);
   if (!normalizedTrialId) return 'not-verified';
   const contentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
-  const planRead = readChatPipelineTrialPlan(stagedPath, relativePath, contentHash);
-  if (planRead.status === 'required') return 'not-verified';
-  const stagedTreeHash = hashChatPipelineTrialTree(dirname(stagedPath));
-  if (!stagedTreeHash) return 'not-verified';
   let pipelineConfig: PipelineConfig;
   let trialabilityReport: ChatPipelineTrialabilityReport;
   try {
     pipelineConfig = await loadPipeline(readFileSync(stagedPath, 'utf-8'), ws.workDir);
+  } catch {
+    return 'not-verified';
+  }
+  const planRead = readChatPipelineTrialPlan(
+    stagedPath,
+    relativePath,
+    contentHash,
+    editorSettings.opencodeChatTrialPlanMaxAttempts,
+    pipelineConfig,
+    ws.workDir,
+  );
+  if (planRead.status === 'required') return 'not-verified';
+  const stagedTreeHash = hashChatPipelineTrialTree(dirname(stagedPath));
+  if (!stagedTreeHash) return 'not-verified';
+  try {
     trialabilityReport = buildChatPipelineTrialabilityReport({
       pipelineConfig,
       registry: ws.registry,
@@ -2852,6 +2891,7 @@ export async function finalizeChatYamlStage(
     let destinationPath: string;
     let localBranchPersisted = false;
     let resultCompile = compile;
+    const relocations: ChatYamlStageResultRelocation[] = [];
 
     if (!sourcePath) {
       const desiredPath = assertPipelineYamlPath(
@@ -2943,13 +2983,20 @@ export async function finalizeChatYamlStage(
             }
             if (input.localBranch || !sourceCompile?.success) {
               if (sourceCompile) {
-                copyPreservedPipelineAsNumbered(
+                const sourceEntry = describeRealEntry(ws, sourcePath);
+                const preserved = copyPreservedPipelineAsNumbered(
                   ws,
                   sourcePath,
                   sourcePath,
                   sourceCompile,
                   trackPipeline,
                 );
+                relocations.push({
+                  fromPath: sourcePath,
+                  fromContentHash: sourceEntry.contentHash,
+                  fromMtimeMs: sourceEntry.mtimeMs,
+                  entry: describeRealEntry(ws, preserved.path),
+                });
               }
               restoreRendererBranchFromBase(
                 ws,
@@ -2980,6 +3027,7 @@ export async function finalizeChatYamlStage(
       trackPipeline,
     );
     localBranchPersisted = localBranchPersisted || activeSourceReconciliation.localBranchPersisted;
+    relocations.push(...activeSourceReconciliation.relocations);
     bumpRevision(ws);
     const state = getState(ws);
     const result: ChatYamlStageFinalizeResult = {
@@ -2989,6 +3037,7 @@ export async function finalizeChatYamlStage(
       localBranchPersisted,
       trialVerification,
       compile: resultCompile,
+      ...(relocations.length > 0 ? { relocations } : {}),
       revision: state.revision,
       state,
     };

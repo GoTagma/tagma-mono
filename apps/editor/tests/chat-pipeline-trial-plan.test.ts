@@ -584,6 +584,105 @@ describe('chat pipeline trial plan', () => {
     }
   });
 
+  test('Host deterministically builds and task-bounds the fixed single-prompt fast lane', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-host-fast-trial-plan-'));
+    try {
+      const stagedYamlPath = join(root, 'greeting.yaml');
+      const yamlHash = 'b'.repeat(40);
+      const pipelineConfig: PipelineConfig = {
+        name: 'Greeting',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'answer',
+                name: 'Answer',
+                prompt: 'How are you?',
+                permissions: { read: false, write: false, execute: false },
+              },
+            ],
+          },
+        ],
+      };
+      writeFileSync(
+        pipelineTrialPlanPath(stagedYamlPath),
+        JSON.stringify({ ...completePlan(), yamlHash, cases: [] }),
+        'utf8',
+      );
+
+      const first = readChatPipelineTrialPlan(
+        stagedYamlPath,
+        'greeting/greeting.yaml',
+        yamlHash,
+        3,
+        pipelineConfig,
+        root,
+      );
+      const second = readChatPipelineTrialPlan(
+        stagedYamlPath,
+        'greeting/greeting.yaml',
+        yamlHash,
+        3,
+        pipelineConfig,
+        root,
+      );
+
+      expect(first.status).toBe('ready');
+      if (first.status !== 'ready') throw new Error('Host fast plan was not produced.');
+      expect(first.plan).toMatchObject({
+        yamlHash,
+        findings: [],
+        cases: [
+          {
+            runs: 2,
+            targetTaskIds: ['main.answer'],
+            fixtures: [],
+            expectations: [{ type: 'task-status', taskId: 'main.answer', status: 'success' }],
+          },
+        ],
+      });
+      expect(first.plan.coverage.find((entry) => entry.dimension === 'repeat-run')).toMatchObject({
+        status: 'covered',
+        caseIds: ['host-fixed-prompt-repeat'],
+      });
+      expect(second).toEqual(first);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps non-tool-free prompt pipelines on the authored Trial Plan path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-no-host-fast-trial-plan-'));
+    try {
+      const stagedYamlPath = join(root, 'review.yaml');
+      const pipelineConfig: PipelineConfig = {
+        name: 'Review',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'review', name: 'Review', prompt: 'Review the workspace.' }],
+          },
+        ],
+      };
+
+      expect(
+        readChatPipelineTrialPlan(
+          stagedYamlPath,
+          'review/review.yaml',
+          'c'.repeat(40),
+          3,
+          pipelineConfig,
+          root,
+        ),
+      ).toMatchObject({ status: 'required', request: { reason: 'missing' } });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('host reader rejects staged-artifact expectations before a trial can run', () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-trial-plan-reader-'));
     try {

@@ -231,6 +231,93 @@ describe('temporary diagnostics sessions', () => {
     });
   });
 
+  test('records bounded background Trial progress and heartbeat deltas in the timeline', () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    hub.enable('/repo', 'http://127.0.0.1:43123');
+    const report = (capturedAt: number, heartbeatAt: number) => ({
+      instanceId: 'window-background-trial',
+      workspaceKey: '/repo',
+      capturedAt,
+      snapshot: {
+        capturedAt,
+        page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+        chat: {
+          currentSessionId: 'foreground',
+          backgroundSessions: [
+            {
+              sessionId: 'background',
+              sending: false,
+              messageCount: 1,
+              pendingPermissionCount: 0,
+              queuedMessageCount: 0,
+              postChatYamlActionSummary: {
+                sessionId: 'background',
+                status: 'repairing',
+                phase: 'trial-running',
+                progress: {
+                  stageId: 'stage-1',
+                  trialId: 'trial-1',
+                  phase: 'running-case',
+                  detail: 'private Trial detail',
+                  startedAt: 100,
+                  updatedAt: 120,
+                  heartbeatAt,
+                  caseId: 'repeat',
+                  caseIndex: 0,
+                  caseCount: 1,
+                  runNumber: 1,
+                  runCount: 2,
+                  taskId: 'main.answer',
+                  taskStatus: 'running',
+                },
+              },
+              sessionYamlResultSummary: null,
+            },
+          ],
+        },
+        pipeline: {},
+        run: {},
+        features: {},
+      },
+      logs: [],
+    });
+
+    expect(hub.acceptRendererReport(report(200, 150))).toBe(true);
+    expect(hub.acceptRendererReport(report(300, 250))).toBe(true);
+
+    const timeline = hub.readTimeline(0, 10);
+    expect(timeline.events).toHaveLength(2);
+    expect(timeline.events[0]?.state.chat).toMatchObject({
+      backgroundSessions: [
+        {
+          sessionId: 'background',
+          postChatYamlActionSummary: {
+            phase: 'trial-running',
+            progress: {
+              stageId: 'stage-1',
+              trialId: 'trial-1',
+              phase: 'running-case',
+              updatedAt: 120,
+              heartbeatAt: 150,
+              taskId: 'main.answer',
+              taskStatus: 'running',
+            },
+          },
+        },
+      ],
+    });
+    expect(timeline.events[1]).toMatchObject({
+      timestamp: 300,
+      changedSections: ['chat'],
+      state: {
+        chat: {
+          backgroundSessions: [{ postChatYamlActionSummary: { progress: { heartbeatAt: 250 } } }],
+        },
+      },
+    });
+    expect(JSON.stringify(timeline)).not.toContain('private Trial detail');
+  });
+
   test('projects comprehensive content-minimized timeline summaries from renderer reports', () => {
     const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
     hub.enable('D:\\repo', 'http://127.0.0.1:43123');

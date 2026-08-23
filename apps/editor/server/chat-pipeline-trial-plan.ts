@@ -1090,6 +1090,99 @@ export function buildChatPipelineTrialPlanRequest(
   };
 }
 
+function isDefaultExitCodeCompletion(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== 'object' || Array.isArray(value)) return false;
+  const completion = value as { type?: unknown; expect?: unknown };
+  return (
+    completion.type === 'exit_code' &&
+    (completion.expect === undefined ||
+      completion.expect === 0 ||
+      (Array.isArray(completion.expect) &&
+        completion.expect.length === 1 &&
+        completion.expect[0] === 0))
+  );
+}
+
+function hostFixedPromptTrialPlan(
+  pipelineConfig: PipelineConfig,
+  yamlHash: string,
+  workDir?: string,
+): ChatPipelineTrialPlan | null {
+  if (pipelineConfig.tracks.length !== 1) return null;
+  const track = pipelineConfig.tracks[0];
+  if (!track || track.tasks.length !== 1) return null;
+  const task = track.tasks[0];
+  if (!task || typeof task.prompt !== 'string' || task.prompt.trim().length === 0) return null;
+  if (task.command !== undefined) return null;
+
+  const permissions =
+    task.permissions ??
+    track.permissions ??
+    pipelineConfig.permissions ??
+    ({ read: true, write: false, execute: false } as const);
+  if (permissions.read || permissions.write || permissions.execute) return null;
+  const driver = task.driver ?? track.driver ?? pipelineConfig.driver ?? 'opencode';
+  if (driver !== 'opencode') return null;
+  if ((task.depends_on?.length ?? 0) > 0 || task.continue_from) return null;
+  if (Object.keys(task.inputs ?? {}).length > 0 || Object.keys(task.outputs ?? {}).length > 0) {
+    return null;
+  }
+  if (task.trigger || !isDefaultExitCodeCompletion(task.completion)) return null;
+  const middlewares = task.middlewares ?? track.middlewares ?? [];
+  if (middlewares.length > 0) return null;
+  if (
+    (pipelineConfig.secrets?.length ?? 0) > 0 ||
+    (track.secrets?.length ?? 0) > 0 ||
+    (task.secrets?.length ?? 0) > 0
+  ) {
+    return null;
+  }
+  if (pipelineConfig.hooks && Object.keys(pipelineConfig.hooks).length > 0) return null;
+  if (pipelineConfig.plugins && pipelineConfig.plugins.length > 0) return null;
+  const usesDefaultCwd = (cwd: string | undefined): boolean =>
+    !cwd || (!!workDir && sameFilesystemPathCoordinate(cwd, workDir));
+  if (!usesDefaultCwd(track.cwd) || !usesDefaultCwd(task.cwd)) return null;
+
+  const qualifiedTaskId = `${track.id}.${task.id}`;
+  const caseId = 'host-fixed-prompt-repeat';
+  return parseChatPipelineTrialPlan({
+    version: TRIAL_PLAN_VERSION,
+    yamlHash,
+    summary: 'Run the fixed tool-free prompt repeatedly without changing its business input.',
+    goals: ['Verify that the sole fixed prompt completes successfully on repeated execution.'],
+    coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) =>
+      dimension === 'repeat-run'
+        ? {
+            dimension,
+            status: 'covered',
+            caseIds: [caseId],
+            rationale: 'The Host-owned case executes the same fixed prompt twice.',
+          }
+        : {
+            dimension,
+            status: 'not-applicable',
+            caseIds: [],
+            rationale:
+              'The tool-free fixed prompt has no authored input or artifact surface for this dimension.',
+          },
+    ),
+    findings: [],
+    cases: [
+      {
+        id: caseId,
+        title: 'Repeat the fixed prompt',
+        objective:
+          'Confirm the exact authored prompt succeeds twice without tools or case fixtures.',
+        runs: 2,
+        targetTaskIds: [qualifiedTaskId],
+        fixtures: [],
+        expectations: [{ type: 'task-status', taskId: qualifiedTaskId, status: 'success' }],
+      },
+    ],
+  });
+}
+
 function planRequest(
   reason: ChatPipelineTrialPlanRequest['reason'],
   relativeYamlPath: string,
@@ -1120,6 +1213,13 @@ export function readChatPipelineTrialPlan(
 ): ChatPipelineTrialPlanReadResult {
   if (!isValidChatPipelineTrialPlanAttempts(maxAttempts)) {
     throw new Error('Trial plan max attempts is invalid.');
+  }
+  if (pipelineConfig) {
+    const plan = hostFixedPromptTrialPlan(pipelineConfig, pipelineHash, workDir);
+    if (plan) {
+      const planHash = createHash('sha256').update(JSON.stringify(plan)).digest('hex');
+      return { status: 'ready', plan, planHash };
+    }
   }
   const path = pipelineTrialPlanPath(stagedYamlPath);
   if (!existsSync(path)) {

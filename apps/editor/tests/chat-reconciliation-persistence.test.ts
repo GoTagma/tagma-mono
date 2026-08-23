@@ -115,6 +115,7 @@ function pipelineResult(input: {
   sessionId?: string;
   workspace?: string;
   path?: string;
+  finalYamlContentHash?: string;
   finalYamlMtimeMs?: number;
   completedAt?: number;
 }): ChatYamlSessionResult {
@@ -143,6 +144,9 @@ function pipelineResult(input: {
       resultPath: path,
       compileSuccess: true,
     },
+    ...(input.finalYamlContentHash === undefined
+      ? {}
+      : { finalYamlContentHash: input.finalYamlContentHash }),
     ...(input.finalYamlMtimeMs === undefined ? {} : { finalYamlMtimeMs: input.finalYamlMtimeMs }),
     completedAt: input.completedAt ?? 2_000,
   };
@@ -408,6 +412,151 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     });
     expect(loadPersistedChatYamlResults('C:/repo')).toMatchObject(
       useChatStore.getState().turnYamlResults,
+    );
+  });
+
+  test('relocates every matching durable branch result and its session metadata after a concurrent fork', async () => {
+    setClientWorkspace('C:/repo');
+    const sourcePath = 'C:/repo/.tagma/build/build.yaml';
+    const copyPath = 'C:/repo/.tagma/build-copy-1/build-copy-1.yaml';
+    const matching = pipelineResult({
+      resultId: 'result-matching',
+      turnId: 'turn-matching',
+      messageId: 'assistant-matching',
+      sessionId: 'session-matching',
+      path: sourcePath,
+      finalYamlContentHash: 'a'.repeat(40),
+      finalYamlMtimeMs: 1_234,
+    });
+    const legacy = pipelineResult({
+      resultId: 'result-legacy',
+      turnId: 'turn-legacy',
+      messageId: 'assistant-legacy',
+      sessionId: 'session-legacy',
+      path: sourcePath,
+    });
+    const stale = pipelineResult({
+      resultId: 'result-stale',
+      turnId: 'turn-stale',
+      messageId: 'assistant-stale',
+      sessionId: 'session-stale',
+      path: sourcePath,
+      finalYamlContentHash: 'b'.repeat(40),
+      finalYamlMtimeMs: 1_234,
+    });
+    useChatStore.getState().setTurnYamlResult(matching);
+    useChatStore.getState().setTurnYamlResult(legacy);
+    useChatStore.getState().setTurnYamlResult(stale);
+    useChatStore.setState({
+      sessions: [
+        {
+          id: 'session-metadata-only',
+          metadata: {
+            tagma: {
+              schema: 1,
+              source: 'desktop-chat',
+              workspacePath: 'C:/repo',
+              yamlPath: sourcePath,
+            },
+          },
+        },
+      ],
+    } as never);
+
+    const synced: Array<{ sessionId: string; path: string; reason?: string }> = [];
+    const originalSync = useChatStore.getState().syncSessionYamlTarget;
+    useChatStore.setState({
+      syncSessionYamlTarget: async (sessionId, _workspaceKey, path, reason) => {
+        synced.push({ sessionId, path, reason });
+      },
+    } as Partial<ChatState>);
+    try {
+      await useChatStore.getState().relocateChatYamlResults('C:/repo', [
+        {
+          fromPath: sourcePath,
+          fromContentHash: 'a'.repeat(40),
+          fromMtimeMs: 1_234,
+          entry: {
+            path: copyPath,
+            name: 'build-copy-1.yaml',
+            pipelineName: 'Build Copy 1',
+            contentHash: 'c'.repeat(40),
+            mtimeMs: 2_345,
+          } as never,
+        },
+      ]);
+    } finally {
+      useChatStore.setState({ syncSessionYamlTarget: originalSync } as Partial<ChatState>);
+    }
+
+    for (const messageId of ['assistant-matching', 'assistant-legacy']) {
+      expect(useChatStore.getState().turnYamlResults[messageId]?.[0]).toMatchObject({
+        kind: 'open-created',
+        path: copyPath,
+        name: 'build-copy-1.yaml',
+        pipelineName: 'Build Copy 1',
+        finalYamlContentHash: 'c'.repeat(40),
+        finalYamlMtimeMs: 2_345,
+        reconcile: { outcome: 'forked', resultPath: copyPath },
+      });
+    }
+    expect(useChatStore.getState().turnYamlResults['assistant-stale']?.[0]).toMatchObject({
+      path: sourcePath,
+      finalYamlContentHash: 'b'.repeat(40),
+      finalYamlMtimeMs: 1_234,
+    });
+    expect(loadPersistedChatYamlResults('C:/repo')['assistant-matching']?.[0]?.path).toBe(copyPath);
+    expect(synced).toEqual([
+      { sessionId: 'session-matching', path: copyPath, reason: 'branch-relocated' },
+      { sessionId: 'session-legacy', path: copyPath, reason: 'branch-relocated' },
+      { sessionId: 'session-metadata-only', path: copyPath, reason: 'branch-relocated' },
+    ]);
+  });
+
+  test('keeps relocation retryable when OpenCode metadata cannot be updated', async () => {
+    setClientWorkspace('C:/repo');
+    const sourcePath = 'C:/repo/.tagma/build/build.yaml';
+    const result = pipelineResult({
+      resultId: 'result-retryable',
+      turnId: 'turn-retryable',
+      messageId: 'assistant-retryable',
+      sessionId: 'session-retryable',
+      path: sourcePath,
+      finalYamlMtimeMs: 1_234,
+    });
+    useChatStore.getState().setTurnYamlResult(result);
+    const originalSync = useChatStore.getState().syncSessionYamlTarget;
+    useChatStore.setState({
+      syncSessionYamlTarget: async () => {
+        throw new Error('metadata unavailable');
+      },
+    } as Partial<ChatState>);
+    try {
+      await expect(
+        useChatStore.getState().relocateChatYamlResults('C:/repo', [
+          {
+            fromPath: sourcePath,
+            fromContentHash: 'a'.repeat(40),
+            fromMtimeMs: 1_234,
+            entry: {
+              path: 'C:/repo/.tagma/build-copy-1/build-copy-1.yaml',
+              name: 'build-copy-1.yaml',
+              pipelineName: 'Build Copy 1',
+              contentHash: 'c'.repeat(40),
+              mtimeMs: 2_345,
+            } as never,
+          },
+        ]),
+      ).rejects.toThrow('metadata unavailable');
+    } finally {
+      useChatStore.setState({ syncSessionYamlTarget: originalSync } as Partial<ChatState>);
+    }
+
+    expect(useChatStore.getState().turnYamlResults['assistant-retryable']?.[0]?.path).toBe(
+      sourcePath,
+    );
+    expect(loadPersistedChatYamlResults('C:/repo')['assistant-retryable']?.[0]?.path).toBe(
+      sourcePath,
     );
   });
 

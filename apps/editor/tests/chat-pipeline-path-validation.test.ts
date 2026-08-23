@@ -6,6 +6,8 @@ import { validateChatPipelinePathCoordinates } from '../server/chat-pipeline-pat
 function configWithPaths(options: {
   trackCwd?: string;
   taskCwd?: string;
+  prompt?: string;
+  triggerType?: 'file' | 'directory';
   triggerPath?: string;
   completionPath?: string;
   staticContextPath?: string;
@@ -26,10 +28,10 @@ function configWithPaths(options: {
           {
             id: 'read',
             name: 'Read',
-            prompt: 'Read the input',
+            prompt: options.prompt ?? 'Read the input',
             ...(options.taskCwd ? { cwd: options.taskCwd } : {}),
             ...(options.triggerPath
-              ? { trigger: { type: 'file', path: options.triggerPath } }
+              ? { trigger: { type: options.triggerType ?? 'file', path: options.triggerPath } }
               : {}),
             ...(options.completionPath
               ? {
@@ -118,6 +120,89 @@ describe('chat pipeline path-coordinate validation', () => {
         }),
       ).toEqual([]);
     }
+  });
+
+  test('rejects generated directory-trigger claims that exceed the runtime existence gate', () => {
+    const diagnostics = validateChatPipelinePathCoordinates(
+      configWithPaths({
+        triggerType: 'directory',
+        triggerPath: 'input',
+        prompt:
+          'Read every text file in input; the directory trigger means at least one such file appeared or changed.',
+      }),
+      {
+        workspaceRoot: '/workspace',
+        relativeYamlPath: 'fact-checker/fact-checker.yaml',
+        platform: 'linux',
+        validateTriggerSemantics: true,
+      },
+    );
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        path: 'tracks[0].tasks[0].trigger',
+        severity: 'error',
+        message: expect.stringContaining('waits only for the directory itself to exist'),
+      }),
+    ]);
+  });
+
+  test('surfaces generated trigger paths that isolated Trial cases cannot address', () => {
+    const internal = validateChatPipelinePathCoordinates(
+      configWithPaths({
+        trackCwd: '.tagma/fact-checker',
+        triggerType: 'directory',
+        triggerPath: 'input',
+      }),
+      {
+        workspaceRoot: '/workspace',
+        relativeYamlPath: 'generated-target/generated-target.yaml',
+        platform: 'linux',
+        validateTrialFixtureAddressability: true,
+      },
+    );
+    expect(internal).toEqual([
+      expect.objectContaining({
+        path: 'tracks[0].tasks[0].trigger.path',
+        severity: 'error',
+        message: expect.stringContaining('another .tagma namespace'),
+      }),
+    ]);
+
+    const external = validateChatPipelinePathCoordinates(
+      configWithPaths({
+        trackCwd: '/external/incoming',
+        triggerPath: 'article.md',
+      }),
+      {
+        workspaceRoot: '/workspace',
+        relativeYamlPath: 'generated-target/generated-target.yaml',
+        platform: 'linux',
+        validateTrialFixtureAddressability: true,
+      },
+    );
+    expect(external).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        message: expect.stringContaining('valid production coordinate'),
+      }),
+    ]);
+
+    expect(
+      validateChatPipelinePathCoordinates(
+        configWithPaths({
+          trackCwd: '.tagma/generated-target',
+          triggerType: 'directory',
+          triggerPath: 'input',
+        }),
+        {
+          workspaceRoot: '/workspace',
+          relativeYamlPath: 'generated-target/generated-target.yaml',
+          platform: 'linux',
+          validateTrialFixtureAddressability: true,
+        },
+      ),
+    ).toEqual([]);
   });
 
   test('preserves POSIX backslashes and leading spaces as literal path characters', () => {

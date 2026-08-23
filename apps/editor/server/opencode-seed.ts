@@ -169,8 +169,9 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 - The supplied \`<agent-root>\` is the sole filesystem read/write boundary. Do not inspect or access the live workspace or live \`.tagma\` outside it.
 - Use the exact staged Target YAML path and YAML hash from the host request. Never substitute a live \`.tagma\` path, another pipeline, or a newer YAML revision.
 - Inspect only that staged YAML and the smallest relevant companions inside \`<agent-root>\` needed to make its cases executable. Never edit pipeline artifacts or call another tool.
-- Every physical turn is one formal attempt. For an ordinary plan, assemble the draft sequentially with bounded \`tagma_trial_plan\` operations in this order: \`begin\` once, \`upsert-case\` once per case, \`set-coverage\` once, \`set-findings\` once, then \`commit\` exactly once. \`begin\` resumes a matching path-and-hash draft by default; use \`reset: true\` only when intentionally rebuilding it from scratch. The Minimal Fixed-Prompt Fast Lane below is the sole exception: submit its complete bounded plan with one \`commit-plan\` call and no draft calls.
-- Only \`commit\` or \`commit-plan\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after either counted operation succeeds or fails, stop the physical turn.
+- Every physical turn is one formal attempt. Assemble the draft sequentially with bounded \`tagma_trial_plan\` operations in this order: \`begin\` once, \`upsert-case\` once per case, \`set-coverage\` once, \`set-findings\` once, then \`commit\` exactly once. \`begin\` resumes a matching path-and-hash draft by default; use \`reset: true\` only when intentionally rebuilding it from scratch.
+- The Host resolves fixed tool-free single-prompt fast lanes deterministically before invoking this planner, including the sole qualified task target. Never call \`commit-plan\`; it remains only a compatibility operation for older hosts.
+- Only \`commit\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after the counted commit succeeds or fails, stop the physical turn.
 - An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error. Do not vary the path, reset flag, or attempt id; report it and stop after the first rejection.
 - The host enforces a configured finite commit budget for each exact staged path and YAML hash. A subsequent same-key request continues this planner work through the matching draft (reopened with \`begin\`, never by reusing a \`task_id\`); use its prior rejection evidence, update the bounded draft or explicitly reset and rebuild it, commit exactly once, and stop. Never evade the stated budget with path aliases, copies, or a fresh task.
 - On a new YAML hash, \`begin\` may seed the draft from the prior authenticated plan. Treat \`seededFromYamlHash\` as reusable evidence, compare it with the current YAML, preserve unaffected cases/coverage, and update only changed contracts. Use \`reset: true\` only when the graph or behavior requires a full redesign.
@@ -181,21 +182,13 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 
 Minimize case count and task executions while preserving required terminal and edge-case coverage. Merge compatible checks. A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case; keep both only for a distinct first-run assertion.
 
-## Minimal Fixed-Prompt Fast Lane
-
-When the final DAG is exactly one read-only prompt task with a fixed non-empty prompt and no inputs, outputs, dependencies, trigger, non-default completion, middleware, static context, secrets, hooks, helper/file contract, or promised side effect:
-- Read only the target YAML and manifest; do not read layout, requirements, or compile.log.
-- Immediately define one case targeting the sole qualified task with \`runs: 2\`, no fixtures, and one successful \`task-status\` expectation. It covers \`repeat-run\`; mark every other required dimension \`not-applicable\` with concise structural reasons.
-- Use \`findings: []\` unless the supplied evidence shows a current mismatch. Do not deliberate over an extra baseline case; the repeat case subsumes it.
-- Submit the complete plan with one \`commit-plan\` call containing summary, goals, cases, coverage, and findings. Do not call \`begin\` or any draft operation, and stop after this counted call returns.
-
 Plan multiple inputs, duplicate input names, multi-paragraph and empty content, special characters and Unicode, repeated runs, and output collisions; preserve input identity and complete text.
 
 Mark a dimension covered only when concrete linked case evidence exercises it. A fixed single-input surface is not-applicable for multiple-inputs and duplicate-input-names unless cases genuinely vary that surface. Native declared or inferred prompt outputs are engine-validated. Declared bindings resolve from authored \`value\` or \`from\`; when the source is absent, a \`default\` applies; then type coercion runs. An unresolved binding without a default, or a resolved/default value that cannot be coerced, fails with \`output_error\`. Declared bindings with implicit or explicit \`json.*\` sources and inferred output ports use final-line JSON; declared \`stdout\`/\`stderr\`/\`normalizedOutput\` sources, explicit values, and defaults do not. Do not require an additional persisted file merely to verify a binding; use task-status and relevant downstream-task evidence. Require a persisted artifact only when the user or pipeline explicitly promises a file or the behavior needs exact-byte or cross-run file semantics. A missing artifact required by that file contract is a fixable verifiability gap: record a blocking finding with \`repairScope: pipeline-artifact\` naming it. Mark a dimension \`blocked\` only when no pipeline repair can expose it to the harness.
 
 Final-only checks cannot cover repeat-run-output-collision; use risk/blocked/N/A. \`repeat-run\` needs 2+ runs; concurrent collision cannot be covered. Inter-task collision needs two tasks/outputs.
 
-Pass the exact staged YAML path from the host request. Use \`commit-plan\` only for the Minimal Fixed-Prompt Fast Lane. Otherwise start with \`begin\`, send one case per \`upsert-case\`, set coverage and findings separately, and let \`commit\` validate the complete plan before writing. Every case must have non-empty qualified \`targetTaskIds\`; never omit or empty them because that would mean an unsafe full-pipeline run at the execution boundary. Every finding must set \`repairScope\`: \`pipeline-artifact\` for YAML or companion defects, including a missing artifact promised by the pipeline's file contract or required for exact-byte or cross-run file semantics; \`diagnostic-only\` otherwise. A native output binding without a duplicate file is not a defect. Blocked coverage is diagnostic-only and non-fatal; accepted risk yields \`passed-with-warnings\`.
+Pass the exact staged YAML path from the host request. Start with \`begin\`, send one case per \`upsert-case\`, set coverage and findings separately, and let \`commit\` validate the complete plan before writing. Every case must have non-empty qualified \`targetTaskIds\`; never omit or empty them because that would mean an unsafe full-pipeline run at the execution boundary. Every finding must set \`repairScope\`: \`pipeline-artifact\` for YAML or companion defects, including a missing artifact promised by the pipeline's file contract or required for exact-byte or cross-run file semantics; \`diagnostic-only\` otherwise. A native output binding without a duplicate file is not a defect. Blocked coverage is diagnostic-only and non-fatal; accepted risk yields \`passed-with-warnings\`.
 
 When the host reports Sandbox-only mode or that the optional Live Smoke Test cannot run, inspect the compiled DAG before authoring cases. Identify every terminal task: a task with no downstream dependent. At least one case must name each terminal task in \`targetTaskIds\`; selecting that sink makes the host run its full dependency closure, so targeting only an early ingest or transform task is insufficient. If a terminal task would be unsafe or cannot be executed in isolated Trial, record a blocking diagnostic-only finding that names the task and the concrete reason. Never use accepted-risk or a warning to turn an unexecuted terminal task into a passing Trial.
 
@@ -211,7 +204,7 @@ Use file-equals when exact text preservation matters in a file workflow, includi
 
 Every .json artifact checked with path-exists, file-contains, file-not-contains, or file-equals must also have json-valid or json-pointer-equals for the same path in that case. Text matches alone cannot prove valid JSON. Use json-pointer-equals with expectedJson containing a serialized JSON value to verify decoded newlines, quotes, and Unicode. The artifact itself must remain RFC 8259 JSON; never require raw unescaped control characters or quotes.
 
-Never copy YAML or trial plans between staging and live \`.tagma\`. If a pre-commit draft operation fails, correct and retry only that bounded operation. If \`commit\` or \`commit-plan\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The host alone decides whether another configured attempt remains.
+Never copy YAML or trial plans between staging and live \`.tagma\`. If a pre-commit draft operation fails, correct and retry only that bounded operation. If \`commit\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The host alone decides whether another configured attempt remains.
 
 Host runs a bounded, hash-bound Sandbox Trial only after explicit opt-in, using temporary workspace copies, closed stdin, no TTY, and synthetic secrets for targeted cases. Sandbox is app-level containment, not an OS permission sandbox: filesystem, network, and child-process authority outside the copy are reported explicitly. A real-workspace Live Smoke Test runs only under separate consent. Never claim either mode passed without host evidence. Never remove or weaken manual approval or another safety boundary; the host's run-scoped grant executes only manual tasks in an explicit Trial target closure and does not change ordinary-run approval behavior. Normal declared binary, model, credential, or network requirements are not findings; Host trialability reports them. Do not invent hypothetical unavailability. Record only current evidence-backed mismatches, use \`findings: []\` when none exist, and report genuine limitations outside findings.
 `;
@@ -1492,39 +1485,71 @@ function buildYamlSkeleton(manifest) {
   const pipeline = asRecord(root.pipeline);
   const sections = Array.isArray(root.sections) ? root.sections.map(asRecord) : [];
   const pipelineName = asString(pipeline.name, "Untitled Pipeline");
-  const trackSections = sections.filter((section) => section.type === "track");
-  const tasksByTrack = new Map();
-
+  const supportedSectionTypes = new Set(["track", "prompt", "command"]);
   for (const section of sections) {
-    if (section.type !== "command" && section.type !== "prompt" && section.type !== "unknown") {
-      continue;
+    if (!supportedSectionTypes.has(section.type)) {
+      throw new Error(
+        "unsupported section type " + JSON.stringify(section.type) + " for " + asString(section.id, "unnamed section"),
+      );
     }
-    const trackId = taskSectionIds(section).trackId;
-    if (!trackId) continue;
-    const list = tasksByTrack.get(trackId) || [];
-    list.push(buildTask(section));
-    tasksByTrack.set(trackId, list);
   }
 
-  const tracks =
-    trackSections.length > 0
-      ? trackSections.map((section) => {
-          const trackId = trackSectionId(section);
-          return {
-            id: trackId,
-            name: asString(section.summary, trackId),
-            tasks: tasksByTrack.get(trackId) || [],
-          };
-        })
-      : [{ id: "main", name: "Main", tasks: [] }];
+  const trackSections = sections.filter((section) => section.type === "track");
+  if (trackSections.length === 0) {
+    throw new Error("pipeline skeleton must declare at least one track section");
+  }
+  const declaredTrackIds = new Set();
+  for (const section of trackSections) {
+    const trackId = trackSectionId(section);
+    if (declaredTrackIds.has(trackId)) throw new Error("track " + trackId + " is declared more than once");
+    declaredTrackIds.add(trackId);
+  }
+
+  const taskSections = sections.filter(
+    (section) => section.type === "command" || section.type === "prompt",
+  );
+  const tasksByTrack = new Map();
+  const declaredTaskIds = new Set();
+  for (const section of taskSections) {
+    const ids = taskSectionIds(section);
+    if (!ids.trackId || !declaredTrackIds.has(ids.trackId)) {
+      throw new Error(
+        "task " + ids.taskId + " references undeclared track " + JSON.stringify(ids.trackId || "(missing)"),
+      );
+    }
+    const qualifiedId = ids.trackId + "." + ids.taskId;
+    if (declaredTaskIds.has(qualifiedId)) {
+      throw new Error("task " + qualifiedId + " is declared more than once");
+    }
+    declaredTaskIds.add(qualifiedId);
+    const list = tasksByTrack.get(ids.trackId) || [];
+    list.push(buildTask(section));
+    tasksByTrack.set(ids.trackId, list);
+  }
+
+  const tracks = trackSections.map((section) => {
+    const trackId = trackSectionId(section);
+    const tasks = tasksByTrack.get(trackId) || [];
+    if (tasks.length === 0) throw new Error("track " + trackId + " must contain at least one task");
+    return {
+      id: trackId,
+      name: asString(section.summary, trackId),
+      tasks,
+    };
+  });
+  const emittedTaskCount = tracks.reduce((count, track) => count + track.tasks.length, 0);
+  if (emittedTaskCount !== taskSections.length) {
+    throw new Error(
+      "pipeline skeleton task-count mismatch: received " + taskSections.length + " but would emit " + emittedTaskCount,
+    );
+  }
 
   const lines = ["pipeline:", "  name: " + yamlString(pipelineName), "  tracks:"];
   for (const track of tracks) {
     lines.push("    - id: " + yamlString(track.id));
     lines.push("      name: " + yamlString(track.name));
     lines.push("      tasks:");
-    const tasks = track.tasks.length > 0 ? track.tasks : [{ id: "placeholder", field: "prompt", body: "TODO: add tasks", depends_on: [], inputs: [], outputs: [] }];
-    for (const task of tasks) {
+    for (const task of track.tasks) {
       lines.push("        - id: " + yamlString(task.id));
       if (task.name) lines.push("          name: " + yamlString(task.name));
       lines.push("          " + task.field + ": " + yamlString(task.body));

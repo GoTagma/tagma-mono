@@ -17,28 +17,25 @@ const DEFAULT_PERMISSIONS: Permissions = { read: true, write: false, execute: fa
 type OpenCodePermission = Record<string, unknown>;
 
 function buildPermissionRestrictions(permissions: Permissions): OpenCodePermission {
-  const policy: OpenCodePermission = {};
-  if (!permissions.read) {
-    for (const tool of ['read', 'glob', 'grep', 'list', 'lsp', 'skill']) policy[tool] = 'deny';
+  if (permissions.read && permissions.write && permissions.execute) return {};
+
+  // OpenCode gains tools over time and can also discover plugin/MCP tools. A
+  // denylist therefore cannot represent Tagma's three-bit permission model:
+  // an all-false conversational prompt previously retained webfetch and
+  // todowrite, for example. Start from a wildcard deny and allow only the
+  // built-in capability families represented by the resolved task policy.
+  const policy: OpenCodePermission = { '*': 'deny' };
+  if (permissions.read) {
+    for (const tool of ['read', 'glob', 'grep', 'list', 'lsp', 'skill']) policy[tool] = 'allow';
   }
-  if (!permissions.write) {
-    policy.edit = 'deny';
-    // These Editor-managed authoring tools can persist chat staging state and
-    // are not ordinary pipeline-task capabilities.
-    policy.tagma_yaml_skeleton = 'deny';
-    policy.tagma_placement_plan = 'deny';
-    policy.tagma_trial_plan = 'deny';
-  }
-  if (!permissions.execute) policy.bash = 'deny';
-  // A delegated agent has its own tool policy, so allowing `task` would let a
-  // restricted prompt escape the current task's read/write/execute envelope.
-  if (!permissions.read || !permissions.write || !permissions.execute) {
-    policy.task = 'deny';
-    // The effective task cwd is the filesystem coordinate for a restricted
-    // prompt. Never turn a model's parent-directory exploration into an
-    // unattended external-directory permission request.
-    policy.external_directory = 'deny';
-  }
+  if (permissions.write) policy.edit = 'allow';
+  if (permissions.execute) policy.bash = 'allow';
+
+  // Keep these denials explicit as defense in depth against configuration
+  // merge-order changes. Delegation has its own policy and external-directory
+  // approval would escape the effective task cwd filesystem boundary.
+  policy.task = 'deny';
+  policy.external_directory = 'deny';
   return policy;
 }
 
@@ -197,7 +194,7 @@ export const OpenCodeDriver: DriverPlugin = {
     if (!sessionId) args.push('--title', `Tagma task ${track.id}.${task.id}`);
 
     // OpenCode applies agent-specific rules after its top-level permission
-    // policy. Select a Tagma-owned agent carrying the same deny policy so a
+    // policy. Select a Tagma-owned agent carrying the same default-deny allowlist so a
     // user-defined build agent cannot turn a denied tool back on.
     if (taskAgentName) args.push('--agent', taskAgentName);
 

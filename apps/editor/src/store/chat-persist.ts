@@ -157,6 +157,7 @@ export interface PersistedChatYamlResult {
     trialRunSuccess?: boolean;
     trialVerification?: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   };
+  finalYamlContentHash?: string;
   finalYamlMtimeMs?: number;
   authoringCompletedAt?: number;
   completedAt: number;
@@ -620,6 +621,9 @@ export function validatePersistedChatYamlResult(
     !isNullableString(value.pipelineName) ||
     (value.status !== 'ready' && value.status !== 'blocked' && value.status !== 'failed') ||
     !isPersistedCompileResult(value.compile) ||
+    (value.finalYamlContentHash !== undefined &&
+      (typeof value.finalYamlContentHash !== 'string' ||
+        !/^[0-9a-f]{40}$/i.test(value.finalYamlContentHash))) ||
     (value.finalYamlMtimeMs !== undefined && !isNonNegativeFiniteNumber(value.finalYamlMtimeMs)) ||
     (value.authoringCompletedAt !== undefined &&
       !isNonNegativeFiniteNumber(value.authoringCompletedAt)) ||

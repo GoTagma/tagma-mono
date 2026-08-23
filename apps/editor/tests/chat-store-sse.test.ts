@@ -354,11 +354,12 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Do not edit YAML');
   expect(prompt).toContain('then commit once');
   expect(prompt).toContain(
-    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors; commit-plan is a terminal counted operation.',
+    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors; commit is the terminal counted operation.',
   );
   expect(prompt).toContain(
-    'After commit or commit-plan returns success or an error, do not call tagma_trial_plan again in this physical turn.',
+    'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn.',
   );
+  expect(prompt).toContain('Do not call the legacy commit-plan compatibility operation.');
   expect(prompt).toContain('The host schedules any remaining attempt.');
   expect(prompt).toContain('Begin resumes the matching path/hash draft');
   expect(prompt).toContain('begin requires both summary (a non-empty string) and goals');
@@ -369,7 +370,10 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   );
   expect(prompt).toContain('Every finding needs severity, repairScope, summary, and evidence');
   expect(prompt).toContain(
-    'For a minimal fixed read-only single-prompt/no-I/O plan, use commit-plan once with the complete plan and no begin',
+    'The Host resolves fixed tool-free single-prompt fast lanes before this request',
+  );
+  expect(prompt).not.toContain(
+    'For a minimal fixed read-only single-prompt/no-I/O plan, use commit-plan once',
   );
   expect(prompt).toContain('Pass the exact staged Target YAML path');
   expect(prompt).toContain(

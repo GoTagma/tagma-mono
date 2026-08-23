@@ -86,6 +86,7 @@ import {
   type ChatPipelineTrialPlanRequest,
   type ChatPipelineTrialProgress,
   type ChatPipelineTrialRunResult,
+  type ChatYamlStageResultRelocation,
   type ChatYamlStageSessionRelocationBinding,
   type UsageRecord,
   type YamlCompileResult,
@@ -253,7 +254,8 @@ export type ChatYamlSessionResult = ChatYamlTarget & {
   planningTelemetry?: ChatTrialPlanningTelemetry;
   /** Host-side publish/fork facts made available to the next user turn in this session. */
   reconcile?: ChatYamlReconcileSummary;
-  /** Host-observed mtime of the final live YAML after publication. */
+  /** Host-observed SHA-1 and mtime of the final live YAML after publication. */
+  finalYamlContentHash?: string;
   finalYamlMtimeMs?: number;
   /** Agent turn end, distinct from later Host verification/finalization. */
   authoringCompletedAt?: number;
@@ -496,6 +498,11 @@ interface ChatStore {
   clearPostChatYamlAction: (sessionId?: string | null) => void;
   setSessionYamlResult: (result: ChatYamlSessionResult) => void;
   setTurnYamlResult: (result: ChatYamlSessionResult) => void;
+  /** Rebase prior durable results when finalize moves their branch to a numbered copy. */
+  relocateChatYamlResults: (
+    workspaceKey: string,
+    relocations: readonly ChatYamlStageResultRelocation[],
+  ) => Promise<void>;
   /** Fill the verified live YAML mtime for one durable result identity after an explicit open. */
   recordTurnYamlResultFinalMtime: (resultId: string, finalYamlMtimeMs: number) => void;
   dismissSessionYamlResultToast: (sessionId: string) => void;
@@ -634,7 +641,7 @@ interface ChatStore {
     sessionId: string,
     workspaceKey: string,
     yamlPath: string,
-    reason?: 'staged-target' | 'reconciled-target',
+    reason?: 'staged-target' | 'reconciled-target' | 'branch-relocated',
   ) => Promise<void>;
   dispatchQueuedMessagesIfReady: () => boolean;
   cancelQueuedMessage: (id: string) => void;
@@ -1670,14 +1677,14 @@ export function buildChatYamlTrialPlanPrompt(
     `Reason: ${request.reason} — ${request.message}`,
     '',
     'Read final YAML, manifest, and user intent. Do not edit YAML or companions.',
-    'For a minimal fixed read-only single-prompt/no-I/O plan, use commit-plan once with the complete plan and no begin. Otherwise Begin resumes the matching path/hash draft or seeds the prior authenticated revision; preserve unaffected cases, update changed evidence, then commit once. Reset only for full redesign. Pass the exact staged Target YAML path.',
+    'The Host resolves fixed tool-free single-prompt fast lanes before this request and binds their sole qualified task target itself. Begin resumes the matching path/hash draft or seeds the prior authenticated revision; preserve unaffected cases, update changed evidence, then commit once. Reset only for full redesign. Pass the exact staged Target YAML path.',
     `Pass attempt_id="${hostAttemptId}" on every tagma_trial_plan call in this physical turn.`,
     'begin requires both summary (a non-empty string) and goals; goals must be a non-empty string array.',
     'Every coverage entry needs dimension, status, caseIds, and rationale. Coverage status must be one of covered, accepted-risk, blocked, or not-applicable. Every finding needs severity, repairScope, summary, and evidence.',
-    'Never copy YAML or plan files between staging and live .tagma. Only commit or commit-plan consumes the attempt and validates the complete plan before writing.',
-    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors; commit-plan is a terminal counted operation.',
+    'Never copy YAML or plan files between staging and live .tagma. Only commit consumes the attempt and validates the complete plan before writing. Do not call the legacy commit-plan compatibility operation.',
+    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors; commit is the terminal counted operation.',
     'An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error; do not vary inputs or retry—stop after its first rejection.',
-    'After commit or commit-plan returns success or an error, do not call tagma_trial_plan again in this physical turn. The host schedules any remaining attempt.',
+    'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn. The host schedules any remaining attempt.',
     'Minimize case count and task executions. A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case.',
     ...(requiredSandboxInputs.length > 0
       ? [
@@ -7251,6 +7258,132 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       };
     });
   },
+  relocateChatYamlResults: async (workspaceKey, relocations) => {
+    if (!workspaceKey || relocations.length === 0) return;
+    const metadataTargets = new Map<string, string>();
+    const relocateResult = (
+      original: ChatYamlSessionResult,
+    ): { result: ChatYamlSessionResult; changed: boolean } => {
+      let result = original;
+      let changed = false;
+      for (const relocation of relocations) {
+        if (
+          result.workspaceKey &&
+          !sameFilesystemPathCoordinate(result.workspaceKey, workspaceKey)
+        ) {
+          continue;
+        }
+        if (!sameFilesystemPathCoordinate(result.path, relocation.fromPath)) continue;
+        if (
+          (result.finalYamlContentHash !== undefined &&
+            result.finalYamlContentHash !== relocation.fromContentHash) ||
+          (result.finalYamlContentHash === undefined &&
+            result.finalYamlMtimeMs !== undefined &&
+            result.finalYamlMtimeMs !== relocation.fromMtimeMs)
+        ) {
+          continue;
+        }
+        const entry = relocation.entry;
+        result = {
+          ...result,
+          kind: 'open-created',
+          path: entry.path,
+          name: entry.name,
+          pipelineName: entry.pipelineName,
+          finalYamlContentHash: entry.contentHash,
+          finalYamlMtimeMs: entry.mtimeMs,
+          reconcile: {
+            outcome: 'forked',
+            conflicts: result.reconcile?.conflicts ?? [],
+            localBranchPersisted: result.reconcile?.localBranchPersisted ?? false,
+            resultPath: entry.path,
+            compileSuccess: result.reconcile?.compileSuccess ?? result.compile.success,
+            ...(result.reconcile?.trialRunSuccess === undefined
+              ? {}
+              : { trialRunSuccess: result.reconcile.trialRunSuccess }),
+            ...(result.reconcile?.trialVerification === undefined
+              ? {}
+              : { trialVerification: result.reconcile.trialVerification }),
+          },
+        };
+        changed = true;
+      }
+      if (changed) metadataTargets.set(result.sessionId, result.path);
+      return { result, changed };
+    };
+    const relocateLedger = (
+      ledger: Record<string, ChatYamlSessionResult[]>,
+    ): { ledger: Record<string, ChatYamlSessionResult[]>; changed: boolean } => {
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(ledger).map(([messageId, results]) => [
+          messageId,
+          results.map((result) => {
+            const relocated = relocateResult(result);
+            changed = changed || relocated.changed;
+            return relocated.result;
+          }),
+        ]),
+      ) as Record<string, ChatYamlSessionResult[]>;
+      return { ledger: next, changed };
+    };
+
+    const persisted = relocateLedger(
+      loadPersistedChatYamlResults(workspaceKey) as unknown as Record<
+        string,
+        ChatYamlSessionResult[]
+      >,
+    );
+    const activeWorkspace = sameFilesystemPathCoordinate(getOpencodeWorkspaceKey(), workspaceKey);
+    if (activeWorkspace) {
+      relocateLedger(get().turnYamlResults);
+      for (const result of Object.values(get().sessionYamlResults)) relocateResult(result);
+    }
+
+    for (const session of get().sessions) {
+      const tagma = parseTagmaSessionMetadata(
+        (session as Session & { metadata?: unknown }).metadata,
+      );
+      if (
+        !tagma ||
+        tagma.source !== 'desktop-chat' ||
+        !tagma.yamlPath ||
+        (tagma.workspacePath && !sameFilesystemPathCoordinate(tagma.workspacePath, workspaceKey))
+      ) {
+        continue;
+      }
+      let yamlPath = tagma.yamlPath;
+      let relocated = false;
+      for (const relocation of relocations) {
+        if (!sameFilesystemPathCoordinate(yamlPath, relocation.fromPath)) continue;
+        yamlPath = relocation.entry.path;
+        relocated = true;
+      }
+      if (relocated) metadataTargets.set(session.id, yamlPath);
+    }
+
+    for (const [sessionId, yamlPath] of metadataTargets) {
+      await get().syncSessionYamlTarget(sessionId, workspaceKey, yamlPath, 'branch-relocated');
+    }
+
+    if (persisted.changed) savePersistedChatYamlResults(workspaceKey, persisted.ledger);
+    if (activeWorkspace) {
+      set((prev) => {
+        const relocatedTurns = relocateLedger(prev.turnYamlResults);
+        let sessionChanged = false;
+        const sessionYamlResults = Object.fromEntries(
+          Object.entries(prev.sessionYamlResults).map(([sessionId, result]) => {
+            const relocated = relocateResult(result);
+            sessionChanged = sessionChanged || relocated.changed;
+            return [sessionId, relocated.result];
+          }),
+        ) as Record<string, ChatYamlSessionResult>;
+        return relocatedTurns.changed || sessionChanged
+          ? { turnYamlResults: relocatedTurns.ledger, sessionYamlResults }
+          : {};
+      });
+    }
+  },
   recordTurnYamlResultFinalMtime: (resultId, finalYamlMtimeMs) => {
     if (!resultId.trim() || !Number.isFinite(finalYamlMtimeMs) || finalYamlMtimeMs < 0) return;
     set((prev) => {
@@ -8188,7 +8321,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         )?.metadata,
       ) ?? get().model,
       undefined,
-      { yamlPath },
+      { yamlPath, required: reason === 'branch-relocated' },
     );
   },
 

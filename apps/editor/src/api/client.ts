@@ -550,6 +550,13 @@ export interface ChatYamlStageFinalizeInput {
   retainStage?: boolean;
 }
 
+export interface ChatYamlStageResultRelocation {
+  fromPath: string;
+  fromContentHash: string;
+  fromMtimeMs: number;
+  entry: ChatYamlStageEntry;
+}
+
 export interface ChatYamlStageFinalizeResult {
   outcome: 'unchanged' | 'adopted' | 'forked' | 'created';
   entry: ChatYamlStageEntry | null;
@@ -557,6 +564,7 @@ export interface ChatYamlStageFinalizeResult {
   localBranchPersisted: boolean;
   trialVerification: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   compile: YamlCompileResult;
+  relocations?: ChatYamlStageResultRelocation[];
   revision: number;
   state: ServerState;
 }

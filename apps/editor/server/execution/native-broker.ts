@@ -169,6 +169,7 @@ const MANAGED_OPENCODE_ISOLATION_ENV_KEYS = [
 ] as const;
 const TAGMA_PIPELINE_TASK_AGENT_PATTERN = /^tagma-pipeline-task-[0-9a-f]{32}$/u;
 const TAGMA_PIPELINE_TASK_PERMISSION_KEYS = new Set([
+  '*',
   'read',
   'glob',
   'grep',
@@ -182,6 +183,16 @@ const TAGMA_PIPELINE_TASK_PERMISSION_KEYS = new Set([
   'tagma_yaml_skeleton',
   'tagma_placement_plan',
   'tagma_trial_plan',
+]);
+const TAGMA_PIPELINE_TASK_ALLOWED_PERMISSION_KEYS = new Set([
+  'read',
+  'glob',
+  'grep',
+  'list',
+  'lsp',
+  'skill',
+  'edit',
+  'bash',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -213,13 +224,17 @@ function installManagedTaskAgent(
   }
   const validPermission =
     isRecord(permission) &&
+    permission['*'] === 'deny' &&
     permission.task === 'deny' &&
-    Object.entries(permission).every(
-      ([key, value]) => TAGMA_PIPELINE_TASK_PERMISSION_KEYS.has(key) && value === 'deny',
-    );
+    permission.external_directory === 'deny' &&
+    Object.entries(permission).every(([key, value]) => {
+      if (!TAGMA_PIPELINE_TASK_PERMISSION_KEYS.has(key)) return false;
+      if (value === 'deny') return true;
+      return value === 'allow' && TAGMA_PIPELINE_TASK_ALLOWED_PERMISSION_KEYS.has(key);
+    });
   if (!isRecord(config) || !validPermission) {
     throw new Error(
-      'Managed OpenCode task permissions must deny delegated agents before execution.',
+      'Managed OpenCode task permissions must use a default-deny allowlist and deny delegated agents before execution.',
     );
   }
   const existingAgents = isRecord(config.agent) ? config.agent : {};

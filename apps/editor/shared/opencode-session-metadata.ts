@@ -27,6 +27,7 @@ export interface TagmaSessionMetadata {
   schema: number;
   source: TagmaSessionSource;
   workspacePath?: string;
+  yamlPath?: string;
 }
 
 export interface OpencodeSessionOwnershipFields {
@@ -90,7 +91,16 @@ export function parseTagmaSessionMetadata(metadata: unknown): TagmaSessionMetada
       typeof tagma.workspacePath === 'string' && tagma.workspacePath.trim()
         ? tagma.workspacePath.trim()
         : undefined;
-    return { schema, source, ...(workspacePath ? { workspacePath } : {}) };
+    const yamlPath =
+      typeof tagma.yamlPath === 'string' && tagma.yamlPath.trim()
+        ? tagma.yamlPath.trim()
+        : undefined;
+    return {
+      schema,
+      source,
+      ...(workspacePath ? { workspacePath } : {}),
+      ...(yamlPath ? { yamlPath } : {}),
+    };
   }
 
   // Early desktop builds stored ownership fields flat on `metadata`.

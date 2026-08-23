@@ -1804,29 +1804,6 @@ function buildTrialSummary(
   );
 }
 
-function buildCasePromptContexts(
-  config: PipelineConfig,
-  testCase: ChatPipelineTrialPlanCase,
-  workDir: string,
-): Record<string, Array<{ label: string; content: string }>> {
-  const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
-  const content = [
-    `Case: ${testCase.id} — ${testCase.title}`,
-    `Objective: ${testCase.objective}`,
-    `Isolated workspace: ${workDir}`,
-    `Fixture paths: ${fixturePaths}`,
-    'Use only this isolated workspace for the case. Preserve full file contents, including blank lines.',
-  ].join('\n');
-  const contexts: Record<string, Array<{ label: string; content: string }>> = {};
-  for (const track of config.tracks) {
-    for (const task of track.tasks) {
-      if (task.prompt === undefined || task.command !== undefined) continue;
-      contexts[`${track.id}.${task.id}`] = [{ label: 'Targeted Trial Case', content }];
-    }
-  }
-  return contexts;
-}
-
 interface RunTrialPipelineInput {
   ws: WorkspaceState;
   pipelineConfig: PipelineConfig;
@@ -2172,15 +2149,6 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
         ? { envPolicy: { mode: 'allowlist' as const, keys: input.preflightEnvKeys } }
         : {}),
       ...(input.targetTaskIds ? { targetTaskIds: input.targetTaskIds } : {}),
-      ...(input.testCase
-        ? {
-            taskPromptContexts: buildCasePromptContexts(
-              input.pipelineConfig,
-              input.testCase,
-              input.workDir,
-            ),
-          }
-        : {}),
       ...(input.onEvent ? { onEvent: input.onEvent } : {}),
     });
   } finally {
@@ -2628,7 +2596,7 @@ async function prepareTrialExecution(
       status: 'result',
       result: resultForSetupFailure(
         'blocked',
-        `Trial cannot safely create isolated fixtures for file or directory triggers outside its temporary workspace: ${describeTrialBlockers(sandboxFixtureAnalysis.blockers)}. Keep intentional external paths for production, but use a workspace-contained input coordinate when the pipeline must be Sandbox-testable.`,
+        `Trial cannot safely create isolated fixtures for file or directory trigger coordinates that are not addressable from its case workspace: ${describeTrialBlockers(sandboxFixtureAnalysis.blockers)}. This includes intentional external production paths and host-private or sibling-pipeline .tagma namespaces; use a workspace-contained or current-pipeline coordinate when the pipeline must be Sandbox-testable.`,
         startedAt,
         { prerequisiteState, trialMode, trialabilityReport },
       ),
@@ -3577,7 +3545,7 @@ export async function trialRunChatYamlStage(
         return {
           ...resultForSetupFailure(
             'blocked',
-            `Trial cannot safely create isolated fixtures for file or directory triggers outside its temporary workspace: ${describeTrialBlockers(sandboxFixtureAnalysis.blockers)}. Keep intentional external paths for production, but use a workspace-contained input coordinate when the pipeline must be Sandbox-testable.`,
+            `Trial cannot safely create isolated fixtures for file or directory trigger coordinates that are not addressable from its case workspace: ${describeTrialBlockers(sandboxFixtureAnalysis.blockers)}. This includes intentional external production paths and host-private or sibling-pipeline .tagma namespaces; use a workspace-contained or current-pipeline coordinate when the pipeline must be Sandbox-testable.`,
             startedAt,
             { prerequisiteState, ...preflightMetadata },
           ),

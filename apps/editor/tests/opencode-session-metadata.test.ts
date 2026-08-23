@@ -66,12 +66,14 @@ describe('OpenCode session metadata', () => {
           schema: 1,
           source: 'desktop-chat',
           workspacePath: ' C:/repo ',
+          yamlPath: ' C:/repo/.tagma/demo/demo.yaml ',
         },
       }),
     ).toEqual({
       schema: 1,
       source: 'desktop-chat',
       workspacePath: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/demo/demo.yaml',
     });
     expect(parseTagmaSessionMetadata({ tagma: { schema: 1, source: 'external-cli' } })).toBeNull();
     expect(

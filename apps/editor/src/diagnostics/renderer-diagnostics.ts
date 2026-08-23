@@ -580,6 +580,8 @@ function compactSessionYamlResult(value: unknown): UnknownRecord | null {
           trialId: progress.trialId ?? null,
           phase: progress.phase ?? null,
           startedAt: progress.startedAt ?? null,
+          updatedAt: progress.updatedAt ?? null,
+          heartbeatAt: progress.heartbeatAt ?? null,
           caseId: progress.caseId ?? null,
           caseIndex: progress.caseIndex ?? null,
           caseCount: progress.caseCount ?? null,
@@ -648,9 +650,15 @@ function backgroundSessionRecency(state: UnknownRecord, yamlResult: UnknownRecor
     finiteNumber(state.lastActivityAt) ?? Number.NEGATIVE_INFINITY,
     finiteNumber(state.turnStartedAt) ?? Number.NEGATIVE_INFINITY,
     finiteNumber(postChatYamlAction.completedAt) ?? Number.NEGATIVE_INFINITY,
-    finiteNumber(postChatProgress.startedAt) ?? Number.NEGATIVE_INFINITY,
+    finiteNumber(postChatProgress.heartbeatAt) ??
+      finiteNumber(postChatProgress.updatedAt) ??
+      finiteNumber(postChatProgress.startedAt) ??
+      Number.NEGATIVE_INFINITY,
     finiteNumber(yamlResult.completedAt) ?? Number.NEGATIVE_INFINITY,
-    finiteNumber(resultProgress.startedAt) ?? Number.NEGATIVE_INFINITY,
+    finiteNumber(resultProgress.heartbeatAt) ??
+      finiteNumber(resultProgress.updatedAt) ??
+      finiteNumber(resultProgress.startedAt) ??
+      Number.NEGATIVE_INFINITY,
   );
 }
 

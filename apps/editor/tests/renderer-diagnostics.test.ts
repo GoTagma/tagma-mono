@@ -33,6 +33,23 @@ describe('renderer diagnostics snapshot', () => {
               pipelineName: 'Background',
               status: 'trial-running',
               phase: 'trial-running',
+              progress: {
+                stageId: 'stage-background',
+                trialId: 'trial-background',
+                phase: 'running-case',
+                detail: 'private fixture path must not enter diagnostics',
+                startedAt: 130,
+                updatedAt: 140,
+                heartbeatAt: 150,
+                caseId: 'repeat',
+                caseTitle: 'private case title',
+                caseIndex: 0,
+                caseCount: 1,
+                runNumber: 1,
+                runCount: 2,
+                taskId: 'main.answer',
+                taskStatus: 'running',
+              },
             },
           },
         },
@@ -171,6 +188,21 @@ describe('renderer diagnostics snapshot', () => {
           sessionId: 'session-2',
           status: 'trial-running',
           phase: 'trial-running',
+          progress: {
+            stageId: 'stage-background',
+            trialId: 'trial-background',
+            phase: 'running-case',
+            startedAt: 130,
+            updatedAt: 140,
+            heartbeatAt: 150,
+            caseId: 'repeat',
+            caseIndex: 0,
+            caseCount: 1,
+            runNumber: 1,
+            runCount: 2,
+            taskId: 'main.answer',
+            taskStatus: 'running',
+          },
         },
         sessionYamlResultSummary: {
           sessionId: 'session-2',
@@ -227,6 +259,8 @@ describe('renderer diagnostics snapshot', () => {
     expect(JSON.stringify(snapshot)).not.toContain('"send"');
     expect(JSON.stringify(snapshot)).not.toContain('"reset"');
     expect(JSON.stringify(snapshot)).not.toContain('must-not-leak');
+    expect(JSON.stringify(snapshot)).not.toContain('private fixture path');
+    expect(JSON.stringify(snapshot)).not.toContain('private case title');
   });
 
   test('reports renderer collection windows and preserves the newest retained logs', () => {

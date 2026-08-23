@@ -111,7 +111,7 @@ describe('editor OpenCode runtime selection', () => {
     expect(activeDatabase.generationId.startsWith('schema-v1-')).toBe(true);
   });
 
-  test('keeps the Tagma task agent deny policy inside the managed OpenCode config', async () => {
+  test('keeps the Tagma task agent allowlist inside the managed OpenCode config', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-permissions-'));
     tempRoots.push(root);
     const tagmaCwd = join(root, '.tagma');
@@ -149,7 +149,14 @@ describe('editor OpenCode runtime selection', () => {
         ],
         cwd: root,
         env: {
-          OPENCODE_PERMISSION: JSON.stringify({ edit: 'deny', bash: 'deny', task: 'deny' }),
+          OPENCODE_PERMISSION: JSON.stringify({
+            '*': 'deny',
+            read: 'allow',
+            edit: 'allow',
+            bash: 'allow',
+            task: 'deny',
+            external_directory: 'deny',
+          }),
           OPENCODE_CONFIG_CONTENT: JSON.stringify({
             plugin: ['unmanaged-plugin'],
             arbitrary: 'must-not-survive',
@@ -172,14 +179,24 @@ describe('editor OpenCode runtime selection', () => {
     expect(config.default_agent).toBe(taskAgentName);
     expect(config.agent?.[taskAgentName]).toMatchObject({
       mode: 'primary',
-      permission: { edit: 'deny', bash: 'deny', task: 'deny' },
+      permission: {
+        '*': 'deny',
+        read: 'allow',
+        edit: 'allow',
+        bash: 'allow',
+        task: 'deny',
+        external_directory: 'deny',
+      },
     });
     expect(config.agent?.evil).toBeUndefined();
     expect(config.arbitrary).toBeUndefined();
     expect(JSON.parse(env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
-      edit: 'deny',
-      bash: 'deny',
+      '*': 'deny',
+      read: 'allow',
+      edit: 'allow',
+      bash: 'allow',
       task: 'deny',
+      external_directory: 'deny',
     });
   });
 
@@ -206,9 +223,11 @@ describe('editor OpenCode runtime selection', () => {
     const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], tagmaCwd, { mode: 'broker' });
     const taskAgentName = 'tagma-pipeline-task-fedcba9876543210fedcba9876543210';
     const invalidPolicies = [
-      { edit: 'deny', bash: 'allow', task: 'deny' },
-      { edit: 'deny', bash: 'deny' },
-      { edit: 'deny', bash: 'deny', task: 'deny', unknown: 'deny' },
+      { edit: 'deny', bash: 'deny', task: 'deny' },
+      { '*': 'deny', edit: 'allow' },
+      { '*': 'allow', task: 'deny', external_directory: 'deny' },
+      { '*': 'deny', task: 'allow', external_directory: 'deny' },
+      { '*': 'deny', task: 'deny', external_directory: 'deny', unknown: 'allow' },
     ];
 
     for (const permission of invalidPolicies) {
@@ -224,7 +243,7 @@ describe('editor OpenCode runtime selection', () => {
           },
           { name: 'opencode' } as DriverPlugin,
         ),
-      ).rejects.toThrow(/must deny delegated agents/);
+      ).rejects.toThrow(/must use a default-deny allowlist/);
     }
     expect(spawnCalls).toBe(0);
   });
@@ -264,7 +283,12 @@ describe('editor OpenCode runtime selection', () => {
         args: ['opencode', 'run', '--model', 'opencode/big-pickle', '--agent', taskAgentName],
         cwd: root,
         env: {
-          OPENCODE_PERMISSION: JSON.stringify({ edit: 'deny', bash: 'deny', task: 'deny' }),
+          OPENCODE_PERMISSION: JSON.stringify({
+            '*': 'deny',
+            read: 'allow',
+            task: 'deny',
+            external_directory: 'deny',
+          }),
           OPENCODE_CONFIG_CONTENT: '{}',
         },
       },
@@ -275,9 +299,10 @@ describe('editor OpenCode runtime selection', () => {
     const config = JSON.parse(getCaptured()?.env?.OPENCODE_CONFIG_CONTENT ?? '{}');
     expect(config.default_agent).toBe(taskAgentName);
     expect(config.agent?.[taskAgentName]?.permission).toEqual({
-      edit: 'deny',
-      bash: 'deny',
+      '*': 'deny',
+      read: 'allow',
       task: 'deny',
+      external_directory: 'deny',
     });
   });
 
