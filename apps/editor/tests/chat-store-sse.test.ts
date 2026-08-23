@@ -352,15 +352,15 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Host attempt ID: host-plan-attempt-1');
   expect(prompt).toContain('Pass attempt_id="host-plan-attempt-1" on every tagma_trial_plan call');
   expect(prompt).toContain('Do not edit YAML');
-  expect(prompt).toContain('commit exactly once');
+  expect(prompt).toContain('then commit once');
   expect(prompt).toContain(
-    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors.',
+    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors; commit-plan is a terminal counted operation.',
   );
   expect(prompt).toContain(
-    'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn.',
+    'After commit or commit-plan returns success or an error, do not call tagma_trial_plan again in this physical turn.',
   );
   expect(prompt).toContain('The host schedules any remaining attempt.');
-  expect(prompt).toContain('Begin resumes a matching path-and-hash draft by default');
+  expect(prompt).toContain('Begin resumes the matching path/hash draft');
   expect(prompt).toContain('begin requires both summary (a non-empty string) and goals');
   expect(prompt).toContain('goals must be a non-empty string array');
   expect(prompt).toContain('Every coverage entry needs dimension, status, caseIds, and rationale');
@@ -368,7 +368,9 @@ test('trial planning prompt forces behavior-first edge-case design without autho
     'Coverage status must be one of covered, accepted-risk, blocked, or not-applicable',
   );
   expect(prompt).toContain('Every finding needs severity, repairScope, summary, and evidence');
-  expect(prompt).toContain('Never send the whole plan or multiple cases in one call');
+  expect(prompt).toContain(
+    'For a minimal fixed read-only single-prompt/no-I/O plan, use commit-plan once with the complete plan and no begin',
+  );
   expect(prompt).toContain('Pass the exact staged Target YAML path');
   expect(prompt).toContain(
     'An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error',
@@ -398,6 +400,8 @@ test('trial planning prompt forces behavior-first edge-case design without autho
     'If no deterministic artifact can assert a required dimension, record a blocking pipeline-artifact finding naming it.',
   );
   expect(prompt).toContain('json-valid or json-pointer-equals');
+  expect(prompt).toContain('path, task-status, and json-valid prove only liveness');
+  expect(prompt).toContain('assert schema/value semantics with json-pointer-equals');
   expect(prompt).toContain('text-only checks cannot prove valid JSON');
   expect(prompt).toContain('RFC 8259 JSON');
   expect(prompt).toContain('Inter-task collision needs two target task ids');

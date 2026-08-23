@@ -18,8 +18,8 @@ import {
   type ChatContextWindowSnapshot,
 } from '../../shared/chat-context-window.js';
 import {
-  createNewPipelineRequestedActionLines,
-  fillManualNewPipelineRequestedActionLines,
+  requestedActionLines,
+  type PipelineRequestedActionKind,
 } from '../../shared/requested-action.js';
 
 function normalizeChatPath(path: string | null | undefined): string | null {
@@ -167,7 +167,8 @@ function formatWorkspaceYamlFolderEntry(entry: WorkspaceYamlFolderEntry): string
 
 export interface EditorContextOptions {
   workspaceYamlFilePaths?: readonly string[];
-  userText?: string;
+  /** Host-frozen action bound to the staged target at send time. */
+  requestedAction?: PipelineRequestedActionKind | null;
   currentYamlPath?: string | null;
   chatModel?: {
     readonly providerID: string;
@@ -188,30 +189,18 @@ export interface EditorContextOptions {
 }
 
 export function buildEditorContext(options: EditorContextOptions = {}): string {
-  const { workDir, yamlPath, manualNewPipelineYamlPath, yamlRunVersion, registry } =
-    usePipelineStore.getState();
+  const { workDir, yamlPath, yamlRunVersion, registry } = usePipelineStore.getState();
   const run = useRunStore.getState();
   const pythonAgent = useEditorSettingsStore.getState().settings?.pythonAgent;
   if (!workDir) return '';
   const lines = [`  <workspace>${escapeEditorContextValue(workDir)}</workspace>`];
   const contextYamlPath =
     options.currentYamlPath === undefined ? yamlPath : options.currentYamlPath;
-  const requestContext = {
-    currentPipelineIsManualNewDraft: sameChatPath(manualNewPipelineYamlPath, yamlPath),
-  };
-  const fillManualNewPipelineAction = fillManualNewPipelineRequestedActionLines(
-    options.userText,
-    requestContext,
-  );
-  const createNewPipelineAction = createNewPipelineRequestedActionLines(
-    options.userText,
-    requestContext,
-  );
-  lines.push(...fillManualNewPipelineAction, ...createNewPipelineAction);
-  if (
-    (fillManualNewPipelineAction.length > 0 || createNewPipelineAction.length > 0) &&
-    options.chatModel
-  ) {
+  const requestedAction = options.requestedAction
+    ? requestedActionLines(options.requestedAction)
+    : [];
+  lines.push(...requestedAction);
+  if (requestedAction.length > 0 && options.chatModel) {
     const providerID = options.chatModel.providerID.trim();
     const modelID = options.chatModel.modelID.trim();
     if (providerID && modelID) {

@@ -622,7 +622,8 @@ export function App() {
                   compileSuccess: finalized.compile.success,
                   trialVerification: finalized.trialVerification,
                 },
-                completedAt: claimedTurn.endedAt,
+                authoringCompletedAt: claimedTurn.endedAt,
+                completedAt: Date.now(),
               });
             }
             if (finalEntry && usePipelineStore.getState().workDir === snapshot.workDir) {
@@ -1532,6 +1533,20 @@ export function App() {
           if (!authoritativeStagedTarget) {
             throw new Error('The staged pipeline target disappeared before verification.');
           }
+          if (finishedSessionId) {
+            const workspaceRoot = snapshot.workDir.replace(/\\/gu, '/').replace(/\/+$/u, '');
+            const relativeTarget = stagedTarget.relativePath
+              .replace(/\\/gu, '/')
+              .replace(/^\/+/u, '');
+            await useChatStore
+              .getState()
+              .syncSessionYamlTarget(
+                finishedSessionId,
+                snapshot.workDir,
+                `${workspaceRoot}/.tagma/${relativeTarget}`,
+                'staged-target',
+              );
+          }
           if (authoritativeStagedTarget.sourcePath === null && resultWorkspaceVisible()) {
             upsertStagedWorkspacePipeline(
               snapshot.workDir,
@@ -1925,6 +1940,11 @@ export function App() {
             clearFinishedPostChatYamlAction();
             return;
           }
+          if (finishedSessionId) {
+            await useChatStore
+              .getState()
+              .syncSessionYamlTarget(finishedSessionId, snapshot.workDir, finalEntry.path);
+          }
           const finalTarget = {
             kind:
               finalized.outcome === 'forked' || finalized.outcome === 'created'
@@ -1989,7 +2009,8 @@ export function App() {
                 ...(applicableTrialRun ? { trialRunSuccess: applicableTrialRun.success } : {}),
                 trialVerification: finalized.trialVerification,
               },
-              completedAt: finishedTurn.endedAt,
+              authoringCompletedAt: finishedTurn.endedAt,
+              completedAt: Date.now(),
             });
           }
 
@@ -2061,7 +2082,8 @@ export function App() {
             status,
             compile,
             ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
-            completedAt: finishedTurn.endedAt,
+            authoringCompletedAt: finishedTurn.endedAt,
+            completedAt: Date.now(),
           });
         };
 

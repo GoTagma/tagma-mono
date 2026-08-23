@@ -25,10 +25,13 @@
   call against the same authenticated staged root so it can inspect and continue partial artifacts.
   If that bounded recovery is also unusable, surface the observed failure without claiming success
   or speculating about an infrastructure cause.
-- For `pipeline_work`, the router's first and only normal specialist call is `tagma-pipeline`.
-  Never use the diagnosis or discussion agents to pre-read artifacts for an authoring handoff; the
-  pipeline worker owns lookup and implementation. Only the existing one-call unusable-result
-  recovery may add another authoring specialist.
+- A Host-authenticated `create-new-pipeline` or `fill-manual-new-pipeline` action dispatches
+  `tagma-pipeline` directly; it does not spend a router turn rediscovering the target. Other
+  `pipeline_work` reaches the router, whose first and only normal specialist call is
+  `tagma-pipeline`. Host compile/Trial repair already carries an authenticated target and goes
+  directly back to `tagma-pipeline`, never through the router. Never use diagnosis/discussion as an
+  authoring pre-reader. Only the existing one-call unusable-result recovery may add another
+  authoring specialist.
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
@@ -45,10 +48,13 @@
   context. The production pipeline agent defaults an unspecified prompt driver to `opencode` and
   an unspecified `opencode` model to that snapshot. Explicit user driver/model choices always win;
   never inherit the Chat model into a non-`opencode` driver, an existing-pipeline edit, or runtime
-  resolution. An editor-created manual-new draft is authoritative context for an imperative
-  creation request: the user may refer to it as "one" or omit the repeated pipeline/workflow noun.
-  Preserve the fill-new marker and model snapshot for that elliptical request while keeping
-  conceptual questions and explicit separate/another requests distinct.
+  resolution. Derive create/fill actions only from structured UI/Host state, never from
+  natural-language phrase lists. The current editor-created manual-new draft structurally selects
+  fill; other natural-language intent remains the model router's responsibility. A
+  router-classified create must use a fresh sibling path and preserve the current and every
+  inventoried YAML. Freeze action, active path, and local revision together before any await; send
+  structured actions to the stage Host, render only that frozen action in context, and require fill
+  to match the Host's exact current manual draft. A later UI selection must never retarget the turn.
 - Keep those selectors enabled when the visible conversation is idle, even if another
   conversation is active or owns the YAML edit lock. The visible conversation's own send,
   pending prompt, queue, reconciliation, or flush may still block them.
@@ -56,7 +62,10 @@
   blocked while any conversation is active.
 - Post-turn planning and repair continuations belong to the finished turn's root session even
   after the user switches conversations. Address that cached session explicitly; never fall back
-  to the mutable visible session or clear the visible turn's progress/error/watchdog state.
+  to the mutable visible session or clear the visible turn's progress/error/watchdog state. Once
+  the Host detects the concrete staged target (including a router-classified sibling create), bind
+  session metadata plus every continuation's current-file/inventory to that target; the canvas path
+  captured before routing is no longer target authority.
 - Reconciliation and host-Trial progress retain a global workspace barrier but must carry the
   finished root session as their UI owner. Render progress and Stop only for that visible session,
   and route later progress updates into its cached runtime after the user switches conversations.
@@ -258,6 +267,13 @@
   baseline YAML or regenerate timestamped companions. Actual later YAML writes and pipeline
   folders created after watcher startup must still trigger compile, requirements, and manifest
   synchronization.
+- Treat generated companions for every newly created staged pipeline as Host outputs, identified
+  structurally by the absence of a base entry rather than message wording. After successful compile,
+  regenerate manifest and requirements frontmatter, and deterministically regenerate basic layout
+  x positions while preserving surviving task y offsets, folders, and track heights. The authoring
+  agent writes only YAML unless genuine user-owned requirements text, env/services, helper files,
+  or non-mechanical layout metadata are required; ordinary existing-pipeline edits retain their
+  three-way layout ownership.
 - After attaching or replacing the chat compile watcher's root fs.watch, keep one
   identity-guarded deferred reconciliation. Linux may not deliver a pipeline-folder creation that
   happens in the same event-loop turn as watcher startup; the deferred pass may compile only
@@ -365,11 +381,15 @@
   expectation schemas, and run the complete semantic validator before the atomic write. The tool
   must accept the exact staged Target YAML path when OpenCode reports a different session directory,
   reject live `.tagma` destinations, and never rely on the agent to copy staging artifacts.
-- Assemble trial plans through bounded same-tool draft operations: `begin`, one `upsert-case` per
-  case, `set-coverage`, `set-findings`, then exactly one `commit`. Only `commit` consumes a formal
-  attempt and runs full semantic validation plus the atomic plan write. Keep drafts stage-owned,
-  path-and-hash-bound, locked, size-bounded, resumable by default, explicitly resettable, and
-  unpublished; never restore a whole-plan single-call boundary for model-generated trial plans.
+- Assemble ordinary trial plans through bounded same-tool draft operations: `begin`, one
+  `upsert-case` per case, `set-coverage`, `set-findings`, then exactly one `commit`. Only `commit`
+  consumes that draft's formal attempt. Keep drafts stage-owned, path-and-hash-bound, locked,
+  size-bounded, resumable, resettable, and unpublished. For a new YAML hash, `begin` may seed only
+  from the exact prior tool-authenticated plan; planners preserve unaffected cases and update the
+  changed contract rather than rebuilding mechanically. The sole complete-plan exception is the
+  fixed read-only single-prompt/no-I/O fast lane: one `commit-plan` call carries its one case, all
+  coverage, and findings, then performs the same full semantic validation and atomic write. Its
+  invalid submission consumes the attempt and the same attempt id cannot retry.
 - Validate and normalize every proposed case, coverage section, and finding section before
   persisting it. Reject reserved pipeline-artifact paths, incomplete or duplicate coverage,
   unknown case links, unsupported coverage evidence, and a case update that would invalidate
@@ -386,9 +406,10 @@
   not-applicable. Accepted risk and warning findings produce `passed-with-warnings`.
 - Optimize a genuinely fixed, read-only, single-prompt/no-I/O graph inside the authenticated
   planner lifecycle, never by bypassing it: inspect only YAML plus manifest, author one two-run
-  task-status case, mark structurally irrelevant dimensions not-applicable, and leave findings
-  empty unless current evidence shows a mismatch. Normal driver prerequisites and hypothetical
-  unavailability belong to Host trialability reporting, not planner findings.
+  task-status case, mark structurally irrelevant dimensions not-applicable, leave findings empty
+  unless current evidence shows a mismatch, and submit it through the one counted `commit-plan`
+  call. Normal driver prerequisites and hypothetical unavailability belong to Host trialability
+  reporting, not planner findings.
 - Default Sandbox Trial never runs a real-workspace baseline and never injects real pipeline
   credentials into execution; it uses deterministic synthetic values for every declared or
   required secret. Host-witness preparation may resolve real credentials only to bind prerequisite
@@ -450,7 +471,11 @@
   detail in the Trial result, repair evidence, diagnostics, and conversation export. A count alone
   is insufficient for distinguishing timeout, cancellation, or workspace-verification stops.
 - Bump the signed Trial cache protocol whenever verdict, baseline-coverage, or required evidence
-  semantics change; otherwise an older cached pass can bypass the new verification rule.
+  semantics change; otherwise an older cached pass can bypass the new verification rule. Across
+  YAML revisions, reuse only signed successful command-only cases whose complete target closure,
+  fixtures, expectations, user-owned support hash, runtime mode, capability report, and Host
+  prerequisite digest match. Prompt closures and triggered closures always rerun; any changed
+  dependency invalidates the case fingerprint.
 - Preserve truncation provenance across every Trial evidence boundary. Distinguish source/runtime
   tail capture, Trial-result field or stream clipping, and repair-prompt clipping. Return produced,
   source-returned, and final-returned byte counts where they are known, and label inline truncation
@@ -479,7 +504,9 @@
   Dispose the per-workspace worker and cache with its `WorkspaceState`.
 - Set an explicit `trial-running` post-chat phase before awaiting the host Trial request; progress
   labels must follow that current phase instead of inferring it from a stale plan or failure result.
-  Snapshot execution budgets from workspace Settings when Trial starts. Recommended defaults are
+  Keep a separate Host heartbeat timestamp during silent long-running tasks while preserving the
+  last semantic progress timestamp, and show bounded elapsed time without manufacturing task
+  activity. Snapshot execution budgets from workspace Settings when Trial starts. Recommended defaults are
   120 minutes per task, 480 minutes per production pipeline, and 1440 minutes per Trial; supported
   ranges are 30m-24h, 1h-7d, and 2h-7d respectively. Normalize each outer lifecycle to at least 30
   minutes above the default task budget. Explicit YAML task/pipeline timeouts remain authoritative;
@@ -621,7 +648,8 @@
   session-level slot. Preserve the host finalize outcome, conflicts, destination path,
   compile/trial status, and local-branch decision across session switches, exports, and reloads.
   Hidden repairs and internal continuations keep the original visible turn/message anchor instead of
-  overwriting later turns.
+  overwriting later turns. Keep `authoringCompletedAt` as the model-turn boundary and `completedAt`
+  as the later Host terminal-result time; result ordering must use the latter.
 - Fail closed on authenticated pre-owner-hash stages with an actionable discard-and-resend
   explanation; never resume them under a newly presented lock. Drop legacy results that lack both
   message and turn anchors without guessing from assistant text, but surface a workspace-list
@@ -731,9 +759,12 @@
 - Built-in OpenCode prompt tasks must enforce resolved task permissions with a deny-only
   `OPENCODE_PERMISSION` policy and a fresh, unpredictable primary agent selected by both
   `--agent` and `default_agent`. Apply the same policy to that agent because OpenCode merges
-  agent-specific rules after top-level rules. A restricted task must deny `task`; `read: false`
-  also denies read/search/list/LSP/skill tools, `write: false` denies edit and Tagma's managed
-  authoring tools, and `execute: false` denies Bash. Do not copy ambient
+  agent-specific rules after top-level rules. A restricted task must deny both `task` and
+  `external_directory`; its effective cwd is the filesystem boundary and parent exploration must
+  never become an unattended permission request. `read: false` also denies read/search/list/LSP/
+  skill tools, `write: false` denies edit and Tagma's managed authoring tools, and `execute: false`
+  denies Bash. Author fixed conversational prompts with no workspace/tool dependency using all
+  three permissions false. Do not copy ambient
   `OPENCODE_CONFIG_CONTENT` or `OPENCODE_PERMISSION` from `process.env` into a SpawnSpec, because
   doing so bypasses the runtime environment policy. Native Broker and Legacy rollback must discard
   arbitrary inline config, rebuild only the nonce agent inside the host-authored managed config,
@@ -743,8 +774,10 @@
   requires separate provenance and permission handling.
 - Managed prompt CLI runs must print error-level OpenCode logs and terminate a hung child when the
   pinned runtime reports `message="stream error" small=false mode=primary`; title-model
-  (`small=true`) and subagent errors remain recoverable. Keep Chat sidecar Basic Auth credentials
-  out of these one-shot child environments.
+  (`small=true`) and subagent errors remain recoverable. Give every newly created pipeline-task
+  session a deterministic non-prompt `--title` so OpenCode does not spend a small-model call on
+  transient task naming. Keep Chat sidecar Basic Auth credentials out of these one-shot child
+  environments.
 - Preserve raw managed OpenCode stderr in persisted runtime streams, but omit exact recoverable
   `message="stream error" small=true mode=primary` title-model lines from task-scoped Trial
   evidence and report the omitted line count. Keep primary-model `small=false` failures and every
@@ -780,8 +813,10 @@
 - Treat assistant `finish` as a runtime protocol boundary even though the generated OpenCode SDK
   types it as `string`. For pinned OpenCode 1.18.18, `stop` is normal completion, `tool-calls` is a
   continuation, `length` is incomplete output, `content-filter` and `error` are errors, and
-  `unknown` is indeterminate. Preserve partial output and finished-turn reconciliation; surface
-  incomplete/indeterminate states as warnings instead of silently declaring success.
+  `unknown` is indeterminate. A pipeline-task `unknown`, truncated, filtered, or error finish is a
+  driver failure even when the CLI exits zero; never reinterpret lifecycle NDJSON as model output
+  or grant YAML repair from that runtime boundary. Preserve partial output and finished-turn
+  reconciliation; Chat surfaces incomplete/indeterminate states as warnings.
 - Accept user messages while the visible conversation is flushing, reconciling, or waiting on its
   YAML lifecycle barrier. Preserve them in the queue without clearing lifecycle progress, then
   dispatch them as a fresh logical turn after the barrier releases; messages queued during an

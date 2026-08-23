@@ -118,6 +118,10 @@ import {
 import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
 import type { WorkspaceState } from './workspace-state.js';
 import { timeoutMinutesToMs } from '../shared/execution-timeout-settings.js';
+import {
+  buildChatPipelineTrialCaseReuseFingerprint,
+  hashChatPipelineTrialReusableSupportTree,
+} from './chat-pipeline-trial-reuse.js';
 
 const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const MAX_TRIAL_STREAM_BYTES = TRIAL_STREAM_EVIDENCE_BYTES;
@@ -225,6 +229,7 @@ export interface ChatPipelineTrialCaseResult {
   title: string;
   objective: string;
   success: boolean;
+  executionSource?: 'current-trial' | 'equivalent-closure-cache';
   runIds: string[];
   tasks: ChatPipelineTrialTaskResult[];
   totalTaskCount: number;
@@ -322,7 +327,10 @@ export interface ChatPipelineTrialProgress {
   phase: ChatPipelineTrialProgressPhase;
   detail: string;
   startedAt: number;
+  /** Last semantic phase/task update. */
   updatedAt: number;
+  /** Host liveness tick, including while one model task is silent. */
+  heartbeatAt: number;
   caseId: string | null;
   caseTitle: string | null;
   caseIndex: number | null;
@@ -333,6 +341,12 @@ export interface ChatPipelineTrialProgress {
   taskStatus: string | null;
 }
 
+interface CachedTrialCaseReuse {
+  fingerprint: string;
+  caseId: string;
+  result: ChatPipelineTrialCaseResult;
+}
+
 interface CachedTrialResult {
   version: typeof TRIAL_CACHE_VERSION;
   inputHash: string;
@@ -340,6 +354,7 @@ interface CachedTrialResult {
   verificationHash: string;
   hostWitness: TrialHostWitness;
   liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null;
+  caseReuse: CachedTrialCaseReuse[];
   result: ChatPipelineTrialRunResult;
 }
 
@@ -348,6 +363,7 @@ interface TrialPipelineSnapshot {
   yamlPath: string;
   contentHash: string;
   treeHash: string;
+  supportTreeHash: string;
 }
 
 const inFlightByCacheKey = new Map<string, Promise<ChatPipelineTrialRunResult>>();
@@ -382,6 +398,7 @@ export const __chatPipelineTrialRunTestHooks: {
   timeoutMsOverride?: number;
   taskTimeoutMsOverride?: number;
   onProgress?: (progress: ChatPipelineTrialProgress) => void;
+  heartbeatIntervalMsOverride?: number;
 } = {};
 
 type ChatPipelineTrialProgressPatch = Partial<
@@ -429,6 +446,7 @@ function createTrialProgressReporter(
       detail: 'Preparing the targeted Trial.',
       startedAt: now,
       updatedAt: now,
+      heartbeatAt: now,
       caseId: null,
       caseTitle: null,
       caseIndex: null,
@@ -445,6 +463,20 @@ function createTrialProgressReporter(
   } catch {
     // Observability must never affect Trial execution.
   }
+  const heartbeatIntervalMs = __chatPipelineTrialRunTestHooks.heartbeatIntervalMsOverride ?? 5_000;
+  const heartbeat = setInterval(
+    () => {
+      if (activeTrialProgressByIdentity.get(key) !== active) return;
+      active.value = { ...active.value, heartbeatAt: Date.now() };
+      try {
+        __chatPipelineTrialRunTestHooks.onProgress?.(cloneTrialProgress(active.value));
+      } catch {
+        // Observability must never affect Trial execution.
+      }
+    },
+    Math.max(1, heartbeatIntervalMs),
+  );
+  heartbeat.unref?.();
   return {
     update(patch) {
       if (activeTrialProgressByIdentity.get(key) !== active) return;
@@ -452,6 +484,7 @@ function createTrialProgressReporter(
         ...active.value,
         ...patch,
         updatedAt: Math.max(active.value.updatedAt, Date.now()),
+        heartbeatAt: Math.max(active.value.heartbeatAt, Date.now()),
       };
       try {
         __chatPipelineTrialRunTestHooks.onProgress?.(cloneTrialProgress(active.value));
@@ -460,6 +493,7 @@ function createTrialProgressReporter(
       }
     },
     clear() {
+      clearInterval(heartbeat);
       if (activeTrialProgressByIdentity.get(key) === active) {
         activeTrialProgressByIdentity.delete(key);
       }
@@ -561,6 +595,7 @@ function readCachedTrial(
       (parsed.liveSmokeReadiness !== null &&
         !isChatPipelineTrialLiveSmokeReadiness(parsed.liveSmokeReadiness)) ||
       !isDeepStrictEqual(parsed.liveSmokeReadiness, liveSmokeReadiness) ||
+      !Array.isArray(parsed.caseReuse) ||
       !parsed.result ||
       parsed.result.version !== TRIAL_CACHE_VERSION ||
       !parsed.result.trialabilityReport ||
@@ -584,6 +619,7 @@ function writeCachedTrial(
   verificationHash: string,
   hostWitness: TrialHostWitness,
   liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null,
+  caseReuse: CachedTrialCaseReuse[],
   result: ChatPipelineTrialRunResult,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -594,8 +630,91 @@ function writeCachedTrial(
     verificationHash,
     hostWitness,
     liveSmokeReadiness,
+    caseReuse,
     result,
   } satisfies CachedTrialResult);
+}
+
+function isCachedTrialCaseReuse(value: unknown): value is CachedTrialCaseReuse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Partial<CachedTrialCaseReuse>;
+  return (
+    typeof candidate.fingerprint === 'string' &&
+    /^[0-9a-f]{64}$/u.test(candidate.fingerprint) &&
+    typeof candidate.caseId === 'string' &&
+    !!candidate.caseId &&
+    !!candidate.result &&
+    candidate.result.id === candidate.caseId &&
+    candidate.result.success === true &&
+    Array.isArray(candidate.result.runIds) &&
+    Array.isArray(candidate.result.tasks) &&
+    Array.isArray(candidate.result.expectations)
+  );
+}
+
+function readReusableTrialCases(input: {
+  ws: WorkspaceState;
+  stageId: string;
+  trialRunsDir: string;
+  desiredFingerprints: ReadonlyMap<string, string>;
+  trialabilityReportHash: string;
+  prerequisiteDigest: string;
+}): Map<string, ChatPipelineTrialCaseResult> {
+  const reusable = new Map<string, ChatPipelineTrialCaseResult>();
+  if (!existsSync(input.trialRunsDir) || input.desiredFingerprints.size === 0) return reusable;
+  let names: string[];
+  try {
+    names = readdirSync(input.trialRunsDir)
+      .filter((name) => name.endsWith('.json'))
+      .sort()
+      .slice(-128);
+  } catch {
+    return reusable;
+  }
+  for (const name of names) {
+    const path = join(input.trialRunsDir, name);
+    let parsed: Partial<CachedTrialResult>;
+    try {
+      parsed = readAuthenticatedServerRecordSync<Partial<CachedTrialResult>>(
+        path,
+        trialCacheRecordContext(input.ws, input.stageId, path),
+      );
+    } catch {
+      continue;
+    }
+    if (
+      parsed.version !== TRIAL_CACHE_VERSION ||
+      parsed.trialabilityReportHash !== input.trialabilityReportHash ||
+      parsed.hostWitness?.prerequisiteDigest !== input.prerequisiteDigest ||
+      !Array.isArray(parsed.caseReuse)
+    ) {
+      continue;
+    }
+    for (const item of parsed.caseReuse) {
+      if (!isCachedTrialCaseReuse(item)) continue;
+      if (reusable.has(item.caseId)) continue;
+      if (input.desiredFingerprints.get(item.caseId) !== item.fingerprint) continue;
+      reusable.set(item.caseId, {
+        ...structuredClone(item.result),
+        executionSource: 'equivalent-closure-cache',
+      });
+    }
+  }
+  return reusable;
+}
+
+function reusableCaseRecords(
+  result: ChatPipelineTrialRunResult,
+  fingerprints: ReadonlyMap<string, string>,
+  prerequisiteStable: boolean,
+): CachedTrialCaseReuse[] {
+  if (!prerequisiteStable) return [];
+  return result.cases.flatMap((testCase) => {
+    const fingerprint = fingerprints.get(testCase.id);
+    return testCase.success && fingerprint
+      ? [{ fingerprint, caseId: testCase.id, result: structuredClone(testCase) }]
+      : [];
+  });
 }
 
 function cleanupTrialPipelineSnapshot(snapshot: TrialPipelineSnapshot | null): void {
@@ -630,6 +749,7 @@ function createTrialPipelineSnapshot(
       yamlPath: snapshotYamlPath,
       contentHash: createHash('sha1').update(snapshotYaml).digest('hex'),
       treeHash,
+      supportTreeHash: hashChatPipelineTrialReusableSupportTree(snapshotYamlPath),
     };
   } catch (err) {
     rmSync(rootDir, { recursive: true, force: true });
@@ -1431,17 +1551,41 @@ export function buildChatPipelineTrialOutputDiagnostics(
   return Object.freeze(projected);
 }
 
-function isExternalDriverStreamFailure(
+export function isExternalDriverStreamFailure(
   failureKind: string | null,
   stderr: string | null | undefined,
 ): boolean {
   if (failureKind !== 'exit_nonzero') return false;
   const text = stderr ?? '';
-  if (text.includes('[editor] OpenCode primary model error:')) return true;
+  if (
+    text.includes('[editor] OpenCode primary model error:') ||
+    text.includes('[driver] opencode ended without a determinate model response') ||
+    text.includes('[driver] opencode model response did not complete normally')
+  ) {
+    return true;
+  }
   return (
     text.includes('message="stream error"') &&
     /\bmode=primary\b/u.test(text) &&
     /\bsmall=false\b/u.test(text)
+  );
+}
+
+export function reconcileCaseExpectationRepairScopes(
+  expectations: readonly ChatPipelineTrialExpectationResult[],
+  runtimeFailureScopes: readonly ('pipeline-artifact' | 'diagnostic-only' | null)[],
+): ChatPipelineTrialExpectationResult[] {
+  const hasDiagnosticRuntimeFailure = runtimeFailureScopes.includes('diagnostic-only');
+  const hasPipelineRuntimeFailure = runtimeFailureScopes.includes('pipeline-artifact');
+  if (!hasDiagnosticRuntimeFailure || hasPipelineRuntimeFailure) return [...expectations];
+  return expectations.map((expectation) =>
+    !expectation.passed && expectation.repairScope === 'pipeline-artifact'
+      ? {
+          ...expectation,
+          repairScope: 'diagnostic-only' as const,
+          detail: `${expectation.detail} Artifact evidence is diagnostic-only because the case runtime did not complete reliably.`,
+        }
+      : expectation,
   );
 }
 
@@ -2239,10 +2383,28 @@ async function executeTargetedTrialCase(
       );
     }
   }
+  const runtimeFailureScopes: Array<'pipeline-artifact' | 'diagnostic-only' | null> = [];
+  for (const runResult of runResults) {
+    for (const state of runResult.states.values()) {
+      if (state.status === 'success' || state.status === 'skipped') continue;
+      runtimeFailureScopes.push(
+        trialTaskRepairScope(
+          state.status,
+          state.result?.failureKind ?? null,
+          state.result?.outputDiagnostics,
+          isExternalDriverStreamFailure(state.result?.failureKind ?? null, state.result?.stderr),
+        ),
+      );
+    }
+  }
+  const reconciledExpectations = reconcileCaseExpectationRepairScopes(
+    expectations,
+    runtimeFailureScopes,
+  );
   const success = evaluateChatPipelineTrialCaseSuccess({
     testCase: input.testCase,
     runResults,
-    expectations,
+    expectations: reconciledExpectations,
   });
   const selectedTasks = selectChatPipelineTrialTaskEvidence(
     tasks,
@@ -2260,7 +2422,7 @@ async function executeTargetedTrialCase(
       omittedTaskCount: Math.max(0, totalTaskCount - selectedTasks.length),
       taskStatusCounts,
       omittedTaskStatusCounts: omittedTrialTaskStatusCounts(taskStatusCounts, selectedTasks),
-      expectations,
+      expectations: reconciledExpectations,
     },
     totalTaskCount,
   };
@@ -2614,6 +2776,7 @@ async function executeTrial(
   budgets: TrialExecutionBudgets,
   progress: ChatPipelineTrialProgressReporter,
   runtimeMode: WorkspaceRuntimeMode,
+  reusableCases: ReadonlyMap<string, ChatPipelineTrialCaseResult>,
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
   progress.update({
@@ -2817,6 +2980,7 @@ async function executeTrial(
     recordRuntimeBlockers(baselineRuntimeBlockers);
     const prerequisiteBlockedCases = new Map<string, ChatPipelineTrialBlocker[]>();
     let executedCaseCount = 0;
+    let reusedCaseCount = 0;
     let caseLoopStop: { reason: ChatPipelineTrialNotRunReason; detail: string } | null = null;
     let totalTaskCount = baselineEvidence.totalTaskCount;
     progress.update({
@@ -2883,6 +3047,25 @@ async function executeTrial(
         continue;
       }
       const workspaceFailures: ChatPipelineTrialExpectationResult[] = [];
+      const reusableCase = reusableCases.get(testCase.id);
+      if (reusableCase) {
+        progress.update({
+          phase: 'running-case',
+          detail: `Reusing previously verified case ${caseOffset + 1}/${plan.cases.length}; its command-only target closure is unchanged.`,
+          caseId: testCase.id,
+          caseTitle: testCase.title,
+          caseIndex: caseOffset + 1,
+          caseCount: plan.cases.length,
+          runNumber: null,
+          runCount: testCase.runs,
+          taskId: null,
+          taskStatus: 'reused',
+        });
+        cases.push(structuredClone(reusableCase));
+        totalTaskCount += reusableCase.totalTaskCount;
+        reusedCaseCount += 1;
+        continue;
+      }
 
       executedCaseCount += 1;
       const caseExecution = await executeTargetedTrialCase({
@@ -2948,13 +3131,17 @@ async function executeTrial(
         }
         expectedWorkspaceMutationRevision = mutationState.revision;
       }
+      const executedCaseResult = {
+        ...caseExecution.result,
+        executionSource: 'current-trial' as const,
+      };
       const caseResult =
         workspaceFailures.length === 0
-          ? caseExecution.result
+          ? executedCaseResult
           : {
-              ...caseExecution.result,
+              ...executedCaseResult,
               success: false,
-              expectations: [...caseExecution.result.expectations, ...workspaceFailures],
+              expectations: [...executedCaseResult.expectations, ...workspaceFailures],
             };
       cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
@@ -3134,7 +3321,7 @@ async function executeTrial(
           (expectation) => !expectation.passed && expectation.repairScope === 'pipeline-artifact',
         ),
       );
-    const ran = !baselineSkipped || executedCaseCount > 0;
+    const ran = !baselineSkipped || executedCaseCount > 0 || reusedCaseCount > 0;
     const trialPlanRepairAttempt =
       kind === 'failed' &&
       hasPipelineArtifactFailure &&
@@ -3163,6 +3350,10 @@ async function executeTrial(
       planWarnings,
       manualExecutionGrants,
     );
+    const resultSummary =
+      reusedCaseCount > 0
+        ? `${plannedSummary}\n\nReused ${reusedCaseCount} previously verified command-only case${reusedCaseCount === 1 ? '' : 's'} because the target closure, fixtures, expectations, support files, runtime mode, trialability report, and host prerequisites were unchanged.`
+        : plannedSummary;
     const result: ChatPipelineTrialRunResult = {
       version: TRIAL_CACHE_VERSION,
       success,
@@ -3196,9 +3387,9 @@ async function executeTrial(
       summary:
         kind === 'blocked' && runtimeBlockers.length > 0
           ? boundedTrialText(
-              `Trial ran every prerequisite-ready target closure, but other branches remain blocked by unavailable runtime requirements: ${describeTrialBlockers(runtimeBlockers)}. Tagma preserved those requirements and did not execute their gated work.\n\n${plannedSummary}`,
+              `Trial ran every prerequisite-ready target closure, but other branches remain blocked by unavailable runtime requirements: ${describeTrialBlockers(runtimeBlockers)}. Tagma preserved those requirements and did not execute their gated work.\n\n${resultSummary}`,
             )
-          : plannedSummary,
+          : resultSummary,
       durationMs: Math.max(0, Date.now() - startedAt),
       totalTaskCount,
       omittedTaskCount,
@@ -3615,6 +3806,27 @@ export async function trialRunChatYamlStage(
             ...preflightMetadata,
           };
         }
+        const caseReuseFingerprints = new Map<string, string>();
+        for (const testCase of plan.cases) {
+          const fingerprint = buildChatPipelineTrialCaseReuseFingerprint({
+            pipelineConfig,
+            relativeYamlPath: entry.relativePath,
+            testCase,
+            supportTreeHash: executionSnapshot.supportTreeHash,
+            trialabilityReportHash,
+            trialMode,
+            runtimeMode,
+          });
+          if (fingerprint) caseReuseFingerprints.set(testCase.id, fingerprint);
+        }
+        const reusableCases = readReusableTrialCases({
+          ws,
+          stageId: stage.id,
+          trialRunsDir: join(stage.rootDir, '.trial-runs'),
+          desiredFingerprints: caseReuseFingerprints,
+          trialabilityReportHash,
+          prerequisiteDigest: preWitness.prerequisiteDigest,
+        });
         const result = await executeTrial(
           ws,
           stage,
@@ -3629,6 +3841,7 @@ export async function trialRunChatYamlStage(
           budgets,
           progress,
           runtimeMode,
+          reusableCases,
         );
         if (controller.signal.aborted) {
           return resultForStopped(result, abortState, startedAt, budgets.lifecycleTimeoutMs);
@@ -3732,6 +3945,11 @@ export async function trialRunChatYamlStage(
             postVerificationHash,
             postWitness.witness,
             trialLiveSmokeReadiness(revalidatedPreparation.prepared, entry),
+            reusableCaseRecords(
+              result,
+              caseReuseFingerprints,
+              preWitness.prerequisiteDigest === postWitness.witness.prerequisiteDigest,
+            ),
             { ...resultWithTrialPlan(result, plan), planTelemetry },
           );
         }

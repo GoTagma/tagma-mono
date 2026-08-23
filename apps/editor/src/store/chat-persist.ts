@@ -158,6 +158,7 @@ export interface PersistedChatYamlResult {
     trialVerification?: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   };
   finalYamlMtimeMs?: number;
+  authoringCompletedAt?: number;
   completedAt: number;
 }
 
@@ -620,6 +621,8 @@ export function validatePersistedChatYamlResult(
     (value.status !== 'ready' && value.status !== 'blocked' && value.status !== 'failed') ||
     !isPersistedCompileResult(value.compile) ||
     (value.finalYamlMtimeMs !== undefined && !isNonNegativeFiniteNumber(value.finalYamlMtimeMs)) ||
+    (value.authoringCompletedAt !== undefined &&
+      !isNonNegativeFiniteNumber(value.authoringCompletedAt)) ||
     !isNonNegativeFiniteNumber(value.completedAt)
   ) {
     return null;

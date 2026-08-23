@@ -32,7 +32,13 @@ function buildPermissionRestrictions(permissions: Permissions): OpenCodePermissi
   if (!permissions.execute) policy.bash = 'deny';
   // A delegated agent has its own tool policy, so allowing `task` would let a
   // restricted prompt escape the current task's read/write/execute envelope.
-  if (!permissions.read || !permissions.write || !permissions.execute) policy.task = 'deny';
+  if (!permissions.read || !permissions.write || !permissions.execute) {
+    policy.task = 'deny';
+    // The effective task cwd is the filesystem coordinate for a restricted
+    // prompt. Never turn a model's parent-directory exploration into an
+    // unattended external-directory permission request.
+    policy.external_directory = 'deny';
+  }
   return policy;
 }
 
@@ -184,6 +190,12 @@ export const OpenCodeDriver: DriverPlugin = {
       args.push('--variant', variant);
     }
 
+    // Pipeline task sessions are transient execution records. Supplying a
+    // deterministic, non-prompt title prevents OpenCode from spending a
+    // separate small-model request (and surfacing unrelated title billing
+    // failures) for every task invocation. A resumed session already has one.
+    if (!sessionId) args.push('--title', `Tagma task ${track.id}.${task.id}`);
+
     // OpenCode applies agent-specific rules after its top-level permission
     // policy. Select a Tagma-owned agent carrying the same deny policy so a
     // user-defined build agent cannot turn a denied tool back on.
@@ -219,6 +231,8 @@ export const OpenCodeDriver: DriverPlugin = {
     const textParts: string[] = [];
     let sawAnyJson = false;
     let errorReason: string | null = null;
+    let finishReason: string | null = null;
+    let finishTokens: { input: number; output: number; reasoning: number } | null = null;
 
     for (const raw of lines) {
       const line = raw.trim();
@@ -256,6 +270,30 @@ export const OpenCodeDriver: DriverPlugin = {
         break;
       }
 
+      if (json.type === 'step_finish') {
+        const part = json.part as Record<string, unknown> | undefined;
+        const reason = part?.reason ?? json.reason;
+        if (typeof reason === 'string' && reason) finishReason = reason;
+        const tokens = part?.tokens;
+        if (tokens && typeof tokens === 'object' && !Array.isArray(tokens)) {
+          const values = tokens as Record<string, unknown>;
+          if (
+            typeof values.input === 'number' &&
+            Number.isFinite(values.input) &&
+            typeof values.output === 'number' &&
+            Number.isFinite(values.output) &&
+            typeof values.reasoning === 'number' &&
+            Number.isFinite(values.reasoning)
+          ) {
+            finishTokens = {
+              input: values.input,
+              output: values.output,
+              reasoning: values.reasoning,
+            };
+          }
+        }
+      }
+
       // Extract human-readable text from text-type parts.
       if (json.type === 'text') {
         const part = json.part as { text?: unknown } | undefined;
@@ -273,12 +311,26 @@ export const OpenCodeDriver: DriverPlugin = {
       return { sessionId, forceFailure: true, forceFailureReason: errorReason };
     }
 
-    // If nothing parsed as JSON, treat stdout as plain text.
-    const normalizedOutput = !sawAnyJson
-      ? stdout
-      : textParts.length > 0
-        ? textParts.join('\n')
-        : stdout;
+    const normalizedText = textParts.join('\n');
+    if (finishReason && ['unknown', 'length', 'content-filter', 'error'].includes(finishReason)) {
+      const zeroTokenDetail = finishTokens
+        ? `; input/output/reasoning tokens: ${finishTokens.input}/${finishTokens.output}/${finishTokens.reasoning}`
+        : '';
+      return {
+        sessionId,
+        normalizedOutput: normalizedText,
+        forceFailure: true,
+        forceFailureReason:
+          finishReason === 'unknown' && normalizedText.length === 0
+            ? `opencode ended without a determinate model response (finish reason: unknown${zeroTokenDetail})`
+            : `opencode model response did not complete normally (finish reason: ${finishReason})`,
+      };
+    }
+
+    // If nothing parsed as JSON, treat stdout as plain text. A normal tool-only
+    // `stop` may intentionally have no final text, so retain its raw stream;
+    // indeterminate finishes above never leak lifecycle NDJSON as task output.
+    const normalizedOutput = !sawAnyJson ? stdout : textParts.length > 0 ? normalizedText : stdout;
 
     return {
       sessionId,

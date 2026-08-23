@@ -88,6 +88,13 @@ gate, so use a final command task such as `pytest` or `bun test`, or configure a
 Check, to verify the generated result. Run details keep the existing Run N/M and task snapshots and
 show repair feedback in a compact expandable section when a failed attempt is retried.
 
+Chat-authored Sandbox Trial keeps revision safety while avoiding mechanical reruns. A new YAML
+revision can seed its draft from the previous Host-authenticated Trial Plan. Successful
+command-only cases are reused only when their complete target closure, fixtures, expectations,
+user-owned support files, runtime mode, capability report, and Host prerequisites are unchanged;
+prompt and triggered closures always run again. The live Trial status includes a Host heartbeat
+and elapsed time during long, otherwise-silent model tasks.
+
 ## Production diagnostics for coding agents
 
 Packaged Tagma builds include an opt-in, read-only diagnostics API for debugging the installed

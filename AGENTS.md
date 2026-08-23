@@ -77,6 +77,12 @@ Do not amend the same commit to include these files after naming them with the c
   match the authenticated staged Trial snapshot. Missing, deleted, or divergent staged sources
   require Sandbox coverage of the excluded terminal branch. Command tasks ignore middleware.
 
+## Runtime Abort Listener Capacity
+
+- Size each run-owned AbortSignal listener budget from its finite DAG task count so legitimate
+  high-concurrency runs do not emit EventTarget leak warnings. Never disable listener warnings
+  globally, and keep every per-task listener cleanup path authoritative.
+
 ## Runtime Waiting-State Observability
 
 - Represent a waiting cause with the safe `TaskWaitReason` wire shape only: qualified dependency

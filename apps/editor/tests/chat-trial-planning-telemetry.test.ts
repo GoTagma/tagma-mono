@@ -92,7 +92,9 @@ test('planning telemetry counts physical prompts, unique assistant usage, and cu
     toolAttemptCount: 3,
     validationRejectionCount: 2,
     repeatedValidationRejectionCount: 1,
-    elapsedMs: 2_000,
+    // Only the two physical planner windows count (500ms each); the gap
+    // between them and later Trial execution are not planning time.
+    elapsedMs: 1_000,
     inputTokens: 1_500,
     outputTokens: 120,
     reasoningTokens: 30,

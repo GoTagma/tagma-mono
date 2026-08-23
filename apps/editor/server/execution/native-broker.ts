@@ -178,6 +178,7 @@ const TAGMA_PIPELINE_TASK_PERMISSION_KEYS = new Set([
   'edit',
   'bash',
   'task',
+  'external_directory',
   'tagma_yaml_skeleton',
   'tagma_placement_plan',
   'tagma_trial_plan',

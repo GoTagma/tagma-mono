@@ -265,6 +265,71 @@ test('host accepts the exact authenticated plan and rejects later direct changes
   }
 });
 
+test('a new YAML revision seeds its draft from the prior authenticated plan', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-plan-revision-seed-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    const firstYaml = ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n');
+    writeFileSync(yamlPath, firstYaml, 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 2);
+    const tool = await loadGeneratedTool(root);
+    const context = { directory: agentTagmaDir };
+    const args = { ...invalidPlanArgs(yamlPath), coverage: acceptedRiskCoverage() };
+    await submitTrialPlan(tool, args, context, 'host-first-revision');
+    const firstHash = createHash('sha1').update(firstYaml).digest('hex');
+
+    const secondYaml = firstYaml.replace('name: demo', 'name: demo revised');
+    writeFileSync(yamlPath, secondYaml, 'utf8');
+    issueTrialPlanAttempt(args, context, 'host-second-revision');
+    const begun = JSON.parse(
+      await tool.execute(
+        {
+          operation: 'begin',
+          attempt_id: 'host-second-revision',
+          pipeline_path: yamlPath,
+          summary: 'Review the prior plan against the revised pipeline.',
+          goals: ['Exercise the command after the revision.'],
+        },
+        context,
+      ),
+    ) as Record<string, unknown>;
+
+    expect(begun).toMatchObject({
+      operation: 'begin',
+      cases: 1,
+      coverage: 9,
+      findings: 0,
+      seededFromYamlHash: firstHash,
+    });
+    await tool.execute(
+      {
+        operation: 'commit',
+        attempt_id: 'host-second-revision',
+        pipeline_path: yamlPath,
+      },
+      context,
+    );
+
+    const secondHash = createHash('sha1').update(secondYaml).digest('hex');
+    const committed = JSON.parse(
+      readFileSync(yamlPath.replace(/\.yaml$/u, '.trial-plan.json'), 'utf8'),
+    ) as { yamlHash: string; cases: Array<{ id: string }> };
+    expect(committed.yamlHash).toBe(secondHash);
+    expect(committed.cases.map((item) => item.id)).toEqual(['command']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('generated trial plan tool rejects malformed coverage entries before commit and preserves the attempt budget', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-precommit-coverage-'));
   try {
@@ -570,6 +635,79 @@ test('generated trial plan tool rejects malformed findings before commit and pre
     rmSync(root, { recursive: true, force: true });
   }
 });
+test('generated trial plan commit-plan counts invalid complete submissions and blocks same-attempt retries', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-complete-plan-budget-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 2);
+    const tool = await loadGeneratedTool(root);
+    const args = invalidPlanArgs(yamlPath);
+    const firstAttemptId = 'host-complete-invalid';
+    const context = { directory: agentTagmaDir };
+    issueTrialPlanAttempt(args, context, firstAttemptId);
+
+    await expect(
+      tool.execute(
+        {
+          operation: 'commit-plan',
+          attempt_id: firstAttemptId,
+          ...args,
+        },
+        context,
+      ),
+    ).rejects.toThrow('trial plan coverage is missing');
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+      attemptIds: [firstAttemptId],
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
+      successfulWriteCount: 0,
+    });
+
+    await expect(
+      tool.execute(
+        {
+          operation: 'commit-plan',
+          attempt_id: firstAttemptId,
+          ...args,
+          coverage: acceptedRiskCoverage(),
+        },
+        context,
+      ),
+    ).rejects.toThrow('commit was already submitted for this host attempt');
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2).toolAttemptCount).toBe(1);
+
+    const secondAttemptId = 'host-complete-valid';
+    issueTrialPlanAttempt(args, context, secondAttemptId);
+    await tool.execute(
+      {
+        operation: 'commit-plan',
+        attempt_id: secondAttemptId,
+        ...args,
+        coverage: acceptedRiskCoverage(),
+      },
+      context,
+    );
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+      attemptIds: [firstAttemptId, secondAttemptId],
+      toolAttemptCount: 2,
+      validationRejectionCount: 1,
+      successfulWriteCount: 1,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('generated trial plan tool rejects malformed persisted draft sections before an attempt', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-resume-invalid-'));
   try {

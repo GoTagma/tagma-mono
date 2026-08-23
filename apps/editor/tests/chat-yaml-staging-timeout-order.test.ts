@@ -218,6 +218,7 @@ afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.captureHostWitnessAsync;
   delete __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync;
   delete __chatPipelineTrialRunTestHooks.onProgress;
+  delete __chatPipelineTrialRunTestHooks.heartbeatIntervalMsOverride;
   delete __chatPipelineTrialRunTestHooks.timeoutMsOverride;
   delete (
     __chatPipelineTrialRunTestHooks as typeof __chatPipelineTrialRunTestHooks & {
@@ -406,6 +407,7 @@ describe('chat YAML staging async witness ordering', () => {
       phase: string;
       startedAt: number;
       updatedAt: number;
+      heartbeatAt: number;
       caseId: string | null;
       caseTitle: string | null;
       caseIndex: number | null;
@@ -454,6 +456,9 @@ describe('chat YAML staging async witness ordering', () => {
       runNumber: 1,
       runCount: 1,
     });
+    expect(progressUpdates.every((progress) => progress.heartbeatAt >= progress.updatedAt)).toBe(
+      true,
+    );
     expect(
       progressUpdates.every(
         (progress) =>

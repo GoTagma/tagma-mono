@@ -63,6 +63,7 @@ import {
   tagmaDirOf,
 } from './pipeline-paths.js';
 import { pipelineManifestPath, runPipelineManifestSync } from './pipeline-manifest.js';
+import { runPipelineLayoutSync } from './pipeline-layout-sync.js';
 import {
   assertRequirementsConsistentWithYamlChange,
   parseRequirementsMd,
@@ -86,7 +87,12 @@ import {
   DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   isValidChatPipelineTrialPlanAttempts,
 } from '../shared/chat-pipeline-trial-plan-limit.js';
-import { CREATE_NEW_PIPELINE_ACTION_KIND } from '../shared/requested-action.js';
+import {
+  CREATE_NEW_PIPELINE_ACTION_KIND,
+  FILL_MANUAL_NEW_PIPELINE_ACTION_KIND,
+  isPipelineRequestedActionKind,
+  type PipelineRequestedActionKind,
+} from '../shared/requested-action.js';
 
 const STAGING_DIR_NAME = '.chat-staging';
 const STAGE_METADATA_FILE = 'stage.json';
@@ -287,7 +293,7 @@ interface ChatYamlStageMetadata {
     attemptId: string;
   } | null;
   activeRelativePath: string | null;
-  requestedAction: typeof CREATE_NEW_PIPELINE_ACTION_KIND | null;
+  requestedAction: PipelineRequestedActionKind | null;
   createTargetRelativePath: string | null;
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
@@ -331,7 +337,7 @@ export interface ChatYamlStageDescriptor {
   trialPlanMaxAttempts: number;
   activeRelativePath: string | null;
   activeStagedPath: string | null;
-  requestedAction: typeof CREATE_NEW_PIPELINE_ACTION_KIND | null;
+  requestedAction: PipelineRequestedActionKind | null;
   createTargetRelativePath: string | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
@@ -992,10 +998,9 @@ function readMetadata(
           attemptId: rawTrialPlanAttempt.attemptId,
         }
       : null;
-  const requestedAction =
-    raw.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
-      ? CREATE_NEW_PIPELINE_ACTION_KIND
-      : null;
+  const requestedAction = isPipelineRequestedActionKind(raw.requestedAction)
+    ? raw.requestedAction
+    : null;
   const createTargetRelativePath =
     typeof raw.createTargetRelativePath === 'string'
       ? assertPortableRelativePath(raw.createTargetRelativePath)
@@ -1013,8 +1018,14 @@ function readMetadata(
     trialPlanMaxAttempts === null ||
     (requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
       ? createTargetRelativePath === null || raw.activeRelativePath !== createTargetRelativePath
-      : createTargetRelativePath !== null ||
-        (raw.requestedAction !== null && raw.requestedAction !== undefined)) ||
+      : requestedAction === FILL_MANUAL_NEW_PIPELINE_ACTION_KIND
+        ? createTargetRelativePath !== null ||
+          typeof raw.activeRelativePath !== 'string' ||
+          !raw.sourceRelativePaths.some((item) =>
+            samePipelineRelativePath(item, raw.activeRelativePath as string),
+          )
+        : createTargetRelativePath !== null ||
+          (raw.requestedAction !== null && raw.requestedAction !== undefined)) ||
     !Array.isArray(raw.baseEntries) ||
     !raw.baseEntries.every(isBaseEntry)
   ) {
@@ -1257,7 +1268,7 @@ export function createChatYamlStage(
   ws: WorkspaceState,
   options: {
     activePath?: string | null;
-    requestedAction?: typeof CREATE_NEW_PIPELINE_ACTION_KIND | null;
+    requestedAction?: PipelineRequestedActionKind | null;
   } = {},
 ): ChatYamlStageDescriptor {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
@@ -1287,13 +1298,24 @@ export function createChatYamlStage(
       baseEntries.push({ relativePath: relativeYamlPath, ...hashes });
       if (samePath(options.activePath, source.yamlPath)) activeRelativePath = relativeYamlPath;
     }
-    const requestedAction =
-      options.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
-        ? CREATE_NEW_PIPELINE_ACTION_KIND
-        : null;
-    const createTargetRelativePath = requestedAction
-      ? reserveCreateTargetRelativePath(sourceRelativePaths)
+    const requestedAction = isPipelineRequestedActionKind(options.requestedAction)
+      ? options.requestedAction
       : null;
+    if (requestedAction === FILL_MANUAL_NEW_PIPELINE_ACTION_KIND) {
+      if (
+        !options.activePath ||
+        !samePath(options.activePath, ws.manualNewPipelineYamlPath) ||
+        activeRelativePath === null
+      ) {
+        throw new Error(
+          'A fill-manual pipeline turn must target the exact current manual new pipeline draft.',
+        );
+      }
+    }
+    const createTargetRelativePath =
+      requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+        ? reserveCreateTargetRelativePath(sourceRelativePaths)
+        : null;
     if (createTargetRelativePath) activeRelativePath = createTargetRelativePath;
     const metadata: ChatYamlStageMetadata = {
       version: STAGE_VERSION,
@@ -1528,7 +1550,7 @@ export function compileChatYamlStage(
   stageId: string,
   relativePath: string,
 ): ReturnType<typeof runCompileAndWriteLog> {
-  const { paths } = readMetadata(ws, stageId);
+  const { paths, metadata } = readMetadata(ws, stageId);
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   const stagedPath = resolveStagedYamlPath(paths, relativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
@@ -1537,8 +1559,13 @@ export function compileChatYamlStage(
     runPipelineManifestSync(stagedPath);
     runRequirementsSync(stagedPath);
   } catch {
-    // Compile output is still authoritative; companion sync errors are
+    // Compile output is still authoritative; these companion sync errors are
     // surfaced again during finalize where writes are transactional.
+  }
+  const hostOwnsBasicLayout =
+    metadata.requestedAction !== null || baseEntryFor(metadata, relativePath) === null;
+  if (result.success && hostOwnsBasicLayout && runPipelineLayoutSync(stagedPath) === null) {
+    throw new Error('Host-managed new-pipeline layout synchronization failed.');
   }
   return result;
 }

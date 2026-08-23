@@ -351,12 +351,11 @@ export async function collectStream(
     if (reader && typeof reader.releaseLock === 'function') {
       try {
         reader.releaseLock();
-      } catch (err) {
-        // The drain has already reached done (or recorded its read failure),
-        // so a release-only defect must not change output completeness.
-        console.error(
-          `[runner] failed to release ${streamName} reader: ${err instanceof Error ? err.message : String(err)}`,
-        );
+      } catch {
+        // Bun can expose a callable releaseLock whose implementation throws
+        // after a completed concurrent drain. The read loop above already
+        // established completeness (or recorded the real read failure), so
+        // cleanup incompatibility is intentionally silent and non-evidentiary.
       }
     }
     if (outputRedactor && redactorDecoder && redactorEncoder) {

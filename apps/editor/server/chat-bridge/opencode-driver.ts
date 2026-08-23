@@ -41,8 +41,8 @@ import { runPipelineManifestSync } from '../pipeline-manifest.js';
 import { toOpencodeError } from '../../shared/opencode-errors.js';
 import { buildTagmaSessionMetadata } from '../../shared/opencode-session-metadata.js';
 import {
-  createNewPipelineRequestedActionLines,
-  fillManualNewPipelineRequestedActionLines,
+  requestedActionLines,
+  resolveHostPipelineRequestedAction,
 } from '../../shared/requested-action.js';
 
 interface ClientCacheEntry {
@@ -345,20 +345,19 @@ function workspaceYamlFolders(workDir: string): WorkspaceYamlFolderEntry[] {
   }
 }
 
-function buildBotEditorContext(workspaceKey: string, userText?: string): string {
+function buildBotEditorContext(workspaceKey: string): string {
   const ws = workspaceRegistry.get(workspaceKey);
   const workDir = ws?.workDir ?? workspaceKey;
   if (!workDir) return '';
 
   const lines = [`  <workspace>${workDir}</workspace>`];
-  const requestContext = {
+  const requestedAction = resolveHostPipelineRequestedAction({
     currentPipelineIsManualNewDraft: sameFilesystemPath(
       ws?.manualNewPipelineYamlPath,
       ws?.yamlPath,
     ),
-  };
-  lines.push(...fillManualNewPipelineRequestedActionLines(userText, requestContext));
-  lines.push(...createNewPipelineRequestedActionLines(userText, requestContext));
+  });
+  if (requestedAction) lines.push(...requestedActionLines(requestedAction));
   const currentFile = workspaceRelativePath(workDir, ws?.yamlPath);
   if (currentFile) lines.push(`  <current-file>${currentFile}</current-file>`);
   const yamlFolders = workspaceYamlFolders(workDir);
@@ -413,7 +412,7 @@ export function buildBotPromptAsyncBody(
   return {
     ...(model ? { model } : {}),
     agent: TAGMA_ROUTER_AGENT,
-    parts: [{ type: 'text', text: buildBotEditorContext(workspaceKey, text) + text }],
+    parts: [{ type: 'text', text: buildBotEditorContext(workspaceKey) + text }],
   };
 }
 

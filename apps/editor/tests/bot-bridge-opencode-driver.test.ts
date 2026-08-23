@@ -221,7 +221,7 @@ describe('opencode-driver bot prompt body', () => {
     }
   });
 
-  test('marks remote bot create-pipeline turns so similar existing pipelines are not edit targets', () => {
+  test('leaves remote natural-language create intent to the model router', () => {
     const workDir = mkdtempSync(join(tmpdir(), 'tagma-bot-create-intent-'));
     try {
       workspaceRegistry.getOrCreate(workDir);
@@ -232,10 +232,7 @@ describe('opencode-driver bot prompt body', () => {
       const body = buildBotPromptAsyncBody(workDir, 'create a new deploy pipeline');
       const text = body.parts[0]?.text ?? '';
 
-      expect(text).toContain('<requested-action kind="create-new-pipeline">');
-      expect(text).toContain(
-        '<collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
-      );
+      expect(text).not.toContain('<requested-action');
       expect(text).toContain('<yaml>.tagma/deploy/deploy.yaml</yaml>');
     } finally {
       workspaceRegistry.drop(workDir);
@@ -257,7 +254,7 @@ describe('opencode-driver bot prompt body', () => {
       ws.yamlPath = currentYaml;
       ws.manualNewPipelineYamlPath = currentYaml;
 
-      const body = buildBotPromptAsyncBody(workDir, '请创建一个新的 deploy pipeline，负责发布');
+      const body = buildBotPromptAsyncBody(workDir, '把当前草稿完善成可运行版本');
       const text = body.parts[0]?.text ?? '';
 
       expect(text).toContain('<requested-action kind="fill-manual-new-pipeline">');

@@ -229,6 +229,37 @@ test('collectStream bypasses iterator cleanup that assumes a missing releaseLock
   });
 });
 
+test('collectStream treats a throwing releaseLock as compatibility cleanup after a complete drain', async () => {
+  const bytes = new TextEncoder().encode('complete');
+  let readCount = 0;
+  const stream = {
+    getReader() {
+      return {
+        async read() {
+          return readCount++ === 0
+            ? { done: false, value: bytes }
+            : { done: true, value: undefined };
+        },
+        releaseLock() {
+          throw new TypeError('undefined is not a function');
+        },
+      };
+    },
+  } as unknown as ReadableStream<Uint8Array>;
+  const originalError = console.error;
+  const errors: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  try {
+    const result = await collectStream(stream, undefined, 1024, 'stdout');
+    expect(result).toMatchObject({ text: 'complete', complete: true, error: null });
+    expect(errors).toEqual([]);
+  } finally {
+    console.error = originalError;
+  }
+});
+
 test('collectStream reports a real mid-read failure without contaminating captured output', async () => {
   const prefix = new TextEncoder().encode('valid-prefix');
   const stream = readerBackedStream([

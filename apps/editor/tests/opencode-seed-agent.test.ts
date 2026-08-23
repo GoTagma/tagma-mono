@@ -10,6 +10,7 @@ import {
   buildTagmaGeneralDiscussionAgent,
   buildTagmaHistoryCompareAgent,
   buildTagmaNativePrimitivesSkill,
+  buildTagmaPlanDelegateSkill,
   buildTagmaPipelineAgent,
   buildTagmaPipelineDiagnosisAgent,
   buildTagmaPipelinePlannerAgent,
@@ -23,6 +24,7 @@ import {
   buildTagmaTriggerStrategySkill,
   buildTagmaYamlContractSkill,
   buildTagmaYamlReviewAgent,
+  buildTagmaYamlSkeletonTool,
   seedOpencodeArtifacts,
 } from '../server/opencode-seed';
 import {
@@ -85,6 +87,18 @@ function issueGeneratedTrialPlanAttempt(
     'utf8',
   );
   return attemptId;
+}
+
+async function loadGeneratedYamlSkeletonTool(): Promise<{
+  execute(args: Record<string, unknown>): Promise<string>;
+}> {
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-generated-yaml-skeleton-tool-'));
+  const path = join(dir, 'tagma_yaml_skeleton.ts');
+  writeFileSync(path, buildTagmaYamlSkeletonTool(), 'utf8');
+  const loaded = (await import(`${pathToFileURL(path).href}?test=${Date.now()}`)) as {
+    default: { execute(args: Record<string, unknown>): Promise<string> };
+  };
+  return loaded.default;
 }
 
 async function loadGeneratedTrialPlanTool(): Promise<{
@@ -413,21 +427,28 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   const doc = buildTagmaRouterAgent();
 
   expect(doc).toContain('For `pipeline_work`, call `tagma-pipeline` first and only');
-  expect(doc).toContain('never pre-read through diagnosis or relay artifact contents');
+  expect(doc).toContain('never pre-read or relay artifacts');
   expect(doc).toContain('the worker owns lookup and implementation');
   expect(doc).toContain('Only Result recovery may add a call');
+  expect(doc).toContain(
+    'When the semantic request is to create a new pipeline and no Host action marker exists',
+  );
+  expect(doc).toContain('fresh sibling path and preserve every inventoried YAML');
+  expect(doc).toContain(
+    'Do not ask the worker to write generated manifest, basic layout, or requirements frontmatter',
+  );
+  expect(doc).toContain('Host derives those companions from the final YAML');
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
-  expect(doc).toContain('A task lifecycle state of `completed` is not deliverable success');
-  expect(doc).toContain('empty, planning-only, or otherwise unusable');
-  expect(doc).toContain('Managed sessions never allow `task_id` reuse');
+  expect(doc).toContain('A `completed` task is not deliverable success');
+  expect(doc).toContain('empty, planning-only, or unusable pipeline result');
+  expect(doc).toContain('Never reuse `task_id`');
   expect(doc).toContain('launch exactly one fresh `tagma-pipeline` child');
   expect(doc).toContain('same staged root and handoff');
-  expect(doc).toContain('inspect and continue any partial staged artifacts');
-  expect(doc).toContain('If the fresh child is also unusable, stop');
-  expect(doc).toContain('report only observed result facts');
-  expect(doc).toContain('Do not speculate about infrastructure or tooling causes');
-  expect(doc).toContain('`pipeline_work`: relay');
-  expect(doc).toContain('authoring complete; host verification pending');
+  expect(doc).toContain('inspect partial artifacts');
+  expect(doc).toContain('If it is also unusable, stop');
+  expect(doc).toContain('observed facts only');
+  expect(doc).toContain('no speculation or further retry');
+  expect(doc).toContain('Relay `authoring complete; host verification pending`');
   expect(doc).toContain('compilation cannot mean built, ready, successful, or verified');
 });
 
@@ -439,7 +460,7 @@ test('router recovery never instructs task_id reuse that the context-window plug
   const doc = buildTagmaRouterAgent();
   expect(doc).not.toContain('resume the same');
   expect(doc).not.toContain('resume the prior planner task');
-  expect(doc).toContain('Managed sessions never allow `task_id` reuse');
+  expect(doc).toContain('Never reuse `task_id`');
   expect(doc).toContain('never reuse a `task_id`');
 });
 
@@ -463,13 +484,21 @@ test('routine pipeline authoring stays in one worker model without nested task f
   const doc = buildTagmaPipelineAgent('Windows');
 
   expect(doc).toContain('task: false');
-  expect(doc).toContain('Author YAML, layout, requirements, and host-native helper files directly');
+  expect(doc).toContain(
+    'Author YAML and only genuinely user-owned companion or helper content directly',
+  );
   expect(doc).toContain(
     'Do not call the task tool for planning, command evidence, safety, or review',
   );
   expect(doc).toContain('make the smallest safe, reversible implementation choice');
   expect(doc).toContain(
-    'For a routine create covered by these rules, do not load `tagma-yaml-contract`',
+    'For any new target without an existing YAML stub, call `tagma_yaml_skeleton` exactly once',
+  );
+  expect(doc).toContain(
+    'typed in-memory description containing the final prompt/command, permissions, bindings, completion, and result_contract',
+  );
+  expect(doc).toContain(
+    'Use the returned schema-valid structure as the write base, then add only advanced fields required by the design',
   );
   expect(doc).not.toContain('## Subagent Dispatch');
   expect(doc).not.toContain('## Manifest Step Implementation Protocol');
@@ -512,6 +541,7 @@ test('tagma-pipeline requires explicit mutation authorization before any write',
 
   expect(doc).toContain('## Mutation Authorization Gate');
   expect(doc).toContain('The latest user text must explicitly request a file change');
+  expect(doc).toContain('Host action markers select and constrain a target; they do not replace');
   expect(doc).toContain('Debug, inspect, explain, review, and why/how questions are read-only');
   expect(doc).toContain('do not write, create, rename, or delete anything');
   expect(doc).toContain('ROUTE_MISMATCH: pipeline_diagnosis');
@@ -526,15 +556,20 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('## Modes');
   expect(doc).toContain('Fill current manual-New draft');
   expect(doc).toContain('Edit current');
-  expect(doc).toContain('Create new');
+  expect(doc).toContain('Create/fill new');
+  expect(doc).toContain('A router-classified create without a Host action marker');
+  expect(doc).toContain('fresh unused sibling path');
+  expect(doc).toContain('must not modify `<current-file>` or any inventoried YAML');
   expect(doc).toContain('## Manifest-Guided YAML Edits');
   expect(doc).toContain(
-    'Read the same-folder `<stem>.manifest.json` before reading or editing YAML',
+    'read the same-folder `<stem>.manifest.json` before reading or editing YAML',
   );
   expect(doc).toContain('preserve every unselected section');
-  expect(doc).toContain('For **create new**, write the manifest');
+  expect(doc).toContain('Host-Managed New-Pipeline Companions');
+  expect(doc).toContain('Never patch the generated manifest');
   expect(doc).toContain('Bypass the manifest only when it is missing, unreadable, stale');
-  expect(doc).toContain('compile.log');
+  expect(doc).toContain('replace the target `.yaml` suffix with `.compile.log`');
+  expect(doc).toContain('Never search parent staging directories for compile evidence');
   expect(doc).toContain('Never finish after a YAML write');
   expect(doc).toContain('success: true');
   expect(doc).toContain('Settings -> Secrets Manager');
@@ -550,16 +585,14 @@ test('tagma-pipeline completes a design gate before generating a new pipeline', 
 
   expect(designGate).toBeGreaterThan(0);
   expect(manifestFlow).toBeGreaterThan(designGate);
-  expect(doc).toContain('create-new and fill-manual-new requests');
+  expect(doc).toContain('For every new-pipeline request');
   expect(doc).toContain('goal and observable success evidence');
   expect(doc).toContain('task graph and typed dataflow');
   expect(doc).toContain('Trigger acceptance must match every promised input path or variant');
   expect(doc).toContain('exact file triggers are not globs or extension sets');
-  expect(doc).toContain('Do not write the manifest, call `tagma_yaml_skeleton`, or write YAML');
+  expect(doc).toContain('Do not write YAML until the design is coherent');
   expect(doc).toContain('complete this gate in the current worker');
-  expect(doc).toContain(
-    'For **create new**, write the manifest only after completing the Design-Before-Generation Gate',
-  );
+  expect(doc).toContain('For every new staged YAML, write the final YAML after the design gate');
 });
 
 test('pipeline authoring uses native prompt outputs without inventing duplicate files', () => {
@@ -587,14 +620,93 @@ test('pipeline authoring uses native prompt outputs without inventing duplicate 
   expect(nativePrimitives).toContain(
     "For a fixed conversational question with no downstream data contract, use the user's question itself as the prompt",
   );
-  expect(nativePrimitives).toContain('write `{"positions": <returned positions>, "folders": []}`');
+  expect(pipeline).toContain(
+    'For a fixed conversational prompt with no workspace or tool dependency, set `permissions: { read: false, write: false, execute: false }`',
+  );
+  expect(nativePrimitives).toContain(
+    'For a fixed conversational prompt with no workspace or tool dependency, set all three permissions to false',
+  );
+  expect(nativePrimitives).toContain(
+    'Host regenerates the manifest, basic layout positions, and requirements frontmatter',
+  );
   expect(nativePrimitives).toContain('does not require the full YAML contract skill');
+});
+
+test('multi-step planning keeps new-pipeline companions Host-owned', () => {
+  const planDelegate = buildTagmaPlanDelegateSkill();
+
+  expect(planDelegate).toContain(
+    'For a newly created staged pipeline, write YAML and user-owned support files only',
+  );
+  expect(planDelegate).toContain(
+    'Host owns generated manifest, basic layout, and requirements frontmatter',
+  );
+  expect(planDelegate).not.toContain('Write YAML and layout, then run the compile-log repair loop');
+  expect(planDelegate).not.toContain(
+    'Keep YAML/layout/requirements writes in the pipeline create/edit agents',
+  );
+});
+
+test('schema-driven YAML generation emits least-authority prompt tasks and rejects ambiguous result contracts', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+  const baseSection = {
+    id: 'task:main.answer',
+    type: 'prompt',
+    track: 'main',
+    task: 'answer',
+    summary: 'Answer',
+    prompt: 'How are you?',
+    result_contract: 'none',
+  };
+  const result = JSON.parse(
+    await tool.execute({
+      manifest: {
+        pipeline: { name: 'Greeting' },
+        sections: [{ id: 'track:main', type: 'track', summary: 'Main' }, baseSection],
+      },
+    }),
+  ) as { yaml: string };
+
+  expect(result.yaml).toContain('prompt: "How are you?"');
+  expect(result.yaml).toContain('permissions:');
+  expect(result.yaml).toContain('read: false');
+  expect(result.yaml).toContain('write: false');
+  expect(result.yaml).toContain('execute: false');
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'No-result contradiction' },
+        sections: [
+          { id: 'track:main', type: 'track', summary: 'Main' },
+          { ...baseSection, outputs: ['reply'] },
+        ],
+      },
+    }),
+  ).rejects.toThrow('declares no result but also defines outputs or a file completion');
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Contradictory' },
+        sections: [
+          { id: 'track:main', type: 'track', summary: 'Main' },
+          {
+            ...baseSection,
+            result_contract: undefined,
+            outputs: ['reply'],
+            completion: { type: 'file_exists', path: 'work/reply.json' },
+          },
+        ],
+      },
+    }),
+  ).rejects.toThrow('must choose one result contract');
 });
 
 test('seed prompts require a scope-aware edge-case review after pipeline creation', () => {
   const pipeline = buildTagmaPipelineAgent('Windows');
   const createWrite = pipeline.indexOf(
-    'For **create new**, write the manifest only after completing the Design-Before-Generation Gate',
+    'For every new staged YAML, write the final YAML after the design gate',
   );
   const edgeCaseReview = pipeline.indexOf('## Self-Review And Edge Cases');
 
@@ -684,7 +796,7 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
       'Every finding must include `severity`, `repairScope`, `summary`, and `evidence`',
     );
     expect(planner).toContain('resubmit both fields when resuming a matching draft');
-    expect(planner).toContain('Never submit the whole plan or multiple cases in one call');
+    expect(planner).toContain('Minimal Fixed-Prompt Fast Lane below is the sole exception');
     expect(planner).toContain(
       'configured finite commit budget for each exact staged path and YAML hash',
     );
@@ -762,24 +874,27 @@ test('tagma-pipeline agent treats explicit creation as higher priority than exis
   const router = buildTagmaRouterAgent();
   const pipeline = buildTagmaPipelineAgent('Windows');
 
-  expect(router).toContain('preserve `<requested-action kind="create-new-pipeline">`');
-  expect(router).toContain('do not rewrite a create/new pipeline request into an edit target');
-  expect(router).toContain('<requested-action kind="fill-manual-new-pipeline">');
+  expect(router).toContain('Preserve either Host `<requested-action>`');
+  expect(router).toContain('do not rewrite create into edit');
+  expect(router).toContain('Never synthesize an action marker');
+  expect(router).toContain(
+    'label an existing current file a create target when the marker is absent',
+  );
 
-  expect(pipeline).toContain('fill the manual New draft at `<current-file>`');
+  expect(pipeline).toContain('Host-selected manual New draft at `<current-file>`');
+  expect(pipeline).toContain('edit `<current-file>` in place');
+  expect(pipeline).toContain('creation wins over name matches');
+  expect(pipeline).toContain('an exact create marker uses its Host-selected target');
   expect(pipeline).toContain(
-    'edit `<current-file>` in place even if the user used create/new wording',
+    'A router-classified create without a Host action marker uses a fresh unused sibling',
   );
-  expect(pipeline).toContain('Creation intent has priority over existing pipeline matches');
+  expect(pipeline).toContain('inventoried YAMLs are collision context and must remain unchanged');
   expect(pipeline).toContain(
-    'Existing `<workspace-yaml-folders>` entries are collision context, not edit targets',
+    'Without a Host action marker, never repurpose an existing `<current-file>` as a new pipeline',
   );
-  expect(pipeline).toContain('If the desired stem already exists, choose a fresh unused stem');
   expect(pipeline).toContain(
-    'Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request',
+    'For every new staged YAML, write the final YAML after the design gate',
   );
-  expect(pipeline).toContain('call `tagma_yaml_skeleton`');
-  expect(pipeline).toContain('write the returned YAML text');
 });
 
 test('tagma-pipeline applies Chat AI defaults only while creating a new pipeline', () => {
@@ -794,17 +909,16 @@ test('tagma-pipeline applies Chat AI defaults only while creating a new pipeline
   expect(doc).toContain('An explicit user provider/model choice wins');
   expect(doc).toContain('persist `model: <provider-id>/<model-id>`');
   expect(doc).toContain('Never copy the OpenCode Chat model to a non-`opencode` driver');
-  expect(doc).toContain('Do not apply these defaults while editing an existing pipeline');
-  expect(router).toContain(
-    'preserve `<opencode-chat-model provider-id="..." model-id="..." />` unchanged',
-  );
+  expect(doc).toContain('Do not apply these defaults to existing-pipeline edits or runtime');
+  expect(router).toContain('create/fill `<opencode-chat-model>` unchanged');
 });
 
-test('tagma-pipeline agent keeps manifest-first flow while enforcing section isolation', () => {
+test('tagma-pipeline keeps generated companions Host-owned while enforcing edit isolation', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc).toContain('Create new (manifest-first)');
-  expect(doc).toContain('tagma_yaml_skeleton');
+  expect(doc).toContain('Host-Managed New-Pipeline Companions');
+  expect(doc).toContain('Never patch the generated manifest');
+  expect(doc).toContain('call `tagma_placement_plan` for this Host-managed initial layout');
   expect(doc).not.toContain('POST /api/create-from-manifest');
   expect(doc).toContain('## Section Isolation Protocol');
   expect(doc).toContain('Treat each manifest section as the editing unit');
@@ -829,7 +943,7 @@ test('tagma-pipeline agent honors protected current pipeline context', () => {
   expect(doc).toContain("edit that entry's `<yaml>` file even if it is not `<current-file>`");
   expect(doc).toContain('Never call `read` with only `{ "limit": ... }`');
   expect(doc).toContain('read({ "filePath": "pipeline-9giapbf6.yaml" })');
-  expect(doc).toContain('resolve the target `<pipeline>` entry from the user');
+  expect(doc).toContain('Existing YAML edits read the manifest');
   expect(doc).toContain('protected="true"');
   expect(doc).toContain('active run');
   expect(doc).toContain('current pipeline is running');
@@ -844,7 +958,7 @@ test('tagma-pipeline agent allows workspace reads while restricting writes to .t
 
   expect(doc).toContain('Read / Write Boundary');
   expect(doc).toContain('You may read under the workspace root');
-  expect(doc).toContain('only paths that resolve inside `<workspace>/.tagma/`');
+  expect(doc).toContain('write only paths inside `<workspace>/.tagma/`');
   expect(doc).toContain('Never guess unrelated project scripts');
   expect(doc).toContain('Strip a leading `.tagma/`');
 });
@@ -853,12 +967,11 @@ test('tagma-pipeline agent treats chat staging as the only readable and writable
   const doc = buildTagmaPipelineAgent('Windows');
 
   expect(doc).toContain('sole filesystem read/write boundary');
-  expect(doc).toContain('Read, write, create, rename, and delete only under its `<agent-root>`');
-  expect(doc).toContain('Do not inspect or access the live workspace or live `.tagma` outside it');
-  expect(doc).toContain('Never translate them back');
-  expect(doc).toContain('do not derive target identity from cwd');
-  expect(doc).toContain('paths are absolute paths inside it');
-  expect(doc).toContain('Use those absolute staged paths exactly');
+  expect(doc).toContain('never access live workspace paths');
+  expect(doc).toContain('never translate them back');
+  expect(doc).toContain('never derive target identity from cwd');
+  expect(doc).toContain('absolute staged coordinates');
+  expect(doc).toContain('use them exactly');
   expect(doc).not.toContain('your cwd is exactly `<agent-root>`');
   expect(doc).not.toContain('paths are already relative to it');
   expect(doc).toContain('read: ask');
@@ -875,8 +988,7 @@ test('tagma-pipeline agent allows external file and directory trigger watch path
   const contractSkill = buildTagmaYamlContractSkill();
 
   expect(pipelineDoc).toContain('file/directory trigger watch paths may be absolute');
-  expect(pipelineDoc).toContain('authoring the reference is allowed');
-  expect(pipelineDoc).toContain('without reading or writing that external path');
+  expect(pipelineDoc).toContain('authoring a reference does not authorize accessing it');
   expect(triggerSkill).toContain('file/directory trigger watch paths may be absolute');
   expect(contractSkill).toContain('file/directory trigger watch paths may be absolute');
 });
@@ -952,7 +1064,7 @@ test('tagma-pipeline agent exposes direct tools and focused skills without advis
   expect(doc).toContain('tagma-python-tools: "deny"');
   expect(doc).toContain('tagma-yaml-contract: "allow"');
   expect(doc).toContain(
-    'For a routine create covered by these rules, do not load `tagma-yaml-contract`',
+    'Load `tagma-yaml-contract` only when an advanced field is absent here or compile feedback requires repair',
   );
   expect(doc).toContain('tagma-native-primitives: "allow"');
   expect(doc).toContain('tagma-trigger-strategy: "allow"');
@@ -1018,10 +1130,11 @@ test('tagma-pipeline agent self-reviews once without another model turn', () => 
   expect(doc).not.toContain('## Review Agent Loop');
 });
 
-test('tagma-pipeline agent authors manifest sections directly', () => {
+test('tagma-pipeline agent authors YAML sections without rewriting generated manifests', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc).toContain('fill all selected sections yourself');
+  expect(doc).toContain('write the final YAML after the design gate');
+  expect(doc).toContain('Never patch the generated manifest');
   expect(doc).toContain('patch only selected sections plus forced dependents');
   expect(doc).not.toContain('tagma-pipeline-section-builder: "allow"');
   expect(doc).not.toContain('## Manifest Step Implementation Protocol');
@@ -1067,7 +1180,8 @@ test('tagma-pipeline agent delegates mechanical layout to the placement tool', (
   const doc = buildTagmaPipelineAgent('Windows');
 
   expect(doc).toContain('## Layout');
-  expect(doc).toContain('Do not hand-calculate positions');
+  expect(doc).toContain('The Host owns basic placement for every newly created staged YAML');
+  expect(doc).toContain('For ordinary existing-pipeline topology edits');
   expect(doc).toContain('call `tagma_placement_plan`');
   expect(doc).not.toContain('Rules of thumb for a good initial layout');
   expect(doc).not.toContain('Worked example');
@@ -1091,6 +1205,8 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(doc).toContain('pipeline_path: tool.schema');
   expect(doc).toContain('reset: tool.schema');
   expect(doc).toContain('case: caseSchema.optional()');
+  expect(doc).toContain('cases: tool.schema');
+  expect(doc).toContain("'commit-plan'");
   expect(doc).toContain('Exact staged Target YAML path');
   expect(doc).toContain('duplicate-input-names');
   expect(doc).toContain('multiline-content');
@@ -1110,6 +1226,51 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(doc).toContain('severity: tool.schema.enum(FINDING_SEVERITIES)');
   expect(doc).toContain('assertValidPlan(plan)');
   expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(doc)).not.toThrow();
+});
+
+test('trial-plan tool atomically commits a complete bounded plan in one authenticated call', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const plan = completeTrialPlanToolArgs('sample/sample.yaml');
+    const attemptId = issueGeneratedTrialPlanAttempt('sample/sample.yaml', {
+      directory: stage.agentTagmaDir,
+    });
+
+    const result = JSON.parse(
+      await generated.tool.execute(
+        {
+          operation: 'commit-plan',
+          attempt_id: attemptId,
+          pipeline_path: plan.pipeline_path,
+          summary: plan.summary,
+          goals: plan.goals,
+          cases: plan.cases,
+          coverage: plan.coverage,
+          findings: plan.findings,
+        },
+        { directory: stage.agentTagmaDir },
+      ),
+    ) as { path: string; yamlHash: string };
+
+    expect(result.path).toBe('sample/sample.trial-plan.json');
+    expect(
+      parseChatPipelineTrialPlan(JSON.parse(readFileSync(stage.planPath, 'utf8'))),
+    ).toMatchObject({
+      summary: plan.summary,
+      cases: [{ id: 'all-file-boundaries', runs: 2 }],
+      findings: [],
+    });
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+      attemptIds: [attemptId],
+      toolAttemptCount: 1,
+      validationRejectionCount: 0,
+      successfulWriteCount: 1,
+    });
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
 });
 
 test('trial-plan tool assembles a large plan in bounded draft calls before one commit', async () => {
@@ -1658,7 +1819,7 @@ test('tagma-trial-planner instructs host trial-plan failure handling for live .t
     seedOpencodeArtifacts(dir);
     const doc = readFileSync(join(dir, '.opencode', 'agents', 'tagma-trial-planner.md'), 'utf8');
 
-    expect(doc).toContain('If a pre-commit `tagma_trial_plan` operation fails');
+    expect(doc).toContain('If a pre-commit draft operation fails');
     expect(doc).toContain('Pass the exact staged YAML path');
     expect(doc).toContain(
       'An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error',
@@ -1687,6 +1848,7 @@ test('tagma-trial-planner instructs host trial-plan failure handling for live .t
     expect(doc).toContain('Blocked coverage is diagnostic-only');
     expect(doc).toContain('## Minimal Fixed-Prompt Fast Lane');
     expect(doc).toContain('Read only the target YAML and manifest');
+    expect(doc).toContain('Submit the complete plan with one `commit-plan` call');
     expect(doc).toContain('one case targeting the sole qualified task with `runs: 2`');
     expect(doc).toContain('mark every other required dimension `not-applicable`');
     expect(doc).toContain(
@@ -1709,7 +1871,7 @@ test('tagma-pipeline agent prefers host-native commands before Python glue', () 
   expect(doc).toContain('Enable Python AI Agent in Editor Settings');
   expect(doc).toContain('<python-agent enabled="true">');
   expect(doc).toContain('Prefer a host-native implementation');
-  expect(doc).toContain('host-native helper files directly');
+  expect(doc).toContain('genuinely user-owned companion or helper content directly');
   expect(doc).toContain('tagma-python-tools');
 });
 
@@ -1896,7 +2058,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(pipelineAgent, 'utf8')).toContain('tagma-python-tools: "deny"');
   expect(existsSync(skeletonTool)).toBe(true);
   expect(readFileSync(skeletonTool, 'utf8')).toContain(
-    'Generate a Tagma YAML skeleton from a pipeline manifest',
+    'Generate a schema-valid Tagma YAML skeleton from an in-memory pipeline description',
   );
   expect(readFileSync(skeletonTool, 'utf8')).toContain('export default tool');
 
@@ -1915,7 +2077,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   );
   expect(existsSync(trialPlanTool)).toBe(true);
   expect(readFileSync(trialPlanTool, 'utf8')).toContain(
-    'Build a targeted trial plan in bounded draft operations',
+    'Build a targeted trial plan through bounded draft operations',
   );
   const contextWindowPlugin = join(dir, '.opencode', 'plugins', 'tagma-chat-context-window.ts');
   expect(existsSync(contextWindowPlugin)).toBe(true);

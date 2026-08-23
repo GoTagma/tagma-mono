@@ -5,7 +5,11 @@ import type {
   ProviderModelCatalogV2Snapshot,
   Session,
 } from '../src/api/opencode-chat';
-import type { ChatFinishedTurn, ChatYamlSessionResult } from '../src/store/chat-store';
+import type {
+  ChatFinishedTurn,
+  ChatYamlPostAction,
+  ChatYamlSessionResult,
+} from '../src/store/chat-store';
 import type { ChatYamlSnapshot } from '../src/utils/chat-yaml-reconcile';
 import {
   buildProvidersFromV2Catalog,
@@ -116,6 +120,8 @@ const { getOpencodeClient, resetOpencodeClient, updateOpencodeSessionV2 } =
 const { loadPersistedChatSessionRelocations } = await import('../src/store/chat-persist');
 const {
   applySseEvent,
+  chatYamlSnapshotLiveTargetPath,
+  resolveChatYamlTurnTargetContext,
   ensureFinishedTurnSessionHome,
   selectPreviousChatYamlReconcileForPrompt,
   useChatStore,
@@ -1793,13 +1799,22 @@ describe('chat model persistence', () => {
       pipelineName: 'Pipeline',
       status: 'repairing',
       phase: 'trial-running',
-    } as never;
+      compile: {
+        success: true,
+        summary: 'Valid pipeline configuration',
+        validation: { errors: [], warnings: [] },
+      },
+    } satisfies ChatYamlPostAction;
     useChatStore.getState().setPostChatYamlAction(action, 'running-session');
 
     const state = useChatStore.getState();
     expect(state.currentSessionId).toBe('new-session');
     expect(state.postChatYamlAction).toBeNull();
-    expect(state.sessionStates['running-session']?.postChatYamlAction).toBe(action);
+    expect(state.sessionStates['running-session']?.postChatYamlAction).toEqual({
+      ...action,
+      sessionId: 'running-session',
+      workspaceKey: 'C:/repo-a',
+    });
   });
 
   test('allows model and reasoning changes after opening idle history', async () => {
@@ -1924,6 +1939,157 @@ describe('chat model persistence', () => {
     expect(promptAsyncBodies[0]?.variant).toBe('max');
   });
 
+  test('derives session metadata target from the immutable staged coordinate', () => {
+    expect(
+      chatYamlSnapshotLiveTargetPath({
+        workDir: 'C:\\repo',
+        activePath: 'C:\\repo\\.tagma\\old\\old.yaml',
+        localEditRevision: 0,
+        yamlEditLockId: 'lock',
+        staging: {
+          id: 'stage',
+          agentTagmaDir: 'C:\\repo\\.tagma\\.chat-staging\\stage\\agent-workspace\\.tagma',
+          activeRelativePath: 'new-target/new-target.yaml',
+          activeStagedPath:
+            'C:\\repo\\.tagma\\.chat-staging\\stage\\agent-workspace\\.tagma\\new-target\\new-target.yaml',
+          entries: [],
+        },
+      }),
+    ).toBe('C:/repo/.tagma/new-target/new-target.yaml');
+  });
+
+  test('binds continuation context to the Host-detected staged target instead of the old canvas', () => {
+    const agentTagmaDir = 'C:/repo/.tagma/.chat-staging/stage/agent-workspace/.tagma';
+    const oldStagedPath = `${agentTagmaDir}/old/old.yaml`;
+    const targetStagedPath = `${agentTagmaDir}/fact-checker/fact-checker.yaml`;
+    const snapshot: ChatYamlSnapshot = {
+      workDir: 'C:/repo',
+      activePath: 'C:/repo/.tagma/old/old.yaml',
+      localEditRevision: 0,
+      yamlEditLockId: 'lock',
+      staging: {
+        id: 'stage',
+        agentTagmaDir,
+        activeRelativePath: 'old/old.yaml',
+        activeStagedPath: oldStagedPath,
+        entries: [
+          {
+            name: 'old.yaml',
+            stagedPath: oldStagedPath,
+            relativePath: 'old/old.yaml',
+            sourcePath: 'C:/repo/.tagma/old/old.yaml',
+            pipelineName: 'Old',
+            contentHash: 'old',
+            layoutHash: null,
+            requirementsHash: null,
+          },
+        ],
+      },
+    };
+
+    expect(
+      resolveChatYamlTurnTargetContext(snapshot, {
+        kind: 'open-created',
+        path: targetStagedPath,
+        name: 'fact-checker.yaml',
+        pipelineName: 'Fact Checker',
+      }),
+    ).toEqual({
+      currentYamlPath: targetStagedPath,
+      workspaceYamlFilePaths: [oldStagedPath, targetStagedPath],
+    });
+    expect(() =>
+      resolveChatYamlTurnTargetContext(snapshot, {
+        kind: 'open-created',
+        path: 'C:/repo/.tagma/live/live.yaml',
+        name: 'live.yaml',
+        pipelineName: 'Live',
+      }),
+    ).toThrow('outside the authenticated staged root');
+  });
+
+  test('synchronizes session metadata to the finalized pipeline target', async () => {
+    const repo = 'C:/reconciled-target-repo';
+    const baseUrl = 'http://opencode-reconciled-target.test';
+    const model = { providerID: 'anthropic', modelID: 'claude' };
+    const targetPath = `${repo}/.tagma/new-target/new-target.yaml`;
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    useChatStore.setState({
+      model: { providerID: 'openai', modelID: 'next-turn-model' },
+      sessions: [
+        {
+          id: 'existing',
+          metadata: { tagma: { model } },
+          time: { created: 1, updated: 1 },
+        } as unknown as Session,
+      ],
+    } as never);
+
+    await useChatStore.getState().syncSessionYamlTarget('existing', repo, targetPath);
+
+    expect(sessionUpdateRequests.at(-1)?.body).toMatchObject({
+      metadata: {
+        tagma: {
+          source: 'desktop-chat',
+          workspacePath: repo,
+          yamlPath: targetPath,
+          reason: 'reconciled-target',
+          model,
+        },
+      },
+    });
+
+    await useChatStore
+      .getState()
+      .syncSessionYamlTarget('existing', repo, targetPath, 'staged-target');
+    expect(sessionUpdateRequests.at(-1)?.body).toMatchObject({
+      metadata: { tagma: { yamlPath: targetPath, reason: 'staged-target', model } },
+    });
+  });
+
+  test('dispatches Host compile repair directly to the pipeline specialist', async () => {
+    const repo = 'C:/repair-direct-repo';
+    const baseUrl = 'http://opencode-repair-direct.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    usePipelineStore.setState({ workDir: null, yamlPath: null } as never);
+    useChatStore.setState({
+      model: { providerID: 'anthropic', modelID: 'claude' },
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+    } as never);
+
+    await useChatStore.getState().sendInternalRepairPrompt(
+      {
+        kind: 'refresh-current',
+        path: `${repo}/.tagma/sample/sample.yaml`,
+        name: 'sample.yaml',
+        pipelineName: 'Sample',
+      },
+      {
+        kind: 'compile',
+        result: {
+          timestamp: '2026-08-23T00:00:00.000Z',
+          sourceName: `${repo}/.tagma/sample/sample.yaml`,
+          success: false,
+          parseOk: true,
+          validation: {
+            errors: [{ path: 'tracks[0].name', message: 'Track name is required' }],
+            warnings: [],
+          },
+          summary: 'Invalid pipeline configuration',
+        },
+      },
+      1,
+      2,
+      null,
+      'existing',
+    );
+
+    expect(promptAsyncBodies[0]?.agent).toBe('tagma-pipeline');
+  });
+
   test('routes a manual-new prompt through staging with the selected Chat model snapshot', async () => {
     const repo = 'C:/staged-prompt-repo';
     const baseUrl = 'http://opencode-staged-prompt.test';
@@ -1961,10 +2127,13 @@ describe('chat model persistence', () => {
 
     let stagedSnapshot: ChatYamlSnapshot | null = null;
     try {
-      await useChatStore.getState().send('build me a simple one to ask llm how are you');
+      await useChatStore.getState().send('把当前草稿完善成可运行版本');
 
       expect(promptAsyncRequests).toHaveLength(1);
-      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
+      expect(stageStartBodies).toEqual([
+        { activePath: sourcePath, requestedAction: 'fill-manual-new-pipeline' },
+      ]);
+      expect(promptAsyncBodies[0]?.agent).toBe('tagma-pipeline');
       expect(new URL(promptAsyncRequests[0]!).searchParams.get('directory')).toBe(agentTagmaDir);
       expect(decodeURIComponent(promptAsyncHeaders[0]?.get('x-opencode-directory') ?? '')).toBe(
         agentTagmaDir,
@@ -2010,7 +2179,7 @@ describe('chat model persistence', () => {
     }
   });
 
-  test('passes create-new intent to the Host before staging starts', async () => {
+  test('does not derive a Host create action from natural-language message text', async () => {
     const { baseUrl, sourcePath } = configureStagedPromptSendFixture();
     usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
     sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
@@ -2020,12 +2189,44 @@ describe('chat model persistence', () => {
         .getState()
         .send('create a separate new reporting pipeline without changing the current pipeline');
 
-      expect(stageStartBodies).toEqual([
-        { activePath: sourcePath, requestedAction: 'create-new-pipeline' },
-      ]);
+      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
       const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
-      expect(parts[0]?.text).toContain('<requested-action kind="create-new-pipeline">');
-      expect(parts[0]?.text).not.toContain('<requested-action kind="fill-manual-new-pipeline">');
+      expect(parts[0]?.text).not.toContain('<requested-action');
+      expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
+    } finally {
+      await cleanupStagedPromptSendFixture();
+    }
+  });
+
+  test('keeps unmarked pipeline edits behind the router', async () => {
+    const { baseUrl, sourcePath } = configureStagedPromptSendFixture();
+    usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
+    sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
+
+    try {
+      await useChatStore.getState().send('add a review task to the current pipeline');
+
+      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
+      expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
+      const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
+      expect(parts[0]?.text).not.toContain('<requested-action');
+    } finally {
+      await cleanupStagedPromptSendFixture();
+    }
+  });
+
+  test('leaves semantically elliptical intent to the model router without text matching', async () => {
+    const { baseUrl, sourcePath } = configureStagedPromptSendFixture();
+    usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
+    sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
+
+    try {
+      await useChatStore.getState().send('build me a simple one to ask llm how are you');
+
+      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
+      expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
+      const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
+      expect(parts[0]?.text).not.toContain('<requested-action');
     } finally {
       await cleanupStagedPromptSendFixture();
     }

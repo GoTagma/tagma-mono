@@ -1,107 +1,69 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  createNewPipelineRequestedActionLines,
-  fillManualNewPipelineRequestedActionLines,
-  isCreateNewPipelineRequest,
+  CREATE_NEW_PIPELINE_ACTION_KIND,
+  FILL_MANUAL_NEW_PIPELINE_ACTION_KIND,
+  isCreateNewPipelineRequestedAction,
+  isPipelineRequestedActionKind,
+  requestedActionLines,
+  resolveHostPipelineRequestedAction,
 } from '../shared/requested-action.js';
 
-describe('requested action detection', () => {
-  const manualNewPipelineContext = {
-    currentPipelineIsManualNewDraft: true,
-  };
-
-  test('marks explicit new pipeline requests', () => {
-    expect(isCreateNewPipelineRequest('create a new deploy pipeline')).toBe(true);
-    expect(isCreateNewPipelineRequest('请创建一个新的 deploy pipeline')).toBe(true);
-  });
-
-  test('marks user-facing workflow wording as new pipeline creation', () => {
+describe('requested action protocol', () => {
+  test('derives fill only from the current Host manual-draft state', () => {
+    expect(resolveHostPipelineRequestedAction({ currentPipelineIsManualNewDraft: true })).toBe(
+      FILL_MANUAL_NEW_PIPELINE_ACTION_KIND,
+    );
     expect(
-      isCreateNewPipelineRequest(
-        'can you make me a workflow when triggered, fetches the news with links from Financial Times',
-      ),
-    ).toBe(true);
-    expect(isCreateNewPipelineRequest('build a workflow that saves a daily report')).toBe(true);
-    expect(isCreateNewPipelineRequest('add a task to the existing workflow')).toBe(false);
+      resolveHostPipelineRequestedAction({ currentPipelineIsManualNewDraft: false }),
+    ).toBeNull();
+    expect(resolveHostPipelineRequestedAction({})).toBeNull();
   });
 
-  test('does not mark pipeline subobject creation as new pipeline creation', () => {
-    expect(isCreateNewPipelineRequest('create a pipeline task')).toBe(false);
-    expect(isCreateNewPipelineRequest('create a new pipeline task')).toBe(false);
-    expect(isCreateNewPipelineRequest('创建 pipeline 任务')).toBe(false);
-    expect(isCreateNewPipelineRequest('新建 pipeline 的任务')).toBe(false);
+  test('preserves an explicit structured Host action without interpreting user text', () => {
+    expect(
+      resolveHostPipelineRequestedAction({
+        currentPipelineIsManualNewDraft: true,
+        explicitAction: CREATE_NEW_PIPELINE_ACTION_KIND,
+      }),
+    ).toBe(CREATE_NEW_PIPELINE_ACTION_KIND);
+    expect(
+      resolveHostPipelineRequestedAction({
+        currentPipelineIsManualNewDraft: false,
+        explicitAction: FILL_MANUAL_NEW_PIPELINE_ACTION_KIND,
+      }),
+    ).toBe(FILL_MANUAL_NEW_PIPELINE_ACTION_KIND);
+    expect(
+      resolveHostPipelineRequestedAction({
+        currentPipelineIsManualNewDraft: true,
+        explicitAction: null,
+      }),
+    ).toBeNull();
   });
 
-  test('renders the shared editor-context requested-action marker', () => {
-    expect(createNewPipelineRequestedActionLines('create a new deploy pipeline')).toEqual([
+  test('renders protocol markers only from a structured action', () => {
+    expect(requestedActionLines(CREATE_NEW_PIPELINE_ACTION_KIND)).toEqual([
       '  <requested-action kind="create-new-pipeline">',
       '    <collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
       '  </requested-action>',
     ]);
-    expect(createNewPipelineRequestedActionLines('create a pipeline task')).toEqual([]);
-  });
-
-  test('routes editor-created manual-new draft requests to the current file', () => {
-    expect(
-      fillManualNewPipelineRequestedActionLines(
-        '请创建一个新的 deploy pipeline，负责发布',
-        manualNewPipelineContext,
-      ),
-    ).toEqual([
+    expect(requestedActionLines(FILL_MANUAL_NEW_PIPELINE_ACTION_KIND)).toEqual([
       '  <requested-action kind="fill-manual-new-pipeline">',
       '    <target>current-file</target>',
       '    <reason>current file is the editor-created manual new pipeline draft</reason>',
       '  </requested-action>',
     ]);
-    expect(
-      createNewPipelineRequestedActionLines(
-        '请创建一个新的 deploy pipeline，负责发布',
-        manualNewPipelineContext,
-      ),
-    ).toEqual([]);
   });
 
-  test('fills a manual-new draft when an imperative creation request omits the repeated pipeline noun', () => {
-    const userText = 'build me a simple one to ask llm how are you';
+  test('validates only the finite wire action enum', () => {
+    expect(isPipelineRequestedActionKind(CREATE_NEW_PIPELINE_ACTION_KIND)).toBe(true);
+    expect(isPipelineRequestedActionKind(FILL_MANUAL_NEW_PIPELINE_ACTION_KIND)).toBe(true);
+    expect(isPipelineRequestedActionKind('create this pipeline')).toBe(false);
+    expect(isPipelineRequestedActionKind(null)).toBe(false);
 
-    expect(fillManualNewPipelineRequestedActionLines(userText, manualNewPipelineContext)).toEqual([
-      '  <requested-action kind="fill-manual-new-pipeline">',
-      '    <target>current-file</target>',
-      '    <reason>current file is the editor-created manual new pipeline draft</reason>',
-      '  </requested-action>',
-    ]);
-    expect(createNewPipelineRequestedActionLines(userText, manualNewPipelineContext)).toEqual([]);
-    expect(
-      fillManualNewPipelineRequestedActionLines(
-        'Can you explain how I could build one?',
-        manualNewPipelineContext,
-      ),
-    ).toEqual([]);
-    expect(
-      createNewPipelineRequestedActionLines('build another simple one', manualNewPipelineContext),
-    ).toEqual([
-      '  <requested-action kind="create-new-pipeline">',
-      '    <collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
-      '  </requested-action>',
-    ]);
-  });
-
-  test('keeps true create-new intent for separate pipeline requests', () => {
-    expect(
-      fillManualNewPipelineRequestedActionLines(
-        '请另外创建一个新的 deploy pipeline',
-        manualNewPipelineContext,
-      ),
-    ).toEqual([]);
-    expect(
-      createNewPipelineRequestedActionLines(
-        'create another deploy pipeline',
-        manualNewPipelineContext,
-      ),
-    ).toEqual([
-      '  <requested-action kind="create-new-pipeline">',
-      '    <collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
-      '  </requested-action>',
-    ]);
+    expect(isCreateNewPipelineRequestedAction(CREATE_NEW_PIPELINE_ACTION_KIND)).toBe(true);
+    expect(isCreateNewPipelineRequestedAction({ kind: CREATE_NEW_PIPELINE_ACTION_KIND })).toBe(
+      true,
+    );
+    expect(isCreateNewPipelineRequestedAction(FILL_MANUAL_NEW_PIPELINE_ACTION_KIND)).toBe(false);
   });
 });

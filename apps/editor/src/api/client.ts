@@ -43,6 +43,7 @@ import type {
   TrialInteractionDeclaration as SdkTrialInteractionDeclaration,
 } from '@tagma/types';
 import { participatesInWorkspaceRevisionSequence } from '../../shared/revision-routes.js';
+import type { PipelineRequestedActionKind } from '../../shared/requested-action.js';
 import type {
   DiagnosticsSessionStatus,
   RendererDiagnosticsReport,
@@ -188,7 +189,7 @@ export interface ChatYamlStageDescriptor {
   trialPlanMaxAttempts?: number;
   activeRelativePath: string | null;
   activeStagedPath: string | null;
-  requestedAction: 'create-new-pipeline' | null;
+  requestedAction: PipelineRequestedActionKind | null;
   createTargetRelativePath: string | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
@@ -342,6 +343,7 @@ export interface ChatPipelineTrialCaseResult {
   title: string;
   objective: string;
   success: boolean;
+  executionSource?: 'current-trial' | 'equivalent-closure-cache';
   runIds: string[];
   tasks: ChatPipelineTrialTaskResult[];
   totalTaskCount?: number;
@@ -507,6 +509,7 @@ export interface ChatPipelineTrialProgress {
   detail: string;
   startedAt: number;
   updatedAt: number;
+  heartbeatAt?: number;
   caseId: string | null;
   caseTitle: string | null;
   caseIndex: number | null;
@@ -2119,7 +2122,7 @@ export const api = {
   startChatYamlStage: (
     activePath?: string | null,
     workspaceKeyOverride?: string | null,
-    requestedAction?: 'create-new-pipeline' | null,
+    requestedAction?: PipelineRequestedActionKind | null,
   ) =>
     request<ChatYamlStageDescriptor>(
       '/workspace/chat-yaml-stage/start',

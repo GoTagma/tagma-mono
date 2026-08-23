@@ -1,3 +1,5 @@
+import { getMaxListeners, setMaxListeners } from 'node:events';
+
 import type {
   AbortReason,
   OnFailure,
@@ -98,6 +100,25 @@ export interface RunContextOptions {
  * task-executor extractions in later phases pass `ctx` instead of
  * relying on closure capture.
  */
+export function configureRunAbortSignalListenerBudget(
+  signal: AbortSignal,
+  taskCount: number,
+): void {
+  // Every concurrently running task links one bounded phase listener to this
+  // run-owned signal. A DAG with more than ten ready tasks is legitimate
+  // concurrency, not a leak; size the EventTarget to the finite graph while
+  // retaining any larger host-provided diagnostic budget.
+  const finiteTaskCount = Number.isSafeInteger(taskCount) ? Math.max(0, taskCount) : 0;
+  const required = Math.max(10, finiteTaskCount + 4);
+  try {
+    const current = getMaxListeners(signal);
+    if (current < required) setMaxListeners(required, signal);
+  } catch {
+    // Older runtimes may not expose EventTarget listener controls. Listener
+    // cleanup remains authoritative; observability tuning must not block runs.
+  }
+}
+
 export class RunContext {
   readonly runId: string;
   readonly dag: Dag;
@@ -133,6 +154,7 @@ export class RunContext {
   constructor(options: RunContextOptions) {
     this.runId = options.runId;
     this.dag = options.dag;
+    configureRunAbortSignalListenerBudget(this.abortController.signal, this.dag.nodes.size);
     this.config = options.config;
     this.workDir = options.workDir;
     this.pipelineInfo = options.pipelineInfo;

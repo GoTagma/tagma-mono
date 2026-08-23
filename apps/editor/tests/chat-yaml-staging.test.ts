@@ -230,6 +230,79 @@ describe('chat YAML staging', () => {
     ).toBe(true);
   });
 
+  test('binds fill-manual staging to the exact Host draft and syncs managed companions', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    ws.manualNewPipelineYamlPath = sourcePath;
+
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    expect(stage.requestedAction).toBe('fill-manual-new-pipeline');
+    expect(stage.activeStagedPath).toBe(staged.stagedPath);
+
+    writeFileSync(
+      staged.stagedPath,
+      [
+        'pipeline:',
+        '  name: Host Managed Companions',
+        '  tracks:',
+        '    - id: greeting',
+        '      name: Greeting',
+        '      tasks:',
+        '        - id: ask',
+        '          prompt: How are you?',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    expect(compileChatYamlStage(ws, stage.id, staged.relativePath).success).toBe(true);
+
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(staged.stagedPath), 'utf-8'))).toEqual({
+      positions: { 'greeting.ask': { x: 20 } },
+      folders: [],
+    });
+    expect(existsSync(pipelineManifestPath(staged.stagedPath))).toBe(true);
+    expect(existsSync(pipelineRequirementsPath(staged.stagedPath))).toBe(true);
+
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('syncs Host-managed companions for a structurally new staged pipeline without text intent', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const relativePath = 'router-created/router-created.yaml';
+    const stagedPath = join(stage.agentTagmaDir, 'router-created', 'router-created.yaml');
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(stagedPath, yamlFor('Router Created', 'hello'), 'utf-8');
+
+    expect(compileChatYamlStage(ws, stage.id, relativePath).success).toBe(true);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(stagedPath), 'utf-8'))).toEqual({
+      positions: { 'main.task': { x: 20 } },
+      folders: [],
+    });
+    expect(existsSync(pipelineManifestPath(stagedPath))).toBe(true);
+    expect(existsSync(pipelineRequirementsPath(stagedPath))).toBe(true);
+
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('rejects fill-manual staging when the active path is not the current Host draft', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    ws.manualNewPipelineYamlPath = null;
+
+    expect(() =>
+      createChatYamlStage(ws, {
+        activePath: sourcePath,
+        requestedAction: 'fill-manual-new-pipeline',
+      }),
+    ).toThrow('current manual new pipeline draft');
+    stopWorkspace(ws);
+  });
+
   test('reserves distinct staged targets and protects existing pipelines for concurrent create-new turns', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const first = createChatYamlStage(ws, {

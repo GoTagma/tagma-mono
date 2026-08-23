@@ -37,6 +37,7 @@ describe('OpenCodeDriver buildCommand', () => {
       edit: 'deny',
       bash: 'deny',
       task: 'deny',
+      external_directory: 'deny',
       tagma_yaml_skeleton: 'deny',
       tagma_placement_plan: 'deny',
       tagma_trial_plan: 'deny',
@@ -46,10 +47,21 @@ describe('OpenCodeDriver buildCommand', () => {
       agent: {
         [agentName]: {
           mode: 'primary',
-          permission: { edit: 'deny', bash: 'deny', task: 'deny' },
+          permission: {
+            edit: 'deny',
+            bash: 'deny',
+            task: 'deny',
+            external_directory: 'deny',
+          },
         },
       },
     });
+  });
+
+  test('sets a deterministic task title so transient runs do not call the title model', async () => {
+    const spec = await OpenCodeDriver.buildCommand(task(), track, ctx);
+
+    expect(spec.args[spec.args.indexOf('--title') + 1]).toBe('Tagma task k.t1');
   });
 
   test('uses a fresh restricted agent identity for every task invocation', async () => {
@@ -78,6 +90,7 @@ describe('OpenCodeDriver buildCommand', () => {
       edit: 'deny',
       bash: 'deny',
       task: 'deny',
+      external_directory: 'deny',
       tagma_yaml_skeleton: 'deny',
       tagma_placement_plan: 'deny',
       tagma_trial_plan: 'deny',
@@ -107,7 +120,12 @@ describe('OpenCodeDriver buildCommand', () => {
       expect(config.default_agent).toBe(agentName);
       expect(config.agent[agentName]).toMatchObject({
         mode: 'primary',
-        permission: { edit: 'deny', bash: 'deny', task: 'deny' },
+        permission: {
+          edit: 'deny',
+          bash: 'deny',
+          task: 'deny',
+          external_directory: 'deny',
+        },
       });
       expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).not.toHaveProperty('webfetch');
     } finally {
@@ -209,6 +227,7 @@ describe('OpenCodeDriver buildCommand', () => {
 
     expect(spec.args).toContain('--session');
     expect(spec.args[spec.args.indexOf('--session') + 1]).toBe('tagma-session');
+    expect(spec.args).not.toContain('--title');
     expect(spec.args[spec.args.indexOf('--agent') + 1]).toMatch(
       /^tagma-pipeline-task-[0-9a-f]{32}$/,
     );
@@ -216,6 +235,7 @@ describe('OpenCodeDriver buildCommand', () => {
       edit: 'deny',
       bash: 'deny',
       task: 'deny',
+      external_directory: 'deny',
     });
   });
 });
@@ -246,5 +266,39 @@ describe('OpenCodeDriver parseResult', () => {
       forceFailure: true,
       forceFailureReason: 'opencode reported error: rate limited',
     });
+  });
+
+  test('fails a zero-token indeterminate finish instead of treating lifecycle JSON as output', () => {
+    const meta = OpenCodeDriver.parseResult!(
+      [
+        '{"type":"step_start","sessionID":"sess-empty"}',
+        '{"type":"step_finish","sessionID":"sess-empty","part":{"reason":"unknown","tokens":{"input":0,"output":0,"reasoning":0}}}',
+      ].join('\n'),
+    );
+
+    expect(meta).toEqual({
+      sessionId: 'sess-empty',
+      normalizedOutput: '',
+      forceFailure: true,
+      forceFailureReason:
+        'opencode ended without a determinate model response (finish reason: unknown; input/output/reasoning tokens: 0/0/0)',
+    });
+  });
+
+  test('fails truncated or filtered model finishes even when partial text exists', () => {
+    for (const reason of ['length', 'content-filter', 'error']) {
+      const meta = OpenCodeDriver.parseResult!(
+        [
+          '{"type":"text","sessionID":"sess-partial","part":{"text":"partial"}}',
+          JSON.stringify({ type: 'step_finish', part: { reason } }),
+        ].join('\n'),
+      );
+      expect(meta).toMatchObject({
+        sessionId: 'sess-partial',
+        normalizedOutput: 'partial',
+        forceFailure: true,
+        forceFailureReason: `opencode model response did not complete normally (finish reason: ${reason})`,
+      });
+    }
   });
 });

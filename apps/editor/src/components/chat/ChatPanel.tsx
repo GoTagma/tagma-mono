@@ -371,6 +371,13 @@ function chatYamlRepairPresentation(action: ChatYamlPostAction): {
   }
 }
 
+function compactElapsedDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
 export function chatTrialProgressSegments(
   progress: NonNullable<ChatYamlPostAction['progress']>,
 ): string[] {
@@ -385,6 +392,9 @@ export function chatTrialProgressSegments(
   }
   if (progress.taskId) segments.push(progress.taskId);
   if (progress.taskStatus) segments.push(progress.taskStatus);
+  segments.push(
+    `Elapsed ${compactElapsedDuration((progress.heartbeatAt ?? progress.updatedAt) - progress.startedAt)}`,
+  );
   return segments;
 }
 

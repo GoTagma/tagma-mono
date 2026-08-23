@@ -336,6 +336,7 @@ function trialCacheRecordPath(
 afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.captureHostWitnessAsync;
   delete __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated;
+  delete __chatPipelineTrialRunTestHooks.onProgress;
   for (const ws of workspaces.splice(0)) {
     disposeTrialWitnessWorker(ws);
   }
@@ -3338,6 +3339,45 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('accepts fill-manual action only for the exact Host manual draft', () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    ws.manualNewPipelineYamlPath = sourcePath;
+
+    const accepted = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(
+        ws,
+        { activePath: sourcePath, requestedAction: 'fill-manual-new-pipeline' },
+        'chat-lock',
+      ),
+      accepted,
+    );
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.body).toMatchObject({
+      requestedAction: 'fill-manual-new-pipeline',
+      activeRelativePath: 'pipeline/pipeline.yaml',
+    });
+    discardStage(getRoute, ws, (accepted.body as { id: string }).id);
+
+    ws.manualNewPipelineYamlPath = null;
+    const rejected = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(
+        ws,
+        { activePath: sourcePath, requestedAction: 'fill-manual-new-pipeline' },
+        'chat-lock',
+      ),
+      rejected,
+    );
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.body).toEqual({
+      error: expect.stringContaining('current manual new pipeline draft'),
+    });
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('keeps start and compile revision-neutral and advances revision on publish', async () => {
     const { ws, sourcePath } = makeWorkspace();
     mkdirSync(join(ws.workDir, '.tagma'), { recursive: true });
@@ -4500,6 +4540,107 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id }, 'chat-lock'),
       discardRes,
     );
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('reruns only changed command-case closures across YAML revisions', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const pipeline = (secondScript: string) => ({
+      name: 'Incremental command cases',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            { id: 'stable', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            { id: 'changed', command: { argv: [process.execPath, '-e', secondScript] } },
+          ],
+        },
+      ],
+    });
+    const writePlan = () =>
+      writeTrialPlan(entry.stagedPath, {
+        cases: [
+          {
+            id: 'stable-case',
+            title: 'Stable command',
+            objective: 'Run the unchanged command closure.',
+            runs: 1,
+            targetTaskIds: ['main.stable'],
+            fixtures: [],
+            expectations: [{ type: 'task-status', taskId: 'main.stable', status: 'success' }],
+          },
+          {
+            id: 'changed-case',
+            title: 'Changed command',
+            objective: 'Run the command closure that changes between revisions.',
+            runs: 1,
+            targetTaskIds: ['main.changed'],
+            fixtures: [],
+            expectations: [{ type: 'task-status', taskId: 'main.changed', status: 'success' }],
+          },
+        ],
+      });
+    const runTrial = async () => {
+      const res = makeRes();
+      await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+        request(
+          ws,
+          { stageId: stage.id, relativePath: entry.relativePath, trialId: 'incremental_cases' },
+          'chat-lock',
+        ),
+        res,
+      );
+      return res.body as {
+        success: boolean;
+        cases: Array<{ id: string; executionSource?: string }>;
+      };
+    };
+
+    writeFileSync(entry.stagedPath, serializePipeline(pipeline('process.exit(0)')), 'utf8');
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePlan();
+    expect((await runTrial()).success).toBe(true);
+
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline(pipeline('const value = 1; process.exit(value - 1)')),
+      'utf8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePlan();
+    const progress: Array<{ caseId: string | null; taskStatus: string | null }> = [];
+    __chatPipelineTrialRunTestHooks.onProgress = (update) => {
+      progress.push({ caseId: update.caseId, taskStatus: update.taskStatus });
+    };
+    const second = await runTrial();
+
+    expect(second.success).toBe(true);
+    expect(second.cases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'stable-case',
+          executionSource: 'equivalent-closure-cache',
+        }),
+        expect.objectContaining({ id: 'changed-case', executionSource: 'current-trial' }),
+      ]),
+    );
+    expect(progress).toContainEqual({ caseId: 'stable-case', taskStatus: 'reused' });
+    expect(progress).toContainEqual({ caseId: 'changed-case', taskStatus: 'running' });
+
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

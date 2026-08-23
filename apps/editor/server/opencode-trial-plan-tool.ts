@@ -640,7 +640,14 @@ const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 2;
 const TRIAL_PLAN_DRAFT_VERSION = 2;
 const TOOL_ATTEMPT_LIMITS = CONTRACT.limits.toolAttemptsPerYaml;
 const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
-const DRAFT_OPERATIONS = ['begin', 'upsert-case', 'set-coverage', 'set-findings', 'commit'];
+const DRAFT_OPERATIONS = [
+  'begin',
+  'upsert-case',
+  'set-coverage',
+  'set-findings',
+  'commit',
+  'commit-plan',
+];
 const HOST_ATTEMPT_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 function readTrialPlanStageConfig(stageRoot) {
@@ -731,6 +738,7 @@ function newTrialPlanDraft(paths, yamlHash, attemptId, summary, goals) {
     coverage: [],
     findings: [],
     cases: [],
+    seededFromYamlHash: null,
     commitAttempted: false,
   };
 }
@@ -748,6 +756,10 @@ function assertTrialPlanDraft(value, paths, yamlHash) {
     !Array.isArray(draft.coverage) ||
     !Array.isArray(draft.findings) ||
     !Array.isArray(draft.cases) ||
+    (draft.seededFromYamlHash !== undefined &&
+      draft.seededFromYamlHash !== null &&
+      (typeof draft.seededFromYamlHash !== 'string' ||
+        !/^[0-9a-f]{40}$/.test(draft.seededFromYamlHash))) ||
     (draft.commitAttempted !== undefined && typeof draft.commitAttempted !== 'boolean')
   ) {
     throw new Error('trial plan draft does not match the staged YAML revision');
@@ -766,6 +778,7 @@ function assertTrialPlanDraft(value, paths, yamlHash) {
       ? []
       : validateCoverageSection(draft.coverage, draft.cases);
   draft.findings = validateFindingEntries(draft.findings);
+  draft.seededFromYamlHash = draft.seededFromYamlHash || null;
   draft.commitAttempted = draft.commitAttempted === true;
   return draft;
 }
@@ -820,6 +833,9 @@ function trialPlanDraftResult(operation, draft) {
       cases: draft.cases.length,
       coverage: draft.coverage.length,
       findings: draft.findings.length,
+      ...(draft.seededFromYamlHash
+        ? { seededFromYamlHash: draft.seededFromYamlHash }
+        : {}),
       commitAvailable: draft.commitAttempted !== true,
     },
     null,
@@ -921,6 +937,66 @@ function writeTrialPlanAttemptTelemetry(paths, telemetry) {
   renameSync(tempPath, paths.telemetryPath);
 }
 
+function seedTrialPlanDraftFromAuthenticatedPriorRevision(input) {
+  const planPath =
+    input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
+  try {
+    const stat = lstatSync(planPath);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.size > CONTRACT.limits.planBytes) {
+      return null;
+    }
+    const serialized = readFileSync(planPath, 'utf8');
+    const parsed = JSON.parse(serialized);
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof parsed.yamlHash !== 'string' ||
+      !/^[0-9a-f]{40}$/.test(parsed.yamlHash) ||
+      parsed.yamlHash === input.yamlHash
+    ) {
+      return null;
+    }
+    const priorHash = parsed.yamlHash;
+    const priorPaths = trialPlanAttemptPaths(input.root, input.yamlPath, priorHash);
+    const telemetry = readTrialPlanAttemptTelemetry(priorPaths, priorHash);
+    const serializedHash = createHash('sha256').update(serialized).digest('hex');
+    if (
+      telemetry.successfulWriteCount < 1 ||
+      telemetry.committedPlanHash !== serializedHash
+    ) {
+      return null;
+    }
+    const candidate = {
+      version: CONTRACT.version,
+      yamlHash: input.yamlHash,
+      summary: parsed.summary,
+      goals: parsed.goals,
+      coverage: parsed.coverage,
+      findings: parsed.findings,
+      cases: parsed.cases,
+    };
+    assertValidPlan(candidate);
+    assertTargetPaths(candidate, input.paths.relativeYamlPath);
+    return {
+      ...newTrialPlanDraft(
+        input.paths,
+        input.yamlHash,
+        input.attemptId,
+        candidate.summary,
+        candidate.goals,
+      ),
+      coverage: candidate.coverage,
+      findings: candidate.findings,
+      cases: candidate.cases,
+      seededFromYamlHash: priorHash,
+    };
+  } catch {
+    // Reuse is an optimization only. Missing, stale, directly edited, or
+    // otherwise unauthenticated prior evidence must never block a fresh plan.
+    return null;
+  }
+}
+
 function beginTrialPlanAttempt(paths, yamlHash, attemptId) {
   acquireTrialPlanLock(paths);
   try {
@@ -949,6 +1025,31 @@ function beginTrialPlanAttempt(paths, yamlHash, attemptId) {
     telemetry.lastAttemptAt = now;
     writeTrialPlanAttemptTelemetry(paths, telemetry);
     return { paths, telemetry, draft };
+  } catch (error) {
+    rmSync(paths.lockPath, { force: true });
+    throw error;
+  }
+}
+
+function beginCompleteTrialPlanAttempt(paths, yamlHash, attemptId) {
+  acquireTrialPlanLock(paths);
+  try {
+    const telemetry = readTrialPlanAttemptTelemetry(paths, yamlHash);
+    if (telemetry.attemptIds.includes(attemptId)) {
+      throw new Error(
+        'trial plan commit was already submitted for this host attempt; wait for host continuation',
+      );
+    }
+    if (telemetry.toolAttemptCount >= paths.maxAttempts) {
+      throw new Error('trial plan tool attempt budget exhausted for this staged YAML revision');
+    }
+    const now = Date.now();
+    telemetry.toolAttemptCount += 1;
+    telemetry.attemptIds.push(attemptId);
+    telemetry.firstAttemptAt = telemetry.firstAttemptAt || now;
+    telemetry.lastAttemptAt = now;
+    writeTrialPlanAttemptTelemetry(paths, telemetry);
+    return { paths, telemetry };
   } catch (error) {
     rmSync(paths.lockPath, { force: true });
     throw error;
@@ -1089,22 +1190,11 @@ const caseSchema = tool.schema.object({
     .max(CONTRACT.limits.expectationsPerCase),
 });
 
-function commitTrialPlanDraft(input) {
-  const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
+function commitValidatedTrialPlan(input, attempt, plan) {
   const planPath =
     input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
   let committedPlanHash;
   try {
-    const draft = attempt.draft;
-    const plan = {
-      version: CONTRACT.version,
-      yamlHash: input.yamlHash,
-      summary: draft.summary,
-      goals: draft.goals,
-      coverage: draft.coverage,
-      findings: draft.findings,
-      cases: draft.cases,
-    };
     assertValidPlan(plan);
     assertTargetPaths(
       plan,
@@ -1130,6 +1220,33 @@ function commitTrialPlanDraft(input) {
     null,
     2,
   );
+}
+
+function commitTrialPlanDraft(input) {
+  const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
+  const draft = attempt.draft;
+  return commitValidatedTrialPlan(input, attempt, {
+    version: CONTRACT.version,
+    yamlHash: input.yamlHash,
+    summary: draft.summary,
+    goals: draft.goals,
+    coverage: draft.coverage,
+    findings: draft.findings,
+    cases: draft.cases,
+  });
+}
+
+function commitCompleteTrialPlan(input) {
+  const attempt = beginCompleteTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
+  return commitValidatedTrialPlan(input, attempt, {
+    version: CONTRACT.version,
+    yamlHash: input.yamlHash,
+    summary: input.args.summary,
+    goals: input.args.goals,
+    coverage: input.args.coverage,
+    findings: input.args.findings || [],
+    cases: input.args.cases,
+  });
 }
 
 function executeExistingTrialPlanDraftOperation(input) {
@@ -1191,6 +1308,18 @@ function executeTrialPlanOperation(args, context) {
     );
   }
 
+  if (operation === 'commit-plan') {
+    return commitCompleteTrialPlan({
+      args,
+      attemptId,
+      operation,
+      root,
+      yamlPath,
+      yamlHash,
+      paths,
+    });
+  }
+
   if (operation === 'begin') {
     const summary = asString(args.summary, 'summary', 2000);
     const goals = asArray(args.goals, 'goals', CONTRACT.limits.goals).map((goal, index) =>
@@ -1209,8 +1338,20 @@ function executeTrialPlanOperation(args, context) {
           'trial plan commit was already submitted for this host attempt; wait for host continuation',
         );
       }
+      const existingDraft = args.reset ? null : readTrialPlanDraftIfExists(paths, yamlHash);
+      const seededDraft =
+        args.reset || existingDraft
+          ? null
+          : seedTrialPlanDraftFromAuthenticatedPriorRevision({
+              root,
+              yamlPath,
+              yamlHash,
+              attemptId,
+              paths,
+            });
       const draft =
-        (args.reset ? null : readTrialPlanDraftIfExists(paths, yamlHash)) ||
+        existingDraft ||
+        seededDraft ||
         newTrialPlanDraft(paths, yamlHash, attemptId, summary, goals);
       draft.commitAttempted = false;
       draft.attemptId = attemptId;
@@ -1234,10 +1375,10 @@ function executeTrialPlanOperation(args, context) {
 
 export default tool({
   description:
-    "Build a targeted trial plan in bounded draft operations, then validate and commit it atomically.",
+    "Build a targeted trial plan through bounded draft operations, or validate and commit one bounded complete plan atomically.",
   args: {
     operation: tool.schema.enum(DRAFT_OPERATIONS).describe(
-      "begin creates or resumes the revision-bound draft, upsert-case adds one case, set-coverage and set-findings replace those sections, and commit performs the single counted validation/write attempt.",
+      "begin creates or resumes the revision-bound draft; upsert-case, set-coverage, and set-findings assemble it; commit performs its counted write. commit-plan validates and writes one complete bounded plan in one counted call.",
     ),
     pipeline_path: tool.schema
       .string()
@@ -1266,6 +1407,7 @@ export default tool({
       .max(CONTRACT.limits.findings)
       .optional(),
     case: caseSchema.optional(),
+    cases: tool.schema.array(caseSchema).max(CONTRACT.limits.cases).optional(),
   },
   async execute(args, context) {
     return executeTrialPlanOperation(args, context);

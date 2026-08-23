@@ -70,7 +70,7 @@ describe('chat editor context', () => {
     expect(context).toContain('Enable Python AI Agent in Editor Settings');
   });
 
-  test('marks a workflow request as create-new and makes an empty pipeline inventory explicit', () => {
+  test('renders a structured create action and makes an empty pipeline inventory explicit', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',
       yamlPath: null,
@@ -78,8 +78,7 @@ describe('chat editor context', () => {
     } as never);
 
     const context = buildEditorContext({
-      userText:
-        'can you make me a workflow when triggered, fetches the news with links from Financial Times',
+      requestedAction: 'create-new-pipeline',
       workspaceYamlFilePaths: [],
     });
 
@@ -87,7 +86,7 @@ describe('chat editor context', () => {
     expect(context).toContain('<workspace-yaml-folders empty="true" />');
   });
 
-  test('exposes the selected OpenCode Chat model only while authoring a new pipeline', () => {
+  test('exposes the selected OpenCode Chat model only with a structured new-pipeline action', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',
       yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
@@ -96,12 +95,12 @@ describe('chat editor context', () => {
     const chatModel = { providerID: 'deepseek', modelID: 'deepseek-v4-flash' };
 
     const createContext = buildEditorContext({
-      userText: 'create a separate new reporting pipeline',
+      requestedAction: 'create-new-pipeline',
       workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
       chatModel,
     });
     const editContext = buildEditorContext({
-      userText: 'add a prompt task to the current pipeline',
+      requestedAction: null,
       workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
       chatModel,
     });
@@ -292,7 +291,7 @@ describe('chat editor context', () => {
     expect(buildEditorContext()).not.toContain('<previous-chat-yaml-reconcile>');
   });
 
-  test('marks explicit create-pipeline requests so existing yaml names are collision context only', () => {
+  test('renders create intent only from the frozen structured action', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',
       yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
@@ -300,7 +299,7 @@ describe('chat editor context', () => {
     } as never);
 
     const context = buildEditorContext({
-      userText: '请创建一个新的 deploy pipeline，功能类似现有部署流程',
+      requestedAction: 'create-new-pipeline',
       workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
     });
 
@@ -311,7 +310,7 @@ describe('chat editor context', () => {
     expect(context).toContain('<yaml>.tagma/deploy/deploy.yaml</yaml>');
   });
 
-  test('fills the editor-created manual-new draft instead of creating a sibling', () => {
+  test('renders fill intent only from the frozen structured action', () => {
     const yamlPath = 'C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml';
     usePipelineStore.setState({
       workDir: 'C:/repo',
@@ -321,86 +320,43 @@ describe('chat editor context', () => {
     } as never);
 
     const context = buildEditorContext({
-      userText: '请创建一个新的 deploy pipeline，负责发布',
-      workspaceYamlFilePaths: ['C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml'],
+      requestedAction: 'fill-manual-new-pipeline',
+      workspaceYamlFilePaths: [yamlPath],
     });
 
     expect(context).toContain('<requested-action kind="fill-manual-new-pipeline">');
     expect(context).toContain('<target>current-file</target>');
     expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
-    expect(context).toContain(
-      '<current-file>.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml</current-file>',
-    );
   });
 
-  test('preserves creation intent and the selected model for an elliptical manual-new request', () => {
-    const yamlPath = 'C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml';
+  test('uses the send-time requested action instead of mutable pipeline selection or message wording', () => {
+    const liveYamlPath = 'C:/repo/.tagma/pipeline-new/pipeline-new.yaml';
+    const stagedYamlPath =
+      'C:/repo/.tagma/.chat-staging/stage/agent-workspace/.tagma/pipeline-old/pipeline-old.yaml';
     usePipelineStore.setState({
       workDir: 'C:/repo',
-      yamlPath,
-      manualNewPipelineYamlPath: yamlPath,
+      yamlPath: liveYamlPath,
+      manualNewPipelineYamlPath: liveYamlPath,
       registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
     } as never);
 
-    const context = buildEditorContext({
-      userText: 'build me a simple one to ask llm how are you',
+    const frozenNoAction = buildEditorContext({
+      currentYamlPath: stagedYamlPath,
+      requestedAction: null,
+    });
+    const frozenCreate = buildEditorContext({
+      currentYamlPath: stagedYamlPath,
+      requestedAction: 'create-new-pipeline',
       chatModel: { providerID: 'deepseek', modelID: 'deepseek-v4-flash' },
-      workspaceYamlFilePaths: [yamlPath],
     });
 
-    expect(context).toContain('<requested-action kind="fill-manual-new-pipeline">');
-    expect(context).toContain(
+    expect(frozenNoAction).not.toContain('<requested-action');
+    expect(frozenNoAction).not.toContain('<opencode-chat-model');
+    expect(frozenCreate).toContain('<requested-action kind="create-new-pipeline">');
+    expect(frozenCreate).toContain(
       '<opencode-chat-model provider-id="deepseek" model-id="deepseek-v4-flash" />',
     );
-    expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
-  });
-
-  test('keeps create-new marker for separate requests against a manual-new draft', () => {
-    const yamlPath = 'C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml';
-    usePipelineStore.setState({
-      workDir: 'C:/repo',
-      yamlPath,
-      manualNewPipelineYamlPath: yamlPath,
-      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
-    } as never);
-
-    const context = buildEditorContext({
-      userText: '请另外创建一个新的 deploy pipeline',
-      workspaceYamlFilePaths: ['C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml'],
-    });
-
-    expect(context).toContain('<requested-action kind="create-new-pipeline">');
-    expect(context).not.toContain('<requested-action kind="fill-manual-new-pipeline">');
-  });
-
-  test('does not mark ordinary task creation inside an existing pipeline as new-pipeline creation', () => {
-    usePipelineStore.setState({
-      workDir: 'C:/repo',
-      yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
-      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
-    } as never);
-
-    const context = buildEditorContext({
-      userText: '在当前 pipeline 里新建一个测试 task',
-      workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
-    });
-
-    expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
-  });
-
-  test('does not mark ordinary task creation inside a named existing pipeline as new-pipeline creation', () => {
-    usePipelineStore.setState({
-      workDir: 'C:/repo',
-      yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
-      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
-    } as never);
-
-    const context = buildEditorContext({
-      userText: 'create a new smoke test task in the deploy pipeline',
-      workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
-    });
-
-    expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
+    expect(frozenCreate).not.toContain('<requested-action kind="fill-manual-new-pipeline">');
   });
 
   test('does not protect a switched pipeline while another path is running', () => {

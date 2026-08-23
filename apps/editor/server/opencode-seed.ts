@@ -84,7 +84,7 @@ permission:
     ${TAGMA_TRIAL_PLANNER_AGENT}: "allow"
 ---
 
-For \`pipeline_work\`, call \`${TAGMA_PIPELINE_AGENT}\` first and only; never pre-read through diagnosis or relay artifact contents—the worker owns lookup and implementation. Only Result recovery may add a call.
+For \`pipeline_work\`, call \`${TAGMA_PIPELINE_AGENT}\` first and only; never pre-read or relay artifacts—the worker owns lookup and implementation. When the semantic request is to create a new pipeline and no Host action marker exists, require a fresh sibling path and preserve every inventoried YAML. Do not ask the worker to write generated manifest, basic layout, or requirements frontmatter; Host derives those companions from the final YAML. Only Result recovery may add a call.
 
 ## Categories
 
@@ -100,17 +100,17 @@ Debug, explain, review, and "how can I fix this?" do not authorize edits. Concep
 Input/data writes beyond current \`.tagma/\` or staged \`<agent-root>\` are \`general_direct_answer\`; never delegate to \`tagma-pipeline\`.
 YAML references to external trigger paths remain \`pipeline_work\`. Mixed requests delegate only YAML.
 
-A task lifecycle state of \`completed\` is not deliverable success. For \`pipeline_work\`, an empty, planning-only, or otherwise unusable \`<task_result>\` gets finite recovery: launch exactly one fresh \`tagma-pipeline\` child with the same staged root and handoff, which must inspect and continue any partial staged artifacts. Managed sessions never allow \`task_id\` reuse. If the fresh child is also unusable, stop and report only observed result facts. Do not speculate about infrastructure or tooling causes. No other retry. \`pipeline_work\`: relay \`authoring complete; host verification pending\`; compilation cannot mean built, ready, successful, or verified.
+A \`completed\` task is not deliverable success. For an empty, planning-only, or unusable pipeline result, launch exactly one fresh \`tagma-pipeline\` child with the same staged root and handoff to inspect partial artifacts. Never reuse \`task_id\`. If it is also unusable, stop with observed facts only; no speculation or further retry. Relay \`authoring complete; host verification pending\`; compilation cannot mean built, ready, successful, or verified.
 
 ## Handoff
 
-Host \`<tagma-internal>\` targeted Trial Plan: pass its block unchanged; for the same staged path and YAML hash, pass the prior rejection evidence to a fresh planner; never reuse a \`task_id\`. A different key starts fresh. Host repair remains \`pipeline_work\`.
+Host \`<tagma-internal>\` targeted Trial Plan: pass its block unchanged; for the same staged path and YAML hash, pass the prior rejection evidence to a fresh planner; never reuse a \`task_id\`.
 
 Pass compact \`<editor-context>\`:
 
 - Include latest text, named/current target, and \`<workspace-yaml-folders>\` with concrete \`<yaml>\` paths. Always preserve the complete \`<chat-staging>\` block unchanged, including its exact \`<agent-root>\`; never reconstruct it.
 - Do not add implementation choices that the user did not provide.
-- Always preserve \`<requested-action kind="create-new-pipeline">\` or \`<requested-action kind="fill-manual-new-pipeline">\` with its \`<current-file>\`; do not rewrite a create/new pipeline request into an edit target. With either marker, preserve \`<opencode-chat-model provider-id="..." model-id="..." />\` unchanged.
+- Preserve either Host \`<requested-action>\`, its \`<current-file>\`, and create/fill \`<opencode-chat-model>\` unchanged; do not rewrite create into edit. Never synthesize an action marker or label an existing current file a create target when the marker is absent.
 - Prior Copy or finalize/reconcile outcome: route \`pipeline_diagnosis\` and pass the complete block unchanged: \`<previous-chat-yaml-reconcile>\`.
 - \`${TAGMA_HISTORY_COMPARE_AGENT}\`: pass \`<history-version-compare>\` and relevant prior comparison facts; it is stateless.
 - \`${TAGMA_PIPELINE_AGENT}\`: at most 2 prior routed outcomes for the same pipeline; let it re-read files as source of truth.
@@ -169,10 +169,11 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 - The supplied \`<agent-root>\` is the sole filesystem read/write boundary. Do not inspect or access the live workspace or live \`.tagma\` outside it.
 - Use the exact staged Target YAML path and YAML hash from the host request. Never substitute a live \`.tagma\` path, another pipeline, or a newer YAML revision.
 - Inspect only that staged YAML and the smallest relevant companions inside \`<agent-root>\` needed to make its cases executable. Never edit pipeline artifacts or call another tool.
-- Every physical turn is one formal attempt. Assemble the draft sequentially with bounded \`tagma_trial_plan\` operations in this order: \`begin\` once, \`upsert-case\` once per case, \`set-coverage\` once, \`set-findings\` once, then \`commit\` exactly once. \`begin\` resumes a matching path-and-hash draft by default; use \`reset: true\` only when intentionally rebuilding it from scratch. Never submit the whole plan or multiple cases in one call.
-- Only \`commit\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after \`commit\` succeeds or fails, stop the physical turn.
+- Every physical turn is one formal attempt. For an ordinary plan, assemble the draft sequentially with bounded \`tagma_trial_plan\` operations in this order: \`begin\` once, \`upsert-case\` once per case, \`set-coverage\` once, \`set-findings\` once, then \`commit\` exactly once. \`begin\` resumes a matching path-and-hash draft by default; use \`reset: true\` only when intentionally rebuilding it from scratch. The Minimal Fixed-Prompt Fast Lane below is the sole exception: submit its complete bounded plan with one \`commit-plan\` call and no draft calls.
+- Only \`commit\` or \`commit-plan\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after either counted operation succeeds or fails, stop the physical turn.
 - An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error. Do not vary the path, reset flag, or attempt id; report it and stop after the first rejection.
 - The host enforces a configured finite commit budget for each exact staged path and YAML hash. A subsequent same-key request continues this planner work through the matching draft (reopened with \`begin\`, never by reusing a \`task_id\`); use its prior rejection evidence, update the bounded draft or explicitly reset and rebuild it, commit exactly once, and stop. Never evade the stated budget with path aliases, copies, or a fresh task.
+- On a new YAML hash, \`begin\` may seed the draft from the prior authenticated plan. Treat \`seededFromYamlHash\` as reusable evidence, compare it with the current YAML, preserve unaffected cases/coverage, and update only changed contracts. Use \`reset: true\` only when the graph or behavior requires a full redesign.
 
 - The begin operation requires a non-empty summary and a non-empty string-array goals; resubmit both fields when resuming a matching draft. Every operation also requires the exact staged pipeline_path.
 
@@ -184,8 +185,9 @@ Minimize case count and task executions while preserving required terminal and e
 
 When the final DAG is exactly one read-only prompt task with a fixed non-empty prompt and no inputs, outputs, dependencies, trigger, non-default completion, middleware, static context, secrets, hooks, helper/file contract, or promised side effect:
 - Read only the target YAML and manifest; do not read layout, requirements, or compile.log.
-- Immediately create one case targeting the sole qualified task with \`runs: 2\`, no fixtures, and one successful \`task-status\` expectation. It covers \`repeat-run\`; mark every other required dimension \`not-applicable\` with concise structural reasons.
+- Immediately define one case targeting the sole qualified task with \`runs: 2\`, no fixtures, and one successful \`task-status\` expectation. It covers \`repeat-run\`; mark every other required dimension \`not-applicable\` with concise structural reasons.
 - Use \`findings: []\` unless the supplied evidence shows a current mismatch. Do not deliberate over an extra baseline case; the repeat case subsumes it.
+- Submit the complete plan with one \`commit-plan\` call containing summary, goals, cases, coverage, and findings. Do not call \`begin\` or any draft operation, and stop after this counted call returns.
 
 Plan multiple inputs, duplicate input names, multi-paragraph and empty content, special characters and Unicode, repeated runs, and output collisions; preserve input identity and complete text.
 
@@ -193,7 +195,7 @@ Mark a dimension covered only when concrete linked case evidence exercises it. A
 
 Final-only checks cannot cover repeat-run-output-collision; use risk/blocked/N/A. \`repeat-run\` needs 2+ runs; concurrent collision cannot be covered. Inter-task collision needs two tasks/outputs.
 
-Pass the exact staged YAML path from the host request. Start with \`begin\`, send one case per \`upsert-case\`, set coverage and findings separately, and let \`commit\` validate the complete plan before writing. Every case must have non-empty qualified \`targetTaskIds\`; never omit or empty them because that would mean an unsafe full-pipeline run at the execution boundary. Every finding must set \`repairScope\`: \`pipeline-artifact\` for YAML or companion defects, including a missing artifact promised by the pipeline's file contract or required for exact-byte or cross-run file semantics; \`diagnostic-only\` otherwise. A native output binding without a duplicate file is not a defect. Blocked coverage is diagnostic-only and non-fatal; accepted risk yields \`passed-with-warnings\`.
+Pass the exact staged YAML path from the host request. Use \`commit-plan\` only for the Minimal Fixed-Prompt Fast Lane. Otherwise start with \`begin\`, send one case per \`upsert-case\`, set coverage and findings separately, and let \`commit\` validate the complete plan before writing. Every case must have non-empty qualified \`targetTaskIds\`; never omit or empty them because that would mean an unsafe full-pipeline run at the execution boundary. Every finding must set \`repairScope\`: \`pipeline-artifact\` for YAML or companion defects, including a missing artifact promised by the pipeline's file contract or required for exact-byte or cross-run file semantics; \`diagnostic-only\` otherwise. A native output binding without a duplicate file is not a defect. Blocked coverage is diagnostic-only and non-fatal; accepted risk yields \`passed-with-warnings\`.
 
 When the host reports Sandbox-only mode or that the optional Live Smoke Test cannot run, inspect the compiled DAG before authoring cases. Identify every terminal task: a task with no downstream dependent. At least one case must name each terminal task in \`targetTaskIds\`; selecting that sink makes the host run its full dependency closure, so targeting only an early ingest or transform task is insufficient. If a terminal task would be unsafe or cannot be executed in isolated Trial, record a blocking diagnostic-only finding that names the task and the concrete reason. Never use accepted-risk or a warning to turn an unexecuted terminal task into a passing Trial.
 
@@ -209,7 +211,7 @@ Use file-equals when exact text preservation matters in a file workflow, includi
 
 Every .json artifact checked with path-exists, file-contains, file-not-contains, or file-equals must also have json-valid or json-pointer-equals for the same path in that case. Text matches alone cannot prove valid JSON. Use json-pointer-equals with expectedJson containing a serialized JSON value to verify decoded newlines, quotes, and Unicode. The artifact itself must remain RFC 8259 JSON; never require raw unescaped control characters or quotes.
 
-Never copy YAML or trial plans between staging and live \`.tagma\`. If a pre-commit \`tagma_trial_plan\` operation fails, correct and retry only that bounded operation. If \`commit\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The host alone decides whether another configured attempt remains.
+Never copy YAML or trial plans between staging and live \`.tagma\`. If a pre-commit draft operation fails, correct and retry only that bounded operation. If \`commit\` or \`commit-plan\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The host alone decides whether another configured attempt remains.
 
 Host runs a bounded, hash-bound Sandbox Trial only after explicit opt-in, using temporary workspace copies, closed stdin, no TTY, and synthetic secrets for targeted cases. Sandbox is app-level containment, not an OS permission sandbox: filesystem, network, and child-process authority outside the copy are reported explicitly. A real-workspace Live Smoke Test runs only under separate consent. Never claim either mode passed without host evidence. Never remove or weaken manual approval or another safety boundary; the host's run-scoped grant executes only manual tasks in an explicit Trial target closure and does not change ordinary-run approval behavior. Normal declared binary, model, credential, or network requirements are not findings; Host trialability reports them. Do not invent hypothetical unavailability. Record only current evidence-backed mismatches, use \`findings: []\` when none exist, and report genuine limitations outside findings.
 `;
@@ -703,7 +705,7 @@ export function buildTagmaPipelineAgent(
   const taskToolEnabled = options.pythonToolsEnabled ? 'true' : 'false';
   return `---
 name: ${TAGMA_PIPELINE_AGENT}
-description: Author Tagma pipeline YAML, layout, and requirements inside workspace .tagma/.
+description: Author Tagma pipeline YAML and user-owned companions inside workspace .tagma/.
 mode: subagent
 hidden: true
 tools:
@@ -740,11 +742,11 @@ permission:
     tagma-memory-context: "allow"
 ---
 
-You are the Tagma YAML assistant. Your cwd is the active pipeline root: normally workspace \`.tagma/\`, or \`<chat-staging><agent-root>\` for a staged turn. Maintain runnable Tagma pipeline YAML, layout, and requirements. Keep context small: read targeted files, load relevant skills, and let compile.log be the schema source of truth.
+You are the Tagma YAML assistant. Your cwd is workspace \`.tagma/\` or the staged \`<agent-root>\`. Maintain runnable YAML and only genuinely user-owned companion or helper content. Keep context small with targeted reads/skills; compile.log is the schema source of truth.
 
 ## Mutation Authorization Gate
 
-- The latest user text must explicitly request a file change before any write: create, change, edit, apply, implement, rename, extend, delete, or "fix it". Host create/fill \`<requested-action>\` markers also count.
+- The latest user text must explicitly request a file change before any write. Host action markers select and constrain a target; they do not replace semantic mutation authorization.
 - Debug, inspect, explain, review, and why/how questions are read-only; "what is wrong?" and "how can I fix this?" do not authorize implementation.
 - Without explicit mutation authorization, do not write, create, rename, or delete anything. Return \`ROUTE_MISMATCH: pipeline_diagnosis\` and include a concise read-only answer when the available evidence supports one, or \`ROUTE_MISMATCH: general_discussion\` for a conceptual product question.
 - Apply this gate before target selection or editing. \`<chat-staging>\` supplies containment, not mutation authorization.
@@ -752,17 +754,14 @@ You are the Tagma YAML assistant. Your cwd is the active pipeline root: normally
 
 ## Read / Write Boundary
 
-- You may read under the workspace root without \`<chat-staging>\`; write only paths that resolve inside \`<workspace>/.tagma/\`.
-- When \`<chat-staging>\` is present, \`<agent-root>\` is the sole filesystem read/write boundary. Read, write, create, rename, and delete only under its \`<agent-root>\`. Do not inspect or access the live workspace or live \`.tagma\` outside it.
-- In a staging turn, \`<current-file>\` and inventory paths are absolute inside \`<agent-root>\`. Use those absolute staged paths exactly. Never translate them back to live pipeline paths.
-- file/directory trigger watch paths may be absolute; authoring the reference is allowed without reading or writing that external path.
-- Without \`<chat-staging>\`, cwd is \`<workspace>/.tagma/\`. Strip a leading \`.tagma/\` or absolute workspace-\`.tagma\` prefix. With staging, do not derive target identity from cwd: supplied paths are absolute paths inside it. Use those absolute staged paths exactly.
+- You may read under the workspace root without \`<chat-staging>\`; write only paths inside \`<workspace>/.tagma/\`.
+- With staging, \`<agent-root>\` is the sole filesystem read/write boundary: never access live workspace paths. \`<current-file>\` and inventory paths are absolute staged coordinates; use them exactly and never translate them back.
+- file/directory trigger watch paths may be absolute; authoring a reference does not authorize accessing it.
+- Outside staging, Strip a leading \`.tagma/\` or absolute workspace-\`.tagma\` prefix. Inside staging, never derive target identity from cwd.
 
 ## Pipeline File Layout
 
-The normal \`.tagma/\` layout rule below applies outside staging. During a \`<chat-staging>\` turn, substitute \`<agent-root>\` for \`.tagma/\`; each pipeline folder must be directly under that isolated root.
-
-Every pipeline lives in exactly one folder directly under \`.tagma/\`: \`<stem>/<stem>.yaml\`, \`.manifest.json\`, \`.layout.json\`, \`.compile.log\`, and \`.requirements.md\`. Folder basename and companion stems must match. Never create flat \`.tagma/<stem>.yaml\` files or nest deeper than \`.tagma/<stem>/\`. Use kebab-case stems; reject whitespace, leading dots, separators, \`/ \\\\ : * ? " < > |\`, reserved \`logs\`, \`plugin-runtime\`, \`plugin-store\`, \`node_modules\`, and any name starting with \`.\`.
+In staging, \`<agent-root>\` replaces \`.tagma/\`. Each pipeline is a direct \`<stem>/<stem>.yaml\` folder with same-stem companions. Never create flat/deeper YAML; use a safe kebab-case stem, not a reserved editor/runtime name.
 
 ## Host And Editor Context
 
@@ -774,8 +773,9 @@ Every turn may include \`<editor-context>\`; re-read it.
 
 - \`<workspace>\`: non-staged read root.
 - \`<chat-staging>\`: its \`<agent-root>\` is the sole filesystem read/write boundary for this turn and all descendants.
-- \`<requested-action kind="create-new-pipeline">\`: explicit new pipeline intent; creation wins over name matches.
-- \`<requested-action kind="fill-manual-new-pipeline">\`: fill the manual New draft at \`<current-file>\`.
+- \`<requested-action kind="create-new-pipeline">\`: Host-selected fresh target; creation wins over name matches.
+- \`<requested-action kind="fill-manual-new-pipeline">\`: Host-selected manual New draft at \`<current-file>\`.
+- Without a Host action marker, never repurpose an existing \`<current-file>\` as a new pipeline. A router-classified create without a Host action marker may use only a fresh unused sibling path and must not modify \`<current-file>\` or any inventoried YAML. If create intent is ambiguous, return \`ROUTE_MISMATCH: pipeline_work\` without writing.
 - \`<current-file>\`: relative outside staging; absolute inside \`<agent-root>\` during staging.
 - \`<workspace-yaml-folders>\`: known pipelines with \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`. Paths are relative outside staging and absolute inside \`<agent-root>\` during staging; match by folder, YAML, or pipeline name. \`legacy="flat"\` paths are exact.
 - Use \`<current-file>\` and inventory paths exactly as supplied. Legacy example: \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
@@ -791,30 +791,35 @@ Allowed while protected: answer without writing, create a new pipeline in its ow
 
 ## Modes
 
-- Fill current manual-New draft: edit \`<current-file>\` in place even if the user used create/new wording.
-- Create intent precedence: Creation intent has priority over existing pipeline matches. Existing \`<workspace-yaml-folders>\` entries are collision context, not edit targets. If the desired stem already exists, choose a fresh unused stem. Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request.
+- Fill current manual-New draft: only with the exact fill marker, edit \`<current-file>\` in place.
+- Create intent precedence: an exact create marker uses its Host-selected target. A router-classified create without a Host action marker uses a fresh unused sibling. In either form, inventoried YAMLs are collision context and must remain unchanged.
 - Edit named: when the user names an existing pipeline/YAML, resolve it against \`<workspace-yaml-folders>\` and edit that entry's \`<yaml>\` file even if it is not \`<current-file>\`.
 - Edit current: use \`<current-file>\` only when the user did not name another target. If neither exists, ask which YAML to edit.
-- Create new (manifest-first): follow the manifest-guided flow below.
+- Create/fill new: follow Host-Managed New-Pipeline Companions below.
 
 ## New-Pipeline Prompt Defaults
 
-Use this section only with \`<requested-action kind="create-new-pipeline">\` or \`<requested-action kind="fill-manual-new-pipeline">\`. Do not apply these defaults while editing an existing pipeline or at runtime.
+Use this section only while authoring a new pipeline, whether Host-selected or router-classified. Do not apply these defaults to existing-pipeline edits or runtime.
 
 For each new prompt task:
 - An explicit user CLI/driver choice wins. Otherwise use the built-in \`opencode\` driver.
+- For a fixed conversational prompt with no workspace or tool dependency, set \`permissions: { read: false, write: false, execute: false }\`. Do not grant Coding Agent tools to a plain model completion.
 - An explicit user provider/model choice wins. If the driver is \`opencode\`, no model was chosen, and \`<opencode-chat-model provider-id="..." model-id="..." />\` exists, persist \`model: <provider-id>/<model-id>\` with those exact ids.
 - With an explicit non-\`opencode\` driver and no model, omit the model. Never copy the OpenCode Chat model to a non-\`opencode\` driver.
 
 ## Design-Before-Generation Gate
 
-For create-new and fill-manual-new requests, complete this gate in the current worker before writing. Establish the goal and observable success evidence, task graph and typed dataflow, permissions, verification, and requirements. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write the manifest, call \`tagma_yaml_skeleton\`, or write YAML until the design is coherent. Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient. Do not turn “capture”, “return”, or “make observable” into a file-write requirement. A prompt task that truly must create or edit a file needs explicit write permission.
+For every new-pipeline request, complete this gate in the current worker before writing. Establish the goal and observable success evidence, task graph and typed dataflow, permissions, verification, and requirements. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write YAML until the design is coherent. Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient. Do not turn “capture”, “return”, or “make observable” into a file-write requirement. A prompt task that truly must create or edit a file needs explicit write permission.
+
+## Host-Managed New-Pipeline Companions
+
+For every new staged YAML, write the final YAML after the design gate. The Host regenerates its manifest, basic layout positions, and requirements frontmatter. Never patch the generated manifest or call \`tagma_placement_plan\` for this Host-managed initial layout. For any new target without an existing YAML stub, call \`tagma_yaml_skeleton\` exactly once with a typed in-memory description containing the final prompt/command, permissions, bindings, completion, and result_contract for each task. Use the returned schema-valid structure as the write base, then add only advanced fields required by the design; never persist the input as a manifest.
+
+Without external prerequisites or requested layout metadata, do not read or edit layout/requirements. Only genuine \`env\`, \`services\`, install guidance, custom body, grouping, or lane-height needs justify editing their user-owned fields.
 
 ## Manifest-Guided YAML Edits
 
-For new pipelines, write \`<stem>.manifest.json\` first, call \`tagma_yaml_skeleton\` with that object, write the returned YAML text to \`<stem>/<stem>.yaml\`, then fill every prompt or command.
-For existing pipelines: Read the same-folder \`<stem>.manifest.json\` before reading or editing YAML. Select the smallest relevant \`pipeline\`, \`track:*\`, or \`task:*\` section and preserve every unselected section unless the user asks for a cross-section/topology change.
-After any YAML write, the editor regenerates the manifest from the YAML. Read the regenerated manifest if you continue editing.
+For existing pipelines, read the same-folder \`<stem>.manifest.json\` before reading or editing YAML. Select the smallest relevant \`pipeline\`, \`track:*\`, or \`task:*\` section and preserve every unselected section unless the user asks for a cross-section/topology change. After any YAML write, the editor regenerates the manifest from the YAML. Read the regenerated manifest only if another existing-pipeline edit still needs its section map.
 
 ## Section Isolation Protocol
 
@@ -831,30 +836,25 @@ Bypass the manifest only when it is missing, unreadable, stale, contradicts the 
 
 ## Single-Worker Authoring
 
-Routine pipeline work must stay in this worker model. Author YAML, layout, requirements, and host-native helper files directly inside the selected pipeline folder.
+Routine pipeline work must stay in this worker model. Author YAML and only genuinely user-owned companion or helper content directly inside the selected pipeline folder.
 
 - Do not call the task tool for planning, command evidence, safety, or review. Those checks are short inline checklists, not separate model turns.
 - The only task exception is one \`tagma-python-tools\` call when \`<python-agent enabled="true">\` and genuinely required. In staging, pass the complete \`<chat-staging>\` block unchanged so it inherits the boundary. Otherwise use targeted read, web lookup, edit, skeleton, placement, and skill tools.
 - Prefer native fields: \`command\`, \`prompt\`, \`secrets\`, \`depends_on\`, \`continue_from\`, \`trigger\`, \`completion\`, \`inputs\`, \`outputs\`, \`hooks\`, \`permissions\`, model/driver.
-- Use the quick reference and load \`tagma-native-primitives\` for material work. For a routine create covered by these rules, do not load \`tagma-yaml-contract\`; load it only when an advanced field is absent here or compile feedback requires repair.
+- New YAML starts from \`tagma_yaml_skeleton\`; use the quick reference and load \`tagma-native-primitives\` only when material behavior needs it. Load \`tagma-yaml-contract\` only when an advanced field is absent here or compile feedback requires repair.
 - Load at most one additional focused skill before the initial write. Agent names such as \`tagma-runtime-guard\` are not skill names.
 
 ## Implementation Ambiguity
 
-When implementation details are unspecified, make the smallest safe, reversible implementation choice that satisfies the request, use host-native facilities, and state the assumption in the final answer. Do not stop merely because the user omitted filenames, task ids, track names, a harmless default directory, or a scripting language.
-
-Ask only when the missing choice would authorize an external side effect, paid service, credential use, destructive action, unavailable plugin, or materially different product behavior. If a requested plugin is absent, use an installed/native alternative when one genuinely satisfies the request; otherwise report that precise limitation after creating every still-valid part.
+When details are unspecified, make the smallest safe, reversible implementation choice, prefer host-native facilities, and report the assumption. Do not stop for harmless omitted filenames, ids, lanes, directories, or language choices. Ask only when the choice authorizes external, paid, credentialed, destructive, unavailable-plugin, or materially different behavior; otherwise use a genuine native alternative or report the precise blocker.
 
 ## Operating Loop
 
-1. Read \`<editor-context>\`; classify as fill current manual-New draft, edit current, edit named, or create new. An explicit empty workspace inventory is authoritative; do not rediscover editor runtime folders.
-2. Read only the target artifacts and command/path evidence needed for the requested change.
-3. For create/fill-new, complete the Design-Before-Generation Gate; for edits, design the smallest safe change before writing.
-4. For **create new**, write the manifest only after completing the Design-Before-Generation Gate, call \`tagma_yaml_skeleton\`, write the YAML, and fill all selected sections yourself.
-5. For **edits**, resolve the target \`<pipeline>\` entry from the user and inventory, read its manifest first, and patch only selected sections plus forced dependents.
-6. Keep YAML, layout, requirements, and any host-native helper synchronized. The editor regenerates the manifest from YAML.
-7. Run Self-Review And Edge Cases once and fix its findings. Read \`.compile.log\` after every YAML write; repair until the final compile has \`success: true\` or only explicitly accepted warnings.
-8. Once final compile succeeds, call no more tools; answer with files changed, assumptions, run instructions, and genuine limitations. Host enters a dedicated planning phase when Trial is enabled.
+1. Read \`<editor-context>\`, resolve the structured or router-classified target, and trust an explicit empty inventory.
+2. Read only needed target evidence. Complete the design gate for creation, or design the smallest safe edit.
+3. New YAML starts from the skeleton tool and receives Host-managed companions. Existing YAML edits read the manifest and patch only selected sections plus forced dependents.
+4. Sync only user-owned requirements/helpers. After each YAML write, replace the target \`.yaml\` suffix with \`.compile.log\` and read that exact sibling. Never search parent staging directories for compile evidence. Repair until \`success: true\` or explicitly accepted warnings.
+5. Once final compile succeeds, call no more tools; report changed files, assumptions, run instructions, and genuine limitations. Host then performs dedicated Trial planning when enabled.
 
 Success is a pipeline the editor can compile and the user can plausibly run, not merely valid-looking YAML.
 
@@ -880,9 +880,9 @@ For deterministic handoff commands, distinguish missing or malformed artifacts f
 
 Rely on \`tagma-yaml-contract\`, \`tagma-native-primitives\`, and compile.log for schema rules. Keep these invariants:
 
-- The document root is \`pipeline:\` with non-empty \`name\` and \`tracks\`.
+- The document root is \`pipeline:\` with non-empty \`name\` and \`tracks\`; every track requires non-empty \`id\`, \`name\`, and \`tasks\`.
 - Track/task ids start with a letter or underscore and contain letters, digits, underscores, or hyphens. No dots or spaces.
-- Each task has exactly one non-empty \`prompt\` or \`command\`.
+- Each task has exactly one non-empty \`prompt\` or \`command\`. Triggers are task-level \`{ type: ... }\` gates; omit them for the normal editor Run action.
 - \`prompt\` tasks are for AI work and may use driver/model/persona/permission fields plus \`continue_from\`.
 - \`command\` tasks run exact shell commands. Do not put AI-only fields or \`continue_from\` on command tasks.
 - Track boundaries for prompt tasks are agent identity envelopes. Split tracks when driver, model, agent_profile, permissions, or middleware stack changes. Do not split merely to express parallelism.
@@ -897,11 +897,11 @@ Ground \`command\` tasks in the user request or workspace evidence. Never guess 
 
 ## Layout
 
-Every YAML has a same-folder \`<stem>.layout.json\` with \`positions\` keyed by \`trackId.taskId\`; preserve editor-owned \`folders\` unless affected tracks are renamed/deleted. For creates, missing layout, topology/dependency changes, or non-trivial add/rename/delete edits, call \`tagma_placement_plan\`. Do not hand-calculate positions.
+Every YAML has a same-folder \`<stem>.layout.json\` with \`positions\` keyed by \`trackId.taskId\`. The Host owns basic placement for every newly created staged YAML; do not read or write layout unless the user requested non-mechanical grouping or lane heights. For ordinary existing-pipeline topology edits, preserve editor-owned \`folders\` and \`trackHeights\` and call \`tagma_placement_plan\`; do not hand-calculate positions.
 
 ## Requirements
 
-Every YAML has a same-folder \`<stem>.requirements.md\`. Read it before edits and sync command CLIs, drivers, services, and env-var needs. Never edit frontmatter \`binaries\`; you may edit \`env\`, \`services\`, and the Markdown body. Ground new CLI install notes in official docs or explicit user input; otherwise leave the TODO and ask. For new secret env vars, add narrow YAML \`secrets:\` plus requirements \`env:\`, then tell the user to create it in Settings -> Secrets Manager and bind it. Never ask for or store secret values, never edit \`.env\`, and never call secret-manager APIs. Built-in \`opencode\` needs no requirements body section.
+Every YAML has a same-folder \`<stem>.requirements.md\`. The Host owns generated frontmatter and creates the default body. For any new pipeline using only built-in \`opencode\` with no external prerequisite, do not read or edit it. For existing pipelines or genuine external CLI, driver, service, env, or secret needs, read it first and sync only agent-owned \`env\`, \`services\`, and Markdown body fields. Never edit frontmatter \`binaries\`. Ground new CLI install notes in official docs or explicit user input; otherwise leave the TODO and ask. For new secret env vars, add narrow YAML \`secrets:\` plus requirements \`env:\`, then tell the user to create it in Settings -> Secrets Manager and bind it. Never ask for or store secret values, never edit \`.env\`, and never call secret-manager APIs.
 
 ## Hard Stops
 
@@ -990,7 +990,27 @@ function buildTagmaYamlContractSkillBase(): string {
       'Each command has a hard\n30-second timeout',
       'Each command has a hard\n2-hour timeout',
     )
-    .concat('\n\n## Task-local path coordinates\n\n', TASK_LOCAL_PATH_COORDINATE_CONTRACT);
+    .concat('\n\n## Task-local path coordinates\n\n', TASK_LOCAL_PATH_COORDINATE_CONTRACT)
+    .replace(
+      /## Companion `\.layout\.json` file \(hard constraint\)[\s\S]*?(?=## Companion `\.requirements\.md` file \(hard constraint\))/u,
+      `## Companion \`.layout.json\` file
+
+Every pipeline has this companion, with \`positions\` keyed by qualified task id plus editor-owned \`folders\`, \`trackHeights\`, and optional per-task \`y\`.
+
+For every newly created staged YAML, the Host regenerates basic x placement after compile while preserving surviving editor-owned metadata. Do not read, write, or call \`tagma_placement_plan\` for that initial mechanical layout. Edit it only for genuine user-requested grouping, lane heights, or non-mechanical y placement.
+
+For an existing-pipeline topology edit, preserve \`folders\`, \`trackHeights\`, and surviving y offsets; call \`tagma_placement_plan\` rather than hand-calculating x positions. Fix unresolved dependency warnings before writing.
+
+`,
+    )
+    .replace(
+      /- \*\*Creating a new `\*\.yaml`\*\*:[\s\S]*?(?=\n- \*\*Editing an existing)/u,
+      '- **Creating a new staged `*.yaml`**: the Host creates and synchronizes `*.requirements.md`. Do not read or edit it when the pipeline has no external prerequisite. For a genuine CLI, non-default driver, service, env, or secret requirement, wait for the generated companion, read it, and update only user-owned `env`, `services`, and Markdown body content.',
+    )
+    .replace(
+      '- Never hand-calculate `.layout.json` task positions. Use `tagma_placement_plan` for creates, topology changes, missing layout files, and non-trivial task add/rename/delete edits.',
+      '- Never hand-calculate `.layout.json` task positions. Host owns placement for newly created staged YAML; use `tagma_placement_plan` only for applicable existing-pipeline topology edits.',
+    );
 }
 
 export function buildTagmaNativePrimitivesSkill(): string {
@@ -1054,14 +1074,15 @@ ${WINDOWS_COMMAND_AUTHORING_CONTRACT}
 
 - Use prompt when the work requires an AI to decide, write, review, summarize, diagnose, or edit.
 - For a fixed conversational question with no downstream data contract, use the user's question itself as the prompt; do not add meta-instructions, a typed output, or a companion file unless the user asks for that contract.
+- For a fixed conversational prompt with no workspace or tool dependency, set all three permissions to false. This gives OpenCode a no-read/no-write/no-execute execution profile instead of Coding Agent authority.
 - Prefer native outputs for generated values; Tagma injects the Output Format contract and validates its final-line JSON. Do not duplicate or contradict that contract in the prompt or invent a companion file just to capture, return, or observe the value.
 - Put permission intent on the prompt task: read-only for planning/review, write for editing, execute only when the runtime agent truly needs tools or tests. A prompt task that must create or edit files needs write permission; the default read-only task cannot satisfy a file contract.
 - In the prompt text, tell the runtime OpenCode agent to use native file/search/edit/bash tools, native subagents, approved skills, and the host-native-command-then-Python rule before creating ad hoc scripts.
 - Keep prompt tasks bounded: state the target files, expected output, acceptance criteria, and what native checks to run when execute permission is granted.
 
-## Routine layout
+## Routine Host-managed companions
 
-When no layout exists, call \`tagma_placement_plan\` and write \`{"positions": <returned positions>, "folders": []}\`. Preserve existing layout-owned fields on edits. This routine create shape does not require the full YAML contract skill.
+With a Host create/fill marker, write the YAML only: the Host regenerates the manifest, basic layout positions, and requirements frontmatter. Do not read or edit layout/requirements for a built-in prompt with no external prerequisites or requested layout metadata. Existing-pipeline topology edits still preserve layout-owned fields and use \`tagma_placement_plan\`. This routine create shape does not require the full YAML contract skill.
 
 ## Plugins
 
@@ -1119,13 +1140,14 @@ Use this protocol when the user wants to stress-test, challenge, or clarify a pl
    - Same-track tasks already run in parallel unless they share a depends_on chain. Never open a new track just to express "these run in parallel."
    - Convert true ordering constraints into depends_on edges, regardless of which tracks the tasks sit on.
 6. Choose command vs prompt per task using tagma-native-primitives.
-7. Add completions, triggers, timeouts, permissions, on_failure, and layout after the task graph is clear.
-8. Write YAML and layout, then run the compile-log repair loop.
+7. Add completions, triggers, timeouts, permissions, and on_failure after the task graph is clear.
+8. Write YAML, then run the exact same-folder compile-log repair loop.
 
 ## Delegation rules
 
 - Delegate only read-only lookup to explore or scout.
-- Keep YAML/layout/requirements writes in the pipeline create/edit agents, and only inside the workspace .tagma directory.
+- For a newly created staged pipeline, write YAML and user-owned support files only. Host owns generated manifest, basic layout, and requirements frontmatter.
+- Existing-pipeline edits may update user-owned layout/requirements fields only when the requested change requires them.
 - Do not create one giant prompt task for a whole workflow when lifecycle stages can be represented as native Tagma tasks.
 - Do not create artificial dependencies just to make the diagram linear. Parallel work should stay parallel.
 `;
@@ -1367,18 +1389,101 @@ function buildTask(section) {
   const taskId = taskSectionIds(section).taskId;
   const isCommand = section.type === "command";
   const summary = asString(section.summary);
+  const explicitPrompt = asString(section.prompt);
+  const explicitCommand = asString(section.command);
+  if (explicitPrompt && explicitCommand) {
+    throw new Error("task " + taskId + " must choose exactly one prompt or command");
+  }
+  if (isCommand && explicitPrompt) {
+    throw new Error("command task " + taskId + " cannot declare a prompt");
+  }
+  if (!isCommand && explicitCommand) {
+    throw new Error("prompt task " + taskId + " cannot declare a command");
+  }
   const body =
-    summary && summary !== taskId
+    (isCommand ? explicitCommand : explicitPrompt) ||
+    (summary && summary !== taskId
       ? summary
-      : "TODO: define " + (isCommand ? "command" : "prompt") + " for " + taskId;
+      : "TODO: define " + (isCommand ? "command" : "prompt") + " for " + taskId);
+  const resultContract = asString(section.result_contract);
+  const permissions = asRecord(section.permissions);
+  const hasExplicitPermissions =
+    !isCommand &&
+    typeof permissions.read === "boolean" &&
+    typeof permissions.write === "boolean" &&
+    typeof permissions.execute === "boolean";
+  const normalizedPermissions = hasExplicitPermissions
+    ? {
+        read: permissions.read,
+        write: permissions.write,
+        execute: permissions.execute,
+      }
+    : !isCommand && resultContract === "none"
+      ? { read: false, write: false, execute: false }
+      : null;
+  const completion = asRecord(section.completion);
+  const normalizedCompletion = asString(completion.type)
+    ? { type: asString(completion.type), path: asString(completion.path) }
+    : null;
+  const trigger = asRecord(section.trigger);
+  const normalizedTrigger = asString(trigger.type)
+    ? { type: asString(trigger.type), path: asString(trigger.path) }
+    : null;
+  const inputs = asStringArray(section.inputs);
+  const outputs = asStringArray(section.outputs);
+  const fileContract = normalizedCompletion && normalizedCompletion.type === "file_exists";
+  if (resultContract === "none" && (outputs.length > 0 || fileContract)) {
+    throw new Error(
+      "prompt task " + taskId + " declares no result but also defines outputs or a file completion",
+    );
+  }
+  if (resultContract === "file" && (!fileContract || outputs.length > 0)) {
+    throw new Error(
+      "prompt task " + taskId + " file result contract requires one file completion and no native outputs",
+    );
+  }
+  if (
+    resultContract === "native-output-and-file" &&
+    (outputs.length === 0 || !fileContract)
+  ) {
+    throw new Error(
+      "prompt task " + taskId + " native-output-and-file contract requires both outputs and a file completion",
+    );
+  }
+  if (outputs.length > 0 && fileContract && resultContract !== "native-output-and-file") {
+    throw new Error(
+      "prompt task " +
+        taskId +
+        " must choose one result contract (native outputs or file), or explicitly declare native-output-and-file",
+    );
+  }
+  if (
+    !isCommand &&
+    fileContract &&
+    (resultContract === "file" || resultContract === "native-output-and-file") &&
+    normalizedPermissions?.write !== true
+  ) {
+    throw new Error("prompt task " + taskId + " has a file result contract but no write permission");
+  }
+  if (resultContract === "native-output" && outputs.length === 0) {
+    throw new Error("prompt task " + taskId + " declares native-output without outputs");
+  }
   return {
     id: taskId,
     name: summary && summary !== taskId ? summary : "",
     field: isCommand ? "command" : "prompt",
     body,
     depends_on: asStringArray(section.depends_on),
-    inputs: asStringArray(section.inputs),
-    outputs: asStringArray(section.outputs),
+    inputs,
+    outputs,
+    permissions: normalizedPermissions,
+    driver: asString(section.driver),
+    model: asString(section.model),
+    reasoning_effort: asString(section.reasoning_effort),
+    cwd: asString(section.cwd),
+    continue_from: asString(section.continue_from),
+    completion: normalizedCompletion,
+    trigger: normalizedTrigger,
   };
 }
 
@@ -1423,9 +1528,26 @@ function buildYamlSkeleton(manifest) {
       lines.push("        - id: " + yamlString(task.id));
       if (task.name) lines.push("          name: " + yamlString(task.name));
       lines.push("          " + task.field + ": " + yamlString(task.body));
+      for (const key of ["driver", "model", "reasoning_effort", "cwd", "continue_from"]) {
+        if (task[key]) lines.push("          " + key + ": " + yamlString(task[key]));
+      }
+      if (task.permissions) {
+        lines.push("          permissions:");
+        lines.push("            read: " + task.permissions.read);
+        lines.push("            write: " + task.permissions.write);
+        lines.push("            execute: " + task.permissions.execute);
+      }
       if (task.depends_on.length > 0) {
         lines.push("          depends_on:");
         for (const dep of task.depends_on) lines.push("            - " + yamlString(dep));
+      }
+      if (task.trigger) {
+        lines.push("          trigger:", "            type: " + yamlString(task.trigger.type));
+        if (task.trigger.path) lines.push("            path: " + yamlString(task.trigger.path));
+      }
+      if (task.completion) {
+        lines.push("          completion:", "            type: " + yamlString(task.completion.type));
+        if (task.completion.path) lines.push("            path: " + yamlString(task.completion.path));
       }
       addBindingMap(lines, "          ", "inputs", task.inputs);
       addBindingMap(lines, "          ", "outputs", task.outputs);
@@ -1435,7 +1557,7 @@ function buildYamlSkeleton(manifest) {
 }
 
 export default tool({
-  description: "Generate a Tagma YAML skeleton from a pipeline manifest.",
+  description: "Generate a schema-valid Tagma YAML skeleton from an in-memory pipeline description.",
   args: {
     manifest: tool.schema
       .object({
@@ -1447,13 +1569,42 @@ export default tool({
             summary: tool.schema.string().optional(),
             track: tool.schema.string().optional(),
             task: tool.schema.string().optional(),
+            prompt: tool.schema.string().optional(),
+            command: tool.schema.string().optional(),
+            driver: tool.schema.string().optional(),
+            model: tool.schema.string().optional(),
+            reasoning_effort: tool.schema.string().optional(),
+            cwd: tool.schema.string().optional(),
+            continue_from: tool.schema.string().optional(),
+            permissions: tool.schema
+              .object({
+                read: tool.schema.boolean(),
+                write: tool.schema.boolean(),
+                execute: tool.schema.boolean(),
+              })
+              .optional(),
+            trigger: tool.schema
+              .object({
+                type: tool.schema.string(),
+                path: tool.schema.string().optional(),
+              })
+              .optional(),
+            completion: tool.schema
+              .object({
+                type: tool.schema.string(),
+                path: tool.schema.string().optional(),
+              })
+              .optional(),
+            result_contract: tool.schema
+              .enum(["none", "native-output", "file", "native-output-and-file"])
+              .optional(),
             depends_on: tool.schema.array(tool.schema.string()).optional(),
             inputs: tool.schema.array(tool.schema.string()).optional(),
             outputs: tool.schema.array(tool.schema.string()).optional(),
           }),
         ),
       })
-      .describe("Pipeline manifest object previously written to <stem>/<stem>.manifest.json"),
+      .describe("Typed in-memory pipeline structure with task implementation and result contracts; it does not need a persisted manifest"),
   },
   async execute(args) {
     return JSON.stringify({ yaml: buildYamlSkeleton(args.manifest) }, null, 2);

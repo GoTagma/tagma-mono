@@ -510,6 +510,7 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Run 1/2');
     expect(html).toContain('main.prompt');
     expect(html).toContain('running');
+    expect(html).toContain('Elapsed 0s');
   });
 
   test('does not link an unchanged pipeline that was not deployed from staging', () => {

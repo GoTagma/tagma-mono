@@ -107,8 +107,8 @@ import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 import {
-  CREATE_NEW_PIPELINE_ACTION_KIND,
-  createNewPipelineRequestedActionLines,
+  resolveHostPipelineRequestedAction,
+  type PipelineRequestedActionKind,
 } from '../../shared/requested-action.js';
 import { TRIAL_STREAM_EVIDENCE_BYTES } from '../../shared/chat-pipeline-trial-evidence.js';
 import {
@@ -208,6 +208,9 @@ export type ChatYamlPostActionPhase =
   'compile-repair' | 'trial-planning' | 'trial-running' | 'trial-repair';
 
 export type ChatYamlPostAction = ChatYamlTarget & {
+  /** Owning lifecycle coordinates retained for diagnostics/background sessions. */
+  sessionId?: string | null;
+  workspaceKey?: string | null;
   status: 'ready' | 'repairing' | 'failed';
   /** Explicit lifecycle phase; optional so older in-memory shapes remain readable. */
   phase?: ChatYamlPostActionPhase;
@@ -252,6 +255,9 @@ export type ChatYamlSessionResult = ChatYamlTarget & {
   reconcile?: ChatYamlReconcileSummary;
   /** Host-observed mtime of the final live YAML after publication. */
   finalYamlMtimeMs?: number;
+  /** Agent turn end, distinct from later Host verification/finalization. */
+  authoringCompletedAt?: number;
+  /** Time the Host produced this terminal pipeline result. */
   completedAt: number;
 };
 
@@ -624,6 +630,12 @@ interface ChatStore {
   newSession: () => Promise<void>;
   deleteSession: (id: string, workspaceKey?: string) => Promise<void>;
   send: (text: string) => Promise<void>;
+  syncSessionYamlTarget: (
+    sessionId: string,
+    workspaceKey: string,
+    yamlPath: string,
+    reason?: 'staged-target' | 'reconciled-target',
+  ) => Promise<void>;
   dispatchQueuedMessagesIfReady: () => boolean;
   cancelQueuedMessage: (id: string) => void;
   /**
@@ -698,6 +710,7 @@ interface SessionCreateBodyWithMetadata {
 }
 
 const FORCED_CHAT_AGENT = 'tagma-router';
+const PIPELINE_AUTHORING_AGENT = 'tagma-pipeline';
 const TRIAL_PLANNER_AGENT = 'tagma-trial-planner';
 const DESKTOP_CHAT_TITLE_MAX_LENGTH = 80;
 const DEFAULT_CHAT_REASONING_EFFORT: ChatReasoningEffort = null;
@@ -1656,16 +1669,16 @@ export function buildChatYamlTrialPlanPrompt(
     `Current YAML hash: ${request.pipelineHash}`,
     `Reason: ${request.reason} — ${request.message}`,
     '',
-    'Read final YAML, manifest, and user intent. Do not edit YAML, layout, requirements, helpers, or compile.log.',
-    'Use tagma_trial_plan: begin, one upsert-case per case, set-coverage, set-findings, then commit exactly once. Begin resumes a matching path-and-hash draft by default; reset rebuilds. Never send the whole plan or multiple cases in one call. Pass the exact staged Target YAML path.',
+    'Read final YAML, manifest, and user intent. Do not edit YAML or companions.',
+    'For a minimal fixed read-only single-prompt/no-I/O plan, use commit-plan once with the complete plan and no begin. Otherwise Begin resumes the matching path/hash draft or seeds the prior authenticated revision; preserve unaffected cases, update changed evidence, then commit once. Reset only for full redesign. Pass the exact staged Target YAML path.',
     `Pass attempt_id="${hostAttemptId}" on every tagma_trial_plan call in this physical turn.`,
     'begin requires both summary (a non-empty string) and goals; goals must be a non-empty string array.',
     'Every coverage entry needs dimension, status, caseIds, and rationale. Coverage status must be one of covered, accepted-risk, blocked, or not-applicable. Every finding needs severity, repairScope, summary, and evidence.',
-    'Never copy YAML or plan files between staging and live .tagma. Only commit consumes the attempt and validates the complete plan before writing.',
-    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors.',
+    'Never copy YAML or plan files between staging and live .tagma. Only commit or commit-plan consumes the attempt and validates the complete plan before writing.',
+    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors; commit-plan is a terminal counted operation.',
     'An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error; do not vary inputs or retry—stop after its first rejection.',
-    'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn. The host schedules any remaining attempt.',
-    'Minimize case count and task executions; use the smallest targetTaskIds closure. A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case; keep both only for distinct first-run evidence.',
+    'After commit or commit-plan returns success or an error, do not call tagma_trial_plan again in this physical turn. The host schedules any remaining attempt.',
+    'Minimize case count and task executions. A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case.',
     ...(requiredSandboxInputs.length > 0
       ? [
           'Host-derived required Sandbox input fixtures:',
@@ -1693,9 +1706,9 @@ export function buildChatYamlTrialPlanPrompt(
     'The sequential harness means concurrent-run-output-collision must never be marked covered; use accepted-risk, blocked, or genuinely not-applicable.',
     'File workflows need same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a later-paragraph marker.',
     'Use file-equals for exact text preservation; use an empty expected string for file empty-content. Native declared/inferred outputs are engine-validated: json.* bindings and inferred ports require final-line JSON. Missing without a default or uncoercible bindings fail with `output_error`. Do not require a file unless the user/pipeline promises one or exact-byte or cross-run file semantics need it.',
-    'Each checked .json path needs json-valid or json-pointer-equals; text-only checks cannot prove valid JSON. Serialize expectedJson for decoded newlines, quotes, and Unicode; keep RFC 8259 JSON.',
+    'For deterministic output contracts, assert schema/value semantics with json-pointer-equals; path, task-status, and json-valid prove only liveness. Each checked .json path needs json-valid or json-pointer-equals; text-only checks cannot prove valid JSON; require RFC 8259 JSON.',
     'Every finding needs repairScope: pipeline-artifact for YAML/companion defects or a missing promised file; harness/environment/service/credential/approval/observation limits are diagnostic-only. Native bindings need no duplicate file.',
-    'Blocked coverage is diagnostic-only, does not fail Trial, and cannot authorize YAML repair. accepted-risk yields passed-with-warnings. Never turn harness limits into pipeline defects or weaken prerequisites, approvals, or safety gates.',
+    'Blocked coverage is diagnostic-only and cannot authorize YAML repair. accepted-risk yields passed-with-warnings.',
     '',
     `Required coverage dimensions: ${request.requiredCoverage.join(', ')}`,
     '</tagma-internal>',
@@ -1724,19 +1737,75 @@ function withPromptTitleFallback(session: Session, title: string | null): Sessio
   return { ...session, title };
 }
 
+function desktopChatModelFromSessionMetadata(metadata: unknown): ModelPick | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const tagma = (metadata as { tagma?: unknown }).tagma;
+  if (!tagma || typeof tagma !== 'object' || Array.isArray(tagma)) return null;
+  const model = (tagma as { model?: unknown }).model;
+  if (!model || typeof model !== 'object' || Array.isArray(model)) return null;
+  const { providerID, modelID } = model as { providerID?: unknown; modelID?: unknown };
+  return typeof providerID === 'string' && providerID && typeof modelID === 'string' && modelID
+    ? { providerID, modelID }
+    : null;
+}
+
 function buildDesktopChatSessionMetadata(
   workspaceKey: string,
   reason: string,
   model: ModelPick | null,
+  yamlPath?: string | null,
 ): Record<string, unknown> {
-  const pipeline = usePipelineStore.getState();
+  const resolvedYamlPath = yamlPath === undefined ? usePipelineStore.getState().yamlPath : yamlPath;
   return buildTagmaSessionMetadata({
     source: 'desktop-chat',
     workspacePath: workspaceKey,
-    yamlPath: pipeline.yamlPath,
+    yamlPath: resolvedYamlPath,
     model,
     reason,
   });
+}
+
+export function chatYamlSnapshotLiveTargetPath(snapshot: ChatYamlSnapshot): string | null {
+  const relativePath = snapshot.staging.activeRelativePath;
+  if (!relativePath) return snapshot.activePath;
+  const workspaceRoot = snapshot.workDir.replace(/\\/gu, '/').replace(/\/+$/u, '');
+  const portableRelativePath = relativePath.replace(/\\/gu, '/').replace(/^\/+/u, '');
+  return `${workspaceRoot}/.tagma/${portableRelativePath}`;
+}
+
+function normalizedTurnTargetCoordinate(value: string): string {
+  const portable = value.replace(/\\/gu, '/').replace(/\/+$/u, '');
+  return /^[A-Za-z]:\//u.test(portable) || portable.startsWith('//')
+    ? portable.toLowerCase()
+    : portable;
+}
+
+/**
+ * Bind every hidden continuation to the concrete target the Host detected
+ * from the authenticated stage. The stage's initial active path is only the
+ * canvas coordinate at send time; a router-classified create may author a
+ * different sibling before the Host can know its identity.
+ */
+export function resolveChatYamlTurnTargetContext(
+  snapshot: ChatYamlSnapshot,
+  target: ChatYamlTarget | null,
+): { currentYamlPath: string | null; workspaceYamlFilePaths: string[] } {
+  const root = normalizedTurnTargetCoordinate(snapshot.staging.agentTagmaDir);
+  const targetPath = target?.path ?? snapshot.staging.activeStagedPath;
+  if (targetPath) {
+    const normalizedTarget = normalizedTurnTargetCoordinate(targetPath);
+    if (normalizedTarget !== root && !normalizedTarget.startsWith(`${root}/`)) {
+      throw new Error('The Chat continuation target is outside the authenticated staged root.');
+    }
+  }
+  const workspaceYamlFilePaths = snapshot.staging.entries.map((entry) => entry.stagedPath);
+  if (
+    targetPath &&
+    !workspaceYamlFilePaths.some((path) => sameFilesystemPathCoordinate(path, targetPath))
+  ) {
+    workspaceYamlFilePaths.push(targetPath);
+  }
+  return { currentYamlPath: targetPath, workspaceYamlFilePaths };
 }
 
 async function updateDesktopChatSessionMetadata(
@@ -1745,12 +1814,12 @@ async function updateDesktopChatSessionMetadata(
   reason: string,
   model: ModelPick | null,
   title?: string | null,
-  options: { required?: boolean } = {},
+  options: { required?: boolean; yamlPath?: string | null } = {},
 ): Promise<void> {
   try {
     const body: OpencodeSessionUpdateV2Input = {
       sessionID: sessionId,
-      metadata: buildDesktopChatSessionMetadata(workspaceKey, reason, model),
+      metadata: buildDesktopChatSessionMetadata(workspaceKey, reason, model, options.yamlPath),
     };
     if (title) body.title = title;
     await updateOpencodeSessionV2(body, workspaceKey);
@@ -4370,6 +4439,7 @@ async function promptOpencode(
     context?: string;
     reuseLogicalTurn?: boolean;
     continuationSnapshot?: ChatYamlSnapshot | null;
+    continuationTarget?: ChatYamlTarget | null;
     targetSessionId?: string;
   } = {},
 ): Promise<void> {
@@ -4419,11 +4489,43 @@ async function promptOpencode(
         priorRoundLimit: contextRounds,
       })
     : null;
+  // Freeze the pipeline identity and requested action before any await. The
+  // context-plugin check, lock acquisition, save, bootstrap, and stage setup
+  // can all take long enough for the user to switch or create another pipeline.
+  const pipeline = usePipelineStore.getState();
+  const preSendWorkDir = pipeline.workDir;
+  const inheritedSnapshot =
+    opts.continuationSnapshot ??
+    (opts.reuseLogicalTurn || opts.internal
+      ? (dispatchRuntimeAtStart?.yamlSnapshotBeforeSend ?? null)
+      : null);
+  if (inheritedSnapshot && inheritedSnapshot.workDir !== workspaceKeyAtStart) {
+    throw new ChatWorkspaceChangedError();
+  }
+  const requestedAction: PipelineRequestedActionKind | null =
+    !opts.internal && !inheritedSnapshot
+      ? resolveHostPipelineRequestedAction({
+          currentPipelineIsManualNewDraft: sameFilesystemPathCoordinate(
+            pipeline.manualNewPipelineYamlPath,
+            pipeline.yamlPath,
+          ),
+        })
+      : null;
+  const dispatchAgent = requestedAction ? PIPELINE_AUTHORING_AGENT : promptAgent;
+  const initialEditorBaseline =
+    !inheritedSnapshot && preSendWorkDir
+      ? {
+          workDir: preSendWorkDir,
+          activePath: pipeline.yamlPath,
+          localEditRevision: getLocalPipelineEditRevision(),
+        }
+      : null;
+
   if (!model) {
     setSendErrorForDispatch('No model selected - pick one from the header dropdown.');
     throw new Error('No model selected');
   }
-  if (!promptAgent) {
+  if (!dispatchAgent) {
     const msg = `The ${FORCED_CHAT_AGENT} OpenCode agent is not available. Repair the OpenCode seed before sending.`;
     setSendErrorForDispatch(msg);
     throw new Error(msg);
@@ -4442,39 +4544,6 @@ async function promptOpencode(
       );
     }
   }
-
-  const pipeline = usePipelineStore.getState();
-  const preSendWorkDir = pipeline.workDir;
-  const inheritedSnapshot =
-    opts.continuationSnapshot ??
-    (opts.reuseLogicalTurn || opts.internal
-      ? (dispatchRuntimeAtStart?.yamlSnapshotBeforeSend ?? null)
-      : null);
-  if (inheritedSnapshot && inheritedSnapshot.workDir !== workspaceKeyAtStart) {
-    throw new ChatWorkspaceChangedError();
-  }
-  const requestedAction =
-    !opts.internal &&
-    !inheritedSnapshot &&
-    createNewPipelineRequestedActionLines(text, {
-      currentPipelineIsManualNewDraft: sameFilesystemPathCoordinate(
-        pipeline.manualNewPipelineYamlPath,
-        pipeline.yamlPath,
-      ),
-    }).length > 0
-      ? CREATE_NEW_PIPELINE_ACTION_KIND
-      : null;
-  // Capture pipeline identity and the local edit revision synchronously. The
-  // async lock, save, bootstrap, and stage setup can all take long enough for
-  // the user to switch pipelines or make another edit.
-  const initialEditorBaseline =
-    !inheritedSnapshot && preSendWorkDir
-      ? {
-          workDir: preSendWorkDir,
-          activePath: pipeline.yamlPath,
-          localEditRevision: getLocalPipelineEditRevision(),
-        }
-      : null;
   let lockLease: ChatYamlEditLockLease | null = null;
   let acquiredLockLeaseHere = false;
   let diskBranchAlreadyOwned = false;
@@ -4666,7 +4735,10 @@ async function promptOpencode(
       opts.internal ? 'internal-repair' : 'prompt',
       model,
       shouldApplyPromptTitle ? promptTitle : undefined,
-      { required: preSendSnapshot !== null },
+      {
+        required: preSendSnapshot !== null,
+        ...(preSendSnapshot ? { yamlPath: chatYamlSnapshotLiveTargetPath(preSendSnapshot) } : {}),
+      },
     );
 
     if (preSendSnapshot) {
@@ -4675,6 +4747,9 @@ async function promptOpencode(
 
     const reasoningVariant = reconcileModelVariant(providers, model, reasoningEffort);
     const chatStage = preSendSnapshot?.staging ?? null;
+    const turnTargetContext = preSendSnapshot
+      ? resolveChatYamlTurnTargetContext(preSendSnapshot, opts.continuationTarget ?? null)
+      : null;
     const promptBody: {
       model: ModelPick;
       agent?: string;
@@ -4682,17 +4757,17 @@ async function promptOpencode(
       parts: Array<{ type: 'text'; text: string }>;
     } = {
       model,
-      ...(promptAgent ? { agent: promptAgent } : {}),
+      ...(dispatchAgent ? { agent: dispatchAgent } : {}),
       ...(reasoningVariant ? { variant: reasoningVariant } : {}),
       parts: [
         {
           type: 'text',
           text:
             buildEditorContext({
-              userText: text,
+              requestedAction,
               chatModel: model,
-              currentYamlPath: chatStage ? chatStage.activeStagedPath : undefined,
-              workspaceYamlFilePaths: chatStage?.entries.map((entry) => entry.stagedPath),
+              currentYamlPath: turnTargetContext?.currentYamlPath ?? undefined,
+              workspaceYamlFilePaths: turnTargetContext?.workspaceYamlFilePaths,
               chatYamlStage: chatStage
                 ? { id: chatStage.id, agentTagmaDir: chatStage.agentTagmaDir }
                 : null,
@@ -7096,13 +7171,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   yamlSnapshotBeforeSend: null,
   postChatYamlAction: null,
   pendingPermissions: [],
-  setPostChatYamlAction: (action, sessionId) =>
-    applyRuntimePatchToSession(
-      get,
-      set,
-      sessionId === undefined ? get().currentSessionId : sessionId,
-      { postChatYamlAction: action },
-    ),
+  setPostChatYamlAction: (action, sessionId) => {
+    const ownerSessionId = sessionId === undefined ? get().currentSessionId : sessionId;
+    const lifecycle = get().activeChatYamlLifecycle;
+    const workspaceKey =
+      lifecycle?.sessionId === ownerSessionId ? lifecycle.workspaceKey : getOpencodeWorkspaceKey();
+    applyRuntimePatchToSession(get, set, ownerSessionId, {
+      postChatYamlAction: action ? { ...action, sessionId: ownerSessionId, workspaceKey } : null,
+    });
+  },
   clearPostChatYamlAction: (sessionId) =>
     applyRuntimePatchToSession(
       get,
@@ -8099,6 +8176,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  async syncSessionYamlTarget(sessionId, workspaceKey, yamlPath, reason = 'reconciled-target') {
+    await updateDesktopChatSessionMetadata(
+      sessionId,
+      workspaceKey,
+      reason,
+      desktopChatModelFromSessionMetadata(
+        (
+          get().sessions.find((session) => session.id === sessionId) as
+            (Session & { metadata?: unknown }) | undefined
+        )?.metadata,
+      ) ?? get().model,
+      undefined,
+      { yamlPath },
+    );
+  },
+
   dispatchQueuedMessagesIfReady() {
     return dispatchNextQueuedPrompt(get, set);
   },
@@ -8124,8 +8217,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const repairText = buildChatYamlRepairPrompt(target, evidence, attempt, maxAttempts);
     return promptOpencode(get, set, repairText, {
       internal: true,
+      internalAgent: PIPELINE_AUTHORING_AGENT,
       reuseLogicalTurn: true,
       continuationSnapshot: snapshot ?? null,
+      continuationTarget: target,
       targetSessionId,
     });
   },
@@ -8144,6 +8239,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       internalAgent: TRIAL_PLANNER_AGENT,
       reuseLogicalTurn: true,
       continuationSnapshot: snapshot ?? null,
+      continuationTarget: target,
       targetSessionId,
     });
   },

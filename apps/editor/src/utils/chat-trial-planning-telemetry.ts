@@ -17,7 +17,7 @@ export interface ChatTrialPlanningPromptWindow {
 }
 
 export interface ChatTrialPlanningAccumulator {
-  startedAt: number | null;
+  elapsedMs: number;
   promptCount: number;
   openPrompt: ChatTrialPlanningPromptWindow | null;
   includedAssistantMessageIds: Set<string>;
@@ -40,7 +40,7 @@ function boundedCounter(value: unknown): number {
 
 export function createChatTrialPlanningAccumulator(): ChatTrialPlanningAccumulator {
   return {
-    startedAt: null,
+    elapsedMs: 0,
     promptCount: 0,
     openPrompt: null,
     includedAssistantMessageIds: new Set(),
@@ -66,7 +66,6 @@ export function beginChatTrialPlanningPrompt(
     throw new Error('A Trial planning prompt is already in progress.');
   }
   const startedAt = finiteNonNegative(input.startedAt);
-  accumulator.startedAt ??= startedAt;
   accumulator.promptCount += 1;
   accumulator.openPrompt = {
     sessionId: input.sessionId,
@@ -79,7 +78,6 @@ export function cancelChatTrialPlanningPrompt(accumulator: ChatTrialPlanningAccu
   if (!accumulator.openPrompt) return;
   accumulator.openPrompt = null;
   accumulator.promptCount = Math.max(0, accumulator.promptCount - 1);
-  if (accumulator.promptCount === 0) accumulator.startedAt = null;
 }
 
 export function completeChatTrialPlanningPrompt(
@@ -109,6 +107,7 @@ export function completeChatTrialPlanningPrompt(
     accumulator.cacheWriteTokens += boundedCounter(info.tokens?.cache?.write);
     accumulator.cost += finiteNonNegative(info.cost);
   }
+  accumulator.elapsedMs += Math.max(0, finiteNonNegative(input.endedAt) - prompt.startedAt);
   accumulator.openPrompt = null;
   return true;
 }
@@ -153,9 +152,10 @@ export function snapshotChatTrialPlanningTelemetry(
     validationRejectionCount,
     repeatedValidationRejectionCount,
     elapsedMs:
-      accumulator.startedAt === null
-        ? 0
-        : Math.max(0, finiteNonNegative(completedAt) - accumulator.startedAt),
+      accumulator.elapsedMs +
+      (accumulator.openPrompt
+        ? Math.max(0, finiteNonNegative(completedAt) - accumulator.openPrompt.startedAt)
+        : 0),
     inputTokens: accumulator.inputTokens,
     outputTokens: accumulator.outputTokens,
     reasoningTokens: accumulator.reasoningTokens,
