@@ -2,16 +2,14 @@
  * Pipeline result presentation for chat turns.
  *
  * A chat turn that authors or verifies a YAML pipeline ends with a
- * `ChatYamlSessionResult`. Anchored results render fused into the bottom of
- * the owning assistant bubble (`SessionYamlResultFooter` — the result reads
- * as the bubble's outcome strip, not a separate card); results that arrive
- * without an anchor message keep the original standalone card
- * (`SessionYamlResultBubble`).
+ * `ChatYamlSessionResult`. Anchored results render an informational footer in
+ * the owning assistant bubble, while the standalone conversation-tail card
+ * owns the sole Open pipeline action.
  *
- * The shared body (status row, summary, telemetry, open action, target
- * warning) is factored into `SessionYamlResultBody` so the two containers
- * can never drift apart.
+ * The shared body keeps status/summary presentation aligned, while only the
+ * standalone conversation-tail card owns the open action.
  */
+import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
 import type { ChatYamlSessionResult } from '../../store/chat-store';
 import {
@@ -100,20 +98,18 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
 }
 
 /**
- * Status row + summary + telemetry + open action + target warning. Shared by
- * the fused bubble footer and the standalone card so the two presentations
- * of the same result can never drift apart.
+ * Status row + summary + telemetry + target warning. The conversation-tail
+ * card owns the sole open action; anchored summaries remain informational so
+ * a later Host continuation cannot strand the action in the transcript middle.
  */
-function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
-  const openTarget = useOpenChatPipelineTarget();
+function SessionYamlResultBody({
+  result,
+  showOpenAction,
+}: {
+  result: ChatYamlSessionResult;
+  showOpenAction: boolean;
+}) {
   const name = chatPipelineDisplayName(result);
-  const deploymentTarget = chatPipelineDeploymentTarget(result);
-  const invalidTargetReason = chatPipelineTargetInvalidReason(result);
-  const { availability, revalidate } = useChatPipelineTargetAvailability(deploymentTarget);
-  const openableTarget = availability.available ? availability.target : null;
-  const unavailableReason =
-    invalidTargetReason ??
-    (deploymentTarget && !availability.available ? availability.reason : null);
   const ok = result.status === 'ready';
   const blocked = result.status === 'blocked';
   const passedWithWarnings = ok && result.trial?.kind === 'passed-with-warnings';
@@ -147,24 +143,58 @@ function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
       {result.planningTelemetry && (
         <TrialPlanningTelemetryDetails telemetry={result.planningTelemetry} />
       )}
+      {showOpenAction && <SessionYamlOpenAction result={result} name={name} />}
+    </>
+  );
+}
+
+function SessionYamlOpenAction({ result, name }: { result: ChatYamlSessionResult; name: string }) {
+  const openTarget = useOpenChatPipelineTarget();
+  const deploymentTarget = chatPipelineDeploymentTarget(result);
+  const invalidTargetReason = chatPipelineTargetInvalidReason(result);
+  const { availability } = useChatPipelineTargetAvailability(deploymentTarget);
+  const openableTarget = deploymentTarget;
+  const [opening, setOpening] = useState(false);
+  const [openFailure, setOpenFailure] = useState<string | null>(null);
+  const unavailableReason =
+    openFailure ??
+    invalidTargetReason ??
+    (deploymentTarget && !availability.available ? availability.reason : null);
+
+  useEffect(() => {
+    setOpenFailure(null);
+  }, [deploymentTarget?.path]);
+
+  return (
+    <>
       {(deploymentTarget || invalidTargetReason) && (
         <button
           type="button"
-          disabled={!openableTarget}
+          disabled={!openableTarget || opening}
+          aria-busy={opening || undefined}
           onClick={() => {
-            void revalidate().then((latest) => {
-              if (latest.available) void openTarget(latest.target);
-            });
+            if (!openableTarget || opening) return;
+            setOpening(true);
+            setOpenFailure(null);
+            void openTarget(openableTarget)
+              .then((outcome) => {
+                if (!outcome.handled) setOpenFailure(outcome.reason);
+              })
+              .catch(() => setOpenFailure('The final pipeline could not be opened.'))
+              .finally(() => setOpening(false));
           }}
           className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-caption text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
           title={`Open ${name}`}
         >
           <FileText size={11} />
-          <span>Open pipeline</span>
+          <span>{opening ? 'Opening…' : 'Open pipeline'}</span>
         </button>
       )}
       {unavailableReason && (
-        <div role={'status'} className={'select-text text-tiny text-tagma-warning break-words'}>
+        <div
+          role={openFailure ? 'alert' : 'status'}
+          className={'select-text text-tiny text-tagma-warning break-words'}
+        >
           {unavailableReason}
         </div>
       )}
@@ -173,16 +203,21 @@ function SessionYamlResultBody({ result }: { result: ChatYamlSessionResult }) {
 }
 
 /**
- * Standalone result card. Used for the session-level result whose anchoring
- * assistant message is no longer visible (or never existed) — fused results
- * go through SessionYamlResultFooter instead.
+ * Standalone session result card. ChatMessages places this at the conversation
+ * tail even when the same result also has an anchored informational summary.
  */
-export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionResult }) {
+export function SessionYamlResultBubble({
+  result,
+  showOpenAction = true,
+}: {
+  result: ChatYamlSessionResult;
+  showOpenAction?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-1 items-start">
       <div className="section-label">pipeline result</div>
       <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-caption font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
-        <SessionYamlResultBody result={result} />
+        <SessionYamlResultBody result={result} showOpenAction={showOpenAction} />
       </div>
     </div>
   );
@@ -216,7 +251,7 @@ export function SessionYamlResultFooter({
               : 'flex flex-col gap-1.5'
           }
         >
-          <SessionYamlResultBody result={result} />
+          <SessionYamlResultBody result={result} showOpenAction={false} />
         </div>
       ))}
     </div>

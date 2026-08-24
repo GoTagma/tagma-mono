@@ -2080,6 +2080,12 @@ function describeTrialWorkspaceMutation(
   return parts.join(' ');
 }
 
+function describeContainmentFailure(detail: string, executionPassed: boolean): string {
+  return executionPassed
+    ? `Task execution and authored assertions passed, but containment verification failed. ${detail}`
+    : detail;
+}
+
 function trialCaseForWorkspaceWitnessFailure(
   testCase: ChatPipelineTrialPlanCase,
   detail: string,
@@ -2458,8 +2464,11 @@ function buildPlannedTrialSummary(
   if (manualExecutionGrants.length > 0) {
     lines.push(
       '',
-      `Selected manual tasks executed under explicit Trial grants: ${manualExecutionGrants
-        .map((grant) => `${grant.taskId} (${grant.approvalCount} approvals)`)
+      `Trial automatically granted run-scoped manual approvals: ${manualExecutionGrants
+        .map(
+          (grant) =>
+            `${grant.taskId} (${grant.approvalCount} ${grant.approvalCount === 1 ? 'approval' : 'approvals'})`,
+        )
         .join(', ')}.`,
     );
   }
@@ -2843,6 +2852,9 @@ async function executeTrial(
     return false;
   });
   const baselineSkipped = runtimeReadyBaselineTaskIds.length === 0;
+  const baselineManualApprovalTaskIds = baselineSkipped
+    ? new Set<string>()
+    : manualTaskIdsInTargetClosure(dag, runtimeReadyBaselineTaskIds);
   const baselineTargetTaskIds =
     baselineSkipped ||
     (liveSmokeBaseline.mode === 'run-all' &&
@@ -2878,7 +2890,7 @@ async function executeTrial(
       outcome: 'rejected',
       actor: 'chat-trial-run',
       reason:
-        'Chat trial runs never auto-approve manual safety gates unless the task is in an explicit Trial target closure.',
+        "Chat Trial runs auto-approve only manual tasks in the run's Host-authorized Sandbox or Live Smoke target closure.",
     });
   });
   const runId = generateRunId();
@@ -2928,10 +2940,10 @@ async function executeTrial(
         runtimeMode,
         runId,
         manualApprovalScopesByRunId,
-        // The live smoke never auto-approves manual safety gates: manual
-        // tasks are human boundaries and are exercised through Sandbox
-        // cases instead (the baseline target set already excludes them).
-        manualApprovalTaskIds: new Set<string>(),
+        // Separate Live Smoke consent authorizes this baseline to satisfy
+        // manual triggers with exact run-scoped grants. Ordinary runs retain
+        // their human approval boundary.
+        manualApprovalTaskIds: baselineManualApprovalTaskIds,
         ...(baselineTargetTaskIds ? { targetTaskIds: baselineTargetTaskIds } : {}),
         onEvent: (event) => updateTrialTaskProgress(progress, event),
       });
@@ -3081,7 +3093,10 @@ async function executeTrial(
         if (!mutationState.healthy) {
           workspaceFailures.push(
             diagnosticCaseExecutionExpectation(
-              `Could not verify that isolated cases left the real workspace unchanged: ${mutationState.reason ?? 'workspace mutation monitor failed'}.`,
+              describeContainmentFailure(
+                `Could not verify that isolated cases left the real workspace unchanged: ${mutationState.reason ?? 'workspace mutation monitor failed'}.`,
+                caseExecution.result.success,
+              ),
             ),
           );
         } else if (
@@ -3095,7 +3110,10 @@ async function executeTrial(
           );
           workspaceFailures.push(
             diagnosticCaseExecutionExpectation(
-              describeTrialWorkspaceMutation(testCase.id, evidence),
+              describeContainmentFailure(
+                describeTrialWorkspaceMutation(testCase.id, evidence),
+                caseExecution.result.success,
+              ),
               evidence,
             ),
           );
@@ -3153,7 +3171,9 @@ async function executeTrial(
             success: false,
             expectations: [
               ...lastCase.expectations,
-              diagnosticCaseExecutionExpectation(finalWorkspaceFailure),
+              diagnosticCaseExecutionExpectation(
+                describeContainmentFailure(finalWorkspaceFailure, lastCase.success),
+              ),
             ],
           };
         } else {
@@ -3206,26 +3226,26 @@ async function executeTrial(
       ...(fixtureInputs.length > 0
         ? [
             baselineSkipped
-              ? `The Live Smoke Test was skipped because its real-workspace data inputs were unavailable. Sandbox cases ran with isolated fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`
+              ? `The Live Smoke Test was enabled but skipped. Sandbox cases covered its unavailable real-workspace data inputs with isolated fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`
               : `The Live Smoke Test ran only prerequisite-ready tasks. Tasks depending on unavailable data were exercised through Sandbox fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`,
           ]
         : []),
-      ...(liveSmokeBaseline.manualGatedTaskIds.length > 0 && liveSmokeTestEnabled
+      ...(baselineManualApprovalTaskIds.size > 0 && liveSmokeTestEnabled
         ? [
-            liveSmokeBaseline.mode === 'skip'
-              ? `The Live Smoke Test was skipped because every eligible task requires a manual approval gate. Manual-gated tasks were exercised through Sandbox cases instead: ${liveSmokeBaseline.manualGatedTaskIds.join(', ')}. No placeholder was written to the real workspace.`
-              : `The Live Smoke Test ran only tasks without manual approval gates. Manual-gated tasks were exercised through Sandbox cases instead: ${liveSmokeBaseline.manualGatedTaskIds.join(', ')}. No placeholder was written to the real workspace.`,
+            `The explicitly consented Live Smoke Test automatically granted run-scoped manual approvals for: ${[...baselineManualApprovalTaskIds].sort().join(', ')}. Ordinary pipeline runs still require human approval.`,
           ]
         : []),
       ...(liveSmokeBaseline.middlewareUnavailableTaskIds.length > 0 && liveSmokeTestEnabled
         ? [
-            `The Live Smoke Test excluded tasks whose static_context middleware source is not ready in the real workspace (the source is missing or differs from the staged artifact, which merges only after the Trial). Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.middlewareUnavailableTaskIds.join(', ')}. No placeholder was written to the real workspace.`,
+            liveSmokeBaseline.mode === 'skip'
+              ? `The Live Smoke Test was enabled but skipped. Sandbox cases exercised branches whose static_context source is missing from the real workspace or differs from the staged artifact, which merges only after the Trial: ${liveSmokeBaseline.middlewareUnavailableTaskIds.join(', ')}. No placeholder was written to the real workspace.`
+              : `The Live Smoke Test excluded tasks whose static_context middleware source is not ready in the real workspace (the source is missing or differs from the staged artifact, which merges only after the Trial). Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.middlewareUnavailableTaskIds.join(', ')}. No placeholder was written to the real workspace.`,
           ]
         : []),
       ...(liveSmokeBaseline.cwdUnavailableTaskIds.length > 0 && liveSmokeTestEnabled
         ? [
             liveSmokeBaseline.mode === 'skip'
-              ? `The Live Smoke Test was skipped because every eligible task uses an effective cwd that exists only in the staged target pipeline and cannot exist in the real workspace until finalize. Sandbox cases exercised those tasks instead: ${liveSmokeBaseline.cwdUnavailableTaskIds.join(', ')}. No placeholder directory was written to the real workspace.`
+              ? `The Live Smoke Test was enabled but skipped. Sandbox cases exercised tasks whose effective cwd exists only in the staged target pipeline and cannot exist in the real workspace until finalize: ${liveSmokeBaseline.cwdUnavailableTaskIds.join(', ')}. No placeholder directory was written to the real workspace.`
               : `The Live Smoke Test excluded tasks whose effective cwd exists only in the staged target pipeline and cannot exist in the real workspace until finalize. Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.cwdUnavailableTaskIds.join(', ')}. No placeholder directory was written to the real workspace.`,
           ]
         : []),

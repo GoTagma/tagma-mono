@@ -143,6 +143,127 @@ export function chatPipelineTargetInvalidReason(result: ChatYamlSessionResult): 
   return null;
 }
 
+export function resolveLatestChatPipelineLinkTarget(
+  target: ChatPipelineLinkTarget,
+  turnYamlResults: Readonly<Record<string, readonly ChatYamlSessionResult[]>>,
+): ChatPipelineLinkTarget | null {
+  if (!target.resultId) return target;
+  const matchingResults = Object.values(turnYamlResults)
+    .flat()
+    .filter((candidate) => candidate.resultId === target.resultId);
+  if (matchingResults.length === 0) return target;
+  const latestResult = matchingResults.reduce((latest, candidate) =>
+    candidate.completedAt >= latest.completedAt ? candidate : latest,
+  );
+  return chatPipelineDeploymentTarget(latestResult);
+}
+
+function sameWorkspaceCoordinate(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  if (!left?.trim() || !right?.trim()) return !left?.trim() && !right?.trim();
+  return isChatYamlResultInActiveWorkspace({
+    resultWorkspaceKey: left,
+    activeWorkspaceKey: right,
+  });
+}
+
+export async function verifyLatestChatPipelineLinkTarget({
+  getLatestTarget,
+  getActiveWorkspaceKey,
+  listEntries,
+}: {
+  getLatestTarget: () => ChatPipelineLinkTarget | null;
+  getActiveWorkspaceKey: () => string | null;
+  listEntries: (
+    workspaceKey: string | null | undefined,
+  ) => Promise<readonly ChatPipelineListEntry[]>;
+}): Promise<ChatPipelineTargetAvailability> {
+  let lastUnavailable: ChatPipelineTargetAvailability = {
+    available: false,
+    target: null,
+    reason: 'The final pipeline could not be verified. Try again after refreshing the workspace.',
+  };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const candidate = getLatestTarget();
+    if (!candidate) {
+      return {
+        available: false,
+        target: null,
+        reason: 'The latest Chat result no longer points to a deployed pipeline.',
+      };
+    }
+    const activeWorkspaceKey = getActiveWorkspaceKey();
+    if (
+      candidate.workspaceKey &&
+      activeWorkspaceKey &&
+      !isChatYamlResultInActiveWorkspace({
+        resultWorkspaceKey: candidate.workspaceKey,
+        activeWorkspaceKey,
+      })
+    ) {
+      return {
+        available: false,
+        target: null,
+        reason: 'The final pipeline belongs to a different workspace.',
+      };
+    }
+    const validationWorkspaceKey = activeWorkspaceKey ?? candidate.workspaceKey;
+    try {
+      const entries = await listEntries(validationWorkspaceKey);
+      const refreshedCandidate = getLatestTarget();
+      if (!refreshedCandidate) {
+        return {
+          available: false,
+          target: null,
+          reason: 'The latest Chat result no longer points to a deployed pipeline.',
+        };
+      }
+      const refreshedActiveWorkspaceKey = getActiveWorkspaceKey();
+      const refreshedValidationWorkspaceKey =
+        refreshedActiveWorkspaceKey ?? refreshedCandidate.workspaceKey;
+      if (!sameWorkspaceCoordinate(validationWorkspaceKey, refreshedValidationWorkspaceKey)) {
+        lastUnavailable = {
+          available: false,
+          target: null,
+          reason: 'The active workspace changed while the final pipeline was being verified.',
+        };
+        continue;
+      }
+      if (
+        refreshedCandidate.workspaceKey &&
+        refreshedActiveWorkspaceKey &&
+        !isChatYamlResultInActiveWorkspace({
+          resultWorkspaceKey: refreshedCandidate.workspaceKey,
+          activeWorkspaceKey: refreshedActiveWorkspaceKey,
+        })
+      ) {
+        return {
+          available: false,
+          target: null,
+          reason: 'The final pipeline belongs to a different workspace.',
+        };
+      }
+      lastUnavailable = resolveChatPipelineTargetAvailability({
+        target: refreshedCandidate,
+        entries,
+        workspaceKey: refreshedValidationWorkspaceKey,
+      });
+      if (lastUnavailable.available) return lastUnavailable;
+    } catch {
+      lastUnavailable = {
+        available: false,
+        target: null,
+        reason:
+          'The final pipeline could not be verified. Try again after refreshing the workspace.',
+      };
+    }
+  }
+  return lastUnavailable;
+}
+
 export function useChatPipelineTargetAvailability(
   target: ChatPipelineLinkTarget | null,
 ): ChatPipelineTargetAvailabilityController {
@@ -269,7 +390,11 @@ export function selectVisibleChatCompletionResults({
     .slice(0, limit);
 }
 
-export function useOpenChatPipelineTarget(): (target: ChatPipelineLinkTarget) => Promise<void> {
+export type ChatPipelineOpenOutcome = { handled: true } | { handled: false; reason: string | null };
+
+export function useOpenChatPipelineTarget(): (
+  target: ChatPipelineLinkTarget,
+) => Promise<ChatPipelineOpenOutcome> {
   const openFile = usePipelineStore((s) => s.openFile);
   const saveFile = usePipelineStore((s) => s.saveFile);
   const clearError = usePipelineStore((s) => s.clearError);
@@ -277,74 +402,94 @@ export function useOpenChatPipelineTarget(): (target: ChatPipelineLinkTarget) =>
   const recordTurnYamlResultFinalMtime = useChatStore((s) => s.recordTurnYamlResultFinalMtime);
 
   return async (target) => {
-    const current = usePipelineStore.getState();
-    if (
-      target.workspaceKey &&
-      current.workDir &&
-      !isChatYamlResultInActiveWorkspace({
-        resultWorkspaceKey: target.workspaceKey,
-        activeWorkspaceKey: current.workDir,
-      })
-    ) {
-      return;
-    }
-    const validationWorkspaceKey = current.workDir ?? target.workspaceKey;
-    let availability: ChatPipelineTargetAvailability;
-    try {
-      const { entries } = await api.listWorkspaceYamls(validationWorkspaceKey);
-      availability = resolveChatPipelineTargetAvailability({
-        target,
-        entries,
-        workspaceKey: validationWorkspaceKey,
+    const latestTarget = () =>
+      resolveLatestChatPipelineLinkTarget(target, useChatStore.getState().turnYamlResults);
+    const verifyTarget = () =>
+      verifyLatestChatPipelineLinkTarget({
+        getLatestTarget: latestTarget,
+        getActiveWorkspaceKey: () => usePipelineStore.getState().workDir,
+        listEntries: async (workspaceKey) => {
+          const { entries } = await api.listWorkspaceYamls(workspaceKey);
+          return entries;
+        },
       });
-    } catch {
-      return;
+    const availability = await verifyTarget();
+    if (!availability.available) {
+      return { handled: false, reason: availability.reason };
     }
-    if (!availability.available) return;
     const verifiedTarget = availability.target;
 
-    const openTarget = async () => {
+    const openTarget = async (
+      openableTarget: ChatPipelineLinkTarget,
+    ): Promise<ChatPipelineOpenOutcome> => {
       clearError();
-      await openFile(verifiedTarget.path);
+      await openFile(openableTarget.path);
       const openedState = usePipelineStore.getState();
-      if (openedState.errorMessage || !openedState.yamlPath) return;
-      const windows = usesWindowsPathSemantics(openedState.yamlPath, verifiedTarget.path);
+      if (openedState.errorMessage || !openedState.yamlPath) {
+        return {
+          handled: false,
+          reason: openedState.errorMessage ?? 'The final pipeline could not be opened.',
+        };
+      }
+      const windows = usesWindowsPathSemantics(openedState.yamlPath, openableTarget.path);
       if (
         comparablePipelinePath(openedState.yamlPath, windows) !==
-        comparablePipelinePath(verifiedTarget.path, windows)
+        comparablePipelinePath(openableTarget.path, windows)
       ) {
-        return;
+        return {
+          handled: false,
+          reason: 'The editor opened a different pipeline than the verified Chat result.',
+        };
       }
-      if (verifiedTarget.resultId && typeof openedState.yamlMtimeMs === 'number') {
-        recordTurnYamlResultFinalMtime(verifiedTarget.resultId, openedState.yamlMtimeMs);
+      if (openableTarget.resultId && typeof openedState.yamlMtimeMs === 'number') {
+        recordTurnYamlResultFinalMtime(openableTarget.resultId, openedState.yamlMtimeMs);
       }
+      return { handled: true };
     };
+    const current = usePipelineStore.getState();
     const hasLocalChanges = hasLocalEditorChanges({
       isDirty: current.isDirty,
       layoutDirty: current.layoutDirty,
       lastLocalFieldEditAt: getLastLocalFieldEditAt(),
     });
-    if (!hasLocalChanges) {
-      await openTarget();
-      return;
-    }
+    if (!hasLocalChanges) return openTarget(verifiedTarget);
 
     const name = chatPipelineDisplayName(verifiedTarget);
-    requestConfirm({
-      title: 'Open pipeline?',
-      details: [
-        `Opening "${name}" will replace the current canvas view.`,
-        'Your current edits will be saved before switching.',
-      ],
-      confirmLabel: 'Save and open',
-      cancelLabel: 'Stay here',
-      onConfirm: () => {
-        void (async () => {
-          const saved = await saveFile();
-          if (!saved) return;
-          await openTarget();
-        })();
-      },
+    return new Promise<ChatPipelineOpenOutcome>((resolve) => {
+      requestConfirm({
+        title: 'Open pipeline?',
+        details: [
+          `Opening "${name}" will replace the current canvas view.`,
+          'Your current edits will be saved before switching.',
+        ],
+        confirmLabel: 'Save and open',
+        cancelLabel: 'Stay here',
+        onCancel: () => resolve({ handled: false, reason: null }),
+        onConfirm: () => {
+          void (async () => {
+            try {
+              const saved = await saveFile();
+              if (!saved) {
+                resolve({
+                  handled: false,
+                  reason:
+                    usePipelineStore.getState().errorMessage ??
+                    'The current pipeline could not be saved.',
+                });
+                return;
+              }
+              const latestAvailability = await verifyTarget();
+              if (!latestAvailability.available) {
+                resolve({ handled: false, reason: latestAvailability.reason });
+                return;
+              }
+              resolve(await openTarget(latestAvailability.target));
+            } catch {
+              resolve({ handled: false, reason: 'The final pipeline could not be opened.' });
+            }
+          })();
+        },
+      });
     });
   };
 }

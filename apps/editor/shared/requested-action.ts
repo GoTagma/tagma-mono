@@ -4,6 +4,12 @@ export const FILL_MANUAL_NEW_PIPELINE_ACTION_KIND = 'fill-manual-new-pipeline';
 export type PipelineRequestedActionKind =
   typeof CREATE_NEW_PIPELINE_ACTION_KIND | typeof FILL_MANUAL_NEW_PIPELINE_ACTION_KIND;
 
+export type ChatPipelineRouteIntent = 'create' | 'edit';
+
+export function isChatPipelineRouteIntent(value: unknown): value is ChatPipelineRouteIntent {
+  return value === 'create' || value === 'edit';
+}
+
 export interface HostPipelineRequestState {
   currentPipelineIsManualNewDraft?: boolean;
   /** Explicit structured UI/Host action. Presence, including null, suppresses state derivation. */
@@ -28,7 +34,8 @@ export function requestedActionLines(action: PipelineRequestedActionKind): strin
 
 /**
  * Resolve only authenticated editor/Host state. Natural-language intent remains
- * the model router's responsibility and must never be inferred with a phrase list.
+ * the model router's responsibility and must never be inferred with a phrase list;
+ * no-marker mutations bind that classification separately to their stage id.
  */
 export function resolveHostPipelineRequestedAction(
   state: HostPipelineRequestState,

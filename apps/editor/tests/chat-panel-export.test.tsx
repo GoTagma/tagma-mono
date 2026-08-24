@@ -24,6 +24,8 @@ import {
   chatPipelineDisplayName,
   chatPipelineDeploymentTarget,
   resolveChatPipelineTargetAvailability,
+  resolveLatestChatPipelineLinkTarget,
+  verifyLatestChatPipelineLinkTarget,
   isChatPipelineDeployed,
   selectVisibleChatCompletionResults,
 } from '../src/components/chat/chat-pipeline-link';
@@ -82,14 +84,239 @@ describe('ChatPanel export affordance', () => {
     );
     expect(source).not.toContain('if (current.yamlPath === verifiedTarget.path) return;');
     const recordVerifiedMtime =
-      /recordTurnYamlResultFinalMtime\(\s*verifiedTarget\.resultId,\s*openedState\.yamlMtimeMs,?\s*\)/;
+      /recordTurnYamlResultFinalMtime\(\s*openableTarget\.resultId,\s*openedState\.yamlMtimeMs,?\s*\)/;
     expect(source).toMatch(recordVerifiedMtime);
     expect(source.search(recordVerifiedMtime)).toBeGreaterThan(
-      source.indexOf('await openFile(verifiedTarget.path);'),
+      source.indexOf('await openFile(openableTarget.path);'),
     );
     expect(source).toContain('const openedState = usePipelineStore.getState();');
-    expect(source).toContain('if (openedState.errorMessage || !openedState.yamlPath) return;');
-    expect(source).toContain('await openFile(verifiedTarget.path);');
+    expect(source).toContain('if (openedState.errorMessage || !openedState.yamlPath)');
+    expect(source).toContain(
+      "reason: openedState.errorMessage ?? 'The final pipeline could not be opened.'",
+    );
+    expect(source).toContain('await openFile(openableTarget.path);');
+    expect(source).toContain('if (!hasLocalChanges) return openTarget(verifiedTarget);');
+    expect(source).toContain('return new Promise<ChatPipelineOpenOutcome>((resolve) =>');
+    expect(source).toContain('onCancel: () => resolve({ handled: false, reason: null })');
+    expect(source).toContain('const latestAvailability = await verifyTarget();');
+  });
+
+  test('resolves a relocated result target by stable result identity before opening', () => {
+    const staleTarget = {
+      resultId: 'result-1',
+      path: 'C:\\workspace\\.tagma\\build\\build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      workspaceKey: 'C:\\workspace',
+    };
+    const relocatedResult = {
+      ...staleTarget,
+      sessionId: 'session-1',
+      kind: 'open-created',
+      path: 'C:\\workspace\\.tagma\\build-copy-1\\build-copy-1.yaml',
+      name: 'build-copy-1.yaml',
+      pipelineName: 'Build Copy 1',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      },
+      reconcile: {
+        outcome: 'forked',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: 'C:\\workspace\\.tagma\\build-copy-1\\build-copy-1.yaml',
+        compileSuccess: true,
+      },
+      completedAt: 2_000,
+    } as ChatYamlSessionResult;
+
+    expect(
+      resolveLatestChatPipelineLinkTarget(staleTarget, {
+        originalMessage: [relocatedResult],
+      }),
+    ).toMatchObject({
+      resultId: 'result-1',
+      path: relocatedResult.path,
+      name: relocatedResult.name,
+      pipelineName: relocatedResult.pipelineName,
+    });
+  });
+
+  test('fails closed when the newest stable result identity is no longer deployed', async () => {
+    const target = {
+      resultId: 'result-invalidated',
+      path: 'C:\\workspace\\.tagma\\build\\build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      workspaceKey: 'C:\\workspace',
+    };
+    const staleDeployed = {
+      ...target,
+      sessionId: 'session-1',
+      kind: 'open-created',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      },
+      reconcile: {
+        outcome: 'created',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: target.path,
+        compileSuccess: true,
+      },
+      completedAt: 1_000,
+    } as ChatYamlSessionResult;
+    const invalidated = {
+      ...staleDeployed,
+      reconcile: {
+        ...staleDeployed.reconcile,
+        outcome: 'unchanged',
+        resultPath: null,
+      },
+      completedAt: 2_000,
+    } as ChatYamlSessionResult;
+    const latestTarget = resolveLatestChatPipelineLinkTarget(target, {
+      old: [staleDeployed],
+      latest: [invalidated],
+    });
+    let requests = 0;
+
+    const availability = await verifyLatestChatPipelineLinkTarget({
+      getLatestTarget: () => latestTarget,
+      getActiveWorkspaceKey: () => 'C:\\workspace',
+      listEntries: async () => {
+        requests += 1;
+        return [];
+      },
+    });
+
+    expect(requests).toBe(0);
+    expect(availability).toEqual({
+      available: false,
+      target: null,
+      reason: 'The latest Chat result no longer points to a deployed pipeline.',
+    });
+  });
+
+  test('retries one stale workspace listing and opens a target relocated during the click', async () => {
+    const staleTarget = {
+      resultId: 'result-race',
+      path: 'C:\\workspace\\.tagma\\build\\build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      workspaceKey: 'C:\\workspace',
+    };
+    const relocatedTarget = {
+      ...staleTarget,
+      path: 'C:\\workspace\\.tagma\\build-copy-1\\build-copy-1.yaml',
+      name: 'build-copy-1.yaml',
+      pipelineName: 'Build Copy 1',
+    };
+    let latestTarget = staleTarget;
+    let requests = 0;
+
+    const availability = await verifyLatestChatPipelineLinkTarget({
+      getLatestTarget: () => latestTarget,
+      getActiveWorkspaceKey: () => 'C:\\workspace',
+      listEntries: async () => {
+        requests += 1;
+        if (requests === 1) {
+          latestTarget = relocatedTarget;
+          return [
+            {
+              path: staleTarget.path,
+              name: staleTarget.name,
+              pipelineName: staleTarget.pipelineName,
+              mtimeMs: 1,
+            },
+          ];
+        }
+        return [
+          {
+            path: relocatedTarget.path,
+            name: relocatedTarget.name,
+            pipelineName: relocatedTarget.pipelineName,
+            mtimeMs: 2,
+          },
+        ];
+      },
+    });
+
+    expect(requests).toBe(2);
+    expect(availability).toMatchObject({
+      available: true,
+      target: { path: relocatedTarget.path, verifiedYamlMtimeMs: 2 },
+    });
+  });
+
+  test('rejects a registry response when the active workspace changes during verification', async () => {
+    const target = {
+      resultId: 'result-workspace-race',
+      path: 'C:\\workspace-a\\.tagma\\build\\build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      workspaceKey: 'C:\\workspace-a',
+    };
+    let activeWorkspace = 'C:\\workspace-a';
+    let requests = 0;
+
+    const availability = await verifyLatestChatPipelineLinkTarget({
+      getLatestTarget: () => target,
+      getActiveWorkspaceKey: () => activeWorkspace,
+      listEntries: async () => {
+        requests += 1;
+        activeWorkspace = 'C:\\workspace-b';
+        return [{ ...target, mtimeMs: 1 }];
+      },
+    });
+
+    expect(requests).toBe(1);
+    expect(availability).toEqual({
+      available: false,
+      target: null,
+      reason: 'The final pipeline belongs to a different workspace.',
+    });
+  });
+
+  test('renders loading and failure feedback while an Open pipeline click is handled', () => {
+    const source = readFileSync(
+      join(import.meta.dir, '..', 'src', 'components', 'chat', 'SessionYamlResult.tsx'),
+      'utf-8',
+    );
+
+    expect(source).toContain("opening ? 'Opening…' : 'Open pipeline'");
+    expect(source).toContain('if (!outcome.handled) setOpenFailure(outcome.reason)');
+    expect(source).toContain("role={openFailure ? 'alert' : 'status'}");
+  });
+
+  test('returns user-visible verification feedback after the bounded open retry fails', async () => {
+    let requests = 0;
+    const availability = await verifyLatestChatPipelineLinkTarget({
+      getLatestTarget: () => ({
+        resultId: 'result-unavailable',
+        path: 'C:\\workspace\\.tagma\\missing\\missing.yaml',
+        name: 'missing.yaml',
+        pipelineName: 'Missing',
+        workspaceKey: 'C:\\workspace',
+      }),
+      getActiveWorkspaceKey: () => 'C:\\workspace',
+      listEntries: async () => {
+        requests += 1;
+        throw new Error('registry refreshing');
+      },
+    });
+
+    expect(requests).toBe(2);
+    expect(availability).toEqual({
+      available: false,
+      target: null,
+      reason: 'The final pipeline could not be verified. Try again after refreshing the workspace.',
+    });
   });
 
   test('renders indeterminate completion as a warning instead of an error', () => {
@@ -323,6 +550,7 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Created pipeline');
     expect(html).toContain('Build Copy 1');
     expect(html).toContain('Open pipeline');
+    expect(html).not.toContain('disabled=""');
     expect(isChatPipelineDeployed(result)).toBe(true);
   });
 
@@ -1327,6 +1555,57 @@ describe('ChatPanel export affordance', () => {
     expect(html.match(/pipeline result/g)?.length).toBe(3);
   });
 
+  test('keeps the only Open pipeline action at the conversation tail after later continuations', () => {
+    const result = {
+      resultId: 'anchored-result',
+      messageId: 'm1',
+      turnId: 'turn-1',
+      sessionId: 's1',
+      workspaceKey: 'C:\\workspace',
+      kind: 'open-created',
+      path: 'C:\\workspace\\.tagma\\build\\build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      },
+      reconcile: {
+        outcome: 'created',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: 'C:\\workspace\\.tagma\\build\\build.yaml',
+        compileSuccess: true,
+      },
+      completedAt: 1_000,
+    } as ChatYamlSessionResult;
+    const laterAssistant = {
+      info: { id: 'later', sessionID: 's1', role: 'assistant' },
+      parts: [
+        {
+          id: 'later-text',
+          sessionID: 's1',
+          messageID: 'later',
+          type: 'text',
+          text: 'Later Trial continuation',
+        },
+      ],
+    } as OpencodeThreadEntry;
+
+    const html = renderToStaticMarkup(
+      <>
+        <MessageBubble entry={visibleThread} yamlResults={[result]} />
+        <MessageBubble entry={laterAssistant} />
+        <SessionYamlResultBubble result={result} />
+      </>,
+    );
+
+    expect(html.match(/Open pipeline/g)).toHaveLength(1);
+    expect(html.indexOf('Open pipeline')).toBeGreaterThan(html.indexOf('Later Trial continuation'));
+  });
+
   test('does not suppress the Open pipeline fallback for a missing message anchor', () => {
     const result = {
       resultId: 'fact-checker-result',
@@ -1390,7 +1669,7 @@ describe('ChatPanel export affordance', () => {
     ).toBe(true);
   });
 
-  test('renders an anchored Open pipeline result on an assistant message without text', () => {
+  test('renders an anchored result summary without moving the open action into a tool-only message', () => {
     const result = {
       resultId: 'tool-only-result',
       messageId: 'tool-only-assistant',
@@ -1424,7 +1703,7 @@ describe('ChatPanel export affordance', () => {
     const html = renderToStaticMarkup(<MessageBubble entry={entry} yamlResults={[result]} />);
 
     expect(html).toContain('Tool-only Pipeline');
-    expect(html).toContain('Open pipeline');
+    expect(html).not.toContain('Open pipeline');
   });
 
   test('links forked and compile-failed host results while rejecting staging targets', () => {
@@ -1471,7 +1750,7 @@ describe('ChatPanel export affordance', () => {
     expect(stagingHtml).toContain('disabled="');
   });
 
-  test('safely resolves Windows aliases and disables missing or outside live targets', () => {
+  test('safely resolves Windows aliases and rejects missing or outside live targets', () => {
     const target = {
       resultId: 'result-facts',
       workspaceKey: 'C:\\Workspace',

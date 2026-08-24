@@ -56,11 +56,12 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('explicitly selected manual-trigger tasks');
     expect(source).toContain('Live Smoke Test');
     expect(source).toContain('baseline in the real workspace');
+    expect(source).toContain('automatically grants its manual triggers');
     expect(source).toContain('normal host command authority');
     expect(source).toContain('real credentials and network access');
     expect(source).toContain('may mutate external state');
     expect(consentSource).toContain('CHAT_PIPELINE_TRIAL_CONSENT_VERSION = 3');
-    expect(consentSource).toContain('CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION = 1');
+    expect(consentSource).toContain('CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION = 2');
     expect(source).toContain('checked={settings.opencodeChatTrialRunEnabled}');
     expect(source).toContain('checked={settings.opencodeChatTrialLiveSmokeTestEnabled}');
     expect(source).toContain(

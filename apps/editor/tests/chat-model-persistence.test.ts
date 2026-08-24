@@ -2012,6 +2012,7 @@ describe('chat model persistence', () => {
     const repo = 'C:/reconciled-target-repo';
     const baseUrl = 'http://opencode-reconciled-target.test';
     const model = { providerID: 'anthropic', modelID: 'claude' };
+    const variant = 'max';
     const targetPath = `${repo}/.tagma/new-target/new-target.yaml`;
     workspaceBaseUrls.set(repo, baseUrl);
     setClientWorkspace(repo);
@@ -2020,7 +2021,9 @@ describe('chat model persistence', () => {
       sessions: [
         {
           id: 'existing',
-          metadata: { tagma: { model } },
+          metadata: {
+            tagma: { schema: 1, source: 'desktop-chat', model, variant },
+          },
           time: { created: 1, updated: 1 },
         } as unknown as Session,
       ],
@@ -2036,6 +2039,7 @@ describe('chat model persistence', () => {
           yamlPath: targetPath,
           reason: 'reconciled-target',
           model,
+          variant,
         },
       },
     });
@@ -2044,7 +2048,9 @@ describe('chat model persistence', () => {
       .getState()
       .syncSessionYamlTarget('existing', repo, targetPath, 'staged-target');
     expect(sessionUpdateRequests.at(-1)?.body).toMatchObject({
-      metadata: { tagma: { yamlPath: targetPath, reason: 'staged-target', model } },
+      metadata: {
+        tagma: { yamlPath: targetPath, reason: 'staged-target', model, variant },
+      },
     });
   });
 
@@ -2131,7 +2137,11 @@ describe('chat model persistence', () => {
 
       expect(promptAsyncRequests).toHaveLength(1);
       expect(stageStartBodies).toEqual([
-        { activePath: sourcePath, requestedAction: 'fill-manual-new-pipeline' },
+        {
+          activePath: sourcePath,
+          requestedAction: 'fill-manual-new-pipeline',
+          routeIntentRequired: false,
+        },
       ]);
       expect(promptAsyncBodies[0]?.agent).toBe('tagma-pipeline');
       expect(new URL(promptAsyncRequests[0]!).searchParams.get('directory')).toBe(agentTagmaDir);
@@ -2189,7 +2199,9 @@ describe('chat model persistence', () => {
         .getState()
         .send('create a separate new reporting pipeline without changing the current pipeline');
 
-      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
+      expect(stageStartBodies).toEqual([
+        { activePath: sourcePath, requestedAction: null, routeIntentRequired: true },
+      ]);
       const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
       expect(parts[0]?.text).not.toContain('<requested-action');
       expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
@@ -2206,7 +2218,9 @@ describe('chat model persistence', () => {
     try {
       await useChatStore.getState().send('add a review task to the current pipeline');
 
-      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
+      expect(stageStartBodies).toEqual([
+        { activePath: sourcePath, requestedAction: null, routeIntentRequired: true },
+      ]);
       expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
       const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
       expect(parts[0]?.text).not.toContain('<requested-action');
@@ -2223,7 +2237,9 @@ describe('chat model persistence', () => {
     try {
       await useChatStore.getState().send('build me a simple one to ask llm how are you');
 
-      expect(stageStartBodies).toEqual([{ activePath: sourcePath, requestedAction: null }]);
+      expect(stageStartBodies).toEqual([
+        { activePath: sourcePath, requestedAction: null, routeIntentRequired: true },
+      ]);
       expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
       const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
       expect(parts[0]?.text).not.toContain('<requested-action');
@@ -3083,19 +3099,138 @@ describe('chat model persistence', () => {
     expect(sessionUpdateRequests[0]?.body).toEqual({ metadata });
   });
 
-  test('keeps the selected model when switching or creating chat sessions', async () => {
-    const model = { providerID: 'anthropic', modelID: 'claude' };
+  test('keeps model and variant selections isolated per chat session', async () => {
+    const firstModel = { providerID: 'anthropic', modelID: 'claude' };
+    const secondModel = { providerID: 'openai', modelID: 'gpt-5' };
     setClientWorkspace('C:/repo-a');
     useChatStore.setState({
-      model,
-      sessions: [{ id: 'existing' } as Session],
-      currentSessionId: 'old',
+      providers: [
+        providerWithVariants('anthropic', 'claude', ['high', 'max']),
+        providerWithVariants('openai', 'gpt-5', ['low', 'high']),
+      ],
+      model: firstModel,
+      reasoningEffort: 'max',
+      sessions: [{ id: 'first-session' } as Session],
+      currentSessionId: 'first-session',
     } as never);
 
-    await useChatStore.getState().selectSession('existing');
-    expect(useChatStore.getState().model).toEqual(model);
+    await useChatStore.getState().newSession();
+    expect(sessionCreateRequests[0]?.body).toMatchObject({
+      metadata: { tagma: { model: firstModel, variant: 'max' } },
+    });
+    useChatStore.getState().setModel(secondModel);
+    useChatStore.getState().setReasoningEffort('low');
+
+    await useChatStore.getState().selectSession('first-session');
+    expect(useChatStore.getState().model).toEqual(firstModel);
+    expect(useChatStore.getState().reasoningEffort).toBe('max');
+
+    await useChatStore.getState().selectSession('new-session');
+    expect(useChatStore.getState().model).toEqual(secondModel);
+    expect(useChatStore.getState().reasoningEffort).toBe('low');
+
+    // Simulate renderer runtime caches being lost on reload. The workspace-local
+    // per-session preference must still restore both conversations independently.
+    useChatStore.setState({ sessionStates: {} } as never);
+    await useChatStore.getState().selectSession('first-session');
+    expect(useChatStore.getState().model).toEqual(firstModel);
+    expect(useChatStore.getState().reasoningEffort).toBe('max');
+  });
+
+  test('restores an uncached session selection from OpenCode metadata', async () => {
+    const firstModel = { providerID: 'anthropic', modelID: 'claude' };
+    setClientWorkspace('C:/metadata-selection-repo');
+    useChatStore.setState({
+      providers: [
+        providerWithVariants('anthropic', 'claude', ['high', 'max']),
+        providerWithVariants('openai', 'gpt-5', ['low', 'high']),
+      ],
+      model: { providerID: 'openai', modelID: 'gpt-5' },
+      reasoningEffort: 'low',
+      sessions: [
+        {
+          id: 'metadata-session',
+          metadata: {
+            tagma: { schema: 1, source: 'desktop-chat', model: firstModel, variant: 'max' },
+          },
+        } as unknown as Session,
+        {
+          id: 'provider-default-session',
+          metadata: {
+            tagma: { schema: 1, source: 'desktop-chat', model: firstModel, variant: null },
+          },
+        } as unknown as Session,
+      ],
+      currentSessionId: null,
+      sessionStates: {},
+    } as never);
+
+    await useChatStore.getState().selectSession('metadata-session');
+
+    expect(useChatStore.getState().model).toEqual(firstModel);
+    expect(useChatStore.getState().reasoningEffort).toBe('max');
+
+    await useChatStore.getState().selectSession('provider-default-session');
+
+    expect(useChatStore.getState().model).toEqual(firstModel);
+    expect(useChatStore.getState().reasoningEffort).toBeNull();
+  });
+
+  test('uses the owning hidden sessions model and variant for internal continuations', async () => {
+    const repo = 'C:/hidden-selection-repo';
+    const baseUrl = 'http://opencode-hidden-selection.test';
+    const firstModel = { providerID: 'anthropic', modelID: 'claude' };
+    const secondModel = { providerID: 'openai', modelID: 'gpt-5' };
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    useChatStore.setState({
+      providers: [
+        providerWithVariants('anthropic', 'claude', ['high', 'max']),
+        providerWithVariants('openai', 'gpt-5', ['low', 'high']),
+      ],
+      model: firstModel,
+      reasoningEffort: 'max',
+      agent: 'tagma-router',
+      sessions: [{ id: 'first-session' } as Session],
+      currentSessionId: 'first-session',
+    } as never);
 
     await useChatStore.getState().newSession();
-    expect(useChatStore.getState().model).toEqual(model);
+    useChatStore.getState().setModel(secondModel);
+    useChatStore.getState().setReasoningEffort('low');
+    await useChatStore.getState().sendInternalRepairPrompt(
+      {
+        kind: 'refresh-current',
+        path: `${repo}/.tagma/sample/sample.yaml`,
+        name: 'sample.yaml',
+        pipelineName: 'Sample',
+      },
+      {
+        kind: 'compile',
+        result: {
+          timestamp: '2026-08-24T00:00:00.000Z',
+          sourceName: `${repo}/.tagma/sample/sample.yaml`,
+          success: false,
+          parseOk: true,
+          validation: {
+            errors: [{ path: 'tracks[0].name', message: 'Track name is required' }],
+            warnings: [],
+          },
+          summary: 'Invalid pipeline configuration',
+        },
+      },
+      1,
+      2,
+      null,
+      'first-session',
+    );
+
+    expect(promptAsyncBodies.at(-1)?.model).toEqual(firstModel);
+    expect(promptAsyncBodies.at(-1)?.variant).toBe('max');
+    expect(sessionUpdateRequests.at(-1)?.body).toMatchObject({
+      metadata: { tagma: { model: firstModel, variant: 'max' } },
+    });
+    expect(useChatStore.getState().model).toEqual(secondModel);
+    expect(useChatStore.getState().reasoningEffort).toBe('low');
   });
 });

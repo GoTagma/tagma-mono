@@ -43,7 +43,10 @@ import type {
   TrialInteractionDeclaration as SdkTrialInteractionDeclaration,
 } from '@tagma/types';
 import { participatesInWorkspaceRevisionSequence } from '../../shared/revision-routes.js';
-import type { PipelineRequestedActionKind } from '../../shared/requested-action.js';
+import type {
+  ChatPipelineRouteIntent,
+  PipelineRequestedActionKind,
+} from '../../shared/requested-action.js';
 import type {
   DiagnosticsSessionStatus,
   RendererDiagnosticsReport,
@@ -190,6 +193,7 @@ export interface ChatYamlStageDescriptor {
   activeRelativePath: string | null;
   activeStagedPath: string | null;
   requestedAction: PipelineRequestedActionKind | null;
+  routeIntentRequired: boolean;
   createTargetRelativePath: string | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
@@ -1163,9 +1167,9 @@ export interface EditorSettings {
   viewMode: EditorViewMode;
   /** Workspace-local Python AI Agent configuration. */
   pythonAgent: PythonAgentSettings;
-  /** Last OpenCode chat provider/model selection for this workspace. */
+  /** Last OpenCode chat provider/model selection; seeds new sessions in this workspace. */
   opencodeChatModel: OpenCodeChatModelSelection | null;
-  /** Last OpenCode chat reasoning effort selection for this workspace. */
+  /** Last OpenCode chat model variant; seeds new sessions in this workspace. */
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
   /** Enables the application-contained Sandbox Trial. Default true. */
   opencodeChatTrialRunEnabled: boolean;
@@ -2131,6 +2135,7 @@ export const api = {
     activePath?: string | null,
     workspaceKeyOverride?: string | null,
     requestedAction?: PipelineRequestedActionKind | null,
+    routeIntentRequired = false,
   ) =>
     request<ChatYamlStageDescriptor>(
       '/workspace/chat-yaml-stage/start',
@@ -2139,6 +2144,7 @@ export const api = {
         body: jsonBody({
           activePath: activePath ?? null,
           requestedAction: requestedAction ?? null,
+          routeIntentRequired,
         }),
       },
       workspaceKeyOverride,
@@ -2233,12 +2239,13 @@ export const api = {
     stageId: string,
     relativePath: string,
     workspaceKeyOverride?: string | null,
+    routeIntent?: ChatPipelineRouteIntent,
   ) =>
     request<YamlCompileResult>(
       '/workspace/chat-yaml-stage/compile',
       {
         method: 'POST',
-        body: jsonBody({ stageId, relativePath }),
+        body: jsonBody({ stageId, relativePath, ...(routeIntent ? { routeIntent } : {}) }),
       },
       workspaceKeyOverride,
     ),

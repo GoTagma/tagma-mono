@@ -10,6 +10,8 @@ export interface TagmaSessionMetadataInput {
   workspacePath?: string | null;
   yamlPath?: string | null;
   model?: TagmaSessionModel | null;
+  /** OpenCode model variant; null explicitly selects the model/provider default. */
+  variant?: string | null;
   reason?: string | null;
   title?: string | null;
   bot?: {
@@ -28,6 +30,9 @@ export interface TagmaSessionMetadata {
   source: TagmaSessionSource;
   workspacePath?: string;
   yamlPath?: string;
+  model?: TagmaSessionModel;
+  /** Present and null when the session explicitly uses the provider default. */
+  variant?: string | null;
 }
 
 export interface OpencodeSessionOwnershipFields {
@@ -95,11 +100,29 @@ export function parseTagmaSessionMetadata(metadata: unknown): TagmaSessionMetada
       typeof tagma.yamlPath === 'string' && tagma.yamlPath.trim()
         ? tagma.yamlPath.trim()
         : undefined;
+    const rawModel = tagma.model;
+    const providerID = isRecord(rawModel) ? rawModel.providerID : undefined;
+    const modelID = isRecord(rawModel) ? rawModel.modelID : undefined;
+    const model =
+      typeof providerID === 'string' &&
+      providerID.trim() &&
+      typeof modelID === 'string' &&
+      modelID.trim()
+        ? { providerID: providerID.trim(), modelID: modelID.trim() }
+        : undefined;
+    const variant =
+      tagma.variant === null
+        ? null
+        : typeof tagma.variant === 'string' && tagma.variant.trim()
+          ? tagma.variant.trim()
+          : undefined;
     return {
       schema,
       source,
       ...(workspacePath ? { workspacePath } : {}),
       ...(yamlPath ? { yamlPath } : {}),
+      ...(model ? { model } : {}),
+      ...(variant !== undefined ? { variant } : {}),
     };
   }
 
@@ -158,6 +181,8 @@ export function buildTagmaSessionMetadata(
       modelID: input.model.modelID,
     };
   }
+  if (input.variant === null) tagma.variant = null;
+  else putString(tagma, 'variant', input.variant);
 
   if (input.bot) {
     const bot: Record<string, unknown> = {};

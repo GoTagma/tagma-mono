@@ -1,5 +1,5 @@
 export const CHAT_PIPELINE_TRIAL_CONSENT_VERSION = 3;
-export const CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION = 1;
+export const CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION = 2;
 
 export interface ChatPipelineTrialConsentSettings {
   opencodeChatTrialRunEnabled?: boolean | null;

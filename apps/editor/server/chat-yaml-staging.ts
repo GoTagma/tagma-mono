@@ -90,7 +90,9 @@ import {
 import {
   CREATE_NEW_PIPELINE_ACTION_KIND,
   FILL_MANUAL_NEW_PIPELINE_ACTION_KIND,
+  isChatPipelineRouteIntent,
   isPipelineRequestedActionKind,
+  type ChatPipelineRouteIntent,
   type PipelineRequestedActionKind,
 } from '../shared/requested-action.js';
 
@@ -281,6 +283,12 @@ type ChatYamlStageConflict =
   | 'trial-run-failed'
   | 'destination-exists';
 
+interface ChatYamlStageRouteIntentAttestation {
+  relativePath: string;
+  contentHash: string;
+  routeIntent: ChatPipelineRouteIntent;
+}
+
 interface ChatYamlStageMetadata {
   version: typeof STAGE_VERSION;
   id: string;
@@ -294,6 +302,8 @@ interface ChatYamlStageMetadata {
   } | null;
   activeRelativePath: string | null;
   requestedAction: PipelineRequestedActionKind | null;
+  routeIntentRequired: boolean;
+  routeIntentAttestation: ChatYamlStageRouteIntentAttestation | null;
   createTargetRelativePath: string | null;
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
@@ -338,6 +348,7 @@ export interface ChatYamlStageDescriptor {
   activeRelativePath: string | null;
   activeStagedPath: string | null;
   requestedAction: PipelineRequestedActionKind | null;
+  routeIntentRequired: boolean;
   createTargetRelativePath: string | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
@@ -971,6 +982,31 @@ function writeMetadata(paths: StagePaths, metadata: ChatYamlStageMetadata): void
   );
 }
 
+function parseRouteIntentAttestation(
+  raw: unknown,
+): ChatYamlStageRouteIntentAttestation | null | false {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const candidate = raw as Record<string, unknown>;
+  if (
+    typeof candidate.relativePath !== 'string' ||
+    typeof candidate.contentHash !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(candidate.contentHash) ||
+    !isChatPipelineRouteIntent(candidate.routeIntent)
+  ) {
+    return false;
+  }
+  try {
+    return {
+      relativePath: assertPortableRelativePath(candidate.relativePath),
+      contentHash: candidate.contentHash,
+      routeIntent: candidate.routeIntent,
+    };
+  } catch {
+    return false;
+  }
+}
+
 function readMetadata(
   ws: WorkspaceState,
   stageId: string,
@@ -1010,6 +1046,8 @@ function readMetadata(
   const requestedAction = isPipelineRequestedActionKind(raw.requestedAction)
     ? raw.requestedAction
     : null;
+  const routeIntentRequired = raw.routeIntentRequired === true;
+  const routeIntentAttestation = parseRouteIntentAttestation(raw.routeIntentAttestation);
   const createTargetRelativePath =
     typeof raw.createTargetRelativePath === 'string'
       ? assertPortableRelativePath(raw.createTargetRelativePath)
@@ -1025,6 +1063,10 @@ function readMetadata(
     !Array.isArray(raw.sourceRelativePaths) ||
     !raw.sourceRelativePaths.every((item) => typeof item === 'string') ||
     trialPlanMaxAttempts === null ||
+    (raw.routeIntentRequired !== undefined && typeof raw.routeIntentRequired !== 'boolean') ||
+    routeIntentAttestation === false ||
+    (!routeIntentRequired && routeIntentAttestation !== null) ||
+    (requestedAction !== null && routeIntentRequired) ||
     (requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
       ? createTargetRelativePath === null || raw.activeRelativePath !== createTargetRelativePath
       : requestedAction === FILL_MANUAL_NEW_PIPELINE_ACTION_KIND
@@ -1055,6 +1097,8 @@ function readMetadata(
       activeRelativePath:
         typeof raw.activeRelativePath === 'string' ? raw.activeRelativePath : null,
       requestedAction,
+      routeIntentRequired,
+      routeIntentAttestation: routeIntentAttestation || null,
       createTargetRelativePath,
       sourceRelativePaths: raw.sourceRelativePaths.map(assertPortableRelativePath),
       baseEntries: raw.baseEntries.map((entry) => ({
@@ -1235,6 +1279,7 @@ function descriptor(
     activeRelativePath: metadata.activeRelativePath,
     activeStagedPath: active?.stagedPath ?? reservedCreateTarget,
     requestedAction: metadata.requestedAction,
+    routeIntentRequired: metadata.routeIntentRequired,
     createTargetRelativePath: metadata.createTargetRelativePath,
     entries,
     ...(metadata.sessionRelocation ? { sessionRelocation: metadata.sessionRelocation } : {}),
@@ -1281,6 +1326,7 @@ export function createChatYamlStage(
   options: {
     activePath?: string | null;
     requestedAction?: PipelineRequestedActionKind | null;
+    routeIntentRequired?: boolean;
   } = {},
 ): ChatYamlStageDescriptor {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
@@ -1324,6 +1370,10 @@ export function createChatYamlStage(
         );
       }
     }
+    if (requestedAction !== null && options.routeIntentRequired === true) {
+      throw new Error('An explicit Host action cannot also require a router target mode.');
+    }
+    const routeIntentRequired = requestedAction === null && options.routeIntentRequired === true;
     const createTargetRelativePath =
       requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
         ? reserveCreateTargetRelativePath(sourceRelativePaths)
@@ -1340,6 +1390,8 @@ export function createChatYamlStage(
       trialPlanAttempt: null,
       activeRelativePath,
       requestedAction,
+      routeIntentRequired,
+      routeIntentAttestation: null,
       createTargetRelativePath,
       sourceRelativePaths,
       baseEntries,
@@ -1561,11 +1613,16 @@ export function compileChatYamlStage(
   ws: WorkspaceState,
   stageId: string,
   relativePath: string,
+  routeIntent?: ChatPipelineRouteIntent,
 ): ReturnType<typeof runCompileAndWriteLog> {
-  const { paths, metadata } = readMetadata(ws, stageId);
+  const loaded = readMetadata(ws, stageId);
+  const { paths } = loaded;
+  let { metadata } = loaded;
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
-  const stagedPath = resolveStagedYamlPath(paths, relativePath);
+  const targetRelativePath = assertPortableRelativePath(relativePath);
+  const stagedPath = resolveStagedYamlPath(paths, targetRelativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
+  metadata = bindOrVerifyRouteIntent(paths, metadata, targetRelativePath, stagedPath, routeIntent);
   const result = runChatStageCompileAndWriteLog(ws, paths, stagedPath);
   try {
     runPipelineManifestSync(stagedPath);
@@ -1575,7 +1632,7 @@ export function compileChatYamlStage(
     // surfaced again during finalize where writes are transactional.
   }
   const hostOwnsBasicLayout =
-    metadata.requestedAction !== null || baseEntryFor(metadata, relativePath) === null;
+    metadata.requestedAction !== null || baseEntryFor(metadata, targetRelativePath) === null;
   if (result.success && hostOwnsBasicLayout && runPipelineLayoutSync(stagedPath) === null) {
     throw new Error('Host-managed new-pipeline layout synchronization failed.');
   }
@@ -1924,6 +1981,100 @@ function stageTargetChanged(
     pipelineArtifactHashes(stagedPath),
     baseEntryFor(metadata, relativePath),
   );
+}
+
+function assertNoMarkerCreationSemantics(
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  sourceRelativePath: string | undefined,
+  routeIntent: ChatPipelineRouteIntent,
+): void {
+  if (routeIntent === 'edit') {
+    if (!sourceRelativePath) {
+      throw new Error('The router declared an edit but targeted a fresh sibling pipeline.');
+    }
+    const freshSibling = [
+      ...enumeratePipelineYamls(paths.agentWorkspaceDir),
+      ...enumerateFlatPipelineYamls(paths.agentWorkspaceDir),
+    ]
+      .map((entry) => portableRelative(paths.agentTagmaDir, entry.yamlPath))
+      .find(
+        (candidate) =>
+          !metadata.sourceRelativePaths.some((source) =>
+            samePipelineRelativePath(source, candidate),
+          ),
+      );
+    if (freshSibling) {
+      throw new Error(
+        `The router declared an edit but also created a fresh sibling pipeline: ${freshSibling}.`,
+      );
+    }
+    return;
+  }
+  if (sourceRelativePath) {
+    throw new Error(
+      'The router declared a create but targeted an inventoried pipeline; write a fresh sibling instead.',
+    );
+  }
+
+  const changedSource = metadata.sourceRelativePaths.find(
+    (candidate) =>
+      readTargetFinalizeResult(paths, candidate) === null &&
+      stageTargetChanged(paths, metadata, candidate),
+  );
+  if (changedSource) {
+    throw new Error(
+      `A no-marker sibling create must preserve every inventoried pipeline; ${changedSource} was also changed.`,
+    );
+  }
+}
+
+function bindOrVerifyRouteIntent(
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  relativePath: string,
+  stagedPath: string,
+  routeIntent: ChatPipelineRouteIntent | undefined,
+): ChatYamlStageMetadata {
+  if (!metadata.routeIntentRequired) {
+    if (routeIntent) {
+      throw new Error('This stage does not require or accept a router target mode.');
+    }
+    return metadata;
+  }
+
+  const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
+    samePipelineRelativePath(candidate, relativePath),
+  );
+  const contentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
+  if (routeIntent) {
+    if (
+      metadata.routeIntentAttestation &&
+      metadata.routeIntentAttestation.routeIntent !== routeIntent
+    ) {
+      throw new Error('The stage-bound router target mode cannot change within one stage.');
+    }
+    assertNoMarkerCreationSemantics(paths, metadata, sourceRelativePath, routeIntent);
+    const nextMetadata: ChatYamlStageMetadata = {
+      ...metadata,
+      routeIntentAttestation: { relativePath, contentHash, routeIntent },
+    };
+    writeMetadata(paths, nextMetadata);
+    return nextMetadata;
+  }
+
+  const attestation = metadata.routeIntentAttestation;
+  if (
+    !attestation ||
+    !samePipelineRelativePath(attestation.relativePath, relativePath) ||
+    attestation.contentHash !== contentHash
+  ) {
+    throw new Error(
+      'A no-marker pipeline mutation requires a current stage-bound router target mode before verification.',
+    );
+  }
+  assertNoMarkerCreationSemantics(paths, metadata, sourceRelativePath, attestation.routeIntent);
+  return metadata;
 }
 
 function sourceMatchesBase(

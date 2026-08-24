@@ -290,6 +290,126 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('rejects a declared no-marker sibling create that also rewrites an inventoried pipeline', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      routeIntentRequired: true,
+    });
+    const existing = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const relativePath = 'fresh-sibling/fresh-sibling.yaml';
+    const stagedPath = join(stage.agentTagmaDir, 'fresh-sibling', 'fresh-sibling.yaml');
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(stagedPath, yamlFor('Fresh Sibling', 'new target'), 'utf-8');
+    writeFileSync(existing.stagedPath, yamlFor('Wrongly Replaced Pipeline', 'wrong'), 'utf-8');
+
+    expect(() => compileChatYamlStage(ws, stage.id, relativePath, 'create')).toThrow(
+      'must preserve every inventoried pipeline',
+    );
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('rejects a router-declared no-marker create that targets the current pipeline', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      routeIntentRequired: true,
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(
+      staged.stagedPath,
+      [
+        'pipeline:',
+        '  name: Unrelated New Pipeline',
+        '  tracks:',
+        '    - id: checks',
+        '      name: Checks',
+        '      tasks:',
+        '        - id: verify',
+        '          prompt: verify an unrelated input',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    expect(() => compileChatYamlStage(ws, stage.id, staged.relativePath, 'create')).toThrow(
+      'declared a create but targeted an inventoried pipeline',
+    );
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('rejects a router-declared edit that also creates a fresh sibling', () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      routeIntentRequired: true,
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Edited Pipeline', 'edited'), 'utf-8');
+    const siblingPath = join(stage.agentTagmaDir, 'unexpected', 'unexpected.yaml');
+    mkdirSync(dirname(siblingPath), { recursive: true });
+    writeFileSync(siblingPath, yamlFor('Unexpected Sibling', 'unexpected'), 'utf-8');
+
+    expect(() => compileChatYamlStage(ws, stage.id, staged.relativePath, 'edit')).toThrow(
+      'declared an edit but also created a fresh sibling pipeline',
+    );
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('fails closed when a no-marker mutation has no matching router intent', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      routeIntentRequired: true,
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Edited Pipeline', 'edited'), 'utf-8');
+
+    await expect(
+      finalizeChatYamlStage(ws, { stageId: stage.id, relativePath: staged.relativePath }),
+    ).rejects.toThrow('requires a current stage-bound router target mode');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('accepts a router-declared no-marker edit of an inventoried pipeline', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      routeIntentRequired: true,
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const edited = yamlFor('Renamed Agent Pipeline', 'edited').replace(
+      '        - id: task',
+      '        - id: renamed',
+    );
+    writeFileSync(staged.stagedPath, edited, 'utf-8');
+
+    expect(compileChatYamlStage(ws, stage.id, staged.relativePath, 'edit').success).toBe(true);
+    expect(() => compileChatYamlStage(ws, stage.id, staged.relativePath, 'create')).toThrow(
+      'cannot change within one stage',
+    );
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(edited);
+    stopWorkspace(ws);
+  });
+
   test('rejects fill-manual staging when the active path is not the current Host draft', () => {
     const { ws, sourcePath } = setupWorkspace();
     ws.manualNewPipelineYamlPath = null;

@@ -35,8 +35,11 @@
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
-- Model and reasoning-effort selections are preferences for the next prompt; prompt dispatch
-  snapshots both when it starts.
+- Model and reasoning-effort selections belong to the visible conversation. A new conversation
+  inherits the current workspace preference, then persists its own provider/model/variant and
+  restores them on History switches or renderer reloads. Prompt dispatch snapshots the target
+  conversation's selection when it starts; hidden repair/planning continuations must never read
+  the mutable visible conversation's selection.
 - The Chat header and OpenCode-enabled pipeline/track/task Inspector model fields share
   `ModelPickerDropdown`. Keep provider groups and models case-insensitively alphabetical by their
   displayed labels there, and keep its provider input restricted to active/configured runtime
@@ -52,7 +55,14 @@
   natural-language phrase lists. The current editor-created manual-new draft structurally selects
   fill; other natural-language intent remains the model router's responsibility. A
   router-classified create must use a fresh sibling path and preserve the current and every
-  inventoried YAML. Freeze action, active path, and local revision together before any await; send
+  inventoried YAML. Bind that natural-language classification to the exact stage id with the first
+  worker-handoff line `TAGMA_ROUTE_MODE: <stage-id> create|edit`; the renderer accepts only the
+  matching durable task/subtask marker, and Host compile stores a current-YAML-hash-bound
+  attestation in authenticated stage metadata. Trial and finalize require that attestation for
+  no-marker stages. Missing, conflicting, or stale markers fail closed; declared creates cannot
+  target inventoried YAML or carry an unfinalized inventoried mutation, and declared edits cannot
+  target or additionally create a fresh sibling. Freeze action, active path, and local revision
+  together before any await; send
   structured actions to the stage Host, render only that frozen action in context, and require fill
   to match the Host's exact current manual draft. A later UI selection must never retarget the turn.
 - Keep those selectors enabled when the visible conversation is idle, even if another
@@ -137,13 +147,15 @@
   their turn is open, plus accent-toned running states on tool-call summary rows. Collapsible
   detail blocks use `.chat-disclosure` + `.chat-disclosure-chevron` — the chevron rotates via
   the `[open]` attribute in CSS, so uncontrolled `<details>` need no per-component state.
-- Anchored pipeline results fuse into the owning assistant bubble: ChatMessages passes
-  `yamlResults` to MessageBubble, which injects `SessionYamlResultFooter` as the `cardFooter` of
-  the bubble's last text part. Both result components live in `SessionYamlResult.tsx`;
-  `SessionYamlResultBubble` remains the standalone card for unanchored session-level results and
-  is re-exported from ChatPanel because tests import it from there. Result-bearing bubbles get a
-  freshly-selected array each ChatMessages render, so they deliberately skip the MessageBubble
-  memo win (rare, and always on finished turns).
+- Anchored pipeline results fuse an informational summary into the owning assistant bubble:
+  ChatMessages passes `yamlResults` to MessageBubble, which injects `SessionYamlResultFooter` as
+  the `cardFooter` of the bubble's last text part. The sole Open Pipeline action belongs to the
+  standalone session result at the conversation tail, even when an anchor exists, so later Host
+  planning/repair messages cannot strand the action in the transcript middle. Both result
+  components live in `SessionYamlResult.tsx`; result-bearing bubbles get a freshly-selected array
+  each ChatMessages render, so they deliberately skip the MessageBubble memo win (rare, and always
+  on finished turns). Opening re-resolves the durable result id, retries one stale workspace
+  listing, and reports local loading/failure state instead of silently consuming the first click.
 - Count a persisted pipeline result as anchored only when its result identity resolves through a
   currently visible assistant message. Ledger presence alone must not suppress the standalone
   fallback. A result-bearing assistant message must also render its result when it has no visible
@@ -439,7 +451,9 @@
   executes. A sink that is unsafe or impossible to run requires a blocking `diagnostic-only`
   finding; warning or accepted-risk text must never turn an unexecuted sink into a passing Trial.
 - When Live Smoke Test is separately consented, preserve its real-workspace baseline when at least
-  one DAG root is runnable. When every root is waiting for a missing workspace-local file or
+  one DAG root is runnable. That separate consent grants each manual trigger in the selected
+  baseline closure automatically for that run id only; ordinary pipeline runs still require human
+  approval. When every root is waiting for a missing workspace-local file or
   directory input, request the targeted plan first and require representative data only as an
   isolated case fixture; do not create placeholder inputs in the real workspace. Skip that
   unavailable Live Smoke baseline, retain pre/post host witness and mutation monitoring, execute
@@ -450,8 +464,8 @@
   repeated-run support, and host-evaluated assertions. Case workspaces must be removed afterward
   and their fixtures/outputs must never leak into the live workspace.
 - A partial Live Smoke target set proves only the terminal tasks it actually contains. Every
-  terminal branch excluded by missing data, a manual gate, or a staged-only/divergent dependency
-  must be directly targeted by a Sandbox case; otherwise request a corrected plan before execution
+  terminal branch excluded by missing data or a staged-only/divergent dependency must be directly
+  targeted by a Sandbox case; otherwise request a corrected plan before execution
   and never finalize the result as verified.
 - Resolve staged pipeline support files identically in isolated Trial and after publication.
   When a short relative file/directory trigger, `file_exists` completion, or `static_context`
@@ -472,7 +486,8 @@
   the task from staging as if it were Live Smoke. Recompute mutable Live Smoke readiness after the
   pre-run host witness is captured, and compare the complete canonical execution projection again
   after the post witness before caching success: data-readiness state and unavailable task ids,
-  baseline mode and target ids, manual/middleware/cwd exclusion ids, and new-target identity.
+  baseline mode and target ids, manual auto-grant ids, middleware/cwd exclusion ids, and new-target
+  identity.
   Persist that entire projection in the authenticated Trial cache, then re-resolve it on cache reuse
   and Finalize; Git witnesses do not represent empty directories. Never carry a stale readiness
   decision across either witness boundary or Finalize into execution or cached verification.
@@ -550,9 +565,10 @@
   as `diagnostic-only`; it must not execute, authorize pipeline repair, or write a placeholder into
   the live workspace. External trigger paths remain valid production coordinates but cannot be
   synthesized without leaving the case workspace, so Trial must block them rather than touch live
-  data. Never fabricate binaries, services, real credentials, or
-  human approvals to make Live Smoke appear ready. Sandbox's deterministic synthetic-secret
-  substitution is execution isolation, not evidence that a real credential exists. Authenticated
+  data. Never fabricate binaries, services, or real credentials to make Live Smoke appear ready;
+  only the separately consented, run-scoped manual-trigger grant is allowed. Sandbox's
+  deterministic synthetic-secret substitution is execution isolation, not evidence that a real
+  credential exists. Authenticated
   absence needed by Live Smoke is a structured, diagnostic-only `blocked` prerequisite state.
   Preserve task ownership from requirements `usedBy`: a missing task-owned binary blocks only Live
   Smoke or Sandbox target closures that execute that task. Run every independent prerequisite-ready
@@ -560,11 +576,11 @@
   with real task evidence when partial execution occurred. Hook-owned, malformed/unscoped binary
   requirements and required environment declarations remain global blockers. Never execute a
   blocked closure or reinterpret partial coverage as a pass.
-  The sole approval exception is a host-owned, run-ID-scoped Trial execution grant for a manual task
-  in an explicitly selected case target dependency closure. It is not human approval and must never
-  change ordinary-run approval behavior. A manual task outside every explicit case target closure
-  remains rejected and diagnostic-only. Changing this grant policy requires a Trial consent version
-  bump and updated user-facing disclosure.
+  Approval exceptions are host-owned and run-ID-scoped: Sandbox grants manual tasks only in an
+  explicitly selected case target dependency closure, while a separately consented Live Smoke
+  baseline grants manual tasks in its selected real-workspace closure. Neither is human approval and
+  neither changes ordinary-run approval behavior. Changing this grant policy requires the applicable
+  Trial consent version bump and updated user-facing disclosure.
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
   accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.

@@ -128,14 +128,17 @@ import {
   isChatReasoningEffort,
   clearPersistedChatSessionRelocation,
   loadPersistedChatSessionRelocations,
+  loadPersistedChatSessionSelection,
   loadPersisted,
   loadPersistedChatYamlReconciliationQueue,
   loadPersistedChatYamlResults,
   savePersisted,
   savePersistedChatSessionRelocation,
+  savePersistedChatSessionSelection,
   savePersistedChatYamlReconciliationQueue,
   savePersistedChatYamlResults,
   sameModelPick,
+  removePersistedChatSessionSelections,
   validatePersistedChatYamlResult,
   type ChatReasoningEffort,
   type ModelPick,
@@ -343,6 +346,8 @@ export type ChatTurnHealth = {
 type ChatQueuedDispatchMode = 'reuse-logical-turn' | 'start-fresh';
 
 type ChatSessionRuntimeState = {
+  model: ModelPick | null;
+  reasoningEffort: ChatReasoningEffort;
   messages: OpencodeThreadEntry[];
   sending: boolean;
   pendingUserText: string | null;
@@ -1744,22 +1749,79 @@ function withPromptTitleFallback(session: Session, title: string | null): Sessio
   return { ...session, title };
 }
 
-function desktopChatModelFromSessionMetadata(metadata: unknown): ModelPick | null {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
-  const tagma = (metadata as { tagma?: unknown }).tagma;
-  if (!tagma || typeof tagma !== 'object' || Array.isArray(tagma)) return null;
-  const model = (tagma as { model?: unknown }).model;
-  if (!model || typeof model !== 'object' || Array.isArray(model)) return null;
-  const { providerID, modelID } = model as { providerID?: unknown; modelID?: unknown };
-  return typeof providerID === 'string' && providerID && typeof modelID === 'string' && modelID
-    ? { providerID, modelID }
-    : null;
+interface DesktopChatSessionSelectionMetadata {
+  model: ModelPick | null;
+  reasoningEffort: ChatReasoningEffort;
+  hasReasoningEffort: boolean;
+}
+
+function desktopChatSelectionFromSessionMetadata(
+  metadata: unknown,
+): DesktopChatSessionSelectionMetadata | null {
+  const tagma = parseTagmaSessionMetadata(metadata);
+  if (!tagma) return null;
+  const model = tagma.model ?? null;
+  const hasReasoningEffort = Object.prototype.hasOwnProperty.call(tagma, 'variant');
+  const reasoningEffort = isChatReasoningEffort(tagma.variant)
+    ? tagma.variant
+    : DEFAULT_CHAT_REASONING_EFFORT;
+  return model || hasReasoningEffort ? { model, reasoningEffort, hasReasoningEffort } : null;
+}
+
+function resolveChatSessionSelection(
+  state: Pick<ChatStore, 'sessions' | 'providers' | 'model' | 'reasoningEffort'>,
+  sessionId: string,
+  workspaceKey: string,
+): Pick<ChatStore, 'model' | 'reasoningEffort'> {
+  const persistedSelection = loadPersistedChatSessionSelection(workspaceKey, sessionId);
+  const session = state.sessions.find((candidate) => candidate.id === sessionId) as
+    (Session & { metadata?: unknown }) | undefined;
+  const metadataSelection = desktopChatSelectionFromSessionMetadata(session?.metadata);
+  const candidateModel = persistedSelection
+    ? persistedSelection.model
+    : (metadataSelection?.model ?? state.model);
+  const candidateReasoningEffort = persistedSelection
+    ? persistedSelection.reasoningEffort
+    : metadataSelection?.hasReasoningEffort
+      ? metadataSelection.reasoningEffort
+      : state.reasoningEffort;
+  const model =
+    state.providers.length > 0
+      ? reconcileModelPick(state.providers, {}, candidateModel)
+      : candidateModel;
+  return {
+    model,
+    reasoningEffort:
+      state.providers.length > 0
+        ? reconcileModelVariant(state.providers, model, candidateReasoningEffort)
+        : candidateReasoningEffort,
+  };
+}
+
+function selectionForChatSession(
+  state: ChatStore,
+  sessionId: string,
+  workspaceKey: string,
+): Pick<ChatStore, 'model' | 'reasoningEffort'> {
+  if (state.currentSessionId === sessionId) {
+    return { model: state.model, reasoningEffort: state.reasoningEffort };
+  }
+  const runtime = state.sessionStates[sessionId];
+  if (
+    runtime &&
+    Object.prototype.hasOwnProperty.call(runtime, 'model') &&
+    Object.prototype.hasOwnProperty.call(runtime, 'reasoningEffort')
+  ) {
+    return { model: runtime.model, reasoningEffort: runtime.reasoningEffort };
+  }
+  return resolveChatSessionSelection(state, sessionId, workspaceKey);
 }
 
 function buildDesktopChatSessionMetadata(
   workspaceKey: string,
   reason: string,
   model: ModelPick | null,
+  reasoningEffort: ChatReasoningEffort,
   yamlPath?: string | null,
 ): Record<string, unknown> {
   const resolvedYamlPath = yamlPath === undefined ? usePipelineStore.getState().yamlPath : yamlPath;
@@ -1768,6 +1830,7 @@ function buildDesktopChatSessionMetadata(
     workspacePath: workspaceKey,
     yamlPath: resolvedYamlPath,
     model,
+    variant: reasoningEffort,
     reason,
   });
 }
@@ -1820,13 +1883,20 @@ async function updateDesktopChatSessionMetadata(
   workspaceKey: string,
   reason: string,
   model: ModelPick | null,
+  reasoningEffort: ChatReasoningEffort,
   title?: string | null,
   options: { required?: boolean; yamlPath?: string | null } = {},
 ): Promise<void> {
   try {
     const body: OpencodeSessionUpdateV2Input = {
       sessionID: sessionId,
-      metadata: buildDesktopChatSessionMetadata(workspaceKey, reason, model, options.yamlPath),
+      metadata: buildDesktopChatSessionMetadata(
+        workspaceKey,
+        reason,
+        model,
+        reasoningEffort,
+        options.yamlPath,
+      ),
     };
     if (title) body.title = title;
     await updateOpencodeSessionV2(body, workspaceKey);
@@ -3685,8 +3755,16 @@ function removePermissionFromRuntimeStates(
   );
 }
 
-function idleSessionRuntimeState(messages: OpencodeThreadEntry[] = []): ChatSessionRuntimeState {
+function idleSessionRuntimeState(
+  messages: OpencodeThreadEntry[] = [],
+  selection: Pick<ChatStore, 'model' | 'reasoningEffort'> = {
+    model: null,
+    reasoningEffort: DEFAULT_CHAT_REASONING_EFFORT,
+  },
+): ChatSessionRuntimeState {
   return {
+    model: selection.model,
+    reasoningEffort: selection.reasoningEffort,
     messages,
     sending: false,
     pendingUserText: null,
@@ -3707,6 +3785,8 @@ function idleSessionRuntimeState(messages: OpencodeThreadEntry[] = []): ChatSess
 
 function captureSessionRuntimeState(state: ChatStore): ChatSessionRuntimeState {
   return {
+    model: state.model,
+    reasoningEffort: state.reasoningEffort,
     messages: state.messages,
     sending: state.sending,
     pendingUserText: state.pendingUserText,
@@ -3727,6 +3807,8 @@ function captureSessionRuntimeState(state: ChatStore): ChatSessionRuntimeState {
 
 function runtimePatch(runtime: ChatSessionRuntimeState): Partial<ChatStore> {
   return {
+    model: runtime.model,
+    reasoningEffort: runtime.reasoningEffort,
     messages: runtime.messages,
     sending: runtime.sending,
     pendingUserText: runtime.pendingUserText,
@@ -3790,18 +3872,37 @@ function saveCurrentSessionRuntime(state: ChatStore): Record<string, ChatSession
 function restoreCachedRuntime(
   cached: ChatSessionRuntimeState | undefined,
   fetchedMessages: OpencodeThreadEntry[],
+  fallbackSelection: Pick<ChatStore, 'model' | 'reasoningEffort'>,
+  providers: readonly Provider[],
 ): ChatSessionRuntimeState {
-  if (!cached) return idleSessionRuntimeState(fetchedMessages);
+  if (!cached) return idleSessionRuntimeState(fetchedMessages, fallbackSelection);
+  const candidateModel = Object.prototype.hasOwnProperty.call(cached, 'model')
+    ? cached.model
+    : fallbackSelection.model;
+  const model =
+    providers.length > 0 ? reconcileModelPick([...providers], {}, candidateModel) : candidateModel;
+  const candidateReasoningEffort = Object.prototype.hasOwnProperty.call(cached, 'reasoningEffort')
+    ? cached.reasoningEffort
+    : fallbackSelection.reasoningEffort;
+  const selection = {
+    model,
+    reasoningEffort:
+      providers.length > 0
+        ? reconcileModelVariant(providers, model, candidateReasoningEffort)
+        : candidateReasoningEffort,
+  };
   if (
     cached.sending ||
     cached.pendingUserText ||
     cached.queuedMessages.length > 0 ||
     cached.queuedDispatchMode
   ) {
-    return cached;
+    return { ...cached, ...selection };
   }
-  if (cached.messages.length > 0 && fetchedMessages.length === 0) return cached;
-  return { ...cached, messages: fetchedMessages };
+  if (cached.messages.length > 0 && fetchedMessages.length === 0) {
+    return { ...cached, ...selection };
+  }
+  return { ...cached, ...selection, messages: fetchedMessages };
 }
 
 function updateHiddenSessionRuntime(
@@ -3919,7 +4020,7 @@ function applyHiddenPartUpdated(
   runtime: ChatSessionRuntimeState,
   part: Part,
 ): ChatSessionRuntimeState {
-  const sessionState = { ...runtime, currentSessionId: part.sessionID, model: null } as Pick<
+  const sessionState = { ...runtime, currentSessionId: part.sessionID } as Pick<
     ChatStore,
     | 'messages'
     | 'sending'
@@ -4451,7 +4552,7 @@ async function promptOpencode(
   } = {},
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
-  const { model, agent, providers, reasoningEffort } = get();
+  const { agent, providers } = get();
   if (opts.internalAgent && !opts.internal) {
     throw new Error('An internal OpenCode agent override requires an internal prompt.');
   }
@@ -4472,6 +4573,18 @@ async function promptOpencode(
     sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch
       ? get().sessionStates[sessionIdAtDispatch]
       : get();
+  const fallbackSelection = sessionIdAtDispatch
+    ? selectionForChatSession(get(), sessionIdAtDispatch, workspaceKeyAtStart)
+    : { model: get().model, reasoningEffort: get().reasoningEffort };
+  const model = Object.prototype.hasOwnProperty.call(dispatchRuntimeAtStart, 'model')
+    ? dispatchRuntimeAtStart.model
+    : fallbackSelection.model;
+  const reasoningEffort = Object.prototype.hasOwnProperty.call(
+    dispatchRuntimeAtStart,
+    'reasoningEffort',
+  )
+    ? dispatchRuntimeAtStart.reasoningEffort
+    : fallbackSelection.reasoningEffort;
   // Snapshot before the normal-send reducers remove the completed result bubble.
   // Internal repairs and logical-turn continuations are filtered at prompt build
   // time and leave the stored result untouched for the next real user turn.
@@ -4640,12 +4753,17 @@ async function promptOpencode(
             workspaceKeyAtStart,
             opts.internal ? 'internal-repair' : 'first-send',
             model,
+            reasoningEffort,
           ),
         });
         assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
         const titledSession = withPromptTitleFallback(s, promptTitle);
         sessionId = titledSession.id;
         sessionIdForRelocation = sessionId;
+        savePersistedChatSessionSelection(workspaceKeyAtStart, sessionId, {
+          model,
+          reasoningEffort,
+        });
         set((prev) => ({
           sessions: upsertSession(prev.sessions, titledSession),
           currentSessionId: titledSession.id,
@@ -4686,6 +4804,7 @@ async function promptOpencode(
           initialEditorBaseline.activePath,
           lockLease!.workspaceKey,
           requestedAction,
+          requestedAction === null,
         ),
       );
       createdStageHere = { id: stage.id, workspaceKey: lockLease.workspaceKey };
@@ -4741,6 +4860,7 @@ async function promptOpencode(
       workspaceKeyAtStart,
       opts.internal ? 'internal-repair' : 'prompt',
       model,
+      reasoningEffort,
       shouldApplyPromptTitle ? promptTitle : undefined,
       {
         required: preSendSnapshot !== null,
@@ -6804,6 +6924,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     case 'session.deleted': {
       const deletedId = event.properties.info.id;
       const deletedSessionIds = sessionSubtreeIds(state.sessionParentById, deletedId);
+      removePersistedChatSessionSelections(getOpencodeWorkspaceKey(), deletedSessionIds);
       for (const [turnId, claimedTurn] of claimedFinishedTurnReconciliations) {
         if (!claimedTurn.sessionId || !deletedSessionIds.has(claimedTurn.sessionId)) continue;
         claimedFinishedTurnReconciliations.delete(turnId);
@@ -7057,10 +7178,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       current.reasoningEffort,
     );
     set({ model: m, reasoningEffort: nextReasoningEffort });
-    savePersisted(getOpencodeWorkspaceKey(), {
+    const workspaceKey = getOpencodeWorkspaceKey();
+    savePersisted(workspaceKey, {
       model: m,
       reasoningEffort: nextReasoningEffort,
     });
+    if (current.currentSessionId) {
+      savePersistedChatSessionSelection(workspaceKey, current.currentSessionId, {
+        model: m,
+        reasoningEffort: nextReasoningEffort,
+      });
+    }
     persistChatSelectionToEditorSettings({
       opencodeChatModel: m,
       ...(nextReasoningEffort !== current.reasoningEffort
@@ -7076,7 +7204,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const state = get();
     const nextReasoningEffort = reconcileModelVariant(state.providers, state.model, effort);
     set({ reasoningEffort: nextReasoningEffort });
-    savePersisted(getOpencodeWorkspaceKey(), { reasoningEffort: nextReasoningEffort });
+    const workspaceKey = getOpencodeWorkspaceKey();
+    savePersisted(workspaceKey, { reasoningEffort: nextReasoningEffort });
+    if (state.currentSessionId) {
+      savePersistedChatSessionSelection(workspaceKey, state.currentSessionId, {
+        model: state.model,
+        reasoningEffort: nextReasoningEffort,
+      });
+    }
     persistChatSelectionToEditorSettings({ opencodeChatReasoningEffort: nextReasoningEffort });
   },
 
@@ -8105,7 +8240,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           return {};
         }
         const sessionStates = saveCurrentSessionRuntime(prev);
-        const runtime = restoreCachedRuntime(sessionStates[id], messages);
+        const runtime = restoreCachedRuntime(
+          sessionStates[id],
+          messages,
+          resolveChatSessionSelection(prev, id, workspaceKey),
+          prev.providers,
+        );
         return {
           sessionStates,
           completedUnreadSessionIds: clearSessionCompletedUnread(
@@ -8119,12 +8259,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           completionWarning: null,
         };
       });
+      const selectedState = get();
       if (
         requestGeneration === sessionSelectionGeneration &&
-        get().currentSessionId === id &&
-        get().sending
+        selectedState.currentSessionId === id
       ) {
-        markTurnAcceptedForWatchdog(get, set);
+        savePersistedChatSessionSelection(workspaceKey, id, {
+          model: selectedState.model,
+          reasoningEffort: selectedState.reasoningEffort,
+        });
+        if (selectedState.sending) markTurnAcceptedForWatchdog(get, set);
       }
     } catch (err) {
       if (
@@ -8146,6 +8290,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return;
     }
     const workspaceKey = getOpencodeWorkspaceKey();
+    const selectionAtCreation = {
+      model: get().model,
+      reasoningEffort: get().reasoningEffort,
+    };
     set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
     let s: Session;
@@ -8154,7 +8302,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const title = newDesktopChatSessionTitle();
       s = await createDesktopChatSessionWithMetadata(workspaceKey, {
         title,
-        metadata: buildDesktopChatSessionMetadata(workspaceKey, 'manual-new-session', get().model),
+        metadata: buildDesktopChatSessionMetadata(
+          workspaceKey,
+          'manual-new-session',
+          selectionAtCreation.model,
+          selectionAtCreation.reasoningEffort,
+        ),
       });
     } catch (err) {
       if (getOpencodeWorkspaceKey() === workspaceKey) {
@@ -8166,11 +8319,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return;
     }
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    savePersistedChatSessionSelection(workspaceKey, s.id, selectionAtCreation);
     set((prev) => ({
       sessionStates: saveCurrentSessionRuntime(prev),
       sessions: upsertSession(prev.sessions, s),
       currentSessionId: s.id,
-      ...runtimePatch(idleSessionRuntimeState()),
+      ...runtimePatch(idleSessionRuntimeState([], selectionAtCreation)),
       historyOpen: false,
       sendError: null,
       completionWarning: null,
@@ -8197,6 +8351,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => {
       const deletedSessionIds = sessionSubtreeIds(prev.sessionParentById, id);
+      removePersistedChatSessionSelections(workspaceKey, deletedSessionIds);
       const sessionStatesWithPermissionsRemoved = removePermissionsForSessionsFromRuntimeStates(
         prev.sessionStates,
         deletedSessionIds,
@@ -8310,16 +8465,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async syncSessionYamlTarget(sessionId, workspaceKey, yamlPath, reason = 'reconciled-target') {
+    const selection = selectionForChatSession(get(), sessionId, workspaceKey);
     await updateDesktopChatSessionMetadata(
       sessionId,
       workspaceKey,
       reason,
-      desktopChatModelFromSessionMetadata(
-        (
-          get().sessions.find((session) => session.id === sessionId) as
-            (Session & { metadata?: unknown }) | undefined
-        )?.metadata,
-      ) ?? get().model,
+      selection.model,
+      selection.reasoningEffort,
       undefined,
       { yamlPath, required: reason === 'branch-relocated' },
     );

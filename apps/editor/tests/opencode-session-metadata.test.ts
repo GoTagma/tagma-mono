@@ -13,6 +13,7 @@ describe('OpenCode session metadata', () => {
         workspacePath: 'C:/repo',
         yamlPath: 'C:/repo/.tagma/build/build.yaml',
         model: { providerID: 'openai', modelID: 'gpt-5' },
+        variant: 'high',
         reason: 'first-send',
       }),
     ).toEqual({
@@ -23,6 +24,7 @@ describe('OpenCode session metadata', () => {
         yamlPath: 'C:/repo/.tagma/build/build.yaml',
         reason: 'first-send',
         model: { providerID: 'openai', modelID: 'gpt-5' },
+        variant: 'high',
       },
     });
   });
@@ -41,6 +43,22 @@ describe('OpenCode session metadata', () => {
         source: 'bot-bridge',
         bot: { platform: 'slack' },
       },
+    });
+  });
+
+  test('preserves an explicit provider-default variant', () => {
+    const metadata = buildTagmaSessionMetadata({
+      source: 'desktop-chat',
+      variant: null,
+    });
+
+    expect(metadata).toEqual({
+      tagma: { schema: 1, source: 'desktop-chat', variant: null },
+    });
+    expect(parseTagmaSessionMetadata(metadata)).toEqual({
+      schema: 1,
+      source: 'desktop-chat',
+      variant: null,
     });
   });
 
@@ -67,6 +85,8 @@ describe('OpenCode session metadata', () => {
           source: 'desktop-chat',
           workspacePath: ' C:/repo ',
           yamlPath: ' C:/repo/.tagma/demo/demo.yaml ',
+          model: { providerID: 'openai', modelID: 'gpt-5' },
+          variant: 'high',
         },
       }),
     ).toEqual({
@@ -74,6 +94,8 @@ describe('OpenCode session metadata', () => {
       source: 'desktop-chat',
       workspacePath: 'C:/repo',
       yamlPath: 'C:/repo/.tagma/demo/demo.yaml',
+      model: { providerID: 'openai', modelID: 'gpt-5' },
+      variant: 'high',
     });
     expect(parseTagmaSessionMetadata({ tagma: { schema: 1, source: 'external-cli' } })).toBeNull();
     expect(

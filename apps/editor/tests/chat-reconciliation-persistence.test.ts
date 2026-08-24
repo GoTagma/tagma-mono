@@ -90,6 +90,8 @@ function failedStagedTurn(id: string, workspace: string): ChatFinishedTurn {
 
 function hiddenRuntime(turn: ChatFinishedTurn): ChatState['sessionStates'][string] {
   return {
+    model: null,
+    reasoningEffort: null,
     messages: [],
     sending: true,
     pendingUserText: 'Background pipeline update.',

@@ -4,14 +4,15 @@
  *
  * Scoped per workspace (key = absolute workspace path) so a user with
  * Anthropic configured for repo A and OpenAI for repo B sees each workspace's
- * own pick. Only chat preferences are persisted — messages and sessions are
- * always re-hydrated from opencode on demand.
+ * own defaults. Model/variant preferences are also keyed by OpenCode session;
+ * messages and session identities are always re-hydrated from OpenCode.
  */
 
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 
 const STORAGE_KEY = 'tagma.chat.v2';
 const MAX_PERSISTED_CHAT_YAML_RESULTS = 500;
+const MAX_PERSISTED_CHAT_SESSION_SELECTIONS = 500;
 
 export interface ChatYamlResultPersistenceIssue {
   kind: 'legacy-unanchored-result' | 'ledger-truncated';
@@ -169,10 +170,17 @@ interface PersistedChatYamlResultsLedger {
   truncated?: boolean;
 }
 
+export interface PersistedChatSessionSelection {
+  model: ModelPick | null;
+  reasoningEffort: ChatReasoningEffort;
+  updatedAt: number;
+}
+
 export interface WorkspacePersistedShape {
   model?: ModelPick | null;
   agent?: string | null;
   reasoningEffort?: ChatReasoningEffort;
+  sessionSelections?: Record<string, unknown>;
   unfinishedYamlReconciliations?: PersistedChatYamlReconciliationQueue;
   activeSessionRelocations?: PersistedChatSessionRelocationJournal;
   pipelineResults?: PersistedChatYamlResultsLedger;
@@ -766,6 +774,85 @@ export function isChatReasoningEffort(value: unknown): value is ChatReasoningEff
   return (
     value === null || (typeof value === 'string' && value.trim().length > 0 && value.length <= 256)
   );
+}
+
+function parsePersistedModelPick(value: unknown): ModelPick | null | undefined {
+  if (value === null) return null;
+  if (!isRecord(value)) return undefined;
+  const providerID = value.providerID;
+  const modelID = value.modelID;
+  if (
+    typeof providerID !== 'string' ||
+    !providerID.trim() ||
+    providerID.length > 256 ||
+    typeof modelID !== 'string' ||
+    !modelID.trim() ||
+    modelID.length > 512
+  ) {
+    return undefined;
+  }
+  return { providerID, modelID };
+}
+
+function parsePersistedChatSessionSelection(value: unknown): PersistedChatSessionSelection | null {
+  if (!isRecord(value)) return null;
+  const model = parsePersistedModelPick(value.model);
+  if (model === undefined || !isChatReasoningEffort(value.reasoningEffort)) return null;
+  const updatedAt = value.updatedAt;
+  if (typeof updatedAt !== 'number' || !Number.isFinite(updatedAt) || updatedAt < 0) return null;
+  return { model, reasoningEffort: value.reasoningEffort, updatedAt };
+}
+
+export function loadPersistedChatSessionSelection(
+  workspaceKey: string,
+  sessionId: string,
+): PersistedChatSessionSelection | null {
+  if (!sessionId) return null;
+  const selections = loadPersisted(workspaceKey).sessionSelections;
+  if (!isRecord(selections)) return null;
+  return parsePersistedChatSessionSelection(selections[sessionId]);
+}
+
+export function savePersistedChatSessionSelection(
+  workspaceKey: string,
+  sessionId: string,
+  selection: Pick<PersistedChatSessionSelection, 'model' | 'reasoningEffort'>,
+): void {
+  if (!sessionId || !isChatReasoningEffort(selection.reasoningEffort)) return;
+  const rawSelections = loadPersisted(workspaceKey).sessionSelections;
+  const retained = isRecord(rawSelections)
+    ? Object.entries(rawSelections).flatMap(([id, value]) => {
+        if (id === sessionId) return [];
+        const parsed = parsePersistedChatSessionSelection(value);
+        return parsed ? ([[id, parsed]] as const) : [];
+      })
+    : [];
+  retained.push([
+    sessionId,
+    {
+      model: selection.model,
+      reasoningEffort: selection.reasoningEffort,
+      updatedAt: Date.now(),
+    },
+  ]);
+  retained.sort((left, right) => left[1].updatedAt - right[1].updatedAt);
+  savePersisted(workspaceKey, {
+    sessionSelections: Object.fromEntries(retained.slice(-MAX_PERSISTED_CHAT_SESSION_SELECTIONS)),
+  });
+}
+
+export function removePersistedChatSessionSelections(
+  workspaceKey: string,
+  sessionIds: ReadonlySet<string>,
+): void {
+  if (sessionIds.size === 0) return;
+  const rawSelections = loadPersisted(workspaceKey).sessionSelections;
+  if (!isRecord(rawSelections)) return;
+  savePersisted(workspaceKey, {
+    sessionSelections: Object.fromEntries(
+      Object.entries(rawSelections).filter(([sessionId]) => !sessionIds.has(sessionId)),
+    ),
+  });
 }
 
 /** Compare two model picks for structural equality. */

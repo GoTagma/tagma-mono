@@ -99,41 +99,48 @@ function pipeline(tasks: AnyTask[]): PipelineConfig {
 const runnable: ChatPipelineTrialReadiness = { state: 'runnable' };
 const workDir = join(tmpdir(), 'tagma-trial-baseline');
 
-test('manual root tasks and their dependents are excluded from the live smoke', () => {
+test('manual root tasks remain eligible for a consented live smoke auto-grant', () => {
   const config = pipeline([
     manualTask('pick_input'),
     plainTask('compute_hash', ['pick_input']),
     plainTask('resolve_policy'),
     plainTask('verify', ['compute_hash', 'resolve_policy']),
   ]);
-  const baseline = resolveChatPipelineLiveSmokeBaseline(config, runnable, workDir);
-  expect(baseline.mode).toBe('targeted');
-  expect(baseline.manualGatedTaskIds).toEqual(['main.pick_input']);
-  if (baseline.mode !== 'targeted') throw new Error('expected targeted');
-  expect(baseline.targetTaskIds).toEqual(['main.resolve_policy']);
+  expect(resolveChatPipelineLiveSmokeBaseline(config, runnable, workDir)).toEqual({
+    mode: 'run-all',
+    manualGatedTaskIds: ['main.pick_input'],
+    middlewareUnavailableTaskIds: [],
+    cwdUnavailableTaskIds: [],
+  });
 });
 
-test('the live smoke is skipped when every eligible task is manual-gated', () => {
+test('a fully manual-gated pipeline keeps a runnable live smoke baseline', () => {
   const config = pipeline([
     manualTask('pick_input'),
     plainTask('compute_hash', ['pick_input']),
     plainTask('verify', ['compute_hash']),
   ]);
-  expect(resolveChatPipelineLiveSmokeBaseline(config, runnable, workDir).mode).toBe('skip');
+  expect(resolveChatPipelineLiveSmokeBaseline(config, runnable, workDir)).toEqual({
+    mode: 'run-all',
+    manualGatedTaskIds: ['main.pick_input'],
+    middlewareUnavailableTaskIds: [],
+    cwdUnavailableTaskIds: [],
+  });
 });
 
-test('mid-pipeline manual tasks also gate the live smoke', () => {
+test('mid-pipeline manual tasks remain eligible for a consented live smoke auto-grant', () => {
   const config = pipeline([
     plainTask('ingest'),
     manualTask('review'),
     plainTask('publish', ['review']),
     plainTask('archive', ['ingest']),
   ]);
-  const baseline = resolveChatPipelineLiveSmokeBaseline(config, runnable, workDir);
-  expect(baseline.mode).toBe('targeted');
-  if (baseline.mode !== 'targeted') throw new Error('expected targeted');
-  expect(baseline.targetTaskIds.sort()).toEqual(['main.archive', 'main.ingest']);
-  expect(baseline.manualGatedTaskIds).toEqual(['main.review']);
+  expect(resolveChatPipelineLiveSmokeBaseline(config, runnable, workDir)).toEqual({
+    mode: 'run-all',
+    manualGatedTaskIds: ['main.review'],
+    middlewareUnavailableTaskIds: [],
+    cwdUnavailableTaskIds: [],
+  });
 });
 
 test('a pipeline without manual tasks keeps the run-all baseline', () => {
@@ -159,7 +166,7 @@ test('command tasks ignore inert static_context configuration when selecting Liv
   });
 });
 
-test('manual gating intersects with fixture-backed targeting', () => {
+test('manual auto-grants preserve fixture-backed live smoke targeting', () => {
   const config = pipeline([
     manualTask('pick_input'),
     plainTask('normalize', ['pick_input']),

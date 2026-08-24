@@ -196,7 +196,11 @@ export const MessageBubble = memo(function MessageBubble({
           fusedResults &&
           !lastTextPartId &&
           fusedResults.map((result) => (
-            <SessionYamlResultBubble key={result.resultId ?? result.completedAt} result={result} />
+            <SessionYamlResultBubble
+              key={result.resultId ?? result.completedAt}
+              result={result}
+              showOpenAction={false}
+            />
           ))}
         {role === 'user' && <UserMessageContextNote entry={entry} />}
         {role === 'assistant' && <AssistantMessageFooter info={entry.info as AssistantMessage} />}

@@ -84,7 +84,7 @@ permission:
     ${TAGMA_TRIAL_PLANNER_AGENT}: "allow"
 ---
 
-For \`pipeline_work\`, call \`${TAGMA_PIPELINE_AGENT}\` first and only; never pre-read or relay artifacts—the worker owns lookup and implementation. When the semantic request is to create a new pipeline and no Host action marker exists, require a fresh sibling path and preserve every inventoried YAML. Do not ask the worker to write generated manifest, basic layout, or requirements frontmatter; Host derives those companions from the final YAML. Only Result recovery may add a call.
+For \`pipeline_work\`, call \`${TAGMA_PIPELINE_AGENT}\` first and only; never pre-read or relay artifacts—the worker owns lookup and implementation. First worker-prompt line must be \`TAGMA_ROUTE_MODE: <stage-id> create|edit\`; use the \`<chat-staging>\` id and verify mode. No-marker create uses a fresh sibling and preserves inventoried YAML. Do not ask the worker to write generated manifest, basic layout, or requirements frontmatter; Host derives those companions from the final YAML. Only Result recovery may add a call.
 
 ## Categories
 
@@ -192,7 +192,7 @@ Pass the exact staged YAML path from the host request. Start with \`begin\`, sen
 
 When the host reports Sandbox-only mode or that the optional Live Smoke Test cannot run, inspect the compiled DAG before authoring cases. Identify every terminal task: a task with no downstream dependent. At least one case must name each terminal task in \`targetTaskIds\`; selecting that sink makes the host run its full dependency closure, so targeting only an early ingest or transform task is insufficient. If a terminal task would be unsafe or cannot be executed in isolated Trial, record a blocking diagnostic-only finding that names the task and the concrete reason. Never use accepted-risk or a warning to turn an unexecuted terminal task into a passing Trial.
 
-The host grants Trial-only execution to manual tasks in that explicit target closure. This is a run-scoped execution grant, not human approval for ordinary pipeline runs. Do not block a case merely because its target closure contains a manual trigger; preserve the trigger unchanged. If executing the selected task would still be unsafe or depends on a genuine external decision, record a blocking diagnostic-only finding with that concrete reason.
+Sandbox cases grant manual tasks only in that explicit target closure. A separately consented Live Smoke baseline grants manual tasks in its selected real-workspace closure. These are run-scoped execution grants, not human approval for ordinary pipeline runs. Do not block a case merely because its target closure contains a manual trigger; preserve the trigger unchanged. If executing the selected task would still be unsafe or depends on a genuine external decision, record a blocking diagnostic-only finding with that concrete reason.
 
 Pre-commit operations validate their proposed section and immediately decidable links before changing the draft; correct a rejected operation and retry it before commit. Every coverage entry must include \`dimension\`, \`status\`, \`caseIds\`, and \`rationale\`; status must be \`covered\`, \`accepted-risk\`, \`blocked\`, or \`not-applicable\`. Every finding must include \`severity\`, \`repairScope\`, \`summary\`, and \`evidence\`.
 
@@ -206,7 +206,7 @@ Every .json artifact checked with path-exists, file-contains, file-not-contains,
 
 Never copy YAML or trial plans between staging and live \`.tagma\`. If a pre-commit draft operation fails, correct and retry only that bounded operation. If \`commit\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The host alone decides whether another configured attempt remains.
 
-Host runs a bounded, hash-bound Sandbox Trial only after explicit opt-in, using temporary workspace copies, closed stdin, no TTY, and synthetic secrets for targeted cases. Sandbox is app-level containment, not an OS permission sandbox: filesystem, network, and child-process authority outside the copy are reported explicitly. A real-workspace Live Smoke Test runs only under separate consent. Never claim either mode passed without host evidence. Never remove or weaken manual approval or another safety boundary; the host's run-scoped grant executes only manual tasks in an explicit Trial target closure and does not change ordinary-run approval behavior. Normal declared binary, model, credential, or network requirements are not findings; Host trialability reports them. Do not invent hypothetical unavailability. Record only current evidence-backed mismatches, use \`findings: []\` when none exist, and report genuine limitations outside findings.
+Host runs a bounded, hash-bound Sandbox Trial only after explicit opt-in, using temporary workspace copies, closed stdin, no TTY, and synthetic secrets for targeted cases. Sandbox is app-level containment, not an OS permission sandbox: filesystem, network, and child-process authority outside the copy are reported explicitly. A real-workspace Live Smoke Test runs only under separate consent and automatically grants manual triggers in its selected closure for that run id. Never claim either mode passed without host evidence. Never remove or weaken manual approval or another safety boundary; Trial grants do not change ordinary-run approval behavior. Normal declared binary, model, credential, or network requirements are not findings; Host trialability reports them. Do not invent hypothetical unavailability. Record only current evidence-backed mismatches, use \`findings: []\` when none exist, and report genuine limitations outside findings.
 `;
 }
 
@@ -768,7 +768,7 @@ Every turn may include \`<editor-context>\`; re-read it.
 - \`<chat-staging>\`: its \`<agent-root>\` is the sole filesystem read/write boundary for this turn and all descendants.
 - \`<requested-action kind="create-new-pipeline">\`: Host-selected fresh target; creation wins over name matches.
 - \`<requested-action kind="fill-manual-new-pipeline">\`: Host-selected manual New draft at \`<current-file>\`.
-- Without a Host action marker, never repurpose an existing \`<current-file>\` as a new pipeline. A router-classified create without a Host action marker may use only a fresh unused sibling path and must not modify \`<current-file>\` or any inventoried YAML. If create intent is ambiguous, return \`ROUTE_MISMATCH: pipeline_work\` without writing.
+- Without a Host action marker, never repurpose an existing \`<current-file>\` as a new pipeline. A router-classified create without a Host action marker may use only a fresh unused sibling path and must not modify \`<current-file>\` or any inventoried YAML. Obey \`TAGMA_ROUTE_MODE: <stage-id> create|edit\` over prose: create means fresh sibling; edit means an existing target. If create intent is ambiguous, return \`ROUTE_MISMATCH: pipeline_work\` without writing.
 - \`<current-file>\`: relative outside staging; absolute inside \`<agent-root>\` during staging.
 - \`<workspace-yaml-folders>\`: known pipelines with \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`. Paths are relative outside staging and absolute inside \`<agent-root>\` during staging; match by folder, YAML, or pipeline name. \`legacy="flat"\` paths are exact.
 - Use \`<current-file>\` and inventory paths exactly as supplied. Legacy example: \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
@@ -1590,7 +1590,9 @@ export default tool({
         sections: tool.schema.array(
           tool.schema.object({
             id: tool.schema.string(),
-            type: tool.schema.string(),
+            type: tool.schema
+              .enum(["track", "prompt", "command"])
+              .describe("Track sections use type=track; task sections use type=prompt or type=command"),
             summary: tool.schema.string().optional(),
             track: tool.schema.string().optional(),
             task: tool.schema.string().optional(),

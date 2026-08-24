@@ -180,11 +180,12 @@ function missingStaticContextSources(
 
 /**
  * Resolves which tasks the optional Live Smoke Test may execute in the real
- * workspace. Manual-trigger tasks are human approval boundaries: the Trial
- * never fabricates approval for them in the live smoke, so they and every
- * task that (transitively) depends on them are excluded from the baseline
- * and must be exercised through Sandbox cases instead. Tasks whose
- * `static_context` source is missing from the real workspace or differs
+ * workspace. A separately consented Live Smoke Test owns a run-scoped
+ * automatic grant for manual triggers, matching the explicit grants used by
+ * targeted Sandbox cases; ordinary pipeline runs still require human approval.
+ * Manual task ids remain in the projection so execution and cache evidence can
+ * bind those grants exactly. Tasks whose `static_context` source is missing from
+ * the real workspace or differs
  * from the staged pipeline artifact are excluded the same way: running
  * them would use absent or stale promised context. An effective cwd that is
  * present only in the staged target pipeline is also excluded: it cannot be
@@ -222,7 +223,7 @@ export function resolveChatPipelineLiveSmokeBaseline(
     cwdUnavailableTaskIds,
   };
   const gatedTaskIds = [
-    ...new Set([...manualGatedTaskIds, ...middlewareUnavailableTaskIds, ...cwdUnavailableTaskIds]),
+    ...new Set([...middlewareUnavailableTaskIds, ...cwdUnavailableTaskIds]),
   ].sort();
   if (dataReadiness.state === 'blocked') {
     return { mode: 'skip', ...exclusions };

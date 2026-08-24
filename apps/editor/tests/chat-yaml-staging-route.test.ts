@@ -420,6 +420,102 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('binds a required no-marker router mode through start and finalize routes', async () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath, routeIntentRequired: true }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      routeIntentRequired: boolean;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    expect(stage.routeIntentRequired).toBe(true);
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(entry.stagedPath, yamlFor('Edited Pipeline', 'edited'), 'utf-8');
+
+    const missingIntentRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
+      missingIntentRes,
+    );
+    expect(missingIntentRes.statusCode).toBe(500);
+    expect(missingIntentRes.body).toEqual({
+      error: expect.stringContaining('stage-bound router target mode'),
+    });
+
+    const compileRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/compile')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, routeIntent: 'edit' },
+        'chat-lock',
+      ),
+      compileRes,
+    );
+    expect(compileRes.statusCode).toBe(200);
+
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({ outcome: 'adopted' });
+
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('refuses Trial before execution when the Host-bound router mode is stale', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath, routeIntentRequired: true }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(entry.stagedPath, yamlFor('Attested Pipeline', 'initial'), 'utf-8');
+    const compileRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/compile')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, routeIntent: 'edit' },
+        'chat-lock',
+      ),
+      compileRes,
+    );
+    expect(compileRes.statusCode).toBe(200);
+    writeFileSync(entry.stagedPath, yamlFor('Changed After Attestation', 'must not run'), 'utf-8');
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'unattested_route' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(500);
+    expect(trialRes.body).toEqual({
+      error: expect.stringContaining('current stage-bound router target mode'),
+    });
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('authorizes staged child paths only with the matching YAML lock and authenticated stage root', () => {
     const { ws, sourcePath } = makeWorkspace(false);
     const getRoute = createHarness();
@@ -2937,6 +3033,14 @@ describe('chat YAML staging routes', () => {
       trialRes,
     );
 
+    const containmentDetail = (
+      trialRes.body as {
+        cases: Array<{ expectations: Array<{ type: string; detail?: string }> }>;
+      }
+    ).cases[0]!.expectations.map((expectation) => expectation.detail ?? '').join('\n');
+    expect(containmentDetail).toContain(
+      'Task execution and authored assertions passed, but containment verification failed',
+    );
     expect(trialRes.body).toMatchObject({
       success: false,
       kind: 'failed',
@@ -5089,9 +5193,9 @@ describe('chat YAML staging routes', () => {
           manualExecutionGrants: Array<{ taskId: string; approvalCount: number }>;
         }
       ).manualExecutionGrants,
-    ).toEqual([{ taskId: 'main.gated', approvalCount: 1 }]);
+    ).toEqual([{ taskId: 'main.gated', approvalCount: 2 }]);
     expect((trialRes.body as { summary: string }).summary).toContain(
-      'Selected manual tasks executed under explicit Trial grants: main.gated (1 approvals).',
+      'Trial automatically granted run-scoped manual approvals: main.gated (2 approvals).',
     );
 
     discardStage(getRoute, ws, stage.id);
@@ -5099,7 +5203,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('requires Sandbox coverage for manual terminal branches excluded from Live Smoke', async () => {
+  test('automatically grants manual terminal tasks during a consented Live Smoke baseline', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -5157,15 +5261,17 @@ describe('chat YAML staging routes', () => {
     );
 
     expect(trialRes.body).toMatchObject({
-      success: false,
-      kind: 'plan-required',
-      ran: false,
-      repairAuthorization: 'diagnostic-only',
-      planRequest: { reason: 'invalid', attemptId: 'finished_manual_gate' },
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+      trialMode: 'sandbox-with-live-smoke',
+      verificationMode: 'sandbox-cases-with-live-smoke',
+      manualExecutionGrants: [{ taskId: 'main.gated', approvalCount: 1 }],
     });
-    expect((trialRes.body as { summary: string }).summary).toContain('main.gated');
-    expect((trialRes.body as { summary: string }).summary).toContain('terminal task');
-    expect(existsSync(sideEffectPath)).toBe(false);
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'Trial automatically granted run-scoped manual approvals: main.gated (1 approval).',
+    );
+    expect(existsSync(sideEffectPath)).toBe(true);
 
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();

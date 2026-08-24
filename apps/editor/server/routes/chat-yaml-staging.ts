@@ -38,7 +38,10 @@ import {
   publicYamlEditLock,
 } from '../yaml-edit-lock.js';
 import type { WorkspaceState } from '../workspace-state.js';
-import { isPipelineRequestedActionKind } from '../../shared/requested-action.js';
+import {
+  isChatPipelineRouteIntent,
+  isPipelineRequestedActionKind,
+} from '../../shared/requested-action.js';
 
 type FinalizeLocalBranch = NonNullable<ChatYamlStageFinalizeInput['localBranch']>;
 
@@ -291,7 +294,11 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
   app.post('/api/workspace/chat-yaml-stage/start', (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
-    const body = (req.body ?? {}) as { activePath?: unknown; requestedAction?: unknown };
+    const body = (req.body ?? {}) as {
+      activePath?: unknown;
+      requestedAction?: unknown;
+      routeIntentRequired?: unknown;
+    };
     if (
       body.activePath !== undefined &&
       body.activePath !== null &&
@@ -306,6 +313,9 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     ) {
       return res.status(400).json({ error: 'requestedAction is invalid.' });
     }
+    if (body.routeIntentRequired !== undefined && typeof body.routeIntentRequired !== 'boolean') {
+      return res.status(400).json({ error: 'routeIntentRequired must be a boolean.' });
+    }
     try {
       return res.json(
         createChatYamlStage(ws, {
@@ -313,6 +323,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
           requestedAction: isPipelineRequestedActionKind(body.requestedAction)
             ? body.requestedAction
             : null,
+          routeIntentRequired: body.routeIntentRequired === true,
         }),
       );
     } catch (err) {
@@ -447,17 +458,31 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
   app.post('/api/workspace/chat-yaml-stage/compile', (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
-    const body = (req.body ?? {}) as { stageId?: unknown; relativePath?: unknown };
+    const body = (req.body ?? {}) as {
+      stageId?: unknown;
+      relativePath?: unknown;
+      routeIntent?: unknown;
+    };
     if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
       return res.status(400).json({ error: 'stageId is required.' });
     }
     if (typeof body.relativePath !== 'string' || !body.relativePath.trim()) {
       return res.status(400).json({ error: 'relativePath is required.' });
     }
+    if (body.routeIntent !== undefined && !isChatPipelineRouteIntent(body.routeIntent)) {
+      return res.status(400).json({ error: 'routeIntent must be create or edit.' });
+    }
     const stageId = body.stageId.trim();
     try {
       assertRequestOwnsChatYamlStage(req, ws, stageId);
-      return res.json(compileChatYamlStage(ws, stageId, body.relativePath.trim()));
+      return res.json(
+        compileChatYamlStage(
+          ws,
+          stageId,
+          body.relativePath.trim(),
+          isChatPipelineRouteIntent(body.routeIntent) ? body.routeIntent : undefined,
+        ),
+      );
     } catch (err) {
       return respondStageError(res, err);
     }

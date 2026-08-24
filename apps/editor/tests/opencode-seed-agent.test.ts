@@ -431,9 +431,11 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   expect(doc).toContain('the worker owns lookup and implementation');
   expect(doc).toContain('Only Result recovery may add a call');
   expect(doc).toContain(
-    'When the semantic request is to create a new pipeline and no Host action marker exists',
+    'First worker-prompt line must be `TAGMA_ROUTE_MODE: <stage-id> create|edit`',
   );
-  expect(doc).toContain('fresh sibling path and preserve every inventoried YAML');
+  expect(doc).toContain('use the `<chat-staging>` id and verify mode');
+  expect(doc).toContain('No-marker create uses a fresh sibling');
+  expect(doc).toContain('preserves inventoried YAML');
   expect(doc).toContain(
     'Do not ask the worker to write generated manifest, basic layout, or requirements frontmatter',
   );
@@ -560,6 +562,7 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('A router-classified create without a Host action marker');
   expect(doc).toContain('fresh unused sibling path');
   expect(doc).toContain('must not modify `<current-file>` or any inventoried YAML');
+  expect(doc).toContain('Obey `TAGMA_ROUTE_MODE: <stage-id> create|edit` over prose');
   expect(doc).toContain('## Manifest-Guided YAML Edits');
   expect(doc).toContain(
     'read the same-folder `<stem>.manifest.json` before reading or editing YAML',
@@ -864,7 +867,10 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('app-level containment, not an OS permission sandbox');
     expect(planner).toContain('Live Smoke Test runs only under separate consent');
     expect(planner).toContain(
-      'The host grants Trial-only execution to manual tasks in that explicit target closure',
+      'Sandbox cases grant manual tasks only in that explicit target closure',
+    );
+    expect(planner).toContain(
+      'A separately consented Live Smoke baseline grants manual tasks in its selected real-workspace closure',
     );
     expect(planner).toContain('blocking diagnostic-only finding');
     expect(planner).toContain(
@@ -2094,10 +2100,15 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(pythonAgent, 'utf8')).toContain('PYTHON_HELPER_BLOCKED');
   expect(readFileSync(pipelineAgent, 'utf8')).toContain('tagma-python-tools: "deny"');
   expect(existsSync(skeletonTool)).toBe(true);
-  expect(readFileSync(skeletonTool, 'utf8')).toContain(
+  const skeletonToolDoc = readFileSync(skeletonTool, 'utf8');
+  expect(skeletonToolDoc).toContain(
     'Generate a schema-valid Tagma YAML skeleton from an in-memory pipeline description',
   );
-  expect(readFileSync(skeletonTool, 'utf8')).toContain('export default tool');
+  expect(skeletonToolDoc).toContain('.enum(["track", "prompt", "command"])');
+  expect(skeletonToolDoc).toContain(
+    'Track sections use type=track; task sections use type=prompt or type=command',
+  );
+  expect(skeletonToolDoc).toContain('export default tool');
 
   // No singular `.opencode/agent/` dir, and no renamed-away agents anywhere.
   expect(existsSync(join(dir, '.opencode', 'agent'))).toBe(false);

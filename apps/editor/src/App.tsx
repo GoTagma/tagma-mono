@@ -95,6 +95,7 @@ import {
   type ChatPipelineRepairArtifactState,
 } from './utils/chat-yaml-reconcile';
 import { createChatYamlLifecycleCancellationGuard } from './utils/chat-yaml-lifecycle';
+import { resolveChatPipelineRouteIntent } from './utils/chat-pipeline-route-intent';
 import {
   hasLocalEditorChanges,
   resolveDirtyDiskChange,
@@ -1407,11 +1408,12 @@ export function App() {
         await ensureFinishedTurnSessionHome(finishedTurn);
         if (cancelled) return;
         const currentChatState = useChatStore.getState();
+        const finishedSessionMessages = finishedSessionId
+          ? currentChatState.currentSessionId === finishedSessionId
+            ? currentChatState.messages
+            : (currentChatState.sessionStates[finishedSessionId]?.messages ?? [])
+          : [];
         if (finishedSessionId) {
-          const finishedSessionMessages =
-            currentChatState.currentSessionId === finishedSessionId
-              ? currentChatState.messages
-              : (currentChatState.sessionStates[finishedSessionId]?.messages ?? []);
           for (const accumulator of trialPlanningTelemetryRef.current.values()) {
             completeChatTrialPlanningPrompt(accumulator, {
               sessionId: finishedSessionId,
@@ -1505,6 +1507,9 @@ export function App() {
             api.listChatYamlStage(snapshot.staging.id, snapshot.workDir),
           );
           if (cancelled || (await discardCancelledStage())) return;
+          const routeIntent = stage.routeIntentRequired
+            ? resolveChatPipelineRouteIntent(finishedSessionMessages, snapshot.staging.id)
+            : null;
           const stagedTargets = detectChatStagedYamlTargets(snapshot, stage.entries).filter(
             (target) =>
               !(finishedTurn.completedYamlRelativePaths ?? []).some((completedPath) =>
@@ -1595,6 +1600,7 @@ export function App() {
                     snapshot.staging.id,
                     stagedTarget.relativePath,
                     snapshot.workDir,
+                    routeIntent ?? undefined,
                   ),
                 );
           if (cancelled || (await discardCancelledStage())) return;

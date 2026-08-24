@@ -51,6 +51,7 @@ import {
   chatPipelineTargetInvalidReason,
   selectVisibleChatCompletionResults,
   type ChatPipelineLinkTarget,
+  type ChatPipelineOpenOutcome,
   useChatPipelineTargetAvailability,
   useOpenChatPipelineTarget,
 } from './chat-pipeline-link';
@@ -1344,15 +1345,20 @@ export function ChatCompletionToastCard({
 }: {
   result: ChatYamlSessionResult;
   sessionTitle: string;
-  onOpen?: (target: ChatPipelineLinkTarget) => void;
+  onOpen?: (
+    target: ChatPipelineLinkTarget,
+  ) => ChatPipelineOpenOutcome | Promise<ChatPipelineOpenOutcome> | void;
   onDismiss?: () => void;
 }) {
   const pipelineName = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
   const invalidTargetReason = chatPipelineTargetInvalidReason(result);
-  const { availability, revalidate } = useChatPipelineTargetAvailability(deploymentTarget);
-  const openableTarget = availability.available ? availability.target : null;
+  const { availability } = useChatPipelineTargetAvailability(deploymentTarget);
+  const openableTarget = deploymentTarget;
+  const [opening, setOpening] = useState(false);
+  const [openFailure, setOpenFailure] = useState<string | null>(null);
   const unavailableReason =
+    openFailure ??
     invalidTargetReason ??
     (deploymentTarget && !availability.available ? availability.reason : null);
   const ok = result.status === 'ready';
@@ -1360,6 +1366,10 @@ export function ChatCompletionToastCard({
   const passedWithWarnings = ok && result.trial?.kind === 'passed-with-warnings';
   const warning = blocked || passedWithWarnings;
   const presentation = describeSessionYamlResult(result);
+
+  useEffect(() => {
+    setOpenFailure(null);
+  }, [deploymentTarget?.path]);
 
   return (
     <div
@@ -1395,21 +1405,31 @@ export function ChatCompletionToastCard({
           {(deploymentTarget || invalidTargetReason) && (
             <button
               type="button"
-              disabled={!openableTarget}
+              disabled={!openableTarget || opening || !onOpen}
+              aria-busy={opening || undefined}
               onClick={() => {
-                void revalidate().then((latest) => {
-                  if (latest.available) onOpen?.(latest.target);
-                });
+                if (!openableTarget || opening || !onOpen) return;
+                setOpening(true);
+                setOpenFailure(null);
+                void Promise.resolve(onOpen(openableTarget))
+                  .then((outcome) => {
+                    if (outcome && !outcome.handled) setOpenFailure(outcome.reason);
+                  })
+                  .catch(() => setOpenFailure('The final pipeline could not be opened.'))
+                  .finally(() => setOpening(false));
               }}
               className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-caption text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
               title={`Open ${pipelineName}`}
             >
               <FileText size={11} />
-              <span>Open pipeline</span>
+              <span>{opening ? 'Opening…' : 'Open pipeline'}</span>
             </button>
           )}
           {unavailableReason && (
-            <div role={'status'} className={'mt-1 text-tiny text-tagma-warning break-words'}>
+            <div
+              role={openFailure ? 'alert' : 'status'}
+              className={'mt-1 text-tiny text-tagma-warning break-words'}
+            >
               {unavailableReason}
             </div>
           )}
@@ -1476,11 +1496,14 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
             sessions.find((session) => session.id === result.sessionId)?.title ??
             result.sessionId.slice(0, 8)
           }
-          onOpen={(target) => {
-            void openTarget(target);
-            void selectSession(result.sessionId).catch(() => {
-              /* best effort */
-            });
+          onOpen={async (target) => {
+            const outcome = await openTarget(target);
+            if (outcome.handled) {
+              void selectSession(result.sessionId).catch(() => {
+                /* best effort */
+              });
+            }
+            return outcome;
           }}
           onDismiss={() => dismiss(result.sessionId)}
         />

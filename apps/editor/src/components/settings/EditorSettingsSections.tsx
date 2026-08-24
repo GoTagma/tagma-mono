@@ -253,7 +253,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
             <div className="ml-4 border-l border-tagma-border pl-3">
               <ToggleRow
                 label="Live Smoke Test"
-                description="Runs one additional baseline in the real workspace with normal host command authority, real credentials and network access. It may mutate external state or workspace files."
+                description="Runs one additional baseline in the real workspace with normal host command authority, real credentials and network access, and automatically grants its manual triggers for that run only. It may mutate external state or workspace files; ordinary runs still require manual approval."
                 checked={settings.opencodeChatTrialLiveSmokeTestEnabled}
                 disabled={settingsInputsDisabled || !settings.opencodeChatTrialRunEnabled}
                 onChange={(v) => updateField('opencodeChatTrialLiveSmokeTestEnabled', v)}
