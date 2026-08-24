@@ -1021,7 +1021,7 @@ describe('chat YAML staging routes', () => {
       cases: [{ id: 'virtual-input', success: true }],
     });
     expect((plannedTrialRes.body as { summary: string }).summary).toContain(
-      'Live Smoke Test was skipped',
+      'Live Smoke Test was enabled but skipped',
     );
     expect((plannedTrialRes.body as { summary: string }).summary).toContain(
       'Trial run passed with warnings (success=1).',
@@ -4002,8 +4002,9 @@ describe('chat YAML staging routes', () => {
         tasks: Array<{ caseId: string | null; taskId: string; status: string }>;
       }>;
     };
+    expect(trialBody.summary).toContain('Live Smoke Test was enabled but skipped');
     expect(trialBody.summary).toContain(
-      'effective cwd that exists only in the staged target pipeline and cannot exist in the real workspace until finalize',
+      'effective cwd exists only in the staged target pipeline and cannot exist in the real workspace until finalize',
     );
     expect(
       new Set(trialBody.cases[0]!.tasks.map((task) => `${task.taskId}:${task.status}`)),
