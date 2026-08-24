@@ -31,12 +31,12 @@ Prerequisites: Bun 1.3.x for workspace install/build/test, plus Node.js 22+ for
 repository maintenance scripts that intentionally run with `node`.
 
 ```bash
-bun install
-bun run build
-bun run dev:editor
+bun run dev:editor:rebuild
 ```
 
-Workspace packages are symlinked. Edit package code, then restart the server. No reinstall is needed.
+This one-command path installs dependencies, fully rebuilds the shared packages and plugins, then
+starts the editor. Use it when you do not want to distinguish which workspace changed. The regular
+`bun run dev:editor` remains the faster path when only editor source changed.
 
 ---
 
@@ -121,12 +121,17 @@ bun run --filter tagma-desktop ensure:electron
 ### Local Development
 
 ```bash
-bun run dev:editor     # Start editor (server + client concurrently)
-bun run dev:server     # Start server only (watch mode)
-bun run dev:client       # Start Vite client only
-bun run dev:desktop:hmr  # Launch Electron with a Vite renderer and source sidecar; no package/install cycle
-bun run dev:desktop      # Ensure Electron runtime, build the desktop chain, and launch the Electron shell
+bun run dev:editor          # Start editor (server + client concurrently)
+bun run dev:editor:rebuild  # Install, fully rebuild packages/plugins, then start editor
+bun run dev:server          # Start server only (watch mode)
+bun run dev:client          # Start Vite client only
+bun run dev:desktop:hmr      # Launch Electron with a Vite renderer and source sidecar; no package/install cycle
+bun run dev:desktop          # Ensure Electron runtime, build the desktop chain, and launch the Electron shell
 ```
+
+Use `bun run dev:editor:rebuild` as the safe one-command path after arbitrary repository changes.
+It deliberately runs the full `bun run build`; adding `bun run build:incremental` afterward would
+only rebuild a subset of the same packages a second time and would add no coverage.
 
 For normal editor, Chat, Trial, and server work, use `bun run dev:editor` and open the Vite URL
 (usually `http://127.0.0.1:5173`). Vite hot-reloads renderer changes and the backend runs under

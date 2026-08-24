@@ -1,4 +1,4 @@
 interface:
-  display_name: "Monitor Tagma Diagnostics"
-  short_description: "Continuously monitor and qualify Tagma defects"
-  default_prompt: "Use $monitor-tagma-diagnostics to continuously observe this Tagma diagnostics session and maintain an evidence-backed defect ledger until I tell you to stop."
+  display_name: 'Monitor Tagma Diagnostics'
+  short_description: 'Monitor defects and broad optimizations'
+  default_prompt: 'Use $monitor-tagma-diagnostics to continuously observe this Tagma diagnostics session and maintain an evidence-backed finding ledger with separate lanes for objective product defects and broadly effective, cross-scenario optimization opportunities until I tell you to stop.'
