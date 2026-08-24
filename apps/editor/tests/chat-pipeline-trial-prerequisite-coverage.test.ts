@@ -346,4 +346,6 @@ test('Trial executes an independent branch before reporting another branch prere
       reason: 'prerequisite-unavailable',
     }),
   );
+  expect(result.summary).toContain('Trial run blocked by prerequisites');
+  expect(result.summary).not.toContain('Trial run failed');
 });

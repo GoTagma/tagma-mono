@@ -381,6 +381,29 @@ test('extractBinariesFromYaml ignores raw single-line PowerShell command stateme
   expect(binaries!.map((binary) => binary.name)).toEqual([]);
 });
 
+test('extractBinariesFromYaml ignores Out-Null in raw single-line PowerShell commands', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'raw-powershell-out-null.yaml',
+    [
+      'pipeline:',
+      '  name: raw PowerShell Out-Null',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: prepare',
+      '          command: "New-Item -ItemType Directory -Force -Path output | Out-Null; Write-Output ready"',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual([]);
+});
+
 test('extractBinariesFromYaml ignores PowerShell hashtable fields in folded single-line commands', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(

@@ -22,6 +22,7 @@ import {
   useOpenChatPipelineTarget,
 } from './chat-pipeline-link';
 import { formatTokens } from './StructuredParts';
+import { canonicalizeTrialSummaryForStatus } from '../../utils/chat-trial-summary';
 
 export function describeSessionYamlResult(result: ChatYamlSessionResult): {
   verb: string;
@@ -31,7 +32,9 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
   const name = chatPipelineDisplayName(result);
   const attempts = Math.max(0, Math.trunc(result.repairAttempts ?? 0));
   const attemptLabel = `${attempts} cycle${attempts === 1 ? '' : 's'}`;
-  const detail = result.trial?.summary || result.compile.summary || null;
+  const detail = result.trial?.summary
+    ? canonicalizeTrialSummaryForStatus(result.status, result.trial.summary)
+    : result.compile.summary || null;
 
   if (result.status === 'ready') {
     const passed = result.trial

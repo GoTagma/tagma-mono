@@ -7,6 +7,7 @@ import type {
 import type { ChatYamlSessionResult } from '../store/chat-store';
 import { redactDiagnosticText } from '../../shared/diagnostics.js';
 import { stripAskAiContext } from './ask-ai-context';
+import { canonicalizeTrialSummaryForStatus } from './chat-trial-summary';
 
 export type ChatExportFormat = 'md' | 'txt';
 
@@ -342,7 +343,7 @@ function renderPipelineVerification(
     lines.push(
       exportBullet(
         markdown,
-        `Trial: ${trialOutcome} (${trial.kind}; ${runState}) — ${redactExportText(trial.summary)}`,
+        `Trial: ${trialOutcome} (${trial.kind}; ${runState}) — ${redactExportText(canonicalizeTrialSummaryForStatus(result.status, trial.summary))}`,
       ),
       exportBullet(
         markdown,

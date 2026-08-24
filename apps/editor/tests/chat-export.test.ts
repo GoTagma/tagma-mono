@@ -912,7 +912,8 @@ describe('chat conversation export', () => {
           kind: 'blocked',
           ran: false,
           runId: null,
-          summary: 'Trial run requirements are unavailable: environment=FACT_API_KEY.',
+          summary:
+            'Trial run requirements are unavailable: environment=FACT_API_KEY. Trial run failed (no task result).',
           durationMs: 10,
           totalTaskCount: 0,
           omittedTaskCount: 0,
@@ -943,6 +944,7 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('Trial verified: blocked by prerequisites');
     expect(exported.content).not.toContain('Trial: failed (blocked; not run)');
     expect(exported.content).not.toContain('Trial verified: failed');
+    expect(exported.content).not.toContain('Trial run failed');
   });
 
   test('derives safe filenames for both export formats', () => {

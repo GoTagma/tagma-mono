@@ -310,6 +310,7 @@ const POWERSHELL_BUILTINS = new Set([
   'move-item',
   'new-item',
   'out-file',
+  'out-null',
   'read-host',
   'remove-item',
   'rename-item',

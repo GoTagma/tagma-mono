@@ -1766,7 +1766,7 @@ function trialTaskResults(
 }
 
 function buildTrialSummary(
-  success: boolean,
+  outcome: 'passed' | 'blocked' | 'failed',
   timedOut: boolean,
   lifecycleTimeoutMs: number,
   tasks: readonly ChatPipelineTrialTaskResult[],
@@ -1776,9 +1776,11 @@ function buildTrialSummary(
   const lines = [
     timedOut
       ? `Trial run timed out after ${lifecycleTimeoutMs}ms.`
-      : success
+      : outcome === 'passed'
         ? `Trial run passed (${countText || 'no tasks'}).`
-        : `Trial run failed (${countText || 'no task result'}).`,
+        : outcome === 'blocked'
+          ? `Trial run blocked by prerequisites (${countText || 'no task result'}).`
+          : `Trial run failed (${countText || 'no task result'}).`,
   ];
   if (omittedTaskCount > 0) {
     lines.push(`Task evidence omitted for ${omittedTaskCount} additional task(s).`);
@@ -2398,6 +2400,7 @@ async function executeTargetedTrialCase(
 
 function buildPlannedTrialSummary(
   baselineSuccess: boolean,
+  blockedByPrerequisites: boolean,
   timedOut: boolean,
   lifecycleTimeoutMs: number,
   baselineTasks: readonly ChatPipelineTrialTaskResult[],
@@ -2416,7 +2419,7 @@ function buildPlannedTrialSummary(
     .map(([status, count]) => `${status}=${count}`)
     .join(', ');
   const baseSummary = buildTrialSummary(
-    allPassed,
+    allPassed ? 'passed' : blockedByPrerequisites ? 'blocked' : 'failed',
     timedOut,
     lifecycleTimeoutMs,
     baselineTasks,
@@ -3304,8 +3307,15 @@ async function executeTrial(
         attemptId: trialPlanRepairAttempt,
       });
     }
+    const manualApprovalPrerequisiteOnly =
+      manualApprovalBlockers.size > 0 &&
+      !abortState.timedOut &&
+      !hostWitnessCaptureFailure &&
+      !hasExecutableFailure &&
+      !hasUnrelatedCaseFailure;
     const plannedSummary = buildPlannedTrialSummary(
       baselineSuccess,
+      kind === 'blocked' || manualApprovalPrerequisiteOnly,
       abortState.timedOut,
       budgets.lifecycleTimeoutMs,
       baselineEvidence.tasks,
@@ -3371,13 +3381,7 @@ async function executeTrial(
       ...(notRunCases.length > 0 ? { notRunCases } : {}),
       cases: visibleCases,
     };
-    if (
-      manualApprovalBlockers.size > 0 &&
-      !abortState.timedOut &&
-      !hostWitnessCaptureFailure &&
-      !hasExecutableFailure &&
-      !hasUnrelatedCaseFailure
-    ) {
+    if (manualApprovalPrerequisiteOnly) {
       const prerequisiteState = {
         state: 'blocked' as const,
         blockers: [...manualApprovalBlockers.values()],

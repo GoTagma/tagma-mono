@@ -449,7 +449,8 @@ describe('ChatPanel export affordance', () => {
         kind: 'blocked',
         ran: false,
         runId: null,
-        summary: 'Trial run requirements are missing. env=FACT_API_KEY.',
+        summary:
+          'Trial run requirements are missing. env=FACT_API_KEY. Trial run failed (no task result).',
         durationMs: 12,
         totalTaskCount: 0,
         omittedTaskCount: 0,
@@ -479,6 +480,7 @@ describe('ChatPanel export affordance', () => {
     expect(html).not.toContain('lucide-circle-check');
     expect(html).toContain('text-tagma-warning');
     expect(html).not.toContain('text-tagma-error');
+    expect(html).not.toContain('Trial run failed');
     expect(html).toContain('Open pipeline');
     expect(isChatPipelineDeployed(result)).toBe(true);
   });
