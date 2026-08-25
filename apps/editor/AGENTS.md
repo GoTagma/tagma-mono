@@ -26,12 +26,11 @@
   If that bounded recovery is also unusable, surface the observed failure without claiming success
   or speculating about an infrastructure cause.
 - A Host-authenticated `create-new-pipeline` or `fill-manual-new-pipeline` action dispatches
-  `tagma-pipeline` directly; it does not spend a router turn rediscovering the target. Other
-  `pipeline_work` reaches the router, whose first and only normal specialist call is
-  `tagma-pipeline`. Host compile/Trial repair already carries an authenticated target and goes
-  directly back to `tagma-pipeline`, never through the router. Never use diagnosis/discussion as an
-  authoring pre-reader. Only the existing one-call unusable-result recovery may add another
-  authoring specialist.
+  `tagma-pipeline` directly. Every other desktop Chat request first runs the isolated structured
+  intent classifier, then dispatches discussion/diagnosis directly or gives `tagma-pipeline` the
+  Host-resolved binding. Host compile/Trial repair already carries an authenticated target and goes
+  directly back to `tagma-pipeline`. The legacy router path remains only for non-desktop and
+  unfinished older turns. Never use diagnosis/discussion as an authoring pre-reader.
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
@@ -53,15 +52,13 @@
   never inherit the Chat model into a non-`opencode` driver, an existing-pipeline edit, or runtime
   resolution. Derive create/fill actions only from structured UI/Host state, never from
   natural-language phrase lists. The current editor-created manual-new draft structurally selects
-  fill; other natural-language intent remains the model router's responsibility. A
-  router-classified create must use a fresh sibling path and preserve the current and every
-  inventoried YAML. Bind that natural-language classification to the exact stage id with the first
-  worker-handoff line `TAGMA_ROUTE_MODE: <stage-id> create|edit`; the renderer accepts only the
-  matching durable task/subtask marker, and Host compile stores a current-YAML-hash-bound
-  attestation in authenticated stage metadata. Trial and finalize require that attestation for
-  no-marker stages. Missing, conflicting, or stale markers fail closed; declared creates cannot
-  target inventoried YAML or carry an unfinalized inventoried mutation, and declared edits cannot
-  target or additionally create a fresh sibling. Freeze action, active path, and local revision
+  fill. Every other desktop request runs the tool-free `tagma-pipeline-intent-classifier` with a
+  JSON Schema over Host-issued candidate ids. It may return discussion, diagnosis, create, edit of
+  exactly one candidate, or clarification; ambiguity must ask instead of guessing. Only then may
+  the Host atomically reserve a session-owned binding. Different sessions may share one read-only
+  origin but never a writable target. The worker receives that authenticated binding directly and
+  never authors a stage id, target path, or mode as free text. Keep `TAGMA_ROUTE_MODE` only as a
+  fail-closed compatibility path for unfinished older stages. Freeze action, active path, and local revision
   together before any await; send
   structured actions to the stage Host, render only that frozen action in context, and require fill
   to match the Host's exact current manual draft. A later UI selection must never retarget the turn.
@@ -76,9 +73,11 @@
   the Host detects the concrete staged target (including a router-classified sibling create), bind
   session metadata plus every continuation's current-file/inventory to that target; the canvas path
   captured before routing is no longer target authority.
-- Reconciliation and host-Trial progress retain a global workspace barrier but must carry the
-  finished root session as their UI owner. Render progress and Stop only for that visible session,
-  and route later progress updates into its cached runtime after the user switches conversations.
+- Reconciliation jobs are stage/session-owned. The bounded publish scheduler may serialize Host
+  commits, but a preserved failure must be skipped so later independent jobs continue. Prompts and
+  failure banners are blocked only by the visible session's unfinished work. Host Trial remains a
+  workspace-wide safety barrier while active. Carry every progress/Stop surface on the finished
+  root session and route later updates into its cached runtime after conversation switches.
 - Persist the exact YAML-lock id in every non-null Chat YAML snapshot. Resolve finished-turn
   reconciliation, logical-turn continuation, cleanup, and release by that immutable workspace +
   lock-id pair, never by the active YAML or whichever renderer-local lease is currently visible.
@@ -210,11 +209,15 @@
 
 ## Chat YAML Branch Isolation
 
-- A non-null Chat YAML snapshot is always bound to its required stage and exists only in renderer
-  memory for that logical turn. Publish pipeline results only through staged finalize; do not
-  reintroduce a live-edit/copy/restore fallback such as `/api/workspace/chat-result-copy` for
-  snapshots without staging.
-- Start every workspace-backed logical chat turn with an isolated
+- A non-null Chat YAML snapshot is always bound to its required stage. Publish pipeline results only
+  through staged finalize; do not reintroduce a live-edit/copy/restore fallback such as
+  `/api/workspace/chat-result-copy`. Structured discussion and diagnosis turns create no stage and
+  explicitly skip YAML reconciliation; they must never manufacture a result from the visible canvas.
+- Before every mutating desktop turn, persist one authenticated `sessionId -> bindingId -> target`
+  reservation under `.tagma/.chat-pipeline-bindings/`. A session reuses only its own published target;
+  selecting any other session's branch creates another unique target. Names and paths are display
+  coordinates, not ownership. Exclude this Host control registry from Trial workspace witnesses.
+- Start every mutating workspace-backed logical chat turn with an isolated
   `.tagma/.chat-staging/<id>/` branch. Copy each pipeline's YAML, layout, requirements,
   manifest, compile log, and bounded regular-file support tree into separate base and agent
   workspaces; bind OpenCode's prompt directory and all advertised pipeline paths to the agent
@@ -349,13 +352,15 @@
   folder. Preserve shared workspace paths, external trigger paths, and command-shaped fields.
 - If the agent branch is unchanged, discard it regardless of live/local drift. For an actual
   staged mutation, adopt in place when the live and renderer branches still match base; fork only
-  for a real conflicting branch or a compile-failure preservation path. Switching the visible
+  for a real conflicting branch or a compile-failure preservation path. A new session-owned edit is
+  the exception: publish to its reserved target without touching the origin; only a later edit of
+  that same owned target may adopt in place. Switching the visible
   canvas is navigation, not a path-moved conflict. A genuinely new staged pipeline is created
   normally unless its destination already exists. For an explicit create-new Chat turn, reserve a
   unique nonexistent staged `current-file` before prompting and persist that intent in authenticated
   stage metadata; finalize may publish only that target and must reject edits to copied existing
   pipelines.
-- Concurrent `fill-manual-new-pipeline` turns share one draft identity only until the first valid
+- Legacy unbound concurrent `fill-manual-new-pipeline` turns share one draft identity only until the first valid
   result claims it. If the later staged branch is semantically equivalent, reuse the claimed live
   branch without another write or relocation. If it is different and compile/Trial-valid, publish
   it as a fresh independent pipeline coordinate, preserve its authored display name, and use
@@ -676,11 +681,13 @@
   request a corrected plan; never use file-existence fallback or blame the pipeline artifact.
 - Treat Stop as cancellation of the entire staged logical chat lifecycle, not only the current OpenCode physical turn: a user-stopped finished turn or host-trial cancellation must abort the active host trial, discard the stage, clear post-chat action, release the YAML lease, and acknowledge exactly once, without planning, repair, trial retry, or finalize. Keep queued force-push continuation semantics unchanged.
 - An unexpected pre-finalize reconciliation failure must preserve the stage, exact snapshot, repair
-  state, and finished-turn queue head for an explicit retry. It must also offer an explicit
-  abandon-result action that keeps the live canvas, discards only that isolated stage, releases
-  the exact lease, acknowledges the head, and lets queued prompts continue as a fresh turn.
-  Treat a server-reported already-finalized disposition as an ambiguous committed result, not a
-  successful discard: restore the failed head and require idempotent finalize/readback.
+  state, and finished-turn job. Retry is only for transient failures. Missing legacy route
+  provenance is deterministic: offer **Save as independent pipeline**, persist one recovery request
+  identity through hidden planning/repair continuations, and publish each target to a Host-reserved
+  unique coordinate idempotently. Keep abandon-result as a separate destructive choice, and never
+  let one failed job block another session's reconciliation or queued prompt. Treat a server-reported
+  already-finalized disposition as an ambiguous committed result, not a successful discard: restore
+  the failed job and require idempotent finalize/readback.
 - Persist every stage-backed finished-turn queue per workspace before reconciliation and hydrate it
   before OpenCode bootstrap. An asynchronous discard claim remains persisted until confirmed
   cleanup or finalized readback is explicitly acknowledged; failed cleanup restores the same turn.

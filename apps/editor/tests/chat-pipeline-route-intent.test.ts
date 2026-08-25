@@ -13,21 +13,23 @@ function assistant(parts: unknown[]): OpencodeThreadEntry {
 }
 
 describe('Chat pipeline router intent', () => {
-  test('requires the route marker at stage start and forwards it to Host compile', () => {
+  test('uses structured pre-binding classification while retaining legacy marker recovery', () => {
     const storeSource = readFileSync(
       join(import.meta.dir, '..', 'src', 'store', 'chat-store.ts'),
       'utf-8',
     );
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
 
+    expect(storeSource).toContain('classifyChatPipelineIntentWithModel(');
     expect(storeSource).toMatch(
-      /api\.startChatYamlStage\([\s\S]*?requestedAction,\s*requestedAction === null,?\s*\)/,
+      /api\.startChatYamlStage\([\s\S]*?requestedAction,\s*false,\s*\{[\s\S]*?intent: bindingIntent/,
     );
     expect(appSource).toContain(
       'resolveChatPipelineRouteIntent(finishedSessionMessages, snapshot.staging.id)',
     );
+    expect(appSource).toContain('!independentRecoveryRequested && stage.routeIntentRequired');
     expect(appSource).toMatch(
-      /api\.compileChatYamlStage\([\s\S]*?snapshot\.workDir,\s*routeIntent \?\? undefined,?\s*\)/,
+      /api\.compileChatYamlStage\([\s\S]*?routeIntent \?\? undefined,\s*independentRecovery !== null/,
     );
   });
 

@@ -35,7 +35,7 @@ export interface ServerRecordContext {
   workspaceTagmaDir: string;
   controlRoot: string;
   stageId: string;
-  kind: 'stage-metadata' | 'finalized' | 'trial-cache';
+  kind: 'stage-metadata' | 'finalized' | 'trial-cache' | 'chat-bindings';
 }
 
 function authenticationError(): Error {

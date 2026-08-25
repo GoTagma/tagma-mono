@@ -1,8 +1,16 @@
-export type TagmaSessionSource = 'desktop-chat' | 'bot-bridge' | 'platform-export';
+export type TagmaSessionSource =
+  'desktop-chat' | 'bot-bridge' | 'platform-export' | 'pipeline-intent-classifier';
 
 export interface TagmaSessionModel {
   providerID: string;
   modelID: string;
+}
+
+export interface TagmaSessionPipelineBinding {
+  id: string;
+  intent: 'create' | 'edit';
+  originRelativePath: string | null;
+  targetRelativePath: string;
 }
 
 export interface TagmaSessionMetadataInput {
@@ -14,6 +22,7 @@ export interface TagmaSessionMetadataInput {
   variant?: string | null;
   reason?: string | null;
   title?: string | null;
+  pipelineBinding?: TagmaSessionPipelineBinding | null;
   bot?: {
     platform?: string | null;
     chatID?: string | null;
@@ -33,6 +42,7 @@ export interface TagmaSessionMetadata {
   model?: TagmaSessionModel;
   /** Present and null when the session explicitly uses the provider default. */
   variant?: string | null;
+  pipelineBinding?: TagmaSessionPipelineBinding;
 }
 
 export interface OpencodeSessionOwnershipFields {
@@ -50,7 +60,12 @@ function hasOwn(record: Record<string, unknown>, key: string): boolean {
 }
 
 function isTagmaSessionSource(value: unknown): value is TagmaSessionSource {
-  return value === 'desktop-chat' || value === 'bot-bridge' || value === 'platform-export';
+  return (
+    value === 'desktop-chat' ||
+    value === 'bot-bridge' ||
+    value === 'platform-export' ||
+    value === 'pipeline-intent-classifier'
+  );
 }
 
 export function normalizeOpencodeSessionPath(path: unknown): string | null {
@@ -116,6 +131,25 @@ export function parseTagmaSessionMetadata(metadata: unknown): TagmaSessionMetada
         : typeof tagma.variant === 'string' && tagma.variant.trim()
           ? tagma.variant.trim()
           : undefined;
+    const rawBinding = tagma.pipelineBinding;
+    const pipelineBinding =
+      isRecord(rawBinding) &&
+      typeof rawBinding.id === 'string' &&
+      rawBinding.id.trim() &&
+      (rawBinding.intent === 'create' || rawBinding.intent === 'edit') &&
+      (rawBinding.originRelativePath === null ||
+        (typeof rawBinding.originRelativePath === 'string' &&
+          rawBinding.originRelativePath.trim())) &&
+      typeof rawBinding.targetRelativePath === 'string' &&
+      rawBinding.targetRelativePath.trim()
+        ? {
+            id: rawBinding.id.trim(),
+            intent: rawBinding.intent as 'create' | 'edit',
+            originRelativePath:
+              rawBinding.originRelativePath === null ? null : rawBinding.originRelativePath.trim(),
+            targetRelativePath: rawBinding.targetRelativePath.trim(),
+          }
+        : undefined;
     return {
       schema,
       source,
@@ -123,6 +157,7 @@ export function parseTagmaSessionMetadata(metadata: unknown): TagmaSessionMetada
       ...(yamlPath ? { yamlPath } : {}),
       ...(model ? { model } : {}),
       ...(variant !== undefined ? { variant } : {}),
+      ...(pipelineBinding ? { pipelineBinding } : {}),
     };
   }
 
@@ -183,6 +218,15 @@ export function buildTagmaSessionMetadata(
   }
   if (input.variant === null) tagma.variant = null;
   else putString(tagma, 'variant', input.variant);
+
+  if (input.pipelineBinding?.id && input.pipelineBinding.targetRelativePath) {
+    tagma.pipelineBinding = {
+      id: input.pipelineBinding.id,
+      intent: input.pipelineBinding.intent,
+      originRelativePath: input.pipelineBinding.originRelativePath,
+      targetRelativePath: input.pipelineBinding.targetRelativePath,
+    };
+  }
 
   if (input.bot) {
     const bot: Record<string, unknown> = {};

@@ -245,6 +245,39 @@ describe('chat editor context', () => {
     expect(context).not.toContain(stagedYaml);
   });
 
+  test('renders a Host-owned session branch without making its publish target writable', () => {
+    const agentRoot = 'C:/repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma';
+    const stagedSource = `${agentRoot}/orders/orders.yaml`;
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/orders/orders.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      currentYamlPath: stagedSource,
+      workspaceYamlFilePaths: [stagedSource],
+      chatYamlStage: {
+        id: 'stage-1',
+        agentTagmaDir: agentRoot,
+        pipelineBinding: {
+          id: 'binding-1',
+          intent: 'edit',
+          originRelativePath: 'orders/orders.yaml',
+          targetRelativePath: 'pipeline-branch/pipeline-branch.yaml',
+        },
+      },
+    });
+
+    expect(context).toContain('<pipeline-binding id="binding-1" intent="edit">');
+    expect(context).toContain('<origin>orders/orders.yaml</origin>');
+    expect(context).toContain(
+      '<host-publication-coordinate writable="false">pipeline-branch/pipeline-branch.yaml</host-publication-coordinate>',
+    );
+    expect(context).toContain('Edit only current-file for edit intent');
+    expect(context).toContain(`<current-file>${stagedSource}</current-file>`);
+  });
+
   test('includes the previous host YAML reconcile result and escapes its values', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',

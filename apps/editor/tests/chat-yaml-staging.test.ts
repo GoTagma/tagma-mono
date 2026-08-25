@@ -26,6 +26,7 @@ import {
   readFinalizedChatYamlStageResult,
   samePipelineRelativePath,
 } from '../server/chat-yaml-staging';
+import { reserveChatPipelineBinding } from '../server/chat-pipeline-binding';
 import { getFileVersion, hasFileChanged } from '../server/optimistic-lock';
 import { writeEditorSettings } from '../server/plugins/loader';
 import {
@@ -612,6 +613,400 @@ describe('chat YAML staging', () => {
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
 
     expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('rejects writes outside the model-classified session target', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const otherPath = pipelineYamlPath(ws.workDir!, 'other');
+    mkdirSync(dirname(otherPath), { recursive: true });
+    writeFileSync(otherPath, yamlFor('Other pipeline', 'other_task'), 'utf-8');
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-scoped',
+        bindingRequestId: 'request-scoped',
+        intent: 'edit',
+      },
+    });
+    const selected = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const unrelated = stage.entries.find((entry) => entry.sourcePath === otherPath)!;
+    writeFileSync(selected.stagedPath, yamlFor('Selected branch', 'selected_task'), 'utf-8');
+    writeFileSync(unrelated.stagedPath, yamlFor('Unrelated mutation', 'unrelated_task'), 'utf-8');
+
+    expect(() => compileChatYamlStage(ws, stage.id, selected.relativePath)).toThrow(
+      `cannot also mutate ${unrelated.relativePath}`,
+    );
+    expect(() => compileChatYamlStage(ws, stage.id, unrelated.relativePath)).toThrow(
+      'may verify only its classified target',
+    );
+    rmSync(dirname(unrelated.stagedPath), { recursive: true, force: true });
+    expect(() => compileChatYamlStage(ws, stage.id, selected.relativePath)).toThrow(
+      `cannot also mutate ${unrelated.relativePath}`,
+    );
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('publishes a classified create only to its fresh session-owned target', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-create',
+        bindingRequestId: 'request-create',
+        intent: 'create',
+      },
+    });
+
+    const binding = stage.pipelineBinding!;
+    expect(binding.intent).toBe('create');
+    expect(binding.originRelativePath).toBeNull();
+    expect(stage.activeRelativePath).toBe(binding.targetRelativePath);
+    const createdPath = stage.activeStagedPath!;
+    const createdYaml = yamlFor('Fresh session pipeline', 'fresh_session');
+    mkdirSync(dirname(createdPath), { recursive: true });
+    writeFileSync(createdPath, createdYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, stage.id, stage.activeRelativePath!).success).toBe(true);
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: stage.activeRelativePath!,
+    });
+
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(result.outcome).toBe('created');
+    expect(result.pipelineBinding?.id).toBe(stage.pipelineBinding?.id);
+    expect(result.entry?.relativePath).toBe(stage.pipelineBinding?.targetRelativePath);
+    expect(readFileSync(result.entry!.path, 'utf-8')).toBe(createdYaml);
+    stopWorkspace(ws);
+  });
+
+  test('publishes concurrent session edits as unique branches without changing their shared origin', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const first = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-a',
+        bindingRequestId: 'request-a',
+        intent: 'edit',
+      },
+    });
+    const second = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-b',
+        bindingRequestId: 'request-b',
+        intent: 'edit',
+      },
+    });
+
+    expect(first.pipelineBinding?.targetRelativePath).not.toBe(
+      second.pipelineBinding?.targetRelativePath,
+    );
+    expect(first.pipelineBinding?.originRelativePath).toBe(first.activeRelativePath);
+    expect(second.pipelineBinding?.originRelativePath).toBe(second.activeRelativePath);
+
+    const firstTarget = first.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const secondTarget = second.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstYaml = yamlFor('Session A branch', 'session_a');
+    const secondYaml = yamlFor('Session B branch', 'session_b');
+    writeFileSync(firstTarget.stagedPath, firstYaml, 'utf-8');
+    writeFileSync(secondTarget.stagedPath, secondYaml, 'utf-8');
+
+    expect(compileChatYamlStage(ws, first.id, firstTarget.relativePath).success).toBe(true);
+    expect(compileChatYamlStage(ws, second.id, secondTarget.relativePath).success).toBe(true);
+    const firstResult = await finalizeChatYamlStage(ws, {
+      stageId: first.id,
+      relativePath: firstTarget.relativePath,
+    });
+    const secondResult = await finalizeChatYamlStage(ws, {
+      stageId: second.id,
+      relativePath: secondTarget.relativePath,
+    });
+
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(firstResult.outcome).toBe('created');
+    expect(secondResult.outcome).toBe('created');
+    expect(firstResult.entry?.path).not.toBe(secondResult.entry?.path);
+    expect(readFileSync(firstResult.entry!.path, 'utf-8')).toBe(firstYaml);
+    expect(readFileSync(secondResult.entry!.path, 'utf-8')).toBe(secondYaml);
+    stopWorkspace(ws);
+  });
+
+  test('rebases pipeline-local coordinates when publishing an edit to its session branch', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-rebase',
+        bindingRequestId: 'request-rebase',
+        intent: 'edit',
+      },
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const stagedInputPath = join(dirname(staged.stagedPath), 'input').replace(/\\/g, '/');
+    const authored = [
+      'pipeline:',
+      '  name: Session branch rebase',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      cwd: .tagma/pipeline',
+      '      tasks:',
+      '        - id: task',
+      '          name: Task',
+      '          prompt: verify branch coordinates',
+      '          trigger:',
+      '            type: directory',
+      `            path: '${stagedInputPath}'`,
+      '',
+    ].join('\n');
+    writeFileSync(staged.stagedPath, authored, 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    const published = parseYaml(readFileSync(result.entry!.path, 'utf-8'));
+    const targetStem = dirname(result.entry!.path).replace(/\\/g, '/').split('/').pop();
+    expect(published.tracks[0]?.cwd).toBe(`.tagma/${targetStem}`);
+    expect(published.tracks[0]?.tasks[0]?.trigger?.path).toBe(
+      join(dirname(result.entry!.path), 'input'),
+    );
+    stopWorkspace(ws);
+  });
+
+  test('relocates a reserved session branch when an external pipeline takes its path', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-collision',
+        bindingRequestId: 'request-collision',
+        intent: 'edit',
+      },
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const authored = yamlFor('Session collision branch', 'session_collision');
+    writeFileSync(staged.stagedPath, authored, 'utf-8');
+
+    const reservedPath = join(
+      ws.workDir!,
+      '.tagma',
+      ...stage.pipelineBinding!.targetRelativePath.split('/'),
+    );
+    mkdirSync(dirname(reservedPath), { recursive: true });
+    const external = yamlFor('External claimant', 'external_claimant');
+    writeFileSync(reservedPath, external, 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(readFileSync(reservedPath, 'utf-8')).toBe(external);
+    expect(result.pipelineBinding?.targetRelativePath).not.toBe(
+      stage.pipelineBinding?.targetRelativePath,
+    );
+    expect(result.entry?.path).not.toBe(reservedPath);
+    expect(readFileSync(result.entry!.path, 'utf-8')).toBe(authored);
+    stopWorkspace(ws);
+  });
+
+  test('allocates unique writable targets for an arbitrary concurrent session set', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stages = Array.from({ length: 32 }, (_, index) =>
+      createChatYamlStage(ws, {
+        activePath: sourcePath,
+        pipelineBinding: {
+          sessionId: `session-${index}`,
+          bindingRequestId: `request-${index}`,
+          intent: 'edit',
+        },
+      }),
+    );
+
+    expect(new Set(stages.map((stage) => stage.pipelineBinding?.targetRelativePath)).size).toBe(
+      stages.length,
+    );
+    expect(
+      stages.every(
+        (stage) => stage.pipelineBinding?.originRelativePath === stage.activeRelativePath,
+      ),
+    ).toBe(true);
+    for (const stage of stages) expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('reuses a sessions own published branch on its next edit', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const first = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-owner',
+        bindingRequestId: 'owner-first',
+        intent: 'edit',
+      },
+    });
+    const firstTarget = first.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(firstTarget.stagedPath, yamlFor('Owner branch one', 'owner_one'), 'utf-8');
+    const firstResult = await finalizeChatYamlStage(ws, {
+      stageId: first.id,
+      relativePath: firstTarget.relativePath,
+    });
+
+    const second = createChatYamlStage(ws, {
+      activePath: firstResult.entry!.path,
+      pipelineBinding: {
+        sessionId: 'session-owner',
+        bindingRequestId: 'owner-second',
+        intent: 'edit',
+      },
+    });
+    expect(second.pipelineBinding?.id).toBe(first.pipelineBinding?.id);
+    expect(second.pipelineBinding?.targetRelativePath).toBe(second.activeRelativePath!);
+    const secondTarget = second.entries.find(
+      (entry) => entry.sourcePath === firstResult.entry!.path,
+    )!;
+    const finalYaml = yamlFor('Owner branch two', 'owner_two');
+    writeFileSync(secondTarget.stagedPath, finalYaml, 'utf-8');
+    const secondResult = await finalizeChatYamlStage(ws, {
+      stageId: second.id,
+      relativePath: secondTarget.relativePath,
+    });
+
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(secondResult.outcome).toBe('adopted');
+    expect(secondResult.entry?.path).toBe(firstResult.entry?.path);
+    expect(readFileSync(secondResult.entry!.path, 'utf-8')).toBe(finalYaml);
+    stopWorkspace(ws);
+  });
+
+  test('moves session ownership to a conflict fork while preserving the externally edited branch', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const first = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-conflict-owner',
+        bindingRequestId: 'conflict-owner-first',
+        intent: 'edit',
+      },
+    });
+    const firstTarget = first.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(firstTarget.stagedPath, yamlFor('Owned branch', 'owned_first'), 'utf-8');
+    const firstResult = await finalizeChatYamlStage(ws, {
+      stageId: first.id,
+      relativePath: firstTarget.relativePath,
+    });
+
+    const second = createChatYamlStage(ws, {
+      activePath: firstResult.entry!.path,
+      pipelineBinding: {
+        sessionId: 'session-conflict-owner',
+        bindingRequestId: 'conflict-owner-second',
+        intent: 'edit',
+      },
+    });
+    const secondTarget = second.entries.find(
+      (entry) => entry.sourcePath === firstResult.entry!.path,
+    )!;
+    const chatYaml = yamlFor('Owned Chat fork', 'owned_chat');
+    const externalYaml = yamlFor('External branch edit', 'external_edit');
+    writeFileSync(secondTarget.stagedPath, chatYaml, 'utf-8');
+    writeFileSync(firstResult.entry!.path, externalYaml, 'utf-8');
+    const forked = await finalizeChatYamlStage(ws, {
+      stageId: second.id,
+      relativePath: secondTarget.relativePath,
+    });
+
+    expect(forked.outcome).toBe('forked');
+    expect(readFileSync(firstResult.entry!.path, 'utf-8')).toBe(externalYaml);
+    expect(parseYaml(readFileSync(forked.entry!.path, 'utf-8')).tracks[0]?.tasks[0]?.prompt).toBe(
+      'owned_chat',
+    );
+    expect(forked.pipelineBinding?.targetRelativePath).toBe(forked.entry?.relativePath);
+
+    const third = createChatYamlStage(ws, {
+      activePath: forked.entry!.path,
+      pipelineBinding: {
+        sessionId: 'session-conflict-owner',
+        bindingRequestId: 'conflict-owner-third',
+        intent: 'edit',
+      },
+    });
+    expect(third.pipelineBinding?.id).toBe(first.pipelineBinding?.id);
+    expect(third.pipelineBinding?.targetRelativePath).toBe(third.activeRelativePath!);
+    expect(discardChatYamlStage(ws, third.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('forces explicit recovery onto a new target even when the session owns the origin', () => {
+    const { ws } = setupWorkspace();
+    const first = reserveChatPipelineBinding(ws, {
+      sessionId: 'session-recovery-owner',
+      bindingRequestId: 'recovery-owner-first',
+      intent: 'edit',
+      originRelativePath: 'pipeline/pipeline.yaml',
+    });
+    const reused = reserveChatPipelineBinding(ws, {
+      sessionId: 'session-recovery-owner',
+      bindingRequestId: 'recovery-owner-reuse',
+      intent: 'edit',
+      originRelativePath: first.targetRelativePath,
+    });
+    const recovered = reserveChatPipelineBinding(ws, {
+      sessionId: 'session-recovery-owner',
+      bindingRequestId: 'recovery-owner-independent',
+      intent: 'edit',
+      originRelativePath: first.targetRelativePath,
+      forceNew: true,
+    });
+
+    expect(reused.id).toBe(first.id);
+    expect(recovered.id).not.toBe(first.id);
+    expect(recovered.targetRelativePath).not.toBe(first.targetRelativePath);
+    stopWorkspace(ws);
+  });
+
+  test('recovers a legacy route-unresolved stage as an idempotent independent pipeline', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      routeIntentRequired: true,
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const recoveredYaml = yamlFor('Recovered Chat branch', 'recovered');
+    writeFileSync(staged.stagedPath, recoveredYaml, 'utf-8');
+
+    expect(() => compileChatYamlStage(ws, stage.id, staged.relativePath)).toThrow(
+      'requires a current stage-bound router target mode',
+    );
+    expect(compileChatYamlStage(ws, stage.id, staged.relativePath, undefined, true).success).toBe(
+      true,
+    );
+    const recovery = {
+      sessionId: 'legacy-session',
+      bindingRequestId: 'recovery-finished-turn',
+    };
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      independentRecovery: recovery,
+    });
+    const replay = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      independentRecovery: recovery,
+    });
+
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('route-unresolved');
+    expect(result.entry?.path).not.toBe(sourcePath);
+    expect(readFileSync(result.entry!.path, 'utf-8')).toBe(recoveredYaml);
+    expect(replay.entry?.path).toBe(result.entry?.path);
     stopWorkspace(ws);
   });
 

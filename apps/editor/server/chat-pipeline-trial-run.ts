@@ -335,6 +335,7 @@ export interface ChatPipelineTrialRunInput {
   stageId: string;
   relativePath: string;
   trialId: string;
+  independentRecovery?: boolean;
 }
 
 export type ChatPipelineTrialProgressPhase =
@@ -3760,7 +3761,13 @@ export async function trialRunChatYamlStage(
   );
   if (!entry) throw new Error(`Staged YAML not found: ${input.relativePath}`);
   const startedAt = Date.now();
-  const compile = compileChatYamlStage(ws, input.stageId, entry.relativePath);
+  const compile = compileChatYamlStage(
+    ws,
+    input.stageId,
+    entry.relativePath,
+    undefined,
+    input.independentRecovery === true,
+  );
   if (!compile.success) {
     return resultForSetupFailure(
       'compile-failed',

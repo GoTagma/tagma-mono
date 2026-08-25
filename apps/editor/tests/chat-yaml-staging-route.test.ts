@@ -445,6 +445,7 @@ describe('chat YAML staging routes', () => {
     expect(missingIntentRes.statusCode).toBe(500);
     expect(missingIntentRes.body).toEqual({
       error: expect.stringContaining('stage-bound router target mode'),
+      kind: 'route-unresolved',
     });
 
     const compileRes = makeRes();
@@ -509,6 +510,7 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.statusCode).toBe(500);
     expect(trialRes.body).toEqual({
       error: expect.stringContaining('current stage-bound router target mode'),
+      kind: 'route-unresolved',
     });
 
     discardStage(getRoute, ws, stage.id);

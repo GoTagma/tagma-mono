@@ -106,6 +106,14 @@ let editorSettingsReasoningEffort: string | null = null;
 let providersShouldFail = false;
 let agentsShouldFail = false;
 let sessionCreateShouldFail = false;
+let pipelineIntentStructuredResult: Record<string, unknown> = {
+  kind: 'discussion',
+  targetCandidateId: null,
+  clarification: null,
+  candidateIds: [],
+};
+let classifierSessionSequence = 0;
+const classifierSessionIds = new Set<string>();
 const originalFetch = globalThis.fetch;
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 
@@ -214,6 +222,32 @@ beforeAll(() => {
     const method = init?.method ?? request?.method ?? 'GET';
     if (url === '/api/workspace/chat-yaml-stage/start' && method === 'POST') {
       stageStartBodies.push(await jsonRequestBody(request, init));
+    }
+    if (url === '/api/workspace/yamls' && method === 'GET') {
+      const pipeline = usePipelineStore.getState();
+      return Promise.resolve(
+        jsonResponse({
+          entries: pipeline.yamlPath
+            ? [
+                {
+                  name: pipeline.yamlPath.replace(/\\/g, '/').split('/').pop() ?? 'pipeline.yaml',
+                  path: pipeline.yamlPath,
+                  pipelineName:
+                    (pipeline.config as { pipeline?: { name?: string }; name?: string } | null)
+                      ?.pipeline?.name ??
+                    (pipeline.config as { name?: string } | null)?.name ??
+                    null,
+                  contentHash: 'test-content-hash',
+                  layoutHash: null,
+                  layoutMtimeMs: null,
+                  layoutSize: null,
+                  mtimeMs: 1,
+                  size: 1,
+                },
+              ]
+            : [],
+        }),
+      );
     }
     if (url === '/api/editor-settings' && method === 'GET') {
       return Promise.resolve(jsonResponse(makeEditorSettings(editorSettingsModel)));
@@ -374,6 +408,27 @@ beforeAll(() => {
       const agentTagmaDir = `${agentWorkspaceDir}/.tagma`;
       const sourcePath = `${workspace}/.tagma/sample/sample.yaml`;
       const stagedPath = `${agentTagmaDir}/sample/sample.yaml`;
+      const startBody = await jsonRequestBody(request, init);
+      const requestedBinding = startBody.pipelineBinding as {
+        sessionId: string;
+        bindingRequestId: string;
+        intent: 'create' | 'edit';
+      } | null;
+      const bindingTarget = 'pipeline-session-branch/pipeline-session-branch.yaml';
+      const pipelineBinding = requestedBinding
+        ? {
+            version: 1,
+            id: 'test-session-pipeline-binding',
+            ...requestedBinding,
+            originRelativePath: requestedBinding.intent === 'edit' ? 'sample/sample.yaml' : null,
+            targetRelativePath: bindingTarget,
+            createdAt: 1,
+          }
+        : null;
+      const activeRelativePath =
+        requestedBinding?.intent === 'create' ? bindingTarget : 'sample/sample.yaml';
+      const activeStagedPath =
+        requestedBinding?.intent === 'create' ? `${agentTagmaDir}/${bindingTarget}` : stagedPath;
       return Promise.resolve(
         jsonResponse({
           id: 'staged-prompt-test-stage',
@@ -381,8 +436,9 @@ beforeAll(() => {
           baseWorkspaceDir: `${rootDir}/base-workspace`,
           agentWorkspaceDir,
           agentTagmaDir,
-          activeRelativePath: 'sample/sample.yaml',
-          activeStagedPath: stagedPath,
+          activeRelativePath,
+          activeStagedPath,
+          pipelineBinding,
           entries: [
             {
               name: 'sample.yaml',
@@ -618,7 +674,9 @@ beforeAll(() => {
     }
     for (const baseUrl of workspaceBaseUrls.values()) {
       if (url.startsWith(`${baseUrl}/session/`) && method === 'DELETE') {
-        sessionDeleteRequests.push(url);
+        const deletedId = sessionUrl?.pathname.split('/').pop() ?? '';
+        if (classifierSessionIds.has(deletedId)) classifierSessionIds.delete(deletedId);
+        else sessionDeleteRequests.push(url);
         return Promise.resolve(jsonResponse({ ok: true }));
       }
     }
@@ -641,6 +699,13 @@ beforeAll(() => {
     }
     if (sessionBase && method === 'POST') {
       const body = await jsonRequestBody(request, init);
+      const tagmaMetadata = (body.metadata as { tagma?: { source?: unknown } } | undefined)?.tagma;
+      const classifier = tagmaMetadata?.source === 'pipeline-intent-classifier';
+      if (classifier) {
+        const id = `classifier-session-${++classifierSessionSequence}`;
+        classifierSessionIds.add(id);
+        return Promise.resolve(jsonResponse({ id, title: body.title, metadata: body.metadata }));
+      }
       sessionCreateRequests.push({ url, body });
       if (sessionCreateShouldFail) {
         return Promise.resolve(
@@ -668,6 +733,20 @@ beforeAll(() => {
       return Promise.resolve(jsonResponse({ ok: true }));
     }
     if (sessionUrl && /\/session\/[^/]+\/message$/.test(sessionUrl.pathname)) {
+      const sessionId = sessionUrl.pathname.split('/')[2] ?? '';
+      if (classifierSessionIds.has(sessionId) && method === 'POST') {
+        return Promise.resolve(
+          jsonResponse({
+            info: {
+              id: `classifier-message-${classifierSessionSequence}`,
+              sessionID: sessionId,
+              role: 'assistant',
+              structured: pipelineIntentStructuredResult,
+            },
+            parts: [],
+          }),
+        );
+      }
       return Promise.resolve(jsonResponse([]));
     }
     return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
@@ -910,6 +989,13 @@ afterEach(async () => {
   providersShouldFail = false;
   agentsShouldFail = false;
   sessionCreateShouldFail = false;
+  pipelineIntentStructuredResult = {
+    kind: 'discussion',
+    targetCandidateId: null,
+    clarification: null,
+    candidateIds: [],
+  };
+  classifierSessionIds.clear();
   setClientWorkspace(null);
   resetOpencodeClient();
   useEditorSettingsStore.getState().updateLocal(null);
@@ -2136,14 +2222,32 @@ describe('chat model persistence', () => {
       await useChatStore.getState().send('把当前草稿完善成可运行版本');
 
       expect(promptAsyncRequests).toHaveLength(1);
-      expect(stageStartBodies).toEqual([
-        {
-          activePath: sourcePath,
-          requestedAction: 'fill-manual-new-pipeline',
-          routeIntentRequired: false,
+      expect(stageStartBodies).toHaveLength(1);
+      expect(stageStartBodies[0]).toMatchObject({
+        activePath: sourcePath,
+        requestedAction: 'fill-manual-new-pipeline',
+        routeIntentRequired: false,
+        pipelineBinding: {
+          sessionId: 'existing',
+          bindingRequestId: expect.any(String),
+          intent: 'edit',
         },
-      ]);
+      });
       expect(promptAsyncBodies[0]?.agent).toBe('tagma-pipeline');
+      expect(sessionUpdateRequests[0]?.body).toMatchObject({
+        metadata: {
+          tagma: {
+            yamlPath:
+              'C:/staged-prompt-repo/.tagma/pipeline-session-branch/pipeline-session-branch.yaml',
+            pipelineBinding: {
+              id: 'test-session-pipeline-binding',
+              intent: 'edit',
+              originRelativePath: 'sample/sample.yaml',
+              targetRelativePath: 'pipeline-session-branch/pipeline-session-branch.yaml',
+            },
+          },
+        },
+      });
       expect(new URL(promptAsyncRequests[0]!).searchParams.get('directory')).toBe(agentTagmaDir);
       expect(decodeURIComponent(promptAsyncHeaders[0]?.get('x-opencode-directory') ?? '')).toBe(
         agentTagmaDir,
@@ -2189,60 +2293,113 @@ describe('chat model persistence', () => {
     }
   });
 
-  test('does not derive a Host create action from natural-language message text', async () => {
+  test('uses structured model classification before binding a natural-language create', async () => {
     const { baseUrl, sourcePath } = configureStagedPromptSendFixture();
     usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
     sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
+    pipelineIntentStructuredResult = {
+      kind: 'create',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
 
     try {
       await useChatStore
         .getState()
         .send('create a separate new reporting pipeline without changing the current pipeline');
 
-      expect(stageStartBodies).toEqual([
-        { activePath: sourcePath, requestedAction: null, routeIntentRequired: true },
-      ]);
+      expect(stageStartBodies).toHaveLength(1);
+      expect(stageStartBodies[0]).toMatchObject({
+        activePath: sourcePath,
+        requestedAction: null,
+        routeIntentRequired: false,
+        pipelineBinding: { sessionId: 'existing', intent: 'create' },
+      });
       const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
       expect(parts[0]?.text).not.toContain('<requested-action');
-      expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
+      expect(parts[0]?.text).toContain('<pipeline-binding');
+      expect(parts[0]?.text).toContain('intent="create"');
+      expect(promptAsyncBodies[0]?.agent).toBe('tagma-pipeline');
     } finally {
       await cleanupStagedPromptSendFixture();
     }
   });
 
-  test('keeps unmarked pipeline edits behind the router', async () => {
+  test('uses the model-selected Host candidate for an unmarked pipeline edit', async () => {
     const { baseUrl, sourcePath } = configureStagedPromptSendFixture();
     usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
     sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
+    pipelineIntentStructuredResult = {
+      kind: 'edit',
+      targetCandidateId: 'pipeline-1',
+      clarification: null,
+      candidateIds: [],
+    };
 
     try {
       await useChatStore.getState().send('add a review task to the current pipeline');
 
-      expect(stageStartBodies).toEqual([
-        { activePath: sourcePath, requestedAction: null, routeIntentRequired: true },
-      ]);
-      expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
+      expect(stageStartBodies).toHaveLength(1);
+      expect(stageStartBodies[0]).toMatchObject({
+        activePath: sourcePath,
+        requestedAction: null,
+        routeIntentRequired: false,
+        pipelineBinding: { sessionId: 'existing', intent: 'edit' },
+      });
+      expect(promptAsyncBodies[0]?.agent).toBe('tagma-pipeline');
       const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
-      expect(parts[0]?.text).not.toContain('<requested-action');
+      expect(parts[0]?.text).toContain('<pipeline-binding');
+      expect(parts[0]?.text).toContain('intent="edit"');
     } finally {
       await cleanupStagedPromptSendFixture();
     }
   });
 
-  test('leaves semantically elliptical intent to the model router without text matching', async () => {
+  test('lets the model classify semantically elliptical creation without renderer phrase matching', async () => {
     const { baseUrl, sourcePath } = configureStagedPromptSendFixture();
     usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
     sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
+    pipelineIntentStructuredResult = {
+      kind: 'create',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
 
     try {
       await useChatStore.getState().send('build me a simple one to ask llm how are you');
 
-      expect(stageStartBodies).toEqual([
-        { activePath: sourcePath, requestedAction: null, routeIntentRequired: true },
-      ]);
-      expect(promptAsyncBodies[0]?.agent).toBe('tagma-router');
-      const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
-      expect(parts[0]?.text).not.toContain('<requested-action');
+      expect(stageStartBodies).toHaveLength(1);
+      expect(stageStartBodies[0]).toMatchObject({
+        activePath: sourcePath,
+        pipelineBinding: { intent: 'create' },
+      });
+      expect(promptAsyncBodies[0]?.agent).toBe('tagma-pipeline');
+    } finally {
+      await cleanupStagedPromptSendFixture();
+    }
+  });
+
+  test('asks for clarification before allocating a branch when the model cannot resolve a target', async () => {
+    const { baseUrl } = configureStagedPromptSendFixture();
+    usePipelineStore.setState({ manualNewPipelineYamlPath: null } as never);
+    sessionDirectories.set(`${baseUrl}:existing`, 'c:\\staged-prompt-repo\\.tagma');
+    pipelineIntentStructuredResult = {
+      kind: 'clarify',
+      targetCandidateId: null,
+      clarification: 'Do you want to edit the visible pipeline or create another one?',
+      candidateIds: ['pipeline-1'],
+    };
+
+    try {
+      await expect(useChatStore.getState().send('make one like this')).rejects.toThrow(
+        'Do you want to edit the visible pipeline or create another one?',
+      );
+      expect(stageStartBodies).toEqual([]);
+      expect(promptAsyncRequests).toEqual([]);
+      expect(useChatStore.getState().sendError).toContain('Candidates: Sample');
+      expect(classifierSessionIds.size).toBe(0);
     } finally {
       await cleanupStagedPromptSendFixture();
     }

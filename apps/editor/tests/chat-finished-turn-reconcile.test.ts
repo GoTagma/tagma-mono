@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { selectFinishedTurnQueueHead } from '../src/store/finished-turn-selector';
+import {
+  selectCurrentSessionFailedTurn,
+  selectFinishedTurnQueueHead,
+  selectNextReconcilableFinishedTurn,
+} from '../src/store/finished-turn-selector';
 import { useChatStore, type ChatFinishedTurn } from '../src/store/chat-store';
 import { createChatYamlLifecycleCancellationGuard } from '../src/utils/chat-yaml-lifecycle';
 import {
@@ -56,9 +60,69 @@ describe('finished chat turn reconciliation', () => {
     }
   });
 
-  test('wires App reconciliation to the tested queue-head selector', () => {
+  test('skips a failed turn so an independent later result can reconcile', () => {
+    const failed = {
+      ...finishedTurn('failed'),
+      reconcileFailure: { message: 'deterministic failure', attempt: 1, failedAt: Date.now() },
+    };
+    const ready = finishedTurn('ready');
+
+    expect(selectNextReconcilableFinishedTurn({ finishedTurnQueue: [failed, ready] })).toBe(ready);
+    expect(selectNextReconcilableFinishedTurn({ finishedTurnQueue: [failed] })).toBeUndefined();
+  });
+
+  test('does not start the next job until a just-failed active lifecycle releases', () => {
+    const failed = {
+      ...finishedTurn('active-failed'),
+      reconcileFailure: { message: 'deterministic failure', attempt: 1, failedAt: 1 },
+    };
+    const ready = finishedTurn('ready-after-failure');
+
+    expect(
+      selectNextReconcilableFinishedTurn({
+        activeChatYamlLifecycle: { turnId: failed.id },
+        finishedTurnQueue: [failed, ready],
+      }),
+    ).toBe(failed);
+    expect(
+      selectNextReconcilableFinishedTurn({
+        activeChatYamlLifecycle: null,
+        finishedTurnQueue: [failed, ready],
+      }),
+    ).toBe(ready);
+  });
+
+  test('shows a preserved failure only in its owning visible session', () => {
+    const first = {
+      ...finishedTurn('failed-a'),
+      sessionId: 'session-a',
+      reconcileFailure: { message: 'A failed', attempt: 1, failedAt: 1 },
+    };
+    const second = {
+      ...finishedTurn('failed-b'),
+      sessionId: 'session-b',
+      reconcileFailure: { message: 'B failed', attempt: 1, failedAt: 1 },
+    };
+
+    expect(
+      selectCurrentSessionFailedTurn({
+        currentSessionId: 'session-b',
+        finishedTurnQueue: [first, second],
+      }),
+    ).toBe(second);
+    expect(
+      selectCurrentSessionFailedTurn({
+        currentSessionId: 'session-c',
+        finishedTurnQueue: [first, second],
+      }),
+    ).toBeUndefined();
+  });
+
+  test('wires App reconciliation to the next independently reconcilable turn', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
-    expect(appSource).toContain('const finishedTurn = useChatStore(selectFinishedTurnQueueHead);');
+    expect(appSource).toContain(
+      'const finishedTurn = useChatStore(selectNextReconcilableFinishedTurn);',
+    );
   });
 
   test('keeps finished-turn reconciliation on the workspace lease after the active pipeline changes', () => {
@@ -169,8 +233,8 @@ describe('finished chat turn reconciliation', () => {
     const dispatchEnd = appSource.indexOf(']);', dispatchStart);
     const dispatchBlock = appSource.slice(dispatchStart, dispatchEnd);
 
-    expect(dispatchBlock).toContain('finishedTurnCount > 0');
-    expect(dispatchBlock).toContain('finishedTurnCount,');
+    expect(dispatchBlock).toContain('currentSessionFinishedTurnCount > 0');
+    expect(dispatchBlock).toContain('currentSessionFinishedTurnCount,');
   });
 
   test('establishes a failed-stage discard barrier before restoring session home', () => {

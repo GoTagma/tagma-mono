@@ -848,6 +848,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
         reconciling: chat.reconciling === true,
         reconcilingSessionId: chat.reconcilingSessionId ?? null,
         flushing: chat.flushing === true,
+        skipYamlReconciliation: chat.skipYamlReconciliation === true,
         pendingUserText: chat.pendingUserText ?? null,
         pendingUserTextSummary: contentSummary(chat.pendingUserText),
         queuedMessages: Array.isArray(chat.queuedMessages) ? chat.queuedMessages : [],

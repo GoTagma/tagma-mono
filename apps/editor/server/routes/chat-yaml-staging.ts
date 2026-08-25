@@ -7,6 +7,7 @@ import {
   clearChatYamlStageSessionRelocation,
   ChatYamlFinalizeWitnessError,
   ChatYamlStageLockOwnershipError,
+  ChatYamlStageRouteIntentError,
   ChatYamlStageSessionRelocationError,
   compileChatYamlStage,
   createChatYamlStage,
@@ -116,6 +117,22 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   const localBranch = parseLocalBranch(body.localBranch);
   const activeLocalBranch = parseLocalBranch(body.activeLocalBranch, 'activeLocalBranch');
   const trialId = optionalTrialId(body.trialId);
+  let independentRecovery: ChatYamlStageFinalizeInput['independentRecovery'];
+  if (body.independentRecovery !== undefined && body.independentRecovery !== null) {
+    const recovery = asRequestRecord(body.independentRecovery);
+    if (
+      typeof recovery.sessionId !== 'string' ||
+      !recovery.sessionId.trim() ||
+      typeof recovery.bindingRequestId !== 'string' ||
+      !recovery.bindingRequestId.trim()
+    ) {
+      throw new Error('independentRecovery identity is invalid.');
+    }
+    independentRecovery = {
+      sessionId: recovery.sessionId.trim(),
+      bindingRequestId: recovery.bindingRequestId.trim(),
+    };
+  }
   const forceForkReason = body.forceForkReason;
   if (
     forceForkReason !== undefined &&
@@ -136,6 +153,7 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
     ...(trialId !== undefined ? { trialId } : {}),
     ...(allowInvalid !== undefined ? { allowInvalid } : {}),
     ...(retainStage !== undefined ? { retainStage } : {}),
+    ...(independentRecovery ? { independentRecovery } : {}),
   };
 }
 
@@ -286,7 +304,9 @@ function stageErrorStatus(err: unknown): number {
 function respondStageError(res: express.Response, err: unknown): express.Response {
   return res.status(stageErrorStatus(err)).json({
     error: errorMessage(err),
-    ...(err instanceof ChatYamlFinalizeWitnessError ? { kind: err.kind } : {}),
+    ...(err instanceof ChatYamlFinalizeWitnessError || err instanceof ChatYamlStageRouteIntentError
+      ? { kind: err.kind }
+      : {}),
   });
 }
 
@@ -298,6 +318,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
       activePath?: unknown;
       requestedAction?: unknown;
       routeIntentRequired?: unknown;
+      pipelineBinding?: unknown;
     };
     if (
       body.activePath !== undefined &&
@@ -316,6 +337,31 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     if (body.routeIntentRequired !== undefined && typeof body.routeIntentRequired !== 'boolean') {
       return res.status(400).json({ error: 'routeIntentRequired must be a boolean.' });
     }
+    let pipelineBinding: {
+      sessionId: string;
+      bindingRequestId: string;
+      intent: 'create' | 'edit';
+    } | null = null;
+    if (body.pipelineBinding !== undefined && body.pipelineBinding !== null) {
+      if (typeof body.pipelineBinding !== 'object' || Array.isArray(body.pipelineBinding)) {
+        return res.status(400).json({ error: 'pipelineBinding must be an object or null.' });
+      }
+      const candidate = body.pipelineBinding as Record<string, unknown>;
+      if (
+        typeof candidate.sessionId !== 'string' ||
+        !candidate.sessionId.trim() ||
+        typeof candidate.bindingRequestId !== 'string' ||
+        !candidate.bindingRequestId.trim() ||
+        !isChatPipelineRouteIntent(candidate.intent)
+      ) {
+        return res.status(400).json({ error: 'pipelineBinding identity or intent is invalid.' });
+      }
+      pipelineBinding = {
+        sessionId: candidate.sessionId.trim(),
+        bindingRequestId: candidate.bindingRequestId.trim(),
+        intent: candidate.intent,
+      };
+    }
     try {
       return res.json(
         createChatYamlStage(ws, {
@@ -324,6 +370,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
             ? body.requestedAction
             : null,
           routeIntentRequired: body.routeIntentRequired === true,
+          pipelineBinding,
         }),
       );
     } catch (err) {
@@ -462,6 +509,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
       stageId?: unknown;
       relativePath?: unknown;
       routeIntent?: unknown;
+      independentRecovery?: unknown;
     };
     if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
       return res.status(400).json({ error: 'stageId is required.' });
@@ -472,6 +520,12 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     if (body.routeIntent !== undefined && !isChatPipelineRouteIntent(body.routeIntent)) {
       return res.status(400).json({ error: 'routeIntent must be create or edit.' });
     }
+    if (body.independentRecovery !== undefined && typeof body.independentRecovery !== 'boolean') {
+      return res.status(400).json({ error: 'independentRecovery must be a boolean.' });
+    }
+    if (body.independentRecovery === true && body.routeIntent !== undefined) {
+      return res.status(400).json({ error: 'independentRecovery cannot include routeIntent.' });
+    }
     const stageId = body.stageId.trim();
     try {
       assertRequestOwnsChatYamlStage(req, ws, stageId);
@@ -481,6 +535,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
           stageId,
           body.relativePath.trim(),
           isChatPipelineRouteIntent(body.routeIntent) ? body.routeIntent : undefined,
+          body.independentRecovery === true,
         ),
       );
     } catch (err) {
@@ -495,6 +550,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
       stageId?: unknown;
       relativePath?: unknown;
       trialId?: unknown;
+      independentRecovery?: unknown;
     };
     if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
       return res.status(400).json({ error: 'stageId is required.' });
@@ -504,6 +560,9 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     }
     if (typeof body.trialId !== 'string' || !body.trialId.trim()) {
       return res.status(400).json({ error: 'trialId is required.' });
+    }
+    if (body.independentRecovery !== undefined && typeof body.independentRecovery !== 'boolean') {
+      return res.status(400).json({ error: 'independentRecovery must be a boolean.' });
     }
     const stageId = body.stageId.trim();
     const relativePath = body.relativePath.trim();
@@ -516,6 +575,7 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
             stageId,
             relativePath,
             trialId,
+            independentRecovery: body.independentRecovery === true,
           }),
         ),
       );

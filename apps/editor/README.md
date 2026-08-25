@@ -95,10 +95,21 @@ user-owned support files, runtime mode, capability report, and Host prerequisite
 prompt and triggered closures always run again. The live Trial status includes a Host heartbeat
 and elapsed time during long, otherwise-silent model tasks.
 
+Desktop Chat routes pipeline work in two phases. A temporary tool-free model session first returns a
+JSON-Schema classification: discussion, read-only diagnosis, create, edit of one Host-issued pipeline
+candidate, or clarification. Tagma allocates no pipeline for discussion/diagnosis and asks rather than
+guessing when a write target is ambiguous.
+
+Every mutating Chat session owns a Host-authenticated pipeline branch. Sessions may clone the same
+read-only origin, but they never share a writable target; a session reuses only its own published
+branch on later edits. Finished branches reconcile independently, so one preserved failure does not
+block other sessions. Host Trial remains a workspace-wide safety barrier while it is running.
+
 When Chat preserves an unverified fork instead of overwriting another pipeline, the pipeline picker
 keeps that unchanged branch under a collapsed **Failed Chat drafts** section. The branch remains
 openable and explicitly removable; editing it or replacing it with a newer successful result returns
-it to the ordinary pipeline list.
+it to the ordinary pipeline list. A legacy result whose route provenance is missing offers **Save as
+independent pipeline** instead of repeating a deterministic Retry.
 
 ## Production diagnostics for coding agents
 

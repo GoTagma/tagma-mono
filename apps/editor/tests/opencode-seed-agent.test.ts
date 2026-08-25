@@ -13,6 +13,7 @@ import {
   buildTagmaPlanDelegateSkill,
   buildTagmaPipelineAgent,
   buildTagmaPipelineDiagnosisAgent,
+  buildTagmaPipelineIntentClassifierAgent,
   buildTagmaPipelinePlannerAgent,
   buildTagmaPipelineSectionBuilderAgent,
   buildTagmaPlacementTool,
@@ -418,6 +419,17 @@ test('every staged file-reading specialist denies unscoped discovery', () => {
   expect(general).toContain('external_directory: deny');
 });
 
+test('pipeline intent classifier is hidden, tool-free, and schema-output only', () => {
+  const doc = buildTagmaPipelineIntentClassifierAgent();
+
+  expect(doc).toContain('name: tagma-pipeline-intent-classifier');
+  expect(doc).toContain('hidden: true');
+  expect(doc).toContain('task: false');
+  expect(doc).toContain('edit: deny');
+  expect(doc).toContain('The Host supplies the JSON Schema');
+  expect(doc).not.toContain('TAGMA_ROUTE_MODE');
+});
+
 test('router prompt stays compact with the read-only diagnosis lane', () => {
   // Keep classification overhead bounded even after adding the diagnosis lane.
   expect(buildTagmaRouterAgent().length).toBeLessThan(4000);
@@ -559,10 +571,13 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('Fill current manual-New draft');
   expect(doc).toContain('Edit current');
   expect(doc).toContain('Create/fill new');
-  expect(doc).toContain('A router-classified create without a Host action marker');
-  expect(doc).toContain('fresh unused sibling path');
+  expect(doc).toContain('`<pipeline-binding intent="create|edit">`');
+  expect(doc).toContain("session's unique branch");
+  expect(doc).toContain(
+    'A legacy router-classified create may use only a fresh unused sibling path',
+  );
   expect(doc).toContain('must not modify `<current-file>` or any inventoried YAML');
-  expect(doc).toContain('Obey `TAGMA_ROUTE_MODE: <stage-id> create|edit` over prose');
+  expect(doc).toContain('Obey a legacy `TAGMA_ROUTE_MODE: <stage-id> create|edit` over prose');
   expect(doc).toContain('## Manifest-Guided YAML Edits');
   expect(doc).toContain(
     'read the same-folder `<stem>.manifest.json` before reading or editing YAML',
@@ -1205,15 +1220,17 @@ test('tagma-pipeline agent treats explicit creation as higher priority than exis
   );
 
   expect(pipeline).toContain('Host-selected manual New draft at `<current-file>`');
-  expect(pipeline).toContain('edit `<current-file>` in place');
+  expect(pipeline).toContain('author through its session-owned binding');
   expect(pipeline).toContain('creation wins over name matches');
-  expect(pipeline).toContain('an exact create marker uses its Host-selected target');
   expect(pipeline).toContain(
-    'A router-classified create without a Host action marker uses a fresh unused sibling',
+    'an exact create action or pipeline binding uses its Host-selected target',
+  );
+  expect(pipeline).toContain(
+    'A legacy router-classified create without either marker uses a fresh unused sibling',
   );
   expect(pipeline).toContain('inventoried YAMLs are collision context and must remain unchanged');
   expect(pipeline).toContain(
-    'Without a Host action marker, never repurpose an existing `<current-file>` as a new pipeline',
+    'Without a Host action or pipeline-binding marker, never repurpose an existing `<current-file>` as a new pipeline',
   );
   expect(pipeline).toContain(
     'For every new staged YAML, write the final YAML after the design gate',

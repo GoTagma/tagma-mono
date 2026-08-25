@@ -72,7 +72,7 @@ import {
   type ChatYamlPostAction,
   type ChatYamlRepairEvidence,
 } from './store/chat-store';
-import { selectFinishedTurnQueueHead } from './store/finished-turn-selector';
+import { selectNextReconcilableFinishedTurn } from './store/finished-turn-selector';
 import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
 import {
@@ -373,7 +373,9 @@ export function App() {
   const yamlEditLockLocal = useYamlEditLockStore((s) => s.local);
   const yamlEditLockReason = useYamlEditLockStore((s) => s.reason);
   const queuedMessageCount = useChatStore((s) => s.queuedMessages.length);
-  const finishedTurnCount = useChatStore((s) => s.finishedTurnQueue.length);
+  const currentSessionFinishedTurnCount = useChatStore(
+    (s) => s.finishedTurnQueue.filter((turn) => turn.sessionId === s.currentSessionId).length,
+  );
   const chatSending = useChatStore((s) => s.sending);
   const chatReconciling = useChatStore((s) => s.reconciling);
   const chatFlushing = useChatStore((s) => s.flushing);
@@ -393,8 +395,15 @@ export function App() {
 
   useEffect(() => {
     if (queuedMessageCount === 0) return;
-    if (finishedTurnCount > 0) return;
-    if (chatSending || chatReconciling || chatFlushing || activeChatYamlLifecycle) return;
+    if (currentSessionFinishedTurnCount > 0) return;
+    if (
+      chatSending ||
+      chatReconciling ||
+      chatFlushing ||
+      activeChatYamlLifecycle?.hostTrialActive === true ||
+      activeChatYamlLifecycle?.sessionId === useChatStore.getState().currentSessionId
+    )
+      return;
     if (yamlEditLocked && !yamlEditLockLocal) return;
     useChatStore.getState().dispatchQueuedMessagesIfReady();
   }, [
@@ -402,7 +411,7 @@ export function App() {
     chatFlushing,
     chatReconciling,
     chatSending,
-    finishedTurnCount,
+    currentSessionFinishedTurnCount,
     queuedMessageCount,
     yamlEditLockLocal,
     yamlEditLocked,
@@ -1374,7 +1383,7 @@ export function App() {
   // bot-bridge turns retain the narrower current-YAML refresh path. No result
   // is auto-opened, and the chat link is published only after repair
   // continuations and reconciliation end.
-  const finishedTurn = useChatStore(selectFinishedTurnQueueHead);
+  const finishedTurn = useChatStore(selectNextReconcilableFinishedTurn);
   const chatBootstrapStatus = useChatStore((state) => state.bootstrapStatus);
   useEffect(() => {
     if (!finishedTurn || finishedTurn.reconcileFailure) return;
@@ -1516,22 +1525,31 @@ export function App() {
             api.listChatYamlStage(snapshot.staging.id, snapshot.workDir),
           );
           if (cancelled || (await discardCancelledStage())) return;
-          const routeIntent = stage.routeIntentRequired
-            ? resolveChatPipelineRouteIntent(finishedSessionMessages, snapshot.staging.id)
-            : null;
+          const independentRecoveryRequestId =
+            finishedTurn.independentRecoveryRequestId ?? snapshot.independentRecoveryRequestId;
+          const independentRecoveryRequested =
+            !!independentRecoveryRequestId && !!finishedSessionId;
+          const routeIntent =
+            !independentRecoveryRequested && stage.routeIntentRequired
+              ? resolveChatPipelineRouteIntent(finishedSessionMessages, snapshot.staging.id)
+              : null;
           const stagedTargets = detectChatStagedYamlTargets(snapshot, stage.entries).filter(
             (target) =>
               !(finishedTurn.completedYamlRelativePaths ?? []).some((completedPath) =>
                 sameChatYamlRelativePath(completedPath, target.relativePath, snapshot.workDir),
               ),
           );
-          useChatStore.getState().setChatYamlLifecycleTargetPaths(
-            finishedTurn.id,
-            stagedTargets.flatMap((target) => [
-              ...(target.sourcePath ? [target.sourcePath] : []),
-              `${snapshot.workDir}/.tagma/${target.relativePath}`,
-            ]),
-          );
+          useChatStore
+            .getState()
+            .setChatYamlLifecycleTargetPaths(finishedTurn.id, [
+              ...stagedTargets.flatMap((target) => [
+                ...(target.sourcePath ? [target.sourcePath] : []),
+                `${snapshot.workDir}/.tagma/${target.relativePath}`,
+              ]),
+              ...(stage.pipelineBinding
+                ? [`${snapshot.workDir}/.tagma/${stage.pipelineBinding.targetRelativePath}`]
+                : []),
+            ]);
           const stagedTarget = stagedTargets[0] ?? null;
           if (!stagedTarget) {
             removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
@@ -1541,6 +1559,15 @@ export function App() {
             clearFinishedPostChatYamlAction();
             return;
           }
+          const independentRecovery = independentRecoveryRequested
+            ? {
+                sessionId: finishedSessionId!,
+                bindingRequestId: chatYamlTargetTrialId(
+                  independentRecoveryRequestId!,
+                  stagedTarget.relativePath,
+                ),
+              }
+            : null;
           const retainStageForMoreTargets = stagedTargets.length > 1;
           const reconcileLiveSourceDriftOnly = false;
           const authoritativeStagedTarget = stage.entries.find(
@@ -1551,9 +1578,11 @@ export function App() {
           if (!authoritativeStagedTarget) {
             throw new Error('The staged pipeline target disappeared before verification.');
           }
-          if (finishedSessionId) {
+          if (finishedSessionId && !independentRecoveryRequested) {
             const workspaceRoot = snapshot.workDir.replace(/\\/gu, '/').replace(/\/+$/u, '');
-            const relativeTarget = stagedTarget.relativePath
+            const relativeTarget = (
+              stage.pipelineBinding?.targetRelativePath ?? stagedTarget.relativePath
+            )
               .replace(/\\/gu, '/')
               .replace(/^\/+/u, '');
             await useChatStore
@@ -1563,6 +1592,7 @@ export function App() {
                 snapshot.workDir,
                 `${workspaceRoot}/.tagma/${relativeTarget}`,
                 'staged-target',
+                stage.pipelineBinding,
               );
           }
           if (authoritativeStagedTarget.sourcePath === null && resultWorkspaceVisible()) {
@@ -1610,6 +1640,7 @@ export function App() {
                     stagedTarget.relativePath,
                     snapshot.workDir,
                     routeIntent ?? undefined,
+                    independentRecovery !== null,
                   ),
                 );
           if (cancelled || (await discardCancelledStage())) return;
@@ -1688,6 +1719,7 @@ export function App() {
                   stagedTarget.relativePath,
                   targetTrialId,
                   snapshot.workDir,
+                  independentRecovery !== null,
                 ),
               );
             };
@@ -1924,6 +1956,7 @@ export function App() {
                   trialId: targetTrialId,
                   allowInvalid: !compile.success,
                   retainStage: retainStageForMoreTargets,
+                  ...(independentRecovery ? { independentRecovery } : {}),
                 },
                 snapshot.workDir,
               ),
@@ -1965,7 +1998,13 @@ export function App() {
           if (finishedSessionId) {
             await useChatStore
               .getState()
-              .syncSessionYamlTarget(finishedSessionId, snapshot.workDir, finalEntry.path);
+              .syncSessionYamlTarget(
+                finishedSessionId,
+                snapshot.workDir,
+                finalEntry.path,
+                'reconciled-target',
+                finalized.pipelineBinding ?? null,
+              );
           }
           const finalTarget = {
             kind:
@@ -2029,6 +2068,9 @@ export function App() {
                 localBranchPersisted: finalized.localBranchPersisted,
                 resultPath: finalEntry.path,
                 compileSuccess: compile.success,
+                ...(finalized.pipelineBinding
+                  ? { pipelineBinding: finalized.pipelineBinding }
+                  : {}),
                 ...(applicableTrialRun ? { trialRunSuccess: applicableTrialRun.success } : {}),
                 trialVerification: finalized.trialVerification,
               },
@@ -2177,6 +2219,9 @@ export function App() {
             .markFinishedTurnReconciliationFailed(
               finishedTurn.id,
               err instanceof Error ? err.message : String(err),
+              typeof (err as { kind?: unknown })?.kind === 'string'
+                ? (err as { kind: string }).kind
+                : undefined,
             );
         } else {
           console.warn(

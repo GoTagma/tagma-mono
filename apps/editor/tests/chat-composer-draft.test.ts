@@ -426,6 +426,51 @@ describe('composer error-context attachments', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
+  test('does not let another sessions failed result queue the visible sessions prompt', async () => {
+    const promptRequests: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === '/api/opencode/chat/ensure') {
+        return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+      }
+      if (new URL(url, 'http://local.test').pathname === '/event') {
+        return Promise.resolve(readyEventStreamResponse());
+      }
+      if (url === 'http://opencode.test/session/existing') {
+        return Promise.resolve(jsonResponse({ id: 'existing' }));
+      }
+      if (url === 'http://opencode.test/session/existing/prompt_async') {
+        promptRequests.push(url);
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    }) as typeof fetch;
+
+    const otherTurn = {
+      ...finishedTurn('other-failed'),
+      sessionId: 'other-session',
+      reconcileFailure: {
+        message: 'Preserved other result.',
+        attempt: 1,
+        failedAt: 1,
+      },
+    };
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      model: { providerID: 'p', modelID: 'm' },
+      agent: 'tagma-router',
+      finishedTurnQueue: [otherTurn],
+      lastFinishedTurn: otherTurn,
+    } as Partial<ChatState>);
+
+    await useChatStore.getState().send('Continue this independent session.');
+
+    expect(useChatStore.getState().queuedMessages).toEqual([]);
+    expect(useChatStore.getState().sending).toBe(true);
+    await waitFor(() => promptRequests.length === 1);
+  });
+
   test('marks and retries reconciliation without changing the finished turn or stage identity', () => {
     const turn = finishedTurn('finished-retry');
     const snapshot = turn.yamlSnapshotBeforeSend;
@@ -469,6 +514,41 @@ describe('composer error-context attachments', () => {
       message: 'The retry failed.',
       attempt: 2,
     });
+  });
+
+  test('reclassifies missing route provenance as independent recovery instead of futile Retry', () => {
+    const turn = finishedTurn('route-unresolved');
+    useChatStore.setState({
+      finishedTurnQueue: [turn],
+      lastFinishedTurn: turn,
+    } as Partial<ChatState>);
+
+    useChatStore
+      .getState()
+      .markFinishedTurnReconciliationFailed(
+        turn.id,
+        'The Host could not authenticate the legacy route evidence.',
+        'route-unresolved',
+      );
+    const failed = useChatStore.getState().finishedTurnQueue[0]!;
+    expect(failed.reconcileFailure).toMatchObject({
+      kind: 'route-unresolved',
+      retryable: false,
+      attempt: 1,
+    });
+
+    useChatStore.getState().retryFinishedTurnReconciliation(turn.id);
+    expect(useChatStore.getState().finishedTurnQueue[0]).toBe(failed);
+
+    useChatStore.getState().recoverFinishedTurnAsIndependent(turn.id);
+    const recovered = useChatStore.getState().finishedTurnQueue[0]!;
+    expect(recovered.reconcileFailure).toBeUndefined();
+    expect(recovered.independentRecoveryRequestId).toBe('recovery_route-unresolved');
+    expect(recovered.yamlSnapshotBeforeSend).not.toBe(turn.yamlSnapshotBeforeSend);
+    expect(recovered.yamlSnapshotBeforeSend?.staging).toBe(turn.yamlSnapshotBeforeSend?.staging);
+    expect(recovered.yamlSnapshotBeforeSend?.independentRecoveryRequestId).toBe(
+      'recovery_route-unresolved',
+    );
   });
 
   test('abandons only a failed reconciliation and preserves queued prompts as start-fresh', () => {

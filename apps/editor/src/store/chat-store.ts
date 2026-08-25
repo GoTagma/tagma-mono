@@ -108,7 +108,18 @@ import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 import {
+  buildChatPipelineIntentCandidates,
+  type ChatPipelineIntentCandidate,
+} from '../utils/chat-pipeline-intent-classifier';
+import {
+  classifyChatPipelineIntentWithModel,
+  createOpencodeChatPipelineIntentGateway,
+  type ResolvedChatPipelineIntent,
+} from '../utils/chat-pipeline-intent-runtime';
+import {
+  CREATE_NEW_PIPELINE_ACTION_KIND,
   resolveHostPipelineRequestedAction,
+  type ChatPipelineRouteIntent,
   type PipelineRequestedActionKind,
 } from '../../shared/requested-action.js';
 import { TRIAL_STREAM_EVIDENCE_BYTES } from '../../shared/chat-pipeline-trial-evidence.js';
@@ -161,6 +172,7 @@ import {
   type OpencodeSessionOwnershipFields,
   parseTagmaSessionMetadata,
   sameOpencodeSessionPath,
+  type TagmaSessionPipelineBinding,
 } from '../../shared/opencode-session-metadata.js';
 
 // Re-export for backward compatibility — tests and other consumers import this
@@ -302,7 +314,10 @@ export interface ChatFinishedTurn {
     message: string;
     attempt: number;
     failedAt: number;
+    kind?: 'transient' | 'route-unresolved';
+    retryable?: boolean;
   };
+  independentRecoveryRequestId?: string;
 }
 
 export interface ChatAbortRecovery {
@@ -362,6 +377,7 @@ type ChatSessionRuntimeState = {
   turnHealth: ChatTurnHealth | null;
   pendingActivity: ActivityEvent[];
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
+  skipYamlReconciliation: boolean;
   postChatYamlAction: ChatYamlPostAction | null;
 };
 
@@ -498,6 +514,7 @@ interface ChatStore {
    * as bot bridge; reconciliation then refreshes only the current YAML.
    */
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
+  skipYamlReconciliation: boolean;
   postChatYamlAction: ChatYamlPostAction | null;
   setPostChatYamlAction: (action: ChatYamlPostAction | null, sessionId?: string | null) => void;
   clearPostChatYamlAction: (sessionId?: string | null) => void;
@@ -513,8 +530,13 @@ interface ChatStore {
   dismissSessionYamlResultToast: (sessionId: string) => void;
   acknowledgeFinishedTurn: (turnId: string) => void;
   markFinishedTurnYamlTargetCompleted: (turnId: string, relativePath: string) => void;
-  markFinishedTurnReconciliationFailed: (turnId: string, message: string) => void;
+  markFinishedTurnReconciliationFailed: (
+    turnId: string,
+    message: string,
+    errorKind?: string,
+  ) => void;
   retryFinishedTurnReconciliation: (turnId: string) => void;
+  recoverFinishedTurnAsIndependent: (turnId: string) => void;
   abandonFinishedTurnReconciliation: (turnId: string) => ChatFinishedTurn | null;
   restoreAbandonedFinishedTurnReconciliation: (turn: ChatFinishedTurn, message: string) => boolean;
   /** Last send error — rendered as a dismissable banner above the composer. */
@@ -647,6 +669,7 @@ interface ChatStore {
     workspaceKey: string,
     yamlPath: string,
     reason?: 'staged-target' | 'reconciled-target' | 'branch-relocated',
+    pipelineBinding?: TagmaSessionPipelineBinding | null,
   ) => Promise<void>;
   dispatchQueuedMessagesIfReady: () => boolean;
   cancelQueuedMessage: (id: string) => void;
@@ -723,6 +746,8 @@ interface SessionCreateBodyWithMetadata {
 
 const FORCED_CHAT_AGENT = 'tagma-router';
 const PIPELINE_AUTHORING_AGENT = 'tagma-pipeline';
+const PIPELINE_DIAGNOSIS_AGENT = 'tagma-pipeline-diagnosis';
+const GENERAL_DISCUSSION_AGENT = 'tagma-general-discussion';
 const TRIAL_PLANNER_AGENT = 'tagma-trial-planner';
 const DESKTOP_CHAT_TITLE_MAX_LENGTH = 80;
 const DEFAULT_CHAT_REASONING_EFFORT: ChatReasoningEffort = null;
@@ -901,18 +926,38 @@ function persistChangedFinishedTurnQueues(
   }
 }
 
+export function chatReconciliationFailurePolicy(
+  message: string,
+  errorKind?: string,
+): {
+  kind: 'transient' | 'route-unresolved';
+  retryable: boolean;
+} {
+  if (
+    errorKind === 'route-unresolved' ||
+    message.includes('requires a current stage-bound router target mode') ||
+    message.includes('router target mode cannot change within one stage')
+  ) {
+    return { kind: 'route-unresolved', retryable: false };
+  }
+  return { kind: 'transient', retryable: true };
+}
+
 function withFinishedTurnReconcileFailure(
   turn: ChatFinishedTurn,
   message: string,
+  errorKind?: string,
 ): ChatFinishedTurn {
   const attempt =
     (finishedTurnReconciliationAttempts.get(turn) ?? turn.reconcileFailure?.attempt ?? 0) + 1;
+  const policy = chatReconciliationFailurePolicy(message, errorKind);
   const next = {
     ...turn,
     reconcileFailure: {
       message,
       attempt,
       failedAt: Date.now(),
+      ...policy,
     },
   };
   finishedTurnReconciliationAttempts.set(next, attempt);
@@ -1823,6 +1868,7 @@ function buildDesktopChatSessionMetadata(
   model: ModelPick | null,
   reasoningEffort: ChatReasoningEffort,
   yamlPath?: string | null,
+  pipelineBinding?: TagmaSessionPipelineBinding | null,
 ): Record<string, unknown> {
   const resolvedYamlPath = yamlPath === undefined ? usePipelineStore.getState().yamlPath : yamlPath;
   return buildTagmaSessionMetadata({
@@ -1832,11 +1878,13 @@ function buildDesktopChatSessionMetadata(
     model,
     variant: reasoningEffort,
     reason,
+    pipelineBinding,
   });
 }
 
 export function chatYamlSnapshotLiveTargetPath(snapshot: ChatYamlSnapshot): string | null {
-  const relativePath = snapshot.staging.activeRelativePath;
+  const relativePath =
+    snapshot.staging.pipelineBinding?.targetRelativePath ?? snapshot.staging.activeRelativePath;
   if (!relativePath) return snapshot.activePath;
   const workspaceRoot = snapshot.workDir.replace(/\\/gu, '/').replace(/\/+$/u, '');
   const portableRelativePath = relativePath.replace(/\\/gu, '/').replace(/^\/+/u, '');
@@ -1885,7 +1933,11 @@ async function updateDesktopChatSessionMetadata(
   model: ModelPick | null,
   reasoningEffort: ChatReasoningEffort,
   title?: string | null,
-  options: { required?: boolean; yamlPath?: string | null } = {},
+  options: {
+    required?: boolean;
+    yamlPath?: string | null;
+    pipelineBinding?: TagmaSessionPipelineBinding | null;
+  } = {},
 ): Promise<void> {
   try {
     const body: OpencodeSessionUpdateV2Input = {
@@ -1896,6 +1948,7 @@ async function updateDesktopChatSessionMetadata(
         model,
         reasoningEffort,
         options.yamlPath,
+        options.pipelineBinding,
       ),
     };
     if (title) body.title = title;
@@ -2936,20 +2989,31 @@ function clearPendingPartsForSession(sessionID: string | null): void {
 function canQueueFreshPromptDuringBarrier(
   state: Pick<
     ChatStore,
-    'reconciling' | 'flushing' | 'activeChatYamlLifecycle' | 'finishedTurnQueue'
+    | 'reconciling'
+    | 'flushing'
+    | 'activeChatYamlLifecycle'
+    | 'currentSessionId'
+    | 'finishedTurnQueue'
   >,
 ): boolean {
   return (
-    state.finishedTurnQueue.length > 0 ||
+    currentSessionHasFinishedTurn(state) ||
     state.reconciling ||
     state.flushing ||
-    !!state.activeChatYamlLifecycle ||
+    state.activeChatYamlLifecycle?.hostTrialActive === true ||
+    state.activeChatYamlLifecycle?.sessionId === state.currentSessionId ||
     hasExternalChatPromptBarrier()
   );
 }
 
 function hasExternalChatPromptBarrier(): boolean {
   return isYamlEditLocked() && !isLocalYamlEditLockHeldForWorkspace();
+}
+
+function currentSessionHasFinishedTurn(
+  state: Pick<ChatStore, 'currentSessionId' | 'finishedTurnQueue'>,
+): boolean {
+  return state.finishedTurnQueue.some((turn) => turn.sessionId === state.currentSessionId);
 }
 
 function canDispatchFreshQueuedPrompt(
@@ -2961,6 +3025,7 @@ function canDispatchFreshQueuedPrompt(
     | 'flushing'
     | 'activeChatYamlLifecycle'
     | 'abortRecovery'
+    | 'currentSessionId'
     | 'finishedTurnQueue'
   >,
 ): boolean {
@@ -2969,9 +3034,11 @@ function canDispatchFreshQueuedPrompt(
     !state.pendingUserText &&
     !state.reconciling &&
     !state.flushing &&
-    !state.activeChatYamlLifecycle &&
+    (!state.activeChatYamlLifecycle ||
+      (!state.activeChatYamlLifecycle.hostTrialActive &&
+        state.activeChatYamlLifecycle.sessionId !== state.currentSessionId)) &&
     !state.abortRecovery &&
-    state.finishedTurnQueue.length === 0 &&
+    !currentSessionHasFinishedTurn(state) &&
     !hasExternalChatPromptBarrier()
   );
 }
@@ -2982,7 +3049,7 @@ function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
     state.queuedDispatchMode ??
     (state.queuedMessages.length > 0 ? ('reuse-logical-turn' as const) : null);
   if (!mode) return false;
-  if (state.finishedTurnQueue.length > 0) {
+  if (currentSessionHasFinishedTurn(state)) {
     if (state.queuedMessages.length > 0 && state.queuedDispatchMode !== 'start-fresh') {
       set({ queuedDispatchMode: 'start-fresh' });
     }
@@ -3068,8 +3135,11 @@ function finishChatTurn(
       }),
       finalAssistantMessageId(prev),
     );
-    const finishedTurnQueue = [...prev.finishedTurnQueue, finishedTurn];
-    if (finishedTurn.yamlSnapshotBeforeSend) {
+    const shouldReconcileYaml = !prev.skipYamlReconciliation;
+    const finishedTurnQueue = shouldReconcileYaml
+      ? [...prev.finishedTurnQueue, finishedTurn]
+      : prev.finishedTurnQueue;
+    if (shouldReconcileYaml && finishedTurn.yamlSnapshotBeforeSend) {
       persistFinishedTurnQueueForWorkspace(
         finishedTurn.yamlSnapshotBeforeSend.workDir,
         finishedTurnQueue,
@@ -3081,7 +3151,7 @@ function finishChatTurn(
       sending: false,
       pendingUserText: null,
       lastSendingEndedAt: endedAt,
-      lastFinishedTurn: finishedTurn,
+      lastFinishedTurn: shouldReconcileYaml ? finishedTurn : prev.lastFinishedTurn,
       finishedTurnQueue,
       queuedDispatchMode: prev.queuedMessages.length > 0 ? 'start-fresh' : prev.queuedDispatchMode,
       turnStartedAt: null,
@@ -3091,6 +3161,7 @@ function finishChatTurn(
       turnHealth: null,
       pendingActivity: [],
       yamlSnapshotBeforeSend: null,
+      skipYamlReconciliation: false,
     };
   });
 }
@@ -3779,6 +3850,7 @@ function idleSessionRuntimeState(
     turnHealth: null,
     pendingActivity: [],
     yamlSnapshotBeforeSend: null,
+    skipYamlReconciliation: false,
     postChatYamlAction: null,
   };
 }
@@ -3801,6 +3873,7 @@ function captureSessionRuntimeState(state: ChatStore): ChatSessionRuntimeState {
     turnHealth: state.turnHealth,
     pendingActivity: state.pendingActivity,
     yamlSnapshotBeforeSend: state.yamlSnapshotBeforeSend,
+    skipYamlReconciliation: state.skipYamlReconciliation,
     postChatYamlAction: state.postChatYamlAction,
   };
 }
@@ -3823,6 +3896,7 @@ function runtimePatch(runtime: ChatSessionRuntimeState): Partial<ChatStore> {
     turnHealth: runtime.turnHealth,
     pendingActivity: runtime.pendingActivity,
     yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
+    skipYamlReconciliation: runtime.skipYamlReconciliation,
     postChatYamlAction: runtime.postChatYamlAction,
   };
 }
@@ -4094,6 +4168,7 @@ function finishSessionRuntime(
     turnHealth: null,
     pendingActivity: [],
     yamlSnapshotBeforeSend: null,
+    skipYamlReconciliation: false,
   };
 }
 
@@ -4119,8 +4194,11 @@ function finishHiddenSession(
       }),
       finalAssistantMessageId(runtime),
     );
-    const finishedTurnQueue = [...prev.finishedTurnQueue, finishedTurn];
-    if (finishedTurn.yamlSnapshotBeforeSend) {
+    const shouldReconcileYaml = !runtime.skipYamlReconciliation;
+    const finishedTurnQueue = shouldReconcileYaml
+      ? [...prev.finishedTurnQueue, finishedTurn]
+      : prev.finishedTurnQueue;
+    if (shouldReconcileYaml && finishedTurn.yamlSnapshotBeforeSend) {
       persistFinishedTurnQueueForWorkspace(
         finishedTurn.yamlSnapshotBeforeSend.workDir,
         finishedTurnQueue,
@@ -4138,7 +4216,7 @@ function finishHiddenSession(
         sessionId,
       ),
       lastSendingEndedAt: endedAt,
-      lastFinishedTurn: finishedTurn,
+      lastFinishedTurn: shouldReconcileYaml ? finishedTurn : prev.lastFinishedTurn,
       finishedTurnQueue,
     };
   });
@@ -4184,6 +4262,7 @@ function botTurnPatch(turnStartedAt: number): Partial<ChatStore> {
       },
     ],
     yamlSnapshotBeforeSend: null,
+    skipYamlReconciliation: false,
     postChatYamlAction: null,
   };
 }
@@ -4631,7 +4710,15 @@ async function promptOpencode(
           ),
         })
       : null;
-  const dispatchAgent = requestedAction ? PIPELINE_AUTHORING_AGENT : promptAgent;
+  let dispatchAgent = requestedAction ? PIPELINE_AUTHORING_AGENT : promptAgent;
+  let pipelineBindingIntent: ChatPipelineRouteIntent | null = requestedAction
+    ? requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+      ? 'create'
+      : 'edit'
+    : null;
+  let stageActivePath = pipeline.yamlPath;
+  let semanticRoute: ResolvedChatPipelineIntent | null = null;
+  let semanticCandidates: ChatPipelineIntentCandidate[] = [];
   const initialEditorBaseline =
     !inheritedSnapshot && preSendWorkDir
       ? {
@@ -4691,10 +4778,71 @@ async function promptOpencode(
       turnHealth: null,
       pendingActivity: [requestSent],
       yamlSnapshotBeforeSend: inheritedSnapshot,
+      skipYamlReconciliation: false,
       ...(opts.internal ? {} : { postChatYamlAction: null }),
     };
     if (dispatchSessionIsVisible()) set({ sendError: null, completionWarning: null });
     applyRuntimePatchToSession(get, set, sessionIdAtDispatch, startedRuntime);
+
+    const client = await getOpencodeClient(workspaceKeyAtStart);
+    assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
+    if (!opts.internal && !inheritedSnapshot && requestedAction === null && preSendWorkDir) {
+      const inventory = await api.listWorkspaceYamls(workspaceKeyAtStart);
+      assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
+      const sessionOwnedPath =
+        sessionYamlResultAtDispatch?.reconcile?.resultPath ??
+        sessionYamlResultAtDispatch?.path ??
+        null;
+      semanticCandidates = buildChatPipelineIntentCandidates(inventory.entries, {
+        currentCanvasPath: pipeline.yamlPath,
+        sessionOwnedPath,
+        manualNewDraftPath: pipeline.manualNewPipelineYamlPath,
+      });
+      semanticRoute = await classifyChatPipelineIntentWithModel(
+        {
+          userText: (opts.context ?? '') + text,
+          candidates: semanticCandidates,
+          model,
+          variant: reconcileModelVariant(providers, model, reasoningEffort),
+        },
+        await createOpencodeChatPipelineIntentGateway(workspaceKeyAtStart),
+      );
+      assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
+      switch (semanticRoute.kind) {
+        case 'create':
+          pipelineBindingIntent = 'create';
+          dispatchAgent = PIPELINE_AUTHORING_AGENT;
+          break;
+        case 'edit':
+          pipelineBindingIntent = 'edit';
+          stageActivePath = semanticRoute.target.path;
+          dispatchAgent = PIPELINE_AUTHORING_AGENT;
+          break;
+        case 'diagnosis':
+          pipelineBindingIntent = null;
+          stageActivePath = semanticRoute.target?.path ?? pipeline.yamlPath;
+          dispatchAgent = PIPELINE_DIAGNOSIS_AGENT;
+          break;
+        case 'discussion':
+          pipelineBindingIntent = null;
+          dispatchAgent = GENERAL_DISCUSSION_AGENT;
+          break;
+        case 'clarify': {
+          const candidateLabels = semanticRoute.candidates
+            .map((candidate) => candidate.pipelineName ?? candidate.path)
+            .join(', ');
+          const clarification = candidateLabels
+            ? `${semanticRoute.question} Candidates: ${candidateLabels}.`
+            : semanticRoute.question;
+          setSendErrorForDispatch(clarification);
+          throw new Error(clarification);
+        }
+      }
+      applyRuntimePatchToSession(get, set, sessionIdAtDispatch, {
+        skipYamlReconciliation:
+          semanticRoute.kind === 'discussion' || semanticRoute.kind === 'diagnosis',
+      });
+    }
 
     const continuingLogicalTurn = opts.reuseLogicalTurn || opts.internal;
     if (inheritedSnapshot) {
@@ -4710,7 +4858,7 @@ async function promptOpencode(
       );
       diskBranchAlreadyOwned = true;
       assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
-    } else if (preSendWorkDir) {
+    } else if (preSendWorkDir && pipelineBindingIntent) {
       const existingLease = continuingLogicalTurn
         ? getLocalChatYamlEditLockLeaseForWorkspace(workspaceKeyAtStart)
         : getLocalChatYamlEditLockLease();
@@ -4724,7 +4872,8 @@ async function promptOpencode(
     }
     const pipelinePreflight = chatPipelinePreflightMode({
       hasInheritedSnapshot: !!inheritedSnapshot,
-      hasDirtyPipeline: !!preSendWorkDir && (pipeline.isDirty || pipeline.layoutDirty),
+      hasDirtyPipeline:
+        !!pipelineBindingIntent && !!preSendWorkDir && (pipeline.isDirty || pipeline.layoutDirty),
       diskBranchAlreadyOwned,
     });
     if (pipelinePreflight !== 'none') {
@@ -4741,9 +4890,6 @@ async function promptOpencode(
       }
     }
 
-    const client = await getOpencodeClient(workspaceKeyAtStart);
-    assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
-
     let sessionId = sessionIdAtDispatch;
     if (!sessionId) {
       try {
@@ -4754,6 +4900,7 @@ async function promptOpencode(
             opts.internal ? 'internal-repair' : 'first-send',
             model,
             reasoningEffort,
+            null,
           ),
         });
         assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
@@ -4797,20 +4944,21 @@ async function promptOpencode(
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
     let preSendSnapshot: ChatYamlSnapshot | null = inheritedSnapshot;
-    if (!preSendSnapshot && initialEditorBaseline) {
+    if (!preSendSnapshot && initialEditorBaseline && pipelineBindingIntent) {
       if (!lockLease) throw new Error('The OpenCode YAML lock was lost before staging.');
+      const bindingIntent = pipelineBindingIntent;
+      const bindingRequestId = crypto.randomUUID();
       const stage = await withYamlEditLockRequestBypass(lockLease.id, () =>
-        api.startChatYamlStage(
-          initialEditorBaseline.activePath,
-          lockLease!.workspaceKey,
-          requestedAction,
-          requestedAction === null,
-        ),
+        api.startChatYamlStage(stageActivePath, lockLease!.workspaceKey, requestedAction, false, {
+          sessionId,
+          bindingRequestId,
+          intent: bindingIntent,
+        }),
       );
       createdStageHere = { id: stage.id, workspaceKey: lockLease.workspaceKey };
       preSendSnapshot = {
         workDir: initialEditorBaseline.workDir,
-        activePath: initialEditorBaseline.activePath,
+        activePath: stageActivePath,
         localEditRevision: initialEditorBaseline.localEditRevision,
         yamlEditLockId: lockLease.id,
         staging: {
@@ -4818,6 +4966,7 @@ async function promptOpencode(
           agentTagmaDir: stage.agentTagmaDir,
           activeRelativePath: stage.activeRelativePath,
           activeStagedPath: stage.activeStagedPath,
+          pipelineBinding: stage.pipelineBinding,
           entries: stage.entries.map((entry) => ({
             name: entry.name,
             stagedPath: entry.stagedPath,
@@ -4864,7 +5013,12 @@ async function promptOpencode(
       shouldApplyPromptTitle ? promptTitle : undefined,
       {
         required: preSendSnapshot !== null,
-        ...(preSendSnapshot ? { yamlPath: chatYamlSnapshotLiveTargetPath(preSendSnapshot) } : {}),
+        ...(preSendSnapshot
+          ? {
+              yamlPath: chatYamlSnapshotLiveTargetPath(preSendSnapshot),
+              pipelineBinding: preSendSnapshot.staging.pipelineBinding ?? null,
+            }
+          : {}),
       },
     );
 
@@ -4893,10 +5047,20 @@ async function promptOpencode(
             buildEditorContext({
               requestedAction,
               chatModel: model,
-              currentYamlPath: turnTargetContext?.currentYamlPath ?? undefined,
-              workspaceYamlFilePaths: turnTargetContext?.workspaceYamlFilePaths,
+              currentYamlPath:
+                turnTargetContext?.currentYamlPath ??
+                (semanticRoute?.kind === 'diagnosis' ? stageActivePath : undefined),
+              workspaceYamlFilePaths:
+                turnTargetContext?.workspaceYamlFilePaths ??
+                (semanticCandidates.length > 0
+                  ? semanticCandidates.map((candidate) => candidate.path)
+                  : undefined),
               chatYamlStage: chatStage
-                ? { id: chatStage.id, agentTagmaDir: chatStage.agentTagmaDir }
+                ? {
+                    id: chatStage.id,
+                    agentTagmaDir: chatStage.agentTagmaDir,
+                    pipelineBinding: chatStage.pipelineBinding,
+                  }
                 : null,
               contextWindow: contextWindowSnapshot,
               previousChatYamlReconcile: selectPreviousChatYamlReconcileForPrompt({
@@ -4994,6 +5158,7 @@ async function promptOpencode(
       sessionStatus: null,
       turnHealth: null,
       pendingActivity: [],
+      skipYamlReconciliation: false,
     };
     if (err instanceof ChatWorkspaceChangedError) {
       if (sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch) {
@@ -7311,6 +7476,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   turnHealth: null,
   pendingActivity: [],
   yamlSnapshotBeforeSend: null,
+  skipYamlReconciliation: false,
   postChatYamlAction: null,
   pendingPermissions: [],
   setPostChatYamlAction: (action, sessionId) => {
@@ -7604,11 +7770,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ...(prev.lastFinishedTurn?.id === turnId ? { lastFinishedTurn: completedTurn } : {}),
       };
     }),
-  markFinishedTurnReconciliationFailed: (turnId, message) =>
+  markFinishedTurnReconciliationFailed: (turnId, message, errorKind) =>
     set((prev) => {
       const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
       if (!target) return {};
-      const failedTurn = withFinishedTurnReconcileFailure(target, message);
+      const failedTurn = withFinishedTurnReconcileFailure(target, message, errorKind);
       const finishedTurnQueue = prev.finishedTurnQueue.map((turn) =>
         turn.id === turnId ? failedTurn : turn,
       );
@@ -7627,6 +7793,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((prev) => {
       const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
       if (!target?.reconcileFailure) return {};
+      const retryable =
+        target.reconcileFailure.retryable ??
+        chatReconciliationFailurePolicy(target.reconcileFailure.message).retryable;
+      if (!retryable) return {};
       const retriedTurn = withoutFinishedTurnReconcileFailure(target);
       const finishedTurnQueue = prev.finishedTurnQueue.map((turn) =>
         turn.id === turnId ? retriedTurn : turn,
@@ -7640,6 +7810,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         finishedTurnQueue,
         ...(prev.lastFinishedTurn?.id === turnId ? { lastFinishedTurn: retriedTurn } : {}),
+      };
+    }),
+  recoverFinishedTurnAsIndependent: (turnId) =>
+    set((prev) => {
+      const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
+      if (!target?.reconcileFailure || !target.yamlSnapshotBeforeSend || !target.sessionId)
+        return {};
+      const policy = chatReconciliationFailurePolicy(target.reconcileFailure.message);
+      if (target.reconcileFailure.retryable !== false && policy.kind !== 'route-unresolved') {
+        return {};
+      }
+      const requestIdentity = turnId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 160);
+      const independentRecoveryRequestId = `recovery_${requestIdentity}`;
+      const recoveredTurn: ChatFinishedTurn = {
+        ...withoutFinishedTurnReconcileFailure(target),
+        independentRecoveryRequestId,
+        yamlSnapshotBeforeSend: {
+          ...target.yamlSnapshotBeforeSend,
+          independentRecoveryRequestId,
+        },
+      };
+      const finishedTurnQueue = prev.finishedTurnQueue.map((turn) =>
+        turn.id === turnId ? recoveredTurn : turn,
+      );
+      if (target.yamlSnapshotBeforeSend) {
+        persistFinishedTurnQueueForWorkspace(
+          target.yamlSnapshotBeforeSend.workDir,
+          finishedTurnQueue,
+        );
+      }
+      return {
+        finishedTurnQueue,
+        ...(prev.lastFinishedTurn?.id === turnId ? { lastFinishedTurn: recoveredTurn } : {}),
       };
     }),
   abandonFinishedTurnReconciliation: (turnId) => {
@@ -7931,6 +8134,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               pendingActivity: [],
               composerAttachments: [],
               yamlSnapshotBeforeSend: null,
+              skipYamlReconciliation: false,
               postChatYamlAction: null,
               providerCatalog: [],
               customProviders: [],
@@ -8409,17 +8613,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const attachments = state.composerAttachments;
     const context = renderAskAiContext(attachments);
     const forceStopRecoveryPending = forcedRestartRecoveries.has(getOpencodeWorkspaceKey());
-    const queueMode =
-      state.finishedTurnQueue.length > 0
-        ? ('start-fresh' as const)
-        : (state.queuedDispatchMode ??
-          (state.queuedMessages.length > 0
+    const queueMode = currentSessionHasFinishedTurn(state)
+      ? ('start-fresh' as const)
+      : (state.queuedDispatchMode ??
+        (state.queuedMessages.length > 0
+          ? ('reuse-logical-turn' as const)
+          : state.sending || forceStopRecoveryPending
             ? ('reuse-logical-turn' as const)
-            : state.sending || forceStopRecoveryPending
-              ? ('reuse-logical-turn' as const)
-              : canQueueFreshPromptDuringBarrier(state)
-                ? ('start-fresh' as const)
-                : null));
+            : canQueueFreshPromptDuringBarrier(state)
+              ? ('start-fresh' as const)
+              : null));
     if (!queueMode && !state.sending && chatTurnBlocksNewPrompt(state)) {
       const msg = chatTurnBlockedMessage();
       set({ sendError: msg });
@@ -8436,10 +8639,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // wait, and clear the chips now (the send is committed to the queue).
       set((prev) => ({
         queuedMessages: appendQueuedMessage(prev.queuedMessages, makeQueuedMessage(text, context)),
-        queuedDispatchMode:
-          prev.finishedTurnQueue.length > 0
-            ? 'start-fresh'
-            : (prev.queuedDispatchMode ?? queueMode ?? 'reuse-logical-turn'),
+        queuedDispatchMode: currentSessionHasFinishedTurn(prev)
+          ? 'start-fresh'
+          : (prev.queuedDispatchMode ?? queueMode ?? 'reuse-logical-turn'),
         composerAttachments: [],
         sendError: null,
         completionWarning: null,
@@ -8464,8 +8666,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  async syncSessionYamlTarget(sessionId, workspaceKey, yamlPath, reason = 'reconciled-target') {
-    const selection = selectionForChatSession(get(), sessionId, workspaceKey);
+  async syncSessionYamlTarget(
+    sessionId,
+    workspaceKey,
+    yamlPath,
+    reason = 'reconciled-target',
+    pipelineBinding,
+  ) {
+    const state = get();
+    const selection = selectionForChatSession(state, sessionId, workspaceKey);
+    const retainedPipelineBinding =
+      pipelineBinding === undefined
+        ? (parseTagmaSessionMetadata(
+            (
+              state.sessions.find((session) => session.id === sessionId) as
+                (Session & { metadata?: unknown }) | undefined
+            )?.metadata,
+          )?.pipelineBinding ?? null)
+        : pipelineBinding;
     await updateDesktopChatSessionMetadata(
       sessionId,
       workspaceKey,
@@ -8473,7 +8691,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       selection.model,
       selection.reasoningEffort,
       undefined,
-      { yamlPath, required: reason === 'branch-relocated' },
+      {
+        yamlPath,
+        pipelineBinding: retainedPipelineBinding,
+        required: reason === 'branch-relocated',
+      },
     );
   },
 

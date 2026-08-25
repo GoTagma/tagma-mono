@@ -69,6 +69,18 @@ Do not amend the same commit to include these files after naming them with the c
   compile log before finalize, while preserving an explicit `./` (`.\\` on Windows) opt-in for an
   intentionally nested same-name path.
 
+## Chat Session Pipeline Ownership
+
+- Classify natural-language desktop Chat intent before allocating a writable pipeline: use a
+  tool-free schema-constrained model result over Host-issued candidate ids, then let the Host
+  resolve and atomically bind create/edit. Discussion and diagnosis own no pipeline.
+- Different sessions may share one read-only origin but must never share a writable target. Persist
+  Host-authenticated binding identity separately from names/paths, reuse a target only for its owning
+  session, and publish edits to the branch rather than overwriting the origin.
+- Reconciliation failures are per stage/session. Skip a preserved failure so independent jobs and
+  other sessions continue; keep Retry for transient failures and recover missing legacy route
+  provenance through an explicit idempotent **Save as independent pipeline** path.
+
 ## Static Context Source Integrity
 
 - `static_context.file` is a required runtime dependency for prompt tasks. Missing or unreadable

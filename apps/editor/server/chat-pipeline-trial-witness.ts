@@ -37,6 +37,7 @@ const TRIAL_HOST_WITNESS_VERSION = 4;
 const FILE_HASH_BUFFER_BYTES = 1024 * 1024;
 const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
   '.chat-staging',
+  '.chat-pipeline-bindings',
   '.opencode',
   '.opencode-runtime',
   '.python-agent',

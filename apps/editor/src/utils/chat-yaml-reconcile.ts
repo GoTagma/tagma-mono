@@ -1,3 +1,5 @@
+import type { ChatPipelineBinding } from '../api/client';
+
 export interface WorkspaceYamlEntry {
   name: string;
   path: string;
@@ -21,6 +23,8 @@ export interface ChatYamlSnapshot {
   localEditRevision: number;
   /** Exact YAML edit-lock lease that owns this staged logical turn. */
   yamlEditLockId: string;
+  /** Durable explicit authorization to publish a legacy route-unresolved result independently. */
+  independentRecoveryRequestId?: string;
   /**
    * Immutable identity for the physical OpenCode session-directory move that
    * owns this stage. The source and target are captured from authenticated
@@ -85,6 +89,7 @@ export interface ChatYamlStagingSnapshot {
   agentTagmaDir: string;
   activeRelativePath: string | null;
   activeStagedPath: string | null;
+  pipelineBinding?: ChatPipelineBinding | null;
   entries: ReadonlyArray<ChatYamlStageSnapshotEntry>;
 }
 

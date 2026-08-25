@@ -340,12 +340,34 @@ describe('ChatPanel export affordance', () => {
       />,
     );
 
-    expect(html).toContain('manual canvas edits');
-    expect(html).toContain('Chat result');
-    expect(html).toContain('Retry merge');
+    expect(html).toContain('canvas');
+    expect(html).toContain('Chat branch');
+    expect(html).toContain('Retry publish');
     expect(html).toContain('Keep canvas, discard Chat result');
     expect(html).toContain('text-tagma-accent');
     expect(html).not.toContain('tagma-error');
+  });
+
+  test('offers independent publication instead of Retry for missing route provenance', () => {
+    const html = renderToStaticMarkup(
+      <ReconciliationFailureBannerView
+        failure={{
+          message:
+            'A no-marker pipeline mutation requires a current stage-bound router target mode before verification.',
+          attempt: 7,
+          failedAt: 1,
+          kind: 'route-unresolved',
+          retryable: false,
+        }}
+        retry={() => undefined}
+        recoverIndependent={() => undefined}
+        discard={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('Save as independent pipeline');
+    expect(html).not.toContain('Retry publish');
+    expect(html).toContain('staged files are preserved');
   });
 
   test('renders the export control directly after the history control', () => {
@@ -552,6 +574,46 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Open pipeline');
     expect(html).not.toContain('disabled=""');
     expect(isChatPipelineDeployed(result)).toBe(true);
+  });
+
+  test('labels a Host-owned result as a session branch with its origin', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'open-created',
+      path: '/workspace/.tagma/pipeline-branch/pipeline-branch.yaml',
+      name: 'pipeline-branch.yaml',
+      pipelineName: 'Orders branch',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      reconcile: {
+        outcome: 'created',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/pipeline-branch/pipeline-branch.yaml',
+        compileSuccess: true,
+        pipelineBinding: {
+          version: 1,
+          id: 'binding-1',
+          sessionId: 's1',
+          bindingRequestId: 'request-1',
+          intent: 'edit',
+          originRelativePath: 'orders/orders.yaml',
+          targetRelativePath: 'pipeline-branch/pipeline-branch.yaml',
+          createdAt: 1,
+        },
+      },
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+
+    expect(html).toContain('Created session branch');
+    expect(html).toContain('Session-owned edit branch');
+    expect(html).toContain('based on orders/orders.yaml');
   });
 
   test('renders host trial-run evidence in the final pipeline result', () => {

@@ -106,6 +106,7 @@ function hiddenRuntime(turn: ChatFinishedTurn): ChatState['sessionStates'][strin
     turnHealth: null,
     pendingActivity: [],
     yamlSnapshotBeforeSend: turn.yamlSnapshotBeforeSend,
+    skipYamlReconciliation: false,
     postChatYamlAction: null,
   };
 }
@@ -607,6 +608,43 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     });
   });
 
+  test('does not enqueue YAML reconciliation for a classified discussion turn', () => {
+    setClientWorkspace('C:/repo');
+    useChatStore.setState({
+      currentSessionId: 'session-discussion',
+      sending: true,
+      pendingUserText: 'Explain the product concept.',
+      messages: [
+        {
+          info: {
+            id: 'assistant-discussion',
+            sessionID: 'session-discussion',
+            role: 'assistant',
+          },
+          parts: [],
+        },
+      ],
+      yamlSnapshotBeforeSend: null,
+      skipYamlReconciliation: true,
+      finishedTurnQueue: [],
+    } as never);
+
+    applySseEvent(
+      {
+        type: 'session.error',
+        properties: {
+          sessionID: 'session-discussion',
+          error: { name: 'ProviderError', data: { message: 'The answer stopped.' } },
+        },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
+    expect(useChatStore.getState().skipYamlReconciliation).toBe(false);
+  });
+
   test('captures the final assistant message as the durable result anchor', () => {
     const turn = stagedTurn();
     setClientWorkspace('C:/repo');
@@ -734,7 +772,35 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
   });
 
   test('round-trips only valid stage-backed turns for the matching workspace', () => {
-    const turn = stagedTurn();
+    const baseTurn = stagedTurn();
+    const turn: ChatFinishedTurn = {
+      ...baseTurn,
+      independentRecoveryRequestId: 'recovery-finished-stage-1',
+      reconcileFailure: {
+        message: 'Missing route provenance.',
+        attempt: 1,
+        failedAt: 2_000,
+        kind: 'route-unresolved',
+        retryable: false,
+      },
+      yamlSnapshotBeforeSend: {
+        ...baseTurn.yamlSnapshotBeforeSend!,
+        independentRecoveryRequestId: 'recovery-finished-stage-1',
+        staging: {
+          ...baseTurn.yamlSnapshotBeforeSend!.staging,
+          pipelineBinding: {
+            version: 1,
+            id: 'binding-1',
+            sessionId: 'session-1',
+            bindingRequestId: 'binding-request-1',
+            intent: 'edit',
+            originRelativePath: 'build/build.yaml',
+            targetRelativePath: 'pipeline-branch/pipeline-branch.yaml',
+            createdAt: 1,
+          },
+        },
+      },
+    };
     savePersistedChatYamlReconciliationQueue('C:/repo', [
       turn,
       { ...stagedTurn('wrong-workspace', 'C:/other') },
@@ -742,7 +808,20 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     ]);
 
     expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([
-      expect.objectContaining({ id: turn.id }),
+      expect.objectContaining({
+        id: turn.id,
+        independentRecoveryRequestId: 'recovery-finished-stage-1',
+        reconcileFailure: expect.objectContaining({
+          kind: 'route-unresolved',
+          retryable: false,
+        }),
+        yamlSnapshotBeforeSend: expect.objectContaining({
+          independentRecoveryRequestId: 'recovery-finished-stage-1',
+          staging: expect.objectContaining({
+            pipelineBinding: expect.objectContaining({ id: 'binding-1' }),
+          }),
+        }),
+      }),
     ]);
 
     const raw = storage.getItem('tagma.chat.v2');

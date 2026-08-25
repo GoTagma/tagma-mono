@@ -45,6 +45,7 @@ export { buildTagmaTrialPlanTool };
 
 export const TAGMA_ROUTER_AGENT = 'tagma-router';
 export const TAGMA_PIPELINE_AGENT = 'tagma-pipeline';
+export const TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT = 'tagma-pipeline-intent-classifier';
 export const TAGMA_PIPELINE_DIAGNOSIS_AGENT = 'tagma-pipeline-diagnosis';
 export const TAGMA_GENERAL_DISCUSSION_AGENT = 'tagma-general-discussion';
 export const TAGMA_HISTORY_COMPARE_AGENT = 'tagma-history-compare';
@@ -118,6 +119,54 @@ Pass compact \`<editor-context>\`:
 - \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: at most 2 facts. Do not include YAML schema guidance unless the question asks for it.
 
 Never forward raw full transcript excerpts.
+`;
+}
+
+export function buildTagmaPipelineIntentClassifierAgent(): string {
+  return `---
+name: ${TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT}
+description: Classify one Chat request before Host pipeline binding.
+mode: subagent
+hidden: true
+tools:
+  read: false
+  glob: false
+  grep: false
+  list: false
+  lsp: false
+  bash: false
+  webfetch: false
+  websearch: false
+  question: false
+  todowrite: false
+  skill: false
+  edit: false
+  task: false
+  tagma_yaml_skeleton: false
+  tagma_placement_plan: false
+  tagma_trial_plan: false
+permission:
+  read: deny
+  glob: deny
+  grep: deny
+  list: deny
+  lsp: deny
+  bash: deny
+  webfetch: deny
+  websearch: deny
+  question: deny
+  todowrite: deny
+  skill: deny
+  edit: deny
+  external_directory: deny
+  task:
+    "*": "deny"
+  tagma_yaml_skeleton: deny
+  tagma_placement_plan: deny
+  tagma_trial_plan: deny
+---
+
+Classify exactly one Tagma Chat request from the Host-provided frozen pipeline inventory. The Host supplies the JSON Schema and owns candidate ids, path resolution, branch allocation, and write authority. Return only that schema-constrained result. Never inspect files, call tools, delegate, invent a candidate, or turn a path/name into authority. Ambiguity must return the schema's clarification result instead of guessing.
 `;
 }
 
@@ -769,7 +818,8 @@ Every turn may include \`<editor-context>\`; re-read it.
 - \`<chat-staging>\`: its \`<agent-root>\` is the sole filesystem read/write boundary for this turn and all descendants.
 - \`<requested-action kind="create-new-pipeline">\`: Host-selected fresh target; creation wins over name matches.
 - \`<requested-action kind="fill-manual-new-pipeline">\`: Host-selected manual New draft at \`<current-file>\`.
-- Without a Host action marker, never repurpose an existing \`<current-file>\` as a new pipeline. A router-classified create without a Host action marker may use only a fresh unused sibling path and must not modify \`<current-file>\` or any inventoried YAML. Obey \`TAGMA_ROUTE_MODE: <stage-id> create|edit\` over prose: create means fresh sibling; edit means an existing target. If create intent is ambiguous, return \`ROUTE_MISMATCH: pipeline_work\` without writing.
+- \`<pipeline-binding intent="create|edit">\`: Host-classified, session-owned write authority. For \`edit\`, modify only the supplied existing \`<current-file>\`; the Host publishes those bytes to the session's unique branch, so never copy or retarget it yourself. For \`create\`, author only the supplied fresh \`<current-file>\`. The binding wins over prose and needs no model-authored stage marker.
+- Without a Host action or pipeline-binding marker, never repurpose an existing \`<current-file>\` as a new pipeline. A legacy router-classified create may use only a fresh unused sibling path and must not modify \`<current-file>\` or any inventoried YAML. Obey a legacy \`TAGMA_ROUTE_MODE: <stage-id> create|edit\` over prose. If intent is ambiguous, return \`ROUTE_MISMATCH: pipeline_work\` without writing.
 - \`<current-file>\`: relative outside staging; absolute inside \`<agent-root>\` during staging.
 - \`<workspace-yaml-folders>\`: known pipelines with \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`. Paths are relative outside staging and absolute inside \`<agent-root>\` during staging; match by folder, YAML, or pipeline name. \`legacy="flat"\` paths are exact.
 - Use \`<current-file>\` and inventory paths exactly as supplied. Legacy example: \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
@@ -785,8 +835,9 @@ Allowed while protected: answer without writing, create a new pipeline in its ow
 
 ## Modes
 
-- Fill current manual-New draft: only with the exact fill marker, edit \`<current-file>\` in place.
-- Create intent precedence: an exact create marker uses its Host-selected target. A router-classified create without a Host action marker uses a fresh unused sibling. In either form, inventoried YAMLs are collision context and must remain unchanged.
+- Session-owned edit: with an exact pipeline binding, edit only \`<current-file>\`; Host publication creates or reuses that session's unique branch and leaves the origin untouched.
+- Fill current manual-New draft: only with the exact fill marker, author through its session-owned binding rather than selecting another target.
+- Create intent precedence: an exact create action or pipeline binding uses its Host-selected target. A legacy router-classified create without either marker uses a fresh unused sibling. In every create form, inventoried YAMLs are collision context and must remain unchanged.
 - Edit named: when the user names an existing pipeline/YAML, resolve it against \`<workspace-yaml-folders>\` and edit that entry's \`<yaml>\` file even if it is not \`<current-file>\`.
 - Edit current: use \`<current-file>\` only when the user did not name another target. If neither exists, ask which YAML to edit.
 - Create/fill new: follow Host-Managed New-Pipeline Companions below.
@@ -1882,6 +1933,7 @@ function pruneLegacyManagedToolFiles(tagmaCwd: string): boolean {
 const ACTIVE_AGENT_FILES = [
   `${TAGMA_ROUTER_AGENT}.md`,
   `${TAGMA_PIPELINE_AGENT}.md`,
+  `${TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT}.md`,
   `${TAGMA_PIPELINE_DIAGNOSIS_AGENT}.md`,
   `${TAGMA_GENERAL_DISCUSSION_AGENT}.md`,
   `${TAGMA_HISTORY_COMPARE_AGENT}.md`,
@@ -1977,6 +2029,11 @@ export function seedOpencodeArtifacts(
   let changed = seedAgent(`${TAGMA_ROUTER_AGENT}.md`, buildTagmaRouterAgent());
   changed =
     seedAgent(`${TAGMA_PIPELINE_AGENT}.md`, buildTagmaPipelineAgent(hostOs, options)) || changed;
+  changed =
+    seedAgent(
+      `${TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT}.md`,
+      buildTagmaPipelineIntentClassifierAgent(),
+    ) || changed;
   changed =
     seedAgent(`${TAGMA_PIPELINE_DIAGNOSIS_AGENT}.md`, buildTagmaPipelineDiagnosisAgent()) ||
     changed;

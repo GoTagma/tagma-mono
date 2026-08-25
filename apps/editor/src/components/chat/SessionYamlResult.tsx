@@ -42,8 +42,11 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
       : 'Compile passed.';
     const outcome =
       attempts > 0 ? `Pipeline repair succeeded after ${attemptLabel}. ${passed}` : passed;
-    const verb =
-      result.reconcile?.outcome === 'unchanged'
+    const verb = result.reconcile?.pipelineBinding
+      ? result.reconcile.outcome === 'adopted'
+        ? 'Updated session branch'
+        : 'Created session branch'
+      : result.reconcile?.outcome === 'unchanged'
         ? 'Pipeline unchanged'
         : result.reconcile?.outcome === 'forked'
           ? 'Saved pipeline copy'
@@ -54,8 +57,11 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
   }
 
   if (result.status === 'blocked') {
-    const verb =
-      result.reconcile?.outcome === 'created'
+    const verb = result.reconcile?.pipelineBinding
+      ? result.reconcile.outcome === 'adopted'
+        ? 'Updated session branch'
+        : 'Created session branch'
+      : result.reconcile?.outcome === 'created'
         ? 'Created pipeline'
         : result.reconcile?.outcome === 'forked'
           ? 'Saved pipeline copy'
@@ -139,6 +145,14 @@ function SessionYamlResultBody({
           {name}
         </span>
       </div>
+      {result.reconcile?.pipelineBinding && (
+        <div className="select-text text-tiny font-mono text-tagma-muted/70 break-words">
+          Session-owned {result.reconcile.pipelineBinding.intent} branch
+          {result.reconcile.pipelineBinding.originRelativePath
+            ? ` · based on ${result.reconcile.pipelineBinding.originRelativePath}`
+            : ' · fresh pipeline'}
+        </div>
+      )}
       <div className="select-text text-tagma-muted/80 break-words">{summary}</div>
       {result.trial?.executionCoverage && (
         <TrialExecutionCoverageDetails

@@ -1,7 +1,12 @@
 import { createContext, useContext, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, Info, Paperclip, Send, Square, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
-import { useChatStore, type ChatFinishedTurn } from '../../store/chat-store';
+import {
+  chatReconciliationFailurePolicy,
+  useChatStore,
+  type ChatFinishedTurn,
+} from '../../store/chat-store';
+import { selectCurrentSessionFailedTurn } from '../../store/finished-turn-selector';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import {
@@ -81,15 +86,18 @@ export function CompletionWarningBanner() {
 export function ReconciliationFailureBannerView({
   failure,
   retry,
+  recoverIndependent,
   discard,
   busy = false,
 }: {
   failure: ChatFinishedTurn['reconcileFailure'] | null;
   retry: () => void;
+  recoverIndependent?: () => void;
   discard: () => void;
   busy?: boolean;
 }) {
   if (!failure) return null;
+  const retryable = failure.retryable ?? chatReconciliationFailurePolicy(failure.message).retryable;
   return (
     <div
       role="status"
@@ -98,19 +106,32 @@ export function ReconciliationFailureBannerView({
       <Info size={12} className="mt-0.5 shrink-0 text-tagma-accent" />
       <div className="min-w-0 flex-1 text-caption font-mono text-tagma-muted">
         <div className="text-tagma-text">
-          The merge is paused. Your manual canvas edits and the Chat result are both preserved.
+          {retryable
+            ? 'Publishing is paused. Your canvas and this Chat branch are both preserved.'
+            : 'This Chat result needs an independent pipeline target. Its staged files are preserved.'}
         </div>
         <div className="mt-0.5 break-words text-tagma-muted/80">{failure.message}</div>
       </div>
       <div className="shrink-0 flex flex-col gap-1">
-        <button
-          type="button"
-          onClick={retry}
-          disabled={busy}
-          className="border border-tagma-accent/50 px-2 py-1 text-caption font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
-        >
-          Retry merge
-        </button>
+        {retryable ? (
+          <button
+            type="button"
+            onClick={retry}
+            disabled={busy}
+            className="border border-tagma-accent/50 px-2 py-1 text-caption font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
+          >
+            Retry publish
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={recoverIndependent}
+            disabled={busy || !recoverIndependent}
+            className="border border-tagma-accent/50 px-2 py-1 text-caption font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
+          >
+            Save as independent pipeline
+          </button>
+        )}
         <button
           type="button"
           onClick={discard}
@@ -210,6 +231,7 @@ export function getChatComposerAvailability(input: {
   reconciling: boolean;
   flushing: boolean;
   finishedTurnPending: boolean;
+  workspaceWideChatLifecycle?: boolean;
   yamlEditLocked: boolean;
   yamlEditLockLocal: boolean;
 }): { blockedByAnotherChatUpdate: boolean; canSend: boolean; queueOnSend: boolean } {
@@ -219,6 +241,7 @@ export function getChatComposerAvailability(input: {
     input.reconciling ||
     input.flushing ||
     input.finishedTurnPending ||
+    input.workspaceWideChatLifecycle === true ||
     (input.yamlEditLocked && !input.yamlEditLockLocal);
   return {
     blockedByAnotherChatUpdate,
@@ -252,8 +275,12 @@ export function ChatComposer() {
   const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const flushing = useChatStore((s) => s.flushing);
-  const finishedTurn = useChatStore((s) => s.finishedTurnQueue[0]);
+  const finishedTurn = useChatStore(selectCurrentSessionFailedTurn);
+  const currentSessionFinishedTurnPending = useChatStore((s) =>
+    s.finishedTurnQueue.some((turn) => turn.sessionId === s.currentSessionId),
+  );
   const retryFinishedTurnReconciliation = useChatStore((s) => s.retryFinishedTurnReconciliation);
+  const recoverFinishedTurnAsIndependent = useChatStore((s) => s.recoverFinishedTurnAsIndependent);
   const discardFailedReconciliation = useContext(DiscardFailedChatReconciliationContext);
   const [discardingTurnId, setDiscardingTurnId] = useState<string | null>(null);
   const model = useChatStore((s) => s.model);
@@ -285,7 +312,8 @@ export function ChatComposer() {
     sending,
     reconciling,
     flushing,
-    finishedTurnPending: !!finishedTurn,
+    finishedTurnPending: currentSessionFinishedTurnPending,
+    workspaceWideChatLifecycle: activeChatYamlLifecycle?.hostTrialActive === true,
     yamlEditLocked,
     yamlEditLockLocal,
   });
@@ -335,6 +363,9 @@ export function ChatComposer() {
         busy={discardingTurnId === finishedTurn?.id}
         retry={() => {
           if (finishedTurn) retryFinishedTurnReconciliation(finishedTurn.id);
+        }}
+        recoverIndependent={() => {
+          if (finishedTurn) recoverFinishedTurnAsIndependent(finishedTurn.id);
         }}
         discard={() => {
           if (!finishedTurn || !discardFailedReconciliation || discardingTurnId) return;

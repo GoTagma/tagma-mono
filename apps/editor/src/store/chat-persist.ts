@@ -63,11 +63,23 @@ export interface PersistedChatSessionRelocationIdentity {
   stageDirectory: string;
 }
 
+export interface PersistedChatPipelineBinding {
+  version: 1;
+  id: string;
+  sessionId: string;
+  bindingRequestId: string;
+  intent: 'create' | 'edit';
+  originRelativePath: string | null;
+  targetRelativePath: string;
+  createdAt: number;
+}
+
 export interface PersistedChatYamlSnapshot {
   workDir: string;
   activePath: string | null;
   localEditRevision: number;
   yamlEditLockId: string;
+  independentRecoveryRequestId?: string;
   resultTurnId?: string;
   resultMessageId?: string;
   /** Immutable OpenCode directory move owned by this exact staged snapshot. */
@@ -77,6 +89,7 @@ export interface PersistedChatYamlSnapshot {
     agentTagmaDir: string;
     activeRelativePath: string | null;
     activeStagedPath: string | null;
+    pipelineBinding?: PersistedChatPipelineBinding | null;
     entries: PersistedChatYamlStageEntry[];
   };
 }
@@ -102,7 +115,10 @@ export interface PersistedChatYamlReconciliationTurn {
     message: string;
     attempt: number;
     failedAt: number;
+    kind?: 'transient' | 'route-unresolved';
+    retryable?: boolean;
   };
+  independentRecoveryRequestId?: string;
 }
 
 interface PersistedChatYamlReconciliationQueue {
@@ -155,6 +171,7 @@ export interface PersistedChatYamlResult {
     localBranchPersisted: boolean;
     resultPath: string | null;
     compileSuccess: boolean;
+    pipelineBinding?: PersistedChatPipelineBinding;
     trialRunSuccess?: boolean;
     trialVerification?: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   };
@@ -290,6 +307,20 @@ function isSafeRelativeYamlPath(value: unknown): value is string {
   return /\.ya?ml$/i.test(normalized);
 }
 
+function isPersistedChatPipelineBinding(value: unknown): value is PersistedChatPipelineBinding {
+  return (
+    isRecord(value) &&
+    value.version === 1 &&
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.sessionId) &&
+    isNonEmptyString(value.bindingRequestId) &&
+    (value.intent === 'create' || value.intent === 'edit') &&
+    (value.originRelativePath === null || isSafeRelativeYamlPath(value.originRelativePath)) &&
+    isSafeRelativeYamlPath(value.targetRelativePath) &&
+    isNonNegativeFiniteNumber(value.createdAt)
+  );
+}
+
 function isPersistedChatYamlStageEntry(value: unknown): value is PersistedChatYamlStageEntry {
   return (
     isRecord(value) &&
@@ -318,6 +349,8 @@ function isPersistedChatYamlSnapshot(
     Number.isSafeInteger(value.localEditRevision) &&
     (value.localEditRevision as number) >= 0 &&
     isNonEmptyString(value.yamlEditLockId) &&
+    (value.independentRecoveryRequestId === undefined ||
+      isNonEmptyString(value.independentRecoveryRequestId)) &&
     (value.resultTurnId === undefined || isNonEmptyString(value.resultTurnId)) &&
     (value.resultMessageId === undefined || isNonEmptyString(value.resultMessageId)) &&
     isNonEmptyString(staging.id) &&
@@ -328,6 +361,9 @@ function isPersistedChatYamlSnapshot(
         sameFilesystemPathCoordinate(relocation.stageDirectory, staging.agentTagmaDir))) &&
     isNullableString(staging.activeRelativePath) &&
     isNullableString(staging.activeStagedPath) &&
+    (staging.pipelineBinding === undefined ||
+      staging.pipelineBinding === null ||
+      isPersistedChatPipelineBinding(staging.pipelineBinding)) &&
     Array.isArray(staging.entries) &&
     staging.entries.every(isPersistedChatYamlStageEntry)
   );
@@ -350,6 +386,12 @@ function parsePersistedChatYamlReconciliationTurn(
   }
   const snapshotRelocation = value.yamlSnapshotBeforeSend.sessionRelocation;
   if (snapshotRelocation && value.sessionId !== snapshotRelocation.sessionId) return null;
+  if (
+    value.independentRecoveryRequestId !== undefined &&
+    !isNonEmptyString(value.independentRecoveryRequestId)
+  ) {
+    return null;
+  }
   if (value.reconcileFailure !== undefined) {
     const failure = value.reconcileFailure;
     if (
@@ -357,7 +399,11 @@ function parsePersistedChatYamlReconciliationTurn(
       !isNonEmptyString(failure.message) ||
       !Number.isSafeInteger(failure.attempt) ||
       (failure.attempt as number) < 1 ||
-      !isNonNegativeFiniteNumber(failure.failedAt)
+      !isNonNegativeFiniteNumber(failure.failedAt) ||
+      (failure.kind !== undefined &&
+        failure.kind !== 'transient' &&
+        failure.kind !== 'route-unresolved') ||
+      (failure.retryable !== undefined && typeof failure.retryable !== 'boolean')
     ) {
       return null;
     }
@@ -555,6 +601,8 @@ function isPersistedReconcileResult(
     isPersistedFinalPipelinePath(resultPath, workspaceKey) &&
     samePersistedPath(resultPath, finalPath) &&
     typeof value.compileSuccess === 'boolean' &&
+    (value.pipelineBinding === undefined ||
+      isPersistedChatPipelineBinding(value.pipelineBinding)) &&
     (value.trialRunSuccess === undefined || typeof value.trialRunSuccess === 'boolean') &&
     (value.trialVerification === undefined ||
       value.trialVerification === 'verified' ||

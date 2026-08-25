@@ -17,6 +17,14 @@ import { loadPipeline, parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
 import { pipelineTrialPlanPath, readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
 import {
+  parseChatPipelineBinding,
+  readChatPipelineBinding,
+  rebindChatPipelineBindingTarget,
+  relocateChatPipelineBindingTarget,
+  reserveChatPipelineBinding,
+  type ChatPipelineBinding,
+} from './chat-pipeline-binding.js';
+import {
   buildChatPipelineTrialLiveSmokeReadiness,
   CHAT_PIPELINE_TRIAL_CACHE_VERSION,
   isChatPipelineTrialLiveSmokeReadiness,
@@ -132,6 +140,15 @@ export class ChatYamlFinalizeWitnessError extends Error {
     );
     this.name = 'ChatYamlFinalizeWitnessError';
     this.kind = kind;
+  }
+}
+
+export class ChatYamlStageRouteIntentError extends Error {
+  readonly kind = 'route-unresolved' as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChatYamlStageRouteIntentError';
   }
 }
 
@@ -281,7 +298,8 @@ type ChatYamlStageConflict =
   | 'path-moved'
   | 'compile-failed'
   | 'trial-run-failed'
-  | 'destination-exists';
+  | 'destination-exists'
+  | 'route-unresolved';
 
 interface ChatYamlStageRouteIntentAttestation {
   relativePath: string;
@@ -305,6 +323,7 @@ interface ChatYamlStageMetadata {
   routeIntentRequired: boolean;
   routeIntentAttestation: ChatYamlStageRouteIntentAttestation | null;
   createTargetRelativePath: string | null;
+  pipelineBinding: ChatPipelineBinding | null;
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
@@ -350,6 +369,7 @@ export interface ChatYamlStageDescriptor {
   requestedAction: PipelineRequestedActionKind | null;
   routeIntentRequired: boolean;
   createTargetRelativePath: string | null;
+  pipelineBinding: ChatPipelineBinding | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
 }
@@ -371,6 +391,10 @@ export interface ChatYamlStageFinalizeInput {
   trialId?: string;
   allowInvalid?: boolean;
   retainStage?: boolean;
+  independentRecovery?: {
+    sessionId: string;
+    bindingRequestId: string;
+  } | null;
 }
 
 export interface ChatYamlStageResultRelocation {
@@ -387,6 +411,7 @@ export interface ChatYamlStageFinalizeResult {
   localBranchPersisted: boolean;
   trialVerification: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   compile: ReturnType<typeof runCompileAndWriteLog>;
+  pipelineBinding?: ChatPipelineBinding;
   /** Existing published branches moved aside while this result committed. */
   relocations?: ChatYamlStageResultRelocation[];
   revision: number;
@@ -1052,6 +1077,14 @@ function readMetadata(
     typeof raw.createTargetRelativePath === 'string'
       ? assertPortableRelativePath(raw.createTargetRelativePath)
       : null;
+  let pipelineBinding: ChatPipelineBinding | null | false = null;
+  if (raw.pipelineBinding !== undefined && raw.pipelineBinding !== null) {
+    try {
+      pipelineBinding = parseChatPipelineBinding(raw.pipelineBinding);
+    } catch {
+      pipelineBinding = false;
+    }
+  }
   let sessionRelocation: ChatYamlStageSessionRelocationBinding | undefined;
   if (raw.sessionRelocation !== undefined && raw.sessionRelocation !== null) {
     sessionRelocation = parseSessionRelocationBinding(raw.sessionRelocation, paths);
@@ -1065,18 +1098,47 @@ function readMetadata(
     trialPlanMaxAttempts === null ||
     (raw.routeIntentRequired !== undefined && typeof raw.routeIntentRequired !== 'boolean') ||
     routeIntentAttestation === false ||
+    pipelineBinding === false ||
     (!routeIntentRequired && routeIntentAttestation !== null) ||
     (requestedAction !== null && routeIntentRequired) ||
-    (requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
-      ? createTargetRelativePath === null || raw.activeRelativePath !== createTargetRelativePath
-      : requestedAction === FILL_MANUAL_NEW_PIPELINE_ACTION_KIND
-        ? createTargetRelativePath !== null ||
-          typeof raw.activeRelativePath !== 'string' ||
-          !raw.sourceRelativePaths.some((item) =>
-            samePipelineRelativePath(item, raw.activeRelativePath as string),
-          )
-        : createTargetRelativePath !== null ||
-          (raw.requestedAction !== null && raw.requestedAction !== undefined)) ||
+    (pipelineBinding
+      ? routeIntentRequired ||
+        routeIntentAttestation !== null ||
+        (pipelineBinding.intent === 'create'
+          ? pipelineBinding.originRelativePath !== null ||
+            createTargetRelativePath === null ||
+            !samePipelineRelativePath(
+              createTargetRelativePath,
+              pipelineBinding.targetRelativePath,
+            ) ||
+            typeof raw.activeRelativePath !== 'string' ||
+            !samePipelineRelativePath(raw.activeRelativePath, pipelineBinding.targetRelativePath) ||
+            (requestedAction !== null && requestedAction !== CREATE_NEW_PIPELINE_ACTION_KIND)
+          : pipelineBinding.originRelativePath === null ||
+            createTargetRelativePath !== null ||
+            typeof raw.activeRelativePath !== 'string' ||
+            (!samePipelineRelativePath(
+              raw.activeRelativePath,
+              pipelineBinding.originRelativePath,
+            ) &&
+              !samePipelineRelativePath(
+                raw.activeRelativePath,
+                pipelineBinding.targetRelativePath,
+              )) ||
+            !raw.sourceRelativePaths.some((item) =>
+              samePipelineRelativePath(item, raw.activeRelativePath as string),
+            ) ||
+            (requestedAction !== null && requestedAction !== FILL_MANUAL_NEW_PIPELINE_ACTION_KIND))
+      : requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+        ? createTargetRelativePath === null || raw.activeRelativePath !== createTargetRelativePath
+        : requestedAction === FILL_MANUAL_NEW_PIPELINE_ACTION_KIND
+          ? createTargetRelativePath !== null ||
+            typeof raw.activeRelativePath !== 'string' ||
+            !raw.sourceRelativePaths.some((item) =>
+              samePipelineRelativePath(item, raw.activeRelativePath as string),
+            )
+          : createTargetRelativePath !== null ||
+            (raw.requestedAction !== null && raw.requestedAction !== undefined)) ||
     !Array.isArray(raw.baseEntries) ||
     !raw.baseEntries.every(isBaseEntry)
   ) {
@@ -1100,6 +1162,7 @@ function readMetadata(
       routeIntentRequired,
       routeIntentAttestation: routeIntentAttestation || null,
       createTargetRelativePath,
+      pipelineBinding: pipelineBinding || null,
       sourceRelativePaths: raw.sourceRelativePaths.map(assertPortableRelativePath),
       baseEntries: raw.baseEntries.map((entry) => ({
         relativePath: assertPortableRelativePath(entry.relativePath),
@@ -1281,6 +1344,7 @@ function descriptor(
     requestedAction: metadata.requestedAction,
     routeIntentRequired: metadata.routeIntentRequired,
     createTargetRelativePath: metadata.createTargetRelativePath,
+    pipelineBinding: metadata.pipelineBinding,
     entries,
     ...(metadata.sessionRelocation ? { sessionRelocation: metadata.sessionRelocation } : {}),
   };
@@ -1327,6 +1391,11 @@ export function createChatYamlStage(
     activePath?: string | null;
     requestedAction?: PipelineRequestedActionKind | null;
     routeIntentRequired?: boolean;
+    pipelineBinding?: {
+      sessionId: string;
+      bindingRequestId: string;
+      intent: ChatPipelineRouteIntent;
+    } | null;
   } = {},
 ): ChatYamlStageDescriptor {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
@@ -1373,11 +1442,34 @@ export function createChatYamlStage(
     if (requestedAction !== null && options.routeIntentRequired === true) {
       throw new Error('An explicit Host action cannot also require a router target mode.');
     }
-    const routeIntentRequired = requestedAction === null && options.routeIntentRequired === true;
+    if (options.pipelineBinding && options.routeIntentRequired === true) {
+      throw new Error('A Host-bound pipeline stage cannot require a router target mode.');
+    }
+    if (
+      options.pipelineBinding &&
+      ((requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND &&
+        options.pipelineBinding.intent !== 'create') ||
+        (requestedAction === FILL_MANUAL_NEW_PIPELINE_ACTION_KIND &&
+          options.pipelineBinding.intent !== 'edit'))
+    ) {
+      throw new Error('The Host pipeline action does not match its semantic binding intent.');
+    }
+    const pipelineBinding = options.pipelineBinding
+      ? reserveChatPipelineBinding(ws, {
+          sessionId: options.pipelineBinding.sessionId,
+          bindingRequestId: options.pipelineBinding.bindingRequestId,
+          intent: options.pipelineBinding.intent,
+          originRelativePath: options.pipelineBinding.intent === 'edit' ? activeRelativePath : null,
+        })
+      : null;
+    const routeIntentRequired =
+      !pipelineBinding && requestedAction === null && options.routeIntentRequired === true;
     const createTargetRelativePath =
-      requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
-        ? reserveCreateTargetRelativePath(sourceRelativePaths)
-        : null;
+      pipelineBinding?.intent === 'create'
+        ? pipelineBinding.targetRelativePath
+        : requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+          ? reserveCreateTargetRelativePath(sourceRelativePaths)
+          : null;
     if (createTargetRelativePath) activeRelativePath = createTargetRelativePath;
     const metadata: ChatYamlStageMetadata = {
       version: STAGE_VERSION,
@@ -1393,6 +1485,7 @@ export function createChatYamlStage(
       routeIntentRequired,
       routeIntentAttestation: null,
       createTargetRelativePath,
+      pipelineBinding,
       sourceRelativePaths,
       baseEntries,
     };
@@ -1609,11 +1702,45 @@ export function issueChatYamlStageTrialPlanAttempt(
   });
 }
 
+function assertSessionPipelineBindingSemantics(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  targetRelativePath: string,
+): void {
+  if (!metadata.pipelineBinding) return;
+  if (
+    !metadata.activeRelativePath ||
+    !samePipelineRelativePath(metadata.activeRelativePath, targetRelativePath)
+  ) {
+    throw new Error('The session-owned pipeline binding may verify only its classified target.');
+  }
+  const changedSource = metadata.sourceRelativePaths.find(
+    (relativePath) =>
+      !samePipelineRelativePath(relativePath, targetRelativePath) &&
+      stageTargetChanged(paths, metadata, relativePath),
+  );
+  if (changedSource) {
+    throw new Error(`The session-owned pipeline binding cannot also mutate ${changedSource}.`);
+  }
+  const freshSibling = listStageEntries(ws, paths, metadata).find(
+    (entry) =>
+      !samePipelineRelativePath(entry.relativePath, targetRelativePath) &&
+      baseEntryFor(metadata, entry.relativePath) === null,
+  );
+  if (freshSibling) {
+    throw new Error(
+      `The session-owned pipeline binding cannot also mutate ${freshSibling.relativePath}.`,
+    );
+  }
+}
+
 export function compileChatYamlStage(
   ws: WorkspaceState,
   stageId: string,
   relativePath: string,
   routeIntent?: ChatPipelineRouteIntent,
+  independentRecovery = false,
 ): ReturnType<typeof runCompileAndWriteLog> {
   const loaded = readMetadata(ws, stageId);
   const { paths } = loaded;
@@ -1622,7 +1749,20 @@ export function compileChatYamlStage(
   const targetRelativePath = assertPortableRelativePath(relativePath);
   const stagedPath = resolveStagedYamlPath(paths, targetRelativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
-  metadata = bindOrVerifyRouteIntent(paths, metadata, targetRelativePath, stagedPath, routeIntent);
+  assertSessionPipelineBindingSemantics(ws, paths, metadata, targetRelativePath);
+  if (independentRecovery) {
+    if (routeIntent) {
+      throw new Error('Independent recovery cannot also provide a router target mode.');
+    }
+  } else {
+    metadata = bindOrVerifyRouteIntent(
+      paths,
+      metadata,
+      targetRelativePath,
+      stagedPath,
+      routeIntent,
+    );
+  }
   const result = runChatStageCompileAndWriteLog(ws, paths, stagedPath);
   try {
     runPipelineManifestSync(stagedPath);
@@ -2029,6 +2169,19 @@ function assertNoMarkerCreationSemantics(
   }
 }
 
+function assertBoundRouteIntentSemantics(
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  sourceRelativePath: string | undefined,
+  routeIntent: ChatPipelineRouteIntent,
+): void {
+  try {
+    assertNoMarkerCreationSemantics(paths, metadata, sourceRelativePath, routeIntent);
+  } catch (err) {
+    throw new ChatYamlStageRouteIntentError(err instanceof Error ? err.message : String(err));
+  }
+}
+
 function bindOrVerifyRouteIntent(
   paths: StagePaths,
   metadata: ChatYamlStageMetadata,
@@ -2052,9 +2205,11 @@ function bindOrVerifyRouteIntent(
       metadata.routeIntentAttestation &&
       metadata.routeIntentAttestation.routeIntent !== routeIntent
     ) {
-      throw new Error('The stage-bound router target mode cannot change within one stage.');
+      throw new ChatYamlStageRouteIntentError(
+        'The stage-bound router target mode cannot change within one stage.',
+      );
     }
-    assertNoMarkerCreationSemantics(paths, metadata, sourceRelativePath, routeIntent);
+    assertBoundRouteIntentSemantics(paths, metadata, sourceRelativePath, routeIntent);
     const nextMetadata: ChatYamlStageMetadata = {
       ...metadata,
       routeIntentAttestation: { relativePath, contentHash, routeIntent },
@@ -2069,11 +2224,11 @@ function bindOrVerifyRouteIntent(
     !samePipelineRelativePath(attestation.relativePath, relativePath) ||
     attestation.contentHash !== contentHash
   ) {
-    throw new Error(
+    throw new ChatYamlStageRouteIntentError(
       'A no-marker pipeline mutation requires a current stage-bound router target mode before verification.',
     );
   }
-  assertNoMarkerCreationSemantics(paths, metadata, sourceRelativePath, attestation.routeIntent);
+  assertBoundRouteIntentSemantics(paths, metadata, sourceRelativePath, attestation.routeIntent);
   return metadata;
 }
 
@@ -3069,7 +3224,11 @@ export async function finalizeChatYamlStage(
   const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
     samePipelineRelativePath(candidate, relativePath),
   );
-  if (metadata.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND) {
+  if (
+    !input.independentRecovery &&
+    (metadata.requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND ||
+      metadata.pipelineBinding?.intent === 'create')
+  ) {
     if (sourceRelativePath) {
       throw new Error(
         'A create-new pipeline turn cannot modify an existing pipeline; write the reserved current-file target instead.',
@@ -3077,7 +3236,9 @@ export async function finalizeChatYamlStage(
     }
     if (
       !metadata.createTargetRelativePath ||
-      !samePipelineRelativePath(metadata.createTargetRelativePath, relativePath)
+      !samePipelineRelativePath(metadata.createTargetRelativePath, relativePath) ||
+      (metadata.pipelineBinding &&
+        !samePipelineRelativePath(metadata.pipelineBinding.targetRelativePath, relativePath))
     ) {
       throw new Error(
         'A create-new pipeline turn may finalize only its Host-reserved current-file target.',
@@ -3087,11 +3248,58 @@ export async function finalizeChatYamlStage(
   const stagedPath = resolveStagedYamlPath(paths, relativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
   const changed = stageTargetChanged(paths, metadata, relativePath);
-  const compile = compileChatYamlStage(ws, input.stageId, relativePath);
+  const recoveryBinding = input.independentRecovery
+    ? reserveChatPipelineBinding(ws, {
+        sessionId: input.independentRecovery.sessionId,
+        bindingRequestId: input.independentRecovery.bindingRequestId,
+        intent: sourceRelativePath ? 'edit' : 'create',
+        originRelativePath: sourceRelativePath ?? null,
+        forceNew: true,
+      })
+    : null;
+  let publicationBinding = recoveryBinding;
+  if (!publicationBinding && metadata.pipelineBinding) {
+    publicationBinding = readChatPipelineBinding(ws, metadata.pipelineBinding.id);
+    if (
+      !publicationBinding ||
+      publicationBinding.sessionId !== metadata.pipelineBinding.sessionId ||
+      publicationBinding.intent !== metadata.pipelineBinding.intent
+    ) {
+      throw new Error('The authenticated session-owned pipeline binding is unavailable.');
+    }
+  }
+  const compile = compileChatYamlStage(
+    ws,
+    input.stageId,
+    relativePath,
+    undefined,
+    recoveryBinding !== null,
+  );
 
   const sourcePath = sourceRelativePath
     ? resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath)
     : null;
+  let publishesIndependentBinding =
+    publicationBinding !== null &&
+    (!sourceRelativePath ||
+      !samePipelineRelativePath(publicationBinding.targetRelativePath, sourceRelativePath));
+  if (publishesIndependentBinding) {
+    let desiredPath = resolveRelativeInside(
+      tagmaDirOf(ws.workDir),
+      publicationBinding!.targetRelativePath,
+    );
+    for (let attempt = 0; existsSync(dirname(desiredPath)) && attempt < 32; attempt += 1) {
+      publicationBinding = relocateChatPipelineBindingTarget(ws, publicationBinding!.id);
+      desiredPath = resolveRelativeInside(
+        tagmaDirOf(ws.workDir),
+        publicationBinding.targetRelativePath,
+      );
+    }
+    if (existsSync(dirname(desiredPath))) {
+      throw new Error('Could not relocate the session-owned pipeline branch after a collision.');
+    }
+    publishesIndependentBinding = true;
+  }
   if (sourcePath && input.localBranch && !samePath(input.localBranch.sourcePath, sourcePath)) {
     throw new Error('Local branch path does not match the staged source pipeline.');
   }
@@ -3108,6 +3316,7 @@ export async function finalizeChatYamlStage(
       localBranchPersisted: false,
       trialVerification: 'not-required',
       compile,
+      ...(publicationBinding ? { pipelineBinding: publicationBinding } : {}),
       revision: state.revision,
       state,
     };
@@ -3127,7 +3336,7 @@ export async function finalizeChatYamlStage(
         paths,
         stagedPath,
         relativePath,
-        sourcePath,
+        publishesIndependentBinding ? null : sourcePath,
         input.trialId,
       );
   const trialVerificationAccepted =
@@ -3136,6 +3345,7 @@ export async function finalizeChatYamlStage(
     trialVerification === 'not-required';
 
   const conflicts: ChatYamlStageConflict[] = [];
+  if (recoveryBinding) conflicts.push('route-unresolved');
   if (forceForkReason) conflicts.push(forceForkReason);
   if (!compile.success && !conflicts.includes('compile-failed')) conflicts.push('compile-failed');
   if (!trialVerificationAccepted && !conflicts.includes('trial-run-failed')) {
@@ -3149,7 +3359,23 @@ export async function finalizeChatYamlStage(
     let resultCompile = compile;
     const relocations: ChatYamlStageResultRelocation[] = [];
 
-    if (!sourcePath) {
+    if (publishesIndependentBinding) {
+      const desiredPath = assertPipelineYamlPath(
+        ws.workDir,
+        resolveRelativeInside(tagmaDirOf(ws.workDir), publicationBinding!.targetRelativePath),
+        'session-owned pipeline branch destination',
+      );
+      if (existsSync(dirname(desiredPath))) {
+        conflicts.push('destination-exists');
+        throw new Error('The reserved session-owned pipeline branch destination already exists.');
+      }
+      trackPipeline(desiredPath);
+      writeStagedArtifactsToDestination(ws, stagedPath, desiredPath, {
+        sourceIdentityPath: sourcePath ?? desiredPath,
+      });
+      destinationPath = desiredPath;
+      outcome = conflicts.length > 0 ? 'forked' : 'created';
+    } else if (!sourcePath) {
       const desiredPath = assertPipelineYamlPath(
         ws.workDir,
         resolveRelativeInside(tagmaDirOf(ws.workDir), relativePath),
@@ -3315,16 +3541,30 @@ export async function finalizeChatYamlStage(
       }
     }
 
-    const activeSourceReconciliation = reconcileDifferentActiveSourceDrift(
-      ws,
-      paths,
-      metadata,
-      relativePath,
-      input.activeLocalBranch,
-      trackPipeline,
-    );
+    const activeSourceReconciliation = publishesIndependentBinding
+      ? { conflicts: [], localBranchPersisted: false, sourcePath: null, relocations: [] }
+      : reconcileDifferentActiveSourceDrift(
+          ws,
+          paths,
+          metadata,
+          relativePath,
+          input.activeLocalBranch,
+          trackPipeline,
+        );
     localBranchPersisted = localBranchPersisted || activeSourceReconciliation.localBranchPersisted;
     relocations.push(...activeSourceReconciliation.relocations);
+    if (publicationBinding) {
+      const destinationRelativePath = portableRelative(tagmaDirOf(ws.workDir), destinationPath);
+      if (
+        !samePipelineRelativePath(publicationBinding.targetRelativePath, destinationRelativePath)
+      ) {
+        publicationBinding = rebindChatPipelineBindingTarget(
+          ws,
+          publicationBinding.id,
+          destinationRelativePath,
+        );
+      }
+    }
     bumpRevision(ws);
     const state = getState(ws);
     const result: ChatYamlStageFinalizeResult = {
@@ -3334,6 +3574,7 @@ export async function finalizeChatYamlStage(
       localBranchPersisted,
       trialVerification,
       compile: resultCompile,
+      ...(publicationBinding ? { pipelineBinding: publicationBinding } : {}),
       ...(relocations.length > 0 ? { relocations } : {}),
       revision: state.revision,
       state,

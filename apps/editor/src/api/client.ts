@@ -183,6 +183,17 @@ export type ChatYamlStageSessionRelocationClearInput = ChatYamlStageSessionReloc
     | { verifiedSessionMissing: true; verifiedHomeDirectory?: never }
   );
 
+export interface ChatPipelineBinding {
+  version: 1;
+  id: string;
+  sessionId: string;
+  bindingRequestId: string;
+  intent: ChatPipelineRouteIntent;
+  originRelativePath: string | null;
+  targetRelativePath: string;
+  createdAt: number;
+}
+
 export interface ChatYamlStageDescriptor {
   id: string;
   rootDir: string;
@@ -195,6 +206,7 @@ export interface ChatYamlStageDescriptor {
   requestedAction: PipelineRequestedActionKind | null;
   routeIntentRequired: boolean;
   createTargetRelativePath: string | null;
+  pipelineBinding: ChatPipelineBinding | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
 }
@@ -577,7 +589,8 @@ export type ChatYamlStageConflict =
   | 'path-moved'
   | 'compile-failed'
   | 'trial-run-failed'
-  | 'destination-exists';
+  | 'destination-exists'
+  | 'route-unresolved';
 
 export interface ChatYamlStageFinalizeInput {
   stageId: string;
@@ -598,6 +611,10 @@ export interface ChatYamlStageFinalizeInput {
   trialId?: string;
   allowInvalid?: boolean;
   retainStage?: boolean;
+  independentRecovery?: {
+    sessionId: string;
+    bindingRequestId: string;
+  } | null;
 }
 
 export interface ChatYamlStageResultRelocation {
@@ -614,6 +631,7 @@ export interface ChatYamlStageFinalizeResult {
   localBranchPersisted: boolean;
   trialVerification: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   compile: YamlCompileResult;
+  pipelineBinding?: ChatPipelineBinding;
   relocations?: ChatYamlStageResultRelocation[];
   revision: number;
   state: ServerState;
@@ -2182,6 +2200,11 @@ export const api = {
     workspaceKeyOverride?: string | null,
     requestedAction?: PipelineRequestedActionKind | null,
     routeIntentRequired = false,
+    pipelineBinding?: {
+      sessionId: string;
+      bindingRequestId: string;
+      intent: ChatPipelineRouteIntent;
+    } | null,
   ) =>
     request<ChatYamlStageDescriptor>(
       '/workspace/chat-yaml-stage/start',
@@ -2191,6 +2214,7 @@ export const api = {
           activePath: activePath ?? null,
           requestedAction: requestedAction ?? null,
           routeIntentRequired,
+          pipelineBinding: pipelineBinding ?? null,
         }),
       },
       workspaceKeyOverride,
@@ -2286,12 +2310,18 @@ export const api = {
     relativePath: string,
     workspaceKeyOverride?: string | null,
     routeIntent?: ChatPipelineRouteIntent,
+    independentRecovery = false,
   ) =>
     request<YamlCompileResult>(
       '/workspace/chat-yaml-stage/compile',
       {
         method: 'POST',
-        body: jsonBody({ stageId, relativePath, ...(routeIntent ? { routeIntent } : {}) }),
+        body: jsonBody({
+          stageId,
+          relativePath,
+          ...(routeIntent ? { routeIntent } : {}),
+          ...(independentRecovery ? { independentRecovery: true } : {}),
+        }),
       },
       workspaceKeyOverride,
     ),
@@ -2301,12 +2331,18 @@ export const api = {
     relativePath: string,
     trialId: string,
     workspaceKeyOverride?: string | null,
+    independentRecovery = false,
   ) =>
     request<ChatPipelineTrialRunResult>(
       '/workspace/chat-yaml-stage/trial-run',
       {
         method: 'POST',
-        body: jsonBody({ stageId, relativePath, trialId }),
+        body: jsonBody({
+          stageId,
+          relativePath,
+          trialId,
+          ...(independentRecovery ? { independentRecovery: true } : {}),
+        }),
       },
       workspaceKeyOverride,
     ),

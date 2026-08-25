@@ -29,6 +29,39 @@ describe('OpenCode session metadata', () => {
     });
   });
 
+  test('round-trips the Host-owned pipeline binding separately from its display path', () => {
+    const metadata = buildTagmaSessionMetadata({
+      source: 'desktop-chat',
+      workspacePath: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/pipeline-branch/pipeline-branch.yaml',
+      pipelineBinding: {
+        id: 'binding-1',
+        intent: 'edit',
+        originRelativePath: 'orders/orders.yaml',
+        targetRelativePath: 'pipeline-branch/pipeline-branch.yaml',
+      },
+    });
+
+    expect(parseTagmaSessionMetadata(metadata)).toMatchObject({
+      source: 'desktop-chat',
+      yamlPath: 'C:/repo/.tagma/pipeline-branch/pipeline-branch.yaml',
+      pipelineBinding: {
+        id: 'binding-1',
+        intent: 'edit',
+        originRelativePath: 'orders/orders.yaml',
+        targetRelativePath: 'pipeline-branch/pipeline-branch.yaml',
+      },
+    });
+  });
+
+  test('recognizes temporary pipeline classifiers without treating them as desktop chats', () => {
+    expect(
+      parseTagmaSessionMetadata(
+        buildTagmaSessionMetadata({ source: 'pipeline-intent-classifier' }),
+      ),
+    ).toEqual({ schema: 1, source: 'pipeline-intent-classifier' });
+  });
+
   test('omits empty optional fields', () => {
     expect(
       buildTagmaSessionMetadata({

@@ -12,7 +12,7 @@
 import { usePipelineStore } from './pipeline-store';
 import { useRunStore } from './run-store';
 import { useEditorSettingsStore } from './editor-settings-store';
-import type { ChatYamlStageConflict } from '../api/client';
+import type { ChatPipelineBinding, ChatYamlStageConflict } from '../api/client';
 import {
   buildChatContextWindowMarker,
   type ChatContextWindowSnapshot,
@@ -60,6 +60,7 @@ export interface ChatYamlReconcileSummary {
   readonly localBranchPersisted: boolean;
   readonly resultPath: string | null;
   readonly compileSuccess: boolean;
+  readonly pipelineBinding?: ChatPipelineBinding;
   readonly trialRunSuccess?: boolean;
   readonly trialVerification?:
     'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
@@ -178,6 +179,12 @@ export interface EditorContextOptions {
   chatYamlStage?: {
     id: string;
     agentTagmaDir: string;
+    pipelineBinding?: {
+      id: string;
+      intent: 'create' | 'edit';
+      originRelativePath: string | null;
+      targetRelativePath: string;
+    } | null;
   } | null;
   previousChatYamlReconcile?: ChatYamlReconcileSummary | null;
   /**
@@ -213,6 +220,18 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
     const agentRoot = options.chatYamlStage.agentTagmaDir.replace(/\\/g, '/');
     lines.push(`  <chat-staging id="${escapeEditorContextValue(options.chatYamlStage.id)}">`);
     lines.push(`    <agent-root>${escapeEditorContextValue(agentRoot)}</agent-root>`);
+    if (options.chatYamlStage.pipelineBinding) {
+      const binding = options.chatYamlStage.pipelineBinding;
+      lines.push(
+        `    <pipeline-binding id="${escapeEditorContextValue(binding.id)}" intent="${binding.intent}">`,
+        ...(binding.originRelativePath
+          ? [`      <origin>${escapeEditorContextValue(binding.originRelativePath)}</origin>`]
+          : []),
+        `      <host-publication-coordinate writable="false">${escapeEditorContextValue(binding.targetRelativePath)}</host-publication-coordinate>`,
+        '      <ownership>The Host owns branch allocation. Edit only current-file for edit intent, or create only current-file for create intent; never choose or copy to another pipeline coordinate.</ownership>',
+        '    </pipeline-binding>',
+      );
+    }
     lines.push(
       '    <write-policy>Agent-root is the sole filesystem read/write boundary for this staged turn. Do not inspect or access live workspace paths outside agent-root.</write-policy>',
       '  </chat-staging>',
