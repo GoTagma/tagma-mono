@@ -134,6 +134,7 @@ import {
 } from './utils/chat-trial-planning-telemetry';
 import {
   buildWorkspacePipelineMenuItems,
+  failedChatDraftPaths,
   reconcileFinalizedWorkspacePipelines,
   type WorkspaceStagedPipeline,
 } from './utils/workspace-yaml-list';
@@ -377,6 +378,7 @@ export function App() {
   const chatReconciling = useChatStore((s) => s.reconciling);
   const chatFlushing = useChatStore((s) => s.flushing);
   const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
+  const turnYamlResults = useChatStore((s) => s.turnYamlResults);
 
   const runActive = useRunStore((s) => s.active);
   const runStatus = useRunStore((s) => s.status);
@@ -428,6 +430,13 @@ export function App() {
   const stagedWorkspacePipelines = useMemo(
     () => (workspaceStateVisible ? workspacePipelines.stagedTargets : []),
     [workspacePipelines.stagedTargets, workspaceStateVisible],
+  );
+  const failedDraftPaths = useMemo(
+    () =>
+      workDir
+        ? failedChatDraftPaths(workspaceYamls, Object.values(turnYamlResults).flat(), workDir)
+        : new Set<string>(),
+    [turnYamlResults, workDir, workspaceYamls],
   );
   const [saveAsInput, setSaveAsInput] = useState<string | null>(null);
   const [newWorkflowInput, setNewWorkflowInput] = useState<string | null>(null);
@@ -3242,6 +3251,7 @@ export function App() {
         liveEntries: workspaceYamls,
         stagedTargets: stagedWorkspacePipelines,
         activeYamlName,
+        failedDraftPaths,
         yamlEditLocked,
         onOpen: handleOpenWorkspaceFile,
         onDelete: handleDeleteWorkspaceFile,
@@ -3251,6 +3261,7 @@ export function App() {
       workspaceYamls,
       stagedWorkspacePipelines,
       activeYamlName,
+      failedDraftPaths,
       yamlEditLocked,
       handleOpenWorkspaceFile,
       handleDeleteWorkspaceFile,
@@ -3529,6 +3540,7 @@ export function App() {
               <PipelinePicker
                 workDir={workDir}
                 workspaceYamls={workspaceYamls}
+                failedDraftPaths={failedDraftPaths}
                 yamlEditLocked={yamlEditLocked}
                 openingPath={openingPipelinePath}
                 onPickPipeline={handlePickerSelect}

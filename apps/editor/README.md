@@ -95,6 +95,11 @@ user-owned support files, runtime mode, capability report, and Host prerequisite
 prompt and triggered closures always run again. The live Trial status includes a Host heartbeat
 and elapsed time during long, otherwise-silent model tasks.
 
+When Chat preserves an unverified fork instead of overwriting another pipeline, the pipeline picker
+keeps that unchanged branch under a collapsed **Failed Chat drafts** section. The branch remains
+openable and explicitly removable; editing it or replacing it with a newer successful result returns
+it to the ordinary pipeline list.
+
 ## Production diagnostics for coding agents
 
 Packaged Tagma builds include an opt-in, read-only diagnostics API for debugging the installed
@@ -131,7 +136,9 @@ history reads never start, restart, prompt, or mutate OpenCode; they return `409
 running. Captured logs, renderer reports, timeline comparison state, timeline events, and all
 cursors are cleared whenever a session rotates or ends, so a later workspace cannot inherit them.
 Renderer console/error capture exists only during the matching diagnostics session and is restored
-without overwriting a console wrapper installed later by another feature. Release process output
+without overwriting a console wrapper installed later by another feature. Normal Chat health probes
+(`checking`/`ok`) do not create timeline events; degraded health and its recovery remain observable.
+Release process output
 comes from Electron's existing `sidecar.log`, so normal process streams are not wrapped.
 
 The protocol is extensible without changing the connection flow. Renderer features register lazy

@@ -57,6 +57,59 @@ test('shows the opening pipeline and blocks conflicting picker actions', () => {
   }
 });
 
+test('keeps unchanged failed Chat forks in a collapsed, explicitly labeled group', () => {
+  const noop = () => undefined;
+  const failedPaths = new Set([
+    '/workspace/.tagma/fact-copy-1/fact-copy-1.yaml',
+    '/workspace/.tagma/fact-copy-2/fact-copy-2.yaml',
+  ]);
+  const html = renderToStaticMarkup(
+    <PipelinePicker
+      workDir="/workspace"
+      workspaceYamls={
+        [
+          {
+            name: 'active.yaml',
+            path: '/workspace/.tagma/active/active.yaml',
+            pipelineName: 'Active Pipeline',
+            mtimeMs: 3,
+          },
+          {
+            name: 'fact-copy-1.yaml',
+            path: '/workspace/.tagma/fact-copy-1/fact-copy-1.yaml',
+            pipelineName: 'Fact Checker Copy 1',
+            mtimeMs: 1,
+          },
+          {
+            name: 'fact-copy-2.yaml',
+            path: '/workspace/.tagma/fact-copy-2/fact-copy-2.yaml',
+            pipelineName: 'Fact Checker Copy 2',
+            mtimeMs: 2,
+          },
+        ] as never
+      }
+      failedDraftPaths={failedPaths}
+      yamlEditLocked={false}
+      openingPath={null}
+      onPickPipeline={noop}
+      onCreateNew={noop}
+      onSwitchWorkspace={noop}
+      onDeletePipeline={noop}
+    />,
+  );
+
+  expect(html).toContain('Active Pipeline');
+  expect(html).toContain('Failed Chat drafts');
+  expect(html).toContain('2 preserved');
+  expect(html).toContain('Fact Checker Copy 1');
+  expect(html).toContain('Fact Checker Copy 2');
+  const detailsTag = html.slice(
+    html.indexOf('<details'),
+    html.indexOf('>', html.indexOf('<details')),
+  );
+  expect(detailsTag).not.toContain('open');
+});
+
 test('suppresses duplicate opens and keeps the picker visible after failure', async () => {
   const path = 'D:/Workspace/.tagma/Build/build.yaml';
   const canonicalPath = 'd:\\workspace\\.tagma\\build\\build.yaml';

@@ -1,6 +1,14 @@
 import { useMemo } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, FileCode2, Loader2, Plus, X as XIcon } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  FileCode2,
+  Loader2,
+  Plus,
+  X as XIcon,
+} from 'lucide-react';
 import { ProductLogo } from './ProductLogo';
 import type { WorkspaceYamlEntry } from '../api/client';
 import { formatRelative } from '../utils/format-relative';
@@ -8,6 +16,7 @@ import { formatRelative } from '../utils/format-relative';
 interface PipelinePickerProps {
   workDir: string;
   workspaceYamls: WorkspaceYamlEntry[];
+  failedDraftPaths?: ReadonlySet<string>;
   yamlEditLocked: boolean;
   openingPath: string | null;
   onPickPipeline: (path: string) => void;
@@ -21,9 +30,97 @@ function basename(p: string): string {
   return parts[parts.length - 1] ?? p;
 }
 
+function PipelineRow({
+  entry,
+  isOpening,
+  openingPath,
+  yamlEditLocked,
+  onPickPipeline,
+  onDeletePipeline,
+}: {
+  entry: WorkspaceYamlEntry;
+  isOpening: boolean;
+  openingPath: string | null;
+  yamlEditLocked: boolean;
+  onPickPipeline: (path: string) => void;
+  onDeletePipeline: (path: string) => void;
+}) {
+  const primary =
+    entry.pipelineName && entry.pipelineName.trim() ? entry.pipelineName.trim() : entry.name;
+  const showSecondary = primary !== entry.name;
+  const openingThis = openingPath === entry.path;
+  return (
+    <li className="group flex items-stretch transition-colors">
+      <button
+        type="button"
+        onClick={() => onPickPipeline(entry.path)}
+        disabled={isOpening}
+        aria-busy={openingThis || undefined}
+        aria-label={`${openingThis ? 'Opening' : 'Open'} pipeline ${primary}`}
+        className={`group/row flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-tagma-elevated/40 disabled:cursor-wait ${
+          openingThis ? '' : 'disabled:opacity-50'
+        }`}
+        title={entry.path}
+      >
+        {openingThis ? (
+          <Loader2
+            size={13}
+            aria-hidden="true"
+            className="shrink-0 animate-spin text-tagma-accent"
+          />
+        ) : (
+          <FileCode2
+            size={13}
+            className="shrink-0 text-tagma-muted transition-colors group-hover/row:text-tagma-accent"
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-label font-medium text-tagma-text">{primary}</span>
+          </div>
+          {showSecondary && (
+            <div className="mt-0.5 truncate font-mono text-caption text-tagma-muted-dim">
+              {entry.name}
+            </div>
+          )}
+        </div>
+        {openingThis ? (
+          <span
+            role="status"
+            aria-live="polite"
+            className="shrink-0 font-mono text-caption text-tagma-accent"
+          >
+            <span className="sr-only">Opening pipeline {primary}</span>
+            <span aria-hidden="true">Opening</span>
+          </span>
+        ) : (
+          <span className="shrink-0 font-mono text-caption tabular-nums text-tagma-muted-dim">
+            {formatRelative(entry.mtimeMs)}
+          </span>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          if (yamlEditLocked || isOpening) return;
+          onDeletePipeline(entry.path);
+        }}
+        disabled={yamlEditLocked || isOpening}
+        className="mr-3 shrink-0 self-center p-1 text-tagma-muted-dim/40 opacity-0 transition-[opacity,color] hover:text-tagma-error focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-0"
+        title={`Remove the "${entry.name}" pipeline folder (run history is preserved)`}
+        aria-label={`Remove ${entry.name}`}
+      >
+        <XIcon size={11} />
+      </button>
+    </li>
+  );
+}
+
 export function PipelinePicker({
   workDir,
   workspaceYamls,
+  failedDraftPaths,
   yamlEditLocked,
   openingPath,
   onPickPipeline,
@@ -36,6 +133,14 @@ export function PipelinePicker({
     [workspaceYamls],
   );
 
+  const failedDrafts = useMemo(
+    () => sorted.filter((entry) => failedDraftPaths?.has(entry.path) === true),
+    [failedDraftPaths, sorted],
+  );
+  const activePipelines = useMemo(
+    () => sorted.filter((entry) => failedDraftPaths?.has(entry.path) !== true),
+    [failedDraftPaths, sorted],
+  );
   const wsName = basename(workDir);
   const wsRoot = workDir.replace(/[/\\]+$/, '');
   const isOpening = openingPath !== null;
@@ -84,87 +189,63 @@ export function PipelinePicker({
           </span>
         </div>
 
-        {/* List — scrolls inside its own bounded box when the workspace
-            holds many pipelines, so the header and footer stay visible. */}
-        <ul
-          className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border"
-          aria-busy={isOpening}
-        >
-          {sorted.map((y) => {
-            const primary =
-              y.pipelineName && y.pipelineName.trim() ? y.pipelineName.trim() : y.name;
-            const showSecondary = primary !== y.name;
-            const openingThis = openingPath === y.path;
-            return (
-              <li key={y.path} className="group flex items-stretch transition-colors">
-                <button
-                  type="button"
-                  onClick={() => onPickPipeline(y.path)}
-                  disabled={isOpening}
-                  aria-busy={openingThis || undefined}
-                  aria-label={`${openingThis ? 'Opening' : 'Open'} pipeline ${primary}`}
-                  className={`group/row flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-tagma-elevated/40 disabled:cursor-wait ${
-                    openingThis ? '' : 'disabled:opacity-50'
-                  }`}
-                  title={y.path}
-                >
-                  {openingThis ? (
-                    <Loader2
-                      size={13}
-                      aria-hidden="true"
-                      className="shrink-0 animate-spin text-tagma-accent"
-                    />
-                  ) : (
-                    <FileCode2
-                      size={13}
-                      className="shrink-0 text-tagma-muted transition-colors group-hover/row:text-tagma-accent"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-label font-medium text-tagma-text">
-                        {primary}
-                      </span>
-                    </div>
-                    {showSecondary && (
-                      <div className="mt-0.5 truncate font-mono text-caption text-tagma-muted-dim">
-                        {y.name}
-                      </div>
-                    )}
-                  </div>
-                  {openingThis ? (
-                    <span
-                      role="status"
-                      aria-live="polite"
-                      className="shrink-0 font-mono text-caption text-tagma-accent"
-                    >
-                      <span className="sr-only">Opening pipeline {primary}</span>
-                      <span aria-hidden="true">Opening</span>
-                    </span>
-                  ) : (
-                    <span className="shrink-0 font-mono text-caption tabular-nums text-tagma-muted-dim">
-                      {formatRelative(y.mtimeMs)}
-                    </span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (yamlEditLocked || isOpening) return;
-                    onDeletePipeline(y.path);
-                  }}
-                  disabled={yamlEditLocked || isOpening}
-                  className="mr-3 shrink-0 self-center p-1 text-tagma-muted-dim/40 opacity-0 transition-[opacity,color] hover:text-tagma-error focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-0"
-                  title={`Remove the "${y.name}" pipeline folder (run history is preserved)`}
-                  aria-label={`Remove ${y.name}`}
-                >
-                  <XIcon size={11} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        {/* Lists stay bounded so the workspace actions remain visible. Failed
+            Chat forks are preserved but collapsed away from ordinary pipelines. */}
+        {(activePipelines.length > 0 || failedDrafts.length === 0) && (
+          <ul
+            className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border"
+            aria-busy={isOpening}
+          >
+            {activePipelines.map((entry) => (
+              <PipelineRow
+                key={entry.path}
+                entry={entry}
+                isOpening={isOpening}
+                openingPath={openingPath}
+                yamlEditLocked={yamlEditLocked}
+                onPickPipeline={onPickPipeline}
+                onDeletePipeline={onDeletePipeline}
+              />
+            ))}
+          </ul>
+        )}
+
+        {failedDrafts.length > 0 && (
+          <details className="group mt-3 border border-tagma-border">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-left text-tagma-warning hover:bg-tagma-elevated/40">
+              <AlertTriangle size={11} className="shrink-0" />
+              <span className="min-w-0 flex-1 text-body font-medium">Failed Chat drafts</span>
+              <span className="shrink-0 font-mono text-caption text-tagma-muted-dim">
+                {failedDrafts.length} preserved
+              </span>
+              <ChevronDown
+                size={11}
+                aria-hidden="true"
+                className="shrink-0 transition-transform group-open:rotate-180"
+              />
+            </summary>
+            <p className="border-t border-tagma-border/60 px-3 py-2 text-caption text-tagma-muted">
+              Verification failed, so Tagma kept these drafts instead of overwriting another
+              pipeline. Expand a draft to inspect it or remove it explicitly.
+            </p>
+            <ul
+              className="flex max-h-[min(40dvh,16rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border-t border-tagma-border/60"
+              aria-busy={isOpening}
+            >
+              {failedDrafts.map((entry) => (
+                <PipelineRow
+                  key={entry.path}
+                  entry={entry}
+                  isOpening={isOpening}
+                  openingPath={openingPath}
+                  yamlEditLocked={yamlEditLocked}
+                  onPickPipeline={onPickPipeline}
+                  onDeletePipeline={onDeletePipeline}
+                />
+              ))}
+            </ul>
+          </details>
+        )}
 
         {/* Footer action */}
         <button

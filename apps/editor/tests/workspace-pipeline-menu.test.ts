@@ -6,6 +6,7 @@ import type {
 } from '../src/api/client';
 import {
   buildWorkspacePipelineMenuItems,
+  failedChatDraftPaths,
   reconcileFinalizedWorkspacePipelines,
 } from '../src/utils/workspace-yaml-list';
 
@@ -146,6 +147,146 @@ describe('workspace pipeline menu', () => {
     expect(items[0]).toMatchObject({ disabled: true });
     expect(menuText(items[0]!)).toContain('First Draft');
     expect(menuText(items[0]!)).toContain('Temporary');
+  });
+
+  test('moves preserved failed Chat drafts behind ordinary pipelines and labels them', () => {
+    const failed = liveEntry('fact-checker-copy-1', 'Fact Checker Copy 1');
+    const active = liveEntry('active', 'Active Pipeline');
+    const items = buildWorkspacePipelineMenuItems({
+      workDir: WORK_DIR,
+      liveEntries: [failed, active],
+      stagedTargets: [],
+      activeYamlName: active.name,
+      failedDraftPaths: new Set([failed.path]),
+      yamlEditLocked: false,
+      onOpen: () => {},
+      onDelete: () => {},
+    });
+
+    expect(menuText(items[0]!)).toContain('Active Pipeline');
+    expect(menuText(items[1]!)).toContain('Fact Checker Copy 1');
+    expect(menuText(items[1]!)).toContain('Failed Chat draft');
+  });
+
+  test('identifies only unchanged live forks whose latest durable Chat result is failed', () => {
+    const failedCopy = liveEntry('fact-checker-copy-1', 'Fact Checker Copy 1', {
+      contentHash: 'failed-copy-hash',
+    });
+    const repairedCopy = liveEntry('fact-checker-copy-2', 'Fact Checker Copy 2', {
+      contentHash: 'repaired-copy-hash',
+    });
+    const editedCopy = liveEntry('fact-checker-copy-3', 'Fact Checker Copy 3', {
+      contentHash: 'user-edited-hash',
+    });
+    const ordinaryFailure = liveEntry('ordinary', 'Ordinary', {
+      contentHash: 'ordinary-failure-hash',
+    });
+    const result = (
+      path: string,
+      contentHash: string,
+      status: 'ready' | 'failed',
+      completedAt: number,
+      outcome: 'adopted' | 'forked' = 'forked',
+      workspaceKey = WORK_DIR,
+      resultId?: string,
+    ) =>
+      ({
+        path,
+        workspaceKey,
+        status,
+        completedAt,
+        finalYamlContentHash: contentHash,
+        reconcile: { outcome },
+        ...(resultId ? { resultId } : {}),
+      }) as never;
+
+    const paths = failedChatDraftPaths(
+      [failedCopy, repairedCopy, editedCopy, ordinaryFailure],
+      [
+        result(
+          failedCopy.path,
+          failedCopy.contentHash,
+          'failed',
+          1,
+          'forked',
+          WORK_DIR,
+          'result-b',
+        ),
+        result(
+          failedCopy.path,
+          failedCopy.contentHash,
+          'ready',
+          1,
+          'adopted',
+          WORK_DIR,
+          'result-a',
+        ),
+        result(repairedCopy.path, 'older-failed-hash', 'failed', 1),
+        result(repairedCopy.path, repairedCopy.contentHash, 'ready', 2, 'adopted'),
+        result(editedCopy.path, 'pre-edit-hash', 'failed', 3),
+        result(ordinaryFailure.path, ordinaryFailure.contentHash, 'failed', 4, 'adopted'),
+        result(
+          `${WORK_DIR}/.tagma/foreign/foreign.yaml`,
+          'foreign-hash',
+          'failed',
+          5,
+          'forked',
+          'D:/other',
+        ),
+      ],
+      WORK_DIR,
+    );
+
+    expect([...paths]).toEqual([failedCopy.path]);
+  });
+
+  test('matches legacy Windows result paths without crossing workspace-prefix boundaries', () => {
+    const workDir = 'D:\\Repo';
+    const failedCopy = {
+      ...liveEntry('copy', 'Copy'),
+      path: 'd:/REPO/.tagma/copy/copy.yaml',
+      contentHash: 'copy-hash',
+    };
+    const outsideWorkspace = {
+      ...liveEntry('outside', 'Outside'),
+      path: 'D:/Repository/.tagma/outside/outside.yaml',
+      contentHash: 'outside-hash',
+    };
+    const outsideTagmaRoot = {
+      ...liveEntry('outside-root', 'Outside root'),
+      path: 'D:/Repo/.tagma-other/outside-root/outside-root.yaml',
+      contentHash: 'outside-root-hash',
+    };
+
+    const paths = failedChatDraftPaths(
+      [failedCopy, outsideWorkspace, outsideTagmaRoot],
+      [
+        {
+          path: 'D:\\repo\\.tagma\\copy\\copy.yaml',
+          status: 'failed',
+          completedAt: 1,
+          finalYamlContentHash: 'copy-hash',
+          reconcile: { outcome: 'forked' },
+        },
+        {
+          path: outsideWorkspace.path,
+          status: 'failed',
+          completedAt: 2,
+          finalYamlContentHash: 'outside-hash',
+          reconcile: { outcome: 'forked' },
+        },
+        {
+          path: outsideTagmaRoot.path,
+          status: 'failed',
+          completedAt: 3,
+          finalYamlContentHash: 'outside-root-hash',
+          reconcile: { outcome: 'forked' },
+        },
+      ] as never,
+      workDir,
+    );
+
+    expect([...paths]).toEqual([failedCopy.path]);
   });
 
   test('upserts finalized live metadata and removes only the matching temporary identity', () => {

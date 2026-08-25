@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { TASK_ID_RE } from '@tagma/sdk/config';
 import {
   DEFAULT_OPENCODE_AGENT_MAX_STEPS,
   clampOpencodeAgentMaxSteps,
@@ -1356,25 +1357,40 @@ function asStringArray(value) {
     : [];
 }
 
+function asIdentity(value, fallback) {
+  return typeof value === "string" ? value : fallback;
+}
+
+const PIPELINE_ID_PATTERN = new RegExp(${JSON.stringify(TASK_ID_RE.source)});
+
+function assertPipelineId(kind, value) {
+  if (!PIPELINE_ID_PATTERN.test(value)) {
+    throw new Error(
+      kind + " id " + JSON.stringify(value) +
+        " is invalid; IDs must match /" + PIPELINE_ID_PATTERN.source + "/",
+    );
+  }
+}
+
 function yamlString(value) {
   return JSON.stringify(String(value));
 }
 
 function sectionIdWithoutPrefix(section, prefix) {
-  const id = asString(section.id);
+  const id = asIdentity(section.id, "");
   return id.startsWith(prefix) ? id.slice(prefix.length) : id;
 }
 
 function trackSectionId(section) {
-  return asString(section.track, sectionIdWithoutPrefix(section, "track:")) || "main";
+  return asIdentity(section.track, sectionIdWithoutPrefix(section, "track:"));
 }
 
 function taskSectionIds(section) {
   const raw = sectionIdWithoutPrefix(section, "task:");
   const dot = raw.indexOf(".");
   return {
-    trackId: asString(section.track, dot > 0 ? raw.slice(0, dot) : ""),
-    taskId: asString(section.task, dot > 0 ? raw.slice(dot + 1) : raw) || "task",
+    trackId: asIdentity(section.track, dot > 0 ? raw.slice(0, dot) : ""),
+    taskId: asIdentity(section.task, dot > 0 ? raw.slice(dot + 1) : raw),
   };
 }
 
@@ -1507,6 +1523,7 @@ function buildYamlSkeleton(manifest) {
   const declaredTrackIds = new Set();
   for (const section of trackSections) {
     const trackId = trackSectionId(section);
+    assertPipelineId("track", trackId);
     if (declaredTrackIds.has(trackId)) throw new Error("track " + trackId + " is declared more than once");
     declaredTrackIds.add(trackId);
   }
@@ -1518,6 +1535,7 @@ function buildYamlSkeleton(manifest) {
   const declaredTaskIds = new Set();
   for (const section of taskSections) {
     const ids = taskSectionIds(section);
+    assertPipelineId("task", ids.taskId);
     if (!ids.trackId || !declaredTrackIds.has(ids.trackId)) {
       throw new Error(
         "task " + ids.taskId + " references undeclared track " + JSON.stringify(ids.trackId || "(missing)"),

@@ -293,6 +293,9 @@
   boundary rationale per task, one execution-identity rationale per track, and an atomicity rationale
   for a one-task graph; return those rationales with the YAML so the final report can expose them.
   Never silently skip a section or manufacture a placeholder task and report successful YAML.
+  Validate every emitted track/task id before rendering with the SDK's canonical `TASK_ID_RE`
+  source; the standalone generated tool may embed that source, but must not maintain a drifting
+  editor-local grammar.
 - After attaching or replacing the chat compile watcher's root fs.watch, keep one
   identity-guarded deferred reconciliation. Linux may not deliver a pipeline-folder creation that
   happens in the same event-loop turn as watcher startup; the deferred pass may compile only
@@ -713,7 +716,11 @@
   whether older history was truncated, explain that only ledger entries were removed, and keep the
   warning available after reload; truncation must never delete pipeline files.
 - Treat `created`, `adopted`, and `forked` finalize outcomes as openable live chat results even
-  when compile or verification status is failed or blocked. Final chat navigation must always use
+  when compile or verification status is failed or blocked. Pipeline inventories may de-emphasize
+  a preserved failed Chat fork only when the newest durable result for that exact path is failed,
+  its outcome is `forked`, and its Host-observed content hash still matches the live entry. Never
+  infer provenance from `Copy N` names, hide a subsequently edited/repaired pipeline, or delete a
+  preserved branch automatically. Final chat navigation must always use
   the authoritative reconcile result path; `unchanged` and no-op turns must not expose a pipeline
   link.
 - Never derive that path from assistant text or expose `.chat-staging`. Revalidate workspace

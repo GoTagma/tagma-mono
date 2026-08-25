@@ -709,8 +709,31 @@ function logTimelineSummary(value: unknown): UnknownRecord | null {
   };
 }
 
+function turnHealthTimelineSummary(value: unknown): UnknownRecord | null {
+  const turnHealth = record(value);
+  const degraded =
+    turnHealth.status === 'degraded' ||
+    turnHealth.stalled === true ||
+    turnHealth.processAlive === false ||
+    turnHealth.sseState === 'reconnecting';
+  if (!degraded) return null;
+  return {
+    ...selectedFields(turnHealth, [
+      'status',
+      'state',
+      'kind',
+      'phase',
+      'reason',
+      'stalled',
+      'timeoutMs',
+      'sseState',
+      'processAlive',
+    ]),
+    detail: conciseDiagnosticText(turnHealth.detail),
+  };
+}
+
 function chatTimelineSummary(chat: UnknownRecord): UnknownRecord {
-  const turnHealth = record(chat.turnHealth);
   const sessionStatus = record(chat.sessionStatus);
   const model = record(chat.model);
   return {
@@ -767,20 +790,7 @@ function chatTimelineSummary(chat: UnknownRecord): UnknownRecord {
     abortRecovery: lifecycleTimelineSummary(chat.abortRecovery),
     pendingUserTextSummary: presenceSummary(chat.pendingUserTextSummary),
     sessionStatus: selectedFields(sessionStatus, ['type', 'status', 'state', 'phase']),
-    turnHealth: {
-      ...selectedFields(turnHealth, [
-        'status',
-        'state',
-        'kind',
-        'phase',
-        'reason',
-        'stalled',
-        'timeoutMs',
-        'sseState',
-        'processAlive',
-      ]),
-      detail: conciseDiagnosticText(turnHealth.detail),
-    },
+    turnHealth: turnHealthTimelineSummary(chat.turnHealth),
     activeChatYamlLifecycle: lifecycleTimelineSummary(chat.activeChatYamlLifecycle),
     postChatYamlActionSummary: sessionYamlTimelineSummary(chat.postChatYamlActionSummary),
     sendError: conciseDiagnosticText(chat.sendError),

@@ -737,6 +737,165 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
   ).rejects.toThrow('must choose one result contract');
 });
 
+test('schema-driven YAML generation rejects task ids outside the runtime grammar', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+
+  for (const taskId of ['main.answer', '1answer', 'answer step', 'answer ']) {
+    await expect(
+      tool.execute({
+        manifest: {
+          pipeline: {
+            name: 'Invalid task identity',
+            atomicity_rationale: 'There is no useful intermediate verification boundary.',
+          },
+          sections: [
+            {
+              id: 'track:main',
+              type: 'track',
+              summary: 'Main',
+              track_identity_rationale: 'The task uses one least-authority model identity.',
+            },
+            {
+              id: 'task:main.answer',
+              type: 'prompt',
+              track: 'main',
+              task: taskId,
+              prompt: 'Answer one atomic question.',
+              result_contract: 'none',
+              task_boundary_rationale: 'The answer is one indivisible observable operation.',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow(`task id ${JSON.stringify(taskId)} is invalid`);
+  }
+});
+
+test('schema-driven YAML generation rejects track ids outside the runtime grammar', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+
+  for (const trackId of ['review.track', '1review', 'review track', ' review']) {
+    await expect(
+      tool.execute({
+        manifest: {
+          pipeline: {
+            name: 'Invalid track identity',
+            atomicity_rationale: 'There is no useful intermediate verification boundary.',
+          },
+          sections: [
+            {
+              id: 'track:review',
+              type: 'track',
+              track: trackId,
+              summary: 'Review',
+              track_identity_rationale: 'The task uses one least-authority model identity.',
+            },
+            {
+              id: 'task:review.answer',
+              type: 'prompt',
+              track: trackId,
+              task: 'answer',
+              prompt: 'Answer one atomic question.',
+              result_contract: 'none',
+              task_boundary_rationale: 'The answer is one indivisible observable operation.',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow(`track id ${JSON.stringify(trackId)} is invalid`);
+  }
+});
+
+test('schema-driven YAML generation rejects empty ids instead of manufacturing defaults', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+  const pipeline = {
+    name: 'Empty identity',
+    atomicity_rationale: 'There is no useful intermediate verification boundary.',
+  };
+  const rationale = 'The answer is one indivisible observable operation.';
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline,
+        sections: [
+          {
+            id: 'track:',
+            type: 'track',
+            summary: 'Main',
+            track_identity_rationale: 'The task uses one least-authority model identity.',
+          },
+          {
+            id: 'task:main.answer',
+            type: 'prompt',
+            track: 'main',
+            task: 'answer',
+            prompt: 'Answer one atomic question.',
+            result_contract: 'none',
+            task_boundary_rationale: rationale,
+          },
+        ],
+      },
+    }),
+  ).rejects.toThrow('track id "" is invalid');
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline,
+        sections: [
+          {
+            id: 'track:main',
+            type: 'track',
+            summary: 'Main',
+            track_identity_rationale: 'The task uses one least-authority model identity.',
+          },
+          {
+            id: 'task:main.',
+            type: 'prompt',
+            track: 'main',
+            prompt: 'Answer one atomic question.',
+            result_contract: 'none',
+            task_boundary_rationale: rationale,
+          },
+        ],
+      },
+    }),
+  ).rejects.toThrow('task id "" is invalid');
+});
+
+test('schema-driven YAML generation accepts canonical id boundary characters', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+  const result = JSON.parse(
+    await tool.execute({
+      manifest: {
+        pipeline: {
+          name: 'Canonical identity boundaries',
+          atomicity_rationale: 'There is no useful intermediate verification boundary.',
+        },
+        sections: [
+          {
+            id: 'track:_review-2',
+            type: 'track',
+            summary: 'Review',
+            track_identity_rationale: 'The task uses one least-authority model identity.',
+          },
+          {
+            id: 'task:_review-2._answer-2',
+            type: 'prompt',
+            prompt: 'Answer one atomic question.',
+            result_contract: 'none',
+            task_boundary_rationale: 'The answer is one indivisible observable operation.',
+          },
+        ],
+      },
+    }),
+  ) as { yaml: string };
+
+  expect(result.yaml).toContain('- id: "_review-2"');
+  expect(result.yaml).toContain('- id: "_answer-2"');
+});
+
 test('schema-driven YAML generation requires reviewable task and track rationale', async () => {
   const tool = await loadGeneratedYamlSkeletonTool();
   const track = { id: 'track:main', type: 'track', summary: 'Main' };

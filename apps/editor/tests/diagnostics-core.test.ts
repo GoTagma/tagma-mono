@@ -140,7 +140,7 @@ describe('temporary diagnostics sessions', () => {
           sending: false,
           pendingUserText: 'authored prompt must never enter the timeline',
           turnHealth: {
-            status: 'healthy',
+            status: 'ok',
             checkedAt: capturedAt,
             lastSseEventAt: capturedAt - 1,
           },
@@ -174,6 +174,31 @@ describe('temporary diagnostics sessions', () => {
     expect(JSON.stringify(hub.readTimeline(0, 10))).not.toContain('authored prompt');
 
     expect(hub.acceptRendererReport(report(200))).toBe(true);
+    expect(hub.readTimeline(1, 10).events).toEqual([]);
+
+    expect(
+      hub.acceptRendererReport(
+        report(225, {
+          chat: { turnHealth: { status: 'checking', checkedAt: 225 } },
+        }),
+      ),
+    ).toBe(true);
+    expect(hub.readTimeline(1, 10).events).toEqual([]);
+
+    expect(
+      hub.acceptRendererReport(
+        report(250, {
+          chat: {
+            turnHealth: {
+              status: 'ok',
+              checkedAt: 250,
+              sseState: 'connected',
+              processAlive: true,
+            },
+          },
+        }),
+      ),
+    ).toBe(true);
     expect(hub.readTimeline(1, 10).events).toEqual([]);
 
     expect(hub.acceptRendererReport(report(300, { chat: { sending: true } }))).toBe(true);
@@ -229,6 +254,79 @@ describe('temporary diagnostics sessions', () => {
       retainedEventCount: 0,
       events: [],
     });
+  });
+
+  test('records degraded turn health and recovery without normal probe churn', () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    hub.enable('/repo', 'http://127.0.0.1:43123');
+    const report = (capturedAt: number, turnHealth: Record<string, unknown>) => ({
+      instanceId: 'window-health-transition',
+      workspaceKey: '/repo',
+      capturedAt,
+      snapshot: {
+        capturedAt,
+        page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+        chat: { currentSessionId: 'chat-1', sending: true, turnHealth },
+        pipeline: {},
+        run: {},
+        features: {},
+      },
+      logs: [],
+    });
+
+    expect(hub.acceptRendererReport(report(100, { status: 'ok', checkedAt: 100 }))).toBe(true);
+    expect(hub.acceptRendererReport(report(200, { status: 'checking', checkedAt: 200 }))).toBe(
+      true,
+    );
+    expect(hub.readTimeline(1, 10).events).toEqual([]);
+
+    expect(
+      hub.acceptRendererReport(
+        report(300, {
+          status: 'degraded',
+          checkedAt: 300,
+          sseState: 'reconnecting',
+          processAlive: false,
+          detail: 'opencode process unresponsive',
+        }),
+      ),
+    ).toBe(true);
+    expect(hub.readTimeline(1, 10).events).toMatchObject([
+      {
+        cursor: 2,
+        timestamp: 300,
+        changedSections: ['chat'],
+        state: {
+          chat: {
+            turnHealth: {
+              status: 'degraded',
+              sseState: 'reconnecting',
+              processAlive: false,
+              detail: 'opencode process unresponsive',
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(
+      hub.acceptRendererReport(
+        report(400, {
+          status: 'ok',
+          checkedAt: 400,
+          sseState: 'connected',
+          processAlive: true,
+        }),
+      ),
+    ).toBe(true);
+    expect(hub.readTimeline(2, 10).events).toMatchObject([
+      {
+        cursor: 3,
+        timestamp: 400,
+        changedSections: ['chat'],
+        state: { chat: { turnHealth: null } },
+      },
+    ]);
   });
 
   test('records bounded background Trial progress and heartbeat deltas in the timeline', () => {
@@ -642,7 +740,7 @@ describe('temporary diagnostics sessions', () => {
             output: { present: true, chars: 200 },
           },
         ],
-        turnHealth: { status: 'ok', detail: 'connection healthy' },
+        turnHealth: null,
         sessionYamlResultSummary: {
           status: 'failed',
           compile: { success: true },

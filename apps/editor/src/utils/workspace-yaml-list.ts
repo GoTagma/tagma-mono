@@ -4,6 +4,7 @@ import type {
   WorkspaceYamlEntry,
 } from '../api/client';
 import type { DropdownAction } from '../components/DropdownMenu';
+import type { ChatYamlSessionResult } from '../store/chat-store';
 
 type PathPlatform = 'win32' | 'windows' | 'linux' | 'darwin' | 'mac';
 
@@ -75,6 +76,7 @@ export interface WorkspacePipelineCollection {
 export interface BuildWorkspacePipelineMenuItemsOptions extends WorkspacePipelineCollection {
   workDir: string | null | undefined;
   activeYamlName: string | null;
+  failedDraftPaths?: ReadonlySet<string>;
   yamlEditLocked: boolean;
   onOpen: (path: string) => void;
   onDelete: (path: string) => void;
@@ -92,6 +94,47 @@ export interface ReconciledWorkspacePipelines {
   stagedTargets: WorkspaceStagedPipeline[];
 }
 
+export function failedChatDraftPaths(
+  liveEntries: readonly WorkspaceYamlEntry[],
+  results: readonly ChatYamlSessionResult[],
+  workDir: string,
+): Set<string> {
+  const caseInsensitive = isWindowsStylePath(workDir);
+  const workspacePath = comparablePath(workDir, caseInsensitive);
+  const latestResultByPath = new Map<string, ChatYamlSessionResult>();
+
+  for (const result of results) {
+    if (
+      result.workspaceKey !== undefined &&
+      comparablePath(result.workspaceKey, caseInsensitive) !== workspacePath
+    ) {
+      continue;
+    }
+    if (workspaceRelativePath(result.path, workDir, caseInsensitive) === null) continue;
+    const key = comparablePath(result.path, caseInsensitive);
+    const current = latestResultByPath.get(key);
+    const isLater =
+      !current ||
+      result.completedAt > current.completedAt ||
+      (result.completedAt === current.completedAt &&
+        (result.resultId ?? '') > (current.resultId ?? ''));
+    if (isLater) latestResultByPath.set(key, result);
+  }
+
+  const failedPaths = new Set<string>();
+  for (const entry of liveEntries) {
+    const result = latestResultByPath.get(comparablePath(entry.path, caseInsensitive));
+    if (
+      result?.status === 'failed' &&
+      result.reconcile?.outcome === 'forked' &&
+      result.finalYamlContentHash === entry.contentHash
+    ) {
+      failedPaths.add(entry.path);
+    }
+  }
+  return failedPaths;
+}
+
 function pipelineMenuText(entry: WorkspaceYamlEntry): {
   primary: string;
   secondary: string | undefined;
@@ -107,6 +150,7 @@ export function buildWorkspacePipelineMenuItems({
   liveEntries,
   stagedTargets,
   activeYamlName,
+  failedDraftPaths,
   yamlEditLocked,
   onOpen,
   onDelete,
@@ -141,21 +185,32 @@ export function buildWorkspacePipelineMenuItems({
     }
   }
 
-  const liveItems = liveInWorkspace.map(({ entry }) => {
+  const classifiedLiveItems = liveInWorkspace.map(({ entry }) => {
     const { primary, secondary } = pipelineMenuText(entry);
     const isActive =
       activeYamlName !== null &&
       relativePathKey(entry.name, caseInsensitive) ===
         relativePathKey(activeYamlName, caseInsensitive);
+    const failedDraft = failedDraftPaths?.has(entry.path) === true;
+    const subLabel = [secondary, failedDraft ? 'Failed Chat draft' : undefined]
+      .filter((value): value is string => !!value)
+      .join(' \u00b7 ');
     return {
-      label: isActive ? `\u25cf ${primary}` : `   ${primary}`,
-      subLabel: secondary,
-      disabled: false,
-      onAction: () => onOpen(entry.path),
-      onDelete: yamlEditLocked ? undefined : () => onDelete(entry.path),
-      deleteTitle: `Remove the \u0022${entry.name}\u0022 pipeline folder (run history is preserved)`,
-    } satisfies DropdownAction;
+      failedDraft,
+      action: {
+        label: isActive ? `\u25cf ${primary}` : `   ${primary}`,
+        subLabel: subLabel || undefined,
+        disabled: false,
+        onAction: () => onOpen(entry.path),
+        onDelete: yamlEditLocked ? undefined : () => onDelete(entry.path),
+        deleteTitle: `Remove the \u0022${entry.name}\u0022 pipeline folder (run history is preserved)`,
+      } satisfies DropdownAction,
+    };
   });
+  const liveItems = [
+    ...classifiedLiveItems.filter((item) => !item.failedDraft),
+    ...classifiedLiveItems.filter((item) => item.failedDraft),
+  ].map((item) => item.action);
 
   const temporaryItems = [...temporaryByRelativePath.values()].map((entry) => {
     const { primary, secondary } = pipelineMenuText(entry);
