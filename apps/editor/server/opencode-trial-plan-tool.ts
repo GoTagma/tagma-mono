@@ -357,6 +357,31 @@ function hasDuplicateInputBasenames(cases) {
   });
 }
 
+function repeatedFileOutputPaths(testCase) {
+  if (testCase.runs < 2) return [];
+  const fixturePaths = new Set(testCase.fixtures.map((fixture) => fixture.path.toLowerCase()));
+  const seen = new Set();
+  const paths = [];
+  for (const expectation of testCase.expectations) {
+    if (
+      !(
+        expectation.type === "file-contains" ||
+        expectation.type === "file-not-contains" ||
+        expectation.type === "file-equals" ||
+        expectation.type === "json-valid" ||
+        expectation.type === "json-pointer-equals"
+      )
+    ) {
+      continue;
+    }
+    const normalizedPath = expectation.path.toLowerCase();
+    if (fixturePaths.has(normalizedPath) || seen.has(normalizedPath)) continue;
+    seen.add(normalizedPath);
+    paths.push(expectation.path);
+  }
+  return paths;
+}
+
 function hasDistinctOutputExpectation(cases) {
   return cases.some((item) => {
     const positivePaths = new Set();
@@ -388,7 +413,7 @@ function coverageEvidenceHint(dimension) {
   if (dimension === "duplicate-input-names") return "needs same-basename pre-seeded or pipeline-generated inputs in different folders";
   if (dimension === "multiline-content") return "needs a pre-seeded or pipeline-generated input containing a newline";
   if (dimension === "inter-task-output-collision") return "needs at least two target task ids plus distinct-output expectations";
-  if (dimension === "repeat-run-output-collision") return "cannot be covered without run-scoped artifact evidence";
+  if (dimension === "repeat-run-output-collision") return "needs runs >= 2 plus a non-fixture file assertion that the Host can probe after every run";
   if (dimension === "repeat-run") return "needs runs >= 2";
   if (dimension === "empty-content") return "needs an empty pre-seeded or pipeline-generated input with exact file evidence";
   if (dimension === "special-characters") return "needs a pre-seeded or pipeline-generated input containing a non-ASCII or non-alphanumeric character";
@@ -415,9 +440,7 @@ function validateCoveredCaseEvidence(coverage, cases) {
         (item) => item.targetTaskIds.length >= 2 && hasDistinctOutputExpectation([item]),
       );
     } else if (entry.dimension === "repeat-run-output-collision") {
-      throw new Error(
-        "trial plan coverage repeat-run-output-collision cannot be covered without run-scoped artifact evidence; the harness checks artifact expectations only after the final run. Use accepted-risk, blocked, or not-applicable.",
-      );
+      evidenced = linkedCases.some((item) => repeatedFileOutputPaths(item).length > 0);
     } else if (entry.dimension === "concurrent-run-output-collision") {
       failures.push(
         "trial plan coverage concurrent-run-output-collision cannot be covered by the sequential trial harness; use accepted-risk, blocked, or not-applicable.",

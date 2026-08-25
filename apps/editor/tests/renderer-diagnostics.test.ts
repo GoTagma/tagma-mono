@@ -696,6 +696,37 @@ describe('renderer diagnostics snapshot', () => {
                 taskId: `main.manual-${index}`,
                 approvalCount: index + 1,
               })),
+              executionCoverage: {
+                terminalTaskIds: ['main.publish', 'audit.finish'],
+                sandboxCases: [
+                  {
+                    caseId: 'case-a',
+                    targetTaskIds: ['main.publish'],
+                    closureTaskIds: ['main.read', 'main.publish'],
+                    executed: true,
+                    automaticTriggerSatisfactions: [
+                      {
+                        taskId: 'main.read',
+                        type: 'file',
+                        mechanism: 'isolated-case-input',
+                      },
+                    ],
+                  },
+                  {
+                    caseId: 'case-b',
+                    targetTaskIds: ['audit.finish'],
+                    closureTaskIds: ['audit.finish'],
+                    executed: false,
+                    automaticTriggerSatisfactions: [],
+                  },
+                ],
+                liveSmoke: {
+                  targetTaskIds: ['audit.finish'],
+                  closureTaskIds: ['audit.check', 'audit.finish'],
+                  executed: true,
+                  automaticManualTaskIds: ['audit.check'],
+                },
+              },
               planTelemetry: {
                 version: 2,
                 yamlHash: 'private-yaml-hash',
@@ -757,6 +788,18 @@ describe('renderer diagnostics snapshot', () => {
     });
     expect(manualExecutionGrants.items).toHaveLength(32);
     expect(trial.trialMode).toBe('sandbox-with-live-smoke');
+    expect(trial.executionCoverage).toEqual({
+      terminalTaskCount: 2,
+      sandboxCaseCount: 2,
+      executedSandboxCaseCount: 1,
+      automaticTriggerSatisfactionCount: 1,
+      liveSmoke: {
+        executed: true,
+        targetTaskCount: 1,
+        closureTaskCount: 2,
+        automaticManualTaskCount: 1,
+      },
+    });
     expect(trialabilityReport).toMatchObject({
       protocolVersion: 1,
       mode: 'sandbox-with-live-smoke',

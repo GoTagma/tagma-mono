@@ -7,7 +7,7 @@ import {
 } from '../server/chat-pipeline-trial-cache';
 
 test('builds a canonical complete Live Smoke readiness projection', () => {
-  expect(CHAT_PIPELINE_TRIAL_CACHE_VERSION).toBe(23);
+  expect(CHAT_PIPELINE_TRIAL_CACHE_VERSION).toBe(24);
   expect(
     buildChatPipelineTrialLiveSmokeReadiness({
       targetPipelineIsNew: true,

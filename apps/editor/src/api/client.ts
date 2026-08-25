@@ -317,7 +317,8 @@ export interface ChatPipelineTrialExpectationResult {
     | 'json-pointer-equals'
     | 'directory-entry-count'
     | 'task-status'
-    | 'case-execution';
+    | 'case-execution'
+    | 'run-artifact-freshness';
   passed: boolean;
   detail: string;
   repairScope?: 'pipeline-artifact' | 'diagnostic-only';
@@ -384,6 +385,27 @@ export interface ChatPipelineTrialPlanSummary {
 export interface ChatPipelineTrialManualExecutionGrant {
   taskId: string;
   approvalCount: number;
+}
+
+export interface ChatPipelineTrialExecutionCoverage {
+  terminalTaskIds: string[];
+  sandboxCases: Array<{
+    caseId: string;
+    targetTaskIds: string[];
+    closureTaskIds: string[];
+    executed: boolean;
+    automaticTriggerSatisfactions: Array<{
+      taskId: string;
+      type: 'manual' | 'file' | 'directory';
+      mechanism: 'run-scoped-grant' | 'isolated-case-input';
+    }>;
+  }>;
+  liveSmoke: {
+    targetTaskIds: string[];
+    closureTaskIds: string[];
+    executed: boolean;
+    automaticManualTaskIds: string[];
+  } | null;
 }
 
 export type ChatPipelineTrialMode = 'sandbox' | 'sandbox-with-live-smoke';
@@ -453,7 +475,30 @@ export interface ChatPipelineTrialNotRunCase {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
+  version:
+    | 2
+    | 3
+    | 4
+    | 5
+    | 6
+    | 7
+    | 8
+    | 9
+    | 10
+    | 11
+    | 12
+    | 13
+    | 14
+    | 15
+    | 16
+    | 17
+    | 18
+    | 19
+    | 20
+    | 21
+    | 22
+    | 23
+    | 24;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -471,6 +516,7 @@ export interface ChatPipelineTrialRunResult {
   trialMode?: ChatPipelineTrialMode;
   trialabilityReport?: ChatPipelineTrialabilityReport;
   verificationMode?: 'sandbox-cases-only' | 'sandbox-cases-with-live-smoke';
+  executionCoverage?: ChatPipelineTrialExecutionCoverage;
   manualExecutionGrants?: ChatPipelineTrialManualExecutionGrant[];
   planTelemetry?: {
     version: 2;

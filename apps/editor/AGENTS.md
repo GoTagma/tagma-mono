@@ -287,9 +287,12 @@
   or non-mechanical layout metadata are required; ordinary existing-pipeline edits retain their
   three-way layout ownership.
 - The managed `tagma_yaml_skeleton` DTO is a fail-closed generation boundary, not a best-effort
-  formatter. Reject unknown section types, tasks whose track is undeclared, duplicate task/track
-  identities, empty tracks, and any received-versus-emitted task-count mismatch. Never silently
-  skip a section or manufacture a placeholder task and report successful YAML.
+  formatter. Every new target, including a Host-provided manual-New stub, must use it. Reject
+  unknown section types, tasks whose track is undeclared, duplicate task/track identities, empty
+  tracks, and any received-versus-emitted task-count mismatch. Require one reviewable responsibility
+  boundary rationale per task, one execution-identity rationale per track, and an atomicity rationale
+  for a one-task graph; return those rationales with the YAML so the final report can expose them.
+  Never silently skip a section or manufacture a placeholder task and report successful YAML.
 - After attaching or replacing the chat compile watcher's root fs.watch, keep one
   identity-guarded deferred reconciliation. Linux may not deliver a pipeline-folder creation that
   happens in the same event-loop turn as watcher startup; the deferred pass may compile only
@@ -349,6 +352,13 @@
   unique nonexistent staged `current-file` before prompting and persist that intent in authenticated
   stage metadata; finalize may publish only that target and must reject edits to copied existing
   pipelines.
+- Concurrent `fill-manual-new-pipeline` turns share one draft identity only until the first valid
+  result claims it. If the later staged branch is semantically equivalent, reuse the claimed live
+  branch without another write or relocation. If it is different and compile/Trial-valid, publish
+  it as a fresh independent pipeline coordinate, preserve its authored display name, and use
+  `Copy N` only for a real display-name collision. A compile/Trial-failing later draft may still be
+  preserved as a numbered copy, but companion drift from the first Host finalize must never move
+  or duplicate the already-claimed renderer branch.
 - Chat pipeline Trial is fail-closed and default-off. `opencodeChatTrialRunEnabled` plus its
   current server-stamped consent authorizes Sandbox Trial only. Live Smoke Test is a separate,
   default-off setting with its own current consent, and is effective only while Sandbox Trial is
@@ -428,10 +438,12 @@
   the attempt counter to conceal malformed draft writes.
 - Every plan must account for multiple inputs, duplicate input names, multiline content,
   inter-task, repeat-run, and concurrent-run output collisions, repeated runs, empty content, and
-  special characters. Inter-task coverage needs two target tasks plus distinct-output evidence;
-  repeat-run collision coverage needs two runs plus distinct-output evidence. The sequential
-  harness can never mark concurrent collision covered: use accepted-risk, blocked, or genuinely
-  not-applicable. Accepted risk and warning findings produce `passed-with-warnings`.
+  special characters. Inter-task coverage needs two target tasks plus distinct-output evidence.
+  Repeat-run collision coverage needs at least two runs and a non-fixture file assertion; before
+  every run, the Host marks an existing asserted file's mtime and then requires that run to create
+  or rewrite it, so unchanged bytes may pass but a stale file cannot. The sequential harness can
+  never mark concurrent collision covered: use accepted-risk, blocked, or genuinely not-applicable.
+  Accepted risk and warning findings produce `passed-with-warnings`.
 - Sandbox case identity, title, objective, fixture paths, and temporary workspace coordinates are
   Host harness metadata, not pipeline behavior. Never append them through `taskPromptContexts` or
   otherwise alter a prompt task's authored business prompt; pass case state through Host execution
@@ -502,7 +514,11 @@
   Prioritize executable failures and non-empty stderr, reserve representative task context for
   every failed case, and only then admit blocked/skipped noise. Return total and omitted task counts
   plus status breakdowns, and report planned/result/not-run case counts, so the bounded view cannot
-  silently imply that omitted tasks or cases did not exist.
+  silently imply that omitted tasks or cases did not exist. Also return a credential-free execution
+  coverage summary containing terminal task ids, each Sandbox case's targets and full dependency
+  closure, whether it ran, built-in manual/file/directory auto-satisfaction types, and optional Live
+  Smoke closure/manual grants. Render that summary in a collapsed result detail and expose only
+  bounded aggregate counts through production diagnostics.
 - Every planned case without a result must retain its id, title, bounded reason category, and safe
   detail in the Trial result, repair evidence, diagnostics, and conversation export. A count alone
   is insufficient for distinguishing timeout, cancellation, or workspace-verification stops.
@@ -633,8 +649,10 @@
   disposition in the session reconciliation summary and preserve it in exports and the next-turn
   agent context, so `prerequisite-unavailable` never degrades back to a failure label. Missing,
   stale, unsigned, tampered, or semantically inconsistent Trial evidence still fails closed.
-  Actual compile or executed-Trial failures, live/local/path conflicts, and destination collisions
-  retain numbered-copy behavior, including for newly staged pipelines.
+  Actual compile or executed-Trial failures, ordinary live/local/path conflicts, and destination
+  collisions retain numbered-copy behavior, including for newly staged pipelines. The finite
+  concurrent manual-draft claim lifecycle above is an independent-create exception, not an
+  ordinary edit conflict.
 - Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
   or transient trial-plan hash changed. A report-only/external-boundary response must reuse the
   prior failed evidence and end that repair chain instead of consuming another attempt.
@@ -1014,6 +1032,10 @@
   an integration test must execute a prompt through a stubbed `opencode` driver, put a fake
   executable on `PATH` and restore `PATH` afterward: runtime readiness still evaluates the
   generated managed-driver requirement, and full-check CI intentionally does not stage OpenCode.
+- In async finalize ordering tests, inject one deterministic matching Trial/finalize witness when
+  the assertion is only about response timing. Bun 1.3.11 on Windows can panic when that suite
+  accumulates another real witness Worker lifecycle; dedicated witness tests own real Worker
+  transport, cancellation, reuse, and disposal coverage.
 - Seeded pipeline-agent documents follow the current host contract. Keep seed assertions
   host-aware; verify Windows-only command guidance through `buildTagmaPipelineAgent('Windows')`
   instead of requiring it from Linux or macOS seed output.

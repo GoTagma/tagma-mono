@@ -9,10 +9,7 @@ import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 import { __chatPipelineTrialRunTestHooks } from '../server/chat-pipeline-trial-run';
 import { __chatYamlStagingTestHooks, discardChatYamlStage } from '../server/chat-yaml-staging';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
-import {
-  disposeTrialWitnessWorker,
-  safeCaptureTrialHostWitnessAsync,
-} from '../server/chat-pipeline-trial-witness';
+import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import { __workspaceRegistryTestHooks, workspaceRegistry } from '../server/workspace-registry';
@@ -159,7 +156,7 @@ function writeTrialPlan(
     stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify(
       {
-        version: 7,
+        version: 8,
         yamlHash,
         summary: 'Focused trial coverage for async witness ordering.',
         goals: ['Ensure trial authorization witness lifecycle behaves deterministically.'],
@@ -903,6 +900,17 @@ describe('chat YAML staging async witness ordering', () => {
         },
       ],
     });
+    // This case verifies finalize response ordering, not Worker transport. Keep
+    // both Trial and finalize on one deterministic witness; dedicated witness
+    // tests exercise the real worker lifecycle without accumulating it here.
+    const stableWitness = {
+      witness: {
+        digest: 'finalize-await-host',
+        prerequisiteDigest: 'finalize-await-prerequisites',
+      } as never,
+      reason: null,
+    };
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async () => stableWitness;
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
@@ -918,8 +926,8 @@ describe('chat YAML staging async witness ordering', () => {
     const releaseWitness = { current: null as null | (() => void) };
     let witnessCalls = 0;
     __chatYamlStagingTestHooks.captureHostWitnessAsync = async (
-      candidate,
-      prepared,
+      _candidate,
+      _prepared,
       signal?: AbortSignal,
     ) => {
       witnessCalls += 1;
@@ -928,7 +936,7 @@ describe('chat YAML staging async witness ordering', () => {
         if (signal?.aborted) return resolve();
         signal?.addEventListener('abort', () => resolve(), { once: true });
       });
-      return await safeCaptureTrialHostWitnessAsync(candidate, prepared, signal);
+      return stableWitness;
     };
 
     const finalizeRes = makeRes();

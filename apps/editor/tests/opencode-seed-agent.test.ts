@@ -472,7 +472,7 @@ test('tagma-pipeline agent stays compact and keeps schema detail out of the base
   // Keep the explicit design gate and edge-case matrix bounded with the rest of the base contract.
   // The trial-run repair acceptance guidance (compilation is not repair success) is core behavior,
   // so it lives in the base prompt rather than a skill and is accounted for in this bound.
-  expect(doc.length).toBeLessThan(20_000);
+  expect(doc.length).toBeLessThan(22_000);
   expect(doc).toContain('Keep context small');
   expect(doc).toContain('schema source of truth');
   expect(doc).toContain('YAML Contract Quick Reference');
@@ -494,10 +494,10 @@ test('routine pipeline authoring stays in one worker model without nested task f
   );
   expect(doc).toContain('make the smallest safe, reversible implementation choice');
   expect(doc).toContain(
-    'For any new target without an existing YAML stub, call `tagma_yaml_skeleton` exactly once',
+    'For every new target, including a Host-provided manual-New YAML stub, call `tagma_yaml_skeleton` exactly once',
   );
   expect(doc).toContain(
-    'typed in-memory description containing the final prompt/command, permissions, bindings, completion, and result_contract',
+    'typed in-memory description containing the final prompt/command, permissions, bindings, completion, result_contract, task-boundary rationale, and track-identity rationale',
   );
   expect(doc).toContain(
     'Use the returned schema-valid structure as the write base, then add only advanced fields required by the design',
@@ -598,6 +598,24 @@ test('tagma-pipeline completes a design gate before generating a new pipeline', 
   expect(doc).toContain('For every new staged YAML, write the final YAML after the design gate');
 });
 
+test('tagma-pipeline requires independently diagnosable task boundaries and track rationale', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('## Debuggable Task Granularity');
+  expect(doc).toContain('finest meaningful independently diagnosable stages');
+  expect(doc).toContain('distinct failure mode');
+  expect(doc).toContain('meaningful intermediate contract');
+  expect(doc).toContain('independently retried or verified');
+  expect(doc).toContain('Do not collapse a multi-stage workflow into one prompt task');
+  expect(doc).toContain('A one-task graph is appropriate only for a genuinely atomic operation');
+  expect(doc).toContain('task-boundary rationale');
+  expect(doc).toContain('track-identity rationale');
+  expect(doc).toContain(
+    'Track boundaries describe execution identity and policy, not lifecycle stages',
+  );
+  expect(doc).toContain('including a Host-provided manual-New YAML stub');
+});
+
 test('pipeline authoring uses native prompt outputs without inventing duplicate files', () => {
   const pipeline = buildTagmaPipelineAgent('Windows');
   const nativePrimitives = buildTagmaNativePrimitivesSkill();
@@ -652,6 +670,12 @@ test('multi-step planning keeps new-pipeline companions Host-owned', () => {
 
 test('schema-driven YAML generation emits least-authority prompt tasks and rejects ambiguous result contracts', async () => {
   const tool = await loadGeneratedYamlSkeletonTool();
+  const baseTrack = {
+    id: 'track:main',
+    type: 'track',
+    summary: 'Main',
+    track_identity_rationale: 'The task uses one least-authority model identity.',
+  };
   const baseSection = {
     id: 'task:main.answer',
     type: 'prompt',
@@ -660,12 +684,16 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
     summary: 'Answer',
     prompt: 'How are you?',
     result_contract: 'none',
+    task_boundary_rationale: 'The fixed response is one atomic operation.',
   };
   const result = JSON.parse(
     await tool.execute({
       manifest: {
-        pipeline: { name: 'Greeting' },
-        sections: [{ id: 'track:main', type: 'track', summary: 'Main' }, baseSection],
+        pipeline: {
+          name: 'Greeting',
+          atomicity_rationale: 'There is no useful intermediate verification boundary.',
+        },
+        sections: [baseTrack, baseSection],
       },
     }),
   ) as { yaml: string };
@@ -679,11 +707,11 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
   await expect(
     tool.execute({
       manifest: {
-        pipeline: { name: 'No-result contradiction' },
-        sections: [
-          { id: 'track:main', type: 'track', summary: 'Main' },
-          { ...baseSection, outputs: ['reply'] },
-        ],
+        pipeline: {
+          name: 'No-result contradiction',
+          atomicity_rationale: 'There is no useful intermediate verification boundary.',
+        },
+        sections: [baseTrack, { ...baseSection, outputs: ['reply'] }],
       },
     }),
   ).rejects.toThrow('declares no result but also defines outputs or a file completion');
@@ -691,9 +719,12 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
   await expect(
     tool.execute({
       manifest: {
-        pipeline: { name: 'Contradictory' },
+        pipeline: {
+          name: 'Contradictory',
+          atomicity_rationale: 'There is no useful intermediate verification boundary.',
+        },
         sections: [
-          { id: 'track:main', type: 'track', summary: 'Main' },
+          baseTrack,
           {
             ...baseSection,
             result_contract: undefined,
@@ -704,6 +735,89 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
       },
     }),
   ).rejects.toThrow('must choose one result contract');
+});
+
+test('schema-driven YAML generation requires reviewable task and track rationale', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+  const track = { id: 'track:main', type: 'track', summary: 'Main' };
+  const task = {
+    id: 'task:main.answer',
+    type: 'prompt',
+    track: 'main',
+    task: 'answer',
+    summary: 'Answer',
+    prompt: 'Answer one atomic question.',
+    result_contract: 'none',
+  };
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Atomic Review' },
+        sections: [track, task],
+      },
+    }),
+  ).rejects.toThrow('track main is missing track-identity rationale');
+
+  const rationalizedTrack = {
+    ...track,
+    track_identity_rationale: 'One least-authority model identity handles the atomic task.',
+  };
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Atomic Review' },
+        sections: [rationalizedTrack, task],
+      },
+    }),
+  ).rejects.toThrow('task main.answer is missing task-boundary rationale');
+
+  const rationalizedTask = {
+    ...task,
+    task_boundary_rationale: 'The answer is one indivisible observable operation.',
+  };
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Atomic Review' },
+        sections: [rationalizedTrack, rationalizedTask],
+      },
+    }),
+  ).rejects.toThrow('a one-task pipeline is missing atomicity rationale');
+
+  const result = JSON.parse(
+    await tool.execute({
+      manifest: {
+        pipeline: {
+          name: 'Atomic Review',
+          atomicity_rationale: 'The request has no useful intermediate verification boundary.',
+        },
+        sections: [rationalizedTrack, rationalizedTask],
+      },
+    }),
+  ) as {
+    design: {
+      atomicityRationale: string | null;
+      tracks: Array<{ id: string; rationale: string }>;
+      tasks: Array<{ id: string; rationale: string }>;
+    };
+  };
+
+  expect(result.design).toEqual({
+    atomicityRationale: 'The request has no useful intermediate verification boundary.',
+    tracks: [
+      {
+        id: 'main',
+        rationale: 'One least-authority model identity handles the atomic task.',
+      },
+    ],
+    tasks: [
+      {
+        id: 'main.answer',
+        rationale: 'The answer is one indivisible observable operation.',
+      },
+    ],
+  });
 });
 
 test('schema-driven YAML generation fails closed instead of dropping sections or tasks', async () => {
@@ -890,6 +1004,10 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('Do not require an additional persisted file');
     expect(planner).toContain('the user or pipeline explicitly promises a file');
     expect(planner).toContain('exact-byte or cross-run file semantics');
+    expect(planner).toContain('For repeat-run-output-collision');
+    expect(planner).toContain('at least one non-fixture file assertion');
+    expect(planner).toContain('verifies that run created or rewrote it');
+    expect(planner).toContain('a stale final file fails');
     expect(planner).not.toContain(
       'When a required dimension cannot be covered because the pipeline persists no deterministic artifact to observe it',
     );
@@ -1706,12 +1824,13 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
     ).find((entry) => entry.dimension === 'repeat-run-output-collision')!;
     repeatCollisionCoverage.status = 'covered';
     repeatCollisionCoverage.caseIds = ['all-file-boundaries'];
+    (repeatCollisionArgs.cases as Array<{ runs: number }>)[0]!.runs = 1;
     await expect(
       submitTrialPlanToolArgs(generated.tool, repeatCollisionArgs, {
         directory: stage.agentTagmaDir,
       }),
     ).rejects.toThrow(
-      'repeat-run-output-collision cannot be covered without run-scoped artifact evidence',
+      'coverage marks repeat-run-output-collision covered without concrete linked-case evidence',
     );
     expect(existsSync(stage.planPath)).toBe(false);
 
@@ -2102,8 +2221,11 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(existsSync(skeletonTool)).toBe(true);
   const skeletonToolDoc = readFileSync(skeletonTool, 'utf8');
   expect(skeletonToolDoc).toContain(
-    'Generate a schema-valid Tagma YAML skeleton from an in-memory pipeline description',
+    'Generate a schema-valid Tagma YAML skeleton and reviewable task/track design rationale',
   );
+  expect(skeletonToolDoc).toContain('track_identity_rationale');
+  expect(skeletonToolDoc).toContain('task_boundary_rationale');
+  expect(skeletonToolDoc).toContain('atomicity_rationale');
   expect(skeletonToolDoc).toContain('.enum(["track", "prompt", "command"])');
   expect(skeletonToolDoc).toContain(
     'Track sections use type=track; task sections use type=prompt or type=command',

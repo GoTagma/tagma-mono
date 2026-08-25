@@ -2088,6 +2088,56 @@ function sourceMatchesBase(
   );
 }
 
+function sourceContentMatchesCapturedLocalBranch(
+  sourcePath: string,
+  localBranch: ChatYamlStageLocalBranch | null | undefined,
+): boolean {
+  if (
+    !localBranch ||
+    localBranch.layout === undefined ||
+    !samePath(localBranch.sourcePath, sourcePath) ||
+    !existsSync(sourcePath)
+  ) {
+    return false;
+  }
+  try {
+    return (
+      canonicalPipeline(assertRegularTextFile(sourcePath, 'source YAML')) ===
+        canonicalPipeline(localBranch.yaml) &&
+      canonicalLayout(readSemanticLayout(sourcePath, 'source layout')) ===
+        canonicalLayout(localBranch.layout)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function semanticRequirementsHash(yamlPath: string): string | null {
+  const requirementsPath = pipelineRequirementsPath(yamlPath);
+  return existsSync(requirementsPath)
+    ? hashTrialRequirementsContent(assertRegularTextFile(requirementsPath, 'pipeline requirements'))
+    : null;
+}
+
+function pipelineBranchesSemanticallyEquivalent(
+  leftYamlPath: string,
+  rightYamlPath: string,
+): boolean {
+  if (!existsSync(leftYamlPath) || !existsSync(rightYamlPath)) return false;
+  try {
+    return (
+      canonicalPipeline(assertRegularTextFile(leftYamlPath, 'pipeline YAML')) ===
+        canonicalPipeline(assertRegularTextFile(rightYamlPath, 'pipeline YAML')) &&
+      canonicalLayout(readSemanticLayout(leftYamlPath, 'pipeline layout')) ===
+        canonicalLayout(readSemanticLayout(rightYamlPath, 'pipeline layout')) &&
+      semanticRequirementsHash(leftYamlPath) === semanticRequirementsHash(rightYamlPath) &&
+      hashPipelineSupportTree(leftYamlPath) === hashPipelineSupportTree(rightYamlPath)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function sourceMatchesCapturedLocalBranch(
   metadata: ChatYamlStageMetadata,
   sourcePath: string,
@@ -2355,6 +2405,61 @@ function copyStagedAsNumberedPipeline(
     return target.yamlPath;
   } catch (err) {
     rmSync(dirname(target.yamlPath), { recursive: true, force: true });
+    throw err;
+  }
+}
+
+function nextIndependentPipelineName(
+  workDir: string,
+  stagedName: string | null,
+  fallbackStem: string,
+): string {
+  const baseName = stagedName?.trim() || fallbackStem.replace(/[-_]/g, ' ');
+  const existingNames = new Set<string>();
+  for (const entry of [
+    ...enumeratePipelineYamls(workDir),
+    ...enumerateFlatPipelineYamls(workDir),
+  ]) {
+    try {
+      const name = pipelineNameFromYaml(assertRegularTextFile(entry.yamlPath, 'pipeline YAML'));
+      if (name) existingNames.add(name.toLowerCase());
+    } catch {
+      // An unreadable pipeline cannot safely claim a display name, but its path
+      // remains unavailable through the independent target allocator below.
+    }
+  }
+  if (!existingNames.has(baseName.toLowerCase())) return baseName;
+  for (let copyNumber = 1; copyNumber < 1000; copyNumber += 1) {
+    const candidate = pipelineCopyName(baseName, copyNumber, fallbackStem);
+    if (!existingNames.has(candidate.toLowerCase())) return candidate;
+  }
+  throw new Error(`Too many pipelines already use the name ${baseName}.`);
+}
+
+function publishStagedAsIndependentPipeline(
+  ws: WorkspaceState,
+  stagedYamlPath: string,
+  sourceIdentityPath: string,
+  beforeWrite?: (destinationYamlPath: string) => void,
+): string {
+  const sourceRelativePaths = [
+    ...enumeratePipelineYamls(ws.workDir),
+    ...enumerateFlatPipelineYamls(ws.workDir),
+  ].map((entry) => portableRelative(tagmaDirOf(ws.workDir), entry.yamlPath));
+  const targetRelativePath = reserveCreateTargetRelativePath(sourceRelativePaths);
+  const targetPath = resolveRelativeInside(tagmaDirOf(ws.workDir), targetRelativePath);
+  const sourceStem = stemFromYamlBasename(basename(sourceIdentityPath));
+  const stagedName = pipelineNameFromYaml(assertRegularTextFile(stagedYamlPath, 'staged YAML'));
+  const independentName = nextIndependentPipelineName(ws.workDir, stagedName, sourceStem);
+  beforeWrite?.(targetPath);
+  try {
+    writeStagedArtifactsToDestination(ws, stagedYamlPath, targetPath, {
+      pipelineName: independentName,
+      sourceIdentityPath,
+    });
+    return targetPath;
+  } catch (err) {
+    rmSync(dirname(targetPath), { recursive: true, force: true });
     throw err;
   }
 }
@@ -3096,13 +3201,51 @@ export async function finalizeChatYamlStage(
         relativePath,
         input.localBranch,
       );
+      const sourceMatchesCapturedLocalContent = sourceContentMatchesCapturedLocalBranch(
+        sourcePath,
+        input.localBranch,
+      );
       const sourceDeleted = !existsSync(sourcePath);
-      if (!diskMatchesBase && !diskMatchesCapturedLocal) {
+      const manualDraftAlreadyClaimed =
+        metadata.requestedAction === FILL_MANUAL_NEW_PIPELINE_ACTION_KIND &&
+        !diskMatchesBase &&
+        !sourceDeleted &&
+        (!input.localBranch || (localBranchChanged && sourceMatchesCapturedLocalContent));
+      if (!diskMatchesBase && !diskMatchesCapturedLocal && !manualDraftAlreadyClaimed) {
         conflicts.push('source-changed-on-disk');
         if (sourceDeleted) conflicts.push('source-deleted');
       }
+      const concurrentFillAlreadyPublished =
+        manualDraftAlreadyClaimed && pipelineBranchesSemanticallyEquivalent(stagedPath, sourcePath);
+      if (concurrentFillAlreadyPublished) {
+        const localConflictIndex = conflicts.indexOf('local-branch-changed');
+        if (localConflictIndex >= 0) conflicts.splice(localConflictIndex, 1);
+      }
       const mustFork = conflicts.length > 0;
-      if (!mustFork) {
+      const nonBranchConflicts = conflicts.filter(
+        (conflict) => conflict !== 'local-branch-changed',
+      );
+      const canPublishConcurrentFillIndependently =
+        manualDraftAlreadyClaimed &&
+        !concurrentFillAlreadyPublished &&
+        nonBranchConflicts.length === 0;
+      if (concurrentFillAlreadyPublished && !mustFork) {
+        refreshCurrentWorkspaceState(ws, sourcePath);
+        destinationPath = sourcePath;
+        localBranchPersisted = !!input.localBranch;
+        outcome = 'adopted';
+      } else if (canPublishConcurrentFillIndependently) {
+        destinationPath = publishStagedAsIndependentPipeline(
+          ws,
+          stagedPath,
+          sourcePath,
+          trackPipeline,
+        );
+        resultCompile = runCompileAndWriteLog(destinationPath, ws.registry);
+        refreshCurrentWorkspaceState(ws, sourcePath);
+        localBranchPersisted = !!input.localBranch;
+        outcome = 'created';
+      } else if (!mustFork) {
         trackPipeline(sourcePath);
         writeStagedArtifactsToDestination(ws, stagedPath, sourcePath);
         if (mergedLocalLayout !== undefined) {
@@ -3115,7 +3258,7 @@ export async function finalizeChatYamlStage(
       } else {
         destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, sourcePath, trackPipeline);
         resultCompile = runCompileAndWriteLog(destinationPath, ws.registry);
-        if (!diskMatchesBase && !diskMatchesCapturedLocal) {
+        if (!diskMatchesBase && !diskMatchesCapturedLocal && !manualDraftAlreadyClaimed) {
           trackPipeline(sourcePath);
           // A missing live source is an authoritative user deletion. Preserve that
           // tombstone while publishing Chat's branch as a numbered copy; restoring
@@ -3160,6 +3303,9 @@ export async function finalizeChatYamlStage(
               refreshCurrentWorkspaceState(ws, sourcePath);
             }
           }
+        } else if (manualDraftAlreadyClaimed) {
+          refreshCurrentWorkspaceState(ws, sourcePath);
+          localBranchPersisted = !!input.localBranch;
         } else if (input.localBranch && localBranchChanged) {
           trackPipeline(sourcePath);
           writeLocalBranch(ws, input.localBranch);

@@ -486,6 +486,44 @@ function compactTrialabilityReport(value: unknown): UnknownRecord | null {
   };
 }
 
+function compactTrialExecutionCoverage(value: unknown): UnknownRecord | null {
+  const coverage = record(value);
+  if (Object.keys(coverage).length === 0) return null;
+  const terminalTaskIds = Array.isArray(coverage.terminalTaskIds) ? coverage.terminalTaskIds : [];
+  const sandboxCases = Array.isArray(coverage.sandboxCases) ? coverage.sandboxCases : [];
+  let executedSandboxCaseCount = 0;
+  let automaticTriggerSatisfactionCount = 0;
+  for (const value of sandboxCases) {
+    const testCase = record(value);
+    if (testCase.executed === true) executedSandboxCaseCount += 1;
+    if (Array.isArray(testCase.automaticTriggerSatisfactions)) {
+      automaticTriggerSatisfactionCount += testCase.automaticTriggerSatisfactions.length;
+    }
+  }
+  const liveSmoke = record(coverage.liveSmoke);
+  return {
+    terminalTaskCount: terminalTaskIds.length,
+    sandboxCaseCount: sandboxCases.length,
+    executedSandboxCaseCount,
+    automaticTriggerSatisfactionCount,
+    liveSmoke:
+      Object.keys(liveSmoke).length === 0
+        ? null
+        : {
+            executed: liveSmoke.executed === true,
+            targetTaskCount: Array.isArray(liveSmoke.targetTaskIds)
+              ? liveSmoke.targetTaskIds.length
+              : 0,
+            closureTaskCount: Array.isArray(liveSmoke.closureTaskIds)
+              ? liveSmoke.closureTaskIds.length
+              : 0,
+            automaticManualTaskCount: Array.isArray(liveSmoke.automaticManualTaskIds)
+              ? liveSmoke.automaticManualTaskIds.length
+              : 0,
+          },
+  };
+}
+
 function compactTrial(value: unknown): UnknownRecord | null {
   const trial = record(value);
   if (Object.keys(trial).length === 0) return null;
@@ -529,6 +567,7 @@ function compactTrial(value: unknown): UnknownRecord | null {
     trialMode: trial.trialMode ?? null,
     trialabilityReport: compactTrialabilityReport(trial.trialabilityReport),
     verificationMode: trial.verificationMode ?? null,
+    executionCoverage: compactTrialExecutionCoverage(trial.executionCoverage),
     plannedCaseCount: trial.plannedCaseCount ?? null,
     caseResultCount: trial.caseResultCount ?? null,
     notRunCaseCount: trial.notRunCaseCount ?? null,

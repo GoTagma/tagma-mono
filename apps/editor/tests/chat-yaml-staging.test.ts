@@ -270,6 +270,256 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('publishes two concurrent manual fills as exactly two independently named pipelines', async () => {
+    const { root, ws, sourcePath } = setupWorkspace(yamlFor('Untitled Pipeline', 'placeholder'));
+    ws.manualNewPipelineYamlPath = sourcePath;
+
+    const slowerStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const fasterStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const slowerStaged = slowerStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const fasterStaged = fasterStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstYaml = yamlFor('How Are You', 'hello');
+    const secondYaml = yamlFor('Fact Checker', 'fact-check');
+
+    writeFileSync(fasterStaged.stagedPath, firstYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, fasterStage.id, fasterStaged.relativePath).success).toBe(true);
+    const firstResult = await finalizeChatYamlStage(ws, {
+      stageId: fasterStage.id,
+      relativePath: fasterStaged.relativePath,
+    });
+    expect(firstResult.outcome).toBe('adopted');
+
+    writeFileSync(slowerStaged.stagedPath, secondYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, slowerStage.id, slowerStaged.relativePath).success).toBe(true);
+    const secondResult = await finalizeChatYamlStage(ws, {
+      stageId: slowerStage.id,
+      relativePath: slowerStaged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: firstYaml,
+        layout: ws.layout,
+      },
+    });
+
+    expect(secondResult.outcome).toBe('created');
+    expect(secondResult.conflicts).toContain('local-branch-changed');
+    expect(secondResult.entry?.pipelineName).toBe('Fact Checker');
+    expect(secondResult.entry?.path).not.toBe(sourcePath);
+    expect(secondResult.entry?.path).not.toContain('-copy-');
+    expect(secondResult.localBranchPersisted).toBe(true);
+    expect(secondResult.relocations ?? []).toEqual([]);
+    expect(parseYaml(readFileSync(sourcePath, 'utf-8')).name).toBe('How Are You');
+    expect(
+      readdirSync(join(root, '.tagma'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+        .map((entry) => entry.name),
+    ).toHaveLength(2);
+    expect(
+      readdirSync(join(root, '.tagma'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+        .some((entry) => entry.name.includes('-copy-')),
+    ).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('reuses an equivalent concurrent manual fill without publishing or relocating a duplicate', async () => {
+    const { root, ws, sourcePath } = setupWorkspace(yamlFor('Untitled Pipeline', 'placeholder'));
+    ws.manualNewPipelineYamlPath = sourcePath;
+
+    const laterStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const firstStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const laterStaged = laterStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstStaged = firstStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const authoredYaml = yamlFor('How Are You', 'hello');
+    writeFileSync(laterStaged.stagedPath, authoredYaml, 'utf-8');
+    writeFileSync(firstStaged.stagedPath, authoredYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, laterStage.id, laterStaged.relativePath).success).toBe(true);
+    expect(compileChatYamlStage(ws, firstStage.id, firstStaged.relativePath).success).toBe(true);
+
+    expect(
+      (
+        await finalizeChatYamlStage(ws, {
+          stageId: firstStage.id,
+          relativePath: firstStaged.relativePath,
+        })
+      ).outcome,
+    ).toBe('adopted');
+    const destinationWrites: string[] = [];
+    __chatYamlStagingTestHooks.afterDestinationYamlWrite = (path) => destinationWrites.push(path);
+
+    const laterResult = await finalizeChatYamlStage(ws, {
+      stageId: laterStage.id,
+      relativePath: laterStaged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: authoredYaml,
+        layout: ws.layout,
+      },
+    });
+
+    expect(laterResult.outcome).toBe('adopted');
+    expect(laterResult.entry?.path).toBe(sourcePath);
+    expect(laterResult.entry?.pipelineName).toBe('How Are You');
+    expect(laterResult.conflicts).toEqual([]);
+    expect(laterResult.localBranchPersisted).toBe(true);
+    expect(laterResult.relocations ?? []).toEqual([]);
+    expect(destinationWrites).toEqual([]);
+    expect(
+      readdirSync(join(root, '.tagma'), { withFileTypes: true }).filter(
+        (entry) => entry.isDirectory() && !entry.name.startsWith('.'),
+      ),
+    ).toHaveLength(1);
+    stopWorkspace(ws);
+  });
+
+  test('adds Copy only when an independent concurrent fill has a real display-name collision', async () => {
+    const { ws, sourcePath } = setupWorkspace(yamlFor('Untitled Pipeline', 'placeholder'));
+    ws.manualNewPipelineYamlPath = sourcePath;
+
+    const laterStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const firstStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const laterStaged = laterStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstStaged = firstStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstYaml = yamlFor('Shared Pipeline', 'first behavior');
+    const laterYaml = yamlFor('Shared Pipeline', 'different behavior');
+
+    writeFileSync(firstStaged.stagedPath, firstYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, firstStage.id, firstStaged.relativePath).success).toBe(true);
+    expect(
+      (
+        await finalizeChatYamlStage(ws, {
+          stageId: firstStage.id,
+          relativePath: firstStaged.relativePath,
+        })
+      ).outcome,
+    ).toBe('adopted');
+
+    writeFileSync(laterStaged.stagedPath, laterYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, laterStage.id, laterStaged.relativePath).success).toBe(true);
+    const laterResult = await finalizeChatYamlStage(ws, {
+      stageId: laterStage.id,
+      relativePath: laterStaged.relativePath,
+      localBranch: { sourcePath, yaml: firstYaml, layout: ws.layout },
+    });
+
+    expect(laterResult.outcome).toBe('created');
+    expect(laterResult.entry?.pipelineName).toBe('Shared Pipeline Copy 1');
+    expect(laterResult.entry?.path).not.toContain('-copy-');
+    expect(laterResult.relocations ?? []).toEqual([]);
+    expect(parseYaml(readFileSync(sourcePath, 'utf-8')).name).toBe('Shared Pipeline');
+    stopWorkspace(ws);
+  });
+
+  test('publishes a claimed concurrent manual fill independently after renderer navigation', async () => {
+    const { root, ws, sourcePath } = setupWorkspace(yamlFor('Untitled Pipeline', 'placeholder'));
+    ws.manualNewPipelineYamlPath = sourcePath;
+
+    const laterStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const firstStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const laterStaged = laterStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstStaged = firstStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstYaml = yamlFor('Claimed Draft', 'first behavior');
+    const laterYaml = yamlFor('Independent Draft', 'later behavior');
+
+    writeFileSync(firstStaged.stagedPath, firstYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, firstStage.id, firstStaged.relativePath).success).toBe(true);
+    await finalizeChatYamlStage(ws, {
+      stageId: firstStage.id,
+      relativePath: firstStaged.relativePath,
+    });
+
+    writeFileSync(laterStaged.stagedPath, laterYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, laterStage.id, laterStaged.relativePath).success).toBe(true);
+    const laterResult = await finalizeChatYamlStage(ws, {
+      stageId: laterStage.id,
+      relativePath: laterStaged.relativePath,
+      localBranch: null,
+    });
+
+    expect(laterResult.outcome).toBe('created');
+    expect(laterResult.entry?.pipelineName).toBe('Independent Draft');
+    expect(laterResult.entry?.path).not.toContain('-copy-');
+    expect(laterResult.relocations ?? []).toEqual([]);
+    expect(parseYaml(readFileSync(sourcePath, 'utf-8')).name).toBe('Claimed Draft');
+    expect(
+      readdirSync(join(root, '.tagma'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+        .some((entry) => entry.name.includes('-copy-')),
+    ).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('does not relocate a claimed concurrent manual branch when the later draft fails compile', async () => {
+    const { root, ws, sourcePath } = setupWorkspace(yamlFor('Untitled Pipeline', 'placeholder'));
+    ws.manualNewPipelineYamlPath = sourcePath;
+
+    const laterStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const firstStage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      requestedAction: 'fill-manual-new-pipeline',
+    });
+    const laterStaged = laterStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstStaged = firstStage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const firstYaml = yamlFor('First Branch', 'valid behavior');
+    const invalidLaterYaml = yamlFor('Unverified Branch', '');
+
+    writeFileSync(firstStaged.stagedPath, firstYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, firstStage.id, firstStaged.relativePath).success).toBe(true);
+    await finalizeChatYamlStage(ws, {
+      stageId: firstStage.id,
+      relativePath: firstStaged.relativePath,
+    });
+
+    writeFileSync(laterStaged.stagedPath, invalidLaterYaml, 'utf-8');
+    expect(compileChatYamlStage(ws, laterStage.id, laterStaged.relativePath).success).toBe(false);
+    const laterResult = await finalizeChatYamlStage(ws, {
+      stageId: laterStage.id,
+      relativePath: laterStaged.relativePath,
+      localBranch: { sourcePath, yaml: firstYaml, layout: ws.layout },
+      allowInvalid: true,
+    });
+
+    expect(laterResult.outcome).toBe('forked');
+    expect(laterResult.conflicts).toContain('compile-failed');
+    expect(laterResult.entry?.pipelineName).toBe('Unverified Branch Copy 1');
+    expect(laterResult.relocations ?? []).toEqual([]);
+    expect(parseYaml(readFileSync(sourcePath, 'utf-8')).name).toBe('First Branch');
+    expect(
+      readdirSync(join(root, '.tagma'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+        .map((entry) => entry.name)
+        .sort(),
+    ).toEqual(['pipeline', 'pipeline-copy-1']);
+    stopWorkspace(ws);
+  });
+
   test('syncs Host-managed companions for a structurally new staged pipeline without text intent', () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });

@@ -5,7 +5,7 @@ import { planBlockingDiagnostics, planWarningDiagnostics } from '../server/chat-
 
 function plan(overrides: Partial<ChatPipelineTrialPlan> = {}): ChatPipelineTrialPlan {
   return {
-    version: 7,
+    version: 8,
     yamlHash: 'a'.repeat(40),
     summary: 'Diagnostic-plan fixture.',
     goals: ['Exercise plan diagnostics.'],

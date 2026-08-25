@@ -17,7 +17,7 @@ import {
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 7,
+    version: 8,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],
@@ -314,7 +314,7 @@ describe('chat pipeline trial plan', () => {
     );
   });
 
-  test('does not let final-state assertions claim repeat-run output collision coverage', () => {
+  test('accepts repeat-run output collision coverage with a repeated non-fixture file assertion', () => {
     const candidate = structuredClone(completePlan());
     const repeatCollision = (
       candidate.coverage as Array<{ dimension: string; status: string; caseIds: string[] }>
@@ -322,8 +322,32 @@ describe('chat pipeline trial plan', () => {
     repeatCollision.status = 'covered';
     repeatCollision.caseIds = ['all-file-boundaries'];
 
+    const plan = parseChatPipelineTrialPlan(candidate);
+
+    expect(
+      plan.coverage.find((item) => item.dimension === 'repeat-run-output-collision'),
+    ).toMatchObject({ status: 'covered', caseIds: ['all-file-boundaries'] });
+  });
+
+  test('rejects repeat-run output collision coverage without a non-fixture file assertion', () => {
+    const candidate = structuredClone(completePlan());
+    const coverage = candidate.coverage as Array<{
+      dimension: string;
+      status: string;
+      caseIds: string[];
+    }>;
+    for (const entry of coverage) {
+      entry.status =
+        entry.dimension === 'repeat-run-output-collision' ? 'covered' : 'not-applicable';
+      entry.caseIds = entry.status === 'covered' ? ['all-file-boundaries'] : [];
+    }
+    const testCase = (
+      candidate.cases as Array<{ expectations: Array<Record<string, unknown>> }>
+    )[0]!;
+    testCase.expectations = [{ type: 'task-status', taskId: 'main.process', status: 'success' }];
+
     expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
-      'repeat-run-output-collision cannot be covered without run-scoped artifact evidence',
+      'repeat-run-output-collision covered without concrete linked-case evidence',
     );
   });
 

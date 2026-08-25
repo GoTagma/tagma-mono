@@ -186,7 +186,7 @@ Plan multiple inputs, duplicate input names, multi-paragraph and empty content, 
 
 Mark a dimension covered only when concrete linked case evidence exercises it. A fixed single-input surface is not-applicable for multiple-inputs and duplicate-input-names unless cases genuinely vary that surface. Native declared or inferred prompt outputs are engine-validated. Declared bindings resolve from authored \`value\` or \`from\`; when the source is absent, a \`default\` applies; then type coercion runs. An unresolved binding without a default, or a resolved/default value that cannot be coerced, fails with \`output_error\`. Declared bindings with implicit or explicit \`json.*\` sources and inferred output ports use final-line JSON; declared \`stdout\`/\`stderr\`/\`normalizedOutput\` sources, explicit values, and defaults do not. Do not require an additional persisted file merely to verify a binding; use task-status and relevant downstream-task evidence. Require a persisted artifact only when the user or pipeline explicitly promises a file or the behavior needs exact-byte or cross-run file semantics. A missing artifact required by that file contract is a fixable verifiability gap: record a blocking finding with \`repairScope: pipeline-artifact\` naming it. Mark a dimension \`blocked\` only when no pipeline repair can expose it to the harness.
 
-Final-only checks cannot cover repeat-run-output-collision; use risk/blocked/N/A. \`repeat-run\` needs 2+ runs; concurrent collision cannot be covered. Inter-task collision needs two tasks/outputs.
+For repeat-run-output-collision, link a case with 2+ runs and at least one non-fixture file assertion. The Host marks the existing file before each run and verifies that run created or rewrote it, even when expected bytes stay identical; a stale final file fails. \`repeat-run\` needs 2+ runs; concurrent collision cannot be covered. Inter-task collision needs two tasks/outputs.
 
 Pass the exact staged YAML path from the host request. Start with \`begin\`, send one case per \`upsert-case\`, set coverage and findings separately, and let \`commit\` validate the complete plan before writing. Every case must have non-empty qualified \`targetTaskIds\`; never omit or empty them because that would mean an unsafe full-pipeline run at the execution boundary. Every finding must set \`repairScope\`: \`pipeline-artifact\` for YAML or companion defects, including a missing artifact promised by the pipeline's file contract or required for exact-byte or cross-run file semantics; \`diagnostic-only\` otherwise. A native output binding without a duplicate file is not a defect. Blocked coverage is diagnostic-only and non-fatal; accepted risk yields \`passed-with-warnings\`.
 
@@ -804,9 +804,15 @@ For each new prompt task:
 
 For every new-pipeline request, complete this gate in the current worker before writing. Establish the goal and observable success evidence, task graph and typed dataflow, permissions, verification, and requirements. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write YAML until the design is coherent. Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient. Do not turn “capture”, “return”, or “make observable” into a file-write requirement. A prompt task that truly must create or edit a file needs explicit write permission.
 
+## Debuggable Task Granularity
+
+Design the finest meaningful independently diagnosable stages, not the fewest tasks. Split work when a boundary has a distinct failure mode, a meaningful intermediate contract, different permissions/driver/side-effect policy, or can be independently retried or verified. Do not create cosmetic pass-through nodes. Do not collapse a multi-stage workflow into one prompt task merely because one model could attempt everything. A one-task graph is appropriate only for a genuinely atomic operation with no useful internal verification boundary.
+
+Before generation, retain one concise task-boundary rationale per task and one track-identity rationale per track. Track boundaries describe execution identity and policy, not lifecycle stages or task count: tasks sharing driver, model, profile, permissions, middleware, cwd, and failure policy may share a track. The final report must make both rationale sets reviewable.
+
 ## Host-Managed New-Pipeline Companions
 
-For every new staged YAML, write the final YAML after the design gate. The Host regenerates its manifest, basic layout positions, and requirements frontmatter. Never patch the generated manifest or call \`tagma_placement_plan\` for this Host-managed initial layout. For any new target without an existing YAML stub, call \`tagma_yaml_skeleton\` exactly once with a typed in-memory description containing the final prompt/command, permissions, bindings, completion, and result_contract for each task. Use the returned schema-valid structure as the write base, then add only advanced fields required by the design; never persist the input as a manifest.
+For every new staged YAML, write the final YAML after the design gate. The Host regenerates its manifest, basic layout positions, and requirements frontmatter. Never patch the generated manifest or call \`tagma_placement_plan\` for this Host-managed initial layout. For every new target, including a Host-provided manual-New YAML stub, call \`tagma_yaml_skeleton\` exactly once with a typed in-memory description containing the final prompt/command, permissions, bindings, completion, result_contract, task-boundary rationale, and track-identity rationale. Use the returned schema-valid structure as the write base, then add only advanced fields required by the design; never persist the input as a manifest.
 
 Without external prerequisites or requested layout metadata, do not read or edit layout/requirements. Only genuine \`env\`, \`services\`, install guidance, custom body, grouping, or lane-height needs justify editing their user-owned fields.
 
@@ -853,7 +859,7 @@ Success is a pipeline the editor can compile and the user can plausibly run, not
 
 ## Final Result Contract
 
-Your final response must be non-empty. Return a concise report with files changed, final compile evidence, run or Trial evidence, assumptions, and genuine limitations. Until the host result exists, use the exact status phrase authoring complete; host verification pending; do not call it built, ready, successful, or verified merely because compilation passed. Host verification starts automatically after your response. Do not ask whether the user wants the host to verify or compile, and do not offer next steps that depend on the provisional authoring state. If work cannot finish, report the exact failure or blocker. Never end the turn after a tool call without a final response.
+Your final response must be non-empty. Return a concise report with files changed, final compile evidence, run or Trial evidence, assumptions, genuine limitations, and—for new pipelines—the task-boundary rationale and track-identity rationale. Until the host result exists, use the exact status phrase authoring complete; host verification pending; do not call it built, ready, successful, or verified merely because compilation passed. Host verification starts automatically after your response. Do not ask whether the user wants the host to verify or compile, and do not offer next steps that depend on the provisional authoring state. If work cannot finish, report the exact failure or blocker. Never end the turn after a tool call without a final response.
 
 ## Trial Run
 
@@ -1544,6 +1550,24 @@ function buildYamlSkeleton(manifest) {
     );
   }
 
+  const trackRationales = trackSections.map((section) => {
+    const id = trackSectionId(section);
+    const rationale = asString(section.track_identity_rationale);
+    if (!rationale) throw new Error("track " + id + " is missing track-identity rationale");
+    return { id, rationale };
+  });
+  const taskRationales = taskSections.map((section) => {
+    const ids = taskSectionIds(section);
+    const id = ids.trackId + "." + ids.taskId;
+    const rationale = asString(section.task_boundary_rationale);
+    if (!rationale) throw new Error("task " + id + " is missing task-boundary rationale");
+    return { id, rationale };
+  });
+  const atomicityRationale = asString(pipeline.atomicity_rationale);
+  if (emittedTaskCount === 1 && !atomicityRationale) {
+    throw new Error("a one-task pipeline is missing atomicity rationale");
+  }
+
   const lines = ["pipeline:", "  name: " + yamlString(pipelineName), "  tracks:"];
   for (const track of tracks) {
     lines.push("    - id: " + yamlString(track.id));
@@ -1578,15 +1602,28 @@ function buildYamlSkeleton(manifest) {
       addBindingMap(lines, "          ", "outputs", task.outputs);
     }
   }
-  return lines.join("\\n") + "\\n";
+  return {
+    yaml: lines.join("\\n") + "\\n",
+    design: {
+      atomicityRationale: emittedTaskCount === 1 ? atomicityRationale : null,
+      tracks: trackRationales,
+      tasks: taskRationales,
+    },
+  };
 }
 
 export default tool({
-  description: "Generate a schema-valid Tagma YAML skeleton from an in-memory pipeline description.",
+  description: "Generate a schema-valid Tagma YAML skeleton and reviewable task/track design rationale from an in-memory pipeline description.",
   args: {
     manifest: tool.schema
       .object({
-        pipeline: tool.schema.object({ name: tool.schema.string().optional() }),
+        pipeline: tool.schema.object({
+          name: tool.schema.string().optional(),
+          atomicity_rationale: tool.schema
+            .string()
+            .optional()
+            .describe("Required for a one-task graph: why no useful internal verification boundary exists"),
+        }),
         sections: tool.schema.array(
           tool.schema.object({
             id: tool.schema.string(),
@@ -1596,6 +1633,14 @@ export default tool({
             summary: tool.schema.string().optional(),
             track: tool.schema.string().optional(),
             task: tool.schema.string().optional(),
+            track_identity_rationale: tool.schema
+              .string()
+              .optional()
+              .describe("Required on track sections: execution identity and policy boundary"),
+            task_boundary_rationale: tool.schema
+              .string()
+              .optional()
+              .describe("Required on task sections: independently diagnosable responsibility boundary"),
             prompt: tool.schema.string().optional(),
             command: tool.schema.string().optional(),
             driver: tool.schema.string().optional(),
@@ -1631,10 +1676,10 @@ export default tool({
           }),
         ),
       })
-      .describe("Typed in-memory pipeline structure with task implementation and result contracts; it does not need a persisted manifest"),
+      .describe("Typed in-memory pipeline structure with task implementation, result contracts, and reviewable design rationale; it does not need a persisted manifest"),
   },
   async execute(args) {
-    return JSON.stringify({ yaml: buildYamlSkeleton(args.manifest) }, null, 2);
+    return JSON.stringify(buildYamlSkeleton(args.manifest), null, 2);
   },
 });
 `;

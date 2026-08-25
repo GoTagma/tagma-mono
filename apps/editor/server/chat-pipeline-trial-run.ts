@@ -8,8 +8,10 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  utimesSync,
   watch,
   type FSWatcher,
+  type Stats,
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -50,6 +52,7 @@ import {
 } from '../shared/chat-pipeline-trial-consent.js';
 import {
   buildChatPipelineTrialPlanRequest,
+  findChatPipelineTrialRepeatedFileOutputPaths,
   findUncoveredChatPipelineTrialTerminalTaskIds,
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
@@ -197,7 +200,7 @@ export interface ChatPipelineTrialStreamTruncation {
 }
 
 export interface ChatPipelineTrialExpectationResult {
-  type: ChatPipelineTrialExpectation['type'] | 'case-execution';
+  type: ChatPipelineTrialExpectation['type'] | 'case-execution' | 'run-artifact-freshness';
   passed: boolean;
   detail: string;
   repairScope: 'pipeline-artifact' | 'diagnostic-only';
@@ -254,6 +257,27 @@ export interface ChatPipelineTrialManualExecutionGrant {
   approvalCount: number;
 }
 
+export interface ChatPipelineTrialExecutionCoverage {
+  terminalTaskIds: string[];
+  sandboxCases: Array<{
+    caseId: string;
+    targetTaskIds: string[];
+    closureTaskIds: string[];
+    executed: boolean;
+    automaticTriggerSatisfactions: Array<{
+      taskId: string;
+      type: 'manual' | 'file' | 'directory';
+      mechanism: 'run-scoped-grant' | 'isolated-case-input';
+    }>;
+  }>;
+  liveSmoke: {
+    targetTaskIds: string[];
+    closureTaskIds: string[];
+    executed: boolean;
+    automaticManualTaskIds: string[];
+  } | null;
+}
+
 export type ChatPipelineTrialNotRunReason =
   | 'aborted'
   | 'timed-out'
@@ -288,6 +312,7 @@ export interface ChatPipelineTrialRunResult {
   trialMode?: ChatPipelineTrialMode;
   trialabilityReport?: ChatPipelineTrialabilityReport;
   verificationMode?: 'sandbox-cases-only' | 'sandbox-cases-with-live-smoke';
+  executionCoverage?: ChatPipelineTrialExecutionCoverage;
   manualExecutionGrants?: ChatPipelineTrialManualExecutionGrant[];
   planTelemetry?: ChatPipelineTrialPlanToolTelemetry;
   planRequest?: ChatPipelineTrialPlanRequest & {
@@ -1171,23 +1196,90 @@ export function normalizeTrialCaseTargetTaskIdsForExecution(
   return targetTaskIds;
 }
 
-function manualTaskIdsInTargetClosure(
-  dag: Dag,
-  targetTaskIds: readonly string[],
-): ReadonlySet<string> {
+function taskIdsInTargetClosure(dag: Dag, targetTaskIds: readonly string[]): string[] {
   const pending = [...targetTaskIds];
   const visited = new Set<string>();
-  const manualTaskIds = new Set<string>();
   while (pending.length > 0) {
     const taskId = pending.pop()!;
     if (visited.has(taskId)) continue;
     visited.add(taskId);
     const node = dag.nodes.get(taskId);
     if (!node) throw new Error(`Target task ${taskId} not found`);
-    if (node.task.trigger?.type === 'manual') manualTaskIds.add(taskId);
     pending.push(...node.dependsOn);
   }
-  return manualTaskIds;
+  return [...dag.nodes.keys()].filter((taskId) => visited.has(taskId));
+}
+
+function manualTaskIdsInTargetClosure(
+  dag: Dag,
+  targetTaskIds: readonly string[],
+): ReadonlySet<string> {
+  return new Set(
+    taskIdsInTargetClosure(dag, targetTaskIds).filter(
+      (taskId) => dag.nodes.get(taskId)?.task.trigger?.type === 'manual',
+    ),
+  );
+}
+
+function buildTrialExecutionCoverage(input: {
+  dag: Dag;
+  plan: ChatPipelineTrialPlan;
+  targetTaskIdsByCase: ReadonlyMap<string, string[]>;
+  executedCaseIds: ReadonlySet<string>;
+  liveSmokeEnabled: boolean;
+  liveSmokeBaseline: ChatPipelineLiveSmokeBaseline;
+  liveSmokeExecuted: boolean;
+}): ChatPipelineTrialExecutionCoverage {
+  const dependedOnTaskIds = new Set(
+    [...input.dag.nodes.values()].flatMap((node) => node.dependsOn),
+  );
+  const terminalTaskIds = [...input.dag.nodes.keys()].filter(
+    (taskId) => !dependedOnTaskIds.has(taskId),
+  );
+  const sandboxCases = input.plan.cases.map((testCase) => {
+    const targetTaskIds = input.targetTaskIdsByCase.get(testCase.id) ?? testCase.targetTaskIds;
+    const closureTaskIds = taskIdsInTargetClosure(input.dag, targetTaskIds);
+    const automaticTriggerSatisfactions: ChatPipelineTrialExecutionCoverage['sandboxCases'][number]['automaticTriggerSatisfactions'] =
+      [];
+    for (const taskId of closureTaskIds) {
+      const type = input.dag.nodes.get(taskId)?.task.trigger?.type;
+      if (type === 'manual') {
+        automaticTriggerSatisfactions.push({
+          taskId,
+          type,
+          mechanism: 'run-scoped-grant',
+        });
+      } else if (type === 'file' || type === 'directory') {
+        automaticTriggerSatisfactions.push({
+          taskId,
+          type,
+          mechanism: 'isolated-case-input',
+        });
+      }
+    }
+    return {
+      caseId: testCase.id,
+      targetTaskIds: [...targetTaskIds],
+      closureTaskIds,
+      executed: input.executedCaseIds.has(testCase.id),
+      automaticTriggerSatisfactions,
+    };
+  });
+  const liveSmokeTargetTaskIds =
+    !input.liveSmokeEnabled || input.liveSmokeBaseline.mode === 'skip'
+      ? null
+      : input.liveSmokeBaseline.mode === 'run-all'
+        ? terminalTaskIds
+        : input.liveSmokeBaseline.targetTaskIds;
+  const liveSmoke = liveSmokeTargetTaskIds
+    ? {
+        targetTaskIds: [...liveSmokeTargetTaskIds],
+        closureTaskIds: taskIdsInTargetClosure(input.dag, liveSmokeTargetTaskIds),
+        executed: input.liveSmokeExecuted,
+        automaticManualTaskIds: [...input.liveSmokeBaseline.manualGatedTaskIds],
+      }
+    : null;
+  return { terminalTaskIds, sandboxCases, liveSmoke };
 }
 
 function casePath(workDir: string, relativePath: string, relativeYamlPath: string): string {
@@ -1265,12 +1357,154 @@ function prepareTrialCaseWorkspace(
   }
 }
 
-function lstatOrNull(path: string) {
+function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path);
   } catch {
     return null;
   }
+}
+
+interface RepeatedArtifactFreshnessProbe {
+  path: string;
+  absolutePath: string;
+  runNumber: number;
+  beforeKind: 'missing' | 'regular' | 'other';
+  markedMtimeMs: number | null;
+  beforeIdentity: string | null;
+  diagnostic: string | null;
+}
+
+interface RepeatedArtifactFreshnessObservation {
+  path: string;
+  runNumber: number;
+  passed: boolean;
+  repairScope: 'pipeline-artifact' | 'diagnostic-only';
+  detail: string;
+}
+
+function fileIdentity(stat: Stats): string {
+  return `${stat.dev}:${stat.ino}`;
+}
+
+function prepareRepeatedArtifactFreshnessProbe(
+  workDir: string,
+  relativeYamlPath: string,
+  path: string,
+  runNumber: number,
+): RepeatedArtifactFreshnessProbe {
+  const absolutePath = casePath(workDir, path, relativeYamlPath);
+  const before = lstatOrNull(absolutePath);
+  if (!before) {
+    return {
+      path,
+      absolutePath,
+      runNumber,
+      beforeKind: 'missing',
+      markedMtimeMs: null,
+      beforeIdentity: null,
+      diagnostic: null,
+    };
+  }
+  if (before.isSymbolicLink() || !before.isFile()) {
+    return {
+      path,
+      absolutePath,
+      runNumber,
+      beforeKind: 'other',
+      markedMtimeMs: before.mtimeMs,
+      beforeIdentity: fileIdentity(before),
+      diagnostic: null,
+    };
+  }
+  try {
+    const markerSeconds = (Date.UTC(2000, 0, 1) + runNumber * 1_000) / 1_000;
+    utimesSync(absolutePath, markerSeconds, markerSeconds);
+    const marked = lstatSync(absolutePath);
+    return {
+      path,
+      absolutePath,
+      runNumber,
+      beforeKind: 'regular',
+      markedMtimeMs: marked.mtimeMs,
+      beforeIdentity: fileIdentity(marked),
+      diagnostic: null,
+    };
+  } catch (err) {
+    return {
+      path,
+      absolutePath,
+      runNumber,
+      beforeKind: 'regular',
+      markedMtimeMs: before.mtimeMs,
+      beforeIdentity: fileIdentity(before),
+      diagnostic: `Host could not prepare freshness evidence for ${path} before run ${runNumber}: ${errorMessage(err)}`,
+    };
+  }
+}
+
+function observeRepeatedArtifactFreshness(
+  probe: RepeatedArtifactFreshnessProbe,
+): RepeatedArtifactFreshnessObservation {
+  if (probe.diagnostic) {
+    return {
+      path: probe.path,
+      runNumber: probe.runNumber,
+      passed: false,
+      repairScope: 'diagnostic-only',
+      detail: probe.diagnostic,
+    };
+  }
+  const after = lstatOrNull(probe.absolutePath);
+  if (!after || after.isSymbolicLink() || !after.isFile()) {
+    return {
+      path: probe.path,
+      runNumber: probe.runNumber,
+      passed: false,
+      repairScope: 'pipeline-artifact',
+      detail: `${probe.path} was not a regular file after run ${probe.runNumber}.`,
+    };
+  }
+  const passed =
+    probe.beforeKind === 'missing' ||
+    fileIdentity(after) !== probe.beforeIdentity ||
+    after.mtimeMs !== probe.markedMtimeMs;
+  return {
+    path: probe.path,
+    runNumber: probe.runNumber,
+    passed,
+    repairScope: 'pipeline-artifact',
+    detail: passed
+      ? `${probe.path} was created or rewritten by run ${probe.runNumber}.`
+      : `${probe.path} was not rewritten by run ${probe.runNumber}; the prior artifact remained unchanged.`,
+  };
+}
+
+function repeatedArtifactFreshnessExpectation(
+  path: string,
+  observations: readonly RepeatedArtifactFreshnessObservation[],
+  expectedRuns: number,
+): ChatPipelineTrialExpectationResult {
+  const pathObservations = observations.filter((observation) => observation.path === path);
+  const failed = pathObservations.filter((observation) => !observation.passed);
+  const passed = pathObservations.length === expectedRuns && failed.length === 0;
+  const diagnostic = failed.find((observation) => observation.repairScope === 'diagnostic-only');
+  const missingRunCount = Math.max(0, expectedRuns - pathObservations.length);
+  return {
+    type: 'run-artifact-freshness',
+    passed,
+    detail: passed
+      ? `${path} was created or rewritten by every one of ${expectedRuns} runs.`
+      : boundedTrialText(
+          [
+            ...failed.map((observation) => observation.detail),
+            ...(missingRunCount > 0
+              ? [`${path} has no freshness observation for ${missingRunCount} planned run(s).`]
+              : []),
+          ].join(' '),
+        ),
+    repairScope: diagnostic ? 'diagnostic-only' : 'pipeline-artifact',
+  };
 }
 
 function resolveJsonPointer(
@@ -2241,6 +2475,7 @@ async function executeTargetedTrialCase(
     relativeYamlPath: string;
     testCase: ChatPipelineTrialPlanCase;
     targetTaskIds?: string[];
+    verifyRepeatedFileOutputs: boolean;
     caseIndex: number;
     caseCount: number;
     progress: ChatPipelineTrialProgressReporter;
@@ -2252,6 +2487,10 @@ async function executeTargetedTrialCase(
   let totalTaskCount = 0;
   const taskStatusCounts: Record<string, number> = {};
   const runResults: EngineResult[] = [];
+  const repeatedOutputPaths = input.verifyRepeatedFileOutputs
+    ? findChatPipelineTrialRepeatedFileOutputPaths(input.testCase)
+    : [];
+  const freshnessObservations: RepeatedArtifactFreshnessObservation[] = [];
   let lastResult: EngineResult | null = null;
   let executionError: string | null = null;
   input.progress.update({
@@ -2301,15 +2540,27 @@ async function executeTargetedTrialCase(
       });
       const runId = generateRunId();
       runIds.push(runId);
-      lastResult = await runTrialPipelineOnce({
-        ...input,
-        pipelineConfig: casePipelineConfig,
-        workDir: caseWorkspace.workDir,
-        runId,
-        targetTaskIds: input.targetTaskIds,
-        testCase: input.testCase,
-        onEvent: (event) => updateTrialTaskProgress(input.progress, event),
-      });
+      const freshnessProbes = repeatedOutputPaths.map((path) =>
+        prepareRepeatedArtifactFreshnessProbe(
+          caseWorkspace!.workDir,
+          input.relativeYamlPath,
+          path,
+          runNumber,
+        ),
+      );
+      try {
+        lastResult = await runTrialPipelineOnce({
+          ...input,
+          pipelineConfig: casePipelineConfig,
+          workDir: caseWorkspace.workDir,
+          runId,
+          targetTaskIds: input.targetTaskIds,
+          testCase: input.testCase,
+          onEvent: (event) => updateTrialTaskProgress(input.progress, event),
+        });
+      } finally {
+        freshnessObservations.push(...freshnessProbes.map(observeRepeatedArtifactFreshness));
+      }
       runResults.push(lastResult);
       const evidence = trialTaskResults(
         lastResult,
@@ -2349,6 +2600,11 @@ async function executeTargetedTrialCase(
         });
       }
     }
+  }
+  for (const path of repeatedOutputPaths) {
+    expectations.push(
+      repeatedArtifactFreshnessExpectation(path, freshnessObservations, input.testCase.runs),
+    );
   }
   if (caseWorkspace) {
     try {
@@ -2784,6 +3040,13 @@ async function executeTrial(
     liveSmokeTestEnabled,
   } = prepared;
   const fixtureInputs = dataReadiness.state === 'fixture-backed' ? dataReadiness.inputs : [];
+  const repeatedFileOutputCaseIds = new Set(
+    plan.coverage
+      .filter(
+        (entry) => entry.dimension === 'repeat-run-output-collision' && entry.status === 'covered',
+      )
+      .flatMap((entry) => entry.caseIds),
+  );
 
   const pythonSettings = readEditorSettings(ws).pythonAgent;
   const pythonRunEnv = buildPythonAgentRunEnv(ws.workDir, pythonSettings);
@@ -3071,6 +3334,7 @@ async function executeTrial(
         relativeYamlPath: entry.relativePath,
         testCase,
         targetTaskIds,
+        verifyRepeatedFileOutputs: repeatedFileOutputCaseIds.has(testCase.id),
         caseIndex: caseOffset + 1,
         caseCount: plan.cases.length,
         progress,
@@ -3210,6 +3474,18 @@ async function executeTrial(
         };
       });
     const runtimeBlockers = [...runtimePrerequisiteBlockers.values()];
+    const executedCaseIds = new Set(
+      cases.filter((testCase) => testCase.runIds.length > 0).map((testCase) => testCase.id),
+    );
+    const executionCoverage = buildTrialExecutionCoverage({
+      dag,
+      plan,
+      targetTaskIdsByCase,
+      executedCaseIds,
+      liveSmokeEnabled: liveSmokeTestEnabled,
+      liveSmokeBaseline,
+      liveSmokeExecuted: !baselineSkipped,
+    });
     const success =
       baselineSuccess &&
       !abortState.timedOut &&
@@ -3381,6 +3657,7 @@ async function executeTrial(
       trialMode,
       trialabilityReport,
       verificationMode: baselineSkipped ? 'sandbox-cases-only' : 'sandbox-cases-with-live-smoke',
+      executionCoverage,
       ...(manualExecutionGrants.length > 0 ? { manualExecutionGrants } : {}),
       summary:
         kind === 'blocked' && runtimeBlockers.length > 0

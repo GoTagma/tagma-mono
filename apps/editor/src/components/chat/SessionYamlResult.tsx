@@ -140,11 +140,92 @@ function SessionYamlResultBody({
         </span>
       </div>
       <div className="select-text text-tagma-muted/80 break-words">{summary}</div>
+      {result.trial?.executionCoverage && (
+        <TrialExecutionCoverageDetails
+          coverage={result.trial.executionCoverage}
+          manualExecutionGrants={result.trial.manualExecutionGrants ?? []}
+        />
+      )}
       {result.planningTelemetry && (
         <TrialPlanningTelemetryDetails telemetry={result.planningTelemetry} />
       )}
       {showOpenAction && <SessionYamlOpenAction result={result} name={name} />}
     </>
+  );
+}
+
+function TrialExecutionCoverageDetails({
+  coverage,
+  manualExecutionGrants,
+}: {
+  coverage: NonNullable<NonNullable<ChatYamlSessionResult['trial']>['executionCoverage']>;
+  manualExecutionGrants: NonNullable<
+    NonNullable<ChatYamlSessionResult['trial']>['manualExecutionGrants']
+  >;
+}) {
+  const terminalCount = coverage.terminalTaskIds.length;
+  const caseCount = coverage.sandboxCases.length;
+  const taskList = (taskIds: readonly string[]) => taskIds.join(', ') || 'none';
+  const countLabel = (count: number, singular: string) =>
+    `${count} ${singular}${count === 1 ? '' : 's'}`;
+  return (
+    <details className="chat-disclosure select-text border-t border-tagma-border/60 pt-1.5 text-tiny">
+      <summary className="cursor-pointer text-tagma-muted/80">
+        Trial execution coverage: {countLabel(terminalCount, 'terminal task')} /{' '}
+        {countLabel(caseCount, 'Sandbox case')}
+      </summary>
+      <div className="mt-1 flex flex-col gap-1 text-tagma-muted/70 break-words">
+        <div>Terminal tasks: {taskList(coverage.terminalTaskIds)}</div>
+        {coverage.sandboxCases.map((testCase) => (
+          <div key={testCase.caseId} className="indent-rail flex flex-col gap-0.5 pl-2">
+            <div>
+              {testCase.caseId}: {testCase.targetTaskIds.length === 1 ? 'target' : 'targets'}{' '}
+              {taskList(testCase.targetTaskIds)} / closure{' '}
+              {countLabel(testCase.closureTaskIds.length, 'task')}
+              {testCase.executed ? '' : ' / not run'}
+            </div>
+            {testCase.automaticTriggerSatisfactions.map((trigger) => {
+              const prefix = testCase.executed ? '' : 'Planned ';
+              const label =
+                trigger.type === 'manual'
+                  ? 'Manual grant'
+                  : trigger.type === 'file'
+                    ? 'File input'
+                    : 'Directory input';
+              return (
+                <div key={`${trigger.taskId}:${trigger.type}`}>
+                  {prefix}
+                  {label}: {trigger.taskId}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {manualExecutionGrants.length > 0 && (
+          <div>
+            Actual manual grants:{' '}
+            {manualExecutionGrants
+              .map((grant) => `${grant.taskId} ×${grant.approvalCount}`)
+              .join(', ')}
+          </div>
+        )}
+        {coverage.liveSmoke && (
+          <div className="indent-rail flex flex-col gap-0.5 pl-2">
+            <div>
+              Live Smoke: {coverage.liveSmoke.targetTaskIds.length === 1 ? 'target' : 'targets'}{' '}
+              {taskList(coverage.liveSmoke.targetTaskIds)} / closure{' '}
+              {countLabel(coverage.liveSmoke.closureTaskIds.length, 'task')}
+              {coverage.liveSmoke.executed ? '' : ' / not run'}
+            </div>
+            {coverage.liveSmoke.automaticManualTaskIds.map((taskId) => (
+              <div key={taskId}>
+                {coverage.liveSmoke?.executed ? '' : 'Planned '}Live Smoke manual grant: {taskId}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 

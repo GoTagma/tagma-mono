@@ -963,6 +963,91 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('1.5k input tokens');
   });
 
+  test('shows terminal coverage, dependency closures, and automatic Trial trigger handling', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'refresh-current',
+      path: '/workspace/.tagma/review/review.yaml',
+      name: 'review.yaml',
+      pipelineName: 'Review',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      trial: {
+        version: 24,
+        success: true,
+        kind: 'passed',
+        ran: true,
+        runId: 'run_trial',
+        summary: 'Trial run succeeded.',
+        durationMs: 12,
+        totalTaskCount: 5,
+        omittedTaskCount: 0,
+        tasks: [],
+        cases: [],
+        manualExecutionGrants: [{ taskId: 'main.approve', approvalCount: 2 }],
+        executionCoverage: {
+          terminalTaskIds: ['main.publish', 'audit.finish'],
+          sandboxCases: [
+            {
+              caseId: 'publish-case',
+              targetTaskIds: ['main.publish'],
+              closureTaskIds: ['main.read', 'main.scan', 'main.approve', 'main.publish'],
+              executed: true,
+              automaticTriggerSatisfactions: [
+                {
+                  taskId: 'main.read',
+                  type: 'file',
+                  mechanism: 'isolated-case-input',
+                },
+                {
+                  taskId: 'main.scan',
+                  type: 'directory',
+                  mechanism: 'isolated-case-input',
+                },
+                {
+                  taskId: 'main.approve',
+                  type: 'manual',
+                  mechanism: 'run-scoped-grant',
+                },
+              ],
+            },
+          ],
+          liveSmoke: {
+            targetTaskIds: ['audit.finish'],
+            closureTaskIds: ['audit.check', 'audit.finish'],
+            executed: true,
+            automaticManualTaskIds: ['audit.check'],
+          },
+        },
+      },
+      reconcile: {
+        outcome: 'adopted',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/review/review.yaml',
+        compileSuccess: true,
+        trialRunSuccess: true,
+      },
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+
+    expect(html).toContain('Trial execution coverage: 2 terminal tasks / 1 Sandbox case');
+    expect(html).toContain('Terminal tasks: main.publish, audit.finish');
+    expect(html).toContain('publish-case: target main.publish / closure 4 tasks');
+    expect(html).toContain('File input: main.read');
+    expect(html).toContain('Directory input: main.scan');
+    expect(html).toContain('Manual grant: main.approve');
+    expect(html).toContain('Actual manual grants: main.approve ×2');
+    expect(html).toContain('Live Smoke: target audit.finish / closure 2 tasks');
+    expect(html).toContain('Live Smoke manual grant: audit.check');
+  });
+
   test('shows failed trial repair as the active conversation-flow phase', () => {
     const steps = buildConversationFlowSteps({
       activity: [],
