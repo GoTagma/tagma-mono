@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { ChatPipelineIntentCandidate } from '../src/utils/chat-pipeline-intent-classifier';
 import {
+  TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS,
   classifyChatPipelineIntentWithModel,
   type ChatPipelineIntentModelGateway,
 } from '../src/utils/chat-pipeline-intent-runtime';
@@ -18,6 +19,13 @@ const candidates: ChatPipelineIntentCandidate[] = [
 ];
 
 describe('Chat pipeline intent model runtime', () => {
+  test('allows only OpenCode internal StructuredOutput for schema-constrained classification', () => {
+    expect(TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS).toEqual({
+      '*': false,
+      StructuredOutput: true,
+    });
+  });
+
   test('uses an isolated structured classifier session and always deletes it', async () => {
     const calls: string[] = [];
     const gateway: ChatPipelineIntentModelGateway = {

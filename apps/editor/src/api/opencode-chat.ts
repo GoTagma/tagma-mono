@@ -202,7 +202,17 @@ export interface OpencodeThreadEntry {
   activity?: ActivityEvent[];
 }
 
-interface ClientBootstrap {
+export type ChatOperationBootstrapHandshake =
+  | {
+      readonly chatOperationProtocolVersion: 2;
+      readonly chatOperationMode: 'production';
+    }
+  | {
+      readonly chatOperationProtocolVersion: null;
+      readonly chatOperationMode: 'legacy';
+    };
+
+interface ClientBootstrapBase {
   client: OpencodeClient;
   historyClient: OpencodeV2Client;
   v2Client: OpencodeV2Client;
@@ -219,6 +229,25 @@ interface ClientBootstrap {
   contextWindowPluginReady: boolean;
   /** Ready-marker schema version; 0 when the plugin is not ready. */
   contextWindowPluginSchema: number;
+}
+
+export type ClientBootstrap = ClientBootstrapBase & ChatOperationBootstrapHandshake;
+
+function parseChatOperationBootstrapHandshake(
+  value: Record<string, unknown>,
+): ChatOperationBootstrapHandshake {
+  const hasProtocol = Object.prototype.hasOwnProperty.call(value, 'chatOperationProtocolVersion');
+  const hasMode = Object.prototype.hasOwnProperty.call(value, 'chatOperationMode');
+  if (!hasProtocol && !hasMode) {
+    return { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' };
+  }
+  if (value.chatOperationProtocolVersion === 2 && value.chatOperationMode === 'production') {
+    return { chatOperationProtocolVersion: 2, chatOperationMode: 'production' };
+  }
+  if (value.chatOperationProtocolVersion === null && value.chatOperationMode === 'legacy') {
+    return { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' };
+  }
+  throw new Error('Sidecar returned an invalid Chat Operation capability handshake.');
 }
 
 // One client per workspace. The sidecar runs a separate `opencode serve` per
@@ -382,7 +411,10 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
     authHeader?: unknown;
     contextWindowPluginReady?: unknown;
     contextWindowPluginSchema?: unknown;
+    chatOperationProtocolVersion?: unknown;
+    chatOperationMode?: unknown;
   };
+  const chatOperationHandshake = parseChatOperationBootstrapHandshake(body);
   const endpoint = resolveOpencodeBrowserEndpoint(
     body,
     workspaceKey,
@@ -426,6 +458,7 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
     ...endpoint,
     contextWindowPluginReady: body.contextWindowPluginReady === true,
     contextWindowPluginSchema: Number.isFinite(schemaValue) ? schemaValue : 0,
+    ...chatOperationHandshake,
   };
 }
 
@@ -806,6 +839,9 @@ export async function restartOpencodeForConfig(
   const key = workspaceKey;
   const lockId = options.forceStop ? options.yamlEditLockId?.trim() : null;
   const body = await api.restartOpencodeChat(key, lockId);
+  const chatOperationHandshake = parseChatOperationBootstrapHandshake(
+    body as unknown as Record<string, unknown>,
+  );
   const endpoint = resolveOpencodeBrowserEndpoint(
     body,
     key,
@@ -851,6 +887,7 @@ export async function restartOpencodeForConfig(
       ...endpoint,
       contextWindowPluginReady: body.contextWindowPluginReady === true,
       contextWindowPluginSchema: Number.isFinite(schemaValue) ? schemaValue : 0,
+      ...chatOperationHandshake,
     }),
   );
 }

@@ -336,6 +336,8 @@ export interface ChatPipelineTrialRunInput {
   relativePath: string;
   trialId: string;
   independentRecovery?: boolean;
+  /** Sidecar-only authority; renderer routes never forward this field. */
+  trustedOperationV2?: boolean;
 }
 
 export type ChatPipelineTrialProgressPhase =
@@ -3755,7 +3757,7 @@ export async function trialRunChatYamlStage(
         ? timeoutMsOverride
         : timeoutMinutesToMs(editorSettings.opencodeChatTrialRunTimeoutMinutes),
   };
-  const stage = listChatYamlStage(ws, input.stageId);
+  const stage = listChatYamlStage(ws, input.stageId, input.trustedOperationV2 === true);
   const entry = stage.entries.find((candidate) =>
     samePipelineRelativePath(candidate.relativePath, input.relativePath),
   );
@@ -3767,6 +3769,7 @@ export async function trialRunChatYamlStage(
     entry.relativePath,
     undefined,
     input.independentRecovery === true,
+    input.trustedOperationV2 === true,
   );
   if (!compile.success) {
     return resultForSetupFailure(

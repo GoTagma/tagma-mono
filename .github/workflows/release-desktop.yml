@@ -286,6 +286,14 @@ jobs:
               ;;
           esac
 
+      - name: Verify Chat Operation V2 native OpenCode contracts
+        working-directory: apps/editor
+        env:
+          TAGMA_OPENCODE_NATIVE_SMOKE: '1'
+        run: |
+          bun test tests/opencode-managed-runtime-smoke.test.ts --timeout 360000
+          bun test tests/opencode-v2-question-conformance.test.ts --timeout 360000
+
       # Pre-stage a real Bun binary for packaged plugin installs. The editor
       # sidecar is a Bun-compiled executable, not a package-manager binary, so
       # plugin install needs resources/bun/bin/bun(.exe) wired through

@@ -1,20 +1,24 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
   constants,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   realpathSync,
   statSync,
+  unlinkSync,
   writeSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 
+import { resolveChatOperationV2ControlPaths } from './chat-operations/control-root.js';
 import { atomicWriteFileSync } from './path-utils.js';
 
 const SERVER_RECORD_AUTH_VERSION = 1;
@@ -96,7 +100,7 @@ function assertNoSymlinksFromFilesystemRoot(target: string, label: string): void
   }
 }
 
-function configuredServerRecordKeyFile(): string | null {
+function configuredServerRecordKeyFile(): string {
   const explicitPath = process.env.TAGMA_STAGE_RECORD_KEY_FILE?.trim();
   if (explicitPath) {
     if (!isAbsolute(explicitPath)) {
@@ -105,20 +109,30 @@ function configuredServerRecordKeyFile(): string | null {
     return resolve(explicitPath);
   }
   const editorUserDir = process.env.TAGMA_EDITOR_USER_DIR?.trim();
-  if (!editorUserDir) return null;
-  if (!isAbsolute(editorUserDir)) {
-    throw new Error('TAGMA_EDITOR_USER_DIR must be an absolute path.');
+  if (editorUserDir) {
+    if (!isAbsolute(editorUserDir)) {
+      throw new Error('TAGMA_EDITOR_USER_DIR must be an absolute path.');
+    }
+    const stableUserDataDir = dirname(resolve(editorUserDir));
+    if (!existsSync(stableUserDataDir)) {
+      throw new Error('TAGMA_EDITOR_USER_DIR parent was not found.');
+    }
+    assertNoSymlinksFromFilesystemRoot(stableUserDataDir, 'server record key root');
+    const stableRootStat = lstatSync(stableUserDataDir);
+    if (!stableRootStat.isDirectory()) {
+      throw new Error('TAGMA_EDITOR_USER_DIR parent is not a directory.');
+    }
+    return join(stableUserDataDir, 'server-control', 'stage-record-hmac.key');
   }
-  const stableUserDataDir = dirname(resolve(editorUserDir));
-  if (!existsSync(stableUserDataDir)) {
-    throw new Error('TAGMA_EDITOR_USER_DIR parent was not found.');
+
+  // Tests must not mutate a developer's OS state directory. They still use a
+  // stable O_EXCL-created file instead of process-random authority.
+  if (process.env.NODE_ENV === 'test' && !process.env.TAGMA_CHAT_CONTROL_DIR) {
+    return join(tmpdir(), 'tagma-test-server-control', 'stage-record-hmac.key');
   }
-  assertNoSymlinksFromFilesystemRoot(stableUserDataDir, 'server record key root');
-  const stableRootStat = lstatSync(stableUserDataDir);
-  if (!stableRootStat.isDirectory()) {
-    throw new Error('TAGMA_EDITOR_USER_DIR parent is not a directory.');
-  }
-  return join(stableUserDataDir, 'server-control', 'stage-record-hmac.key');
+
+  const { controlDir } = resolveChatOperationV2ControlPaths();
+  return join(controlDir, 'stage-record-hmac.key');
 }
 
 function canonicalPersistentKeyPath(keyPath: string): string {
@@ -155,62 +169,76 @@ function loadOrCreatePersistentKey(keyPath: string): Buffer {
   if (existing) return existing;
 
   const generated = randomBytes(32);
+  const keyDir = dirname(canonicalPath);
+  const temporaryPath = join(
+    keyDir,
+    `.${basename(canonicalPath)}.tmp-${process.pid}-${randomBytes(12).toString('hex')}`,
+  );
   let descriptor: number | null = null;
+  let retainGenerated = false;
   try {
     descriptor = openSync(
-      canonicalPath,
+      temporaryPath,
       constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
       0o600,
     );
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-    const waitArray = new Int32Array(new SharedArrayBuffer(4));
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const racedKey = readPersistentKey(canonicalPath);
-      if (racedKey) return racedKey;
-      Atomics.wait(waitArray, 0, 0, 5);
-    }
-    throw new Error('Server record key creation did not complete.');
-  }
-
-  try {
     let offset = 0;
     while (offset < generated.length) {
       offset += writeSync(descriptor, generated, offset, generated.length - offset, offset);
     }
     fsyncSync(descriptor);
-  } finally {
     closeSync(descriptor);
+    descriptor = null;
+    if (process.platform !== 'win32') chmodSync(temporaryPath, 0o600);
+
+    try {
+      // Hard-link publication is atomic and no-replace: the public name is
+      // never observable until all 32 bytes are fsynced.
+      linkSync(temporaryPath, canonicalPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const racedKey = readPersistentKey(canonicalPath);
+      if (!racedKey) throw new Error('Server record key publication race did not complete.');
+      generated.fill(0);
+      return racedKey;
+    }
+    fsyncDirectorySync(keyDir);
+    retainGenerated = true;
+    return generated;
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+    try {
+      unlinkSync(temporaryPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn('[server-record-auth] key temp cleanup failed');
+      }
+    }
+    if (!retainGenerated) generated.fill(0);
   }
-  if (process.platform !== 'win32') chmodSync(canonicalPath, 0o600);
-  return generated;
+}
+
+function fsyncDirectorySync(directory: string): void {
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(directory, constants.O_RDONLY);
+    fsyncSync(descriptor);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (process.platform !== 'win32' || !['EACCES', 'EINVAL', 'EPERM'].includes(code ?? '')) {
+      throw error;
+    }
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+  }
 }
 
 function getServerRecordAuthKey(): Buffer {
   const keyFile = configuredServerRecordKeyFile();
-  if (keyFile) {
-    const source = `file:${resolve(keyFile)}`;
-    if (cachedServerRecordKey?.source === source) return cachedServerRecordKey.key;
-    const key = loadOrCreatePersistentKey(keyFile);
-    cachedServerRecordKey = { source, key };
-    return key;
-  }
-
-  const editorAuthToken = process.env.TAGMA_EDITOR_AUTH_TOKEN;
-  if (editorAuthToken) {
-    const key = createHash('sha256')
-      .update('tagma-stage-record-auth\0')
-      .update(editorAuthToken)
-      .digest();
-    const source = `token:${key.toString('hex')}`;
-    if (cachedServerRecordKey?.source === source) return cachedServerRecordKey.key;
-    cachedServerRecordKey = { source, key };
-    return key;
-  }
-
-  if (cachedServerRecordKey?.source === 'process-random') return cachedServerRecordKey.key;
-  const key = randomBytes(32);
-  cachedServerRecordKey = { source: 'process-random', key };
+  const source = `file:${resolve(keyFile)}`;
+  if (cachedServerRecordKey?.source === source) return cachedServerRecordKey.key;
+  const key = loadOrCreatePersistentKey(keyFile);
+  cachedServerRecordKey = { source, key };
   return key;
 }
 function ensureWorkspaceTagmaDirectory(workspaceTagmaDir: string, forWrite: boolean): void {

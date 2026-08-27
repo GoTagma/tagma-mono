@@ -79,9 +79,23 @@ export function assertHotupdateVersionUpgrade(
 function readUserEditorVersion(userDir: string | undefined): string | null {
   if (!userDir) return null;
   try {
-    if (!existsSync(join(userDir, 'dist', 'index.html'))) return null;
-    const version = readFileSync(join(userDir, 'dist-version.txt'), 'utf-8').trim();
-    return isValidHotupdateVersion(version) ? version : null;
+    const distDir = join(userDir, 'dist');
+    if (!existsSync(join(distDir, 'index.html'))) return null;
+    for (const versionPath of [
+      join(userDir, 'dist-version.txt'),
+      // Activation renames dist/ first and writes the outer version second.
+      // The in-bundle sentinel travels atomically with the editor bytes, so
+      // it remains authoritative when that final write is interrupted.
+      join(distDir, '.tagma-bundle-version'),
+    ]) {
+      try {
+        const version = readFileSync(versionPath, 'utf-8').trim();
+        if (isValidHotupdateVersion(version)) return version;
+      } catch {
+        /* try the recoverable in-bundle sentinel */
+      }
+    }
+    return null;
   } catch {
     return null;
   }

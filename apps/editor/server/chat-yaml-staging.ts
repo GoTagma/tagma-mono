@@ -327,6 +327,7 @@ interface ChatYamlStageMetadata {
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
+  lifecycleOwner?: 'chat-operation-v2';
 }
 
 interface ChatYamlStageBaseEntry {
@@ -350,6 +351,8 @@ export interface ChatYamlStageEntry {
   contentHash: string;
   layoutHash: string | null;
   requirementsHash: string | null;
+  /** Canonical bounded support-tree digest; present on current Host descriptors. */
+  supportHash?: string;
   trialPlanHash: string | null;
   layoutMtimeMs: number | null;
   layoutSize: number | null;
@@ -1096,6 +1099,7 @@ function readMetadata(
     !Array.isArray(raw.sourceRelativePaths) ||
     !raw.sourceRelativePaths.every((item) => typeof item === 'string') ||
     trialPlanMaxAttempts === null ||
+    (raw.lifecycleOwner !== undefined && raw.lifecycleOwner !== 'chat-operation-v2') ||
     (raw.routeIntentRequired !== undefined && typeof raw.routeIntentRequired !== 'boolean') ||
     routeIntentAttestation === false ||
     pipelineBinding === false ||
@@ -1163,6 +1167,9 @@ function readMetadata(
       routeIntentAttestation: routeIntentAttestation || null,
       createTargetRelativePath,
       pipelineBinding: pipelineBinding || null,
+      ...(raw.lifecycleOwner === 'chat-operation-v2'
+        ? { lifecycleOwner: 'chat-operation-v2' as const }
+        : {}),
       sourceRelativePaths: raw.sourceRelativePaths.map(assertPortableRelativePath),
       baseEntries: raw.baseEntries.map((entry) => ({
         relativePath: assertPortableRelativePath(entry.relativePath),
@@ -1200,8 +1207,10 @@ function cleanupExpiredStages(workDir: string, now = Date.now()): void {
       const parsed = readAuthenticatedServerRecordSync<{
         createdAt?: unknown;
         sessionRelocation?: unknown;
+        lifecycleOwner?: unknown;
       }>(paths.metadataPath, stageRecordContext(paths, 'stage-metadata'));
       if (typeof parsed.createdAt === 'number') createdAt = parsed.createdAt;
+      if (parsed.lifecycleOwner === 'chat-operation-v2') continue;
       if (parsed.sessionRelocation !== undefined && parsed.sessionRelocation !== null) {
         try {
           parseSessionRelocationBinding(parsed.sessionRelocation, paths);
@@ -1294,6 +1303,7 @@ function describeStageEntry(
     contentHash: sha1(content),
     layoutHash,
     requirementsHash,
+    supportHash: hashPipelineSupportTree(stagedPath),
     trialPlanHash,
     layoutMtimeMs,
     layoutSize,
@@ -1385,12 +1395,29 @@ function reserveCreateTargetRelativePath(sourceRelativePaths: readonly string[])
   throw new Error('Could not reserve a unique staged path for the new pipeline.');
 }
 
+function assertHostCreateTargetRelativePath(value: string): string {
+  const relativePath = assertPortableRelativePath(value);
+  const segments = relativePath.split('/');
+  if (segments.length !== 2 || !/\.ya?ml$/i.test(segments[1] ?? '')) {
+    throw new Error('Host create target must be one same-named pipeline folder coordinate.');
+  }
+  const stem = sanitizePipelineStem(segments[0]);
+  if (stemFromYamlBasename(segments[1]) !== stem) {
+    throw new Error('Host create target folder and YAML stem must match exactly.');
+  }
+  return `${stem}/${segments[1]}`;
+}
+
 export function createChatYamlStage(
   ws: WorkspaceState,
   options: {
+    /** Trusted sidecar-only exact durable stage id. Renderer routes never set it. */
+    stageId?: string;
     activePath?: string | null;
     requestedAction?: PipelineRequestedActionKind | null;
     routeIntentRequired?: boolean;
+    /** Trusted V2 binding coordinate for a create; never renderer-authored path text. */
+    hostCreateTargetRelativePath?: string;
     pipelineBinding?: {
       sessionId: string;
       bindingRequestId: string;
@@ -1400,8 +1427,9 @@ export function createChatYamlStage(
 ): ChatYamlStageDescriptor {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
   cleanupExpiredStages(ws.workDir);
-  const id = randomUUID();
+  const id = options.stageId === undefined ? randomUUID() : assertStageId(options.stageId);
   const paths = stagePaths(ws.workDir, id);
+  if (existsSync(paths.rootDir)) throw new Error('Chat YAML stage already exists.');
   const realTagmaDir = tagmaDirOf(ws.workDir);
   const sourceEntries = [
     ...enumeratePipelineYamls(ws.workDir),
@@ -1446,6 +1474,16 @@ export function createChatYamlStage(
       throw new Error('A Host-bound pipeline stage cannot require a router target mode.');
     }
     if (
+      options.hostCreateTargetRelativePath !== undefined &&
+      (requestedAction !== CREATE_NEW_PIPELINE_ACTION_KIND ||
+        options.routeIntentRequired === true ||
+        options.pipelineBinding)
+    ) {
+      throw new Error(
+        'A Host V2 create target requires one explicit create action without legacy binding.',
+      );
+    }
+    if (
       options.pipelineBinding &&
       ((requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND &&
         options.pipelineBinding.intent !== 'create') ||
@@ -1464,12 +1502,26 @@ export function createChatYamlStage(
       : null;
     const routeIntentRequired =
       !pipelineBinding && requestedAction === null && options.routeIntentRequired === true;
+    const hostCreateTargetRelativePath =
+      options.hostCreateTargetRelativePath === undefined
+        ? null
+        : assertHostCreateTargetRelativePath(options.hostCreateTargetRelativePath);
+    if (
+      hostCreateTargetRelativePath &&
+      sourceRelativePaths.some((candidate) =>
+        samePipelineRelativePath(candidate, hostCreateTargetRelativePath),
+      )
+    ) {
+      throw new Error('Host create target collides with an inventoried pipeline.');
+    }
     const createTargetRelativePath =
       pipelineBinding?.intent === 'create'
         ? pipelineBinding.targetRelativePath
-        : requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
-          ? reserveCreateTargetRelativePath(sourceRelativePaths)
-          : null;
+        : hostCreateTargetRelativePath
+          ? hostCreateTargetRelativePath
+          : requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND
+            ? reserveCreateTargetRelativePath(sourceRelativePaths)
+            : null;
     if (createTargetRelativePath) activeRelativePath = createTargetRelativePath;
     const metadata: ChatYamlStageMetadata = {
       version: STAGE_VERSION,
@@ -1486,6 +1538,7 @@ export function createChatYamlStage(
       routeIntentAttestation: null,
       createTargetRelativePath,
       pipelineBinding,
+      ...(options.stageId !== undefined ? { lifecycleOwner: 'chat-operation-v2' as const } : {}),
       sourceRelativePaths,
       baseEntries,
     };
@@ -1504,8 +1557,15 @@ export function createChatYamlStage(
   }
 }
 
-export function listChatYamlStage(ws: WorkspaceState, stageId: string): ChatYamlStageDescriptor {
+export function listChatYamlStage(
+  ws: WorkspaceState,
+  stageId: string,
+  trustedOperationV2 = false,
+): ChatYamlStageDescriptor {
   const { paths, metadata } = readMetadata(ws, stageId);
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 stage read requires Host runtime authority.');
+  }
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   return descriptor(ws, paths, metadata);
 }
@@ -1513,8 +1573,13 @@ export function listChatYamlStage(ws: WorkspaceState, stageId: string): ChatYaml
 export function readChatYamlStageSessionRelocation(
   ws: WorkspaceState,
   stageId: string,
+  trustedOperationV2 = false,
 ): ChatYamlStageSessionRelocationBinding | null {
-  return readMetadata(ws, stageId).metadata.sessionRelocation ?? null;
+  const metadata = readMetadata(ws, stageId).metadata;
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 relocation read requires Host runtime authority.');
+  }
+  return metadata.sessionRelocation ?? null;
 }
 
 export function listChatYamlStageSessionRelocations(
@@ -1555,8 +1620,12 @@ export function listChatYamlStageSessionRelocations(
 export function prepareChatYamlStageSessionRelocation(
   ws: WorkspaceState,
   input: ChatYamlStageSessionRelocationIdentity,
+  trustedOperationV2 = false,
 ): ChatYamlStageSessionRelocationBinding {
   const { paths, metadata } = readMetadata(ws, input.stageId);
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 relocation prepare requires Host runtime authority.');
+  }
   if (readFinalizeResult(paths)) throw invalidRelocation('Chat YAML stage is already finalized.');
   const identity = validateRelocationIdentity(input, paths);
   if (metadata.sessionRelocation) {
@@ -1577,8 +1646,12 @@ export function prepareChatYamlStageSessionRelocation(
 export function advanceChatYamlStageSessionRelocation(
   ws: WorkspaceState,
   input: ChatYamlStageSessionRelocationAdvanceInput,
+  trustedOperationV2 = false,
 ): ChatYamlStageSessionRelocationBinding {
   const { paths, metadata } = readMetadata(ws, input.stageId);
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 relocation advance requires Host runtime authority.');
+  }
   const identity = validateRelocationIdentity(input, paths);
   if (!isRelocationPhase(input.expectedPhase) || !isRelocationPhase(input.phase)) {
     throw invalidRelocation('Session relocation phases are invalid.');
@@ -1612,8 +1685,12 @@ export function advanceChatYamlStageSessionRelocation(
 export function clearChatYamlStageSessionRelocation(
   ws: WorkspaceState,
   input: ChatYamlStageSessionRelocationClearInput,
+  trustedOperationV2 = false,
 ): boolean {
   const { paths, metadata } = readMetadata(ws, input.stageId);
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 relocation clear requires Host runtime authority.');
+  }
   const identity = validateRelocationIdentity(input, paths);
   if (!isRelocationPhase(input.expectedPhase)) {
     throw invalidRelocation('Session relocation expected phase is invalid.');
@@ -1648,8 +1725,15 @@ export function clearChatYamlStageSessionRelocation(
 }
 
 /** Resolve the server-authenticated write root for a staged chat turn. */
-export function resolveChatYamlStageAgentRoot(ws: WorkspaceState, stageId: string): string {
-  const { paths } = readMetadata(ws, stageId);
+export function resolveChatYamlStageAgentRoot(
+  ws: WorkspaceState,
+  stageId: string,
+  trustedOperationV2 = false,
+): string {
+  const { paths, metadata } = readMetadata(ws, stageId);
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 agent-root read requires Host runtime authority.');
+  }
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   return paths.agentTagmaDir;
 }
@@ -1708,12 +1792,15 @@ function assertSessionPipelineBindingSemantics(
   metadata: ChatYamlStageMetadata,
   targetRelativePath: string,
 ): void {
-  if (!metadata.pipelineBinding) return;
+  if (!metadata.pipelineBinding && metadata.lifecycleOwner !== 'chat-operation-v2') return;
+  const ownerLabel = metadata.pipelineBinding
+    ? 'session-owned pipeline binding'
+    : 'Host-owned pipeline stage';
   if (
     !metadata.activeRelativePath ||
     !samePipelineRelativePath(metadata.activeRelativePath, targetRelativePath)
   ) {
-    throw new Error('The session-owned pipeline binding may verify only its classified target.');
+    throw new Error(`The ${ownerLabel} may verify only its classified target.`);
   }
   const changedSource = metadata.sourceRelativePaths.find(
     (relativePath) =>
@@ -1721,7 +1808,7 @@ function assertSessionPipelineBindingSemantics(
       stageTargetChanged(paths, metadata, relativePath),
   );
   if (changedSource) {
-    throw new Error(`The session-owned pipeline binding cannot also mutate ${changedSource}.`);
+    throw new Error(`The ${ownerLabel} cannot also mutate ${changedSource}.`);
   }
   const freshSibling = listStageEntries(ws, paths, metadata).find(
     (entry) =>
@@ -1729,9 +1816,7 @@ function assertSessionPipelineBindingSemantics(
       baseEntryFor(metadata, entry.relativePath) === null,
   );
   if (freshSibling) {
-    throw new Error(
-      `The session-owned pipeline binding cannot also mutate ${freshSibling.relativePath}.`,
-    );
+    throw new Error(`The ${ownerLabel} cannot also mutate ${freshSibling.relativePath}.`);
   }
 }
 
@@ -1741,10 +1826,14 @@ export function compileChatYamlStage(
   relativePath: string,
   routeIntent?: ChatPipelineRouteIntent,
   independentRecovery = false,
+  trustedOperationV2 = false,
 ): ReturnType<typeof runCompileAndWriteLog> {
   const loaded = readMetadata(ws, stageId);
   const { paths } = loaded;
   let { metadata } = loaded;
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 compile requires Host runtime authority.');
+  }
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   const targetRelativePath = assertPortableRelativePath(relativePath);
   const stagedPath = resolveStagedYamlPath(paths, targetRelativePath);
@@ -3200,6 +3289,9 @@ export async function finalizeChatYamlStage(
 ): Promise<ChatYamlStageFinalizeResult> {
   const forceForkReason = normalizeFinalizeForceForkReason(input.forceForkReason);
   const { paths, metadata } = readMetadata(ws, input.stageId);
+  if (metadata.lifecycleOwner === 'chat-operation-v2') {
+    throw new Error('Chat Operation V2 stages may publish only through the Host commit protocol.');
+  }
   assertStageSessionRelocationInactive(metadata);
   const relativePath = assertPortableRelativePath(input.relativePath);
   const retainStage = input.retainStage === true;
@@ -3625,11 +3717,15 @@ export function readFinalizedChatYamlStageResult(
 export function discardChatYamlStageWithDisposition(
   ws: WorkspaceState,
   stageId: string,
+  trustedOperationV2 = false,
 ): ChatYamlStageDiscardDisposition {
   if (!ws.workDir) return 'missing';
   const unresolvedPaths = stagePaths(ws.workDir, stageId);
   if (!existsSync(unresolvedPaths.rootDir)) return 'missing';
   const { paths, metadata } = readMetadata(ws, stageId);
+  if (metadata.lifecycleOwner === 'chat-operation-v2' && !trustedOperationV2) {
+    throw new Error('Chat Operation V2 stage discard requires Host runtime authority.');
+  }
   assertStageSessionRelocationInactive(metadata);
   if (readFinalizeResult(paths)) return 'finalized';
   stopChatCompileWatcher(paths.agentTagmaDir);

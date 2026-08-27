@@ -11,6 +11,7 @@ import {
   discardUserReleaseOverride,
   executableName,
   resolveRuntimePaths,
+  shouldEnableChatOperationV2ProductionCutover,
 } from '../src/runtime-paths';
 
 test('version comparison preserves integer precision beyond Number.MAX_SAFE_INTEGER', () => {
@@ -87,6 +88,129 @@ describe('decideInstallerReleaseTransition', () => {
       forceBundledRelease: true,
       commitBundledBaseline: true,
     });
+  });
+});
+
+describe('Chat Operation V2 atomic desktop activation', () => {
+  test('requires an exact protocol declaration and matching active editor/sidecar versions', () => {
+    expect(
+      shouldEnableChatOperationV2ProductionCutover({
+        declaredProtocolVersion: 2,
+        editorVersion: '1.2.3',
+        sidecarVersion: '1.2.3',
+      }),
+    ).toBe(true);
+    for (const input of [
+      { declaredProtocolVersion: '2', editorVersion: '1.2.3', sidecarVersion: '1.2.3' },
+      { declaredProtocolVersion: 2, editorVersion: '1.2.4', sidecarVersion: '1.2.3' },
+      { declaredProtocolVersion: 2, editorVersion: null, sidecarVersion: '1.2.3' },
+      { declaredProtocolVersion: 2, editorVersion: '1.2.3', sidecarVersion: null },
+    ]) {
+      expect(shouldEnableChatOperationV2ProductionCutover(input)).toBe(false);
+    }
+  });
+
+  test('sets both irreversible sidecar gates only for one packaged aligned release', () => {
+    const previousShadow = process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
+    const previousCutover = process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
+    const base = {
+      isPackaged: true,
+      compiledDir: 'D:/tagma/tagma-mono/apps/electron/dist',
+      resourcesPath: 'C:/Program Files/Tagma/resources',
+      platform: 'win32' as const,
+      appVersion: '1.2.3',
+    };
+    try {
+      process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = '1';
+      process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER = '2';
+      const enabled = resolveRuntimePaths({
+        ...base,
+        tagmaMetadataJson: JSON.stringify({ chatOperationProtocolVersion: 2 }),
+      });
+      expect(enabled.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBe('1');
+      expect(enabled.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBe('2');
+      expect(enabled.env.TAGMA_CHAT_OPERATION_V2_MIGRATION).toBe('1');
+
+      const undeclared = resolveRuntimePaths({ ...base, tagmaMetadataJson: '{}' });
+      expect(undeclared.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBeUndefined();
+      expect(undeclared.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBeUndefined();
+      expect(undeclared.env.TAGMA_CHAT_OPERATION_V2_MIGRATION).toBeUndefined();
+    } finally {
+      if (previousShadow === undefined) delete process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
+      else process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = previousShadow;
+      if (previousCutover === undefined)
+        delete process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
+      else process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER = previousCutover;
+    }
+  });
+
+  test('withholds cutover when user-installed editor and sidecar bytes advertise different versions', () => {
+    const userDataDir = withTempDir();
+    const resourcesPath = withTempDir();
+    const { editorDir } = writeUserReleaseOverride(userDataDir, '2.0.0');
+    const options = {
+      isPackaged: true,
+      compiledDir: hostPath.join(resourcesPath, 'dist'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      tagmaMetadataJson: JSON.stringify({ chatOperationProtocolVersion: 2 }),
+    };
+
+    const aligned = resolveRuntimePaths(options);
+    expect(aligned.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBe('2');
+
+    writeFileSync(hostPath.join(editorDir, 'dist-version.txt'), '2.1.0\n');
+    const skewed = resolveRuntimePaths(options);
+    expect(skewed.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBeUndefined();
+    expect(skewed.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBeUndefined();
+  });
+
+  test('uses the recoverable editor bundle sentinel during a half-activated update', () => {
+    const userDataDir = withTempDir();
+    const resourcesPath = withTempDir();
+    const editorDir = hostPath.join(userDataDir, 'editor');
+    const distDir = hostPath.join(editorDir, 'dist');
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(hostPath.join(distDir, 'index.html'), '<html>new editor</html>');
+    writeFileSync(hostPath.join(distDir, '.tagma-bundle-version'), '2.0.0\n');
+    writeFileSync(
+      hostPath.join(userDataDir, releaseBaselineFile),
+      JSON.stringify({ bundledVersion: '1.0.0' }),
+    );
+
+    const paths = resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(resourcesPath, 'dist'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      appVersion: '1.0.0',
+      tagmaMetadataJson: JSON.stringify({ chatOperationProtocolVersion: 2 }),
+    });
+
+    expect(paths.sidecarVersion).toBe('1.0.0');
+    expect(paths.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBeUndefined();
+    expect(paths.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBeUndefined();
+  });
+
+  test('the actual packaged release metadata declares and activates protocol V2', () => {
+    const packageJson = JSON.parse(
+      readFileSync(hostPath.join(import.meta.dir, '..', 'package.json'), 'utf-8'),
+    ) as { version: string; tagma: Record<string, unknown> };
+    expect(packageJson.tagma.chatOperationProtocolVersion).toBe(2);
+
+    const paths = resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: 'D:/tagma/tagma-mono/apps/electron/dist',
+      resourcesPath: 'C:/Program Files/Tagma/resources',
+      platform: 'win32',
+      appVersion: packageJson.version,
+      tagmaMetadataJson: JSON.stringify(packageJson.tagma),
+    });
+    expect(paths.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBe('1');
+    expect(paths.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBe('2');
+    expect(paths.env.TAGMA_CHAT_OPERATION_V2_MIGRATION).toBe('1');
   });
 });
 

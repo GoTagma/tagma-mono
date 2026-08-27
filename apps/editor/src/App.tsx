@@ -1385,7 +1385,12 @@ export function App() {
   // continuations and reconciliation end.
   const finishedTurn = useChatStore(selectNextReconcilableFinishedTurn);
   const chatBootstrapStatus = useChatStore((state) => state.bootstrapStatus);
+  const chatExecutionMode = useChatStore((state) => state.chatExecutionMode);
   useEffect(() => {
+    // Production V2 operations are sidecar-owned through terminal state. A
+    // retained V1 queue remains readable/discardable migration evidence only;
+    // it must never wake the renderer stage/Trial/finalize executor.
+    if (chatExecutionMode !== 'legacy-v1') return;
     if (!finishedTurn || finishedTurn.reconcileFailure) return;
     if (finishedTurn.yamlSnapshotBeforeSend && chatBootstrapStatus !== 'ready') {
       return;
@@ -2279,6 +2284,7 @@ export function App() {
   }, [
     finishedTurn,
     chatBootstrapStatus,
+    chatExecutionMode,
     refreshWorkspaceYamls,
     removeStagedWorkspacePipelines,
     upsertStagedWorkspacePipeline,

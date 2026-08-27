@@ -744,6 +744,73 @@
 
 ## Managed OpenCode Execution
 
+- ChatTurn Operation V2 consumes OpenCode 1.18.18 through a durable Host outbox. The native
+  conformance contract is: duplicate session create is idempotent; the same input id plus identical
+  payload returns the original 200 admission before and after process restart; the same id plus
+  different bytes returns 409; and committed admission remains discoverable after a client-side
+  response loss. Never swap in a new native id when delivery is uncertain.
+- Compatibility `json_schema` uses OpenCode's internal `StructuredOutput` tool. Keep normal tools
+  wildcard-denied but explicitly allow only `StructuredOutput`; wildcard denial alone removes
+  schema enforcement. Even then, a lost rich response has no public durable projection in 1.18.18:
+  native history/messages are empty and compatibility message reads fail. Same-id replay does not
+  call the provider again but returns `StructuredOutputError`, so mark the invocation unavailable
+  and do not auto-reprompt; only an explicit user retry may create a new invocation.
+- Compatibility text responses on a Host-created native session also cannot be read through public
+  message endpoints, but exact same-message-id replay returns the cached text across restart with
+  no provider reinvocation. Discussion/diagnosis recovery may perform that single replay only after
+  authenticating the canonical request digest; different bytes fail before OpenCode access. Do not
+  apply this exception to `json_schema`, whose replay loses the structured result.
+- Native V2 SSE replay currently yields a stable `evt_*` id and parsed payload but omits the
+  generated client's declared `event` field. Treat SSE as a wake-up signal and correlate that id
+  with `session.history`, whose durable record supplies both event type and aggregate sequence.
+  Persist and deduplicate the source tuple `(sessionId, aggregateSeq, eventId)`.
+- Browser EventSource reconnect retains the original URL `after` query while adding its newer
+  `Last-Event-ID`. For Chat Operation Host-journal SSE, accept a non-regressing header cursor as
+  authoritative over that stale query; reject header rollback, malformed cursors, and mismatched
+  cursors on ordinary JSON reads.
+- OpenCode 1.18.18 permission pending is not restart-durable. While the process is live, the first
+  reply consumes the request and a duplicate reply returns 404. After restart, get/list no longer
+  expose the request, and recreating it with either the old or a fresh OpenCode request id returns
+  `deny`. Keep the stable user-facing request and CAS in the Host store, but recover the work through
+  a new controlled invocation/repair path or an explicit failure; never present the old drain as
+  resumable.
+- Native question pending has the same process boundary: live reply or reject is first-wins and all
+  repeats return 404; restart clears the pending request while preserving the session, admission,
+  and existing durable history, without a hidden provider continuation. The pinned native question
+  tool input excludes `custom` even though the pending request type can represent it; sending that
+  field fails the tool call instead of waiting. Host recovery must start a new controlled
+  invocation/repair decision rather than forwarding a stale answer.
+- Keep Chat operation control state outside the workspace at the stable server-control root. The
+  explicit absolute `TAGMA_CHAT_CONTROL_DIR` wins, then the sibling of `TAGMA_EDITOR_USER_DIR`, then
+  the OS state directory. The SQLite DB and stable HMAC key must never fall back into `.tagma`, the
+  repository, a temporary directory, or an in-memory/process-random key.
+- Require the control directory, key, and exact `chat-operation-v2.sqlite` file to be regular,
+  non-symlink, and private (`0700`/`0600` on POSIX). Keep the canonical-path HMAC as the stable lookup
+  key and separately MAC the full workspace scope tuple (id, path, created time, generation); the
+  service must verify that full record after every keyless SQLite read before trusting it.
+- Explicit control reset uses migration plan v2 and never destroys the prior control lineage. Seal
+  the stored old `keyId`, exact closed-DB hash, and deterministic plan-id-bound sibling DB/key
+  archives; a missing old key has an explicit no-key-archive disposition. Inspect only offline
+  migration/control-lineage metadata, then open a reset-only Store with the stored key id. Keep new
+  32-byte key material opaque inside the control runtime: archive old DB/key, O_EXCL-write + fsync +
+  verify the new `0600` key, pass only key id/generation to Store, and zero buffers on every path.
+- Derive reset `planId`, logical request time, and new-lineage id deterministically from the Host's
+  `clientRequestId`. Before closing Store or generating a key, read that plan id from the current
+  lineage: exact request-hash matches replay its sealed receipt/diagnostics, while any request-byte
+  drift fails closed. A response-loss retry must never archive or rotate control data a second time.
+  Any pre-lineage failure restores both archives, while success retains them for forensic recovery;
+  migration/reset code has no pipeline-file mutation capability.
+- The sidecar owns every V2 phase and wait transition. Clarification stays in the same operation
+  only before binding/stage/foreground invocation, freezes Host inventory plus renderer evidence,
+  and is bounded. Once reserving starts it cannot return to clarification; once commit is decided it
+  cannot return to authoring, verification, or repair. Terminal always clears wait and foreground
+  invocation and writes exactly one immutable terminal event.
+- Renderer Chat code is a versioned operation API client and event projection only. It may submit a
+  frozen dirty-canvas snapshot and CAS-guarded clarification, permission, cancel, retry, discard, or
+  recovery choice, but may not call OpenCode mutations or stage/finalize primitives directly. Keep
+  legacy V1 readable/migratable during the atomic editor+sidecar cutover without giving any single
+  operation both V1 and V2 executors.
+
 - Tagma may reuse OpenCode's user-level data root for provider login state, but it must never share
   the schema-bearing session database with a standalone OpenCode CLI. Every managed Chat and
   prompt-task process must receive the same absolute, Tagma-owned `OPENCODE_DB` path.

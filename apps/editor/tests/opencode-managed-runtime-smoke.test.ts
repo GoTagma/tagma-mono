@@ -1,6 +1,7 @@
 import { createOpencodeClient as createLegacyOpencodeClient } from '@opencode-ai/sdk/client';
 import { createOpencodeClient as createV2OpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { expect, test } from 'bun:test';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +19,7 @@ import { readOpencodeContextWindowPluginReady } from '../server/opencode-context
 import {
   ensureOpencode,
   getOpencodeRuntimeDiagnostics,
+  restartOpencode,
   stopOpencodeProcesses,
 } from '../server/opencode-lifecycle';
 import {
@@ -236,8 +238,8 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         fetch: createStreamingLoopbackFetch(handle.baseUrl),
         throwOnError: true,
       } as const;
-      const legacyClient = createLegacyOpencodeClient(clientConfig);
-      const v2Client = createV2OpencodeClient(clientConfig);
+      let legacyClient = createLegacyOpencodeClient(clientConfig);
+      let v2Client = createV2OpencodeClient(clientConfig);
 
       const legacyAgents = await readSdkData(legacyClient.app.agents(), 'legacy app.agents');
       const compatibilityAgents = await readSdkData(
@@ -289,6 +291,460 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         nativeV2Models.data.every((model) => nativeV2ProviderIds.includes(model.providerID)),
       ).toBe(true);
       expect(nativeV2ModelIds.some((id) => legacyCatalogIds.models.includes(id))).toBe(true);
+
+      // ChatTurn Operation V2 depends on these durable-input semantics. Keep
+      // the probe provider-free (`resume: false`) so the release contract can
+      // run without credentials or a network model invocation.
+      const conformanceSuffix = randomUUID().replace(/-/g, '');
+      const nativeSessionId = `ses_tagma_${conformanceSuffix}`;
+      const nativeInputId = `msg_tagma_${conformanceSuffix}`;
+      const nativePrompt = { text: 'Tagma durable input conformance probe' };
+      const nativeCreated = (
+        await readSdkData(
+          v2Client.v2.session.create({
+            id: nativeSessionId,
+            location: { directory: tagmaCwd },
+          }),
+          'v2 native session.create with Host id',
+        )
+      ).data;
+      expect(nativeCreated.id).toBe(nativeSessionId);
+      expectFilesystemPath(nativeCreated.location.directory, tagmaCwd);
+      const duplicateNativeCreated = (
+        await readSdkData(
+          v2Client.v2.session.create({
+            id: nativeSessionId,
+            location: { directory: tagmaCwd },
+          }),
+          'v2 native duplicate session.create',
+        )
+      ).data;
+      expect(duplicateNativeCreated.id).toBe(nativeSessionId);
+      expect(duplicateNativeCreated.time.created).toBe(nativeCreated.time.created);
+
+      const admitted = (
+        await readSdkData(
+          v2Client.v2.session.prompt({
+            sessionID: nativeSessionId,
+            id: nativeInputId,
+            prompt: nativePrompt,
+            delivery: 'queue',
+            resume: false,
+          }),
+          'v2 native session.prompt admission',
+        )
+      ).data;
+      expect(admitted).toMatchObject({
+        id: nativeInputId,
+        sessionID: nativeSessionId,
+        prompt: nativePrompt,
+        delivery: 'queue',
+      });
+      expect(admitted.admittedSeq).toBeGreaterThan(0);
+
+      const historyAfterAdmission = await readSdkData(
+        v2Client.v2.session.history({ sessionID: nativeSessionId, after: 0, limit: 100 }),
+        'v2 native session.history after admission',
+      );
+      const admittedEvents = historyAfterAdmission.data.filter(
+        (event) =>
+          event.type === 'session.next.prompt.admitted' && event.data.messageID === nativeInputId,
+      );
+      expect(admittedEvents).toHaveLength(1);
+      expect(admittedEvents[0]?.durable?.seq).toBe(admitted.admittedSeq);
+
+      const noThrowV2Client = createV2OpencodeClient({ ...clientConfig, throwOnError: false });
+      const duplicateAdmission = await noThrowV2Client.v2.session.prompt({
+        sessionID: nativeSessionId,
+        id: nativeInputId,
+        prompt: nativePrompt,
+        delivery: 'queue',
+        resume: false,
+      });
+      expect(duplicateAdmission.response.status).toBe(200);
+      expect(duplicateAdmission.error).toBeUndefined();
+      expect(duplicateAdmission.data?.data).toEqual(admitted);
+
+      const conflictingAdmission = await noThrowV2Client.v2.session.prompt({
+        sessionID: nativeSessionId,
+        id: nativeInputId,
+        prompt: { text: `${nativePrompt.text} with conflicting bytes` },
+        delivery: 'queue',
+        resume: false,
+      });
+      expect(conflictingAdmission.response.status).toBe(409);
+      expect(conflictingAdmission.error).toMatchObject({ _tag: 'ConflictError' });
+
+      // The production classifier needs the compatibility prompt surface for
+      // tool disabling + JSON Schema, while recovery needs native durable
+      // history. Prove both surfaces share one Host-created identity.
+      const richSessionId = `ses_tagma_rich_${conformanceSuffix}`;
+      const richInputId = `msg_tagma_rich_${conformanceSuffix}`;
+      const richRequest = {
+        system: 'Classify without tools and return the supplied schema.',
+        user: 'Classify this request as discussion.',
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind'],
+          properties: { kind: { type: 'string', const: 'discussion' } },
+        },
+      } as const;
+      const richRequestDigest = createHash('sha256')
+        .update(JSON.stringify(richRequest))
+        .digest('hex');
+      const richPromptText = [
+        `<tagma-native-request digest="${richRequestDigest}">`,
+        richRequest.user,
+        '</tagma-native-request>',
+      ].join('\n');
+      await readSdkData(
+        v2Client.v2.session.create({
+          id: richSessionId,
+          location: { directory: tagmaCwd },
+        }),
+        'v2 native rich session.create with Host id',
+      );
+      const richCompatibilityRequest = {
+        sessionID: richSessionId,
+        messageID: richInputId,
+        noReply: true,
+        agent: 'tagma-pipeline-intent-classifier',
+        tools: { '*': false },
+        format: { type: 'json_schema' as const, schema: richRequest.schema },
+        system: richRequest.system,
+        parts: [{ type: 'text' as const, text: richPromptText }],
+      };
+      const richCompatibilityResponse = await readSdkData(
+        v2Client.session.prompt(richCompatibilityRequest),
+        'v2 compatibility rich prompt with Host ids',
+      );
+      expect(richCompatibilityResponse.info.id).toBe(richInputId);
+      const richHistory = await readSdkData(
+        v2Client.v2.session.history({ sessionID: richSessionId, after: 0, limit: 100 }),
+        'v2 native history after compatibility rich prompt',
+      );
+      const richAdmissionEvents = richHistory.data.filter(
+        (event) =>
+          event.type === 'session.next.prompt.admitted' && event.data.messageID === richInputId,
+      );
+      const richPromptedEvents = richHistory.data.filter(
+        (event) => event.type === 'session.next.prompted' && event.data.messageID === richInputId,
+      );
+      expect(richAdmissionEvents).toHaveLength(0);
+      expect(richPromptedEvents).toHaveLength(0);
+      const nativeRichMessage = await noThrowV2Client.v2.session.message({
+        sessionID: richSessionId,
+        messageID: richInputId,
+      });
+      const compatibilityRichMessage = await noThrowV2Client.session.message({
+        sessionID: richSessionId,
+        messageID: richInputId,
+      });
+      let compatibilityMessagesDecodeError: unknown = null;
+      try {
+        await readSdkData(
+          v2Client.session.messages({ sessionID: richSessionId, limit: 100 }),
+          'v2 compatibility messages after rich prompt',
+        );
+      } catch (error) {
+        compatibilityMessagesDecodeError = error;
+      }
+      expect(nativeRichMessage.response.status).toBe(404);
+      expect(compatibilityRichMessage.response.status).toBe(400);
+      expect(compatibilityMessagesDecodeError).toBeInstanceOf(Error);
+      const rawRichMessagesUrl = new URL(`/session/${richSessionId}/message`, handle.baseUrl);
+      rawRichMessagesUrl.searchParams.set('directory', tagmaCwd);
+      rawRichMessagesUrl.searchParams.set('limit', '100');
+      const rawRichMessagesResponse = await createStreamingLoopbackFetch(handle.baseUrl)(
+        rawRichMessagesUrl,
+        { headers: { Authorization: handle.auth.authorization } },
+      );
+      expect(rawRichMessagesResponse.status).toBe(400);
+      const duplicateRichPrompt = await noThrowV2Client.session.prompt(richCompatibilityRequest);
+      expect(duplicateRichPrompt.response.status).toBe(200);
+      expect(duplicateRichPrompt.data).toMatchObject({ info: { id: richInputId } });
+      const conflictingRichPrompt = await noThrowV2Client.session.prompt({
+        ...richCompatibilityRequest,
+        parts: [{ type: 'text', text: `${richPromptText}\nconflicting bytes` }],
+      });
+      expect(conflictingRichPrompt.response.status).toBe(200);
+      expect(conflictingRichPrompt.data).toMatchObject({ info: { id: richInputId } });
+      expect(
+        (
+          await readSdkData(
+            v2Client.v2.session.history({ sessionID: richSessionId, after: 0, limit: 100 }),
+            'v2 native history after compatibility duplicate prompt',
+          )
+        ).data.filter(
+          (event) => event.type === 'session.next.prompted' && event.data.messageID === richInputId,
+        ),
+      ).toHaveLength(0);
+
+      const lostResponseInputId = `msg_tagma_lost_${conformanceSuffix}`;
+      const loopbackFetch = createStreamingLoopbackFetch(handle.baseUrl);
+      let responseDropped = false;
+      const responseDroppingFetch = (async (
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ): Promise<Response> => {
+        const response = await loopbackFetch(input, init);
+        const request = new Request(input, init);
+        if (
+          !responseDropped &&
+          request.method === 'POST' &&
+          new URL(request.url).pathname === `/api/session/${nativeSessionId}/prompt`
+        ) {
+          responseDropped = true;
+          await response.arrayBuffer();
+          throw new Error('simulated committed response loss');
+        }
+        return response;
+      }) as typeof fetch;
+      responseDroppingFetch.preconnect = fetch.preconnect.bind(fetch);
+      const responseDroppingClient = createV2OpencodeClient({
+        ...clientConfig,
+        fetch: responseDroppingFetch,
+      });
+      let lostResponseError: unknown = null;
+      try {
+        await responseDroppingClient.v2.session.prompt({
+          sessionID: nativeSessionId,
+          id: lostResponseInputId,
+          prompt: { text: 'Tagma response-loss conformance probe' },
+          delivery: 'queue',
+          resume: false,
+        });
+      } catch (error) {
+        lostResponseError = error;
+      }
+      expect(responseDropped).toBe(true);
+      expect(lostResponseError).toBeInstanceOf(Error);
+
+      const historyAfterLostResponse = await readSdkData(
+        v2Client.v2.session.history({
+          sessionID: nativeSessionId,
+          after: admitted.admittedSeq,
+          limit: 100,
+        }),
+        'v2 native session.history after response loss',
+      );
+      const lostResponseEvents = historyAfterLostResponse.data.filter(
+        (event) =>
+          event.type === 'session.next.prompt.admitted' &&
+          event.data.messageID === lostResponseInputId,
+      );
+      expect(lostResponseEvents).toHaveLength(1);
+      const lostResponseEvent = lostResponseEvents[0];
+      const lostResponseSeq = lostResponseEvent?.durable?.seq;
+      expect(lostResponseSeq).toBeGreaterThan(admitted.admittedSeq);
+
+      const eventAbort = new AbortController();
+      const eventStream = await v2Client.v2.session.events(
+        {
+          sessionID: nativeSessionId,
+          after: String(admitted.admittedSeq),
+        },
+        { signal: eventAbort.signal },
+      );
+      const replayedEvent = await Promise.race([
+        eventStream.stream.next(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('native v2 event replay timed out')), 10_000),
+        ),
+      ]);
+      eventAbort.abort();
+      expect(replayedEvent.done).toBe(false);
+      const replayedValue = replayedEvent.value;
+      if (!replayedValue) throw new Error('native v2 event replay returned no event');
+      expect(replayedValue.id).toMatch(/^evt_[A-Za-z0-9]+$/);
+      expect(replayedValue.id).toBe(lostResponseEvent?.id);
+      // The pinned SDK currently omits the SSE `event` field at runtime even
+      // though its generated declaration includes it. Consumers must join the
+      // source event id back to history for the durable type and aggregate seq.
+      expect(replayedValue.event).toBeUndefined();
+      expect(lostResponseEvent?.type).toBe('session.next.prompt.admitted');
+      const replayedPayload =
+        typeof replayedValue.data === 'string'
+          ? JSON.parse(replayedValue.data)
+          : replayedValue.data;
+      expect(replayedPayload).toMatchObject({
+        sessionID: nativeSessionId,
+        messageID: lostResponseInputId,
+      });
+
+      const permissionRequestId = `per_tagma_${conformanceSuffix}`;
+      const createdPermission = (
+        await readSdkData(
+          v2Client.v2.session.permission.create({
+            sessionID: nativeSessionId,
+            id: permissionRequestId,
+            action: 'external_directory',
+            resources: ['file:///tagma-conformance-outside-workspace'],
+            metadata: { purpose: 'chat-operation-v2-conformance' },
+          }),
+          'v2 native permission.create',
+        )
+      ).data;
+      expect(createdPermission).toEqual({ id: permissionRequestId, effect: 'ask' });
+      expect(
+        (
+          await readSdkData(
+            v2Client.v2.session.permission.list({ sessionID: nativeSessionId }),
+            'v2 native permission.list before restart',
+          )
+        ).data,
+      ).toEqual([
+        {
+          id: permissionRequestId,
+          sessionID: nativeSessionId,
+          action: 'external_directory',
+          resources: ['file:///tagma-conformance-outside-workspace'],
+          metadata: { purpose: 'chat-operation-v2-conformance' },
+        },
+      ]);
+      const permissionRaceRequestId = `per_tagma_race_${conformanceSuffix}`;
+      expect(
+        (
+          await readSdkData(
+            v2Client.v2.session.permission.create({
+              sessionID: nativeSessionId,
+              id: permissionRaceRequestId,
+              action: 'external_directory',
+              resources: ['file:///tagma-conformance-race'],
+            }),
+            'v2 native permission.create first-wins probe',
+          )
+        ).data,
+      ).toEqual({ id: permissionRaceRequestId, effect: 'ask' });
+      const firstPermissionReply = await noThrowV2Client.v2.session.permission.reply({
+        sessionID: nativeSessionId,
+        requestID: permissionRaceRequestId,
+        reply: 'reject',
+        message: 'Tagma native first reply',
+      });
+      expect(firstPermissionReply.response.status).toBe(204);
+      expect(firstPermissionReply.error).toBeUndefined();
+      const secondPermissionReply = await noThrowV2Client.v2.session.permission.reply({
+        sessionID: nativeSessionId,
+        requestID: permissionRaceRequestId,
+        reply: 'reject',
+        message: 'Tagma native duplicate reply',
+      });
+      expect(secondPermissionReply.response.status).toBe(404);
+      expect(secondPermissionReply.error).toMatchObject({ _tag: 'PermissionNotFoundError' });
+
+      const restartedHandle = await restartOpencode(tagmaCwd);
+      const restartedClientConfig = {
+        baseUrl: restartedHandle.baseUrl,
+        directory: tagmaCwd,
+        headers: { Authorization: restartedHandle.auth.authorization },
+        fetch: createStreamingLoopbackFetch(restartedHandle.baseUrl),
+      } as const;
+      const restartedV2Client = createV2OpencodeClient({
+        ...restartedClientConfig,
+        throwOnError: true,
+      });
+      const recoveredHistory = await readSdkData(
+        restartedV2Client.v2.session.history({ sessionID: nativeSessionId, after: 0, limit: 100 }),
+        'v2 native session.history after restart',
+      );
+      expect(
+        recoveredHistory.data.filter(
+          (event) =>
+            event.type === 'session.next.prompt.admitted' &&
+            (event.data.messageID === nativeInputId ||
+              event.data.messageID === lostResponseInputId),
+        ),
+      ).toHaveLength(2);
+      const restartedNoThrowV2Client = createV2OpencodeClient({
+        ...restartedClientConfig,
+        throwOnError: false,
+      });
+      const missingPermissionAfterRestart =
+        await restartedNoThrowV2Client.v2.session.permission.get({
+          sessionID: nativeSessionId,
+          requestID: permissionRequestId,
+        });
+      expect(missingPermissionAfterRestart.response.status).toBe(404);
+      expect(missingPermissionAfterRestart.error).toMatchObject({
+        _tag: 'PermissionNotFoundError',
+      });
+      expect(
+        (
+          await readSdkData(
+            restartedV2Client.v2.session.permission.list({ sessionID: nativeSessionId }),
+            'v2 native permission.list after restart',
+          )
+        ).data,
+      ).toEqual([]);
+      expect(
+        (
+          await readSdkData(
+            restartedV2Client.v2.session.permission.create({
+              sessionID: nativeSessionId,
+              id: permissionRequestId,
+              action: 'external_directory',
+              resources: ['file:///tagma-conformance-outside-workspace'],
+              metadata: { purpose: 'chat-operation-v2-conformance' },
+            }),
+            'v2 native permission.create same-id recreation after restart',
+          )
+        ).data,
+      ).toEqual({ id: permissionRequestId, effect: 'deny' });
+      const replacementPermissionRequestId = `per_tagma_rehydrated_${conformanceSuffix}`;
+      expect(
+        (
+          await readSdkData(
+            restartedV2Client.v2.session.permission.create({
+              sessionID: nativeSessionId,
+              id: replacementPermissionRequestId,
+              action: 'external_directory',
+              resources: ['file:///tagma-conformance-outside-workspace'],
+              metadata: { purpose: 'chat-operation-v2-conformance' },
+            }),
+            'v2 native permission.create replacement after restart',
+          )
+        ).data,
+      ).toEqual({ id: replacementPermissionRequestId, effect: 'deny' });
+      expect(
+        (
+          await readSdkData(
+            restartedV2Client.v2.session.permission.list({ sessionID: nativeSessionId }),
+            'v2 native permission.list after denied rehydration',
+          )
+        ).data,
+      ).toEqual([]);
+      const retryAfterRestart = await restartedNoThrowV2Client.v2.session.prompt({
+        sessionID: nativeSessionId,
+        id: lostResponseInputId,
+        prompt: { text: 'Tagma response-loss conformance probe' },
+        delivery: 'queue',
+        resume: false,
+      });
+      expect(retryAfterRestart.response.status).toBe(200);
+      expect(retryAfterRestart.error).toBeUndefined();
+      expect(retryAfterRestart.data?.data).toMatchObject({
+        id: lostResponseInputId,
+        sessionID: nativeSessionId,
+        admittedSeq: lostResponseSeq,
+      });
+      const recoveredHistoryAfterRetry = await readSdkData(
+        restartedV2Client.v2.session.history({ sessionID: nativeSessionId, after: 0, limit: 100 }),
+        'v2 native session.history after restart retry',
+      );
+      expect(
+        recoveredHistoryAfterRetry.data.filter(
+          (event) =>
+            event.type === 'session.next.prompt.admitted' &&
+            event.data.messageID === lostResponseInputId,
+        ),
+      ).toHaveLength(1);
+      legacyClient = createLegacyOpencodeClient({
+        ...restartedClientConfig,
+        throwOnError: true,
+      });
+      v2Client = restartedV2Client;
 
       const legacyToolIds = expectNonEmptyIds(
         'legacy tool ids',

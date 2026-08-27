@@ -13,6 +13,7 @@
     "bundledOpencodeVersion": "1.18.18",
     "bundledOpencodeDbSchemaVersion": 2,
     "bundledBunVersion": "1.3.11",
+    "chatOperationProtocolVersion": 2,
     "channel": "alpha",
     "updateManifestPublicKey": "MCowBQYDK2VwAyEAL/xNIjP7rTKxJuxUAT4SerLIaxXMOyH/fIZF+kyMr40=",
     "updateManifestBaseUrl": "https://tagma-web.danuberiverferryman.workers.dev/editor-updates"

@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import * as tar from 'tar';
+import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 import { errorMessage } from '../path-utils.js';
 import {
   ensureOpencode,
@@ -31,6 +32,12 @@ import { seedOpencodeArtifacts } from '../opencode-seed.js';
 import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
 import { waitForOpencodeContextWindowPluginReady } from '../opencode-context-window-plugin.js';
 import { startChatCompileWatcher } from '../chat-compile-watcher.js';
+import {
+  CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH,
+  chatOperationV2ProxyHandshake,
+  evaluateChatOperationV2RendererProxyPolicy,
+  sanitizeChatOperationV2RendererProxyRequestUrl,
+} from '../chat-operations/proxy-policy.js';
 import { requireWorkspace } from '../require-workspace.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
 import { S } from '../state.js';
@@ -532,6 +539,13 @@ export function registerOpencodeRoutes(app: express.Express): void {
   // own Bearer credential with OpenCode's Basic credential, then uses the raw
   // loopback transport so machine-level proxy settings cannot intercept it.
   app.use(OPENCODE_PROXY_BASE_PATH, async (req, res) => {
+    const policy = evaluateChatOperationV2RendererProxyPolicy({
+      method: req.method,
+      requestUrl: req.url,
+    });
+    if (policy.kind === 'reject_protocol_mismatch') {
+      return res.status(policy.status).json(policy.body);
+    }
     const ws = requireWorkspace(req, res);
     if (!ws) return;
     if (!ws.workDir) {
@@ -547,7 +561,13 @@ export function registerOpencodeRoutes(app: express.Express): void {
     res.once('close', abortIfOpen);
     try {
       const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
-      const { baseUrl, auth } = await ensureOpencode(tagmaCwd);
+      const requestUrl = sanitizeChatOperationV2RendererProxyRequestUrl({
+        requestUrl: req.url,
+        tagmaRoot: tagmaCwd,
+      });
+      if (requestUrl.kind === 'reject_protocol_mismatch') {
+        return res.status(requestUrl.status).json(requestUrl.body);
+      }
       const headers = new Headers(req.headers as HeadersInit);
       const forwardedDirectory = sanitizeForwardedOpencodeDirectory(
         headers.get('x-opencode-directory'),
@@ -558,10 +578,21 @@ export function registerOpencodeRoutes(app: express.Express): void {
       } else {
         headers.set('x-opencode-directory', forwardedDirectory);
       }
+      if (
+        requestUrl.canonicalDirectory !== undefined &&
+        forwardedDirectory !== null &&
+        !sameFilesystemPathCoordinate(
+          requestUrl.canonicalDirectory,
+          decodeURIComponent(forwardedDirectory),
+        )
+      ) {
+        return res.status(426).json(CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH);
+      }
+      const { baseUrl, auth } = await ensureOpencode(tagmaCwd);
       const response = await fetchOpencodeProxy({
         baseUrl,
         authorization: auth.authorization,
-        requestUrl: req.url,
+        requestUrl: requestUrl.requestUrl,
         method: req.method,
         headers,
         body: parsedProxyBody(req),
@@ -617,6 +648,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
         directory: tagmaCwd,
         contextWindowPluginReady: contextWindowPlugin.ready,
         contextWindowPluginSchema: contextWindowPlugin.schema,
+        ...chatOperationV2ProxyHandshake(),
       });
     } catch (err) {
       console.error('[opencode] ensure FAILED:', err);
@@ -661,6 +693,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
         directory: tagmaCwd,
         contextWindowPluginReady: contextWindowPlugin.ready,
         contextWindowPluginSchema: contextWindowPlugin.schema,
+        ...chatOperationV2ProxyHandshake(),
       });
     } catch (err) {
       console.error('[opencode] restart FAILED:', err);

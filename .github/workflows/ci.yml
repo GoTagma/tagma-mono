@@ -55,6 +55,12 @@ jobs:
           TAGMA_OPENCODE_NATIVE_SMOKE: '1'
         run: bun test tests/opencode-managed-runtime-smoke.test.ts --timeout 360000
 
+      - name: Native OpenCode V2 question conformance
+        working-directory: apps/editor
+        env:
+          TAGMA_OPENCODE_NATIVE_SMOKE: '1'
+        run: bun test tests/opencode-v2-question-conformance.test.ts --timeout 360000
+
       - name: Native OpenCode database upgrade and downgrade smoke
         working-directory: apps/editor
         env:

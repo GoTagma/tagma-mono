@@ -67,6 +67,12 @@ import {
   type OpencodeSessionV2,
   type OpencodeThreadEntry,
 } from '../api/opencode-chat';
+import type {
+  ChatOperationV2CreatePayload,
+  ChatOperationV2Inventory,
+  ChatOperationV2OperationDetail,
+  ChatOperationV2Projection,
+} from '../api/chat-operations';
 import type { Message, Part } from '@opencode-ai/sdk/client';
 import {
   deleteCustomProvider as apiDeleteCustomProvider,
@@ -135,6 +141,15 @@ import {
   type ChatYamlEditLockLease,
 } from './yaml-edit-lock-store';
 import { describeToolPartForActivity } from '../utils/chat-tool-display';
+import { serializePreviewYaml } from '../utils/yaml-preview-diff';
+import { registerRendererDiagnosticsContributor } from '../diagnostics/renderer-diagnostics-contributors';
+import {
+  createChatOperationV2Controller,
+  type ChatOperationExecutionMode,
+  type ChatOperationV2CapabilityHandshake,
+  type ChatOperationV2Controller,
+  type ChatOperationV2ControllerSnapshot,
+} from '../utils/chat-operation-v2-controller';
 import {
   isChatReasoningEffort,
   clearPersistedChatSessionRelocation,
@@ -390,6 +405,26 @@ interface ChatStore {
   bootstrapStatus: ChatBootstrapStatus;
   bootstrapError: string | null;
   retryBootstrap: () => Promise<void>;
+
+  /** Authenticated executor selected by the sidecar ensure handshake. */
+  chatExecutionMode: ChatOperationExecutionMode;
+  chatOperationV2Operations: readonly ChatOperationV2Projection[];
+  chatOperationV2Inventory: ChatOperationV2Inventory | null;
+  activeChatOperationV2: ChatOperationV2Projection | null;
+  chatOperationV2Connected: boolean;
+  chatOperationV2LatestCursor: number;
+  chatOperationV2RendererInstanceId: string | null;
+  chatOperationV2ConversationId: string | null;
+  chatOperationV2ClarificationRequests: Readonly<Record<string, string>>;
+  chatOperationV2QuestionRequests: Readonly<
+    Record<
+      string,
+      { readonly requestId: string; readonly state: 'live_pending' | 'recovery_required' }
+    >
+  >;
+  chatOperationV2InteractiveRecoveryRequests: Readonly<
+    Record<string, { readonly requestId: string; readonly kind: 'permission' | 'question' }>
+  >;
 
   providers: Provider[];
   agents: Agent[];
@@ -702,6 +737,25 @@ interface ChatStore {
    * acks the abort, and `sending` flips back to false via its finally block.
    */
   abort: () => Promise<void>;
+  retryActiveChatOperationV2: () => Promise<void>;
+  discardActiveChatOperationV2: () => Promise<void>;
+  replyActiveChatOperationV2Question: (
+    operationId: string,
+    requestId: string,
+    choice: 'reply' | 'reject',
+    answers: readonly string[],
+  ) => Promise<void>;
+  chooseActiveChatOperationV2CommitRecovery: (
+    operationId: string,
+    requestId: string,
+    choice: 'fork' | 'discard' | 'export_recovery_bundle',
+  ) => Promise<void>;
+  recoverActiveChatOperationV2Interaction: (
+    operationId: string,
+    requestId: string,
+    choice:
+      'retry_new_invocation' | 'repair_new_invocation' | 'fail_operation' | 'discard_operation',
+  ) => Promise<void>;
   /**
    * Pending permission prompts from opencode. Each entry is one tool-call
    * the agent wants confirmed. Populated by current `permission.asked` and
@@ -2074,6 +2128,22 @@ function abortSseSubscriptionsExcept(workspaceKey: string): void {
   }
   for (const [key, subscription] of stagedSseSubscriptions) {
     if (subscription.workspaceKey === workspaceKey) continue;
+    subscription.controller.abort();
+    stagedSseSubscriptions.delete(key);
+  }
+}
+
+function abortLegacySseSubscriptionsForWorkspace(workspaceKey: string): void {
+  const controller = activeSseControllers.get(workspaceKey);
+  if (controller) {
+    controller.abort();
+    releaseCanonicalSseReadiness(workspaceKey, controller);
+    activeSseControllers.delete(workspaceKey);
+    activeSseWorkspaces.delete(workspaceKey);
+    canonicalSseHealthByWorkspace.delete(workspaceKey);
+  }
+  for (const [key, subscription] of stagedSseSubscriptions) {
+    if (subscription.workspaceKey !== workspaceKey) continue;
     subscription.controller.abort();
     stagedSseSubscriptions.delete(key);
   }
@@ -4516,7 +4586,10 @@ class ChatWorkspaceChangedError extends Error {
 }
 
 function assertChatWorkspaceStillCurrent(workspaceKey: string): void {
-  if (getOpencodeWorkspaceKey() !== workspaceKey) {
+  if (
+    getOpencodeWorkspaceKey() !== workspaceKey ||
+    useChatStore.getState().chatExecutionMode !== 'legacy-v1'
+  ) {
     throw new ChatWorkspaceChangedError();
   }
 }
@@ -4631,6 +4704,9 @@ async function promptOpencode(
   } = {},
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
+  if (get().chatExecutionMode !== 'legacy-v1') {
+    throw new ChatWorkspaceChangedError();
+  }
   const { agent, providers } = get();
   if (opts.internalAgent && !opts.internal) {
     throw new Error('An internal OpenCode agent override requires an internal prompt.');
@@ -5021,9 +5097,11 @@ async function promptOpencode(
           : {}),
       },
     );
+    assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
     if (preSendSnapshot) {
       preSendSnapshot = await relocateSessionToStage(get, set, preSendSnapshot, sessionId);
+      assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
     }
 
     const reasoningVariant = reconcileModelVariant(providers, model, reasoningEffort);
@@ -5098,10 +5176,15 @@ async function promptOpencode(
         body: promptBody,
       }),
     );
-    if (getOpencodeWorkspaceKey() === workspaceKeyAtStart && get().currentSessionId === sessionId) {
+    if (
+      getOpencodeWorkspaceKey() === workspaceKeyAtStart &&
+      get().chatExecutionMode === 'legacy-v1' &&
+      get().currentSessionId === sessionId
+    ) {
       markTurnAcceptedForWatchdog(get, set);
     }
   } catch (err) {
+    const executionModeChanged = get().chatExecutionMode !== 'legacy-v1';
     if (!opts.targetSessionId || turnWatchdogAcceptedKey?.startsWith(`${opts.targetSessionId}:`)) {
       clearTurnWatchdog();
     }
@@ -5160,11 +5243,11 @@ async function promptOpencode(
       pendingActivity: [],
       skipYamlReconciliation: false,
     };
-    if (err instanceof ChatWorkspaceChangedError) {
+    if (err instanceof ChatWorkspaceChangedError || executionModeChanged) {
       if (sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch) {
         applyRuntimePatchToSession(get, set, sessionIdAtDispatch, resetRuntime);
         set({ lastSendingEndedAt: Date.now() });
-        throw err;
+        throw err instanceof ChatWorkspaceChangedError ? err : new ChatWorkspaceChangedError();
       }
       set((prev) =>
         optimisticTurnStartedAt !== null && prev.turnStartedAt === optimisticTurnStartedAt
@@ -5174,7 +5257,7 @@ async function promptOpencode(
             }
           : {},
       );
-      throw err;
+      throw err instanceof ChatWorkspaceChangedError ? err : new ChatWorkspaceChangedError();
     }
     if (relocationRestoreFailed) {
       throw relocationRestoreFailed instanceof Error
@@ -7307,6 +7390,486 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
 // transient state, and is harmless for the no-workspace case (returns {}).
 const persisted = loadPersisted(getOpencodeWorkspaceKey());
 
+const CHAT_OPERATION_V2_RENDERER_INSTANCE_STORAGE_KEY =
+  'tagma.chat-operation-v2.renderer-instance.v1';
+const CHAT_OPERATION_V2_CONVERSATION_STORAGE_PREFIX = 'tagma.chat-operation-v2.conversation.v1:';
+const CHAT_OPERATION_V2_CORRELATION_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,127})$/;
+let fallbackChatOperationV2RendererInstanceId: string | null = null;
+const fallbackChatOperationV2ConversationIds = new Map<string, string>();
+
+function newChatOperationV2CorrelationId(kind: 'renderer' | 'conversation'): string {
+  if (typeof globalThis.crypto?.randomUUID !== 'function') {
+    throw new Error(`Secure ${kind} identity generation is unavailable for Chat Operation V2.`);
+  }
+  return `${kind}-${globalThis.crypto.randomUUID()}`;
+}
+
+function readSessionCorrelation(key: string): string | null {
+  try {
+    const value = globalThis.sessionStorage?.getItem(key) ?? null;
+    return value && CHAT_OPERATION_V2_CORRELATION_ID.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionCorrelation(key: string, value: string): void {
+  try {
+    globalThis.sessionStorage?.setItem(key, value);
+  } catch {
+    // A privacy-restricted renderer keeps the same IDs in module memory for
+    // this page lifetime; Host correlation remains non-authoritative.
+  }
+}
+
+function chatOperationV2RendererInstanceId(): string {
+  const stored = readSessionCorrelation(CHAT_OPERATION_V2_RENDERER_INSTANCE_STORAGE_KEY);
+  if (stored) return stored;
+  fallbackChatOperationV2RendererInstanceId ??= newChatOperationV2CorrelationId('renderer');
+  writeSessionCorrelation(
+    CHAT_OPERATION_V2_RENDERER_INSTANCE_STORAGE_KEY,
+    fallbackChatOperationV2RendererInstanceId,
+  );
+  return fallbackChatOperationV2RendererInstanceId;
+}
+
+function chatOperationV2ConversationStorageKey(workspaceKey: string): string {
+  return `${CHAT_OPERATION_V2_CONVERSATION_STORAGE_PREFIX}${encodeURIComponent(workspaceKey)}`;
+}
+
+function chatOperationV2ConversationId(workspaceKey: string, rotate = false): string {
+  const key = chatOperationV2ConversationStorageKey(workspaceKey);
+  if (!rotate) {
+    const stored = readSessionCorrelation(key) ?? fallbackChatOperationV2ConversationIds.get(key);
+    if (stored) return stored;
+  }
+  const created = newChatOperationV2CorrelationId('conversation');
+  fallbackChatOperationV2ConversationIds.set(key, created);
+  writeSessionCorrelation(key, created);
+  return created;
+}
+
+let chatOperationV2Controller: ChatOperationV2Controller | null = null;
+
+function chatOperationV2Activity(operation: ChatOperationV2Projection | null): ActivityEvent[] {
+  if (!operation || operation.phase === 'terminal') return [];
+  const kind: ActivityKind =
+    operation.phase === 'created' || operation.phase === 'classifying'
+      ? 'request-sent'
+      : operation.phase === 'verifying' || operation.phase.startsWith('commit_')
+        ? 'tool-running'
+        : operation.waitReason === 'retry_backoff' ||
+            operation.waitReason === 'provider_unavailable'
+          ? 'retry'
+          : 'assistant-started';
+  return [
+    {
+      kind,
+      startedAt: operation.createdAt,
+      endedAt: null,
+      count: 1,
+      detail: `Host phase: ${operation.phase.replace(/_/g, ' ')}`,
+      key: `chat-operation-v2:${operation.operationId}:${operation.phase}`,
+    },
+  ];
+}
+
+function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnapshot): void {
+  useChatStore.setState((previous) => {
+    const base = {
+      chatExecutionMode: snapshot.executionMode,
+      chatOperationV2Operations: snapshot.operations,
+      chatOperationV2Inventory: snapshot.inventory,
+      activeChatOperationV2: snapshot.activeOperation,
+      chatOperationV2Connected: snapshot.connected,
+      chatOperationV2LatestCursor: snapshot.latestCursor,
+    };
+    if (snapshot.executionMode !== 'operation-v2') {
+      if (snapshot.executionMode === 'unavailable') {
+        return {
+          ...base,
+          chatOperationV2ClarificationRequests: {},
+          chatOperationV2QuestionRequests: {},
+          chatOperationV2InteractiveRecoveryRequests: {},
+          sending: false,
+          pendingUserText: null,
+          queuedMessages: [],
+          queuedDispatchMode: null,
+          flushing: false,
+          pendingActivity: [],
+          sendError:
+            snapshot.error?.message ??
+            'Chat execution is unavailable because the sidecar handshake is invalid.',
+        };
+      }
+      return {
+        ...base,
+        chatOperationV2ClarificationRequests: {},
+        chatOperationV2QuestionRequests: {},
+        chatOperationV2InteractiveRecoveryRequests: {},
+      };
+    }
+
+    const operation = snapshot.activeOperation;
+    const live = !!operation && operation.phase !== 'terminal';
+    const activeOperationChanged =
+      previous.activeChatOperationV2?.operationId !== operation?.operationId;
+    return {
+      ...base,
+      sending: live,
+      turnStartedAt: live ? (operation?.createdAt ?? Date.now()) : null,
+      lastActivityAt: operation?.updatedAt ?? previous.lastActivityAt,
+      pendingActivity: chatOperationV2Activity(operation),
+      sessionStatus: null,
+      turnHealth: null,
+      queuedMessages: [],
+      queuedDispatchMode: null,
+      flushing: false,
+      abortRecovery: null,
+      yamlSnapshotBeforeSend: null,
+      skipYamlReconciliation: true,
+      postChatYamlAction: null,
+      ...(activeOperationChanged
+        ? {
+            messages: [],
+            pendingPermissions: [],
+            chatOperationV2ClarificationRequests: {},
+            chatOperationV2QuestionRequests: {},
+            chatOperationV2InteractiveRecoveryRequests: {},
+          }
+        : {}),
+      ...(live ? {} : { pendingUserText: null, lastSendingEndedAt: Date.now() }),
+      ...(snapshot.error
+        ? { sendError: `Chat Operation V2 projection failed: ${snapshot.error.message}` }
+        : {}),
+    };
+  });
+}
+
+function chatOperationV2ThreadEntries(
+  detail: ChatOperationV2OperationDetail,
+): OpencodeThreadEntry[] {
+  // These are renderer-only transcript DTOs for the existing Chat surface.
+  // The synthetic session coordinate is never passed to an OpenCode client.
+  const syntheticSessionId = `chat-operation:${detail.operation.operationId}`;
+  const userMessageId = `v2-user-${detail.operation.operationId}`;
+  const user: OpencodeThreadEntry = {
+    info: {
+      id: userMessageId,
+      sessionID: syntheticSessionId,
+      role: 'user',
+      time: { created: detail.userMessage.createdAt },
+    } as unknown as Message,
+    parts: [
+      {
+        id: `${userMessageId}-text`,
+        sessionID: syntheticSessionId,
+        messageID: userMessageId,
+        type: 'text',
+        text: detail.userMessage.text,
+      } as unknown as Part,
+    ],
+  };
+  const assistants =
+    detail.result?.messages.map((message) => ({
+      info: {
+        id: message.messageId,
+        sessionID: syntheticSessionId,
+        role: 'assistant',
+        time: { created: message.createdAt, completed: detail.result!.completedAt },
+        finish: 'stop',
+      } as unknown as Message,
+      parts: [
+        {
+          id: `${message.messageId}-text`,
+          sessionID: syntheticSessionId,
+          messageID: message.messageId,
+          type: 'text',
+          text: message.text,
+        } as unknown as Part,
+        ...message.attachments.map(
+          (attachment) =>
+            ({
+              id: `${message.messageId}-attachment-${attachment.attachmentId}`,
+              sessionID: syntheticSessionId,
+              messageID: message.messageId,
+              type: 'text',
+              text: `${attachment.label}\n\n${attachment.content}`,
+            }) as unknown as Part,
+        ),
+      ],
+    })) ?? [];
+  return [user, ...assistants];
+}
+
+function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): void {
+  useChatStore.setState((previous) => {
+    const operationId = detail.operation.operationId;
+    if (previous.activeChatOperationV2?.operationId !== operationId) return {};
+    const clarificationRequests = { ...previous.chatOperationV2ClarificationRequests };
+    const questionRequests = { ...previous.chatOperationV2QuestionRequests };
+    const interactiveRecoveryRequests = {
+      ...previous.chatOperationV2InteractiveRecoveryRequests,
+    };
+    const pendingPermissions = previous.pendingPermissions.filter(
+      (permission) => permission.sessionID !== operationId,
+    );
+    let completionWarning = previous.completionWarning;
+
+    if (
+      detail.pendingInput?.kind === 'clarification' ||
+      detail.pendingInput?.kind === 'stale_inventory'
+    ) {
+      clarificationRequests[operationId] = detail.pendingInput.clarificationId;
+      completionWarning =
+        detail.pendingInput.kind === 'clarification'
+          ? detail.pendingInput.question
+          : 'The pipeline inventory changed. Refresh the operation before answering clarification.';
+    } else {
+      delete clarificationRequests[operationId];
+    }
+
+    if (detail.pendingInput?.kind === 'permission') {
+      if (detail.pendingInput.state === 'live_pending') {
+        pendingPermissions.push({
+          workspaceKey: getOpencodeWorkspaceKey(),
+          id: detail.pendingInput.hostRequestId,
+          sessionID: operationId,
+          title: `${detail.pendingInput.content.actionCode}: ${detail.pendingInput.content.resourceCode}`,
+          tool: detail.pendingInput.content.actionCode,
+          protocol: 'current',
+          metadata: { chatOperationProtocol: 'v2' },
+          createdAt: detail.pendingInput.requestedAt,
+        });
+      } else {
+        interactiveRecoveryRequests[operationId] = {
+          requestId: detail.pendingInput.hostRequestId,
+          kind: 'permission',
+        };
+        completionWarning =
+          'This permission request requires restart recovery. Choose retry, repair, fail, or discard.';
+      }
+    } else if (detail.pendingInput?.kind === 'question') {
+      questionRequests[operationId] = {
+        requestId: detail.pendingInput.hostRequestId,
+        state: detail.pendingInput.state,
+      };
+      completionWarning =
+        detail.pendingInput.state === 'live_pending'
+          ? `${detail.pendingInput.content.header}: ${detail.pendingInput.content.question}`
+          : 'This question requires restart recovery. Choose retry, repair, fail, or discard.';
+      if (detail.pendingInput.state === 'recovery_required') {
+        interactiveRecoveryRequests[operationId] = {
+          requestId: detail.pendingInput.hostRequestId,
+          kind: 'question',
+        };
+      }
+    } else {
+      delete questionRequests[operationId];
+    }
+    const interactionRecoveryRequired =
+      (detail.pendingInput?.kind === 'permission' || detail.pendingInput?.kind === 'question') &&
+      detail.pendingInput.state === 'recovery_required';
+    if (!interactionRecoveryRequired) {
+      delete interactiveRecoveryRequests[operationId];
+    }
+
+    return {
+      chatOperationV2ClarificationRequests: clarificationRequests,
+      chatOperationV2QuestionRequests: questionRequests,
+      chatOperationV2InteractiveRecoveryRequests: interactiveRecoveryRequests,
+      pendingPermissions,
+      messages: chatOperationV2ThreadEntries(detail),
+      pendingUserText: null,
+      completionWarning,
+    };
+  });
+}
+
+function getChatOperationV2Controller(): ChatOperationV2Controller {
+  chatOperationV2Controller ??= createChatOperationV2Controller({
+    rendererInstanceId: chatOperationV2RendererInstanceId(),
+    onChange: projectChatOperationV2Snapshot,
+    onDetail: projectChatOperationV2Detail,
+  });
+  return chatOperationV2Controller;
+}
+
+export function activateChatOperationExecutionForWorkspace(
+  workspaceKey: string,
+  handshake: ChatOperationV2CapabilityHandshake,
+  conversationId?: string | null,
+): Promise<ChatOperationExecutionMode> {
+  const production =
+    handshake.chatOperationProtocolVersion === 2 && handshake.chatOperationMode === 'production';
+  const controller = getChatOperationV2Controller();
+  const resolvedConversationId = production
+    ? (conversationId ?? chatOperationV2ConversationId(workspaceKey))
+    : null;
+  useChatStore.setState({
+    chatOperationV2RendererInstanceId: production ? controller.getRendererInstanceId() : null,
+    chatOperationV2ConversationId: resolvedConversationId,
+  });
+  return controller.activate({
+    workspaceKey,
+    handshake,
+    conversationId: resolvedConversationId,
+  });
+}
+
+async function sendChatOperationV2(
+  get: () => ChatStore,
+  set: ChatSet,
+  text: string,
+  attachments: readonly ComposerAttachment[],
+): Promise<void> {
+  const state = get();
+  const model = state.model;
+  if (!model) {
+    const error = new Error('Select a model before sending a Chat Operation V2 request.');
+    set({ sendError: error.message });
+    throw error;
+  }
+
+  const pipeline = usePipelineStore.getState();
+  let localRevision: number | null = null;
+  let candidateId: string | null = null;
+  let dirtySnapshot: ChatOperationV2CreatePayload['dirtySnapshot'] = null;
+  if (pipeline.isDirty || pipeline.layoutDirty) {
+    const currentCandidates = state.chatOperationV2Inventory?.candidates.filter(
+      (candidate) => candidate.currentCanvas,
+    );
+    if (currentCandidates?.length !== 1) {
+      const error = new Error(
+        'The Host did not expose one unambiguous candidate for the dirty visible canvas.',
+      );
+      set({ sendError: error.message });
+      throw error;
+    }
+    localRevision = getLocalPipelineEditRevision();
+    candidateId = currentCandidates[0]!.candidateId;
+    dirtySnapshot = {
+      canonicalYaml: serializePreviewYaml(pipeline.config),
+      layoutJson: JSON.stringify({
+        positions: Object.fromEntries(pipeline.positions),
+        folders: structuredClone(pipeline.folders),
+        trackHeights: Object.fromEntries(pipeline.trackHeights),
+      }),
+      requirementsMarkdown: null,
+      compileDiagnostics: pipeline.validationErrors.slice(0, 200).map((diagnostic) => ({
+        level: 'error' as const,
+        code: 'renderer_validation',
+        message: diagnostic.message,
+      })),
+    };
+  }
+
+  const controller = getChatOperationV2Controller();
+  const activation = controller.captureActivationAuthority();
+  const workspaceKeyAtStart = getOpencodeWorkspaceKey();
+  if (activation.workspaceKey !== workspaceKeyAtStart) {
+    throw new ChatWorkspaceChangedError();
+  }
+  const conversationId =
+    state.chatOperationV2ConversationId ?? chatOperationV2ConversationId(workspaceKeyAtStart);
+  const activationIsCurrent = () =>
+    getOpencodeWorkspaceKey() === workspaceKeyAtStart &&
+    controller.isActivationAuthorityCurrent(activation);
+
+  set({
+    composerAttachments: [],
+    pendingUserText: text,
+    sending: true,
+    turnStartedAt: Date.now(),
+    lastActivityAt: Date.now(),
+    pendingActivity: [],
+    sendError: null,
+    completionWarning: null,
+    yamlSnapshotBeforeSend: null,
+    skipYamlReconciliation: true,
+    postChatYamlAction: null,
+    chatOperationV2ConversationId: conversationId,
+  });
+
+  try {
+    const activeOperationId = state.activeChatOperationV2?.operationId ?? null;
+    const clarificationRequestId = activeOperationId
+      ? (state.chatOperationV2ClarificationRequests[activeOperationId] ?? null)
+      : null;
+    const questionRequest = activeOperationId
+      ? (state.chatOperationV2QuestionRequests[activeOperationId] ?? null)
+      : null;
+    if (questionRequest?.state === 'recovery_required') {
+      throw new Error(
+        'This question requires an explicit restart recovery choice; use the interaction recovery controls.',
+      );
+    }
+    if (questionRequest && attachments.length > 0) {
+      throw new Error('Question replies cannot include Chat context attachments.');
+    }
+    await (clarificationRequestId && activeOperationId
+      ? controller.replyClarification(activeOperationId, {
+          requestId: clarificationRequestId,
+          text,
+          candidateIds: [],
+          attachments: attachments.map(({ id, content }) => ({ referenceId: id, content })),
+        })
+      : questionRequest && activeOperationId
+        ? controller.replyQuestion(activeOperationId, questionRequest.requestId, 'reply', [text])
+        : controller.send({
+            request: {
+              text,
+              attachments: attachments.map(({ id, label, content }) => ({
+                referenceId: id,
+                label,
+                content,
+              })),
+            },
+            provider: model.providerID,
+            model: model.modelID,
+            variant: state.reasoningEffort,
+            conversationId,
+            localRevision,
+            candidateId,
+            dirtySnapshot,
+          }));
+    if (!activationIsCurrent()) return;
+  } catch (error) {
+    if (!activationIsCurrent()) return;
+    set((previous) => ({
+      composerAttachments: [...attachments, ...previous.composerAttachments],
+      sending: false,
+      pendingUserText: null,
+      turnStartedAt: null,
+      pendingActivity: [],
+      sendError: `Chat Operation V2 failed: ${describeError(error)}`,
+    }));
+    throw error;
+  }
+}
+
+async function runChatOperationV2UiMutation(
+  set: ChatSet,
+  errorPrefix: string,
+  mutation: (controller: ChatOperationV2Controller) => Promise<unknown>,
+): Promise<void> {
+  const controller = getChatOperationV2Controller();
+  let activation: ReturnType<ChatOperationV2Controller['captureActivationAuthority']>;
+  try {
+    activation = controller.captureActivationAuthority();
+  } catch (error) {
+    set({ sendError: `${errorPrefix}: ${describeError(error)}` });
+    return;
+  }
+  try {
+    await mutation(controller);
+    if (!controller.isActivationAuthorityCurrent(activation)) return;
+  } catch (error) {
+    if (!controller.isActivationAuthorityCurrent(activation)) return;
+    set({ sendError: `${errorPrefix}: ${describeError(error)}` });
+  }
+}
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   historyOpen: false,
   selectingSessionId: null,
@@ -7323,6 +7886,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ bootstrapStatus: 'idle', bootstrapError: null });
     await get().bootstrap();
   },
+
+  chatExecutionMode: 'legacy-v1',
+  chatOperationV2Operations: [],
+  chatOperationV2Inventory: null,
+  activeChatOperationV2: null,
+  chatOperationV2Connected: false,
+  chatOperationV2LatestCursor: 0,
+  chatOperationV2RendererInstanceId: null,
+  chatOperationV2ConversationId: null,
+  chatOperationV2ClarificationRequests: {},
+  chatOperationV2QuestionRequests: {},
+  chatOperationV2InteractiveRecoveryRequests: {},
 
   providers: [],
   agents: [],
@@ -7791,6 +8366,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }),
   retryFinishedTurnReconciliation: (turnId) =>
     set((prev) => {
+      if (prev.chatExecutionMode !== 'legacy-v1') {
+        return {
+          sendError:
+            'Legacy V1 reconciliation cannot be retried after Chat Operation V2 production cutover.',
+        };
+      }
       const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
       if (!target?.reconcileFailure) return {};
       const retryable =
@@ -7814,6 +8395,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }),
   recoverFinishedTurnAsIndependent: (turnId) =>
     set((prev) => {
+      if (prev.chatExecutionMode !== 'legacy-v1') {
+        return {
+          sendError:
+            'Legacy V1 recovery cannot execute after Chat Operation V2 production cutover.',
+        };
+      }
       const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
       if (!target?.reconcileFailure || !target.yamlSnapshotBeforeSend || !target.sessionId)
         return {};
@@ -8091,6 +8678,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       clearTurnWatchdog();
       clearPendingPartsForSession(get().currentSessionId);
       abortSseSubscriptionsExcept(workspaceKeyAtStart);
+      chatOperationV2Controller?.dispose();
     }
     const isInitial = prevStatus !== 'ready' || workspaceChanged;
     if (isInitial) {
@@ -8104,6 +8692,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           ? {
               providers: [],
               agents: [],
+              chatExecutionMode: 'legacy-v1',
+              chatOperationV2Operations: [],
+              chatOperationV2Inventory: null,
+              activeChatOperationV2: null,
+              chatOperationV2Connected: false,
+              chatOperationV2LatestCursor: 0,
+              chatOperationV2RendererInstanceId: null,
+              chatOperationV2ConversationId: null,
+              chatOperationV2ClarificationRequests: {},
+              chatOperationV2QuestionRequests: {},
+              chatOperationV2InteractiveRecoveryRequests: {},
               sessions: [],
               sessionParentById: {},
               sessionStates: {},
@@ -8187,8 +8786,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     let client: Awaited<ReturnType<typeof getOpencodeClient>>;
+    let chatExecutionMode: ChatOperationExecutionMode;
     try {
-      client = await getOpencodeClient(workspaceKeyAtStart);
+      const clientBootstrap = await getClientBootstrap(workspaceKeyAtStart);
+      client = clientBootstrap.client;
+      chatExecutionMode = await activateChatOperationExecutionForWorkspace(workspaceKeyAtStart, {
+        chatOperationProtocolVersion: clientBootstrap.chatOperationProtocolVersion,
+        chatOperationMode: clientBootstrap.chatOperationMode,
+      });
     } catch (err) {
       console.error('[chat] opencode bootstrap failed:', err);
       if (isInitial && getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
@@ -8205,8 +8810,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
       return;
     }
+    if (chatExecutionMode === 'operation-v2') {
+      abortLegacySseSubscriptionsForWorkspace(workspaceKeyAtStart);
+    }
     try {
-      await recoverChatSessionRelocationsWithStore(workspaceKeyAtStart, get, set);
+      if (chatExecutionMode === 'legacy-v1') {
+        await recoverChatSessionRelocationsWithStore(workspaceKeyAtStart, get, set);
+      }
     } catch (err) {
       console.error('[chat] OpenCode session relocation recovery failed:', err);
       if (getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
@@ -8345,7 +8955,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // to scoped specialists. Fail closed if the seed is missing; opencode's
     // built-in default is not scoped to `.tagma/`.
     const tagmaAgent = agents.find((a) => a.name === FORCED_CHAT_AGENT);
-    if (!tagmaAgent) {
+    if (!tagmaAgent && chatExecutionMode === 'legacy-v1') {
       const msg = agentsLoad.ok
         ? `OpenCode agent "${FORCED_CHAT_AGENT}" is missing. Check .opencode/agents/${FORCED_CHAT_AGENT}.md or retry workspace bootstrap.`
         : `Failed to load OpenCode agents: ${agentsLoad.error}`;
@@ -8368,7 +8978,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       });
       return;
     }
-    const nextAgent = tagmaAgent.name;
+    const nextAgent = chatExecutionMode === 'legacy-v1' ? tagmaAgent!.name : null;
     savePersisted(workspaceKey, { agent: nextAgent });
 
     appliedBootstrapWorkspaceKey = workspaceKey;
@@ -8383,10 +8993,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       model: nextModel,
       reasoningEffort: nextReasoningEffort,
       agent: nextAgent,
+      chatExecutionMode,
+      chatOperationV2ConversationId:
+        chatExecutionMode === 'operation-v2' ? chatOperationV2ConversationId(workspaceKey) : null,
       bootstrapStatus: 'ready',
       bootstrapError: null,
     });
-    void ensureSseSubscription(get, set);
+    if (chatExecutionMode === 'legacy-v1') void ensureSseSubscription(get, set);
   },
 
   async refreshSessions() {
@@ -8443,6 +9056,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ) {
           return {};
         }
+        if (prev.chatExecutionMode !== 'legacy-v1') {
+          return {
+            completedUnreadSessionIds: clearSessionCompletedUnread(
+              prev.completedUnreadSessionIds,
+              id,
+            ),
+            currentSessionId: id,
+            messages,
+            historyOpen: false,
+            sendError: null,
+            completionWarning: null,
+          };
+        }
         const sessionStates = saveCurrentSessionRuntime(prev);
         const runtime = restoreCachedRuntime(
           sessionStates[id],
@@ -8472,7 +9098,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           model: selectedState.model,
           reasoningEffort: selectedState.reasoningEffort,
         });
-        if (selectedState.sending) markTurnAcceptedForWatchdog(get, set);
+        if (selectedState.chatExecutionMode === 'legacy-v1' && selectedState.sending) {
+          markTurnAcceptedForWatchdog(get, set);
+        }
       }
     } catch (err) {
       if (
@@ -8489,6 +9117,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async newSession() {
+    if (get().chatExecutionMode === 'unavailable') {
+      set({ sendError: 'Chat execution is unavailable because the sidecar handshake is invalid.' });
+      return;
+    }
+    if (get().chatExecutionMode === 'operation-v2') {
+      try {
+        getChatOperationV2Controller().startNewConversation();
+        const conversationId = chatOperationV2ConversationId(getOpencodeWorkspaceKey(), true);
+        getChatOperationV2Controller().selectConversation(conversationId);
+        clearTurnWatchdog();
+        set({
+          currentSessionId: null,
+          messages: [],
+          pendingUserText: null,
+          pendingPermissions: [],
+          chatOperationV2ClarificationRequests: {},
+          chatOperationV2QuestionRequests: {},
+          chatOperationV2InteractiveRecoveryRequests: {},
+          sendError: null,
+          completionWarning: null,
+          chatOperationV2ConversationId: conversationId,
+          historyOpen: false,
+        });
+      } catch (error) {
+        set({ sendError: describeError(error), historyOpen: false });
+      }
+      return;
+    }
     if (chatAbortRecoveryBlocksRuntimeMutation(get())) {
       set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
       return;
@@ -8538,6 +9194,33 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async deleteSession(id, requestedWorkspaceKey) {
     const workspaceKey = requestedWorkspaceKey ?? getOpencodeWorkspaceKey();
     const isCurrentWorkspace = getOpencodeWorkspaceKey() === workspaceKey;
+    if (get().chatExecutionMode === 'unavailable') {
+      set({ sendError: 'Chat execution is unavailable because the sidecar handshake is invalid.' });
+      return;
+    }
+    if (get().chatExecutionMode === 'operation-v2') {
+      set((previous) => {
+        const removed = sessionSubtreeIds(previous.sessionParentById, id);
+        const deletedCurrent =
+          !!previous.currentSessionId && removed.has(previous.currentSessionId);
+        removePersistedChatSessionSelections(workspaceKey, removed);
+        return {
+          sessions: previous.sessions.filter((session) => !removed.has(session.id)),
+          sessionParentById: removeSessionSubtreeFromIndex(previous.sessionParentById, removed),
+          sessionStates: Object.fromEntries(
+            Object.entries(previous.sessionStates).filter(([sessionId]) => !removed.has(sessionId)),
+          ),
+          completedUnreadSessionIds: previous.completedUnreadSessionIds.filter(
+            (sessionId) => !removed.has(sessionId),
+          ),
+          currentSessionId: deletedCurrent ? null : previous.currentSessionId,
+          messages: deletedCurrent ? [] : previous.messages,
+          pendingPermissions: removePermissionsForSessions(previous.pendingPermissions, removed),
+          historyOpen: false,
+        };
+      });
+      return;
+    }
     if (isCurrentWorkspace && chatTurnBlocksSessionMutation(get())) {
       set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
       return;
@@ -8611,6 +9294,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async send(text) {
     const state = get();
     const attachments = state.composerAttachments;
+    if (state.chatExecutionMode === 'unavailable') {
+      const error = new Error(
+        'Chat execution is unavailable because the sidecar capability handshake is invalid.',
+      );
+      set({ sendError: error.message });
+      throw error;
+    }
+    if (state.chatExecutionMode === 'operation-v2') {
+      return sendChatOperationV2(get, set, text, attachments);
+    }
     const context = renderAskAiContext(attachments);
     const forceStopRecoveryPending = forcedRestartRecoveries.has(getOpencodeWorkspaceKey());
     const queueMode = currentSessionHasFinishedTurn(state)
@@ -8673,6 +9366,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     reason = 'reconciled-target',
     pipelineBinding,
   ) {
+    if (get().chatExecutionMode !== 'legacy-v1') return;
     const state = get();
     const selection = selectionForChatSession(state, sessionId, workspaceKey);
     const retainedPipelineBinding =
@@ -8700,6 +9394,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   dispatchQueuedMessagesIfReady() {
+    if (get().chatExecutionMode !== 'legacy-v1') return false;
     return dispatchNextQueuedPrompt(get, set);
   },
 
@@ -8721,6 +9416,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     snapshot,
     targetSessionId,
   ) {
+    if (get().chatExecutionMode !== 'legacy-v1') {
+      throw new Error('Legacy renderer repair cannot run for a Chat Operation V2 operation.');
+    }
     const repairText = buildChatYamlRepairPrompt(target, evidence, attempt, maxAttempts);
     return promptOpencode(get, set, repairText, {
       internal: true,
@@ -8740,6 +9438,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     snapshot,
     targetSessionId,
   ) {
+    if (get().chatExecutionMode !== 'legacy-v1') {
+      throw new Error(
+        'Legacy renderer Trial planning cannot run for a Chat Operation V2 operation.',
+      );
+    }
     const planningText = buildChatYamlTrialPlanPrompt(target, request, attempt, maxAttempts);
     return promptOpencode(get, set, planningText, {
       internal: true,
@@ -8753,6 +9456,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async flushQueueNow() {
     const state = get();
+    if (state.chatExecutionMode !== 'legacy-v1') return;
     if (!state.sending || state.queuedMessages.length === 0) return;
     if (state.flushing) return;
     set({ flushing: true });
@@ -8764,6 +9468,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async abort() {
+    if (get().chatExecutionMode === 'unavailable') {
+      set({ sendError: 'Chat execution is unavailable because the sidecar handshake is invalid.' });
+      return;
+    }
+    if (get().chatExecutionMode === 'operation-v2') {
+      const active = get().activeChatOperationV2;
+      if (!active || active.phase === 'terminal') return;
+      await runChatOperationV2UiMutation(set, "Couldn't stop Chat Operation V2", (controller) =>
+        controller.cancel(),
+      );
+      return;
+    }
     const sessionId = get().currentSessionId;
     if (!sessionId) return;
     // Snapshot the workspace at abort time. The fallback below re-targets
@@ -8815,6 +9531,50 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // reconnects against the new port automatically.
   },
 
+  async retryActiveChatOperationV2() {
+    if (get().chatExecutionMode !== 'operation-v2') return;
+    await runChatOperationV2UiMutation(set, "Couldn't retry Chat Operation V2", (controller) =>
+      controller.retry(),
+    );
+  },
+
+  async discardActiveChatOperationV2() {
+    if (get().chatExecutionMode !== 'operation-v2') return;
+    await runChatOperationV2UiMutation(set, "Couldn't discard Chat Operation V2", (controller) =>
+      controller.discard(),
+    );
+  },
+
+  async replyActiveChatOperationV2Question(operationId, requestId, choice, answers) {
+    if (get().chatExecutionMode !== 'operation-v2') return;
+    await runChatOperationV2UiMutation(
+      set,
+      "Couldn't answer Chat Operation V2 question",
+      (controller) => controller.replyQuestion(operationId, requestId, choice, answers),
+    );
+  },
+
+  async chooseActiveChatOperationV2CommitRecovery(operationId, requestId, choice) {
+    if (get().chatExecutionMode !== 'operation-v2') return;
+    await runChatOperationV2UiMutation(set, "Couldn't recover Chat Operation V2", (controller) =>
+      controller.chooseCommitRecovery(operationId, requestId, choice),
+    );
+  },
+
+  async recoverActiveChatOperationV2Interaction(operationId, requestId, choice) {
+    if (get().chatExecutionMode !== 'operation-v2') return;
+    const pending = get().chatOperationV2InteractiveRecoveryRequests[operationId];
+    if (!pending || pending.requestId !== requestId) {
+      set({ sendError: 'The interactive recovery request is no longer pending.' });
+      return;
+    }
+    await runChatOperationV2UiMutation(
+      set,
+      "Couldn't recover Chat Operation V2 interaction",
+      (controller) => controller.recoverInteraction(operationId, requestId, choice),
+    );
+  },
+
   async replyPermission(
     id,
     reply,
@@ -8823,6 +9583,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     permissionProtocol,
     permissionDirectory,
   ) {
+    if (get().chatExecutionMode === 'unavailable') {
+      set({ sendError: 'Chat execution is unavailable because the sidecar handshake is invalid.' });
+      return;
+    }
+    if (get().chatExecutionMode === 'operation-v2') {
+      const v2Pending = get().pendingPermissions.find(
+        (permission) =>
+          permission.id === id &&
+          (sessionID === undefined || permission.sessionID === sessionID) &&
+          (permissionWorkspaceKey === undefined ||
+            permission.workspaceKey === permissionWorkspaceKey),
+      );
+      const choice = reply === 'once' ? 'allow_once' : reply === 'always' ? 'allow_always' : 'deny';
+      if (!v2Pending) {
+        set({ sendError: "Couldn't reply to V2 permission: request is no longer pending." });
+        return;
+      }
+      await runChatOperationV2UiMutation(set, "Couldn't reply to V2 permission", (controller) =>
+        controller.replyPermission(v2Pending.sessionID, id, choice),
+      );
+      return;
+    }
     const state = get();
     const pending = state.pendingPermissions.find(
       (perm) =>
@@ -8867,6 +9649,48 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 }));
+
+registerRendererDiagnosticsContributor('chatOperationV2', ({ workspaceKey }) => {
+  const state = useChatStore.getState();
+  if (state.chatExecutionMode !== 'operation-v2') {
+    return { schemaVersion: 1, executionMode: state.chatExecutionMode };
+  }
+  const matchingWorkspace = workspaceKey === getClientWorkspace();
+  const retained = matchingWorkspace ? state.chatOperationV2Operations.slice(-20) : [];
+  return {
+    schemaVersion: 1,
+    executionMode: 'operation-v2',
+    workspaceMatches: matchingWorkspace,
+    connected: state.chatOperationV2Connected,
+    latestCursor: state.chatOperationV2LatestCursor,
+    rendererInstanceCorrelationPresent: state.chatOperationV2RendererInstanceId !== null,
+    conversationCorrelationPresent: state.chatOperationV2ConversationId !== null,
+    operationCount: matchingWorkspace ? state.chatOperationV2Operations.length : 0,
+    returnedOperationCount: retained.length,
+    omittedOperationCount: matchingWorkspace
+      ? Math.max(0, state.chatOperationV2Operations.length - retained.length)
+      : 0,
+    activeOperationId: matchingWorkspace
+      ? (state.activeChatOperationV2?.operationId ?? null)
+      : null,
+    clarificationPending:
+      matchingWorkspace && Object.keys(state.chatOperationV2ClarificationRequests).length > 0,
+    questionPending:
+      matchingWorkspace && Object.keys(state.chatOperationV2QuestionRequests).length > 0,
+    interactiveRecoveryPending:
+      matchingWorkspace && Object.keys(state.chatOperationV2InteractiveRecoveryRequests).length > 0,
+    pendingPermissionCount: matchingWorkspace ? state.pendingPermissions.length : 0,
+    operations: retained.map((operation) => ({
+      operationId: operation.operationId,
+      generation: operation.generation,
+      version: operation.version,
+      phase: operation.phase,
+      waitReason: operation.waitReason,
+      terminalOutcome: operation.terminalOutcome,
+      updatedAt: operation.updatedAt,
+    })),
+  };
+});
 
 /**
  * Has the chat agent just touched the workspace? Used by the App-level SSE

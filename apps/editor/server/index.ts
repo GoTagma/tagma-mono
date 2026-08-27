@@ -8,8 +8,8 @@ bootstrapDevEnv();
 
 import express from 'express';
 import cors from 'cors';
-import { timingSafeEqual } from 'node:crypto';
-import { existsSync } from 'fs';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { existsSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { S, bumpRevision, getState, closeStateEventClients } from './state.js';
 import { resolveWorkspace } from './require-workspace.js';
@@ -25,7 +25,7 @@ import { registerCustomProvidersRoutes } from './routes/custom-providers.js';
 import { registerRequirementsRoutes } from './routes/requirements.js';
 import { registerPythonAgentRoutes } from './routes/python-agent.js';
 import { registerSecretsRoutes } from './routes/secrets.js';
-import { shutdownOpencode } from './opencode-lifecycle.js';
+import { ensureRealTagmaDirectory, shutdownOpencode } from './opencode-lifecycle.js';
 import { registerEditorRoutes } from './routes/editor.js';
 import { registerSidecarRoutes } from './routes/sidecar.js';
 import { registerReleaseRoutes } from './routes/release.js';
@@ -54,6 +54,38 @@ import {
 import { verifyTrialWitnessWorkerForBuild } from './chat-pipeline-trial-witness.js';
 import { diagnosticsHub, isDiagnosticsAgentPath } from './diagnostics.js';
 import { registerDiagnosticsRoutes } from './routes/diagnostics.js';
+import { registerChatOperationV2Routes } from './routes/chat-operations.js';
+import { createChatOperationV2ShadowService } from './chat-operations/service.js';
+import { CHAT_OPERATION_V2_SCHEMA_VERSION } from './chat-operations/store.js';
+import { resolveChatOperationV2ControlPaths } from './chat-operations/control-root.js';
+import {
+  createChatOperationV2MigrationService,
+  deriveChatOperationV2ResetRequestIdentity,
+  isChatOperationV2MigrationServiceEnabled,
+} from './chat-operations/migration-service.js';
+import { createManagedOpenCodeStructuredClassifierRunner } from './chat-operations/opencode-adapter.js';
+import { CHAT_OPERATION_V2_API_PROTOCOL_VERSION } from './chat-operations/api-requests.js';
+import { buildChatOperationV2HostInventory } from './chat-operations/inventory.js';
+import { resolveChatOperationV2CreateAdmission } from './chat-operations/host-admission.js';
+import { createChatOperationV2AuthoringResultPersistence } from './chat-operations/authoring-results.js';
+import { createChatOperationV2AuthoringTargetResolver } from './chat-operations/target-resolver.js';
+import { createManagedChatOperationV2AuthoringRuntime } from './chat-operations/authoring-runtime.js';
+import { createManagedChatOperationV2CommitCoordinatorFactory } from './chat-operations/commit-runtime.js';
+import type {
+  ChatOperationV2AuthoringCommitCoordinator,
+  ChatOperationV2AuthoringFactoryInput,
+} from './chat-operations/service.js';
+import {
+  registerChatOperationV2BodyParser,
+  registerChatOperationV2MutationFence,
+} from './chat-operations/http-body.js';
+import { buildOpencodeSeedOptions } from './opencode-seed-options.js';
+import { registerServerDiagnosticsContributor } from './diagnostics-contributors.js';
+import { registerChatOperationV2ControlRoutes } from './routes/chat-control.js';
+import {
+  isChatOperationV2MutationSurfaceEnabled,
+  isChatOperationV2ProductionCutover,
+} from './chat-operations/proxy-policy.js';
 
 const VERIFY_TRIAL_WITNESS_WORKER_ARG = '--verify-trial-witness-worker';
 const verifyTrialWitnessWorkerArgIndex = process.argv.indexOf(VERIFY_TRIAL_WITNESS_WORKER_ARG);
@@ -68,6 +100,100 @@ if (verifyTrialWitnessWorkerArgIndex >= 0) {
 }
 
 const app = express();
+const chatOperationV2ProductionCutover = isChatOperationV2ProductionCutover();
+const chatOperationV2MutationsRequested = isChatOperationV2MutationSurfaceEnabled();
+const createChatOperationV2CommitCoordinator =
+  createManagedChatOperationV2CommitCoordinatorFactory();
+const chatOperationV2CommitCoordinators = new Map<
+  string,
+  ChatOperationV2AuthoringCommitCoordinator
+>();
+function chatOperationV2CommitCoordinatorFor(input: ChatOperationV2AuthoringFactoryInput) {
+  let coordinator = chatOperationV2CommitCoordinators.get(input.workspaceScopeId);
+  if (!coordinator) {
+    coordinator = createChatOperationV2CommitCoordinator(input);
+    chatOperationV2CommitCoordinators.set(input.workspaceScopeId, coordinator);
+  }
+  return coordinator;
+}
+const chatOperationV2Service = createChatOperationV2ShadowService({
+  mutationsEnabled: chatOperationV2MutationsRequested,
+  authoringCommitCoordinatorFactory: (input) => chatOperationV2CommitCoordinatorFor(input),
+  authoringRuntimeFactory: (input) => {
+    const workspace = chatOperationV2WorkspaceFor(input.canonicalWorkspaceRoot);
+    const coordinator = chatOperationV2CommitCoordinatorFor(input);
+    return createManagedChatOperationV2AuthoringRuntime({
+      workspaceScopeId: input.workspaceScopeId,
+      workspace,
+      invocationStore: input.store,
+      commitPreparer: (prepareInput) => coordinator.prepareCommit(prepareInput),
+      resolveTarget: ({ targetId, intent, originHash }) => {
+        if (intent === 'create') return { sourceRelativePath: null };
+        const candidate = chatOperationV2HostInventoryFor(
+          input.canonicalWorkspaceRoot,
+        ).inventory.resolveCandidate(targetId);
+        if (candidate.contentHash !== originHash) {
+          throw Object.assign(new Error('The authoring origin changed before staging.'), {
+            code: 'host_inventory_conflict',
+          });
+        }
+        return { sourceRelativePath: candidate.relativePath };
+      },
+    });
+  },
+  authoringResultPersistenceFactory: ({ store }) =>
+    createChatOperationV2AuthoringResultPersistence(store),
+  authoringTargetResolverFactory: ({ canonicalWorkspaceRoot }) =>
+    createChatOperationV2AuthoringTargetResolver({
+      getCurrentInventory: () => chatOperationV2HostInventoryFor(canonicalWorkspaceRoot).inventory,
+    }),
+  projectionInventoryResolverFactory: ({ canonicalWorkspaceRoot }) => ({
+    getCurrentInventory: () => chatOperationV2HostInventoryFor(canonicalWorkspaceRoot).inventory,
+  }),
+  projectionResultResolverFactory: ({ store }) => ({
+    getResultProjection: (operationId) => store.getResultProjection(operationId),
+  }),
+  readonlyRunnerFactory: ({ store, canonicalWorkspaceRoot }) =>
+    createManagedOpenCodeStructuredClassifierRunner({
+      workspaceDirectory: ensureRealTagmaDirectory(canonicalWorkspaceRoot),
+      store,
+    }).runner,
+});
+const chatOperationV2MutationsEnabled =
+  chatOperationV2Service !== null && chatOperationV2MutationsRequested;
+const chatOperationV2MigrationEnabled =
+  chatOperationV2Service !== null &&
+  (chatOperationV2ProductionCutover || isChatOperationV2MigrationServiceEnabled());
+const chatOperationV2MigrationService =
+  chatOperationV2Service && chatOperationV2MigrationEnabled
+    ? createChatOperationV2MigrationService({
+        enabled: true,
+        controlPaths: resolveChatOperationV2ControlPaths(),
+        getTrustedStore: () => chatOperationV2Service.getTrustedMigrationStore(),
+        closeTrustedStoreForReset: () =>
+          chatOperationV2Service.closeTrustedStoreForOfflineMigration(),
+        onResetActivated: () => {
+          chatOperationV2Service.invalidateAfterControlReset();
+          chatOperationV2CommitCoordinators.clear();
+        },
+        onResetAborted: () => {
+          chatOperationV2Service.invalidateAfterControlReset();
+          chatOperationV2CommitCoordinators.clear();
+        },
+      })
+    : null;
+const chatOperationV2MigratedWorkspaces = new Set<string>();
+const unregisterChatOperationV2Diagnostics = registerServerDiagnosticsContributor(
+  'chatOperationV2',
+  () =>
+    chatOperationV2Service?.getDiagnosticsSnapshot() ?? {
+      shadowEnabled: false,
+      mutationsEnabled: false,
+      initialized: false,
+      storeOpen: false,
+      schemaVersion: CHAT_OPERATION_V2_SCHEMA_VERSION,
+    },
+);
 // ── C2: Tighten CORS ──
 // The server hosts powerful local file-system endpoints (open / save-as /
 // delete-file / import / export / fs/list). Default cors() echoes any Origin,
@@ -142,7 +268,8 @@ app.use((req, res, next) => {
   const isSseEndpoint =
     req.path === '/api/run/events' ||
     req.path === '/api/state/events' ||
-    req.path === '/api/run/workflow/events';
+    req.path === '/api/run/workflow/events' ||
+    req.path === '/api/chat/operations/events';
   const queryToken = isSseEndpoint && typeof req.query.auth === 'string' ? req.query.auth : null;
   const cookieToken = isSseEndpoint ? cookieValue(req.headers.cookie, 'tagma_auth') : null;
   const token =
@@ -240,6 +367,15 @@ app.use((req, res, next) => {
   return next();
 });
 
+// V2 dirty-canvas evidence can legitimately exceed the legacy 5 MiB JSON
+// ceiling. Parse only the exact opt-in operation subtree with its protocol
+// limit, then leave every other route on the narrower global budget.
+registerChatOperationV2MutationFence(
+  app,
+  chatOperationV2Service !== null && !chatOperationV2MutationsEnabled,
+);
+registerChatOperationV2BodyParser(app, chatOperationV2MutationsEnabled);
+
 app.use(express.json({ limit: '5mb' }));
 
 // ── Per-request workspace resolution ──
@@ -333,6 +469,10 @@ app.use((req, res, next) => {
     // Ephemeral diagnostics lifecycle and renderer reports are side logs, not
     // pipeline mutations, and must never advance a workspace revision.
     '/api/diagnostics/',
+    // Chat Operation V2 mutations carry their own protocol generation/version
+    // CAS and must not be coupled to the renderer's general workspace revision.
+    '/api/chat/operations',
+    '/api/chat/control',
     // Compile reads YAML off disk and writes a sibling .compile.log — no
     // mutation of ws.config / yamlPath / layout. It was falling through to
     // the generic mutation branch which pre-emptively bumped stateRevision
@@ -419,6 +559,64 @@ cleanupStaleUserDist();
 const distDir = resolveStaticAssetsDir(import.meta.dirname);
 const servedDistDir = existsSync(distDir) ? distDir : null;
 
+function chatOperationV2WorkspaceFor(workDir: string) {
+  const direct = workspaceRegistry.get(workDir);
+  if (direct?.workDir) return direct;
+  let canonical: string;
+  try {
+    canonical = realpathSync.native(workDir);
+  } catch {
+    throw new Error('The authenticated Chat Operation workspace is unavailable.');
+  }
+  const identity = process.platform === 'win32' ? canonical.toLowerCase() : canonical;
+  for (const key of workspaceRegistry.keys()) {
+    const candidate = workspaceRegistry.get(key);
+    if (!candidate?.workDir) continue;
+    try {
+      const candidateCanonical = realpathSync.native(candidate.workDir);
+      const candidateIdentity =
+        process.platform === 'win32' ? candidateCanonical.toLowerCase() : candidateCanonical;
+      if (candidateIdentity === identity) return candidate;
+    } catch {
+      // Ignore a workspace that disappeared while resolving this authority.
+    }
+  }
+  throw new Error('The authenticated Chat Operation workspace is unavailable.');
+}
+
+function chatOperationV2HostInventoryFor(workDir: string) {
+  const workspace = chatOperationV2WorkspaceFor(workDir);
+  return {
+    workspace,
+    inventory: buildChatOperationV2HostInventory({
+      canonicalWorkspaceRoot: workDir,
+      revision: workspace.stateRevision,
+      currentCanvasPath: workspace.yamlPath,
+      sessionOwnedPath: null,
+      manualNewDraftPath: workspace.manualNewPipelineYamlPath,
+    }),
+  };
+}
+
+function ensureChatOperationV2StartupMigration(workDir: string): void {
+  if (!chatOperationV2MigrationService || !chatOperationV2Service) return;
+  const { workspace } = chatOperationV2HostInventoryFor(workDir);
+  const context = chatOperationV2Service.getWorkspaceMigrationContext(workDir);
+  if (chatOperationV2MigratedWorkspaces.has(context.workspaceScopeId)) return;
+  const suffix = createHash('sha256')
+    .update(`tagma-chat-operation-v2-startup-migration\0${context.workspaceScopeId}`)
+    .digest('hex')
+    .slice(0, 48);
+  chatOperationV2MigrationService.runStartupLegacyImport({
+    workspace,
+    workspaceScopeId: context.workspaceScopeId,
+    migrationId: `migration-${suffix}`,
+    plannedAtMs: context.createdAt,
+    completedResults: [],
+  });
+  chatOperationV2MigratedWorkspaces.add(context.workspaceScopeId);
+}
+
 // Register route groups. Order matches the original file so anything that
 // relies on Express's first-match semantics still wins in the same place.
 registerPipelineRoutes(app);
@@ -438,6 +636,103 @@ registerSidecarRoutes(app);
 registerReleaseRoutes(app);
 registerHotupdateRoutes(app);
 registerChatBridgeRoutes(app);
+registerChatOperationV2Routes(
+  app,
+  chatOperationV2Service
+    ? chatOperationV2MutationsEnabled
+      ? {
+          enabled: true,
+          mutationsEnabled: true,
+          service: chatOperationV2Service,
+          createInputResolver: (workDir, request) => {
+            ensureChatOperationV2StartupMigration(workDir);
+            const { workspace, inventory } = chatOperationV2HostInventoryFor(workDir);
+            const seedOptions = buildOpencodeSeedOptions(workspace);
+            return resolveChatOperationV2CreateAdmission(request, {
+              inventory: inventory.inventory,
+              candidates: inventory.candidates,
+              agentPolicy: {
+                schemaVersion: 1,
+                classifier: 'tagma-chat-pipeline-intent-v2',
+                tools: { '*': false, StructuredOutput: true },
+              },
+              settings: {
+                schemaVersion: 1,
+                agentMaxSteps: seedOptions.agentMaxSteps ?? null,
+                pythonToolsEnabled: Boolean(seedOptions.pythonToolsEnabled),
+              },
+              capabilities: {
+                schemaVersion: 1,
+                opencodeVersion: process.env.TAGMA_OPENCODE_BUNDLED_VERSION ?? '1.18.18',
+                hostAssignedIds: true,
+                durableHistory: true,
+                structuredOutputOnly: true,
+                textReplay: true,
+              },
+              features: {
+                schemaVersion: 1,
+                protocolVersion: CHAT_OPERATION_V2_API_PROTOCOL_VERSION,
+                shadow: true,
+                mutationMode: chatOperationV2ProductionCutover ? 'production' : 'internal',
+                productionCutover: chatOperationV2ProductionCutover,
+                readonlyVerticalSlice: false,
+              },
+              // Diagnosis must be able to carry malformed pipeline YAML together
+              // with its compile diagnostics. Structural and byte validation are
+              // enforced by the strict request/snapshot sealers; this callback
+              // guards the remaining raw-string invariant without re-parsing it.
+              validateCanonicalYaml: (yaml) => {
+                if (typeof yaml !== 'string' || yaml.includes('\u0000')) {
+                  throw new TypeError('The renderer snapshot YAML is not canonical text.');
+                }
+              },
+            });
+          },
+          clarificationInputResolver: (workDir, request) => {
+            const { inventory } = chatOperationV2HostInventoryFor(workDir);
+            return {
+              operationId: request.operationId,
+              clarificationId: request.payload.requestId,
+              expectedGeneration: request.expectedGeneration,
+              expectedVersion: request.expectedVersion,
+              clientRequestId: request.clientRequestId,
+              rendererInstanceId: request.payload.rendererInstanceId,
+              text: request.payload.text,
+              candidateIds: request.payload.candidateIds,
+              attachments: request.payload.attachments,
+              inventory: inventory.inventory,
+              candidates: inventory.candidates,
+            };
+          },
+        }
+      : { enabled: true, mutationsEnabled: false, service: chatOperationV2Service }
+    : { enabled: false },
+);
+registerChatOperationV2ControlRoutes(
+  app,
+  chatOperationV2MigrationService
+    ? {
+        enabled: true,
+        action: {
+          reset: ({ workDir, clientRequestId, confirmation }) => {
+            const workspace = workspaceRegistry.get(workDir);
+            if (!workspace || workspace.workDir !== workDir) {
+              throw new Error('The authenticated Chat control workspace is unavailable.');
+            }
+            const resetIdentity = deriveChatOperationV2ResetRequestIdentity(clientRequestId);
+            const result = chatOperationV2MigrationService.resetControlData({
+              workspace,
+              ...resetIdentity,
+              clientRequestId,
+              confirmation,
+            });
+            chatOperationV2MigratedWorkspaces.clear();
+            return result;
+          },
+        },
+      }
+    : { enabled: false },
+);
 registerDiagnosticsRoutes(app);
 
 app.post('/api/shutdown', (req, res) => {
@@ -508,6 +803,8 @@ function gracefulShutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   diagnosticsHub.disable();
+  unregisterChatOperationV2Diagnostics();
+  const chatOperationV2Close = chatOperationV2Service?.close();
   console.log('[server] shutting down...');
   // Abort any active pipeline run + close run SSE connections (run.ts
   // iterates every workspace's run session internally).
@@ -535,9 +832,15 @@ function gracefulShutdown() {
     }
   }
   // Close HTTP server
-  server.close(() => {
-    console.log('[server] shutdown complete');
-    process.exit(0);
+  server.close(async () => {
+    try {
+      await chatOperationV2Close;
+      console.log('[server] shutdown complete');
+      process.exit(0);
+    } catch (err) {
+      console.error('[server] Chat Operation V2 shutdown failed:', err);
+      process.exit(1);
+    }
   });
   // Force exit after 5s if connections don't close
   setTimeout(() => process.exit(1), 5000);

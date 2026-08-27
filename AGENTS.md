@@ -81,6 +81,55 @@ Do not amend the same commit to include these files after naming them with the c
   other sessions continue; keep Retry for transient failures and recover missing legacy route
   provenance through an explicit idempotent **Save as independent pipeline** path.
 
+## ChatTurn Operation V2 Authority
+
+- Desktop Chat V2 is sidecar-owned end to end: classification, model invocations, cancellation,
+  permission/question arbitration, stage/Trial/repair, binding, usage, commit, recovery, and
+  terminal state have one Host authority. The renderer submits user decisions and frozen canvas
+  evidence and projects Host events; it never carries write or recovery authority. One operation
+  belongs exclusively to V1 or V2 for its full lifetime.
+- Persist V2 authority in the stable user-data `server-control/chat-operation-v2.sqlite` store with
+  a durable 32-byte `control-hmac-v2.key`. Never use a workspace-local, temporary, or process-random
+  fallback for operation, binding, outbox, event, WAL, or usage authority; a corrupt or unreadable
+  existing key must fail closed and may be replaced only by an explicit control-data reset.
+- Keep the control directory, key, and exact SQLite file on regular non-symlink private filesystem
+  objects (`0700` directory / `0600` files on POSIX). `canonicalPathHmac` remains the path lookup
+  identity; a separate versioned record HMAC binds scope id, canonical path, creation time, and
+  control generation. Re-authenticate keyless SQLite rows before treating them as trusted scope
+  records, and fail closed on schema/index drift or record-HMAC mismatch.
+- Write an invocation outbox record before contacting pinned OpenCode. Reuse Host-assigned session
+  and input ids, and after an unknown response reconcile admission from durable history before any
+  retry. OpenCode SSE is only a wake-up source: join its stable source event id to history, which is
+  authoritative for durable type and aggregate sequence, before projecting a Host event.
+- OpenCode 1.18.18 structured compatibility prompts require the sole internal
+  `StructuredOutput` exception beside wildcard tool denial; otherwise schema output fails. Their
+  rich result has no public durable history/message projection, so a lost successful response must
+  become provider-unavailable and must never trigger an automatic compatibility re-prompt. A later
+  explicit user retry is a new Host invocation, not recovery of the old result.
+- Packaged V2 cutover is declared in `apps/electron/package.json` with
+  `tagma.chatOperationProtocolVersion: 2`; `runtime-paths.ts` only emits
+  `TAGMA_CHAT_OPERATION_V2_SHADOW=1`, `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2`, and
+  `TAGMA_CHAT_OPERATION_V2_MIGRATION=1` when that gate passes. The control store schema version is
+  6, and schema mismatches fail closed.
+- Tool-free text compatibility prompts have a different pinned contract: public message reads are
+  still unavailable on a Host-created native session, but replaying the exact same Host message id
+  returns the cached text before and after restart without another provider call. Permit that one
+  digest-authenticated same-id replay for discussion/diagnosis recovery; reject changed caller
+  bytes before replay and never generalize it to structured classifier results.
+- Treat pending OpenCode permission and question requests as process-local evidence, not durable
+  state. Live requests are first-wins, but OpenCode 1.18.18 drops them on restart; permission
+  recreation is denied and stale question replies are not found. Persist the Host request
+  independently; after restart recover via a new controlled invocation/repair decision or an
+  explicit failure, never by claiming that the old OpenCode drain can still accept a reply.
+- `commit_decided` is the sole publish linearization point. Before it, cancellation may end as
+  `cancelled_precommit`; after it, Stop appends audit only and recovery must roll forward to a
+  published or forked result without overwriting third-party bytes. Terminal outcome, commit
+  decision, binding/result identity, artifact hashes, generation, and the exactly-once terminal
+  event are immutable; only the typed post-terminal annotation allowlist may append.
+- New V2 clients mutate Chat only through the versioned operation API with generation/version CAS.
+  Raw OpenCode prompt, interrupt, permission, move, update, and delete routes are never a renderer
+  compatibility path; version-skewed mutation attempts must fail explicitly with HTTP 426.
+
 ## Static Context Source Integrity
 
 - `static_context.file` is a required runtime dependency for prompt tasks. Missing or unreadable

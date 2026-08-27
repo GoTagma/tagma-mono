@@ -41,6 +41,8 @@ mock.module('../server/chat-compile-watcher.js', () => ({
   startChatCompileWatcher: () => {
     watcherCalls += 1;
   },
+  stopChatCompileWatcher: () => {},
+  stopAllChatCompileWatchers: () => {},
 }));
 
 const { registerOpencodeRoutes } = await import('../server/routes/opencode');
@@ -164,6 +166,8 @@ describe('OpenCode routes under a workspace YAML lock', () => {
         // runtime reports not-ready and the chat store fails closed.
         contextWindowPluginReady: false,
         contextWindowPluginSchema: 0,
+        chatOperationProtocolVersion: null,
+        chatOperationMode: 'legacy',
       });
       expect({ seedCalls, ensureCalls, restartCalls, watcherCalls }).toEqual({
         seedCalls: 0,

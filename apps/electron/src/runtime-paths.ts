@@ -88,6 +88,19 @@ export interface RuntimePaths {
   sidecarVersion: string | null;
 }
 
+export function shouldEnableChatOperationV2ProductionCutover(input: {
+  readonly declaredProtocolVersion: unknown;
+  readonly editorVersion: string | null;
+  readonly sidecarVersion: string | null;
+}): boolean {
+  return (
+    input.declaredProtocolVersion === 2 &&
+    input.editorVersion !== null &&
+    input.sidecarVersion !== null &&
+    input.editorVersion === input.sidecarVersion
+  );
+}
+
 export function executableName(platform: NodeJS.Platform = process.platform): string {
   return platform === 'win32' ? 'tagma-editor-server.exe' : 'tagma-editor-server';
 }
@@ -482,9 +495,23 @@ function readUserEditorVersion(fsPath: PathModule, userDataDir: string | undefin
   if (!userDataDir) return null;
   try {
     const editorDir = fsPath.join(userDataDir, 'editor');
-    if (!existsSync(fsPath.join(editorDir, 'dist', 'index.html'))) return null;
-    const version = readFileSync(fsPath.join(editorDir, 'dist-version.txt'), 'utf-8').trim();
-    return SIDECAR_VERSION_RE.test(version) ? version : null;
+    const distDir = fsPath.join(editorDir, 'dist');
+    if (!existsSync(fsPath.join(distDir, 'index.html'))) return null;
+    for (const versionPath of [
+      fsPath.join(editorDir, 'dist-version.txt'),
+      // Activation renames dist/ first and writes the outer version second.
+      // The in-bundle sentinel is the recoverable byte-authoritative version
+      // during that crash window and must participate in V2 skew gating.
+      fsPath.join(distDir, '.tagma-bundle-version'),
+    ]) {
+      try {
+        const version = readFileSync(versionPath, 'utf-8').trim();
+        if (SIDECAR_VERSION_RE.test(version)) return version;
+      } catch {
+        /* try the recoverable sentinel */
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -654,6 +681,7 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
     typeof metadata.updateManifestPublicKey === 'string'
       ? metadata.updateManifestPublicKey
       : undefined;
+  const chatOperationProtocolVersion = metadata.chatOperationProtocolVersion;
 
   if (options.isPackaged) {
     const sidecarDir = p.join(options.resourcesPath, 'editor-sidecar');
@@ -721,6 +749,13 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
     );
     const sidecarSource: RuntimePaths['sidecarSource'] = userOverride ? 'user' : 'bundled';
     const sidecarVersion = userOverride?.version ?? options.appVersion ?? null;
+    const activeEditorVersion =
+      readUserEditorVersion(fsPath, options.userDataDir) ?? options.appVersion ?? null;
+    const enableChatOperationV2 = shouldEnableChatOperationV2ProductionCutover({
+      declaredProtocolVersion: chatOperationProtocolVersion,
+      editorVersion: activeEditorVersion,
+      sidecarVersion,
+    });
     const env: NodeJS.ProcessEnv = withPathEnv(
       {
         ...process.env,
@@ -729,6 +764,13 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
         TAGMA_SIDECAR_ACTIVE_SOURCE: sidecarSource,
         ...(sidecarVersion ? { TAGMA_SIDECAR_ACTIVE_VERSION: sidecarVersion } : {}),
         ...(options.desktopLogFile ? { TAGMA_DESKTOP_LOG_FILE: options.desktopLogFile } : {}),
+        ...(enableChatOperationV2
+          ? {
+              TAGMA_CHAT_OPERATION_V2_SHADOW: '1',
+              TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER: '2',
+              TAGMA_CHAT_OPERATION_V2_MIGRATION: '1',
+            }
+          : {}),
         // Sidecar reads these to power the OpenCode CLI section in Settings
         // (current install check, bundled-version display, update target dir).
         TAGMA_OPENCODE_BUNDLED_DIR: p.join(options.resourcesPath, 'opencode'),
@@ -737,6 +779,14 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       sidecarPath,
       platform,
     );
+    if (!enableChatOperationV2) {
+      // Packaged activation is release-authenticated. Inherited shell values
+      // must not bypass an absent capability declaration or version skew.
+      delete env.TAGMA_CHAT_OPERATION_V2_SHADOW;
+      delete env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
+      delete env.TAGMA_CHAT_OPERATION_V2_INTERNAL_MUTATIONS;
+      delete env.TAGMA_CHAT_OPERATION_V2_MIGRATION;
+    }
     if (options.userDataDir) {
       const opencodeUserDir = p.join(options.userDataDir, 'opencode');
       env.TAGMA_OPENCODE_DB_STATE_DIR = p.join(options.userDataDir, 'opencode-state');

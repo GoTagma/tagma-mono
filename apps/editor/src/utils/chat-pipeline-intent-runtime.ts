@@ -3,11 +3,13 @@ import { getOpencodeV2Client, unwrap } from '../api/opencode-chat';
 import {
   buildChatPipelineIntentClassificationPrompt,
   resolveStructuredChatPipelineIntent,
+  TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS,
   type ChatPipelineIntentCandidate,
   type ResolvedChatPipelineIntent,
 } from './chat-pipeline-intent-classifier';
 
 export type { ResolvedChatPipelineIntent } from './chat-pipeline-intent-classifier';
+export { TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS } from './chat-pipeline-intent-classifier';
 
 export const TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT = 'tagma-pipeline-intent-classifier';
 const PIPELINE_INTENT_CLASSIFICATION_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -60,7 +62,7 @@ export async function createOpencodeChatPipelineIntentGateway(
             model: request.model,
             agent: request.agent,
             ...(request.variant ? { variant: request.variant } : {}),
-            tools: { '*': false },
+            tools: TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS,
             format: {
               type: 'json_schema',
               schema: request.schema,

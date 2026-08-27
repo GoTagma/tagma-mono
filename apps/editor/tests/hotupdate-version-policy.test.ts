@@ -85,4 +85,26 @@ describe('collectLocalTagmaVersions', () => {
       }),
     ).toEqual(['2.0.0', '2.0.1', '2.1.0', '2.0.5']);
   });
+
+  test('uses the in-bundle editor version during a sentinel-only half-activated update', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-version-policy-'));
+    tempDirs.push(root);
+    const editorUserDir = join(root, 'editor');
+    const distDir = join(editorUserDir, 'dist');
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(join(distDir, 'index.html'), '<!doctype html>');
+    writeFileSync(join(distDir, '.tagma-bundle-version'), '2.1.0\n');
+
+    const localVersions = collectLocalTagmaVersions({
+      TAGMA_EDITOR_BUNDLED_VERSION: '2.0.0',
+      TAGMA_SIDECAR_BUNDLED_VERSION: '2.0.0',
+      TAGMA_EDITOR_USER_DIR: editorUserDir,
+    });
+
+    expect(localVersions).toEqual(['2.0.0', '2.1.0']);
+    expect(() => assertHotupdateVersionUpgrade('2.1.0', localVersions)).toThrow(
+      /strictly newer than local Tagma version 2\.1\.0/i,
+    );
+    expect(() => assertHotupdateVersionUpgrade('2.1.1', localVersions)).not.toThrow();
+  });
 });
