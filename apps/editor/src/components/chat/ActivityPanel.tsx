@@ -132,15 +132,18 @@ function computeActivitySummary(
   const elapsed = formatDurationShort((last.endedAt ?? now) - last.startedAt);
   const meta = describeActivity(last);
   const detail = last.detail ? ` · ${last.detail}` : '';
+  const needsAttention =
+    last.kind === 'tool-error' ||
+    last.kind === 'operation-failed' ||
+    last.kind === 'operation-waiting';
   return {
     line: `${meta.label}${detail} · ${elapsed}`,
-    tone: last.kind === 'tool-error' ? 'text-tagma-warning' : 'text-tagma-text',
-    icon:
-      last.kind === 'tool-error' ? (
-        <AlertTriangle size={11} className="shrink-0 text-tagma-warning" />
-      ) : (
-        <Loader2 size={11} className="shrink-0 animate-spin text-tagma-muted" />
-      ),
+    tone: needsAttention ? 'text-tagma-warning' : 'text-tagma-text',
+    icon: needsAttention ? (
+      <AlertTriangle size={11} className="shrink-0 text-tagma-warning" />
+    ) : (
+      <Loader2 size={11} className="shrink-0 animate-spin text-tagma-muted" />
+    ),
   };
 }
 
@@ -215,6 +218,14 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   compacting: {
     label: 'Compacting history',
     icon: <Layers size={9} className="text-tagma-muted/70" />,
+  },
+  'operation-waiting': {
+    label: 'Waiting for input',
+    icon: <AlertTriangle size={9} className="text-tagma-warning" />,
+  },
+  'operation-failed': {
+    label: 'Chat needs attention',
+    icon: <XCircle size={9} className="text-tagma-error" />,
   },
 };
 

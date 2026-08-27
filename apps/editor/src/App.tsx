@@ -173,6 +173,14 @@ function isMissingWorkflowRunError(err: unknown): boolean {
   );
 }
 
+export function shouldSavePipelineBeforeRun(input: {
+  yamlPath: string | null;
+  isDirty: boolean;
+  yamlEditLocked: boolean;
+}): boolean {
+  return !input.yamlPath || (input.isDirty && !input.yamlEditLocked);
+}
+
 export function App() {
   const desktopMode = hasDesktopBridge();
   const config = usePipelineStore((s) => s.config);
@@ -1285,7 +1293,13 @@ export function App() {
       });
       return;
     }
-    if (!latest.yamlPath || (latest.isDirty && !yamlEditLocked)) {
+    if (
+      shouldSavePipelineBeforeRun({
+        yamlPath: latest.yamlPath,
+        isDirty: latest.isDirty,
+        yamlEditLocked,
+      })
+    ) {
       await runSaveController.request({
         needsSave: true,
         save: saveFile,

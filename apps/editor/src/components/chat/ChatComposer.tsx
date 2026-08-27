@@ -153,10 +153,12 @@ export function getChatComposerAvailability(input: {
   hasModel: boolean;
   ready: boolean;
   sending: boolean;
+  operationActive: boolean;
 }): { blockedByAnotherChatUpdate: boolean; canSend: boolean } {
+  const blockedByAnotherChatUpdate = input.sending || input.operationActive;
   return {
-    blockedByAnotherChatUpdate: input.sending,
-    canSend: input.hasContent && input.hasModel && input.ready && !input.sending,
+    blockedByAnotherChatUpdate,
+    canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,
   };
 }
 
@@ -168,6 +170,9 @@ export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
   const sending = useChatStore((s) => s.sending);
+  const operationActive = useChatStore(
+    (s) => !!s.activeChatOperationV2 && s.activeChatOperationV2.executionState !== 'terminal',
+  );
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const text = useChatStore((s) => s.composerDraft);
@@ -193,6 +198,7 @@ export function ChatComposer() {
     hasModel: !!model,
     ready,
     sending,
+    operationActive,
   });
   const stopMode = getChatComposerStopMode({ sending });
   const stopLabel = 'Stop generating';

@@ -16,6 +16,7 @@ import { useChatStore } from '../../store/chat-store';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
+import type { ChatOperationV2FailureProjection } from '../../api/chat-operations';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { TurnActivityPanel } from './ActivityPanel';
@@ -57,11 +58,110 @@ export function ChatPanel() {
           bootstrapStatus === 'idle' ||
           bootstrapStatus === 'error') && <BootstrapOverlay />}
       </div>
+      <RetryableOperationBanner />
       <CompletionWarningBanner />
       <ErrorBanner />
       <ChatComposer />
       <ProviderConnectDialog />
     </div>
+  );
+}
+
+type RetryableOperationPendingAction = 'retry' | 'change-provider' | 'discard' | null;
+
+export function RetryableOperationBannerView({
+  pendingAction,
+  failure,
+  onRetry,
+  onChangeProvider,
+  onDiscard,
+}: {
+  pendingAction: RetryableOperationPendingAction;
+  failure: ChatOperationV2FailureProjection | null;
+  onRetry: () => void;
+  onChangeProvider: () => void;
+  onDiscard: () => void;
+}) {
+  const disabled = pendingAction !== null;
+  const authoringHandoff = failure?.code === 'authoring_handoff_retry_required';
+  return (
+    <section
+      aria-label="Chat operation needs attention"
+      className="shrink-0 border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2"
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <AlertTriangle size={12} className="mt-0.5 shrink-0 text-tagma-warning" />
+        <div className="min-w-0 flex-1">
+          <div className="text-label font-sans text-tagma-text">
+            {authoringHandoff ? 'Authoring handoff needs retry' : 'Provider unavailable'}
+          </div>
+          <div className="mt-0.5 text-caption font-mono text-tagma-muted">
+            {authoringHandoff
+              ? 'The Host kept this frozen request but could not start its authoring phase.'
+              : 'The Host paused this frozen request before a provider response was available.'}
+          </div>
+          {failure && (
+            <div className="mt-1 text-caption font-mono text-tagma-muted">
+              Stage: {failure.stage} · {failure.code} · outbox: {failure.outboxStatus ?? 'none'}
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              className="btn-warning-inline"
+              disabled={disabled}
+              onClick={onRetry}
+            >
+              {pendingAction === 'retry' ? 'Retrying…' : 'Retry same request'}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={disabled}
+              onClick={onChangeProvider}
+              title="Discard this operation, restore its request, then open Connect providers"
+            >
+              {pendingAction === 'change-provider'
+                ? 'Opening providers…'
+                : 'Discard & change provider'}
+            </button>
+            <button type="button" className="btn-secondary" disabled={disabled} onClick={onDiscard}>
+              {pendingAction === 'discard' ? 'Discarding…' : 'Discard'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RetryableOperationBanner() {
+  const retryable = useChatStore(
+    (state) => state.activeChatOperationV2?.executionState === 'retryable_failure',
+  );
+  const retry = useChatStore((state) => state.retryActiveChatOperationV2);
+  const failure = useChatStore((state) => state.activeChatOperationV2Failure);
+  const changeProvider = useChatStore((state) => state.changeProviderForActiveChatOperationV2);
+  const discard = useChatStore((state) => state.discardActiveChatOperationV2);
+  const [pendingAction, setPendingAction] = useState<RetryableOperationPendingAction>(null);
+
+  if (!retryable) return null;
+  const run = (
+    action: Exclude<RetryableOperationPendingAction, null>,
+    mutation: () => Promise<void>,
+  ) => {
+    if (pendingAction !== null) return;
+    setPendingAction(action);
+    void mutation().finally(() => setPendingAction(null));
+  };
+  return (
+    <RetryableOperationBannerView
+      pendingAction={pendingAction}
+      failure={failure}
+      onRetry={() => run('retry', retry)}
+      onChangeProvider={() => run('change-provider', changeProvider)}
+      onDiscard={() => run('discard', discard)}
+    />
   );
 }
 
@@ -107,6 +207,7 @@ export function ConversationFlowBarView({ steps }: { steps: FlowStep[] }) {
   const percent = conversationFlowProgressPercent(steps);
   const majorStage = conversationFlowMajorStage(steps, activeStep);
   const terminalStatus = conversationFlowTerminalStatus(steps, activeStep);
+  const waitingForInput = activeStep.label === 'Waiting';
 
   return (
     // One slim status strip: a live stage readout over a hairline progress
@@ -124,7 +225,9 @@ export function ConversationFlowBarView({ steps }: { steps: FlowStep[] }) {
               ? 'bg-tagma-error'
               : terminalStatus === 'complete'
                 ? 'bg-tagma-accent'
-                : 'bg-tagma-accent animate-pulse-slow'
+                : waitingForInput
+                  ? 'bg-tagma-warning'
+                  : 'bg-tagma-accent animate-pulse-slow'
           }`}
         />
         <span className="min-w-0 flex-1 truncate text-tagma-text/90" title={majorStage}>
@@ -292,14 +395,21 @@ function conversationFlowStepFromActivity(
                 ? 'Step done'
                 : event.kind === 'retry'
                   ? 'Retry'
-                  : 'Compact history';
+                  : event.kind === 'operation-waiting'
+                    ? 'Waiting'
+                    : event.kind === 'operation-failed'
+                      ? 'Needs attention'
+                      : 'Compact history';
   const detail = toolKind
     ? event.kind === 'tool-running'
       ? 'Tool running'
       : event.kind === 'tool-completed'
         ? 'Tool completed'
         : 'Tool failed'
-    : event.kind === 'assistant-started' || event.kind === 'retry'
+    : event.kind === 'assistant-started' ||
+        event.kind === 'retry' ||
+        event.kind === 'operation-waiting' ||
+        event.kind === 'operation-failed'
       ? event.detail
       : undefined;
   const terminalActivity = event.kind === 'tool-completed' || event.kind === 'step-finish';
@@ -309,7 +419,7 @@ function conversationFlowStepFromActivity(
     label,
     detail,
     status:
-      event.kind === 'tool-error'
+      event.kind === 'tool-error' || event.kind === 'operation-failed'
         ? 'error'
         : canBeActive && !terminalActivity && event.endedAt === null
           ? 'active'
@@ -331,6 +441,7 @@ function conversationFlowMajorStage(steps: FlowStep[], currentStep: FlowStep): s
   if (terminalStatus === 'error') return 'Needs attention';
   if (terminalStatus === 'complete') return 'Complete';
   if (currentStep.key === 'permission') return 'Waiting for approval';
+  if (currentStep.label === 'Waiting') return 'Waiting for input';
   if (currentStep.label === 'Request') return 'Starting';
   if (currentStep.label === 'Response') return 'Responding';
   return 'Working';
@@ -399,16 +510,18 @@ export function BootstrapOverlay() {
 export function chatHeaderControlLocks(state: {
   ready: boolean;
   sending: boolean;
+  operationActive: boolean;
   yamlEditLocked: boolean;
 }): {
   modelSelectionBlocked: boolean;
   providerBlocked: boolean;
   navigationBlocked: boolean;
 } {
+  const conversationBlocked = state.sending || state.operationActive;
   return {
-    modelSelectionBlocked: !state.ready || state.sending,
-    providerBlocked: !state.ready || state.sending || state.yamlEditLocked,
-    navigationBlocked: !state.ready || state.sending,
+    modelSelectionBlocked: !state.ready || conversationBlocked,
+    providerBlocked: !state.ready || conversationBlocked || state.yamlEditLocked,
+    navigationBlocked: !state.ready || conversationBlocked,
   };
 }
 
@@ -424,6 +537,7 @@ function ChatHeader() {
   const { modelSelectionBlocked, providerBlocked, navigationBlocked } = chatHeaderControlLocks({
     ready,
     sending,
+    operationActive: !!activeOperation && activeOperation.executionState !== 'terminal',
     yamlEditLocked,
   });
   const currentSessionTitle = activeOperation

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Server } from 'node:http';
 import express from 'express';
 
 import {
@@ -24,6 +25,16 @@ const productionEnv = {
 };
 
 const tempRoots: string[] = [];
+
+async function closeTestServer(server: Server): Promise<void> {
+  if (!server.listening) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (!error || (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') resolve();
+      else reject(error);
+    });
+  });
+}
 
 afterEach(() => {
   for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -105,16 +116,11 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
     }
   });
 
-  test('allows only table-driven read methods on canonical pinned OpenCode paths', () => {
+  test('allows only table-driven non-provider reads on canonical pinned OpenCode paths', () => {
     const allowed = [
       ['GET', '/global/health'],
       ['GET', '/global/event'],
       ['GET', '/event?directory=C%3A%5Crepo%5C.tagma'],
-      ['HEAD', '/config/providers'],
-      ['GET', '/provider'],
-      ['GET', '/provider/auth'],
-      ['GET', '/api/provider/openai'],
-      ['GET', '/api/model'],
       ['GET', '/project/current'],
       ['GET', '/path'],
       ['GET', '/vcs/status'],
@@ -149,6 +155,27 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
           requestUrl,
         }),
       ).toEqual({ kind: 'allow_read' });
+    }
+
+    for (const [method, requestUrl] of [
+      ['GET', '/config/providers'],
+      ['HEAD', '/provider'],
+      ['GET', '/provider/auth'],
+      ['GET', '/api/provider'],
+      ['GET', '/api/provider/openai'],
+      ['GET', '/api/model'],
+    ] as const) {
+      expect(
+        evaluateChatOperationV2RendererProxyPolicy({
+          env: productionEnv,
+          method,
+          requestUrl,
+        }),
+      ).toEqual({
+        kind: 'reject_protocol_mismatch',
+        status: 426,
+        body: CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH,
+      });
     }
   });
 
@@ -356,9 +383,7 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
       expect(ungated.status).toBe(426);
       expect(await ungated.json()).toEqual(CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH);
     } finally {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+      await closeTestServer(server);
       if (previousShadow === undefined) delete process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
       else process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = previousShadow;
       if (previousCutover === undefined) {
@@ -402,9 +427,7 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
       expect(response.status).toBe(426);
       expect(await response.json()).toEqual(CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH);
     } finally {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+      await closeTestServer(server);
       if (previousShadow === undefined) delete process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
       else process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = previousShadow;
       if (previousCutover === undefined) {

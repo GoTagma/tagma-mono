@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { types as utilTypes } from 'node:util';
 
 import type { ChatPipelineIntentCandidate } from '../../shared/chat-pipeline-intent-classifier.js';
+import { isValidChatPipelineRepairAttempts } from '../../shared/chat-pipeline-repair-limit.js';
 import type { ChatOperationV2CreateRequest } from './api-requests.js';
 import type { CreateAndDispatchReadonlyInput } from './service.js';
 import type { ChatInventorySnapshot } from './snapshots.js';
@@ -38,6 +39,8 @@ export interface ChatOperationV2HostAdmissionAuthority {
   readonly agentPolicy: ChatOperationV2HostAuthorityValue;
   /** Host-owned effective settings, with credentials and authored text omitted. */
   readonly settings: ChatOperationV2HostAuthorityValue;
+  /** Host-owned repair budget read from the effective workspace settings. */
+  readonly repairMaxAttempts: number;
   /** Sidecar/runtime capabilities proved by the installed build. */
   readonly capabilities: ChatOperationV2HostAuthorityValue;
   /** Exact server-side feature/cutover state for this admission. */
@@ -186,6 +189,9 @@ export function resolveChatOperationV2CreateAdmission(
   authority: ChatOperationV2HostAdmissionAuthority,
 ): CreateAndDispatchReadonlyInput {
   assertInventoryParity(authority.inventory, authority.candidates);
+  if (!isValidChatPipelineRepairAttempts(authority.repairMaxAttempts)) {
+    invalidAuthority('repairMaxAttempts is outside the supported Host settings range.');
+  }
   const payload = request.payload;
   const dirtySnapshot = payload.dirtySnapshot;
   if (
@@ -218,11 +224,15 @@ export function resolveChatOperationV2CreateAdmission(
     model: payload.model,
     variant: payload.variant,
     agentPolicyHash: hashChatOperationV2HostAuthority('agent-policy', authority.agentPolicy),
-    settingsHash: hashChatOperationV2HostAuthority('settings', authority.settings),
+    settingsHash: hashChatOperationV2HostAuthority('settings', {
+      effective: authority.settings,
+      repairMaxAttempts: authority.repairMaxAttempts,
+    }),
     capabilityHash: hashChatOperationV2HostAuthority('capabilities', authority.capabilities),
     featureHash: hashChatOperationV2HostAuthority('features', authority.features),
     rendererInstanceId: payload.rendererInstanceId,
     conversationId: payload.conversationId,
+    repairMaxAttempts: authority.repairMaxAttempts,
     inventory: authority.inventory,
     candidates: Object.freeze(
       authority.candidates.map((candidate) => Object.freeze({ ...candidate })),

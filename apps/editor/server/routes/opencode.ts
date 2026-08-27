@@ -31,6 +31,7 @@ import {
 import { seedOpencodeArtifacts } from '../opencode-seed.js';
 import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
 import { waitForOpencodeContextWindowPluginReady } from '../opencode-context-window-plugin.js';
+import { readManagedOpenCodeProviderState } from '../opencode-provider-state.js';
 import { startChatCompileWatcher } from '../chat-compile-watcher.js';
 import {
   CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH,
@@ -38,6 +39,7 @@ import {
   evaluateChatOperationV2RendererProxyPolicy,
   sanitizeChatOperationV2RendererProxyRequestUrl,
 } from '../chat-operations/proxy-policy.js';
+import { chatOperationV2ProviderFailureCode } from '../chat-operations/failure-codes.js';
 import { requireWorkspace } from '../require-workspace.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
 import { S } from '../state.js';
@@ -534,6 +536,44 @@ export function registerOpencodeRoutes(app: express.Express): void {
   // ─── Chat bootstrap endpoint ────────────────────────────────────────────
   // Bootstrap seeds and starts the workspace runtime before publishing the
   // stable same-origin proxy base URL to the renderer.
+
+  app.get('/api/opencode/chat/provider-state', async (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    if (!ws.workDir) {
+      return res.status(400).json({ error: 'Workspace directory is not set' });
+    }
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    const abortIfOpen = () => {
+      if (!res.writableEnded) controller.abort();
+    };
+    req.once('aborted', abort);
+    res.once('close', abortIfOpen);
+    try {
+      const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
+      const handle = await ensureOpencode(tagmaCwd);
+      const state = await readManagedOpenCodeProviderState(handle, {
+        signal: controller.signal,
+        onUnavailable: (area, error) => {
+          console.warn(
+            `[opencode] provider-state ${area} unavailable (${chatOperationV2ProviderFailureCode(error)})`,
+          );
+        },
+      });
+      res.json(state);
+    } catch (error) {
+      console.warn(
+        `[opencode] provider-state request failed (${chatOperationV2ProviderFailureCode(error)})`,
+      );
+      if (!res.headersSent && !res.writableEnded) {
+        res.status(502).json({ error: 'OpenCode provider state is unavailable.' });
+      }
+    } finally {
+      req.off('aborted', abort);
+      res.off('close', abortIfOpen);
+    }
+  });
 
   // Renderer requests stay on the sidecar origin. The sidecar replaces its
   // own Bearer credential with OpenCode's Basic credential, then uses the raw

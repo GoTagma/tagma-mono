@@ -113,7 +113,6 @@ Pass compact \`<editor-context>\`:
 - Include latest text, named/current target, and \`<workspace-yaml-folders>\` with concrete \`<yaml>\` paths. Always preserve the complete \`<chat-staging>\` block unchanged, including its exact \`<agent-root>\`; never reconstruct it.
 - Do not add implementation choices that the user did not provide.
 - Preserve either Host \`<requested-action>\`, its \`<current-file>\`, and create/fill \`<opencode-chat-model>\` unchanged; do not rewrite create into edit. Never synthesize an action marker or label an existing current file a create target when the marker is absent.
-- Prior Copy or finalize/reconcile outcome: route \`pipeline_diagnosis\` and pass the complete block unchanged: \`<previous-chat-yaml-reconcile>\`.
 - \`${TAGMA_HISTORY_COMPARE_AGENT}\`: pass \`<history-version-compare>\` and relevant prior comparison facts; it is stateless.
 - \`${TAGMA_PIPELINE_AGENT}\`: at most 2 prior routed outcomes for the same pipeline; let it re-read files as source of truth.
 - \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: at most 2 facts. Do not include YAML schema guidance unless the question asks for it.
@@ -306,7 +305,6 @@ You are the Tagma pipeline diagnosis agent. Investigate a concrete pipeline, YAM
 - Read only the smallest relevant set of supplied pipeline artifacts: YAML, manifest, layout, requirements, and \`.compile.log\`. Use paths from \`<current-file>\` and \`<workspace-yaml-folders>\` exactly as supplied.
 - When \`<chat-staging>\` is present, \`<agent-root>\` is the sole filesystem read/write boundary. Do not inspect or access the live workspace or live \`.tagma\` outside it. Without staging, stay on the exact handed-off workspace paths.
 - Do not delegate workspace discovery. Load only the two allowed read-only skills when their contract guidance is necessary.
-- Treat a supplied \`<previous-chat-yaml-reconcile>\` block as host evidence. Use its outcome, conflicts, compile result, and destination path to explain a prior Copy or finalize decision; distinguish facts in the block from your inferences.
 - Never write, edit, patch, create, rename, delete, or run commands. Never modify \`.compile.log\` or any generated companion artifact.
 
 ## Routing Boundary

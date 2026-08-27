@@ -48,6 +48,7 @@ function operation(patch: Partial<ChatOperationV2Projection> = {}): ChatOperatio
     version: 1,
     phase: 'executing_readonly',
     waitReason: null,
+    executionState: 'running',
     terminalOutcome: null,
     createdAt: 100,
     updatedAt: 101,
@@ -59,7 +60,7 @@ function operation(patch: Partial<ChatOperationV2Projection> = {}): ChatOperatio
 
 function inventory(currentCanvas = false) {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     revision: 1,
     digest: 'a'.repeat(64),
     candidates: currentCanvas
@@ -84,7 +85,7 @@ function snapshot(
   return {
     protocolVersion: 2,
     snapshot: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       workspaceScopeId: 'workspace-scope-1',
       retainedFloor: 0,
       latestCursor: 0,
@@ -102,7 +103,7 @@ function detail(
   return {
     protocolVersion: 2,
     detail: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       workspaceScopeId: 'workspace-scope-1',
       operation: projectedOperation,
       userMessage: {
@@ -114,6 +115,16 @@ function detail(
       },
       inventory: inventory(),
       pendingInput,
+      failure:
+        projectedOperation.executionState === 'retryable_failure'
+          ? {
+              stage: 'classification',
+              code: 'provider_unavailable',
+              invocationId: null,
+              outboxStatus: null,
+              recordedAt: projectedOperation.updatedAt,
+            }
+          : null,
       result,
     },
   };
@@ -135,6 +146,7 @@ afterEach(async () => {
     chatOperationV2Operations: [],
     chatOperationV2Inventory: null,
     activeChatOperationV2: null,
+    activeChatOperationV2Request: null,
     chatOperationV2Connected: false,
     chatOperationV2LatestCursor: 0,
     chatOperationV2RendererInstanceId: null,
@@ -146,6 +158,8 @@ afterEach(async () => {
     pendingUserText: null,
     pendingPermissions: [],
     composerAttachments: [],
+    composerDraft: '',
+    connectOpen: false,
     sendError: null,
     completionWarning: null,
   });
@@ -161,6 +175,7 @@ test('production sends and Stop use only the operation API for one executor', as
     version: 2,
     updatedAt: 102,
     phase: 'terminal',
+    executionState: 'terminal',
     terminalOutcome: 'cancelled_precommit',
   });
   let projectedOperation = running;
@@ -212,6 +227,7 @@ test('production sends and Stop use only the operation API for one executor', as
     version: 2,
     updatedAt: 102,
     phase: 'terminal',
+    executionState: 'terminal',
     terminalOutcome: 'cancelled_precommit',
   });
   projectedOperation = running;
@@ -265,6 +281,109 @@ test('production sends and Stop use only the operation API for one executor', as
   expect(useChatStore.getState().chatOperationV2ConversationId).not.toBe(firstConversationId);
 });
 
+test('projects provider unavailability as a sealed retryable failure instead of live generation', async () => {
+  setClientWorkspace(workspace);
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  const requests: Array<{ url: string; method: string; body: unknown }> = [];
+  let retryable = operation({
+    version: 2,
+    phase: 'awaiting_input',
+    waitReason: 'provider_unavailable',
+    executionState: 'retryable_failure',
+    updatedAt: 250,
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
+    requests.push({ url, method, body });
+    if (url === '/api/chat/operations/snapshot') {
+      const correlation = useChatStore.getState();
+      retryable = operation({
+        ...retryable,
+        conversationId: correlation.chatOperationV2ConversationId!,
+        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
+      });
+      return Response.json(snapshot([retryable]));
+    }
+    if (url === '/api/chat/operations/operation-cutover-1') {
+      return Response.json(detail(retryable));
+    }
+    if (url === '/api/chat/operations/operation-cutover-1/retry') {
+      retryable = operation({
+        ...retryable,
+        version: 3,
+        updatedAt: 260,
+      });
+      return Response.json({
+        protocolVersion: 2,
+        result: { kind: 'provider_unavailable', operation: retryable },
+      });
+    }
+    if (url === '/api/chat/operations/operation-cutover-1/discard') {
+      retryable = operation({
+        ...retryable,
+        version: 4,
+        phase: 'terminal',
+        waitReason: null,
+        executionState: 'terminal',
+        terminalOutcome: 'discarded',
+        updatedAt: 270,
+      });
+      return Response.json({
+        protocolVersion: 2,
+        result: { kind: 'discarded', operation: retryable },
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as unknown as typeof fetch;
+
+  await activateChatOperationExecutionForWorkspace(workspace, {
+    chatOperationProtocolVersion: 2,
+    chatOperationMode: 'production',
+  });
+
+  expect(useChatStore.getState()).toMatchObject({
+    sending: false,
+    activeChatOperationV2: {
+      operationId: 'operation-cutover-1',
+      executionState: 'retryable_failure',
+    },
+    pendingActivity: [
+      {
+        kind: 'operation-failed',
+        startedAt: 100,
+        endedAt: 250,
+        detail: 'Provider unavailable',
+      },
+    ],
+  });
+
+  await useChatStore.getState().retryActiveChatOperationV2();
+  expect(
+    requests.find(({ url }) => url === '/api/chat/operations/operation-cutover-1/retry'),
+  ).toMatchObject({
+    method: 'POST',
+    body: {
+      protocolVersion: 2,
+      operationId: 'operation-cutover-1',
+      expectedGeneration: 1,
+      expectedVersion: 2,
+    },
+  });
+
+  await useChatStore.getState().changeProviderForActiveChatOperationV2();
+  expect(
+    requests.find(({ url }) => url === '/api/chat/operations/operation-cutover-1/discard'),
+  ).toMatchObject({ method: 'POST', body: { expectedVersion: 3 } });
+  expect(useChatStore.getState()).toMatchObject({
+    sending: false,
+    connectOpen: true,
+    composerDraft: 'request',
+    activeChatOperationV2: { executionState: 'terminal', terminalOutcome: 'discarded' },
+  });
+});
+
 test('projects strict Host result messages into the existing transcript', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
@@ -303,6 +422,7 @@ test('projects strict Host result messages into the existing transcript', async 
         rendererInstanceId: request.payload.rendererInstanceId,
         version: 2,
         phase: 'terminal',
+        executionState: 'terminal',
         terminalOutcome: 'completed_readonly',
         hasResult: true,
         updatedAt: 140,
@@ -444,6 +564,7 @@ test('routes a projected live question reply through the qualified V2 endpoint',
     version: 4,
     phase: 'awaiting_input',
     waitReason: 'permission',
+    executionState: 'waiting_for_user',
     pendingInputKind: 'question',
   });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -512,6 +633,7 @@ test('routes restart recovery through the distinct qualified interaction endpoin
     version: 5,
     phase: 'awaiting_input',
     waitReason: 'user_recovery_choice',
+    executionState: 'waiting_for_user',
     pendingInputKind: 'question',
   });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -702,6 +824,7 @@ test('a late V2 send cannot restore old workspace UI state after activation chan
           operationId: 'operation-old-workspace',
           version: 2,
           phase: 'terminal',
+          executionState: 'terminal',
           terminalOutcome: 'completed_readonly',
         }),
       },

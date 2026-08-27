@@ -81,6 +81,44 @@ export const CHAT_OPERATION_V2_WAIT_REASONS = [
 
 export type ChatOperationV2WaitReason = (typeof CHAT_OPERATION_V2_WAIT_REASONS)[number];
 
+export const CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION = 2 as const;
+export const CHAT_OPERATION_V2_EXECUTION_STATES = [
+  'running',
+  'waiting_for_user',
+  'retryable_failure',
+  'terminal',
+] as const;
+export type ChatOperationV2ExecutionState = (typeof CHAT_OPERATION_V2_EXECUTION_STATES)[number];
+
+export const CHAT_OPERATION_V2_FAILURE_STAGES = [
+  'classification',
+  'readonly',
+  'authoring',
+  'repair',
+  'verification',
+  'operation',
+] as const;
+export const CHAT_OPERATION_V2_INVOCATION_STATUSES = [
+  'prepared',
+  'submitted_unknown',
+  'admitted',
+  'running',
+  'settled',
+  'interrupted',
+  'failed_terminal',
+] as const;
+export type ChatOperationV2FailureStage = (typeof CHAT_OPERATION_V2_FAILURE_STAGES)[number];
+export type ChatOperationV2InvocationStatus =
+  (typeof CHAT_OPERATION_V2_INVOCATION_STATUSES)[number];
+
+export interface ChatOperationV2FailureProjection {
+  readonly stage: ChatOperationV2FailureStage;
+  readonly code: string;
+  readonly invocationId: string | null;
+  readonly outboxStatus: ChatOperationV2InvocationStatus | null;
+  readonly recordedAt: number;
+}
+
 export const CHAT_OPERATION_V2_TERMINAL_OUTCOMES = [
   'completed_readonly',
   'completed_noop',
@@ -378,6 +416,7 @@ export interface ChatOperationV2Projection {
   readonly version: number;
   readonly phase: ChatOperationV2Phase;
   readonly waitReason: ChatOperationV2WaitReason;
+  readonly executionState: ChatOperationV2ExecutionState;
   readonly terminalOutcome: ChatOperationV2TerminalOutcome | null;
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -395,7 +434,7 @@ export interface ChatOperationV2InventoryCandidate {
 }
 
 export interface ChatOperationV2Inventory {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: typeof CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION;
   readonly revision: number;
   readonly digest: string;
   readonly candidates: readonly ChatOperationV2InventoryCandidate[];
@@ -508,12 +547,13 @@ export interface ChatOperationV2ResultProjection {
 }
 
 export interface ChatOperationV2OperationDetail {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: typeof CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION;
   readonly workspaceScopeId: string;
   readonly operation: ChatOperationV2Projection;
   readonly userMessage: ChatOperationV2ProjectedUserMessage;
   readonly inventory: ChatOperationV2Inventory;
   readonly pendingInput: ChatOperationV2PendingInput | null;
+  readonly failure: ChatOperationV2FailureProjection | null;
   readonly result: ChatOperationV2ResultProjection | null;
 }
 
@@ -686,7 +726,7 @@ export type ChatOperationV2CancelMutationResult = Extract<
 >;
 
 export interface ChatOperationV2Snapshot {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: typeof CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION;
   readonly workspaceScopeId: string;
   readonly operations: readonly ChatOperationV2Projection[];
   readonly retainedFloor: number;
@@ -774,6 +814,7 @@ const OPERATION_KEYS = [
   'version',
   'phase',
   'waitReason',
+  'executionState',
   'terminalOutcome',
   'createdAt',
   'updatedAt',
@@ -1308,6 +1349,7 @@ function parseOperation(value: unknown): ChatOperationV2Projection {
   if (
     !includesValue(CHAT_OPERATION_V2_PHASES, value.phase) ||
     !includesValue(CHAT_OPERATION_V2_WAIT_REASONS, value.waitReason) ||
+    !includesValue(CHAT_OPERATION_V2_EXECUTION_STATES, value.executionState) ||
     (value.terminalOutcome !== null &&
       !includesValue(CHAT_OPERATION_V2_TERMINAL_OUTCOMES, value.terminalOutcome)) ||
     typeof value.hasResult !== 'boolean' ||
@@ -1317,6 +1359,10 @@ function parseOperation(value: unknown): ChatOperationV2Projection {
     )
   ) {
     invalid('operation orthogonal state is invalid');
+  }
+
+  if (value.executionState !== expectedExecutionState(value.phase, value.waitReason)) {
+    invalid('operation execution state is inconsistent');
   }
 
   const terminal = value.phase === 'terminal';
@@ -1350,6 +1396,28 @@ function parseOperation(value: unknown): ChatOperationV2Projection {
     invalid('operation pending input has no matching wait state');
   }
   return value as unknown as ChatOperationV2Projection;
+}
+
+function expectedExecutionState(
+  phase: ChatOperationV2Phase,
+  waitReason: ChatOperationV2WaitReason,
+): ChatOperationV2ExecutionState | null {
+  if (phase === 'terminal') return 'terminal';
+  if (phase !== 'awaiting_input') return 'running';
+  switch (waitReason) {
+    case 'provider_unavailable':
+    case 'user_retry':
+      return 'retryable_failure';
+    case 'clarification':
+    case 'permission':
+    case 'renderer_snapshot':
+    case 'user_recovery_choice':
+      return 'waiting_for_user';
+    case 'retry_backoff':
+      return 'running';
+    case null:
+      return null;
+  }
 }
 
 function parseWake(value: unknown): ChatOperationV2Wake {
@@ -1469,7 +1537,7 @@ function parseInventory(value: unknown): ChatOperationV2Inventory {
   if (
     !isPlainRecord(value) ||
     !hasExactKeys(value, ['schemaVersion', 'revision', 'digest', 'candidates']) ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION ||
     !isNonNegativeInteger(value.revision) ||
     !isHash(value.digest) ||
     !Array.isArray(value.candidates) ||
@@ -1486,7 +1554,7 @@ function parseInventory(value: unknown): ChatOperationV2Inventory {
     invalid('inventory projection contains duplicate candidates');
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
     revision: value.revision,
     digest: value.digest,
     candidates,
@@ -1781,6 +1849,31 @@ function parseResultProjection(value: unknown): ChatOperationV2ResultProjection 
   };
 }
 
+function parseFailureProjection(value: unknown): ChatOperationV2FailureProjection | null {
+  if (value === null) return null;
+  if (
+    !isPlainRecord(value) ||
+    !hasExactKeys(value, ['stage', 'code', 'invocationId', 'outboxStatus', 'recordedAt']) ||
+    !includesValue(CHAT_OPERATION_V2_FAILURE_STAGES, value.stage) ||
+    typeof value.code !== 'string' ||
+    !PROJECTION_SAFE_CODE.test(value.code) ||
+    (value.invocationId !== null && !projectionHostId(value.invocationId)) ||
+    (value.outboxStatus !== null &&
+      !includesValue(CHAT_OPERATION_V2_INVOCATION_STATUSES, value.outboxStatus)) ||
+    !isNonNegativeInteger(value.recordedAt) ||
+    (value.invocationId === null) !== (value.outboxStatus === null)
+  ) {
+    invalid('operation failure projection is invalid');
+  }
+  return {
+    stage: value.stage,
+    code: value.code,
+    invocationId: value.invocationId,
+    outboxStatus: value.outboxStatus,
+    recordedAt: value.recordedAt,
+  };
+}
+
 function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
   if (
     !isPlainRecord(value) ||
@@ -1791,9 +1884,10 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
       'userMessage',
       'inventory',
       'pendingInput',
+      'failure',
       'result',
     ]) ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION ||
     !projectionHostId(value.workspaceScopeId)
   ) {
     invalid('operation detail projection is invalid');
@@ -1802,6 +1896,7 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
   const userMessage = parseProjectedUserMessage(value.userMessage);
   const inventory = parseInventory(value.inventory);
   const pendingInput = parsePendingInput(value.pendingInput);
+  const failure = parseFailureProjection(value.failure);
   const result = parseResultProjection(value.result);
   if (
     userMessage.operationId !== operation.operationId ||
@@ -1817,17 +1912,20 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
         (result.purpose === 'authoring' && result.terminalOutcome === 'completed_readonly') ||
         (result.purpose !== 'authoring' && result.terminalOutcome !== 'completed_readonly'))) ||
     operation.hasResult !== (result !== null) ||
-    operation.pendingInputKind !== (pendingInput?.kind ?? null)
+    operation.pendingInputKind !== (pendingInput?.kind ?? null) ||
+    (operation.executionState === 'retryable_failure') !== (failure !== null) ||
+    (failure !== null && failure.recordedAt > operation.updatedAt)
   ) {
     invalid('operation detail linkage is inconsistent');
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
     workspaceScopeId: value.workspaceScopeId,
     operation,
     userMessage,
     inventory,
     pendingInput,
+    failure,
     result,
   };
 }
@@ -2398,7 +2496,7 @@ export async function fetchChatOperationV2Snapshot(
   assertProtocolVersion(value);
   const snapshot = value.snapshot;
   if (
-    snapshot.schemaVersion !== 1 ||
+    snapshot.schemaVersion !== CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION ||
     !projectionHostId(snapshot.workspaceScopeId) ||
     !Array.isArray(snapshot.operations) ||
     !isNonNegativeInteger(snapshot.retainedFloor) ||
@@ -2412,7 +2510,7 @@ export async function fetchChatOperationV2Snapshot(
     invalid('snapshot contains duplicate operations');
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
     workspaceScopeId: snapshot.workspaceScopeId,
     operations,
     retainedFloor: snapshot.retainedFloor,

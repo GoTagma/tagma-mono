@@ -5,7 +5,7 @@ import {
 } from '../../shared/diagnostics.js';
 
 const MAX_CURRENT_CHAT_MESSAGES = 25;
-const MAX_CHAT_SESSIONS = 100;
+const MAX_CHAT_OPERATIONS = 100;
 const MAX_RUN_LOGS = 250;
 const MAX_TOOL_CALL_SUMMARIES = 100;
 const MAX_RUN_TASK_STATUSES = 250;
@@ -331,6 +331,10 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
     ? chat.messages.slice(-MAX_CURRENT_CHAT_MESSAGES)
     : [];
   const messageCount = Array.isArray(chat.messages) ? chat.messages.length : 0;
+  const sourceOperations = Array.isArray(chat.chatOperationV2Operations)
+    ? chat.chatOperationV2Operations
+    : [];
+  const operations = sourceOperations.slice(-MAX_CHAT_OPERATIONS);
   const sourceLogs = Array.isArray(run.logs) ? run.logs : [];
   const logs = sourceLogs.slice(-MAX_RUN_LOGS);
   const sourcePipelineLogs = Array.isArray(run.pipelineLogs) ? run.pipelineLogs : [];
@@ -357,12 +361,17 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
         reasoningEffort: chat.reasoningEffort ?? null,
         executionMode: chat.chatExecutionMode ?? null,
         activeOperation: chat.activeChatOperationV2 ?? null,
-        operations: Array.isArray(chat.chatOperationV2Operations)
-          ? chat.chatOperationV2Operations.slice(-MAX_CHAT_SESSIONS)
-          : [],
-        operationCount: Array.isArray(chat.chatOperationV2Operations)
-          ? chat.chatOperationV2Operations.length
-          : 0,
+        activeFailure: chat.activeChatOperationV2Failure ?? null,
+        operations,
+        operationCount: sourceOperations.length,
+        returnedOperationCount: operations.length,
+        omittedOperationCount: Math.max(0, sourceOperations.length - operations.length),
+        operationEvidence: {
+          layer: 'renderer-diagnostics-operation-window',
+          limit: MAX_CHAT_OPERATIONS,
+          truncated: sourceOperations.length > operations.length,
+          omittedOperationCount: Math.max(0, sourceOperations.length - operations.length),
+        },
         connected: chat.chatOperationV2Connected === true,
         latestCursor: chat.chatOperationV2LatestCursor ?? null,
         messages,

@@ -354,15 +354,6 @@ test('tagma-router keeps external workspace data writes out of pipeline authorin
   expect(doc).toContain('Mixed requests delegate only YAML.');
 });
 
-test('tagma-router preserves host reconciliation evidence for Copy and finalize diagnosis', () => {
-  const doc = buildTagmaRouterAgent();
-
-  expect(doc).toContain('<previous-chat-yaml-reconcile>');
-  expect(doc).toContain('Copy or finalize/reconcile outcome');
-  expect(doc).toContain('pass the complete block unchanged');
-  expect(doc).toContain('pipeline_diagnosis');
-});
-
 test('tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts and compile logs', () => {
   const doc = buildTagmaPipelineDiagnosisAgent();
 
@@ -383,7 +374,7 @@ test('tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts a
   expect(doc).toContain('tagma-yaml-contract: "allow"');
   expect(doc).toContain('tagma-native-primitives: "allow"');
   expect(doc).toContain('YAML, manifest, layout, requirements, and `.compile.log`');
-  expect(doc).toContain('<previous-chat-yaml-reconcile>');
+  expect(doc).not.toContain('<previous-chat-yaml-reconcile>');
   expect(doc).toContain('ROUTE_MISMATCH: pipeline_work');
   expect(doc).not.toContain('tagma_yaml_skeleton: allow');
   expect(doc).not.toContain('tagma_placement_plan: allow');

@@ -40,6 +40,10 @@ import type {
 import { createInitialChatOperationV2State, type ChatOperationV2State } from './types.js';
 import type { ChatOperationV2AuthoringDispatchResult } from './authoring.js';
 import {
+  chatOperationV2ProviderFailureCode,
+  safeChatOperationV2FailureCode,
+} from './failure-codes.js';
+import {
   appendChatOperationV2ResultMessage,
   parseChatOperationV2ResultMessage,
   sealChatOperationV2Result,
@@ -169,6 +173,8 @@ export interface CreateAndDispatchChatOperationV2Input {
   readonly rendererInstanceId: string;
   /** Renderer correlation only; never reused as an OpenCode session or binding identity. */
   readonly conversationId: string;
+  /** Host-frozen workspace repair budget. Renderer payloads cannot supply this value. */
+  readonly repairMaxAttempts?: number;
   readonly inventory: ChatInventorySnapshot;
   readonly candidates: readonly ChatPipelineIntentCandidate[];
   readonly dirtySnapshot: ChatOperationV2DirtySnapshotInput | null;
@@ -642,7 +648,9 @@ export class ChatOperationV2ReadonlyOrchestrator {
       purpose: 'classifier',
       admittedAt: createdAt,
     });
-    const initial = createInitialChatOperationV2State();
+    const initial = createInitialChatOperationV2State({
+      repairMaxAttempts: input.repairMaxAttempts,
+    });
     const created = this.persistence.createOperation({
       operationId: authorityOperationId,
       clientRequestId: input.clientRequestId,
@@ -987,7 +995,20 @@ export class ChatOperationV2ReadonlyOrchestrator {
       const usage = this.persistence.getUsageLedgerForInvocation(identity.invocationId);
       if (usage?.status === 'pending') {
         const unavailable = this.completeUsage(usage, null, this.now());
-        this.appendUsageEvent(current.operationId, unavailable, 'unavailable', reconciled.code);
+        this.appendUsageEvent(
+          current.operationId,
+          unavailable,
+          'unavailable',
+          safeChatOperationV2FailureCode(reconciled.code, 'provider_unavailable'),
+        );
+      }
+      const outbox = this.persistence.getInvocationOutbox(identity.invocationId);
+      if (outbox) {
+        this.failInvocationOutbox(
+          current.operationId,
+          outbox,
+          safeChatOperationV2FailureCode(reconciled.code, 'provider_unavailable'),
+        );
       }
       const waiting = this.transition(current, {
         ...stateOf(current),
@@ -1232,14 +1253,17 @@ export class ChatOperationV2ReadonlyOrchestrator {
     ) {
       return Promise.resolve({ kind: 'stale', operation: current });
     }
-    if (current.phase !== 'awaiting_input' || current.waitReason !== 'provider_unavailable') {
+    if (
+      current.phase !== 'awaiting_input' ||
+      (current.waitReason !== 'provider_unavailable' && current.waitReason !== 'user_retry')
+    ) {
       return Promise.resolve({ kind: 'in_progress', operation: current });
     }
     const recovering = this.recoveryResumes.get(input.operationId);
     if (recovering) return recovering;
     const active = this.dispatches.get(input.operationId);
     if (active) return active;
-    const pending = this.retryProviderUnavailable(input).finally(() => {
+    const pending = this.retryAwaitingInput(input).finally(() => {
       if (this.dispatches.get(input.operationId) === pending) {
         this.dispatches.delete(input.operationId);
       }
@@ -1463,7 +1487,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
     return this.runClassifier(context);
   }
 
-  private async retryProviderUnavailable(
+  private async retryAwaitingInput(
     input: RetryChatOperationV2Input,
   ): Promise<ChatOperationV2ReadonlyDispatchResult> {
     const context = this.contexts.get(input.operationId);
@@ -1476,39 +1500,57 @@ export class ChatOperationV2ReadonlyOrchestrator {
     ) {
       return { kind: 'stale', operation: current };
     }
-    if (current.phase !== 'awaiting_input' || current.waitReason !== 'provider_unavailable') {
+    if (current.phase !== 'awaiting_input') {
+      return { kind: 'in_progress', operation: current };
+    }
+    if (current.waitReason === 'user_retry') {
+      if (context.intent?.kind === 'create' || context.intent?.kind === 'edit') {
+        return this.resultFor(current);
+      }
+      if (!context.recoveredAuthoringDeferred) {
+        return { kind: 'in_progress', operation: current };
+      }
+      // OpenCode's rich structured classifier result is not durable. After a
+      // restart, only an explicit user retry may issue a fresh invocation; the
+      // old same-id request must remain a dedupe/no-reprompt boundary.
+      context.recoveredAuthoringDeferred = false;
+      context.intent = null;
+      context.main = null;
+      context.classifier = this.invocationIdentity('classifier');
+      const classifying = this.transition(current, {
+        ...stateOf(current),
+        phase: 'classifying',
+        waitReason: null,
+        activeInvocationId: context.classifier.invocationId,
+      });
+      if (!classifying.applied) {
+        return classifying.reason === 'cas_mismatch'
+          ? { kind: 'stale', operation: classifying.operation }
+          : this.resultFor(classifying.operation);
+      }
+      return this.runClassifier(context);
+    }
+    if (current.waitReason !== 'provider_unavailable') {
       return { kind: 'in_progress', operation: current };
     }
     if (context.intent === null) {
       const classifierOutbox = this.persistence.getInvocationOutbox(
         context.classifier.invocationId,
       );
-      const classifierUsage = this.persistence.getUsageLedgerForInvocation(
-        context.classifier.invocationId,
-      );
       if (
         classifierOutbox &&
-        classifierUsage?.status === 'unavailable' &&
-        ['submitted_unknown', 'admitted', 'running'].includes(classifierOutbox.status)
+        !['settled', 'interrupted', 'failed_terminal'].includes(classifierOutbox.status)
       ) {
-        const settledAt = this.now();
-        const failed = this.persistence.updateInvocationOutbox({
-          invocationId: classifierOutbox.invocationId,
-          expectedStatus: classifierOutbox.status,
-          status: 'failed_terminal',
-          admittedAggregateSeq: classifierOutbox.admittedAggregateSeq,
-          settledAt,
-          failureCode: 'structured_response_unavailable',
-          updatedAt: settledAt,
-        });
-        if (!failed.applied) return { kind: 'stale', operation: current };
-        this.appendEvent(current.operationId, 'invocation_failed_terminal', {
-          invocationId: classifierOutbox.invocationId,
-          errorCode: 'structured_response_unavailable',
-          diagnosticCodes: ['structured_response_unavailable'],
-        });
-        context.classifier = this.invocationIdentity('classifier');
+        this.failInvocationOutbox(
+          current.operationId,
+          classifierOutbox,
+          'structured_response_unavailable',
+        );
       }
+      // An explicit retry is a new Host invocation. Reusing an earlier input
+      // id would return OpenCode's same-id cached result and could never make
+      // progress after a durable provider failure.
+      context.classifier = this.invocationIdentity('classifier');
       const classifying = this.transition(current, {
         ...stateOf(current),
         phase: 'classifying',
@@ -1523,6 +1565,14 @@ export class ChatOperationV2ReadonlyOrchestrator {
       return this.runClassifier(context);
     }
     if (context.intent.kind === 'discussion' || context.intent.kind === 'diagnosis') {
+      const previous = context.main;
+      if (previous) {
+        const outbox = this.persistence.getInvocationOutbox(previous.invocationId);
+        if (outbox && !['settled', 'interrupted', 'failed_terminal'].includes(outbox.status)) {
+          this.failInvocationOutbox(current.operationId, outbox, 'structured_response_unavailable');
+        }
+      }
+      context.main = this.invocationIdentity(context.intent.kind);
       return this.runReadonlyMain(context, context.intent);
     }
     return { kind: 'in_progress', operation: current };
@@ -1974,8 +2024,8 @@ export class ChatOperationV2ReadonlyOrchestrator {
         readSnapshot,
         signal: controller.signal,
       });
-    } catch {
-      result = { kind: 'provider_unavailable', code: 'provider_unavailable' };
+    } catch (error) {
+      result = { kind: 'provider_unavailable', code: chatOperationV2ProviderFailureCode(error) };
     } finally {
       const active = this.activeControllers.get(context.operationId);
       if (active?.controller === controller) this.activeControllers.delete(context.operationId);
@@ -1989,6 +2039,10 @@ export class ChatOperationV2ReadonlyOrchestrator {
     }
 
     if (result.kind === 'provider_unavailable' && result.submissionUnknown === true) {
+      result = {
+        ...result,
+        code: safeChatOperationV2FailureCode(result.code, 'submitted_unknown'),
+      };
       const observed = this.persistence.getInvocationOutbox(identity.invocationId) ?? outbox;
       if (observed.status === 'prepared') {
         const unknown = this.persistence.updateInvocationOutbox({
@@ -2004,6 +2058,14 @@ export class ChatOperationV2ReadonlyOrchestrator {
           });
         }
       }
+    }
+
+    if (result.kind === 'provider_unavailable' && result.submissionUnknown !== true) {
+      result = {
+        ...result,
+        code: safeChatOperationV2FailureCode(result.code, 'provider_unavailable'),
+      };
+      this.failInvocationOutbox(context.operationId, outbox, result.code);
     }
 
     if (result.kind === 'completed') {
@@ -2060,6 +2122,35 @@ export class ChatOperationV2ReadonlyOrchestrator {
         updatedAt: this.now(),
       });
     }
+  }
+
+  private failInvocationOutbox(
+    operationId: string,
+    original: StoredInvocationOutboxRecord,
+    rawFailureCode: string,
+  ): StoredInvocationOutboxRecord {
+    const failureCode = safeChatOperationV2FailureCode(rawFailureCode, 'provider_unavailable');
+    const outbox = this.persistence.getInvocationOutbox(original.invocationId) ?? original;
+    if (outbox.status === 'failed_terminal') return outbox;
+    if (outbox.status === 'settled' || outbox.status === 'interrupted') return outbox;
+    const settledAt = this.now();
+    const failed = this.persistence.updateInvocationOutbox({
+      invocationId: outbox.invocationId,
+      expectedStatus: outbox.status,
+      status: 'failed_terminal',
+      admittedAggregateSeq: outbox.admittedAggregateSeq,
+      settledAt,
+      failureCode,
+      updatedAt: settledAt,
+    });
+    if (failed.applied) {
+      this.appendEvent(operationId, 'invocation_failed_terminal', {
+        invocationId: outbox.invocationId,
+        errorCode: failureCode,
+        diagnosticCodes: [failureCode],
+      });
+    }
+    return failed.outbox;
   }
 
   private interruptOutbox(original: StoredInvocationOutboxRecord, settledAt: number): void {

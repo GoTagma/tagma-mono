@@ -100,43 +100,49 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain("updateField('opencodeChatTrialRunEnabled', v)");
   });
 
-  test('gates trial runs and uses the configured shared repair budget with default 25', () => {
-    const source = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf8');
+  test('freezes the configured repair budget and Trial consent in Host-owned V2 execution', () => {
+    const indexSource = readFileSync(join(import.meta.dir, '..', 'server', 'index.ts'), 'utf8');
+    const admissionSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'chat-operations', 'host-admission.ts'),
+      'utf8',
+    );
+    const orchestratorSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'chat-operations', 'orchestrator.ts'),
+      'utf8',
+    );
+    const authoringRuntimeSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'chat-operations', 'authoring-runtime.ts'),
+      'utf8',
+    );
+    const trialSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'chat-pipeline-trial-run.ts'),
+      'utf8',
+    );
+    const settingsSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'plugins', 'loader.ts'),
+      'utf8',
+    );
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf8');
 
-    expect(source).toContain('hasCurrentChatPipelineTrialConsent(settings)');
-    expect(source).not.toContain('settings?.opencodeChatTrialRunEnabled ?? true');
-    expect(source).toContain('settings?.opencodeChatPipelineRepairMaxAttempts ??');
-    expect(source).toContain('DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS');
-    expect(source).toContain('shouldTrialRunChatPipeline({');
-    expect(source).toContain('chatPipelineVerificationSucceeded({');
-    expect(source).toContain('chatPipelineVerificationFailureDiagnostic({');
-    expect(source).toContain('staged pipeline verification failed');
-    expect(source.match(/\{ repairAttempts: completedRepairAttempts \}/g)).toHaveLength(2);
-    expect(source).toContain("trialRun.kind === 'plan-required'");
-    expect(source).toContain('.sendInternalTrialPlanPrompt(');
-    expect(source).toContain('shouldQueueTrialPlanPrompt({');
-    expect(source).toContain('attemptsForRevision: planAttempts');
-    expect(source).toContain('totalAttemptsForLogicalTurn: totalPlanAttemptsForTurn');
-    expect(source).toContain('isValidChatPipelineTrialPlanAttempts(');
-    expect(source).toContain('trialRun.planRequest.maxAttempts');
-    expect(source).toContain('DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS');
-    expect(source).toContain('promptsPerRevision: planMaxAttempts');
-    expect(source).not.toContain('const MAX_CHAT_TRIAL_PLAN_PROMPTS = 2');
-    expect(source).toContain('maxRepairAttempts: maxAttempts');
-    expect(source).toContain('sessionCanContinue: finishedSessionCanContinue');
-    expect(source).toContain('nextPlanAttempt,\n                      planMaxAttempts,');
-    expect(source).not.toContain('maxPlanAttemptsForTurn');
-    expect(source).toContain('beginChatTrialPlanningPrompt(planningAccumulator');
-    expect(source).toContain('completeChatTrialPlanningPrompt(accumulator');
-    expect(source).toContain('mergeChatTrialPlanToolTelemetry(planningAccumulator');
-    expect(source).toContain('snapshotChatTrialPlanningTelemetry(planningAccumulator');
-    expect(source).toContain('? { planningTelemetry }');
-    expect(source).toContain('const finishedSessionCanContinue = canContinueChatSession(');
-    expect(source).toContain('setChatYamlHostTrialActive(finishedTurn.id, true, targetTrialId)');
-    expect(source).toContain('const targetTrialId = chatYamlTargetTrialId(');
-    expect(source).not.toContain('finishedSessionVisible');
-    expect(source.match(/finishedSessionId [?][?] undefined/g)).toHaveLength(4);
-    expect(source).toContain("trialRun.kind !== 'plan-required'");
-    expect(source).not.toContain('const maxAttempts = 2;');
+    expect(indexSource).toContain('const editorSettings = readEditorSettings(workspace);');
+    expect(indexSource).toContain(
+      'repairMaxAttempts: editorSettings.opencodeChatPipelineRepairMaxAttempts',
+    );
+    expect(admissionSource).toContain(
+      'isValidChatPipelineRepairAttempts(authority.repairMaxAttempts)',
+    );
+    expect(admissionSource).toContain('repairMaxAttempts: authority.repairMaxAttempts');
+    expect(orchestratorSource).toContain('repairMaxAttempts: input.repairMaxAttempts');
+    expect(settingsSource).toContain(
+      'opencodeChatPipelineRepairMaxAttempts: DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS',
+    );
+    expect(authoringRuntimeSource).toContain(
+      'return await trialRunChatYamlStage(this.workspace, {',
+    );
+    expect(authoringRuntimeSource).toContain('trustedOperationV2: true');
+    expect(trialSource).toContain('hasCurrentChatPipelineTrialConsent(editorSettings)');
+    expect(trialSource).toContain('stage.trialPlanMaxAttempts');
+    expect(appSource).not.toContain('hasCurrentChatPipelineTrialConsent');
+    expect(appSource).not.toContain('shouldTrialRunChatPipeline');
   });
 });

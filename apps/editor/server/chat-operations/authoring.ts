@@ -10,6 +10,10 @@ import {
 import { parseChatCommitPrepareRecord, type ChatCommitPrepareRecord } from './commit.js';
 import { toHostOperationEventInput } from './events.js';
 import {
+  chatOperationV2ProviderFailureCode,
+  safeChatOperationV2FailureCode,
+} from './failure-codes.js';
+import {
   CHAT_OPERATION_V2_INTERACTIVE_REQUEST_SCHEMA_VERSION,
   sealChatOperationV2InteractiveRequest,
   type ChatOperationV2InteractiveForwardingCommand,
@@ -1395,7 +1399,7 @@ export class ChatOperationV2AuthoringEngine {
             code:
               error instanceof ChatOperationV2InteractiveForwardIndeterminateError
                 ? error.code
-                : 'provider_unavailable',
+                : chatOperationV2ProviderFailureCode(error),
           };
     } finally {
       const observed = this.activeControllers.get(context.operationId);
@@ -1882,6 +1886,17 @@ export class ChatOperationV2AuthoringEngine {
     let outbox =
       this.persistence.getInvocationOutbox(originalOutbox.invocationId) ?? originalOutbox;
     const timestamp = this.now();
+    const safeUnavailableCode =
+      unavailableCode === null
+        ? null
+        : safeChatOperationV2FailureCode(
+            unavailableCode,
+            outboxStatus === 'interrupted'
+              ? 'cancelled_precommit'
+              : outboxStatus === 'submitted_unknown'
+                ? 'submitted_unknown'
+                : 'provider_unavailable',
+          );
     if (outboxStatus === 'settled' && completed) {
       if (outbox.status === 'prepared' || outbox.status === 'submitted_unknown') {
         const admitted = this.persistence.updateInvocationOutbox({
@@ -1923,24 +1938,24 @@ export class ChatOperationV2AuthoringEngine {
         admittedAggregateSeq: outbox.admittedAggregateSeq,
         settledAt: nextStatus === 'submitted_unknown' ? null : timestamp,
         failureCode:
-          nextStatus === 'failed_terminal' ? (unavailableCode ?? 'provider_unavailable') : null,
+          nextStatus === 'failed_terminal' ? (safeUnavailableCode ?? 'provider_unavailable') : null,
         updatedAt: timestamp,
       });
       if (nextStatus === 'submitted_unknown') {
         this.appendEvent(outbox.operationId, 'invocation_submission_unknown', {
           invocationId: outbox.invocationId,
-          errorCode: unavailableCode ?? 'provider_unavailable',
+          errorCode: safeUnavailableCode ?? 'provider_unavailable',
         });
       } else if (nextStatus === 'interrupted') {
         this.appendEvent(outbox.operationId, 'invocation_interrupted', {
           invocationId: outbox.invocationId,
-          reasonCode: unavailableCode ?? 'cancelled_precommit',
+          reasonCode: safeUnavailableCode ?? 'cancelled_precommit',
         });
       } else {
         this.appendEvent(outbox.operationId, 'invocation_failed_terminal', {
           invocationId: outbox.invocationId,
-          errorCode: unavailableCode ?? 'provider_unavailable',
-          diagnosticCodes: [unavailableCode ?? 'provider_unavailable'],
+          errorCode: safeUnavailableCode ?? 'provider_unavailable',
+          diagnosticCodes: [safeUnavailableCode ?? 'provider_unavailable'],
         });
       }
     }
@@ -1964,7 +1979,7 @@ export class ChatOperationV2AuthoringEngine {
         outbox.operationId,
         settled,
         settled.status,
-        settled.status === 'unavailable' ? (unavailableCode ?? 'usage_unavailable') : null,
+        settled.status === 'unavailable' ? (safeUnavailableCode ?? 'usage_unavailable') : null,
       );
     }
   }

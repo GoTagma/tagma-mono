@@ -1,25 +1,21 @@
 /**
  * Provider catalog fetching and model reconciliation helpers.
  *
- * The Connect dialog merges two opencode endpoints:
- *   - `GET /provider` → full models.dev universe + connected IDs
- *   - `GET /provider/auth` → per-provider auth method list
+ * The Host merges OpenCode's provider, auth-method, configured-provider, and
+ * native-v2 model catalogs behind one versioned sidecar endpoint. The browser
+ * never authors OpenCode SDK query coordinates.
  *
  * `fetchProviderCatalog()` returns the merged catalog; `reconcileModelPick()`
  * validates a persisted model against the current provider list and falls
  * back to opencode's own default when the pick is stale.
  */
-import {
-  fetchProviderModelCatalogV2,
-  getOpencodeClient,
-  getOpencodeV2Client,
-  getOpencodeWorkspaceKey,
-  unwrap,
-  type ProviderModelCatalogV2Snapshot,
-  type ProviderAuthMethod,
-} from '../api/opencode-chat';
+import { getOpencodeWorkspaceKey, type ProviderAuthMethod } from '../api/opencode-chat';
 import type { Provider } from '../api/opencode-chat';
+import { fetchHostOpenCodeProviderState } from '../api/opencode-provider-state';
+import type { TagmaOpenCodeProviderState } from '../../shared/opencode-provider-state.js';
 import { savePersisted, type ChatReasoningEffort, type ModelPick } from './chat-persist';
+
+type ProviderModelCatalogV2Snapshot = NonNullable<TagmaOpenCodeProviderState['modelCatalog']>;
 
 export interface ProviderCatalogEntry {
   id: string;
@@ -37,33 +33,22 @@ export interface ConfiguredProviderModels {
 export async function fetchProviderCatalog(
   workspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<ProviderCatalogEntry[]> {
-  const [client, v2Client] = await Promise.all([
-    getOpencodeClient(workspaceKey),
-    getOpencodeV2Client(workspaceKey),
-  ]);
-  const [listRes, authRes] = await Promise.all([
-    unwrap(client.provider.list()).catch((err) => {
-      console.error('[chat] provider.list failed:', err);
-      return {
-        all: [] as Array<{ id: string; name: string; env: string[] }>,
-        default: {} as Record<string, string>,
-        connected: [] as string[],
-      };
-    }),
-    unwrap(v2Client.provider.auth()).catch((err) => {
-      console.error('[chat] provider.auth failed:', err);
-      return {} as Record<string, ProviderAuthMethod[]>;
-    }),
-  ]);
-  const connectedSet = new Set(listRes.connected);
-  return listRes.all.map((p) => {
-    const registered = authRes[p.id];
+  const state = await fetchHostOpenCodeProviderState(workspaceKey);
+  if (!state.availability.providerList) {
+    throw new Error('Host provider directory is unavailable.');
+  }
+  if (!state.availability.authMethods) {
+    throw new Error('Host provider authentication directory is unavailable.');
+  }
+  const connectedSet = new Set(state.catalog.connected);
+  return state.catalog.all.map((p) => {
+    const registered = state.catalog.authMethods[p.id];
     const methods: ProviderAuthMethod[] =
-      registered && registered.length > 0 ? registered : [{ type: 'api', label: 'API Key' }];
+      registered && registered.length > 0 ? [...registered] : [{ type: 'api', label: 'API Key' }];
     return {
       id: p.id,
       name: p.name,
-      env: p.env ?? [],
+      env: [...p.env],
       connected: connectedSet.has(p.id),
       methods,
     };
@@ -73,32 +58,24 @@ export async function fetchProviderCatalog(
 export async function fetchConfiguredProviderModels(
   workspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<ConfiguredProviderModels> {
-  const client = await getOpencodeClient(workspaceKey);
-  const [legacyLoad, v2Load] = await Promise.all([
-    unwrap(client.config.providers())
-      .then((value) => ({ ok: true as const, value }))
-      .catch((error) => ({ ok: false as const, error })),
-    fetchProviderModelCatalogV2(workspaceKey)
-      .then((value) => ({ ok: true as const, value }))
-      .catch((error) => ({ ok: false as const, error })),
-  ]);
+  const state = await fetchHostOpenCodeProviderState(workspaceKey);
+  const runtimeProviders = [...state.configured.providers] as Provider[];
 
   // `/config/providers` is the authoritative configured/runtime provider
   // membership. OpenCode's native-v2 projection is metadata-only here: while
   // its catalog initializes it can be broader or incomplete, including
   // providers with no credential or providers whose model metadata is absent.
-  if (!legacyLoad.ok) throw legacyLoad.error;
-  if (!v2Load.ok) {
-    console.warn(
-      '[chat] v2 provider/model catalog failed; falling back to config.providers:',
-      v2Load.error,
-    );
-    return legacyLoad.value;
+  if (state.modelCatalog === null) {
+    console.warn('[chat] Host reports the V2 provider/model catalog unavailable.');
+    return {
+      providers: runtimeProviders,
+      default: { ...state.configured.default },
+    };
   }
 
   return {
-    providers: buildProvidersFromV2Catalog(v2Load.value, legacyLoad.value.providers),
-    default: legacyLoad.value.default ?? {},
+    providers: buildProvidersFromV2Catalog(state.modelCatalog, runtimeProviders),
+    default: { ...state.configured.default },
   };
 }
 

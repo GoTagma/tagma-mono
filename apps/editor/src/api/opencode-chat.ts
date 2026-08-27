@@ -1,8 +1,8 @@
 /**
- * Browser-side OpenCode compatibility client for read-only provider/model
- * metadata and the explicit provider-auth exception. Desktop Chat execution,
- * sessions, streaming, permissions, and recovery are owned by the Host's
- * versioned Chat Operation V2 API.
+ * Browser-side OpenCode compatibility client for the explicit provider-auth
+ * mutation exception. Provider/model discovery and all Desktop Chat
+ * execution, sessions, streaming, permissions, and recovery are owned by the
+ * Host's versioned APIs.
  */
 
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/client';
@@ -10,12 +10,10 @@ import {
   createOpencodeClient as createOpencodeV2Client,
   type ApiAuth as V2ApiAuth,
   type Auth as V2Auth,
-  type ModelV2Info,
   type OAuth as V2OAuth,
   type OpencodeClient as OpencodeV2Client,
   type ProviderAuthAuthorization as V2ProviderAuthAuthorization,
   type ProviderAuthMethod as V2ProviderAuthMethod,
-  type ProviderV2Info,
   type WellKnownAuth as V2WellKnownAuth,
 } from '@opencode-ai/sdk/v2/client';
 import type {
@@ -135,7 +133,9 @@ export type ActivityKind =
   | 'step-start'
   | 'step-finish'
   | 'retry'
-  | 'compacting';
+  | 'compacting'
+  | 'operation-waiting'
+  | 'operation-failed';
 
 export interface ActivityEvent {
   kind: ActivityKind;
@@ -437,11 +437,6 @@ export async function getOpencodeV2Client(
   return v2Client;
 }
 
-export interface ProviderModelCatalogV2Snapshot {
-  providers: ProviderV2Info[];
-  models: ModelV2Info[];
-}
-
 export async function getClientBootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const key = workspaceKey;
   let pending = bootstraps.get(key);
@@ -454,17 +449,6 @@ export async function getClientBootstrap(workspaceKey: string): Promise<ClientBo
     bootstraps.set(key, pending);
   }
   return pending;
-}
-
-export async function fetchProviderModelCatalogV2(
-  workspaceKey = currentWorkspaceKey(),
-): Promise<ProviderModelCatalogV2Snapshot> {
-  const client = await getOpencodeV2Client(workspaceKey);
-  const [providerList, modelList] = await Promise.all([
-    unwrap(client.v2.provider.list()),
-    unwrap(client.v2.model.list()),
-  ]);
-  return { providers: providerList.data, models: modelList.data };
 }
 
 /** Base URL of the opencode server for workspace-scoped diagnostic fetches. */

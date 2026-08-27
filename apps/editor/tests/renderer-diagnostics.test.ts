@@ -5,8 +5,44 @@ import {
   buildRendererDiagnosticsSnapshot,
 } from '../src/diagnostics/renderer-diagnostics.js';
 
+function operation(
+  index: number,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    operationId: `operation-${index}`,
+    conversationId: `conversation-${index}`,
+    rendererInstanceId: 'renderer-1',
+    generation: 1,
+    version: index + 1,
+    phase: 'terminal',
+    waitReason: null,
+    executionState: 'terminal',
+    terminalOutcome: 'completed_readonly',
+    createdAt: index,
+    updatedAt: index,
+    hasResult: true,
+    pendingInputKind: null,
+    ...overrides,
+  };
+}
+
 describe('renderer diagnostics snapshot', () => {
-  test('captures transient OpenCode chat and editor/run state without serializing store actions', () => {
+  test('captures V2 operation, editor, and run state without serializing store actions', () => {
+    const activeOperation = operation(2, {
+      phase: 'authoring',
+      waitReason: 'provider_unavailable',
+      executionState: 'retryable_failure',
+      terminalOutcome: null,
+      hasResult: false,
+    });
+    const activeFailure = {
+      stage: 'authoring',
+      code: 'provider_transport_unavailable',
+      invocationId: 'invocation-2',
+      outboxStatus: 'submitted_unknown',
+      recordedAt: 190,
+    };
     const snapshot = buildRendererDiagnosticsSnapshot({
       page: {
         href: 'http://127.0.0.1:43123/editor?ws=D%3A%5Crepo#auth=must-not-leak',
@@ -16,106 +52,19 @@ describe('renderer diagnostics snapshot', () => {
       chat: {
         bootstrapStatus: 'ready',
         bootstrapError: null,
-        currentSessionId: 'session-1',
-        sessions: [{ id: 'session-1', title: 'Investigate editor bug' }],
-        sessionStates: {
-          'session-2': {
-            sending: true,
-            messages: [{ info: { id: 'background-message' }, parts: [] }],
-            pendingPermissions: [],
-            queuedMessages: [],
-            postChatYamlAction: {
-              sessionId: 'session-2',
-              workspaceKey: 'D:\\repo',
-              kind: 'refresh-current',
-              path: 'D:\\repo\\.tagma\\background\\background.yaml',
-              name: 'background.yaml',
-              pipelineName: 'Background',
-              status: 'trial-running',
-              phase: 'trial-running',
-              progress: {
-                stageId: 'stage-background',
-                trialId: 'trial-background',
-                phase: 'running-case',
-                detail: 'private fixture path must not enter diagnostics',
-                startedAt: 130,
-                updatedAt: 140,
-                heartbeatAt: 150,
-                caseId: 'repeat',
-                caseTitle: 'private case title',
-                caseIndex: 0,
-                caseCount: 1,
-                runNumber: 1,
-                runCount: 2,
-                taskId: 'main.answer',
-                taskStatus: 'running',
-              },
-            },
-          },
-        },
-        sessionYamlResults: {
-          'session-1': {
-            sessionId: 'session-1',
-            workspaceKey: 'D:\\repo',
-            kind: 'refresh-current',
-            path: 'D:\\repo\\.tagma\\demo\\demo.yaml',
-            name: 'demo.yaml',
-            pipelineName: 'Demo',
-            status: 'failed',
-            compile: { success: true, summary: 'Compilation passed.', validation: [] },
-            trial: {
-              success: false,
-              kind: 'plan-failed',
-              summary: 'Trial plan attempt budget exhausted.',
-            },
-            completedAt: 180,
-          },
-          'session-2': {
-            sessionId: 'session-2',
-            workspaceKey: 'D:\\repo',
-            kind: 'refresh-current',
-            path: 'D:\\repo\\.tagma\\background\\background.yaml',
-            name: 'background.yaml',
-            pipelineName: 'Background',
-            status: 'blocked',
-            compile: { success: true, summary: 'Compilation passed.', validation: [] },
-            trial: {
-              success: false,
-              kind: 'blocked',
-              summary: 'A runtime prerequisite was unavailable.',
-              repairAuthorization: 'diagnostic-only',
-            },
-            completedAt: 190,
-          },
-          'session-3': {
-            sessionId: 'session-3',
-            workspaceKey: 'D:\\repo',
-            kind: 'created',
-            path: 'D:\\repo\\.tagma\\created\\created.yaml',
-            name: 'created.yaml',
-            pipelineName: 'Created',
-            status: 'success',
-            compile: { success: true, summary: 'Compilation passed.', validation: [] },
-            trial: { success: true, kind: 'passed', summary: 'Trial passed.' },
-            completedAt: 195,
-          },
-        },
+        chatExecutionMode: 'operation-v2',
+        activeChatOperationV2: activeOperation,
+        activeChatOperationV2Failure: activeFailure,
+        chatOperationV2Operations: [operation(1), activeOperation],
+        chatOperationV2Connected: true,
+        chatOperationV2LatestCursor: 12,
         messages: Array.from({ length: 35 }, (_, index) => ({
           info: { id: `message-${index}`, role: index % 2 ? 'assistant' : 'user' },
           parts: [{ type: 'text', text: `message body ${index}` }],
         })),
-        sending: true,
-        reconciling: true,
-        reconcilingSessionId: 'session-1',
-        flushing: false,
-        pendingUserText: 'current prompt',
-        queuedMessages: [],
-        pendingPermissions: [{ id: 'permission-1', title: 'Run command' }],
-        turnStartedAt: 100,
-        lastActivityAt: 120,
-        sessionStatus: { type: 'busy' },
-        turnHealth: { status: 'ok' },
-        activeChatYamlLifecycle: null,
+        sending: false,
+        pendingUserText: null,
+        pendingPermissions: [],
         sendError: null,
         completionWarning: null,
         composerDraft: 'draft',
@@ -128,7 +77,6 @@ describe('renderer diagnostics snapshot', () => {
         isDirty: true,
         layoutDirty: false,
         loading: false,
-        errorMessage: null,
         selectedTaskId: 'build.test',
         selectedTaskIds: ['build.test'],
         selectedTrackId: 'build',
@@ -143,8 +91,6 @@ describe('renderer diagnostics snapshot', () => {
         status: 'running',
         selectedTaskId: 'build.test',
         selectedTrackId: 'build',
-        error: null,
-        abortReason: null,
         lastEventSeq: 12,
         tasks: new Map([['build.test', { status: 'running' }]]),
         pendingApprovals: new Map(),
@@ -161,82 +107,33 @@ describe('renderer diagnostics snapshot', () => {
       capturedAt: 200,
     });
 
+    const chat = snapshot.chat as unknown as {
+      messages: Array<{ info: { id: string } }>;
+      activeOperation: Record<string, unknown>;
+      activeFailure: Record<string, unknown>;
+      operations: Array<Record<string, unknown>>;
+      operationCount: number;
+      returnedOperationCount: number;
+      omittedOperationCount: number;
+      connected: boolean;
+      latestCursor: number;
+    };
     expect(snapshot.page.href).toBe('http://127.0.0.1:43123/editor?ws=D%3A%5Crepo');
-    expect(snapshot.chat.messages).toHaveLength(25);
-    expect(snapshot.chat.messages[0]).toMatchObject({ info: { id: 'message-10' } });
-    expect(snapshot.chat.backgroundSessions).toMatchObject([
-      {
-        sessionId: 'session-3',
-        sending: false,
-        messageCount: 0,
-        pendingPermissionCount: 0,
-        queuedMessageCount: 0,
-        postChatYamlActionSummary: null,
-        sessionYamlResultSummary: {
-          sessionId: 'session-3',
-          status: 'success',
-          trial: { success: true, kind: 'passed', summary: 'Trial passed.' },
-        },
-      },
-      {
-        sessionId: 'session-2',
-        sending: true,
-        messageCount: 1,
-        pendingPermissionCount: 0,
-        queuedMessageCount: 0,
-        postChatYamlActionSummary: {
-          sessionId: 'session-2',
-          status: 'trial-running',
-          phase: 'trial-running',
-          progress: {
-            stageId: 'stage-background',
-            trialId: 'trial-background',
-            phase: 'running-case',
-            startedAt: 130,
-            updatedAt: 140,
-            heartbeatAt: 150,
-            caseId: 'repeat',
-            caseIndex: 0,
-            caseCount: 1,
-            runNumber: 1,
-            runCount: 2,
-            taskId: 'main.answer',
-            taskStatus: 'running',
-          },
-        },
-        sessionYamlResultSummary: {
-          sessionId: 'session-2',
-          status: 'blocked',
-          trial: {
-            success: false,
-            kind: 'blocked',
-            summary: 'A runtime prerequisite was unavailable.',
-            repairAuthorization: 'diagnostic-only',
-          },
-        },
-      },
-    ]);
-    expect(snapshot.chat).toMatchObject({
-      backgroundSessionCount: 2,
-      returnedBackgroundSessionCount: 2,
-      omittedBackgroundSessionCount: 0,
-      backgroundSessionEvidence: {
-        layer: 'renderer-diagnostics-background-session-window',
-        limit: 100,
-        truncated: false,
-        omittedBackgroundSessionCount: 0,
-      },
-      reconciling: true,
-      reconcilingSessionId: 'session-1',
-      sessionYamlResult: {
-        sessionId: 'session-1',
-        status: 'failed',
-        trial: {
-          success: false,
-          kind: 'plan-failed',
-          summary: 'Trial plan attempt budget exhausted.',
-        },
-      },
+    expect(chat.messages).toHaveLength(25);
+    expect(chat.messages[0]).toMatchObject({ info: { id: 'message-10' } });
+    expect(chat.activeOperation).toMatchObject({
+      operationId: 'operation-2',
+      executionState: 'retryable_failure',
+      waitReason: 'provider_unavailable',
+    });
+    expect(chat.activeFailure).toEqual(activeFailure);
+    expect(chat.operations).toHaveLength(2);
+    expect(chat).toMatchObject({
+      operationCount: 2,
+      returnedOperationCount: 2,
+      omittedOperationCount: 0,
+      connected: true,
+      latestCursor: 12,
     });
     expect(snapshot.pipeline).toMatchObject({
       workDir: 'D:\\repo',
@@ -250,31 +147,21 @@ describe('renderer diagnostics snapshot', () => {
       taskCount: 1,
     });
     expect(snapshot.features).toEqual({
-      'feature.new-runtime': {
-        status: 'degraded',
-        accessToken: '[REDACTED]',
-      },
+      'feature.new-runtime': { status: 'degraded', accessToken: '[REDACTED]' },
     });
-    expect(JSON.stringify(snapshot)).not.toContain('saveFile');
-    expect(JSON.stringify(snapshot)).not.toContain('"send"');
-    expect(JSON.stringify(snapshot)).not.toContain('"reset"');
-    expect(JSON.stringify(snapshot)).not.toContain('must-not-leak');
-    expect(JSON.stringify(snapshot)).not.toContain('private fixture path');
-    expect(JSON.stringify(snapshot)).not.toContain('private case title');
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain('saveFile');
+    expect(serialized).not.toContain('"send"');
+    expect(serialized).not.toContain('"reset"');
+    expect(serialized).not.toContain('must-not-leak');
   });
 
-  test('reports renderer collection windows and preserves the newest retained logs', () => {
+  test('reports V2 operation and run-log collection windows', () => {
     const snapshot = buildRendererDiagnosticsSnapshot({
       page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
       chat: {
-        currentSessionId: 'session-0',
-        sessions: Array.from({ length: 120 }, (_, index) => ({ id: `session-${index}` })),
-        sessionStates: Object.fromEntries(
-          Array.from({ length: 120 }, (_, index) => [
-            `session-${index}`,
-            { sending: false, messages: [] },
-          ]),
-        ),
+        chatExecutionMode: 'operation-v2',
+        chatOperationV2Operations: Array.from({ length: 120 }, (_, index) => operation(index)),
         messages: Array.from({ length: 30 }, (_, index) => ({ id: `message-${index}` })),
       },
       pipeline: {},
@@ -286,27 +173,21 @@ describe('renderer diagnostics snapshot', () => {
     });
 
     const chat = snapshot.chat as unknown as {
+      messages: unknown[];
+      operations: Array<{ operationId: string }>;
       messageCount: number;
       returnedMessageCount: number;
       omittedMessageCount: number;
       messageEvidence: Record<string, unknown>;
-      sessionCount: number;
-      returnedSessionCount: number;
-      omittedSessionCount: number;
-      sessionEvidence: Record<string, unknown>;
-      sessions: Array<{ id: string }>;
-      backgroundSessions: Array<{ sessionId: string }>;
-      backgroundSessionCount: number;
-      returnedBackgroundSessionCount: number;
-      omittedBackgroundSessionCount: number;
-      backgroundSessionEvidence: Record<string, unknown>;
+      operationCount: number;
+      returnedOperationCount: number;
+      omittedOperationCount: number;
+      operationEvidence: Record<string, unknown>;
     };
-    expect(chat.sessions).toHaveLength(100);
-    expect(chat.sessions[0]?.id).toBe('session-20');
-    expect(chat.sessions.at(-1)?.id).toBe('session-119');
-    expect(chat.backgroundSessions).toHaveLength(100);
-    expect(chat.backgroundSessions[0]?.sessionId).toBe('session-20');
-    expect(chat.backgroundSessions.at(-1)?.sessionId).toBe('session-119');
+    expect(chat.messages).toHaveLength(25);
+    expect(chat.operations).toHaveLength(100);
+    expect(chat.operations[0]?.operationId).toBe('operation-20');
+    expect(chat.operations.at(-1)?.operationId).toBe('operation-119');
     expect(chat).toMatchObject({
       messageCount: 30,
       returnedMessageCount: 25,
@@ -317,91 +198,57 @@ describe('renderer diagnostics snapshot', () => {
         truncated: true,
         omittedMessageCount: 5,
       },
-      sessionCount: 120,
-      returnedSessionCount: 100,
-      omittedSessionCount: 20,
-      sessionEvidence: {
-        layer: 'renderer-diagnostics-session-window',
+      operationCount: 120,
+      returnedOperationCount: 100,
+      omittedOperationCount: 20,
+      operationEvidence: {
+        layer: 'renderer-diagnostics-operation-window',
         limit: 100,
         truncated: true,
-        omittedSessionCount: 20,
-      },
-      backgroundSessionCount: 119,
-      returnedBackgroundSessionCount: 100,
-      omittedBackgroundSessionCount: 19,
-      backgroundSessionEvidence: {
-        layer: 'renderer-diagnostics-background-session-window',
-        limit: 100,
-        truncated: true,
-        omittedBackgroundSessionCount: 19,
+        omittedOperationCount: 20,
       },
     });
 
     const run = snapshot.run as {
+      logs: string[];
+      pipelineLogs: string[];
       logCount: number;
       returnedLogCount: number;
       omittedLogCount: number;
-      logEvidence: Record<string, unknown>;
-      logs: string[];
       pipelineLogCount: number;
       returnedPipelineLogCount: number;
       omittedPipelineLogCount: number;
-      pipelineLogEvidence: Record<string, unknown>;
-      pipelineLogs: string[];
     };
     expect(run.logs).toHaveLength(250);
     expect(run.logs[0]).toBe('log-50');
     expect(run.logs.at(-1)).toBe('log-299');
-    expect(run).toMatchObject({
-      logCount: 300,
-      returnedLogCount: 250,
-      omittedLogCount: 50,
-      logEvidence: {
-        layer: 'renderer-diagnostics-log-window',
-        limit: 250,
-        truncated: true,
-        omittedLogCount: 50,
-      },
-    });
     expect(run.pipelineLogs).toHaveLength(250);
     expect(run.pipelineLogs[0]).toBe('pipeline-log-30');
     expect(run.pipelineLogs.at(-1)).toBe('pipeline-log-279');
     expect(run).toMatchObject({
+      logCount: 300,
+      returnedLogCount: 250,
+      omittedLogCount: 50,
       pipelineLogCount: 280,
       returnedPipelineLogCount: 250,
       omittedPipelineLogCount: 30,
-      pipelineLogEvidence: {
-        layer: 'renderer-diagnostics-pipeline-log-window',
-        limit: 250,
-        truncated: true,
-        omittedLogCount: 30,
-      },
     });
   });
 
-  test('retains active and recently completed background sessions when the diagnostics window is full', () => {
-    const sessionStates = Object.fromEntries(
-      Array.from({ length: 102 }, (_, index) => [
-        `session-${index}`,
-        {
-          sending: index === 0,
-          messages: [],
-          lastActivityAt: index,
-        },
-      ]),
-    );
+  test('retains an active operation separately when it falls outside the history window', () => {
+    const active = operation(0, {
+      phase: 'awaiting_input',
+      waitReason: 'clarification',
+      executionState: 'waiting_for_user',
+      terminalOutcome: null,
+      hasResult: false,
+      pendingInputKind: 'clarification',
+    });
     const snapshot = buildRendererDiagnosticsSnapshot({
       page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
       chat: {
-        currentSessionId: 'current-session',
-        sessionStates,
-        sessionYamlResults: {
-          'session-1': {
-            sessionId: 'session-1',
-            status: 'success',
-            completedAt: 10_000,
-          },
-        },
+        activeChatOperationV2: active,
+        chatOperationV2Operations: Array.from({ length: 102 }, (_, index) => operation(index)),
         messages: [],
       },
       pipeline: {},
@@ -409,18 +256,23 @@ describe('renderer diagnostics snapshot', () => {
       capturedAt: 20_000,
     });
 
-    const backgroundSessions = snapshot.chat.backgroundSessions as Array<{ sessionId: string }>;
-    expect(backgroundSessions).toHaveLength(100);
-    expect(backgroundSessions.map((session) => session.sessionId)).toContain('session-0');
-    expect(backgroundSessions.map((session) => session.sessionId)).toContain('session-1');
-    expect(backgroundSessions.at(-1)?.sessionId).toBe('session-0');
+    const chat = snapshot.chat as unknown as {
+      activeOperation: { operationId: string; executionState: string };
+      operations: Array<{ operationId: string }>;
+    };
+    expect(chat.operations).toHaveLength(100);
+    expect(chat.operations[0]?.operationId).toBe('operation-2');
+    expect(chat.operations.map(({ operationId }) => operationId)).not.toContain('operation-0');
+    expect(chat.activeOperation).toMatchObject({
+      operationId: 'operation-0',
+      executionState: 'waiting_for_user',
+    });
   });
 
-  test('adds bounded content-minimized chat, pipeline, task, and approval summaries', () => {
+  test('adds content-minimized message, tool, pipeline, task, and approval summaries', () => {
     const snapshot = buildRendererDiagnosticsSnapshot({
       page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
       chat: {
-        currentSessionId: 'session-1',
         messages: [
           {
             info: {
@@ -438,11 +290,7 @@ describe('renderer diagnostics snapshot', () => {
                 tool: 'task',
                 state: {
                   status: 'completed',
-                  input: {
-                    prompt: 'private delegated prompt',
-                    command: 'Remove-Item private.txt',
-                    subagent_type: 'pipeline',
-                  },
+                  input: { prompt: 'private delegated prompt', subagent_type: 'pipeline' },
                   output: 'private delegated output',
                   metadata: { sessionID: 'child-1', agent: 'pipeline' },
                   time: { start: 12, end: 28 },
@@ -452,17 +300,7 @@ describe('renderer diagnostics snapshot', () => {
           },
         ],
         pendingUserText: 'private pending prompt',
-        queuedMessages: [{ text: 'private queued prompt' }],
         pendingPermissions: [{ id: 'permission-1', permission: 'bash' }],
-        finishedTurnQueue: [],
-        lastFinishedTurn: {
-          id: 'turn-1',
-          sessionId: 'session-1',
-          endedAt: 31,
-          hidden: false,
-          termination: 'completed',
-          yamlSnapshotBeforeSend: { private: 'must not enter summary' },
-        },
       },
       pipeline: {
         config: {
@@ -488,21 +326,12 @@ describe('renderer diagnostics snapshot', () => {
               trackId: 'research',
               taskName: 'Collect',
               status: 'running',
-              startedAt: '2026-08-10T10:00:00.000Z',
-              finishedAt: null,
-              durationMs: 500,
-              exitCode: null,
               stdout: 'private task stdout',
               stderr: 'private task stderr',
               stdoutBytes: 19,
               stderrBytes: 19,
-              sessionId: 'task-session-1',
               normalizedOutput: 'private normalized output',
-              failureKind: null,
-              missingBinary: null,
-              resolvedDriver: 'opencode',
-              resolvedModel: 'provider/model',
-              logs: [{ level: 'info', timestamp: '10:00:00.000', text: 'private log' }],
+              logs: [{ level: 'info', text: 'private log' }],
               totalLogCount: 4,
             },
           ],
@@ -527,7 +356,6 @@ describe('renderer diagnostics snapshot', () => {
 
     expect(snapshot.chat).toMatchObject({
       pendingUserTextSummary: { present: true, chars: 22 },
-      queuedMessageCount: 1,
       pendingPermissionCount: 1,
       messageSummaries: [
         {
@@ -546,21 +374,11 @@ describe('renderer diagnostics snapshot', () => {
           callId: 'call-1',
           tool: 'task',
           status: 'completed',
-          error: null,
           childSessionId: 'child-1',
           childAgent: 'pipeline',
-          startedAt: 12,
-          completedAt: 28,
           output: { present: true, chars: 24 },
         },
       ],
-      lastFinishedTurnSummary: {
-        id: 'turn-1',
-        sessionId: 'session-1',
-        endedAt: 31,
-        hidden: false,
-        termination: 'completed',
-      },
     });
     expect(snapshot.pipeline).toMatchObject({
       pipelineName: 'Fact Checker',
@@ -589,269 +407,49 @@ describe('renderer diagnostics snapshot', () => {
           runId: 'run-1',
           taskId: 'collect',
           trackId: 'research',
-          createdAt: '2026-08-10T10:00:01.000Z',
-          timeoutMs: 30_000,
           message: { present: true, chars: 20 },
         },
       ],
-      latestLog: { present: true, chars: 15 },
-      latestPipelineLog: {
-        level: 'error',
-        timestamp: '10:00:02.000',
-        text: { present: true, chars: 20 },
-      },
     });
 
     const safeSummaries = JSON.stringify({
-      chat: {
-        messages: snapshot.chat.messageSummaries,
-        tools: snapshot.chat.toolCallSummaries,
-        finished: snapshot.chat.lastFinishedTurnSummary,
-      },
+      messages: snapshot.chat.messageSummaries,
+      tools: snapshot.chat.toolCallSummaries,
       pipeline: {
         pipelineName: snapshot.pipeline.pipelineName,
-        trackCount: snapshot.pipeline.trackCount,
-        taskCount: snapshot.pipeline.taskCount,
         validationSummary: snapshot.pipeline.validationSummary,
       },
       tasks: (snapshot.run as Record<string, unknown>).taskStatuses,
       approvals: (snapshot.run as Record<string, unknown>).pendingApprovals,
-      latestLog: (snapshot.run as Record<string, unknown>).latestLog,
-      latestPipelineLog: (snapshot.run as Record<string, unknown>).latestPipelineLog,
     });
     expect(safeSummaries).not.toContain('private assistant response');
     expect(safeSummaries).not.toContain('private delegated prompt');
     expect(safeSummaries).not.toContain('private delegated output');
-    expect(safeSummaries).not.toContain('private shell command');
     expect(safeSummaries).not.toContain('private task stdout');
     expect(safeSummaries).not.toContain('private command');
   });
 
-  test('summarizes Trial plan telemetry without plan-authored content or tool payloads', () => {
+  test('does not project removed renderer-owned V1 reconciliation state', () => {
     const snapshot = buildRendererDiagnosticsSnapshot({
       page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
       chat: {
-        currentSessionId: 'session-1',
-        sessionYamlResults: {
-          'session-1': {
-            sessionId: 'session-1',
-            status: 'failed',
-            trial: {
-              success: false,
-              kind: 'plan-failed',
-              trialMode: 'sandbox-with-live-smoke',
-              trialabilityReport: {
-                protocolVersion: 1,
-                mode: 'sandbox-with-live-smoke',
-                runnable: false,
-                enforcement: {
-                  sandboxCases: {
-                    workspace: 'temporary-copy',
-                    stdin: 'closed',
-                    tty: 'none',
-                    secrets: 'synthetic',
-                    filesystem: 'host-unrestricted-outside-copy',
-                    network: 'host-unrestricted',
-                    process: 'host-unrestricted',
-                  },
-                  liveSmokeBaseline: {
-                    workspace: 'real-workspace',
-                    stdin: 'closed',
-                    tty: 'none',
-                    secrets: 'real',
-                    filesystem: 'host-unrestricted',
-                    network: 'host-unrestricted',
-                    process: 'host-unrestricted',
-                  },
-                  privateField: 'must not survive',
-                },
-                items: Array.from({ length: 70 }, (_, index) => ({
-                  component: 'driver',
-                  taskId: `main.task-${index}`,
-                  type: `driver-${index}`,
-                  provider: `provider-${index}`,
-                  declaration: {
-                    protocolVersion: 1,
-                    interaction: 'credential',
-                    unattended: 'host-adapter',
-                    filesystem: 'external-write',
-                    network: 'write',
-                    secrets: 'real-required',
-                    runtime: 'bounded',
-                    privateField: 'must not survive',
-                  },
-                  disposition: 'live-smoke-only',
-                  privatePayload: 'must not survive',
-                })),
-                blockers: Array.from(
-                  { length: 35 },
-                  (_, index) => `Blocker ${index} token=private-blocker-${index}`,
-                ),
-                warnings: Array.from(
-                  { length: 35 },
-                  (_, index) => `Warning ${index} token=private-warning-${index}`,
-                ),
-              },
-              manualExecutionGrants: Array.from({ length: 35 }, (_, index) => ({
-                taskId: `main.manual-${index}`,
-                approvalCount: index + 1,
-              })),
-              executionCoverage: {
-                terminalTaskIds: ['main.publish', 'audit.finish'],
-                sandboxCases: [
-                  {
-                    caseId: 'case-a',
-                    targetTaskIds: ['main.publish'],
-                    closureTaskIds: ['main.read', 'main.publish'],
-                    executed: true,
-                    automaticTriggerSatisfactions: [
-                      {
-                        taskId: 'main.read',
-                        type: 'file',
-                        mechanism: 'isolated-case-input',
-                      },
-                    ],
-                  },
-                  {
-                    caseId: 'case-b',
-                    targetTaskIds: ['audit.finish'],
-                    closureTaskIds: ['audit.finish'],
-                    executed: false,
-                    automaticTriggerSatisfactions: [],
-                  },
-                ],
-                liveSmoke: {
-                  targetTaskIds: ['audit.finish'],
-                  closureTaskIds: ['audit.check', 'audit.finish'],
-                  executed: true,
-                  automaticManualTaskIds: ['audit.check'],
-                },
-              },
-              planTelemetry: {
-                version: 2,
-                yamlHash: 'private-yaml-hash',
-                relativeYamlPath: 'fact-checker/fact-checker.yaml',
-                attemptIds: Array.from({ length: 55 }, (_, index) => `attempt-${index}`),
-                toolAttemptCount: 55,
-                validationRejectionCount: 55,
-                repeatedValidationRejectionCount: 4,
-                successfulWriteCount: 0,
-                firstAttemptAt: 100,
-                lastAttemptAt: 900,
-                elapsedMs: 800,
-                rejections: Array.from({ length: 55 }, (_, index) => ({
-                  fingerprint: `fingerprint-${index}`,
-                  count: index + 1,
-                  message: `Trial plan case ${index} is missing required status. token=private-${index}`,
-                  toolPayload: 'private rejection payload',
-                })),
-                toolPayload: 'private telemetry payload',
-              },
-              plan: {
-                summary: 'private model-authored plan summary',
-                goals: ['private goal'],
-                coverage: [{}],
-                findings: [{}],
-                cases: [{}],
-              },
-            },
-          },
-        },
+        messages: [],
+        sessionStates: { secret: { sending: true } },
+        sessionYamlResults: { secret: { status: 'failed' } },
+        lastFinishedTurn: { id: 'legacy-turn' },
+        reconciling: true,
+        reconcilingSessionId: 'legacy-session',
       },
       pipeline: {},
       run: {},
-      capturedAt: 1_000,
     });
 
-    const summary = snapshot.chat.sessionYamlResultSummary as Record<string, unknown>;
-    const trial = summary.trial as Record<string, unknown>;
-    const telemetry = trial.planTelemetry as Record<string, unknown>;
-    const manualExecutionGrants = trial.manualExecutionGrants as Record<string, unknown>;
-    const trialabilityReport = trial.trialabilityReport as Record<string, unknown>;
-    expect(telemetry).toMatchObject({
-      version: 2,
-      relativeYamlPath: 'fact-checker/fact-checker.yaml',
-      toolAttemptCount: 55,
-      validationRejectionCount: 55,
-      repeatedValidationRejectionCount: 4,
-      successfulWriteCount: 0,
-      firstAttemptAt: 100,
-      lastAttemptAt: 900,
-      elapsedMs: 800,
-    });
-    expect(telemetry.attemptIds).toHaveLength(50);
-    expect(telemetry.rejections).toHaveLength(50);
-    expect(manualExecutionGrants).toMatchObject({
-      totalCount: 35,
-      returnedCount: 32,
-      omittedCount: 3,
-    });
-    expect(manualExecutionGrants.items).toHaveLength(32);
-    expect(trial.trialMode).toBe('sandbox-with-live-smoke');
-    expect(trial.executionCoverage).toEqual({
-      terminalTaskCount: 2,
-      sandboxCaseCount: 2,
-      executedSandboxCaseCount: 1,
-      automaticTriggerSatisfactionCount: 1,
-      liveSmoke: {
-        executed: true,
-        targetTaskCount: 1,
-        closureTaskCount: 2,
-        automaticManualTaskCount: 1,
-      },
-    });
-    expect(trialabilityReport).toMatchObject({
-      protocolVersion: 1,
-      mode: 'sandbox-with-live-smoke',
-      runnable: false,
-      containment: {
-        sandboxCases: { level: 'application', osSandbox: false },
-        liveSmokeBaseline: { level: 'host-authority', osSandbox: false },
-      },
-      enforcement: {
-        sandboxCases: {
-          workspace: 'temporary-copy',
-          stdin: 'closed',
-          tty: 'none',
-          secrets: 'synthetic',
-          filesystem: 'host-unrestricted-outside-copy',
-          network: 'host-unrestricted',
-          process: 'host-unrestricted',
-        },
-        liveSmokeBaseline: {
-          workspace: 'real-workspace',
-          stdin: 'closed',
-          tty: 'none',
-          secrets: 'real',
-          filesystem: 'host-unrestricted',
-          network: 'host-unrestricted',
-          process: 'host-unrestricted',
-        },
-      },
-      items: { totalCount: 70, returnedCount: 64, omittedCount: 6 },
-      blockers: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
-      warnings: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
-    });
-    expect((trialabilityReport.items as Record<string, unknown>).items).toHaveLength(64);
-    expect((trialabilityReport.blockers as Record<string, unknown>).items).toHaveLength(32);
-    expect((trialabilityReport.warnings as Record<string, unknown>).items).toHaveLength(32);
-    expect(JSON.stringify(telemetry.rejections)).toContain('missing required status');
-    expect(trial.plan).toEqual({
-      goalCount: 1,
-      coverageCount: 1,
-      findingCount: 1,
-      caseCount: 1,
-    });
-
-    const serializedSummary = JSON.stringify(summary);
-    expect(serializedSummary).not.toContain('private-yaml-hash');
-    expect(serializedSummary).not.toContain('private model-authored plan summary');
-    expect(serializedSummary).not.toContain('private telemetry payload');
-    expect(serializedSummary).not.toContain('private rejection payload');
-    expect(serializedSummary).not.toContain('private-54');
-    expect(serializedSummary).not.toContain('private-blocker-34');
-    expect(serializedSummary).not.toContain('private-warning-34');
-    expect(serializedSummary).not.toContain('must not survive');
+    const serialized = JSON.stringify(snapshot.chat);
+    expect(serialized).not.toContain('sessionStates');
+    expect(serialized).not.toContain('sessionYamlResults');
+    expect(serialized).not.toContain('lastFinishedTurn');
+    expect(serialized).not.toContain('reconcilingSessionId');
+    expect(serialized).not.toContain('legacy-turn');
   });
 });
 

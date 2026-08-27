@@ -31,7 +31,6 @@ import { registerSidecarRoutes } from './routes/sidecar.js';
 import { registerReleaseRoutes } from './routes/release.js';
 import { registerHotupdateRoutes } from './routes/hotupdate.js';
 import { registerChatBridgeRoutes } from './routes/chat-bridge.js';
-import { registerChatYamlStagingRoutes } from './routes/chat-yaml-staging.js';
 import {
   shouldAutoStartBotBridgeOnBoot,
   startConfiguredBotBridge,
@@ -79,6 +78,8 @@ import {
   registerChatOperationV2MutationFence,
 } from './chat-operations/http-body.js';
 import { buildOpencodeSeedOptions } from './opencode-seed-options.js';
+import { readEditorSettings } from './plugins/loader.js';
+import { registerChatOperationV2LegacyStageFence } from './chat-operations/legacy-stage-fence.js';
 import { registerServerDiagnosticsContributor } from './diagnostics-contributors.js';
 import { registerChatOperationV2ControlRoutes } from './routes/chat-control.js';
 import {
@@ -381,6 +382,11 @@ app.use(express.json({ limit: '5mb' }));
 // that revision / If-Match checks see the correct workspace.
 app.use(resolveWorkspace);
 
+// Desktop Chat V2 owns staging end to end. Fence the removed renderer-owned
+// staging surface before YAML-lock and revision middleware so every
+// version-skewed mutation fails consistently with the protocol upgrade signal.
+registerChatOperationV2LegacyStageFence(app);
+
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   const method = req.method.toUpperCase();
@@ -597,7 +603,6 @@ function chatOperationV2HostInventoryFor(workDir: string) {
 registerPipelineRoutes(app);
 registerPluginRoutes(app);
 registerWorkspaceRoutes(app);
-registerChatYamlStagingRoutes(app);
 registerRunRoutes(app);
 registerRecentRoutes(app);
 registerGlobalSettingsRoutes(app);
@@ -622,6 +627,7 @@ registerChatOperationV2Routes(
           createInputResolver: (workDir, request) => {
             const { workspace, inventory } = chatOperationV2HostInventoryFor(workDir);
             const seedOptions = buildOpencodeSeedOptions(workspace);
+            const editorSettings = readEditorSettings(workspace);
             return resolveChatOperationV2CreateAdmission(request, {
               inventory: inventory.inventory,
               candidates: inventory.candidates,
@@ -635,6 +641,7 @@ registerChatOperationV2Routes(
                 agentMaxSteps: seedOptions.agentMaxSteps ?? null,
                 pythonToolsEnabled: Boolean(seedOptions.pythonToolsEnabled),
               },
+              repairMaxAttempts: editorSettings.opencodeChatPipelineRepairMaxAttempts,
               capabilities: {
                 schemaVersion: 1,
                 opencodeVersion: process.env.TAGMA_OPENCODE_BUNDLED_VERSION ?? '1.18.18',

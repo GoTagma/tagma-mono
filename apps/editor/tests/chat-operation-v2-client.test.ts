@@ -2,6 +2,10 @@ import { afterEach, expect, test } from 'bun:test';
 
 import { CHAT_OPERATION_V2_HOST_EVENT_TYPES as SERVER_CHAT_OPERATION_V2_HOST_EVENT_TYPES } from '../server/chat-operations/events';
 import {
+  CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION as SERVER_CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
+  CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES as SERVER_CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES,
+} from '../server/chat-operations/projection';
+import {
   CHAT_OPERATION_V2_API_REQUEST_TYPES as SERVER_CHAT_OPERATION_V2_API_REQUEST_TYPES,
   CHAT_OPERATION_V2_INTERACTIVE_RECOVERY_CHOICES as SERVER_CHAT_OPERATION_V2_INTERACTIVE_RECOVERY_CHOICES,
   CHAT_OPERATION_V2_PERMISSION_REPLY_CHOICES as SERVER_CHAT_OPERATION_V2_PERMISSION_REPLY_CHOICES,
@@ -21,8 +25,10 @@ import {
   CHAT_OPERATION_V2_API_REQUEST_TYPES,
   CHAT_OPERATION_V2_PERMISSION_REPLY_CHOICES,
   CHAT_OPERATION_V2_PHASES,
+  CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
   CHAT_OPERATION_V2_QUESTION_REPLY_CHOICES,
   CHAT_OPERATION_V2_RECOVERY_CHOICES,
+  CHAT_OPERATION_V2_EXECUTION_STATES,
   CHAT_OPERATION_V2_TERMINAL_OUTCOMES,
   CHAT_OPERATION_V2_WAIT_REASONS,
   ChatOperationV2ApiError,
@@ -89,6 +95,7 @@ function operation() {
     version: 0,
     phase: 'created',
     waitReason: null,
+    executionState: 'running',
     terminalOutcome: null,
     createdAt: 100,
     updatedAt: 100,
@@ -99,7 +106,7 @@ function operation() {
 
 function inventory() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: 3,
     digest: 'a'.repeat(64),
     candidates: [
@@ -117,7 +124,7 @@ function inventory() {
 
 function operationDetail() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceScopeId: 'workspace-scope-1',
     operation: operation(),
     userMessage: {
@@ -129,13 +136,14 @@ function operationDetail() {
     },
     inventory: inventory(),
     pendingInput: null,
+    failure: null,
     result: null,
   } as const;
 }
 
 function workspaceSnapshot(operations: readonly ReturnType<typeof operation>[] = [operation()]) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceScopeId: 'workspace-scope-1',
     retainedFloor: 0,
     latestCursor: 0,
@@ -163,6 +171,12 @@ test('keeps the browser-only protocol constant in parity with the sidecar author
   expect(CHAT_OPERATION_V2_CLIENT_PROTOCOL_VERSION).toBe(SERVER_CHAT_OPERATION_V2_PROTOCOL_VERSION);
   expect(CHAT_OPERATION_V2_PHASES).toEqual(SERVER_CHAT_OPERATION_V2_PHASES);
   expect(CHAT_OPERATION_V2_WAIT_REASONS).toEqual(SERVER_CHAT_OPERATION_V2_WAIT_REASONS);
+  expect(CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION).toBe(
+    SERVER_CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
+  );
+  expect(CHAT_OPERATION_V2_EXECUTION_STATES).toEqual(
+    SERVER_CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES,
+  );
   expect(CHAT_OPERATION_V2_TERMINAL_OUTCOMES).toEqual(SERVER_CHAT_OPERATION_V2_TERMINAL_OUTCOMES);
   expect(CHAT_OPERATION_V2_HOST_EVENT_TYPES).toEqual(SERVER_CHAT_OPERATION_V2_HOST_EVENT_TYPES);
   expect(CHAT_OPERATION_V2_API_REQUEST_TYPES).toEqual(SERVER_CHAT_OPERATION_V2_API_REQUEST_TYPES);
@@ -191,7 +205,7 @@ test('reads a strict V2 workspace snapshot with the active workspace and auth id
   }) as unknown as typeof fetch;
 
   await expect(fetchChatOperationV2Snapshot()).resolves.toEqual({
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceScopeId: 'workspace-scope-1',
     operations: [operation()],
     retainedFloor: 0,
@@ -221,6 +235,7 @@ test('parses strict result messages and rejects private projection coordinates o
     ...operation(),
     version: 2,
     phase: 'terminal' as const,
+    executionState: 'terminal' as const,
     terminalOutcome: 'completed_readonly' as const,
     hasResult: true,
     updatedAt: 120,
@@ -277,6 +292,7 @@ test('parses strict result messages and rejects private projection coordinates o
     version: 3,
     phase: 'awaiting_input' as const,
     waitReason: 'permission' as const,
+    executionState: 'waiting_for_user' as const,
     pendingInputKind: 'question' as const,
   };
   const privatePendingDetail = {

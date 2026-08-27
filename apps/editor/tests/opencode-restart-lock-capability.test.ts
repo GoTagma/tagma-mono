@@ -40,6 +40,8 @@ test('restartOpencodeForConfig presents a YAML lock capability only for explicit
           ok: true,
           baseUrl: `http://opencode-${lockHeaders.length}.test`,
           authHeader: 'Bearer runtime',
+          chatOperationProtocolVersion: 2,
+          chatOperationMode: 'production',
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
@@ -62,10 +64,18 @@ test('restartOpencodeForConfig presents a YAML lock capability only for explicit
   expect(lockHeaders).toEqual([null, null, 'owner-lease-id', null]);
 
   resolveForcedRestart(
-    new Response(JSON.stringify({ ok: true, baseUrl: 'http://opencode-forced.test' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }),
+    new Response(
+      JSON.stringify({
+        ok: true,
+        baseUrl: 'http://opencode-forced.test',
+        chatOperationProtocolVersion: 2,
+        chatOperationMode: 'production',
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ),
   );
   await forcedRestart;
 });

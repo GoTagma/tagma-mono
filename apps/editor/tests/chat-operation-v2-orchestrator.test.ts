@@ -285,6 +285,28 @@ afterEach(async () => {
 });
 
 describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
+  test('freezes the Host-supplied workspace repair budget in operation state', async () => {
+    const { orchestrator } = createHarness([
+      completedInvocation(
+        {
+          kind: 'discussion',
+          targetCandidateId: null,
+          clarification: null,
+          candidateIds: [],
+        },
+        1,
+      ),
+      completedInvocation(null, 2),
+    ]);
+
+    const result = await orchestrator.createAndDispatch({
+      ...baseCreateInput('operation-repair-budget'),
+      repairMaxAttempts: 17,
+    });
+
+    expect(result.operation.repairMaxAttempts).toBe(17);
+  });
+
   test('discussion runs one classifier and one read-only main invocation before one terminal event', async () => {
     const inventory = createChatInventorySnapshot(3, [
       { id: 'pipeline-1', relativePath: 'demo/demo.yaml', contentHash: '0'.repeat(64) },
@@ -1143,6 +1165,21 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
         stageId: null,
         pendingPermissionRequestId: null,
       });
+      const retried = await orchestrator.retryOperation({
+        operationId: result.operation.operationId,
+        expectedGeneration: result.operation.generation,
+        expectedVersion: result.operation.version,
+        requestId: `retry-${fixture.operationId}`,
+      });
+      expect(retried).toMatchObject({
+        kind: 'authoring_deferred',
+        intent: fixture.intent,
+        operation: {
+          phase: 'awaiting_input',
+          waitReason: 'user_retry',
+          version: result.operation.version,
+        },
+      });
       expect(runner.calls.slice(0, index + 1).map(({ purpose }) => purpose)).toEqual(
         Array.from({ length: index + 1 }, () => 'classifier'),
       );
@@ -1307,7 +1344,7 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 
-  test('provider unavailability waits for explicit retry and reuses one durable classifier identity', async () => {
+  test('provider unavailability waits for explicit retry and allocates a new classifier identity', async () => {
     const classifier = {
       kind: 'discussion',
       targetCandidateId: null,
@@ -1332,7 +1369,11 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(runner.calls).toHaveLength(1);
     const firstClassifier = runner.calls[0];
     expect(store.listInvocationOutbox('workspace-scope-1')).toEqual([
-      expect.objectContaining({ status: 'prepared', purpose: 'classifier' }),
+      expect.objectContaining({
+        status: 'failed_terminal',
+        purpose: 'classifier',
+        failureCode: 'provider_unavailable',
+      }),
     ]);
     expect(store.listUsageLedger('operation-provider-retry')).toEqual([
       expect.objectContaining({ status: 'unavailable', outcome: 'unavailable' }),
@@ -1369,19 +1410,18 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
       'classifier',
       'discussion',
     ]);
-    expect(runner.calls[1]).toMatchObject({
-      invocationId: firstClassifier?.invocationId,
-      sessionId: firstClassifier?.sessionId,
-      inputId: firstClassifier?.inputId,
-    });
+    expect(runner.calls[1]?.invocationId).not.toBe(firstClassifier?.invocationId);
+    expect(runner.calls[1]?.sessionId).not.toBe(firstClassifier?.sessionId);
+    expect(runner.calls[1]?.inputId).not.toBe(firstClassifier?.inputId);
     expect(runner.calls[1]?.canonicalRequestBytes).toEqual(firstClassifier?.canonicalRequestBytes);
     expect(
       store
         .listInvocationOutbox('workspace-scope-1')
         .filter(({ purpose }) => purpose === 'classifier'),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(store.listUsageLedger('operation-provider-retry').map(({ status }) => status)).toEqual([
-      'corrected',
+      'unavailable',
+      'settled',
       'settled',
     ]);
     const events = store.listOperationEvents({
@@ -1393,7 +1433,7 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 
-  test('read-only main provider retry reuses its durable session/input instead of reclassifying', async () => {
+  test('read-only main provider retry allocates a new session/input without reclassifying', async () => {
     const classifier = {
       kind: 'discussion',
       targetCandidateId: null,
@@ -1424,17 +1464,70 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
       'discussion',
       'discussion',
     ]);
-    expect(runner.calls[2]).toMatchObject({
-      invocationId: firstMain?.invocationId,
-      sessionId: firstMain?.sessionId,
-      inputId: firstMain?.inputId,
-    });
+    expect(runner.calls[2]?.invocationId).not.toBe(firstMain?.invocationId);
+    expect(runner.calls[2]?.sessionId).not.toBe(firstMain?.sessionId);
+    expect(runner.calls[2]?.inputId).not.toBe(firstMain?.inputId);
     expect(runner.calls[2]?.canonicalRequestBytes).toEqual(firstMain?.canonicalRequestBytes);
-    expect(store.listInvocationOutbox('workspace-scope-1')).toHaveLength(2);
+    expect(store.listInvocationOutbox('workspace-scope-1')).toHaveLength(3);
     expect(store.listUsageLedger('operation-main-retry').map(({ status }) => status)).toEqual([
       'settled',
-      'corrected',
+      'unavailable',
+      'settled',
     ]);
+  });
+
+  test('persists a bounded transport code when a provider runner throws', async () => {
+    const transportError = Object.assign(new Error('private provider detail'), {
+      code: 'ECONNREFUSED',
+    });
+    const { orchestrator, store } = createHarness([Promise.reject(transportError)]);
+
+    const result = await orchestrator.createAndDispatch(
+      baseCreateInput('operation-provider-transport-failure'),
+    );
+
+    expect(result.kind).toBe('provider_unavailable');
+    expect(store.listInvocationOutbox('workspace-scope-1')).toEqual([
+      expect.objectContaining({
+        purpose: 'classifier',
+        status: 'failed_terminal',
+        failureCode: 'provider_transport_unavailable',
+      }),
+    ]);
+    const events = store.listOperationEvents({
+      workspaceScopeId: 'workspace-scope-1',
+      after: 0,
+      limit: 100,
+    });
+    if (events.kind !== 'events') throw new Error('Expected retained operation events.');
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        type: 'invocation_failed_terminal',
+        payload: expect.objectContaining({ errorCode: 'provider_transport_unavailable' }),
+      }),
+    );
+    expect(JSON.stringify(events.events)).not.toContain('private provider detail');
+  });
+
+  test('does not persist an arbitrary provider exception code even when it matches the wire format', async () => {
+    const providerError = Object.assign(new Error('private provider detail'), {
+      code: 'secret_customer_identifier',
+    });
+    const { orchestrator, store } = createHarness([Promise.reject(providerError)]);
+
+    await orchestrator.createAndDispatch(baseCreateInput('operation-provider-private-code'));
+
+    const serialized = JSON.stringify({
+      outboxes: store.listInvocationOutbox('workspace-scope-1'),
+      events: store.listOperationEvents({
+        workspaceScopeId: 'workspace-scope-1',
+        after: 0,
+        limit: 100,
+      }),
+    });
+    expect(serialized).toContain('provider_invocation_failed');
+    expect(serialized).not.toContain('secret_customer_identifier');
+    expect(serialized).not.toContain('private provider detail');
   });
 
   test('dispatch continues from Host-owned evidence after the renderer input disappears', async () => {
@@ -2665,7 +2758,7 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 
-  test('restart preserves authoring_deferred without inventing intent or handing authority to the renderer', async () => {
+  test('restart preserves authoring_deferred until an explicit retry allocates a new classifier invocation', async () => {
     const input = baseCreateInput('operation-restart-authoring-deferred');
     const first = createHarness([
       completedInvocation(
@@ -2694,14 +2787,23 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
       now: first.now,
     });
     stores.push(reopened);
-    const recoveryRunner = new FakeDurableInvocationRunner([]);
+    const recoveryRunner = new FakeDurableInvocationRunner([
+      completedInvocation(
+        {
+          kind: 'create',
+          targetCandidateId: null,
+          clarification: null,
+          candidateIds: [],
+        },
+        121,
+      ),
+    ]);
+    let recoveryIdSequence = 0;
     const restarted = new ChatOperationV2ReadonlyOrchestrator({
       persistence: reopened,
       runner: recoveryRunner,
       now: first.now,
-      nextHostId: (kind) => {
-        throw new Error(`Deferred recovery must not allocate ${kind}.`);
-      },
+      nextHostId: (kind) => `recovery-${kind}-${++recoveryIdSequence}`,
     });
 
     const recovered = restarted.recoverOperationContext({
@@ -2731,6 +2833,24 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     });
     if (recoveredEvents.kind !== 'events') throw new Error('Expected retained operation events.');
     expect(recoveredEvents.events).toEqual(originalEvents.events);
+
+    const retried = await restarted.retryOperation({
+      operationId: input.operationId,
+      expectedGeneration: resumed.operation.generation,
+      expectedVersion: resumed.operation.version,
+      requestId: 'restart-authoring-explicit-retry',
+    });
+
+    expect(retried).toMatchObject({
+      kind: 'authoring_deferred',
+      intent: 'create',
+      operation: { phase: 'awaiting_input', waitReason: 'user_retry' },
+    });
+    expect(recoveryRunner.calls).toHaveLength(1);
+    expect(recoveryRunner.calls[0]!.invocationId).not.toBe(
+      reopened.listInvocationOutbox(input.workspaceScopeId)[0]!.invocationId,
+    );
+    expect(reopened.listInvocationOutbox(input.workspaceScopeId)).toHaveLength(2);
   });
 
   test('restart projects reconciled in-progress classifier with its existing durable invocation id', async () => {

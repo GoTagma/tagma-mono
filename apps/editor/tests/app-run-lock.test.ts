@@ -1,26 +1,27 @@
 import { describe, expect, test } from 'bun:test';
-import * as AppHelpers from '../src/App';
+import { shouldSavePipelineBeforeRun } from '../src/App';
 
-describe('App run lock helpers', () => {
-  test('allows pipeline runs while OpenCode chat holds the YAML edit lock', () => {
-    const helper = (AppHelpers as Record<string, unknown>).yamlEditLockRunBlockMessage;
-
-    expect(helper).toBeFunction();
+describe('App run save policy', () => {
+  test('does not save or block a persisted pipeline while the Host owns the YAML lock', () => {
     expect(
-      (helper as (locked: boolean, reason: string | null) => string | null)(true, null),
-    ).toBeNull();
-    expect(
-      (helper as (locked: boolean, reason: string | null) => string | null)(
-        true,
-        'Chat is editing build.yaml',
-      ),
-    ).toBeNull();
+      shouldSavePipelineBeforeRun({
+        yamlPath: '/workspace/.tagma/build/build.yaml',
+        isDirty: true,
+        yamlEditLocked: true,
+      }),
+    ).toBeFalse();
   });
 
-  test('allows pipeline runs when the YAML edit lock is inactive', () => {
-    const helper = (AppHelpers as Record<string, unknown>).yamlEditLockRunBlockMessage as
-      ((locked: boolean, reason: string | null) => string | null) | undefined;
-
-    expect(helper?.(false, 'Chat is editing build.yaml')).toBeNull();
+  test('saves dirty unlocked pipelines and every pipeline without a path', () => {
+    expect(
+      shouldSavePipelineBeforeRun({
+        yamlPath: '/workspace/.tagma/build/build.yaml',
+        isDirty: true,
+        yamlEditLocked: false,
+      }),
+    ).toBeTrue();
+    expect(
+      shouldSavePipelineBeforeRun({ yamlPath: null, isDirty: false, yamlEditLocked: true }),
+    ).toBeTrue();
   });
 });

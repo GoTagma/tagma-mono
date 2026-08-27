@@ -24,7 +24,10 @@ import {
   sealChatOperationV2ResultMessage,
 } from '../server/chat-operations/results.js';
 import { createChatInventorySnapshot } from '../server/chat-operations/snapshots.js';
-import type { StoredChatOperationV2 } from '../server/chat-operations/store.js';
+import type {
+  StoredChatOperationV2,
+  StoredInvocationOutboxRecord,
+} from '../server/chat-operations/store.js';
 import type { ChatOperationV2State } from '../server/chat-operations/types.js';
 
 const HASH_A = 'a'.repeat(64);
@@ -257,6 +260,8 @@ function harness(input: {
   threads?: Readonly<Record<string, ReturnType<typeof clarificationThread> | null>>;
   interactive?: Readonly<Record<string, readonly ChatOperationV2InteractiveRendererView[]>>;
   results?: Readonly<Record<string, ReturnType<typeof resultProjection> | null>>;
+  outboxes?: readonly StoredInvocationOutboxRecord[];
+  onListInvocationOutbox?: () => void;
 }) {
   const inventory = input.inventory ?? hostInventory();
   const byId = new Map(input.operations.map((entry) => [entry.operationId, entry]));
@@ -279,6 +284,10 @@ function harness(input: {
     getClarificationThread: (operationId) => input.threads?.[operationId] ?? null,
     listPendingInteractiveViews: (_workspaceScopeId, operationId) =>
       input.interactive?.[operationId] ?? [],
+    listInvocationOutbox: () => {
+      input.onListInvocationOutbox?.();
+      return input.outboxes ?? [];
+    },
     getResultProjection: (operationId) => input.results?.[operationId] ?? null,
   };
   const resolver: ChatOperationV2ProjectionInventoryResolver = {
@@ -302,6 +311,175 @@ function allKeys(value: unknown): string[] {
 }
 
 describe('ChatTurn Operation V2 renderer projection', () => {
+  test('projects an explicit renderer execution state instead of making the client infer activity from phase', () => {
+    const inventory = hostInventory();
+    const running = operation('operation-running');
+    const clarification = operation('operation-waiting', {
+      ...state({ phase: 'awaiting_input', waitReason: 'clarification', clarificationRounds: 1 }),
+    });
+    const retryable = operation('operation-retryable', {
+      ...state({ phase: 'awaiting_input', waitReason: 'provider_unavailable' }),
+    });
+    const terminal = operation('operation-terminal', {
+      ...state({ phase: 'terminal', terminalOutcome: 'cancelled_precommit' }),
+    });
+    const value = harness({
+      operations: [running, clarification, retryable, terminal],
+      inventory,
+      threads: { 'operation-waiting': clarificationThread(inventory, 'operation-waiting') },
+    });
+
+    const workspace = readChatOperationV2WorkspaceProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+    );
+
+    expect(
+      workspace.operations.map(
+        (entry) => (entry as unknown as Record<string, unknown>).executionState,
+      ),
+    ).toEqual(['running', 'waiting_for_user', 'retryable_failure', 'terminal']);
+  });
+
+  test('does not scan invocation outboxes while projecting workspace summaries', () => {
+    let outboxReads = 0;
+    const value = harness({
+      operations: [operation('operation-one'), operation('operation-two')],
+      onListInvocationOutbox: () => {
+        outboxReads += 1;
+      },
+    });
+
+    readChatOperationV2WorkspaceProjection(value.persistence, value.resolver, 'scope-01');
+
+    expect(outboxReads).toBe(0);
+  });
+
+  test('projects only bounded failure stage, code, and outbox evidence for a retryable operation', () => {
+    const retryable = operation('operation-provider-failure', {
+      ...state({ phase: 'awaiting_input', waitReason: 'provider_unavailable' }),
+      updatedAt: 140,
+    });
+    const value = harness({
+      operations: [retryable],
+      outboxes: [
+        {
+          invocationId: 'classifier-invocation-1',
+          workspaceScopeId: 'scope-01',
+          operationId: retryable.operationId,
+          purpose: 'classifier',
+          sessionId: 'private-session-id',
+          inputId: 'private-input-id',
+          requestDigest: HASH_A,
+          status: 'failed_terminal',
+          preparedAt: 110,
+          updatedAt: 130,
+          admittedAggregateSeq: null,
+          settledAt: 130,
+          failureCode: 'provider_transport_unavailable',
+        },
+      ],
+    });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      retryable.operationId,
+    );
+
+    expect(detail.failure).toEqual({
+      stage: 'classification',
+      code: 'provider_transport_unavailable',
+      invocationId: 'classifier-invocation-1',
+      outboxStatus: 'failed_terminal',
+      recordedAt: 140,
+    });
+    expect(JSON.stringify(detail.failure)).not.toContain('private-session-id');
+    expect(JSON.stringify(detail.failure)).not.toContain('private-input-id');
+    expect(JSON.stringify(detail.failure)).not.toContain(HASH_A);
+  });
+
+  test('projects an authoring handoff retry without mislabeling a settled classifier as failed', () => {
+    const retryable = operation('operation-authoring-handoff', {
+      ...state({ phase: 'awaiting_input', waitReason: 'user_retry' }),
+      updatedAt: 150,
+    });
+    const value = harness({
+      operations: [retryable],
+      outboxes: [
+        {
+          invocationId: 'settled-classifier-invocation',
+          workspaceScopeId: 'scope-01',
+          operationId: retryable.operationId,
+          purpose: 'classifier',
+          sessionId: 'private-session-id',
+          inputId: 'private-input-id',
+          requestDigest: HASH_A,
+          status: 'settled',
+          preparedAt: 110,
+          updatedAt: 130,
+          admittedAggregateSeq: 1,
+          settledAt: 130,
+          failureCode: null,
+        },
+      ],
+    });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      retryable.operationId,
+    );
+
+    expect(detail.failure).toEqual({
+      stage: 'authoring',
+      code: 'authoring_handoff_retry_required',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: 150,
+    });
+  });
+
+  test('maps an unknown stored failure code to a stable Renderer code', () => {
+    const retryable = operation('operation-private-failure-code', {
+      ...state({ phase: 'awaiting_input', waitReason: 'provider_unavailable' }),
+      updatedAt: 150,
+    });
+    const value = harness({
+      operations: [retryable],
+      outboxes: [
+        {
+          invocationId: 'private-code-invocation',
+          workspaceScopeId: 'scope-01',
+          operationId: retryable.operationId,
+          purpose: 'authoring',
+          sessionId: 'private-session-id',
+          inputId: 'private-input-id',
+          requestDigest: HASH_A,
+          status: 'failed_terminal',
+          preparedAt: 110,
+          updatedAt: 130,
+          admittedAggregateSeq: null,
+          settledAt: 130,
+          failureCode: 'secret_customer_identifier',
+        },
+      ],
+    });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      retryable.operationId,
+    );
+
+    expect(detail.failure?.code).toBe('provider_unavailable');
+    expect(JSON.stringify(detail)).not.toContain('secret_customer_identifier');
+  });
+
   test('builds exact workspace and detail projections without control-plane fields', () => {
     const terminal = operation('operation-result', {
       ...state({ phase: 'terminal', terminalOutcome: 'completed_readonly' }),
@@ -326,7 +504,7 @@ describe('ChatTurn Operation V2 renderer projection', () => {
       'operations',
     ]);
     expect(workspace.inventory).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 7,
       digest: value.inventory.inventory.digest,
       candidates: [
@@ -357,6 +535,7 @@ describe('ChatTurn Operation V2 renderer projection', () => {
         version: 3,
         phase: 'terminal',
         waitReason: null,
+        executionState: 'terminal',
         terminalOutcome: 'completed_readonly',
         createdAt: 100,
         updatedAt: 120,

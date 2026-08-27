@@ -63,6 +63,8 @@ interface RuntimeOptions {
   readonly failForwardOnce?: boolean;
   readonly failResultPersistence?: boolean;
   readonly providerUnavailableOnce?: boolean;
+  readonly providerFailureCode?: string;
+  readonly providerSubmissionUnknown?: boolean;
 }
 
 class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPersistence {
@@ -251,11 +253,13 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     }
     if (this.options.providerUnavailableOnce && !this.providerFailed) {
       this.providerFailed = true;
-      return {
+      const unavailable = {
         kind: 'provider_unavailable',
-        code: 'provider_unavailable',
-        submissionUnknown: true,
-      };
+        code: this.options.providerFailureCode ?? 'provider_unavailable',
+      } as const;
+      return this.options.providerSubmissionUnknown === false
+        ? unavailable
+        : { ...unavailable, submissionUnknown: true };
     }
     return {
       kind: 'completed',
@@ -864,6 +868,23 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(runtime.invocationRequests).toHaveLength(2);
     expect(runtime.invocationRequests[1]!.inputId).not.toBe(runtime.invocationRequests[0]!.inputId);
     expect(runtime.invocationRequests[1]!.sessionId).toBe(runtime.invocationRequests[0]!.sessionId);
+  });
+
+  test('maps an unknown authoring runtime failure code before durable persistence', async () => {
+    const { engine, store } = createHarness({
+      providerUnavailableOnce: true,
+      providerSubmissionUnknown: false,
+      providerFailureCode: 'secret_customer_identifier',
+    });
+
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    const serialized = JSON.stringify({
+      outboxes: store.listInvocationOutbox('scope-1'),
+      events: store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 }),
+    });
+    expect(serialized).toContain('provider_unavailable');
+    expect(serialized).not.toContain('secret_customer_identifier');
   });
 
   test('cancels a live pre-commit invocation, settles usage, restores the session, and releases the lease', async () => {

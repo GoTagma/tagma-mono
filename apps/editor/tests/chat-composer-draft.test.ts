@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { setClientWorkspace } from '../src/api/client';
-import { restoreComposerDraftAfterSendFailure } from '../src/components/chat/ChatComposer';
+import {
+  getChatComposerAvailability,
+  restoreComposerDraftAfterSendFailure,
+} from '../src/components/chat/ChatComposer';
 import { useChatStore } from '../src/store/chat-store';
 
 type ChatState = ReturnType<typeof useChatStore.getState>;
@@ -15,6 +18,18 @@ afterEach(() => {
 });
 
 describe('chat composer draft', () => {
+  test('blocks a new turn while a retryable operation is active even though generation stopped', () => {
+    expect(
+      getChatComposerAvailability({
+        hasContent: true,
+        hasModel: true,
+        ready: true,
+        sending: false,
+        operationActive: true,
+      }),
+    ).toEqual({ blockedByAnotherChatUpdate: true, canSend: false });
+  });
+
   test('stores unsent text outside the mounted ChatPanel component', () => {
     useChatStore.getState().setComposerDraft('half-written prompt');
     expect(useChatStore.getState().composerDraft).toBe('half-written prompt');

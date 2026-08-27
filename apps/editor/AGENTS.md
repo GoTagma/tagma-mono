@@ -42,10 +42,15 @@
 - The Chat header and OpenCode-enabled pipeline/track/task Inspector model fields share
   `ModelPickerDropdown`. Keep provider groups and models case-insensitively alphabetical by their
   displayed labels there, and keep its provider input restricted to active/configured runtime
-  providers; the full `/provider` universe belongs only to Connect Providers. Treat
-  `/config/providers` membership as authoritative: native-v2 `/api/provider` and `/api/model` are
-  metadata overlays and can transiently be broader or incomplete during cold initialization, so
-  never let a v2-only provider enter the picker or let missing v2 metadata hide a runtime provider.
+  providers; the full provider universe belongs only to Connect Providers. The Host-owned
+  `/api/opencode/chat/provider-state` projection merges configured providers, connected ids, auth
+  methods, and native-v2 model metadata. Renderer code must never read raw `/config/providers`,
+  `/provider`, `/provider/auth`, `/api/provider`, or `/api/model` routes. Treat configured-provider
+  membership as authoritative: native-v2 provider/model data is a metadata overlay and can
+  transiently be broader or incomplete during cold initialization, so never let a v2-only provider
+  enter the picker or let missing v2 metadata hide a runtime provider. Provider-list or auth-method
+  unavailability fails Connect closed; do not synthesize API-key methods when the entire auth
+  directory failed.
 - For a chat-authored new pipeline, expose that snapped Chat model only in create/fill-new
   context. The production pipeline agent defaults an unspecified prompt driver to `opencode` and
   an unspecified `opencode` model to that snapshot. Explicit user driver/model choices always win;
@@ -760,6 +765,23 @@
   no provider reinvocation. Discussion/diagnosis recovery may perform that single replay only after
   authenticating the canonical request digest; different bytes fail before OpenCode access. Do not
   apply this exception to `json_schema`, whose replay loses the structured result.
+- A renderer-issued explicit Retry after `provider_unavailable` always allocates a new Host
+  invocation, session/input identity for classification/read-only execution. Same-id runner caches
+  exist only to coalesce concurrent duplicates and prevent a compatibility rich re-prompt; they are
+  never the identity for a later user retry. Authoring/repair retries likewise allocate a fresh
+  invocation and input under their controlled session.
+- `user_retry` is the Host-owned authoring handoff/recovery boundary. An explicit Retry must resume
+  the same live authoring handoff without rerunning classification. After restart, where the rich
+  classifier result is intentionally unavailable, that explicit user action starts a fresh
+  classifier invocation and may then rebuild the handoff; the raw retry route must never return an
+  inert `in_progress` result for this state.
+- Persist provider failures as bounded safe codes in the existing invocation outbox and Host event
+  authority; safe means membership in the Host-maintained stable allowlist, not merely matching a
+  character regex. Never persist or project provider exception messages or arbitrary runtime error
+  codes. Projection schema v2 exposes only failure stage, safe code, Host invocation correlation,
+  outbox status, and timestamp. The renderer diagnostics contributor may repeat that bounded
+  projection, but must not expose native session/input ids, request digests, provider payloads,
+  paths, or credentials.
 - Native V2 SSE replay currently yields a stable `evt_*` id and parsed payload but omits the
   generated client's declared `event` field. Treat SSE as a wake-up signal and correlate that id
   with `session.history`, whose durable record supplies both event type and aggregate sequence.
@@ -812,6 +834,15 @@
   recovery choice, but may not call OpenCode mutations or stage/finalize primitives directly. V2 is
   the only Desktop Chat execution protocol: do not add V1 import, recovery, migration, passthrough,
   executor, or renderer-owned session paths; handshake mismatches fail closed.
+- Keep the removed renderer staging namespace (`/api/workspace/chat-yaml-stage/*`) behind an early
+  HTTP 426 fence, before YAML-lock and revision middleware. Host V2 invokes staging, Trial, repair,
+  and finalize as internal sidecar capabilities; do not register the legacy route adapter or add
+  renderer API clients for those primitives.
+- Projection schema v2 carries an explicit execution state (`running`, `waiting_for_user`,
+  `retryable_failure`, or `terminal`). Renderer activity, composer/header locks, and spinners must
+  follow that field rather than infer liveness from `phase`. A retryable failure is sealed, stops
+  elapsed-time/spinner UI, keeps the operation mutation-locked, and offers only Host CAS actions:
+  retry, discard-and-change-provider, or discard.
 
 - Tagma may reuse OpenCode's user-level data root for provider login state, but it must never share
   the schema-bearing session database with a standalone OpenCode CLI. Every managed Chat and

@@ -24,6 +24,7 @@ function operation(patch: Partial<ChatOperationV2Projection> = {}): ChatOperatio
     version: 0,
     phase: 'created',
     waitReason: null,
+    executionState: 'running',
     terminalOutcome: null,
     createdAt: 100,
     updatedAt: 100,
@@ -35,7 +36,7 @@ function operation(patch: Partial<ChatOperationV2Projection> = {}): ChatOperatio
 
 function inventory() {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     revision: 1,
     digest: 'a'.repeat(64),
     candidates: [],
@@ -44,7 +45,7 @@ function inventory() {
 
 function detail(nextOperation = operation()): ChatOperationV2OperationDetail {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceScopeId: 'workspace-scope-1',
     operation: nextOperation,
     userMessage: {
@@ -56,6 +57,7 @@ function detail(nextOperation = operation()): ChatOperationV2OperationDetail {
     },
     inventory: inventory(),
     pendingInput: null,
+    failure: null,
     result: null,
   };
 }
@@ -65,7 +67,7 @@ function snapshot(
   latestCursor = 0,
 ): ChatOperationV2Snapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceScopeId: 'workspace-scope-1',
     operations,
     retainedFloor: 0,
@@ -336,7 +338,12 @@ test('uses authoritative snapshot reads after SSE wake-ups and resubscribes on c
 
 test('routes every active-operation decision with current CAS and updates projection', async () => {
   const fake = fakeApi();
-  const active = operation({ version: 4, phase: 'awaiting_input', waitReason: 'clarification' });
+  const active = operation({
+    version: 4,
+    phase: 'awaiting_input',
+    waitReason: 'clarification',
+    executionState: 'waiting_for_user',
+  });
   fake.setSnapshot(snapshot([active], 1));
   fake.setOperation(active);
   const controller = createChatOperationV2Controller({

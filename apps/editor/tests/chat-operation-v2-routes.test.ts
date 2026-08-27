@@ -178,6 +178,7 @@ function operationSummary(operationId = 'operation-1') {
     version: 0,
     phase: 'created' as const,
     waitReason: null,
+    executionState: 'running' as const,
     terminalOutcome: null,
     createdAt: 10,
     updatedAt: 10,
@@ -188,7 +189,7 @@ function operationSummary(operationId = 'operation-1') {
 
 function rendererInventory() {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     revision: 1,
     digest: 'a'.repeat(64),
     candidates: [],
@@ -197,7 +198,7 @@ function rendererInventory() {
 
 function operationDetail(operationId = 'operation-1') {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     workspaceScopeId: 'scope-1',
     operation: operationSummary(operationId),
     userMessage: {
@@ -209,13 +210,14 @@ function operationDetail(operationId = 'operation-1') {
     },
     inventory: rendererInventory(),
     pendingInput: null,
+    failure: null,
     result: null,
   };
 }
 
 function workspaceProjection(retainedFloor = 0, latestCursor = 1) {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     workspaceScopeId: 'scope-1',
     operations: [operationSummary()],
     retainedFloor,

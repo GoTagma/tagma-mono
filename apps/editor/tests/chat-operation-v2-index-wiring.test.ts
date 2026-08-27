@@ -15,6 +15,14 @@ test('sidecar wires the opt-in Chat Operation V2 Host surface and closes its aut
   expect(source).toContain('createManagedOpenCodeStructuredClassifierRunner');
   expect(source).toContain('ensureRealTagmaDirectory(canonicalWorkspaceRoot)');
   expect(source).toContain('registerChatOperationV2Routes(');
+  expect(source).toContain('registerChatOperationV2LegacyStageFence(app);');
+  expect(source).not.toContain('registerChatYamlStagingRoutes(app);');
+  expect(source.indexOf('registerChatOperationV2LegacyStageFence(app);')).toBeGreaterThan(
+    source.indexOf('app.use(resolveWorkspace);'),
+  );
+  expect(source.indexOf('registerChatOperationV2LegacyStageFence(app);')).toBeLessThan(
+    source.indexOf('if (!isYamlEditLockProtectedMutation(req.path)) return next();'),
+  );
   expect(source).toContain('enabled: true,');
   expect(source).toContain('mutationsEnabled: true,');
   expect(source).toContain(
@@ -45,16 +53,18 @@ test('sidecar wires the opt-in Chat Operation V2 Host surface and closes its aut
   expect(source).toContain('await chatOperationV2Close;');
 });
 
-test('sidecar wires migration/reset only through exact gated Host authority', () => {
+test('sidecar wires migration/reset through the always-on V2 Host authority', () => {
   const source = readFileSync(join(editorRoot, 'server', 'index.ts'), 'utf8');
 
   expect(source).toContain('createChatOperationV2MigrationService({');
-  expect(source).toContain('isChatOperationV2MigrationServiceEnabled()');
+  expect(source).toContain('const chatOperationV2MigrationService = chatOperationV2Service');
+  expect(source).toContain('enabled: true,');
+  expect(source).not.toContain('isChatOperationV2MigrationServiceEnabled');
   expect(source).toContain(
     'getTrustedStore: () => chatOperationV2Service.getTrustedMigrationStore()',
   );
   expect(source).toContain('closeTrustedStoreForOfflineMigration()');
-  expect(source).toContain('ensureChatOperationV2StartupMigration(workDir);');
+  expect(source).not.toContain('ensureChatOperationV2StartupMigration');
   expect(source).toContain('deriveChatOperationV2ResetRequestIdentity(clientRequestId)');
   expect(source).toContain('registerChatOperationV2ControlRoutes(');
   expect(source).not.toMatch(/resetControlData\([\s\S]{0,300}(?:databasePath|keyPath|rawKey)/);

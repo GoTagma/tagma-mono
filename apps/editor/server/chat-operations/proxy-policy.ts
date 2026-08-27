@@ -79,7 +79,11 @@ function hasControlCharacter(value: string): boolean {
   return false;
 }
 
-/** Exact, finite read surface used by the pinned OpenCode 1.18.18 renderer clients. */
+/**
+ * Exact, finite read surface used by the pinned OpenCode 1.18.18 renderer
+ * clients. Provider/auth/model discovery is intentionally absent: the Host
+ * owns those reads through `/api/opencode/chat/provider-state`.
+ */
 const EXACT_READ_PATHS = new Set([
   '/global/config',
   '/global/health',
@@ -88,7 +92,6 @@ const EXACT_READ_PATHS = new Set([
   '/project',
   '/project/current',
   '/config',
-  '/config/providers',
   '/experimental/capabilities',
   '/experimental/tool',
   '/experimental/tool/ids',
@@ -98,8 +101,6 @@ const EXACT_READ_PATHS = new Set([
   '/vcs/diff',
   '/vcs/diff/raw',
   '/command',
-  '/provider',
-  '/provider/auth',
   '/agent',
   '/skill',
   '/mcp',
@@ -112,8 +113,6 @@ const EXACT_READ_PATHS = new Set([
   '/api/agent',
   '/api/session',
   '/api/session/active',
-  '/api/model',
-  '/api/provider',
   '/api/command',
   '/api/skill',
   '/api/event',
@@ -173,10 +172,6 @@ function isReadPath(path: string): boolean {
       return true;
     }
     return segments.length === 4 && segments[2] === 'message';
-  }
-
-  if (segments[0] === 'api' && segments[1] === 'provider') {
-    return segments.length === 3;
   }
 
   if (segments[0] === 'api' && segments[1] === 'session') {

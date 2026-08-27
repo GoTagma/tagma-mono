@@ -15,6 +15,7 @@ import {
 } from '../api/opencode-chat';
 import type {
   ChatOperationV2CreatePayload,
+  ChatOperationV2FailureProjection,
   ChatOperationV2Inventory,
   ChatOperationV2OperationDetail,
   ChatOperationV2Projection,
@@ -74,6 +75,12 @@ export interface ComposerAttachment {
   content: string;
 }
 
+interface ActiveChatOperationV2Request {
+  readonly operationId: string;
+  readonly text: string;
+  readonly attachments: readonly ComposerAttachment[];
+}
+
 /**
  * Bootstrap lifecycle, surfaced to the UI so the chat panel can distinguish
  * "opencode is still spinning up" from "opencode is up but has no data".
@@ -106,6 +113,8 @@ interface ChatStore {
   chatOperationV2Operations: readonly ChatOperationV2Projection[];
   chatOperationV2Inventory: ChatOperationV2Inventory | null;
   activeChatOperationV2: ChatOperationV2Projection | null;
+  activeChatOperationV2Failure: ChatOperationV2FailureProjection | null;
+  activeChatOperationV2Request: ActiveChatOperationV2Request | null;
   chatOperationV2Connected: boolean;
   chatOperationV2LatestCursor: number;
   chatOperationV2RendererInstanceId: string | null;
@@ -197,18 +206,13 @@ interface ChatStore {
    * Full provider catalog for the Connect dialog — one entry per provider
    * opencode knows about.
    *
-   * Built by merging two opencode endpoints:
-   *   - `GET /provider` → `all[]` (the full models.dev universe, including
-   *     opencode-zen + custom providers declared in config) and `connected[]`
-   *     (IDs with credentials already stored).
-   *   - `GET /provider/auth` → per-provider method list for providers with
-   *     *special* flows (OAuth, well-known). Most providers aren't in there;
-   *     for those we synthesize a generic API-key method.
+   * Built from the Host-owned provider-state projection, which merges the
+   * full provider directory, connected IDs, auth methods, configured runtime
+   * providers, and native-v2 model metadata without exposing raw OpenCode
+   * query coordinates to the renderer.
    *
-   * The ModelPicker's "usable right now" list still comes from `providers`
-   * (= `/config/providers`) because that one carries runtime model metadata
-   * (context limits, capabilities, status). `providerCatalog` is strictly
-   * the Connect dialog's menu.
+   * `providerCatalog` is strictly the Connect dialog's menu; `providers` is
+   * the Host-projected runtime/model catalog used by the ModelPicker.
    */
   providerCatalog: ProviderCatalogEntry[];
   refreshProviderCatalog: () => Promise<void>;
@@ -289,6 +293,7 @@ interface ChatStore {
   abort: () => Promise<void>;
   retryActiveChatOperationV2: () => Promise<void>;
   discardActiveChatOperationV2: () => Promise<void>;
+  changeProviderForActiveChatOperationV2: () => Promise<void>;
   replyActiveChatOperationV2Question: (
     operationId: string,
     requestId: string,
@@ -438,14 +443,40 @@ function chatOperationV2ConversationId(workspaceKey: string, rotate = false): st
 let chatOperationV2Controller: ChatOperationV2Controller | null = null;
 
 function chatOperationV2Activity(operation: ChatOperationV2Projection | null): ActivityEvent[] {
-  if (!operation || operation.phase === 'terminal') return [];
+  if (!operation || operation.executionState === 'terminal') return [];
+  if (operation.executionState === 'retryable_failure') {
+    return [
+      {
+        kind: 'operation-failed',
+        startedAt: operation.createdAt,
+        endedAt: operation.updatedAt,
+        count: 1,
+        detail:
+          operation.waitReason === 'provider_unavailable'
+            ? 'Provider unavailable'
+            : 'Explicit retry required',
+        key: `chat-operation-v2:${operation.operationId}:retryable-failure`,
+      },
+    ];
+  }
+  if (operation.executionState === 'waiting_for_user') {
+    return [
+      {
+        kind: 'operation-waiting',
+        startedAt: operation.createdAt,
+        endedAt: null,
+        count: 1,
+        detail: `Host phase: ${operation.phase.replace(/_/g, ' ')}`,
+        key: `chat-operation-v2:${operation.operationId}:${operation.waitReason}`,
+      },
+    ];
+  }
   const kind: ActivityKind =
     operation.phase === 'created' || operation.phase === 'classifying'
       ? 'request-sent'
       : operation.phase === 'verifying' || operation.phase.startsWith('commit_')
         ? 'tool-running'
-        : operation.waitReason === 'retry_backoff' ||
-            operation.waitReason === 'provider_unavailable'
+        : operation.waitReason === 'retry_backoff'
           ? 'retry'
           : 'assistant-started';
   return [
@@ -480,6 +511,7 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
           chatOperationV2ClarificationRequests: {},
           chatOperationV2QuestionRequests: {},
           chatOperationV2InteractiveRecoveryRequests: {},
+          activeChatOperationV2Failure: null,
           sending: false,
           pendingUserText: null,
           pendingActivity: [],
@@ -493,27 +525,31 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
         chatOperationV2ClarificationRequests: {},
         chatOperationV2QuestionRequests: {},
         chatOperationV2InteractiveRecoveryRequests: {},
+        activeChatOperationV2Failure: null,
       };
     }
 
     const operation = snapshot.activeOperation;
-    const live = !!operation && operation.phase !== 'terminal';
+    const busy =
+      operation?.executionState === 'running' || operation?.executionState === 'waiting_for_user';
     const activeOperationChanged =
       previous.activeChatOperationV2?.operationId !== operation?.operationId;
     return {
       ...base,
-      sending: live,
+      sending: busy,
       pendingActivity: chatOperationV2Activity(operation),
       ...(activeOperationChanged
         ? {
             messages: [],
             pendingPermissions: [],
+            activeChatOperationV2Request: null,
+            activeChatOperationV2Failure: null,
             chatOperationV2ClarificationRequests: {},
             chatOperationV2QuestionRequests: {},
             chatOperationV2InteractiveRecoveryRequests: {},
           }
         : {}),
-      ...(live ? {} : { pendingUserText: null, lastSendingEndedAt: Date.now() }),
+      ...(busy ? {} : { pendingUserText: null, lastSendingEndedAt: Date.now() }),
       ...(snapshot.error
         ? { sendError: `Chat Operation V2 projection failed: ${snapshot.error.message}` }
         : {}),
@@ -655,6 +691,16 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
       chatOperationV2InteractiveRecoveryRequests: interactiveRecoveryRequests,
       pendingPermissions,
       messages: chatOperationV2ThreadEntries(detail),
+      activeChatOperationV2Request: {
+        operationId,
+        text: detail.userMessage.text,
+        attachments: detail.userMessage.attachments.map((attachment) => ({
+          id: attachment.referenceId,
+          label: attachment.label,
+          content: attachment.content,
+        })),
+      },
+      activeChatOperationV2Failure: detail.failure,
       pendingUserText: null,
       completionWarning,
     };
@@ -821,21 +867,23 @@ async function runChatOperationV2UiMutation(
   set: ChatSet,
   errorPrefix: string,
   mutation: (controller: ChatOperationV2Controller) => Promise<unknown>,
-): Promise<void> {
+): Promise<boolean> {
   const controller = getChatOperationV2Controller();
   let activation: ReturnType<ChatOperationV2Controller['captureActivationAuthority']>;
   try {
     activation = controller.captureActivationAuthority();
   } catch (error) {
     set({ sendError: `${errorPrefix}: ${describeError(error)}` });
-    return;
+    return false;
   }
   try {
     await mutation(controller);
-    if (!controller.isActivationAuthorityCurrent(activation)) return;
+    if (!controller.isActivationAuthorityCurrent(activation)) return false;
+    return true;
   } catch (error) {
-    if (!controller.isActivationAuthorityCurrent(activation)) return;
+    if (!controller.isActivationAuthorityCurrent(activation)) return false;
     set({ sendError: `${errorPrefix}: ${describeError(error)}` });
+    return false;
   }
 }
 
@@ -860,6 +908,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   chatOperationV2Operations: [],
   chatOperationV2Inventory: null,
   activeChatOperationV2: null,
+  activeChatOperationV2Failure: null,
+  activeChatOperationV2Request: null,
   chatOperationV2Connected: false,
   chatOperationV2LatestCursor: 0,
   chatOperationV2RendererInstanceId: null,
@@ -1109,6 +1159,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               chatOperationV2Operations: [],
               chatOperationV2Inventory: null,
               activeChatOperationV2: null,
+              activeChatOperationV2Failure: null,
+              activeChatOperationV2Request: null,
               chatOperationV2Connected: false,
               chatOperationV2LatestCursor: 0,
               chatOperationV2RendererInstanceId: null,
@@ -1332,6 +1384,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         set({
           currentSessionId: null,
           messages: [],
+          activeChatOperationV2Request: null,
           pendingUserText: null,
           pendingPermissions: [],
           chatOperationV2ClarificationRequests: {},
@@ -1385,6 +1438,46 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     await runChatOperationV2UiMutation(set, "Couldn't discard Chat Operation V2", (controller) =>
       controller.discard(),
     );
+  },
+
+  async changeProviderForActiveChatOperationV2() {
+    const before = get();
+    const active = before.activeChatOperationV2;
+    if (
+      before.chatExecutionMode !== 'operation-v2' ||
+      !active ||
+      active.executionState !== 'retryable_failure'
+    ) {
+      return;
+    }
+    const request =
+      before.activeChatOperationV2Request?.operationId === active.operationId
+        ? before.activeChatOperationV2Request
+        : null;
+    const discarded = await runChatOperationV2UiMutation(
+      set,
+      "Couldn't discard Chat Operation V2 before changing provider",
+      (controller) => controller.discard(),
+    );
+    if (!discarded) return;
+    const after = get();
+    if (
+      after.activeChatOperationV2?.operationId === active.operationId &&
+      after.activeChatOperationV2.executionState !== 'terminal'
+    ) {
+      return;
+    }
+    set((current) => ({
+      connectOpen: true,
+      composerDraft:
+        current.composerDraft.trim().length > 0
+          ? current.composerDraft
+          : (request?.text ?? current.composerDraft),
+      composerAttachments:
+        current.composerAttachments.length > 0
+          ? current.composerAttachments
+          : [...(request?.attachments ?? [])],
+    }));
   },
 
   async replyActiveChatOperationV2Question(operationId, requestId, choice, answers) {
@@ -1463,6 +1556,7 @@ registerRendererDiagnosticsContributor('chatOperationV2', ({ workspaceKey }) => 
     activeOperationId: matchingWorkspace
       ? (state.activeChatOperationV2?.operationId ?? null)
       : null,
+    activeFailure: matchingWorkspace ? state.activeChatOperationV2Failure : null,
     clarificationPending:
       matchingWorkspace && Object.keys(state.chatOperationV2ClarificationRequests).length > 0,
     questionPending:
@@ -1476,6 +1570,7 @@ registerRendererDiagnosticsContributor('chatOperationV2', ({ workspaceKey }) => 
       version: operation.version,
       phase: operation.phase,
       waitReason: operation.waitReason,
+      executionState: operation.executionState,
       terminalOutcome: operation.terminalOutcome,
       updatedAt: operation.updatedAt,
     })),

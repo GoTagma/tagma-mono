@@ -5,6 +5,7 @@ import {
   type ChatOperationV2PendingClarification,
 } from './clarification.js';
 import type { ChatOperationV2HostInventory } from './inventory.js';
+import { safeChatOperationV2FailureCode } from './failure-codes.js';
 import {
   CHAT_OPERATION_V2_INTERACTIVE_MAX_OPTION_DESCRIPTION_BYTES,
   CHAT_OPERATION_V2_INTERACTIVE_MAX_OPTION_LABEL_BYTES,
@@ -23,7 +24,12 @@ import {
   type ChatOperationV2RendererResultProjection,
 } from './results.js';
 import { createChatInventorySnapshot } from './snapshots.js';
-import type { StoredChatOperationV2, WorkspaceOperationSnapshot } from './store.js';
+import type {
+  ChatOperationV2InvocationStatus,
+  StoredChatOperationV2,
+  StoredInvocationOutboxRecord,
+  WorkspaceOperationSnapshot,
+} from './store.js';
 import {
   validateChatOperationV2State,
   type ChatOperationV2Phase,
@@ -31,7 +37,15 @@ import {
   type ChatOperationV2WaitReason,
 } from './types.js';
 
-export const CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION = 1 as const;
+export const CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION = 2 as const;
+export const CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES = [
+  'running',
+  'waiting_for_user',
+  'retryable_failure',
+  'terminal',
+] as const;
+export type ChatOperationV2RendererExecutionState =
+  (typeof CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES)[number];
 export const CHAT_OPERATION_V2_PROJECTION_MAX_CANDIDATES = 1024;
 export const CHAT_OPERATION_V2_PROJECTION_MAX_NAME_BYTES = 1024;
 export const CHAT_OPERATION_V2_PROJECTION_MAX_PENDING_TEXT_BYTES = 64 * 1024;
@@ -137,6 +151,25 @@ export type ChatOperationV2RendererPendingInput =
 
 export type ChatOperationV2RendererPendingInputKind = ChatOperationV2RendererPendingInput['kind'];
 
+export const CHAT_OPERATION_V2_RENDERER_FAILURE_STAGES = [
+  'classification',
+  'readonly',
+  'authoring',
+  'repair',
+  'verification',
+  'operation',
+] as const;
+export type ChatOperationV2RendererFailureStage =
+  (typeof CHAT_OPERATION_V2_RENDERER_FAILURE_STAGES)[number];
+
+export interface ChatOperationV2RendererFailureProjection {
+  readonly stage: ChatOperationV2RendererFailureStage;
+  readonly code: string;
+  readonly invocationId: string | null;
+  readonly outboxStatus: ChatOperationV2InvocationStatus | null;
+  readonly recordedAt: number;
+}
+
 export interface ChatOperationV2RendererOperationSummary {
   readonly operationId: string;
   /** Renderer correlation only; never an execution or binding authority. */
@@ -147,6 +180,7 @@ export interface ChatOperationV2RendererOperationSummary {
   readonly version: number;
   readonly phase: ChatOperationV2Phase;
   readonly waitReason: ChatOperationV2WaitReason;
+  readonly executionState: ChatOperationV2RendererExecutionState;
   readonly terminalOutcome: ChatOperationV2TerminalOutcome | null;
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -161,6 +195,7 @@ export interface ChatOperationV2RendererOperationDetail {
   readonly userMessage: ChatOperationV2RendererUserMessage;
   readonly inventory: ChatOperationV2RendererInventory;
   readonly pendingInput: ChatOperationV2RendererPendingInput | null;
+  readonly failure: ChatOperationV2RendererFailureProjection | null;
   readonly result: ChatOperationV2RendererResultProjection | null;
 }
 
@@ -183,6 +218,7 @@ export interface ChatOperationV2ProjectionReadPersistence {
     workspaceScopeId: string,
     operationId: string,
   ): readonly ChatOperationV2InteractiveRendererView[];
+  listInvocationOutbox(workspaceScopeId: string): readonly StoredInvocationOutboxRecord[];
   getResultProjection(operationId: string): ChatOperationV2RendererResultProjection | null;
 }
 
@@ -220,6 +256,7 @@ export interface ChatOperationV2OperationProjectionParts {
   readonly admission: ChatOperationV2ProjectionAdmission;
   readonly clarificationThread: ChatOperationV2ClarificationThread | null;
   readonly interactiveViews: readonly ChatOperationV2InteractiveRendererView[];
+  readonly outboxes: readonly StoredInvocationOutboxRecord[];
   readonly result: ChatOperationV2RendererResultProjection | null;
   readonly inventory: ChatOperationV2RendererInventory;
 }
@@ -890,11 +927,120 @@ function operationSummary(
     version: operation.version,
     phase: operation.phase,
     waitReason: operation.waitReason,
+    executionState: rendererExecutionState(operation),
     terminalOutcome: operation.terminalOutcome,
     createdAt: operation.createdAt,
     updatedAt: operation.updatedAt,
     hasResult: result !== null,
     pendingInputKind: pending?.kind ?? null,
+  });
+}
+
+function rendererExecutionState(
+  operation: StoredChatOperationV2,
+): ChatOperationV2RendererExecutionState {
+  if (operation.phase === 'terminal') return 'terminal';
+  if (operation.phase !== 'awaiting_input') return 'running';
+
+  switch (operation.waitReason) {
+    case 'provider_unavailable':
+    case 'user_retry':
+      return 'retryable_failure';
+    case 'clarification':
+    case 'permission':
+    case 'renderer_snapshot':
+    case 'user_recovery_choice':
+      return 'waiting_for_user';
+    case 'retry_backoff':
+      return 'running';
+    case null:
+      return fail(
+        'invalid_record',
+        'An awaiting-input operation must project a concrete wait reason.',
+      );
+  }
+}
+
+function failureStage(purpose: string): ChatOperationV2RendererFailureStage {
+  switch (purpose) {
+    case 'classifier':
+      return 'classification';
+    case 'discussion':
+    case 'diagnosis':
+      return 'readonly';
+    case 'authoring':
+      return 'authoring';
+    case 'repair':
+      return 'repair';
+    case 'trial_plan':
+      return 'verification';
+    default:
+      return 'operation';
+  }
+}
+
+function inferredFailureCode(outbox: StoredInvocationOutboxRecord | null): string {
+  if (outbox?.failureCode) {
+    return safeChatOperationV2FailureCode(outbox.failureCode, 'provider_unavailable');
+  }
+  switch (outbox?.status) {
+    case 'submitted_unknown':
+      return 'submitted_unknown';
+    case 'admitted':
+    case 'running':
+      return 'provider_unavailable_during_invocation';
+    case 'settled':
+      return outbox.purpose === 'classifier'
+        ? 'structured_classification_invalid'
+        : 'post_invocation_failure';
+    case 'prepared':
+      return 'provider_unavailable_before_admission';
+    case 'failed_terminal':
+    case 'interrupted':
+    case undefined:
+      return 'provider_unavailable';
+  }
+}
+
+function failureProjection(
+  operation: StoredChatOperationV2,
+  outboxes: readonly StoredInvocationOutboxRecord[],
+): ChatOperationV2RendererFailureProjection | null {
+  if (
+    operation.phase !== 'awaiting_input' ||
+    (operation.waitReason !== 'provider_unavailable' && operation.waitReason !== 'user_retry')
+  ) {
+    return null;
+  }
+  if (operation.waitReason === 'user_retry') {
+    return Object.freeze({
+      stage: 'authoring',
+      code: 'authoring_handoff_retry_required',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: operation.updatedAt,
+    });
+  }
+  const outbox =
+    outboxes
+      .filter((entry) => entry.operationId === operation.operationId)
+      .sort(
+        (left, right) =>
+          right.preparedAt - left.preparedAt || right.invocationId.localeCompare(left.invocationId),
+      )[0] ?? null;
+  if (outbox && outbox.workspaceScopeId !== operation.workspaceScopeId) {
+    return fail('workspace_mismatch', 'Invocation failure evidence belongs to another workspace.');
+  }
+  const code = inferredFailureCode(outbox);
+  if (!SAFE_CODE.test(code)) {
+    return fail('invalid_record', 'Invocation failure evidence contains an unsafe code.');
+  }
+  return Object.freeze({
+    stage: outbox ? failureStage(outbox.purpose) : 'operation',
+    code,
+    invocationId: outbox ? hostId(outbox.invocationId, 'Failure invocation id') : null,
+    outboxStatus: outbox?.status ?? null,
+    recordedAt: operation.updatedAt,
   });
 }
 
@@ -904,6 +1050,7 @@ export function projectChatOperationV2OperationDetail(
   const operation = validateStoredOperation(parts.operation, parts.operation.workspaceScopeId);
   const result = validateResultProjection(parts.result, operation);
   const pending = pendingInput({ ...parts, operation, result });
+  const failure = failureProjection(operation, parts.outboxes);
   return Object.freeze({
     schemaVersion: CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
     workspaceScopeId: operation.workspaceScopeId,
@@ -911,6 +1058,7 @@ export function projectChatOperationV2OperationDetail(
     userMessage: projectUserMessage(operation, parts.admission),
     inventory: parts.inventory,
     pendingInput: pending,
+    failure,
     result,
   });
 }
@@ -919,6 +1067,9 @@ function operationParts(
   persistence: ChatOperationV2ProjectionReadPersistence,
   operation: StoredChatOperationV2,
   inventory: ChatOperationV2RendererInventory,
+  outboxes: readonly StoredInvocationOutboxRecord[] = persistence.listInvocationOutbox(
+    operation.workspaceScopeId,
+  ),
 ): ChatOperationV2OperationProjectionParts {
   const admission = persistence.getAdmission(operation.operationId);
   if (admission === null) {
@@ -932,6 +1083,7 @@ function operationParts(
       operation.workspaceScopeId,
       operation.operationId,
     ),
+    outboxes,
     result: persistence.getResultProjection(operation.operationId),
     inventory,
   };
@@ -975,7 +1127,9 @@ export function readChatOperationV2WorkspaceProjection(
       return fail('invalid_record', 'Workspace snapshot contains a duplicate operation id.');
     }
     operationIds.add(operation.operationId);
-    const parts = operationParts(persistence, operation, inventory);
+    // Workspace summaries do not project failure evidence. Avoid one complete
+    // outbox scan per operation; the detail endpoint reads it only on demand.
+    const parts = operationParts(persistence, operation, inventory, []);
     const result = validateResultProjection(parts.result, operation);
     const pending = pendingInput({ ...parts, result });
     return operationSummary(operation, parts.admission, result, pending);

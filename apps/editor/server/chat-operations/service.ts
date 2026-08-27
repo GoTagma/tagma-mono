@@ -590,7 +590,9 @@ export class ChatOperationV2Service {
       CHAT_OPERATION_V2_PHASES.indexOf('reserving')
     ) {
       return this.#trackReadonlyCall(
-        this.#orchestratorForWorkspace(authority).retryOperation(input),
+        this.#orchestratorForWorkspace(authority)
+          .retryOperation(input)
+          .then((result) => this.#dispatchAuthoringDeferred(authority, result)),
       );
     }
     const runtime = this.#authoringRuntimeForWorkspace(authority);
@@ -1179,6 +1181,8 @@ export class ChatOperationV2Service {
           authority.store
             .listPendingInteractiveRequests({ workspaceScopeId, operationId })
             .map(toChatOperationV2InteractiveRendererView),
+        listInvocationOutbox: (workspaceScopeId) =>
+          authority.store.listInvocationOutbox(workspaceScopeId),
         getResultProjection: (operationId) => resultResolver.getResultProjection(operationId),
       },
     };
@@ -1219,12 +1223,26 @@ export class ChatOperationV2Service {
     operationId: string,
   ): Promise<ChatOperationV2ReadonlyDispatchResult> {
     const classified = await this.#dispatchReadonlyCreate(runtime, input, operationId);
+    return this.#dispatchAuthoringDeferred(runtime, classified);
+  }
+
+  async #dispatchAuthoringDeferred(
+    runtime: ChatOperationV2ReadonlyWorkspaceAuthority,
+    classified: ChatOperationV2ReadonlyDispatchResult,
+  ): Promise<ChatOperationV2ReadonlyDispatchResult> {
     if (classified.kind !== 'authoring_deferred' || !this.#mutationsEnabled) return classified;
     const authoring = this.#authoringRuntimeForWorkspace(runtime);
+    const admission = runtime.store.getOperationAdmission(classified.operation.operationId);
+    if (!admission) {
+      throw new ChatOperationV2ServiceError(
+        'unsafe_mutation_result',
+        'Authoring handoff lost its sealed admission authority.',
+      );
+    }
     const resolution = await authoring.targetResolver.resolveTarget({
       operation: classified.operation,
       evidence: classified.targetEvidence,
-      conversationId: input.conversationId,
+      conversationId: admission.conversationId,
     });
     this.#assertTargetResolution(classified.targetEvidence, resolution);
     let sessionId = authoring.sessionsByOperation.get(classified.operation.operationId);

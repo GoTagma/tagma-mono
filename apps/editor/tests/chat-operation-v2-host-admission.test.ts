@@ -29,6 +29,7 @@ function authority(): ChatOperationV2HostAdmissionAuthority {
     ],
     agentPolicy: { agent: 'tagma-pipeline-classifier', version: 2 },
     settings: { maxSteps: 100, pythonToolsEnabled: false },
+    repairMaxAttempts: 25,
     capabilities: { opencode: '1.18.18', structuredOutput: true },
     features: { protocol: 2, readonly: true, shadow: true },
     validateCanonicalYaml: (yaml) => {
@@ -75,6 +76,7 @@ describe('Chat Operation V2 Host admission resolver', () => {
       model: 'gpt-5',
       rendererInstanceId: 'renderer-1',
       conversationId: 'conversation-1',
+      repairMaxAttempts: 25,
       inventory: host.inventory,
       dirtySnapshot: {
         candidateId: candidate.id,
@@ -97,6 +99,24 @@ describe('Chat Operation V2 Host admission resolver', () => {
     }
     expect(resolved.agentPolicyHash).not.toBe(resolved.settingsHash);
     expect(resolved.conversationId).toBe('conversation-1');
+  });
+
+  test('seals the Host repair budget into both initial input and settings authority', () => {
+    const first = resolveChatOperationV2CreateAdmission(request(false), authority());
+    const second = resolveChatOperationV2CreateAdmission(request(false), {
+      ...authority(),
+      repairMaxAttempts: 7,
+    });
+
+    expect(first.repairMaxAttempts).toBe(25);
+    expect(second.repairMaxAttempts).toBe(7);
+    expect(second.settingsHash).not.toBe(first.settingsHash);
+    expect(() =>
+      resolveChatOperationV2CreateAdmission(request(false), {
+        ...authority(),
+        repairMaxAttempts: 51,
+      }),
+    ).toThrow(/repairMaxAttempts/i);
   });
 
   test('is canonical, domain-separated, and sensitive to Host policy changes', () => {

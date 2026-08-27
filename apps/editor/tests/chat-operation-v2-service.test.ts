@@ -368,10 +368,18 @@ class FakeServiceAuthoringTargets implements ChatOperationV2AuthoringTargetResol
     readonly conversationId: string;
   }> = [];
 
+  constructor(private failuresRemaining = 0) {}
+
   async resolveTarget(
     input: Parameters<ChatOperationV2AuthoringTargetResolver['resolveTarget']>[0],
   ) {
     this.calls.push({ evidence: input.evidence, conversationId: input.conversationId });
+    if (this.failuresRemaining > 0) {
+      this.failuresRemaining -= 1;
+      throw new Error(
+        'private target resolver path /home/example/secret must not cross projection',
+      );
+    }
     if (input.evidence.kind === 'edit') {
       return {
         targetId: input.evidence.candidateId,
@@ -1602,6 +1610,59 @@ describe('ChatTurn Operation V2 service activation', () => {
 });
 
 describe('ChatTurn Operation V2 authoring service integration', () => {
+  test('explicit Retry resumes a transient authoring handoff without reusing or rerunning the classifier', async () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(
+        { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+        198,
+      ),
+    ]);
+    const runtime = new FakeServiceAuthoringRuntime();
+    const targets = new FakeServiceAuthoringTargets(1);
+    const { service } = createMutationService({
+      controlDir,
+      runner,
+      runtime,
+      targets,
+    });
+    const input = readonlyCreateInput('service-authoring-handoff-retry');
+
+    await expect(service.createAndDispatchReadonly(workspace, input)).rejects.toThrow(
+      'private target resolver path',
+    );
+    const pending = service.getWorkspaceProjection(workspace).operations[0]!;
+    expect(pending).toMatchObject({
+      phase: 'awaiting_input',
+      waitReason: 'user_retry',
+      executionState: 'retryable_failure',
+    });
+    const detail = service.getOperationProjection(workspace, pending.operationId);
+    expect(detail.failure).toEqual({
+      stage: 'authoring',
+      code: 'authoring_handoff_retry_required',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: pending.updatedAt,
+    });
+    expect(JSON.stringify(detail)).not.toContain('/home/example/secret');
+
+    const retried = await service.retryReadonly(workspace, {
+      operationId: pending.operationId,
+      expectedGeneration: pending.generation,
+      expectedVersion: pending.version,
+      requestId: 'service-authoring-handoff-explicit-retry',
+    });
+
+    expect(retried.kind).toBe('completed_noop');
+    expect(runner.calls).toHaveLength(1);
+    expect(runtime.invocations).toHaveLength(1);
+    expect(targets.calls).toHaveLength(2);
+  });
+
   test('projection reads expose safe conversation/result state and no raw authority', async () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');
@@ -1635,7 +1696,7 @@ describe('ChatTurn Operation V2 authoring service integration', () => {
 
     const snapshot = service.getWorkspaceProjection(workspace);
     expect(snapshot).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       inventory: { candidates: [] },
       operations: [
         {
