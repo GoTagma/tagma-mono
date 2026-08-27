@@ -428,7 +428,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(runtimeSource).toContain('never replace this with resume=true');
   });
 
-  test('concrete factory creates the exact UUID stage and trusted create coordinate without V1 binding', async () => {
+  test('concrete factory creates the exact UUID stage and trusted create coordinate with Host-owned binding', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-chat-v2-authoring-production-'));
     roots.push(root);
     const workspaceRoot = join(root, 'workspace');

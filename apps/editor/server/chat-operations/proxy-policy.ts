@@ -19,15 +19,10 @@ export const CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH = Object.freeze({
   error: 'Raw OpenCode mutations are unavailable in Chat Operation V2 production mode.',
 });
 
-export type ChatOperationV2ProxyHandshake =
-  | {
-      readonly chatOperationProtocolVersion: typeof CHAT_OPERATION_V2_PROTOCOL_VERSION;
-      readonly chatOperationMode: 'production';
-    }
-  | {
-      readonly chatOperationProtocolVersion: null;
-      readonly chatOperationMode: 'legacy';
-    };
+export type ChatOperationV2ProxyHandshake = {
+  readonly chatOperationProtocolVersion: typeof CHAT_OPERATION_V2_PROTOCOL_VERSION;
+  readonly chatOperationMode: 'production';
+};
 
 export interface EvaluateChatOperationV2RendererProxyPolicyInput {
   readonly env?: Readonly<Record<string, string | undefined>>;
@@ -44,7 +39,6 @@ export interface SanitizeChatOperationV2RendererProxyRequestUrlInput {
 }
 
 export type ChatOperationV2RendererProxyPolicyDecision =
-  | { readonly kind: 'legacy_passthrough' }
   | { readonly kind: 'allow_read' }
   | { readonly kind: 'allow_provider_auth' }
   | {
@@ -61,7 +55,6 @@ export type ChatOperationV2RendererProxyRequestUrlDecision =
     }
   | Extract<ChatOperationV2RendererProxyPolicyDecision, { kind: 'reject_protocol_mismatch' }>;
 
-const LEGACY_PASSTHROUGH = Object.freeze({ kind: 'legacy_passthrough' as const });
 const ALLOW_READ = Object.freeze({ kind: 'allow_read' as const });
 const ALLOW_PROVIDER_AUTH = Object.freeze({ kind: 'allow_provider_auth' as const });
 const REJECT_PROTOCOL_MISMATCH = Object.freeze({
@@ -74,11 +67,6 @@ const PRODUCTION_HANDSHAKE = Object.freeze({
   chatOperationProtocolVersion: CHAT_OPERATION_V2_PROTOCOL_VERSION,
   chatOperationMode: 'production' as const,
 });
-const LEGACY_HANDSHAKE = Object.freeze({
-  chatOperationProtocolVersion: null,
-  chatOperationMode: 'legacy' as const,
-});
-
 const MAX_REQUEST_TARGET_CHARS = 16 * 1024;
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,255}$/;
 const READ_METHODS = new Set(['GET', 'HEAD']);
@@ -238,7 +226,10 @@ export function isChatOperationV2ProductionCutover(
 export function chatOperationV2ProxyHandshake(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): ChatOperationV2ProxyHandshake {
-  return isChatOperationV2ProductionCutover(env) ? PRODUCTION_HANDSHAKE : LEGACY_HANDSHAKE;
+  if (!isChatOperationV2ProductionCutover(env)) {
+    throw new Error('Chat Operation V2 production mode is not enabled.');
+  }
+  return PRODUCTION_HANDSHAKE;
 }
 
 /**
@@ -287,7 +278,7 @@ export function sanitizeChatOperationV2RendererProxyRequestUrl(
   input: SanitizeChatOperationV2RendererProxyRequestUrlInput,
 ): ChatOperationV2RendererProxyRequestUrlDecision {
   if (!isChatOperationV2ProductionCutover(input.env ?? process.env)) {
-    return { kind: 'allow_request_url', requestUrl: input.requestUrl };
+    return REJECT_PROTOCOL_MISMATCH;
   }
 
   const path = canonicalRequestPath(input.requestUrl);
@@ -348,7 +339,7 @@ export function evaluateChatOperationV2RendererProxyPolicy(
   input: EvaluateChatOperationV2RendererProxyPolicyInput,
 ): ChatOperationV2RendererProxyPolicyDecision {
   if (!isChatOperationV2ProductionCutover(input.env ?? process.env)) {
-    return LEGACY_PASSTHROUGH;
+    return REJECT_PROTOCOL_MISMATCH;
   }
 
   const method =

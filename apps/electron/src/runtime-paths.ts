@@ -768,7 +768,6 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
           ? {
               TAGMA_CHAT_OPERATION_V2_SHADOW: '1',
               TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER: '2',
-              TAGMA_CHAT_OPERATION_V2_MIGRATION: '1',
             }
           : {}),
         // Sidecar reads these to power the OpenCode CLI section in Settings
@@ -785,7 +784,6 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       delete env.TAGMA_CHAT_OPERATION_V2_SHADOW;
       delete env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
       delete env.TAGMA_CHAT_OPERATION_V2_INTERNAL_MUTATIONS;
-      delete env.TAGMA_CHAT_OPERATION_V2_MIGRATION;
     }
     if (options.userDataDir) {
       const opencodeUserDir = p.join(options.userDataDir, 'opencode');
@@ -862,6 +860,8 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       TAGMA_SIDECAR_ACTIVE_SOURCE: 'dev',
       ...(sidecarVersion ? { TAGMA_SIDECAR_ACTIVE_VERSION: sidecarVersion } : {}),
       ...(options.desktopLogFile ? { TAGMA_DESKTOP_LOG_FILE: options.desktopLogFile } : {}),
+      TAGMA_CHAT_OPERATION_V2_SHADOW: '1',
+      TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER: '2',
       ...(sidecarVersion ? { TAGMA_SIDECAR_BUNDLED_VERSION: sidecarVersion } : {}),
       ...(editorUpdateChannel ? { TAGMA_SIDECAR_UPDATE_CHANNEL: editorUpdateChannel } : {}),
       ...(editorUpdateManifestBaseUrl

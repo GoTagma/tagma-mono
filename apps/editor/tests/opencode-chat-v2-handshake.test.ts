@@ -28,14 +28,13 @@ afterEach(() => {
   setClientAuthToken(null);
 });
 
-test('normalizes an older missing handshake to explicit legacy mode', async () => {
+test('rejects a sidecar that does not declare the exact V2 production handshake', async () => {
   setClientWorkspace(workspace);
   globalThis.fetch = (async () => Response.json(ensureBody())) as unknown as typeof fetch;
 
-  await expect(getClientBootstrap(workspace)).resolves.toMatchObject({
-    chatOperationProtocolVersion: null,
-    chatOperationMode: 'legacy',
-  });
+  await expect(getClientBootstrap(workspace)).rejects.toThrow(
+    'invalid Chat Operation capability handshake',
+  );
 });
 
 test('accepts only the exact authenticated production handshake', async () => {
@@ -62,6 +61,7 @@ test('fails closed on partial, unknown, or contradictory handshake values', asyn
     { chatOperationProtocolVersion: 1, chatOperationMode: 'production' },
     { chatOperationProtocolVersion: 2, chatOperationMode: 'legacy' },
     { chatOperationProtocolVersion: null, chatOperationMode: 'production' },
+    { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' },
   ];
 
   for (const handshake of malformed) {

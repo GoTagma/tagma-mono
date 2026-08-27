@@ -14,21 +14,16 @@ import {
   openOfflineChatOperationV2ResetOnlyStore,
   OfflineChatOperationV2ControlLineageError,
   prepareExplicitChatOperationV2ControlReset,
-  prepareLegacyV1ChatMigration,
   type ChatOperationV2StoreMigrationExtension,
 } from '../server/chat-operations/migration-runtime.js';
-import {
-  clearChatYamlStageSessionRelocation,
-  createChatYamlStage,
-  discardChatYamlStage,
-  prepareChatYamlStageSessionRelocation,
-} from '../server/chat-yaml-staging.js';
-import { reserveChatPipelineBinding } from '../server/chat-pipeline-binding.js';
 import { tagmaDirOf } from '../server/pipeline-paths.js';
 import { __serverRecordAuthTestHooks } from '../server/server-record-auth.js';
 import { WorkspaceState } from '../server/workspace-state.js';
 import type { ChatOperationV2MigrationExecutionRecord } from '../server/chat-operations/migration-executor.js';
-import { planExplicitChatControlReset } from '../server/chat-operations/migration.js';
+import {
+  planExplicitChatControlReset,
+  planWorkspacePathChange,
+} from '../server/chat-operations/migration.js';
 import { ChatOperationV2Store } from '../server/chat-operations/store.js';
 
 const roots: string[] = [];
@@ -106,168 +101,6 @@ afterEach(() => {
 });
 
 describe('Chat Operation V2 production migration runtime', () => {
-  test('prepares certified V1 bindings and a complete active-stage recovery from real records', () => {
-    const fixture = setupWorkspace('legacy');
-    const published = reserveChatPipelineBinding(fixture.ws, {
-      sessionId: 'session-published',
-      bindingRequestId: 'binding-request-published',
-      intent: 'edit',
-      originRelativePath: 'source/source.yaml',
-    });
-    const publishedPath = join(fixture.tagmaDir, ...published.targetRelativePath.split('/'));
-    mkdirSync(dirname(publishedPath), { recursive: true });
-    writeFileSync(publishedPath, 'pipeline:\n  name: Published\n  version: 1.0.0\n', 'utf8');
-
-    const stage = createChatYamlStage(fixture.ws, {
-      activePath: fixture.sourcePath,
-      pipelineBinding: {
-        sessionId: 'session-stage',
-        bindingRequestId: 'binding-request-stage',
-        intent: 'edit',
-      },
-    });
-    const relocation = prepareChatYamlStageSessionRelocation(fixture.ws, {
-      stageId: stage.id,
-      sessionId: 'session-stage',
-      relocationId: 'relocation-stage',
-    });
-
-    try {
-      const prepared = prepareLegacyV1ChatMigration({
-        workspace: fixture.ws,
-        workspaceScopeId: 'workspace-scope-01',
-        migrationId: 'migration-runtime-01',
-        plannedAtMs: Date.now(),
-        completedResults: [],
-        inspectSession(sessionId) {
-          return sessionId === 'session-stage'
-            ? { sessionId, directory: relocation.sourceDirectory, status: 'idle' }
-            : null;
-        },
-      });
-
-      expect(prepared.plan.registryDisposition).toBe('imported');
-      if (prepared.plan.registryDisposition !== 'imported') throw new Error('Expected import.');
-      const bindings = prepared.plan.sqliteTransaction.mutations.filter(
-        (mutation) => mutation.kind === 'import_legacy_binding',
-      );
-      expect(bindings.map(({ status }) => status).sort()).toEqual(['published', 'released']);
-      const recovery = prepared.plan.sqliteTransaction.mutations.find(
-        (mutation) => mutation.kind === 'import_legacy_stage_recovery',
-      );
-      expect(recovery).toMatchObject({
-        sessionId: 'session-stage',
-        executionAuthority: 'none',
-        publicationAuthority: 'none',
-      });
-      expect(prepared.diagnostics).toEqual([]);
-
-      for (const mutation of bindings) {
-        const evidence = prepared.files.verifyLegacyBindingEvidence(mutation);
-        expect(evidence).toMatchObject({
-          status: mutation.status,
-          sourceRecordHash: mutation.sourceRecordHash,
-          evidenceHash: mutation.evidenceHash,
-          targetIdentity: mutation.target.identity,
-        });
-      }
-      if (!recovery || recovery.kind !== 'import_legacy_stage_recovery') {
-        throw new Error('Expected stage recovery mutation.');
-      }
-      expect(prepared.files.verifyLegacyStageEvidence(recovery)).toMatchObject({
-        sourceRecordHash: recovery.sourceRecordHash,
-        evidenceHashes: recovery.evidenceHashes,
-        sessionId: recovery.sessionId,
-      });
-
-      writeFileSync(publishedPath, 'pipeline:\n  name: Third Party Drift\n', 'utf8');
-      expect(
-        prepared.files.verifyLegacyBindingEvidence(
-          bindings.find((mutation) => mutation.status === 'published')!,
-        ).evidenceHash,
-      ).not.toBe(bindings.find((mutation) => mutation.status === 'published')!.evidenceHash);
-    } finally {
-      clearChatYamlStageSessionRelocation(fixture.ws, {
-        stageId: stage.id,
-        sessionId: 'session-stage',
-        relocationId: 'relocation-stage',
-        expectedPhase: 'prepared',
-        verifiedHomeDirectory: relocation.sourceDirectory,
-      });
-      discardChatYamlStage(fixture.ws, stage.id);
-      stopWorkspace(fixture.ws);
-    }
-  });
-
-  test('quarantines a tampered authenticated registry without interpreting ownership', () => {
-    const fixture = setupWorkspace('quarantine');
-    reserveChatPipelineBinding(fixture.ws, {
-      sessionId: 'session-one',
-      bindingRequestId: 'binding-request-one',
-      intent: 'edit',
-      originRelativePath: 'source/source.yaml',
-    });
-    const registryPath = join(fixture.tagmaDir, '.chat-pipeline-bindings', 'bindings.json');
-    const tampered = readFileSync(registryPath, 'utf8').replace('session-one', 'session-evil');
-    writeFileSync(registryPath, tampered, 'utf8');
-
-    try {
-      const prepared = prepareLegacyV1ChatMigration({
-        workspace: fixture.ws,
-        workspaceScopeId: 'workspace-scope-01',
-        migrationId: 'migration-quarantine-01',
-        plannedAtMs: Date.now(),
-        completedResults: [],
-      });
-      expect(prepared.plan.registryDisposition).toBe('quarantined');
-      expect(prepared.plan.inventoryProjection).not.toHaveLength(0);
-      expect(
-        prepared.plan.inventoryProjection.every(({ ownership }) => ownership === 'unowned'),
-      ).toBe(true);
-      expect(prepared.diagnostics).toEqual([
-        { kind: 'legacy_registry_quarantined', id: 'registry', reason: 'invalid_hmac' },
-      ]);
-    } finally {
-      stopWorkspace(fixture.ws);
-    }
-  });
-
-  test('isolates an active stage lacking complete relocation/session evidence without deleting it', () => {
-    const fixture = setupWorkspace('incomplete-stage');
-    const stage = createChatYamlStage(fixture.ws, {
-      activePath: fixture.sourcePath,
-      pipelineBinding: {
-        sessionId: 'session-incomplete',
-        bindingRequestId: 'binding-request-incomplete',
-        intent: 'edit',
-      },
-    });
-    try {
-      const prepared = prepareLegacyV1ChatMigration({
-        workspace: fixture.ws,
-        workspaceScopeId: 'workspace-scope-01',
-        migrationId: 'migration-incomplete-stage-01',
-        plannedAtMs: Date.now(),
-        completedResults: [],
-      });
-      expect(
-        prepared.plan.sqliteTransaction.mutations.some(
-          (mutation) => mutation.kind === 'import_legacy_stage_recovery',
-        ),
-      ).toBe(false);
-      expect(prepared.diagnostics).toContainEqual({
-        kind: 'legacy_stage_isolated',
-        id: stage.id,
-        reason: 'stage_relocation_missing',
-      });
-      expect(existsSync(stage.rootDir)).toBe(true);
-      expect(readFileSync(stage.activeStagedPath!, 'utf8')).toContain('name: Source');
-    } finally {
-      discardChatYamlStage(fixture.ws, stage.id);
-      stopWorkspace(fixture.ws);
-    }
-  });
-
   test('archives DB+old key, O_EXCL installs the sealed new key, and restores both on failure', () => {
     const root = makeRoot('archive');
     const controlDir = join(root, 'server-control');
@@ -742,7 +575,7 @@ describe('Chat Operation V2 production migration runtime', () => {
     }
   });
 
-  test('exposes a service-callable runtime over the queued ChatOperationV2Store extension', () => {
+  test('exposes a service-callable workspace-path runtime over the Store extension', () => {
     const fixture = setupWorkspace('runtime');
     const executions = new Map<string, ChatOperationV2MigrationExecutionRecord>();
     const extension: ChatOperationV2StoreMigrationExtension = {
@@ -755,11 +588,6 @@ describe('Chat Operation V2 production migration runtime', () => {
           recordExecution(record) {
             executions.set(record.planId, record);
           },
-          importLegacyBinding() {},
-          importLegacyStageRecovery() {},
-          quarantineLegacyRegistry() {},
-          recordLegacyHistory() {},
-          replaceInventoryProjection() {},
           inspectWorkspaceAdoption() {
             throw new Error('not used');
           },
@@ -782,18 +610,43 @@ describe('Chat Operation V2 production migration runtime', () => {
     });
 
     try {
-      const result = runtime.migrateLegacyV1({
-        workspaceScopeId: 'workspace-scope-01',
-        migrationId: 'migration-callable-01',
+      const plan = planWorkspacePathChange({
+        planId: 'workspace-observed-callable-01',
         plannedAtMs: 4_000,
-        completedResults: [],
+        request: 'observe_path_change',
+        oldPathState: 'active',
+        oldScope: {
+          workspaceScopeId: 'workspace-old',
+          canonicalPathHmac: 'a'.repeat(64),
+          recordHmac: 'b'.repeat(64),
+          controlGeneration: 1,
+          recordsAuthentication: 'trusted',
+          empty: false,
+          ownership: 'owned',
+          nonterminalOperationIds: [],
+          pendingCommitWalIds: [],
+          publishedBindingIds: ['binding-1'],
+          authoritativeResultIds: ['result-1'],
+        },
+        newScope: {
+          workspaceScopeId: 'workspace-new',
+          canonicalPathHmac: 'c'.repeat(64),
+          recordHmac: 'd'.repeat(64),
+          controlGeneration: 1,
+          recordsAuthentication: 'trusted',
+          empty: true,
+          ownership: 'unowned',
+          nonterminalOperationIds: [],
+          pendingCommitWalIds: [],
+          publishedBindingIds: [],
+          authoritativeResultIds: [],
+        },
+        adoptedOldScopeRecordHmac: null,
       });
-      expect(result.receipt).toMatchObject({
-        disposition: 'legacy_imported',
-        replayed: false,
-      });
-      expect(result.prepared.plan.planHash).toBe(result.receipt.planHash);
-      expect(executions.has('migration-callable-01')).toBe(true);
+      const receipt = runtime.execute(plan);
+      expect(receipt).toMatchObject({ disposition: 'workspace_observed', replayed: false });
+      expect(receipt.planHash).toBe(plan.planHash);
+      expect(executions.has(plan.planId)).toBe(true);
     } finally {
       stopWorkspace(fixture.ws);
     }

@@ -125,11 +125,6 @@ import {
   parseChatOperationV2MigrationPlan,
   type AdoptMovedWorkspaceMutation,
   type ExplicitChatControlResetPlan,
-  type ImportLegacyV1StageRecoveryMutation,
-  type LegacyV1BindingMutation,
-  type LegacyV1HistoryOnlyResult,
-  type LegacyV1InventoryProjectionEntry,
-  type QuarantineLegacyV1RegistryMutation,
   type WorkspaceAdoptionPreconditionCode,
 } from './migration.js';
 import {
@@ -183,7 +178,6 @@ export const CHAT_OPERATION_V2_TABLES = [
   'commit_wal',
   'control_lineages',
   'interactive_requests',
-  'migration_authority_records',
   'migration_control_reset_sessions',
   'migration_executions',
   'migration_inventory_projection',
@@ -843,15 +837,6 @@ interface MigrationExecutionRow {
   applied_at_ms: number;
   migration_execution_hash: string;
   migration_execution_canonical: Uint8Array;
-}
-
-interface MigrationAuthorityRecordRow {
-  workspace_scope_id: string;
-  authority_kind: string;
-  authority_id: string;
-  authority_hash: string;
-  authority_canonical: Uint8Array;
-  created_at_ms: number;
 }
 
 interface MigrationControlResetSessionRow {
@@ -1739,13 +1724,10 @@ CREATE TABLE IF NOT EXISTS migration_executions (
   plan_id TEXT PRIMARY KEY CHECK (length(plan_id) BETWEEN 1 AND 256),
   plan_hash TEXT NOT NULL CHECK (length(plan_hash) = 64 AND plan_hash NOT GLOB '*[^0-9a-f]*'),
   plan_kind TEXT NOT NULL CHECK (
-    plan_kind IN ('legacy_v1_import', 'workspace_path_change', 'reset_chat_control_data')
+    plan_kind IN ('workspace_path_change', 'reset_chat_control_data')
   ),
   disposition TEXT NOT NULL CHECK (
-    disposition IN (
-      'legacy_imported', 'legacy_quarantined', 'workspace_observed',
-      'workspace_adopted', 'control_reset'
-    )
+    disposition IN ('workspace_observed', 'workspace_adopted', 'control_reset')
   ),
   applied_at_ms INTEGER NOT NULL CHECK (applied_at_ms >= 0),
   migration_execution_hash TEXT NOT NULL CHECK (
@@ -1758,28 +1740,6 @@ CREATE TABLE IF NOT EXISTS migration_executions (
   )
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS migration_authority_records (
-  workspace_scope_id TEXT NOT NULL REFERENCES workspace_scopes(workspace_scope_id),
-  authority_kind TEXT NOT NULL CHECK (
-    authority_kind IN (
-      'legacy_binding', 'legacy_stage_recovery',
-      'legacy_registry_quarantine', 'legacy_history'
-    )
-  ),
-  authority_id TEXT NOT NULL CHECK (length(authority_id) BETWEEN 1 AND 256),
-  authority_hash TEXT NOT NULL CHECK (
-    length(authority_hash) = 64 AND authority_hash NOT GLOB '*[^0-9a-f]*'
-  ),
-  authority_canonical BLOB NOT NULL CHECK (
-    typeof(authority_canonical) = 'blob' AND length(authority_canonical) BETWEEN 1 AND 131072
-  ),
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  PRIMARY KEY (workspace_scope_id, authority_kind, authority_id)
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS migration_authority_records_kind
-ON migration_authority_records(workspace_scope_id, authority_kind, created_at_ms, authority_id);
-
 CREATE TABLE IF NOT EXISTS migration_inventory_projection (
   projection_id TEXT PRIMARY KEY CHECK (length(projection_id) BETWEEN 1 AND 256),
   workspace_scope_id TEXT REFERENCES workspace_scopes(workspace_scope_id),
@@ -1787,7 +1747,7 @@ CREATE TABLE IF NOT EXISTS migration_inventory_projection (
   target_platform TEXT NOT NULL CHECK (target_platform IN ('win32', 'posix')),
   target_coordinate TEXT NOT NULL CHECK (length(target_coordinate) BETWEEN 1 AND 4096),
   target_identity TEXT NOT NULL CHECK (length(target_identity) BETWEEN 1 AND 4096),
-  ownership TEXT NOT NULL CHECK (ownership IN ('unowned', 'session_owned')),
+  ownership TEXT NOT NULL CHECK (ownership = 'unowned'),
   binding_id TEXT,
   owner_session_id TEXT,
   projection_hash TEXT NOT NULL CHECK (
@@ -1800,10 +1760,7 @@ CREATE TABLE IF NOT EXISTS migration_inventory_projection (
     (workspace_scope_id IS NOT NULL AND lineage_id IS NULL) OR
     (workspace_scope_id IS NULL AND lineage_id IS NOT NULL)
   ),
-  CHECK (
-    (ownership = 'unowned' AND binding_id IS NULL AND owner_session_id IS NULL) OR
-    (ownership = 'session_owned' AND binding_id IS NOT NULL AND owner_session_id IS NOT NULL)
-  )
+  CHECK (binding_id IS NULL AND owner_session_id IS NULL)
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS migration_inventory_projection_target
@@ -2619,9 +2576,6 @@ const MIGRATION_EXECUTION_KEYS = [
   'disposition',
   'appliedAtMs',
   'sqliteMutationCount',
-  'importedBindingCount',
-  'importedStageCount',
-  'historyOnlyCount',
   'inventoryCount',
   'controlGeneration',
   'controlArchiveSetHash',
@@ -2658,14 +2612,8 @@ function parseMigrationExecutionRecord(value: unknown): ChatOperationV2Migration
     !candidate.includes('\0');
   const count = (candidate: unknown): candidate is number =>
     Number.isSafeInteger(candidate) && (candidate as number) >= 0 && !Object.is(candidate, -0);
-  const planKinds = ['legacy_v1_import', 'workspace_path_change', 'reset_chat_control_data'];
-  const dispositions = [
-    'legacy_imported',
-    'legacy_quarantined',
-    'workspace_observed',
-    'workspace_adopted',
-    'control_reset',
-  ];
+  const planKinds = ['workspace_path_change', 'reset_chat_control_data'];
+  const dispositions = ['workspace_observed', 'workspace_adopted', 'control_reset'];
   if (
     record.version !== 1 ||
     !id(record.planId) ||
@@ -2674,9 +2622,6 @@ function parseMigrationExecutionRecord(value: unknown): ChatOperationV2Migration
     !dispositions.includes(record.disposition) ||
     !count(record.appliedAtMs) ||
     !count(record.sqliteMutationCount) ||
-    !count(record.importedBindingCount) ||
-    !count(record.importedStageCount) ||
-    !count(record.historyOnlyCount) ||
     !count(record.inventoryCount) ||
     (record.controlGeneration !== null &&
       (!Number.isSafeInteger(record.controlGeneration) || record.controlGeneration < 1)) ||
@@ -2690,13 +2635,6 @@ function parseMigrationExecutionRecord(value: unknown): ChatOperationV2Migration
     return invalid('Migration execution fields are malformed.');
   }
   const compatible =
-    (record.planKind === 'legacy_v1_import' &&
-      ['legacy_imported', 'legacy_quarantined'].includes(record.disposition) &&
-      record.controlGeneration === null &&
-      record.controlArchiveSetHash === null &&
-      record.resetRequestHash === null &&
-      record.resetTrigger === null &&
-      record.resetOldKeyDisposition === null) ||
     (record.planKind === 'workspace_path_change' &&
       ['workspace_observed', 'workspace_adopted'].includes(record.disposition) &&
       record.controlGeneration !== null &&
@@ -4181,26 +4119,6 @@ export class ChatOperationV2Store {
           assertActive(true);
           this.recordMigrationExecution(record);
           executionFinalized = true;
-        },
-        importLegacyBinding: (mutation) => {
-          assertActive(true);
-          this.importLegacyMigrationBinding(mutation);
-        },
-        importLegacyStageRecovery: (mutation) => {
-          assertActive(true);
-          this.importLegacyMigrationStage(mutation);
-        },
-        quarantineLegacyRegistry: (workspaceScopeId, mutation) => {
-          assertActive(true);
-          this.recordLegacyMigrationQuarantine(workspaceScopeId, mutation);
-        },
-        recordLegacyHistory: (workspaceScopeId, result) => {
-          assertActive(true);
-          this.recordLegacyMigrationHistory(workspaceScopeId, result);
-        },
-        replaceInventoryProjection: (workspaceScopeId, inventory) => {
-          assertActive(true);
-          this.replaceLegacyMigrationInventory(workspaceScopeId, inventory);
         },
         inspectWorkspaceAdoption: (mutation) => {
           assertActive();
@@ -6955,8 +6873,6 @@ export class ChatOperationV2Store {
               `SELECT name FROM sqlite_master
                WHERE name IN (
                  'migration_executions',
-                 'migration_authority_records',
-                 'migration_authority_records_kind',
                  'migration_inventory_projection',
                  'migration_inventory_projection_target',
                  'control_lineages',
@@ -7544,355 +7460,6 @@ export class ChatOperationV2Store {
     }
   }
 
-  private migrationAuthorityRecord(
-    workspaceScopeId: string,
-    kind: string,
-    authorityId: string,
-  ): MigrationAuthorityRecordRow | null {
-    const statement = this.database.prepare<MigrationAuthorityRecordRow, [string, string, string]>(
-      `SELECT * FROM migration_authority_records
-       WHERE workspace_scope_id = ? AND authority_kind = ? AND authority_id = ?`,
-    );
-    try {
-      const row = statement.get(workspaceScopeId, kind, authorityId) ?? null;
-      if (!row) return null;
-      if (
-        !SHA256_HEX.test(row.authority_hash) ||
-        !(row.authority_canonical instanceof Uint8Array)
-      ) {
-        throw new Error('Migration authority fingerprint columns are malformed.');
-      }
-      const decoded = new TextDecoder('utf-8', { fatal: true }).decode(row.authority_canonical);
-      const value = JSON.parse(decoded) as Record<string, unknown>;
-      const canonical = migrationCanonicalBytes(value);
-      const projectedId =
-        kind === 'legacy_binding'
-          ? value.bindingId
-          : kind === 'legacy_stage_recovery'
-            ? value.stageId
-            : kind === 'legacy_registry_quarantine'
-              ? value.quarantineId
-              : value.sourceResultId;
-      if (
-        !Buffer.from(canonical).equals(Buffer.from(row.authority_canonical)) ||
-        migrationDigest(canonical) !== row.authority_hash ||
-        row.workspace_scope_id !== workspaceScopeId ||
-        row.authority_kind !== kind ||
-        row.authority_id !== authorityId ||
-        projectedId !== authorityId ||
-        ('workspaceScopeId' in value && value.workspaceScopeId !== workspaceScopeId)
-      ) {
-        throw new Error('Migration authority projection does not match canonical evidence.');
-      }
-      return row;
-    } catch (error) {
-      if (error instanceof ChatOperationV2StoreError) throw error;
-      throw new ChatOperationV2StoreError(
-        'corrupt_store',
-        'Stored migration authority failed canonical fingerprint validation.',
-        { cause: error },
-      );
-    } finally {
-      statement.finalize();
-    }
-  }
-
-  private storeMigrationAuthorityRecord(
-    workspaceScopeId: string,
-    kind:
-      'legacy_binding' | 'legacy_stage_recovery' | 'legacy_registry_quarantine' | 'legacy_history',
-    authorityId: string,
-    value: unknown,
-  ): void {
-    assertIdentifier(workspaceScopeId, 'migration workspace scope id', 128);
-    assertIdentifier(authorityId, 'migration authority id', 256);
-    if (!this.workspaceScopeRowById(workspaceScopeId)) {
-      throw new ChatOperationV2StoreError(
-        'workspace_scope_not_found',
-        'Migration authority workspace scope does not exist.',
-      );
-    }
-    const canonical = migrationCanonicalBytes(value);
-    if (canonical.byteLength === 0 || canonical.byteLength > 128 * 1024) {
-      throw new ChatOperationV2StoreError(
-        'invalid_migration_execution',
-        'Migration authority record exceeds its durable byte limit.',
-      );
-    }
-    const hash = migrationDigest(canonical);
-    const existing = this.migrationAuthorityRecord(workspaceScopeId, kind, authorityId);
-    if (existing) {
-      if (
-        existing.authority_hash === hash &&
-        Buffer.from(existing.authority_canonical).equals(Buffer.from(canonical))
-      ) {
-        return;
-      }
-      throw new ChatOperationV2StoreError(
-        'migration_execution_conflict',
-        'Migration authority id already contains different certified evidence.',
-      );
-    }
-    const createdAt = this.now();
-    assertTimestamp(createdAt, 'migration authority createdAt');
-    const statement = this.database.prepare(
-      `INSERT INTO migration_authority_records (
-        workspace_scope_id, authority_kind, authority_id, authority_hash,
-        authority_canonical, created_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-    );
-    try {
-      statement.run(workspaceScopeId, kind, authorityId, hash, canonical, createdAt);
-    } finally {
-      statement.finalize();
-    }
-  }
-
-  private importLegacyMigrationBinding(mutation: LegacyV1BindingMutation): void {
-    if (
-      mutation.kind !== 'import_legacy_binding' ||
-      !SHA256_HEX.test(mutation.sourceRecordHash) ||
-      !SHA256_HEX.test(mutation.evidenceHash) ||
-      mutation.workspaceScopeId.length === 0 ||
-      !['published', 'released'].includes(mutation.status)
-    ) {
-      throw new ChatOperationV2StoreError(
-        'invalid_migration_execution',
-        'Legacy binding mutation is malformed.',
-      );
-    }
-    const rows = this.database.prepare<MigrationAuthorityRecordRow, [string]>(
-      `SELECT * FROM migration_authority_records
-         WHERE workspace_scope_id = ? AND authority_kind = 'legacy_binding'`,
-    );
-    try {
-      for (const row of rows.all(mutation.workspaceScopeId)) {
-        const validated = this.migrationAuthorityRecord(
-          mutation.workspaceScopeId,
-          'legacy_binding',
-          row.authority_id,
-        );
-        if (!validated) {
-          throw new ChatOperationV2StoreError(
-            'corrupt_store',
-            'Legacy binding authority disappeared during migration.',
-          );
-        }
-        const parsed = JSON.parse(
-          new TextDecoder('utf-8', { fatal: true }).decode(validated.authority_canonical),
-        ) as LegacyV1BindingMutation;
-        if (
-          parsed.status === 'published' &&
-          mutation.status === 'published' &&
-          (parsed.target.identity === mutation.target.identity ||
-            parsed.resultId === mutation.resultId)
-        ) {
-          throw new ChatOperationV2StoreError(
-            'migration_execution_conflict',
-            'Legacy published binding target or result already has ownership authority.',
-          );
-        }
-      }
-    } finally {
-      rows.finalize();
-    }
-    this.storeMigrationAuthorityRecord(
-      mutation.workspaceScopeId,
-      'legacy_binding',
-      mutation.bindingId,
-      mutation,
-    );
-  }
-
-  private importLegacyMigrationStage(mutation: ImportLegacyV1StageRecoveryMutation): void {
-    if (
-      mutation.kind !== 'import_legacy_stage_recovery' ||
-      mutation.recoveryState !== 'legacy_stage_recovery' ||
-      mutation.executionAuthority !== 'none' ||
-      mutation.publicationAuthority !== 'none' ||
-      !SHA256_HEX.test(mutation.sourceRecordHash) ||
-      Object.values(mutation.evidenceHashes).some((hash) => !SHA256_HEX.test(hash))
-    ) {
-      throw new ChatOperationV2StoreError(
-        'invalid_migration_execution',
-        'Legacy stage recovery mutation is malformed or grants forbidden authority.',
-      );
-    }
-    this.storeMigrationAuthorityRecord(
-      mutation.workspaceScopeId,
-      'legacy_stage_recovery',
-      mutation.stageId,
-      mutation,
-    );
-  }
-
-  private recordLegacyMigrationQuarantine(
-    workspaceScopeId: string,
-    mutation: QuarantineLegacyV1RegistryMutation,
-  ): void {
-    if (
-      mutation.kind !== 'quarantine_legacy_registry' ||
-      mutation.ownershipImport !== 'forbidden' ||
-      !['invalid_hmac', 'corrupt'].includes(mutation.reason) ||
-      !SHA256_HEX.test(mutation.evidenceHash)
-    ) {
-      throw new ChatOperationV2StoreError(
-        'invalid_migration_execution',
-        'Legacy registry quarantine mutation is malformed.',
-      );
-    }
-    this.storeMigrationAuthorityRecord(
-      workspaceScopeId,
-      'legacy_registry_quarantine',
-      mutation.quarantineId,
-      mutation,
-    );
-  }
-
-  private recordLegacyMigrationHistory(
-    workspaceScopeId: string,
-    result: LegacyV1HistoryOnlyResult,
-  ): void {
-    if (
-      result.ownershipInference !== 'forbidden' ||
-      !SHA256_HEX.test(result.projectionHash) ||
-      !Number.isSafeInteger(result.completedAtMs) ||
-      result.completedAtMs < 0
-    ) {
-      throw new ChatOperationV2StoreError(
-        'invalid_migration_execution',
-        'Legacy history-only result is malformed or infers ownership.',
-      );
-    }
-    this.storeMigrationAuthorityRecord(
-      workspaceScopeId,
-      'legacy_history',
-      result.sourceResultId,
-      result,
-    );
-  }
-
-  private replaceLegacyMigrationInventory(
-    workspaceScopeId: string,
-    inventory: readonly LegacyV1InventoryProjectionEntry[],
-  ): void {
-    if (!Array.isArray(inventory)) {
-      throw new ChatOperationV2StoreError(
-        'invalid_migration_execution',
-        'Legacy inventory projection must be an array.',
-      );
-    }
-    assertIdentifier(workspaceScopeId, 'migration inventory workspace scope id', 128);
-    if (!this.workspaceScopeRowById(workspaceScopeId)) {
-      throw new ChatOperationV2StoreError(
-        'workspace_scope_not_found',
-        'Migration inventory workspace scope does not exist.',
-      );
-    }
-    const prepared = inventory.map((entry) => {
-      if (
-        entry.workspaceScopeId !== workspaceScopeId ||
-        !this.workspaceScopeRowById(entry.workspaceScopeId) ||
-        !['win32', 'posix'].includes(entry.platform) ||
-        !['unowned', 'session_owned'].includes(entry.ownership) ||
-        (entry.ownership === 'unowned'
-          ? entry.bindingId !== null || entry.ownerSessionId !== null
-          : !entry.bindingId || !entry.ownerSessionId)
-      ) {
-        throw new ChatOperationV2StoreError(
-          'invalid_migration_execution',
-          'Legacy inventory projection entry is malformed.',
-        );
-      }
-      if (entry.ownership === 'session_owned') {
-        const bindingRow = this.migrationAuthorityRecord(
-          entry.workspaceScopeId,
-          'legacy_binding',
-          entry.bindingId!,
-        );
-        if (!bindingRow) {
-          throw new ChatOperationV2StoreError(
-            'migration_execution_conflict',
-            'Session-owned legacy inventory lacks certified binding authority.',
-          );
-        }
-        const binding = JSON.parse(
-          new TextDecoder('utf-8', { fatal: true }).decode(bindingRow.authority_canonical),
-        ) as LegacyV1BindingMutation;
-        if (
-          binding.status !== 'published' ||
-          binding.bindingId !== entry.bindingId ||
-          binding.ownerSessionId !== entry.ownerSessionId ||
-          binding.target.identity !== entry.targetIdentity
-        ) {
-          throw new ChatOperationV2StoreError(
-            'migration_execution_conflict',
-            'Session-owned legacy inventory conflicts with certified binding evidence.',
-          );
-        }
-      }
-      const canonical = migrationCanonicalBytes(entry);
-      return {
-        entry,
-        canonical,
-        hash: migrationDigest(canonical),
-        projectionId: migrationDigest(
-          migrationCanonicalBytes({
-            workspaceScopeId: entry.workspaceScopeId,
-            platform: entry.platform,
-            targetIdentity: entry.targetIdentity,
-          }),
-        ),
-      };
-    });
-    if (
-      new Set(prepared.map(({ projectionId }) => projectionId)).size !== prepared.length ||
-      new Set(
-        prepared.map(
-          ({ entry }) => `${entry.workspaceScopeId}\0${entry.platform}\0${entry.targetIdentity}`,
-        ),
-      ).size !== prepared.length
-    ) {
-      throw new ChatOperationV2StoreError(
-        'migration_execution_conflict',
-        'Legacy inventory projection contains duplicate target authority.',
-      );
-    }
-    const deleteStatement = this.database.prepare(
-      'DELETE FROM migration_inventory_projection WHERE workspace_scope_id = ?',
-    );
-    try {
-      deleteStatement.run(workspaceScopeId);
-    } finally {
-      deleteStatement.finalize();
-    }
-    const statement = this.database.prepare(
-      `INSERT INTO migration_inventory_projection (
-        projection_id, workspace_scope_id, lineage_id, target_platform, target_coordinate,
-        target_identity, ownership, binding_id, owner_session_id, projection_hash,
-        projection_canonical
-      ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    try {
-      for (const item of prepared) {
-        statement.run(
-          item.projectionId,
-          item.entry.workspaceScopeId,
-          item.entry.platform,
-          item.entry.targetCoordinate,
-          item.entry.targetIdentity,
-          item.entry.ownership,
-          item.entry.bindingId,
-          item.entry.ownerSessionId,
-          item.hash,
-          item.canonical,
-        );
-      }
-    } finally {
-      statement.finalize();
-    }
-  }
-
   private inspectMigrationWorkspaceAdoption(
     mutation: AdoptMovedWorkspaceMutation,
   ): ChatOperationV2WorkspaceAdoptionExecutionEvidence {
@@ -7942,16 +7509,6 @@ export class ChatOperationV2Store {
       'SELECT COUNT(*) AS count FROM binding_leases WHERE workspace_scope_id = ?',
       mutation.emptyNewScopeId,
     );
-    const newMigrationRecords = count(
-      `SELECT COUNT(*) AS count FROM migration_authority_records
-       WHERE workspace_scope_id = ?`,
-      mutation.emptyNewScopeId,
-    );
-    const newInventory = count(
-      `SELECT COUNT(*) AS count FROM migration_inventory_projection
-       WHERE workspace_scope_id = ?`,
-      mutation.emptyNewScopeId,
-    );
     const newNonterminal = count(
       `SELECT COUNT(*) AS count FROM operations
        WHERE workspace_scope_id = ? AND phase <> 'terminal'`,
@@ -7967,20 +7524,12 @@ export class ChatOperationV2Store {
        WHERE workspace_scope_id = ? AND binding_status = 'published'`,
       mutation.emptyNewScopeId,
     );
-    const newOwnedInventory = count(
-      `SELECT COUNT(*) AS count FROM migration_inventory_projection
-       WHERE workspace_scope_id = ? AND ownership = 'session_owned'`,
-      mutation.emptyNewScopeId,
-    );
     if (oldNonterminal > 0) failures.push('old_scope_has_nonterminal_operation');
     if (oldPendingCommit > 0) failures.push('old_scope_has_pending_commit_wal');
-    if (
-      newRow.last_event_seq !== 0 ||
-      newOperations + newBindings + newMigrationRecords + newInventory > 0
-    ) {
+    if (newRow.last_event_seq !== 0 || newOperations + newBindings > 0) {
       failures.push('new_scope_not_empty');
     }
-    if (newBindings > 0 || newOwnedInventory > 0) failures.push('new_scope_owned');
+    if (newBindings > 0) failures.push('new_scope_owned');
     if (newNonterminal > 0) failures.push('new_scope_has_nonterminal_operation');
     if (newPendingCommit > 0) failures.push('new_scope_has_pending_commit_wal');
     if (newPublishedBindings > 0) failures.push('new_scope_has_published_binding');

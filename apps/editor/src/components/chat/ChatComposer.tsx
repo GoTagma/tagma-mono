@@ -1,25 +1,12 @@
-import { createContext, useContext, useLayoutEffect, useRef, useState } from 'react';
-import { AlertTriangle, Info, Paperclip, Send, Square, X } from 'lucide-react';
+import { useLayoutEffect, useRef } from 'react';
+import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
-import {
-  chatReconciliationFailurePolicy,
-  useChatStore,
-  type ChatFinishedTurn,
-} from '../../store/chat-store';
-import { selectCurrentSessionFailedTurn } from '../../store/finished-turn-selector';
-import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
+import { useChatStore } from '../../store/chat-store';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import {
   describeChatContextWindowIndicator,
   planChatContextWindow,
 } from '../../../shared/chat-context-window.js';
-
-const DiscardFailedChatReconciliationContext = createContext<
-  ((turnId: string) => Promise<void>) | null
->(null);
-
-export const DiscardFailedChatReconciliationProvider =
-  DiscardFailedChatReconciliationContext.Provider;
 
 /**
  * Error banner — surfaces send() failures inline above the composer so users
@@ -81,68 +68,6 @@ export function CompletionWarningBanner() {
   const warning = useChatStore((s) => s.completionWarning);
   const dismiss = useChatStore((s) => s.dismissCompletionWarning);
   return <CompletionWarningBannerView warning={warning} dismiss={dismiss} />;
-}
-
-export function ReconciliationFailureBannerView({
-  failure,
-  retry,
-  recoverIndependent,
-  discard,
-  busy = false,
-}: {
-  failure: ChatFinishedTurn['reconcileFailure'] | null;
-  retry: () => void;
-  recoverIndependent?: () => void;
-  discard: () => void;
-  busy?: boolean;
-}) {
-  if (!failure) return null;
-  const retryable = failure.retryable ?? chatReconciliationFailurePolicy(failure.message).retryable;
-  return (
-    <div
-      role="status"
-      className="shrink-0 flex items-start gap-2 border border-tagma-accent/35 bg-tagma-accent/8 px-2.5 py-2"
-    >
-      <Info size={12} className="mt-0.5 shrink-0 text-tagma-accent" />
-      <div className="min-w-0 flex-1 text-caption font-mono text-tagma-muted">
-        <div className="text-tagma-text">
-          {retryable
-            ? 'Publishing is paused. Your canvas and this Chat branch are both preserved.'
-            : 'This Chat result needs an independent pipeline target. Its staged files are preserved.'}
-        </div>
-        <div className="mt-0.5 break-words text-tagma-muted/80">{failure.message}</div>
-      </div>
-      <div className="shrink-0 flex flex-col gap-1">
-        {retryable ? (
-          <button
-            type="button"
-            onClick={retry}
-            disabled={busy}
-            className="border border-tagma-accent/50 px-2 py-1 text-caption font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
-          >
-            Retry publish
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={recoverIndependent}
-            disabled={busy || !recoverIndependent}
-            className="border border-tagma-accent/50 px-2 py-1 text-caption font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
-          >
-            Save as independent pipeline
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={discard}
-          disabled={busy}
-          className="border border-tagma-border px-2 py-1 text-caption font-mono text-tagma-muted transition-colors hover:border-tagma-muted/60 hover:text-tagma-text disabled:opacity-40"
-        >
-          Keep canvas, discard Chat result
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // Composer textarea auto-grows with content up to this cap, then scrolls
@@ -228,67 +153,25 @@ export function getChatComposerAvailability(input: {
   hasModel: boolean;
   ready: boolean;
   sending: boolean;
-  reconciling: boolean;
-  flushing: boolean;
-  finishedTurnPending: boolean;
-  workspaceWideChatLifecycle?: boolean;
-  yamlEditLocked: boolean;
-  yamlEditLockLocal: boolean;
-}): { blockedByAnotherChatUpdate: boolean; canSend: boolean; queueOnSend: boolean } {
-  const blockedByAnotherChatUpdate = false;
-  const queueOnSend =
-    input.sending ||
-    input.reconciling ||
-    input.flushing ||
-    input.finishedTurnPending ||
-    input.workspaceWideChatLifecycle === true ||
-    (input.yamlEditLocked && !input.yamlEditLockLocal);
+}): { blockedByAnotherChatUpdate: boolean; canSend: boolean } {
   return {
-    blockedByAnotherChatUpdate,
-    canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,
-    queueOnSend,
+    blockedByAnotherChatUpdate: input.sending,
+    canSend: input.hasContent && input.hasModel && input.ready && !input.sending,
   };
 }
 
-export function getChatComposerStopMode(input: {
-  sending: boolean;
-  hasActiveChatYamlLifecycle: boolean;
-  currentSessionId: string | null;
-  activeChatYamlLifecycleSessionId: string | null;
-}): 'generation' | 'verification' | null {
-  if (input.sending) return 'generation';
-  return input.hasActiveChatYamlLifecycle &&
-    input.currentSessionId !== null &&
-    input.currentSessionId === input.activeChatYamlLifecycleSessionId
-    ? 'verification'
-    : null;
+export function getChatComposerStopMode(input: { sending: boolean }): 'generation' | null {
+  return input.sending ? 'generation' : null;
 }
 
 export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
-  const requestChatYamlLifecycleCancellation = useChatStore(
-    (s) => s.requestChatYamlLifecycleCancellation,
-  );
   const sending = useChatStore((s) => s.sending);
-  const reconciling = useChatStore((s) => s.reconciling);
-  const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
-  const currentSessionId = useChatStore((s) => s.currentSessionId);
-  const flushing = useChatStore((s) => s.flushing);
-  const finishedTurn = useChatStore(selectCurrentSessionFailedTurn);
-  const currentSessionFinishedTurnPending = useChatStore((s) =>
-    s.finishedTurnQueue.some((turn) => turn.sessionId === s.currentSessionId),
-  );
-  const retryFinishedTurnReconciliation = useChatStore((s) => s.retryFinishedTurnReconciliation);
-  const recoverFinishedTurnAsIndependent = useChatStore((s) => s.recoverFinishedTurnAsIndependent);
-  const discardFailedReconciliation = useContext(DiscardFailedChatReconciliationContext);
-  const [discardingTurnId, setDiscardingTurnId] = useState<string | null>(null);
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const text = useChatStore((s) => s.composerDraft);
   const setText = useChatStore((s) => s.setComposerDraft);
-  const yamlEditLocked = useYamlEditLockStore((s) => s.active);
-  const yamlEditLockLocal = useYamlEditLockStore((s) => s.local);
   // Attachments can carry a message on their own (the instruction is optional
   // once context is attached), so the send affordance keys off either signal.
   const hasAttachments = useChatStore((s) => s.composerAttachments.length > 0);
@@ -305,25 +188,14 @@ export function ChatComposer() {
     el.style.height = `${next}px`;
   }, [text]);
 
-  const { blockedByAnotherChatUpdate, canSend, queueOnSend } = getChatComposerAvailability({
+  const { blockedByAnotherChatUpdate, canSend } = getChatComposerAvailability({
     hasContent: text.trim().length > 0 || hasAttachments,
     hasModel: !!model,
     ready,
     sending,
-    reconciling,
-    flushing,
-    finishedTurnPending: currentSessionFinishedTurnPending,
-    workspaceWideChatLifecycle: activeChatYamlLifecycle?.hostTrialActive === true,
-    yamlEditLocked,
-    yamlEditLockLocal,
   });
-  const stopMode = getChatComposerStopMode({
-    sending,
-    hasActiveChatYamlLifecycle: activeChatYamlLifecycle?.hostTrialActive === true,
-    currentSessionId,
-    activeChatYamlLifecycleSessionId: activeChatYamlLifecycle?.sessionId ?? null,
-  });
-  const stopLabel = stopMode === 'verification' ? 'Stop verification' : 'Stop generating';
+  const stopMode = getChatComposerStopMode({ sending });
+  const stopLabel = 'Stop generating';
 
   const submit = () => {
     if (!canSend) return;
@@ -346,36 +218,12 @@ export function ChatComposer() {
     : model
       ? blockedByAnotherChatUpdate
         ? 'Waiting for the current chat update to finish...'
-        : queueOnSend
-          ? 'Queue a follow-up for this chat... (Enter to send)'
-          : 'Message opencode... (Enter to send)'
+        : 'Message opencode... (Enter to send)'
       : 'Pick a model first';
-  const sendLabel = blockedByAnotherChatUpdate
-    ? 'Waiting for current chat update'
-    : queueOnSend
-      ? 'Queue message'
-      : 'Send';
+  const sendLabel = blockedByAnotherChatUpdate ? 'Waiting for current chat update' : 'Send';
 
   return (
     <div className="border-t border-tagma-border px-3 py-2.5 shrink-0 flex flex-col gap-2">
-      <ReconciliationFailureBannerView
-        failure={finishedTurn?.reconcileFailure ?? null}
-        busy={discardingTurnId === finishedTurn?.id}
-        retry={() => {
-          if (finishedTurn) retryFinishedTurnReconciliation(finishedTurn.id);
-        }}
-        recoverIndependent={() => {
-          if (finishedTurn) recoverFinishedTurnAsIndependent(finishedTurn.id);
-        }}
-        discard={() => {
-          if (!finishedTurn || !discardFailedReconciliation || discardingTurnId) return;
-          const turnId = finishedTurn.id;
-          setDiscardingTurnId(turnId);
-          void discardFailedReconciliation(turnId).finally(() => {
-            setDiscardingTurnId((current) => (current === turnId ? null : current));
-          });
-        }}
-      />
       <AttachmentChips />
       <ChatContextWindowIndicator />
       <div className="chat-composer-shell flex min-w-0 items-end gap-1 px-2 py-1.5">
@@ -417,14 +265,10 @@ export function ChatComposer() {
           <button
             type="button"
             onClick={() => {
-              const stop = stopMode === 'generation' ? abort : requestChatYamlLifecycleCancellation;
-              stop().catch(() => {
+              abort().catch(() => {
                 /* already surfaced via sendError */
               });
             }}
-            disabled={
-              stopMode === 'verification' && activeChatYamlLifecycle?.cancellationRequested === true
-            }
             className="shrink-0 p-1.5 text-tagma-error/80 transition-[color,background-color,transform,opacity] duration-fast ease-smooth hover:text-tagma-error hover:bg-tagma-error/10 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0"
             title={stopLabel}
             aria-label={stopLabel}

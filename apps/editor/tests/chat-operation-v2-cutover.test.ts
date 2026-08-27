@@ -1,7 +1,4 @@
 import { afterEach, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
 import { setClientWorkspace } from '../src/api/client';
 import type { ChatOperationV2Projection } from '../src/api/chat-operations';
 import { resetOpencodeClient } from '../src/api/opencode-chat';
@@ -125,8 +122,8 @@ function detail(
 afterEach(async () => {
   await activateChatOperationExecutionForWorkspace(workspace, {
     chatOperationProtocolVersion: null,
-    chatOperationMode: 'legacy',
-  });
+    chatOperationMode: null,
+  }).catch(() => undefined);
   globalThis.fetch = originalFetch;
   globalThis.EventSource = originalEventSource;
   FakeEventSource.instances = [];
@@ -134,7 +131,7 @@ afterEach(async () => {
   resetOpencodeClient(workspaceB);
   setClientWorkspace(null);
   useChatStore.setState({
-    chatExecutionMode: 'legacy-v1',
+    chatExecutionMode: 'unavailable',
     chatOperationV2Operations: [],
     chatOperationV2Inventory: null,
     activeChatOperationV2: null,
@@ -631,65 +628,7 @@ test('submits dirty canvas bytes only against the Host-projected current candida
   expect(JSON.parse(create.payload.dirtySnapshot.layoutJson)).toHaveProperty('positions');
 });
 
-test('a late V1 preflight cannot settle over an activated V2 projection', async () => {
-  setClientWorkspace(workspace);
-  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
-  let resolveEnsure!: (response: Response) => void;
-  const ensure = new Promise<Response>((resolve) => {
-    resolveEnsure = resolve;
-  });
-  const requests: string[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const url = String(input);
-    requests.push(url);
-    if (url === '/api/opencode/chat/ensure') return ensure;
-    if (url === '/api/chat/operations/snapshot') {
-      return Response.json(snapshot());
-    }
-    throw new Error(`Unexpected request: ${url}`);
-  }) as unknown as typeof fetch;
-  usePipelineStore.setState({
-    workDir: '',
-    yamlPath: null,
-    isDirty: false,
-    layoutDirty: false,
-  } as never);
-  useChatStore.setState({
-    chatExecutionMode: 'legacy-v1',
-    model: { providerID: 'openai', modelID: 'gpt-5.4' },
-    agent: 'tagma-router',
-    sending: false,
-    sendError: null,
-  });
-
-  const legacySend = useChatStore.getState().send('Legacy request still in preflight.');
-  expect(useChatStore.getState().sending).toBe(true);
-  await activateChatOperationExecutionForWorkspace(workspace, {
-    chatOperationProtocolVersion: 2,
-    chatOperationMode: 'production',
-  });
-  resolveEnsure(
-    Response.json({
-      baseUrl: 'http://127.0.0.1:4096',
-      proxyBaseUrl: '/api/opencode/chat/proxy',
-      directory: `${workspace}\\.tagma`,
-      chatOperationProtocolVersion: null,
-      chatOperationMode: 'legacy',
-    }),
-  );
-  await expect(legacySend).resolves.toBeUndefined();
-
-  expect(useChatStore.getState()).toMatchObject({
-    chatExecutionMode: 'operation-v2',
-    sending: false,
-    pendingUserText: null,
-    sendError: null,
-  });
-  expect(requests).toEqual(['/api/opencode/chat/ensure', '/api/chat/operations/snapshot']);
-  expect(requests.some((url) => url.includes('/api/opencode/chat/proxy/session'))).toBe(false);
-});
-
-test('a contradictory handshake leaves the store non-executable instead of falling back to V1', async () => {
+test('a contradictory handshake leaves the store non-executable', async () => {
   setClientWorkspace(workspace);
   let fetchCalls = 0;
   globalThis.fetch = (async () => {
@@ -699,16 +638,15 @@ test('a contradictory handshake leaves the store non-executable instead of falli
   usePipelineStore.setState({ isDirty: false, layoutDirty: false } as never);
   useChatStore.setState({
     model: { providerID: 'openai', modelID: 'gpt-5.4' },
-    agent: 'tagma-router',
   });
 
   await expect(
     activateChatOperationExecutionForWorkspace(workspace, {
       chatOperationProtocolVersion: 2,
-      chatOperationMode: 'legacy',
+      chatOperationMode: 'shadow',
     }),
-  ).rejects.toThrow('inconsistent Chat Operation capability handshake');
-  await expect(useChatStore.getState().send('Must not run V1.')).rejects.toThrow(
+  ).rejects.toThrow('does not support the required Chat Operation V2 production protocol');
+  await expect(useChatStore.getState().send('Must not run without V2.')).rejects.toThrow(
     'capability handshake is invalid',
   );
 
@@ -824,17 +762,6 @@ test('an aborted old V2 send rejection cannot clear the new workspace UI', async
     sendError: 'keep this error',
     pendingUserText: 'new pending text',
   });
-});
-
-test('keeps App V1 reconciliation dormant under production V2 cutover', () => {
-  const source = readFileSync(fileURLToPath(new URL('../src/App.tsx', import.meta.url)), 'utf8');
-  expect(source).toContain(
-    'const chatExecutionMode = useChatStore((state) => state.chatExecutionMode)',
-  );
-  expect(source).toContain("if (chatExecutionMode !== 'legacy-v1') return;");
-  expect(source.indexOf("if (chatExecutionMode !== 'legacy-v1') return;")).toBeLessThan(
-    source.indexOf('if (!finishedTurn || finishedTurn.reconcileFailure) return;'),
-  );
 });
 
 test('diagnostics expose bounded V2 lifecycle metadata without message content', () => {

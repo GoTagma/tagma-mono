@@ -17,27 +17,14 @@ import {
   openOfflineChatOperationV2ResetOnlyStore,
   prepareExplicitChatOperationV2ControlReset,
   type ChatOperationV2StoreWithMigration,
-  type LegacyV1SessionInspection,
 } from './migration-runtime.js';
-import {
-  planWorkspacePathChange,
-  type LegacyV1CompletedResultEvidence,
-  type PlanWorkspacePathChangeInput,
-} from './migration.js';
+import { planWorkspacePathChange, type PlanWorkspacePathChangeInput } from './migration.js';
 
-export const CHAT_OPERATION_V2_MIGRATION_ENV = 'TAGMA_CHAT_OPERATION_V2_MIGRATION';
 export const CHAT_OPERATION_V2_RESET_CONFIRMATION = 'RESET CHAT CONTROL DATA' as const;
 const HOST_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,199})$/;
 
-export function isChatOperationV2MigrationServiceEnabled(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): boolean {
-  return env[CHAT_OPERATION_V2_MIGRATION_ENV] === '1';
-}
-
 export type ChatOperationV2MigrationServiceErrorCode =
   | 'migration_busy'
-  | 'migration_startup_failed'
   | 'workspace_adoption_failed'
   | 'reset_confirmation_required'
   | 'control_reset_failed'
@@ -58,11 +45,6 @@ export interface ChatOperationV2MigrationServiceResult {
   readonly receipt: ChatOperationV2MigrationExecutionReceipt;
   readonly diagnostics:
     | {
-        readonly kind: 'legacy_startup';
-        readonly registryDisposition: 'imported' | 'quarantined';
-        readonly isolatedStageCount: number;
-      }
-    | {
         readonly kind: 'workspace_path_change';
         readonly request: 'observe_path_change' | 'adopt_moved_workspace';
         readonly classification: 'clone' | 'new_path' | 'moved';
@@ -75,15 +57,6 @@ export interface ChatOperationV2MigrationServiceResult {
         readonly controlGeneration: number;
         readonly archiveSetHash: string;
       };
-}
-
-export interface ChatOperationV2StartupLegacyMigrationInput {
-  readonly workspace: WorkspaceState;
-  readonly workspaceScopeId: string;
-  readonly migrationId: string;
-  readonly plannedAtMs: number;
-  readonly completedResults: readonly LegacyV1CompletedResultEvidence[];
-  readonly inspectSession?: (sessionId: string) => LegacyV1SessionInspection | null;
 }
 
 export interface ChatOperationV2WorkspacePathCheckInput {
@@ -101,9 +74,6 @@ export interface ChatOperationV2ExplicitResetInput {
 }
 
 export interface ChatOperationV2MigrationService {
-  runStartupLegacyImport(
-    input: ChatOperationV2StartupLegacyMigrationInput,
-  ): ChatOperationV2MigrationServiceResult;
   applyWorkspacePathCheck(
     input: ChatOperationV2WorkspacePathCheckInput,
   ): ChatOperationV2MigrationServiceResult;
@@ -279,42 +249,6 @@ class MigrationService implements ChatOperationV2MigrationService {
       oldKeyDisposition: execution.resetOldKeyDisposition,
       controlGeneration: execution.controlGeneration,
       archiveSetHash: execution.controlArchiveSetHash,
-    });
-  }
-
-  runStartupLegacyImport(
-    input: ChatOperationV2StartupLegacyMigrationInput,
-  ): ChatOperationV2MigrationServiceResult {
-    return withProcessMigrationLock(() => {
-      try {
-        const runtime = createChatOperationV2MigrationRuntimeFromStore({
-          workspace: input.workspace,
-          store: this.#trustedStore(),
-          controlPaths: this.#options.controlPaths,
-          now: this.#options.now,
-        });
-        const migrated = runtime.migrateLegacyV1({
-          workspaceScopeId: input.workspaceScopeId,
-          migrationId: input.migrationId,
-          plannedAtMs: input.plannedAtMs,
-          completedResults: input.completedResults,
-          inspectSession: input.inspectSession,
-        });
-        return frozenResult(migrated.receipt, {
-          kind: 'legacy_startup',
-          registryDisposition: migrated.prepared.plan.registryDisposition,
-          isolatedStageCount: migrated.prepared.diagnostics.filter(
-            ({ kind }) => kind === 'legacy_stage_isolated',
-          ).length,
-        });
-      } catch (error) {
-        if (error instanceof ChatOperationV2MigrationServiceError) throw error;
-        throw new ChatOperationV2MigrationServiceError(
-          'migration_startup_failed',
-          'Legacy Chat migration failed closed.',
-          { cause: error },
-        );
-      }
     });
   }
 

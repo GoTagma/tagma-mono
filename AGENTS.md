@@ -86,8 +86,8 @@ Do not amend the same commit to include these files after naming them with the c
 - Desktop Chat V2 is sidecar-owned end to end: classification, model invocations, cancellation,
   permission/question arbitration, stage/Trial/repair, binding, usage, commit, recovery, and
   terminal state have one Host authority. The renderer submits user decisions and frozen canvas
-  evidence and projects Host events; it never carries write or recovery authority. One operation
-  belongs exclusively to V1 or V2 for its full lifetime.
+  evidence and projects Host events; it never carries write or recovery authority. V2 is the only
+  Desktop Chat execution protocol; protocol or handshake mismatches fail closed.
 - Persist V2 authority in the stable user-data `server-control/chat-operation-v2.sqlite` store with
   a durable 32-byte `control-hmac-v2.key`. Never use a workspace-local, temporary, or process-random
   fallback for operation, binding, outbox, event, WAL, or usage authority; a corrupt or unreadable
@@ -108,9 +108,8 @@ Do not amend the same commit to include these files after naming them with the c
   explicit user retry is a new Host invocation, not recovery of the old result.
 - Packaged V2 cutover is declared in `apps/electron/package.json` with
   `tagma.chatOperationProtocolVersion: 2`; `runtime-paths.ts` only emits
-  `TAGMA_CHAT_OPERATION_V2_SHADOW=1`, `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2`, and
-  `TAGMA_CHAT_OPERATION_V2_MIGRATION=1` when that gate passes. The control store schema version is
-  6, and schema mismatches fail closed.
+  `TAGMA_CHAT_OPERATION_V2_SHADOW=1` and `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2` when that
+  gate passes. The control store schema version is 6, and schema mismatches fail closed.
 - Tool-free text compatibility prompts have a different pinned contract: public message reads are
   still unavailable on a Host-created native session, but replaying the exact same Host message id
   returns the cached text before and after restart without another provider call. Permit that one

@@ -36,12 +36,12 @@ ChatTurn Operation V2 uses one authoritative sidecar-owned operation model with 
 | Phase           | Clarification, reservation, prompt execution, waiting, commit, recovery, and terminal handling are distinct states, not one overloaded status.                                                                                                                                                                                                                                                                                                                 |
 | Evidence        | Outbox, SQLite history, SSE, and snapshots are the durable evidence sources. SSE is a wake-up signal, not the source of truth.                                                                                                                                                                                                                                                                                                                                 |
 | Commit          | `commit_decided` is the linearization point. After it, recovery may roll forward, but it must not rewrite committed bytes.                                                                                                                                                                                                                                                                                                                                     |
-| Permission      | A pending permission record is persisted before restart; the first live reply is `204`, duplicate replies are `404`, restart drops the pending request from the live OpenCode surface, and a stale reply remains `404`. The Host never recreates the old runtime request; it starts a controlled recovery invocation or fails explicitly.                                                                                                                                 |
+| Permission      | A pending permission record is persisted before restart; the first live reply is `204`, duplicate replies are `404`, restart drops the pending request from the live OpenCode surface, and a stale reply remains `404`. The Host never recreates the old runtime request; it starts a controlled recovery invocation or fails explicitly.                                                                                                                      |
 | Question        | The streaming question contract is first-wins `204`, same/opposite retries are `404`, both pending lists clear, and restart keeps the session/admission/history prefix while rejecting hidden continuation or tool success.                                                                                                                                                                                                                                    |
 | Text replay     | Tool-free compatibility text on the Host native session succeeds with public single/list reads still returning `400`; same Host message-id replay after a lost response returns cached text and does not reinvoke the provider, including after restart; same id with different caller bytes is rejected before replay; the replay exception is discussion/diagnosis text only and never `json_schema`.                                                        |
 | Rich classifier | Wildcard tool deny alone removes internal `StructuredOutput` and fails; exact `StructuredOutput`-only exception succeeds with provider `toolCount1` and internal-only output; if a successful HTTP response is lost, no public durable rich result exists before or after restart, compatibility reads return `400`, and same/different `messageId` replay returns `200 StructuredOutputError` without reinvoking the provider. This is a verified limitation. |
 | Security        | The control directory and key live on exact private non-symlink filesystem objects; path-only HMAC covers lookup identity, recordHmac covers the full record, schema/index drift fails closed, and source/event dedupe is complete.                                                                                                                                                                                                                            |
-| Phase 1         | Exact opt-in shadow read routes create no binding, invocation, stage, result, or WAL side effects. Production cutover is gated by packaged metadata and the V2 env trio.                                                                                                                                                                                                                                                                                       |
+| Cutover         | V2 is the only Desktop Chat execution protocol. Production activation is gated by packaged metadata and the exact V2 environment pair; absent or contradictory capability handshakes fail closed.                                                                                                                                                                                                                                                              |
 
 ## Same-Operation Clarification
 
@@ -102,11 +102,11 @@ The durable join key is the tuple `(sessionId, aggregateSeq, eventId)`.
 V2 is the production write path.
 
 - `apps/electron/package.json` declares `tagma.chatOperationProtocolVersion: 2`.
-- `runtime-paths.ts` emits `TAGMA_CHAT_OPERATION_V2_SHADOW=1`, `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2`, and `TAGMA_CHAT_OPERATION_V2_MIGRATION=1` only when that packaged declaration and the version-skew gate agree; otherwise it strips the V2 env trio.
+- `runtime-paths.ts` emits `TAGMA_CHAT_OPERATION_V2_SHADOW=1` and `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2` only when that packaged declaration and the version-skew gate agree; otherwise it strips the V2 environment pair.
 - The binding lifecycle is still explicit: classify the user intent before allocating a writable pipeline, discussion and diagnosis own no writable pipeline, and the Host resolves and atomically binds create or edit authority.
 - Reconciliation failures remain scoped per stage and per session, and preserved failures stay preserved so independent jobs and other sessions can continue.
 - Host persists pending permission authority, but it cannot rehydrate or reply the old OpenCode drain after restart; recovery must use a new controlled invocation or repair path, or fail explicitly.
-- No single operation may own both V1 and V2 executors.
+- No V1 executor, staged-session recovery, migration import, or raw OpenCode mutation fallback exists.
 
 ## WAL Linearization And Recovery
 
@@ -136,16 +136,16 @@ Renderer code is a versioned operation API client and event projection layer.
 - The renderer may not call OpenCode mutations or stage/finalize primitives directly.
 - Raw OpenCode prompt, interrupt, permission, move, update, and delete routes are not a compatibility path for V2.
 
-## Phased Migration
+## V2-Only Runtime
 
-V2 replaces the write path in stages:
+Desktop Chat has one execution model:
 
-1. Keep legacy V1 readable and migratable.
-2. Route new managed Chat execution through the V2 sidecar-owned path.
-3. Keep both models separated during the atomic editor-plus-sidecar cutover.
-4. Remove legacy write paths only after the acceptance gates below stay green.
+1. The Host classifies, admits, executes, stages, verifies, commits, recovers, and terminates each operation.
+2. The renderer submits versioned decisions and projects Host snapshots/events.
+3. History selects durable V2 operations rather than discovering raw OpenCode sessions.
+4. Unsupported, missing, partial, or contradictory handshakes fail closed; they never select another executor.
 
-No single operation may own both V1 and V2 executors.
+Old V1 session, staging, relocation, queue, reconciliation, and migration state is not imported or recovered.
 
 ## Acceptance Gates
 
@@ -164,4 +164,4 @@ The acceptance gates for this plan are:
 - Question conformance follows the verified live/restart contract.
 - Ordinary text replay follows the verified discussion/diagnosis-only contract, and the replay exception never applies to `json_schema`.
 - Rich-classifier conformance is a verified limitation; lost rich results are provider_unavailable, never auto-reprompt, and require an explicit new Host invocation for user retry.
-- Production cutover is active for packaged V2 builds; shadow reads remain exact opt-in only, and the V2 env trio appears only when the packaged protocol gate is satisfied.
+- Production cutover is active for packaged V2 builds, and the exact V2 environment pair appears only when the packaged protocol gate is satisfied.

@@ -11,49 +11,10 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react';
-import { useChatStore } from '../../store/chat-store';
 import type { ActivityEvent, ActivityKind } from '../../api/opencode-chat';
 
 const LIVE_ACTIVITY_TICK_MS = 1000;
 const LIVE_ACTIVITY_RESYNC_MS = 5000;
-const SILENT_TURN_SUMMARY_MS = 3000;
-const LONG_SILENT_TURN_MS = 15000;
-
-/**
- * Compact, collapsible "what is the model doing" log attached to an
- * assistant message. During the active turn, the summary names the latest
- * phase directly (thinking, streaming answer, running a tool, retrying, or
- * waiting). That keeps the chat from looking frozen while OpenCode is still
- * making progress.
- *
- * Re-renders once per second whenever there's an open event tail, so the
- * elapsed counter and retry countdown move without depending on SSE traffic
- * (the whole point — silent stretches are exactly when the user wants
- * reassurance that something is happening). The interval shuts off the
- * moment all events are sealed.
- *
- * If the user has already expanded the panel, keep it mounted as "Activity"
- * so the details do not collapse out from under them when the state becomes
- * normal streaming again.
- */
-export function TurnActivityPanel(props: TurnActivityPanelProps) {
-  // Split so only the panel for the CURRENT live turn subscribes to the
-  // frequently-updating store fields (sessionStatus / lastActivityAt /
-  // turnHealth). computeActivitySummary provably ignores those inputs in
-  // every other configuration (it returns null without reading them), so
-  // non-live panels render identical output with zero store subscriptions —
-  // previously dozens of panels re-rendered on every SSE chunk.
-  const isLive = props.isCurrentTurn && props.surfaceSummary;
-  if (isLive) return <LiveTurnActivityPanel {...props} />;
-  return (
-    <TurnActivityPanelView
-      {...props}
-      sessionStatus={null}
-      lastActivityAt={null}
-      turnHealth={null}
-    />
-  );
-}
 
 interface TurnActivityPanelProps {
   activity: ActivityEvent[];
@@ -63,46 +24,28 @@ interface TurnActivityPanelProps {
   onToggle: () => void;
 }
 
-interface TurnRuntimeFields {
-  sessionStatus: ReturnType<typeof useChatStore.getState>['sessionStatus'];
-  lastActivityAt: number | null;
-  turnHealth: ReturnType<typeof useChatStore.getState>['turnHealth'];
+interface ActivitySummary {
+  line: string;
+  tone: string;
+  icon: React.ReactNode;
 }
 
-function LiveTurnActivityPanel(props: TurnActivityPanelProps) {
-  const sessionStatus = useChatStore((s) => s.sessionStatus);
-  const lastActivityAt = useChatStore((s) => s.lastActivityAt);
-  const turnHealth = useChatStore((s) => s.turnHealth);
-  return (
-    <TurnActivityPanelView
-      {...props}
-      sessionStatus={sessionStatus}
-      lastActivityAt={lastActivityAt}
-      turnHealth={turnHealth}
-    />
-  );
-}
-
-function TurnActivityPanelView({
+/** Render Host-projected Chat Operation V2 activity without subscribing to raw OpenCode runtime state. */
+export function TurnActivityPanel({
   activity,
   isCurrentTurn,
   surfaceSummary,
   expanded,
   onToggle,
-  sessionStatus,
-  lastActivityAt,
-  turnHealth,
-}: TurnActivityPanelProps & TurnRuntimeFields) {
+}: TurnActivityPanelProps) {
   const hasOpenEvent =
     isCurrentTurn && activity.length > 0 && activity[activity.length - 1].endedAt === null;
   const openEvent = hasOpenEvent ? activity[activity.length - 1] : null;
   const liveClockKey = openEvent
     ? `${openEvent.kind}:${openEvent.startedAt}:${openEvent.key ?? ''}:${openEvent.detail ?? ''}`
     : null;
-
-  // Tick once per second while the panel has live data. Store the displayed
-  // clock value so unrelated parent renders do not make the counter jump.
   const [liveNow, setLiveNow] = useState(() => Date.now());
+
   useEffect(() => {
     if (!liveClockKey) return;
     setLiveNow(Date.now());
@@ -123,42 +66,30 @@ function TurnActivityPanelView({
   }, [liveClockKey]);
 
   if (activity.length === 0 && !isCurrentTurn) return null;
-
   const now = hasOpenEvent ? liveNow : Date.now();
-  const firstStartedAt = activity.length > 0 ? activity[0].startedAt : now;
-  const summary = computeActivitySummary({
-    activity,
-    isCurrentTurn,
-    surfaceSummary,
-    sessionStatus,
-    lastActivityAt,
-    turnHealth,
-    now,
-  });
+  const firstStartedAt = activity[0]?.startedAt ?? now;
+  const summary = computeActivitySummary(activity, isCurrentTurn, surfaceSummary, now);
   if (!summary && !expanded) return null;
   const visibleSummary =
     summary ??
     ({
       line: 'Activity',
       tone: 'text-tagma-muted',
-      icon: <ChevronRight size={10} className="text-tagma-muted/60 shrink-0" />,
+      icon: <ChevronRight size={10} className="shrink-0 text-tagma-muted/60" />,
     } satisfies ActivitySummary);
 
   return (
-    // The live turn's panel wears the breathing accent rail (`.chat-live-rail`)
-    // so the "model is working" line reads as active at a glance; sealed turns
-    // fall back to the quiet muted rail.
     <details
       open={expanded}
-      onToggle={(e) => {
-        if (e.currentTarget.open !== expanded) onToggle();
+      onToggle={(event) => {
+        if (event.currentTarget.open !== expanded) onToggle();
       }}
-      className={`w-full max-w-full min-w-0 text-caption font-mono border-l-2 pl-2 ${
+      className={`w-full max-w-full min-w-0 border-l-2 pl-2 text-caption font-mono ${
         isCurrentTurn ? 'chat-live-rail' : 'border-tagma-muted/30'
       }`}
     >
       <summary
-        className={`cursor-pointer flex items-center gap-1.5 min-w-0 select-none ${visibleSummary.tone}`}
+        className={`flex min-w-0 cursor-pointer select-none items-center gap-1.5 ${visibleSummary.tone}`}
       >
         {visibleSummary.icon}
         <span className="min-w-0 flex-1 truncate tabular-nums" title={visibleSummary.line}>
@@ -166,18 +97,51 @@ function TurnActivityPanelView({
         </span>
         <ChevronRight
           size={10}
-          className={`text-tagma-muted/50 transition-transform shrink-0 ${
-            expanded ? 'rotate-90' : ''
-          }`}
+          className={`shrink-0 text-tagma-muted/50 transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
       </summary>
-      <div className="mt-1 flex flex-col gap-0.5 min-w-0 text-tagma-muted/80">
-        {activity.map((event, idx) => (
-          <ActivityRow key={idx} event={event} now={now} firstStartedAt={firstStartedAt} />
+      <div className="mt-1 flex min-w-0 flex-col gap-0.5 text-tagma-muted/80">
+        {activity.map((event, index) => (
+          <ActivityRow
+            key={`${event.key ?? event.startedAt}:${index}`}
+            event={event}
+            now={now}
+            firstStartedAt={firstStartedAt}
+          />
         ))}
       </div>
     </details>
   );
+}
+
+function computeActivitySummary(
+  activity: ActivityEvent[],
+  isCurrentTurn: boolean,
+  surfaceSummary: boolean,
+  now: number,
+): ActivitySummary | null {
+  if (!surfaceSummary || !isCurrentTurn) return null;
+  const last = activity.at(-1);
+  if (!last) {
+    return {
+      line: 'Starting Chat Operation V2…',
+      tone: 'text-tagma-text',
+      icon: <Loader2 size={11} className="shrink-0 animate-spin text-tagma-muted" />,
+    };
+  }
+  const elapsed = formatDurationShort((last.endedAt ?? now) - last.startedAt);
+  const meta = describeActivity(last);
+  const detail = last.detail ? ` · ${last.detail}` : '';
+  return {
+    line: `${meta.label}${detail} · ${elapsed}`,
+    tone: last.kind === 'tool-error' ? 'text-tagma-warning' : 'text-tagma-text',
+    icon:
+      last.kind === 'tool-error' ? (
+        <AlertTriangle size={11} className="shrink-0 text-tagma-warning" />
+      ) : (
+        <Loader2 size={11} className="shrink-0 animate-spin text-tagma-muted" />
+      ),
+  };
 }
 
 function ActivityRow({
@@ -189,13 +153,12 @@ function ActivityRow({
   now: number;
   firstStartedAt: number;
 }) {
-  const startSec = formatTimelineOffset(event.startedAt - firstStartedAt);
-  const durationMs = (event.endedAt ?? now) - event.startedAt;
-  const durationLabel = formatDurationShort(durationMs);
   const meta = describeActivity(event);
   return (
-    <div className="flex items-baseline gap-2 min-w-0">
-      <span className="text-tagma-muted/50 tabular-nums shrink-0 w-10">{startSec}</span>
+    <div className="flex min-w-0 items-baseline gap-2">
+      <span className="w-10 shrink-0 tabular-nums text-tagma-muted/50">
+        {formatTimelineOffset(event.startedAt - firstStartedAt)}
+      </span>
       <span className="shrink-0">{meta.icon}</span>
       <span className="min-w-0 flex-1 break-words">
         {meta.label}
@@ -205,8 +168,8 @@ function ActivityRow({
         )}
         {event.count > 1 && <span className="text-tagma-muted/50"> · ×{event.count}</span>}
       </span>
-      <span className="w-14 text-right text-tagma-muted/50 tabular-nums shrink-0">
-        {durationLabel}
+      <span className="w-14 shrink-0 text-right tabular-nums text-tagma-muted/50">
+        {formatDurationShort((event.endedAt ?? now) - event.startedAt)}
       </span>
     </div>
   );
@@ -220,343 +183,35 @@ export function advanceLiveActivityNow(previousNow: number, actualNow: number): 
   return previousNow + Math.min(LIVE_ACTIVITY_TICK_MS, elapsed);
 }
 
-interface ActivitySummaryInput {
-  activity: ActivityEvent[];
-  isCurrentTurn: boolean;
-  surfaceSummary: boolean;
-  sessionStatus: ReturnType<typeof useChatStore.getState>['sessionStatus'];
-  lastActivityAt: number | null;
-  turnHealth: ReturnType<typeof useChatStore.getState>['turnHealth'];
-  now: number;
-}
-
-interface ActivitySummary {
-  line: string;
-  tone: string;
-  icon: React.ReactNode;
-}
-
-interface TurnHealthSummary {
-  label: string;
-  tone: 'normal' | 'warning';
-}
-
-type TurnHealthState = ReturnType<typeof useChatStore.getState>['turnHealth'];
-
-export function formatTurnHealthSummary(
-  turnHealth: TurnHealthState,
-  now: number,
-): TurnHealthSummary | null {
-  if (!turnHealth) return null;
-  const checkedAgo = formatDurationShort(now - turnHealth.checkedAt);
-  if (turnHealth.status === 'checking') {
-    return { label: 'checking OpenCode', tone: 'normal' };
-  }
-  if (turnHealth.processAlive === false) {
-    return { label: `OpenCode unresponsive · checked ${checkedAgo} ago`, tone: 'warning' };
-  }
-  if (turnHealth.status === 'degraded') {
-    return { label: `OpenCode reconnecting · checked ${checkedAgo} ago`, tone: 'warning' };
-  }
-  if (turnHealth.sseState === 'reconnecting') {
-    return { label: `SSE reconnecting · verified ${checkedAgo} ago`, tone: 'warning' };
-  }
-  const sseLabel = turnHealth.lastSseEventAt
-    ? `SSE idle ${formatDurationShort(now - turnHealth.lastSseEventAt)}`
-    : turnHealth.sseState === 'connected'
-      ? 'SSE connected'
-      : null;
-  const label = sseLabel
-    ? `verified ${checkedAgo} ago · ${sseLabel}`
-    : `OpenCode verified ${checkedAgo} ago`;
-  return { label, tone: 'normal' };
-}
-
-export function formatRecentTurnHealthSummary(
-  turnHealth: TurnHealthState,
-  now: number,
-): TurnHealthSummary | null {
-  const summary = formatTurnHealthSummary(turnHealth, now);
-  if (!summary || !turnHealth) return null;
-  if (turnHealth.status === 'ok' && now - turnHealth.checkedAt > 10_000) return null;
-  return summary;
-}
-
-function appendTurnHealth(line: string, health: TurnHealthSummary | null): string {
-  return health ? `${line} · ${health.label}` : line;
-}
-
-function toneWithHealth(base: string, health: TurnHealthSummary | null): string {
-  return health?.tone === 'warning' ? 'text-tagma-warning' : base;
-}
-
-function iconWithHealth(base: React.ReactNode, health: TurnHealthSummary | null): React.ReactNode {
-  if (health?.tone !== 'warning') return base;
-  return <AlertTriangle size={11} className="text-tagma-warning shrink-0" />;
-}
-
-/**
- * Build the always-visible header line. Priority of overrides:
- *   1. retry — provider is between attempts; users want the countdown.
- *   2. last event is `compacting` and recent (≤3 s) — surface it briefly.
- *   3. no assistant envelope yet — explicit "waiting for first response".
- *   4. latest thinking / answer / tool activity — show current progress.
- *   5. current turn but silent after assistant activity — "waiting
- *      for next update" (not "no activity", which reads like an error).
- */
-function computeActivitySummary({
-  activity,
-  isCurrentTurn,
-  surfaceSummary,
-  sessionStatus,
-  lastActivityAt,
-  turnHealth,
-  now,
-}: ActivitySummaryInput): ActivitySummary | null {
-  if (!surfaceSummary) return null;
-
-  const isRetry = isCurrentTurn && sessionStatus?.type === 'retry';
-  if (isRetry && sessionStatus && sessionStatus.type === 'retry') {
-    const remainingSec = Math.max(0, Math.ceil((sessionStatus.next - now) / 1000));
-    return {
-      line: `Retrying provider · attempt ${sessionStatus.attempt} · next in ${remainingSec}s`,
-      tone: 'text-tagma-warning',
-      icon: <AlertTriangle size={11} className="text-tagma-warning shrink-0" />,
-    };
-  }
-
-  const last = activity.length > 0 ? activity[activity.length - 1] : null;
-  const firstAt = activity.length > 0 ? activity[0].startedAt : now;
-  const hasAssistantStarted = activity.some((event) => event.kind === 'assistant-started');
-  const recentHealth = formatRecentTurnHealthSummary(turnHealth, now);
-  if (isCurrentTurn && last?.kind === 'compacting' && now - last.startedAt < 3000) {
-    return {
-      line: 'Compacting history…',
-      tone: 'text-tagma-muted',
-      icon: <Layers size={11} className="text-tagma-muted shrink-0" />,
-    };
-  }
-
-  if (isCurrentTurn && !hasAssistantStarted) {
-    const baseIcon = <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />;
-    return {
-      line: appendTurnHealth(
-        `Waiting for first response · ${formatDurationShort(now - firstAt)}`,
-        recentHealth,
-      ),
-      tone: toneWithHealth('text-tagma-text', recentHealth),
-      icon: iconWithHealth(baseIcon, recentHealth),
-    };
-  }
-
-  if (isCurrentTurn && last?.kind === 'assistant-started') {
-    const baseIcon = <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />;
-    return {
-      line: appendTurnHealth(
-        `Waiting for first token · ${formatDurationShort(now - last.startedAt)}`,
-        recentHealth,
-      ),
-      tone: toneWithHealth('text-tagma-text', recentHealth),
-      icon: iconWithHealth(baseIcon, recentHealth),
-    };
-  }
-
-  if (isCurrentTurn && last?.kind === 'thinking') {
-    const elapsed = formatDurationShort((last.endedAt ?? now) - last.startedAt);
-    const baseIcon = <Brain size={11} className="text-tagma-muted shrink-0 animate-pulse" />;
-    return {
-      line: appendTurnHealth(
-        `Thinking · ${elapsed}${activitySizeSuffix(last.bytes)}`,
-        recentHealth,
-      ),
-      tone: toneWithHealth('text-tagma-text', recentHealth),
-      icon: iconWithHealth(baseIcon, recentHealth),
-    };
-  }
-
-  if (isCurrentTurn && last?.kind === 'streaming-answer') {
-    const elapsed = formatDurationShort((last.endedAt ?? now) - last.startedAt);
-    const baseIcon = <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />;
-    return {
-      line: appendTurnHealth(
-        `Streaming answer · ${elapsed}${activitySizeSuffix(last.bytes)}`,
-        recentHealth,
-      ),
-      tone: toneWithHealth('text-tagma-text', recentHealth),
-      icon: iconWithHealth(baseIcon, recentHealth),
-    };
-  }
-
-  if (isCurrentTurn && last?.kind === 'tool-running') {
-    const sec = Math.floor((now - last.startedAt) / 1000);
-    const baseIcon = <Wrench size={11} className="text-tagma-muted shrink-0 animate-pulse" />;
-    return {
-      line: appendTurnHealth(`Running tool: ${last.detail ?? 'tool'} (${sec}s)`, recentHealth),
-      tone: toneWithHealth('text-tagma-muted', recentHealth),
-      icon: iconWithHealth(baseIcon, recentHealth),
-    };
-  }
-
-  if (isCurrentTurn && lastActivityAt !== null && now - lastActivityAt > SILENT_TURN_SUMMARY_MS) {
-    if (turnHealth?.status === 'checking') {
-      return {
-        line: 'Checking OpenCode...',
-        tone: 'text-tagma-muted',
-        icon: <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />,
-      };
-    }
-    // Process health: if opencode itself isn't responding, surface it first —
-    // everything else (SSE, transcript) depends on the process being alive.
-    if (turnHealth?.processAlive === false) {
-      return {
-        line: `OpenCode process unresponsive · checked ${formatDurationShort(now - turnHealth.checkedAt)} ago`,
-        tone: 'text-tagma-warning',
-        icon: <AlertTriangle size={11} className="text-tagma-warning shrink-0" />,
-      };
-    }
-    if (turnHealth?.status === 'degraded') {
-      return {
-        line: `OpenCode reconnecting · checked ${formatDurationShort(now - turnHealth.checkedAt)} ago`,
-        tone: 'text-tagma-warning',
-        icon: <AlertTriangle size={11} className="text-tagma-warning shrink-0" />,
-      };
-    }
-    // SSE reconnecting: the event stream dropped and is being re-established.
-    // This is more actionable than "still waiting" — the user knows something
-    // is being fixed.
-    if (turnHealth?.sseState === 'reconnecting') {
-      return {
-        line: `Still waiting · SSE reconnecting · verified ${formatDurationShort(now - turnHealth.checkedAt)} ago`,
-        tone: 'text-tagma-warning',
-        icon: <AlertTriangle size={11} className="text-tagma-warning shrink-0" />,
-      };
-    }
-    if (turnHealth?.status === 'ok') {
-      const sseAgo = turnHealth.lastSseEventAt
-        ? formatDurationShort(now - turnHealth.lastSseEventAt)
-        : null;
-      // Build a line that tells the user exactly what's alive and what's
-      // quiet: "Still waiting · model still running · SSE idle 2m · verified
-      // 5s ago". This is the key insight — if everything is alive but no
-      // events are flowing, the model is probably just thinking slowly.
-      const segments: string[] = ['Still waiting'];
-      if (turnHealth.detail) segments.push(turnHealth.detail);
-      if (turnHealth.sseState === 'idle' && sseAgo) {
-        segments.push(`SSE idle ${sseAgo}`);
-      } else if (turnHealth.sseState === 'connected') {
-        segments.push('SSE connected');
-      }
-      segments.push(`verified ${formatDurationShort(now - turnHealth.checkedAt)} ago`);
-      return {
-        line: segments.join(' · '),
-        tone: 'text-tagma-muted',
-        icon: <CheckCircle2 size={11} className="text-tagma-ready shrink-0" />,
-      };
-    }
-    const idleSec = Math.floor((now - lastActivityAt) / 1000);
-    const isLongIdle = idleSec >= LONG_SILENT_TURN_MS / 1000;
-    return {
-      line: isLongIdle
-        ? `Still waiting · ${idleSec}s since last update`
-        : `Waiting for next update · ${idleSec}s`,
-      tone: isLongIdle ? 'text-tagma-warning' : 'text-tagma-muted',
-      icon: isLongIdle ? (
-        <AlertTriangle size={11} className="text-tagma-warning shrink-0" />
-      ) : (
-        <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />
-      ),
-    };
-  }
-
-  if (!isCurrentTurn) return null;
-
-  const lastEnd = activity.length > 0 ? (activity[activity.length - 1].endedAt ?? now) : now;
-  const elapsedMs = Math.max(0, lastEnd - firstAt);
-  const elapsed = formatDurationShort(elapsedMs);
-  const toolCount = countUniqueTools(activity);
-  const parts = [`Working · ${elapsed}`, `${activity.length} events`];
-  if (toolCount > 0) parts.push(`${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}`);
-  return {
-    line: parts.join(' · '),
-    tone: 'text-tagma-text',
-    icon: <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />,
-  };
-}
-
-function activitySizeSuffix(bytes: number | undefined): string {
-  return typeof bytes === 'number' && bytes > 0 ? ` · ${formatBytes(bytes)}` : '';
-}
-
-function countUniqueTools(activity: ActivityEvent[]): number {
-  const seen = new Set<string>();
-  for (const e of activity) {
-    if (
-      (e.kind === 'tool-running' || e.kind === 'tool-completed' || e.kind === 'tool-error') &&
-      e.detail
-    ) {
-      seen.add(e.detail);
-    }
-  }
-  return seen.size;
-}
-
 const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.ReactNode }> = {
   'request-sent': {
     label: 'Request sent',
     icon: <Send size={9} className="text-tagma-muted/70" />,
   },
   'assistant-started': {
-    label: 'Assistant started',
-    icon: (
-      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
-        ›
-      </span>
-    ),
+    label: 'Host processing',
+    icon: <Loader2 size={9} className="text-tagma-muted/70" />,
   },
-  thinking: {
-    label: 'Thinking',
+  thinking: { label: 'Thinking', icon: <Brain size={9} className="text-tagma-muted/70" /> },
+  'streaming-answer': {
+    label: 'Response',
     icon: <Brain size={9} className="text-tagma-muted/70" />,
   },
-  'streaming-answer': {
-    label: 'Streaming answer',
-    icon: (
-      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
-        ¶
-      </span>
-    ),
-  },
   'tool-running': {
-    label: 'Tool running',
+    label: 'Host action',
     icon: <Wrench size={9} className="text-tagma-muted/70" />,
   },
   'tool-completed': {
-    label: 'Tool completed',
+    label: 'Host action completed',
     icon: <CheckCircle2 size={9} className="text-tagma-ready" />,
   },
   'tool-error': {
-    label: 'Tool error',
+    label: 'Host action failed',
     icon: <XCircle size={9} className="text-tagma-error" />,
   },
-  'step-start': {
-    label: 'Step start',
-    icon: (
-      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
-        ·
-      </span>
-    ),
-  },
-  'step-finish': {
-    label: 'Step finish',
-    icon: (
-      <span className="inline-flex w-3 items-center justify-center text-tiny leading-none text-tagma-muted/70">
-        ·
-      </span>
-    ),
-  },
-  retry: {
-    label: 'Retry',
-    icon: <AlertTriangle size={9} className="text-tagma-warning" />,
-  },
+  'step-start': { label: 'Step started', icon: <span className="text-tagma-muted/70">·</span> },
+  'step-finish': { label: 'Step finished', icon: <span className="text-tagma-muted/70">·</span> },
+  retry: { label: 'Retry', icon: <AlertTriangle size={9} className="text-tagma-warning" /> },
   compacting: {
     label: 'Compacting history',
     icon: <Layers size={9} className="text-tagma-muted/70" />,
@@ -567,23 +222,18 @@ function describeActivity(event: ActivityEvent): { label: string; icon: React.Re
   return ACTIVITY_KIND_META[event.kind] ?? { label: event.kind, icon: null };
 }
 
-function formatTimelineOffset(ms: number): string {
-  const sec = Math.max(0, Math.floor(ms / 1000));
-  const min = Math.floor(sec / 60);
-  const remSec = sec % 60;
-  return `${String(min).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+function formatTimelineOffset(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-function formatDurationShort(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec}s`;
-  const min = Math.floor(sec / 60);
-  const remSec = sec % 60;
-  return `${min}m${String(remSec).padStart(2, '0')}s`;
+function formatDurationShort(milliseconds: number): string {
+  if (milliseconds < 1000) return `${Math.max(0, Math.round(milliseconds))}ms`;
+  const seconds = Math.floor(milliseconds / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, '0')}s`;
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} chars`;
-  return `${(n / 1024).toFixed(1)}k chars`;
+function formatBytes(value: number): string {
+  return value < 1024 ? `${value} chars` : `${(value / 1024).toFixed(1)}k chars`;
 }

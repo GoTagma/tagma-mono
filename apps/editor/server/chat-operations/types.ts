@@ -48,7 +48,7 @@ export const DEFAULT_CHAT_OPERATION_V2_REPAIR_MAX_ATTEMPTS = 3;
 export const DEFAULT_CHAT_OPERATION_V2_CLARIFICATION_MAX_ROUNDS = 3;
 
 export const CHAT_OPERATION_V2_PROTOCOL_VERSION = 2;
-export const CHAT_OPERATION_PROTOCOLS = ['v1', 'v2'] as const;
+export const CHAT_OPERATION_PROTOCOLS = ['v2'] as const;
 
 export type ChatOperationProtocol = (typeof CHAT_OPERATION_PROTOCOLS)[number];
 

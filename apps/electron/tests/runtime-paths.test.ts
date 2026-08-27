@@ -110,7 +110,7 @@ describe('Chat Operation V2 atomic desktop activation', () => {
     }
   });
 
-  test('sets both irreversible sidecar gates only for one packaged aligned release', () => {
+  test('sets the V2-only sidecar gates only for one packaged aligned release', () => {
     const previousShadow = process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
     const previousCutover = process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
     const base = {
@@ -129,12 +129,10 @@ describe('Chat Operation V2 atomic desktop activation', () => {
       });
       expect(enabled.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBe('1');
       expect(enabled.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBe('2');
-      expect(enabled.env.TAGMA_CHAT_OPERATION_V2_MIGRATION).toBe('1');
 
       const undeclared = resolveRuntimePaths({ ...base, tagmaMetadataJson: '{}' });
       expect(undeclared.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBeUndefined();
       expect(undeclared.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBeUndefined();
-      expect(undeclared.env.TAGMA_CHAT_OPERATION_V2_MIGRATION).toBeUndefined();
     } finally {
       if (previousShadow === undefined) delete process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
       else process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = previousShadow;
@@ -210,7 +208,6 @@ describe('Chat Operation V2 atomic desktop activation', () => {
     });
     expect(paths.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBe('1');
     expect(paths.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBe('2');
-    expect(paths.env.TAGMA_CHAT_OPERATION_V2_MIGRATION).toBe('1');
   });
 });
 
@@ -286,6 +283,8 @@ describe('runtime path resolution', () => {
     // already being watched by `bun --watch`, there's nothing to hot-update.
     expect(paths.env.TAGMA_EDITOR_USER_DIST_DIR).toBeUndefined();
     expect(paths.env.TAGMA_EDITOR_BUNDLED_VERSION).toBeUndefined();
+    expect(paths.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBe('1');
+    expect(paths.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBe('2');
   });
 
   test('development mode can pin the sidecar port for the Vite HMR proxy', () => {

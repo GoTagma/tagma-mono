@@ -93,7 +93,7 @@ type MaybePromise<T> = T | Promise<T>;
  * Mutation boundary exposed by the versioned renderer API. Required methods
  * are the Phase 2 read-only vertical slice already owned by the service;
  * later lifecycle actions remain optional until their Host implementations
- * land. An absent optional action fails explicitly and never falls back to V1.
+ * land. An absent optional action fails explicitly and fails closed.
  */
 export interface ChatOperationV2MutationService extends ChatOperationV2ReadService {
   projectMutationResult(workDir: string, value: unknown): unknown;

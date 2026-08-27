@@ -1,20 +1,8 @@
 /**
- * Browser-side opencode SDK client.
- *
- * The editor's server exposes a single bootstrap endpoint
- * (`POST /api/opencode/chat/ensure`) which lazily spawns `opencode serve`
- * scoped to the active workspace's cwd and returns its loopback URL. After
- * that, the renderer talks to opencode *directly* over CORS-enabled HTTP —
- * no express proxy in the middle. That means:
- *
- *   - Rich, fully-typed access to everything opencode exposes
- *     (providers + models with cost/context/reasoning caps, agents, sessions,
- *     full message parts including tool calls / reasoning / step boundaries)
- *   - Streaming via the SDK's native SSE generator; no custom passthrough
- *   - Zero duplication of opencode's API surface on our server
- *
- * Call `getOpencodeClient()` to obtain the memoized singleton. First call
- * bootstraps; subsequent calls return immediately.
+ * Browser-side OpenCode compatibility client for read-only provider/model
+ * metadata and the explicit provider-auth exception. Desktop Chat execution,
+ * sessions, streaming, permissions, and recovery are owned by the Host's
+ * versioned Chat Operation V2 API.
  */
 
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/client';
@@ -28,7 +16,6 @@ import {
   type ProviderAuthAuthorization as V2ProviderAuthAuthorization,
   type ProviderAuthMethod as V2ProviderAuthMethod,
   type ProviderV2Info,
-  type Session as V2Session,
   type WellKnownAuth as V2WellKnownAuth,
 } from '@opencode-ai/sdk/v2/client';
 import type {
@@ -36,12 +23,10 @@ import type {
   Message,
   Model as SdkModel,
   Part,
-  Session as SdkSession,
   Provider as SdkProvider,
 } from '@opencode-ai/sdk/client';
 import { api, getClientAuthToken, getClientWorkspace } from './client';
 import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-errors.js';
-import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 
 /**
  * Opencode 1.14 returns a `hidden: true` marker on internal utility agents
@@ -202,19 +187,13 @@ export interface OpencodeThreadEntry {
   activity?: ActivityEvent[];
 }
 
-export type ChatOperationBootstrapHandshake =
-  | {
-      readonly chatOperationProtocolVersion: 2;
-      readonly chatOperationMode: 'production';
-    }
-  | {
-      readonly chatOperationProtocolVersion: null;
-      readonly chatOperationMode: 'legacy';
-    };
+export type ChatOperationBootstrapHandshake = {
+  readonly chatOperationProtocolVersion: 2;
+  readonly chatOperationMode: 'production';
+};
 
 interface ClientBootstrapBase {
   client: OpencodeClient;
-  historyClient: OpencodeV2Client;
   v2Client: OpencodeV2Client;
   baseUrl: string;
   directory: string | null;
@@ -236,16 +215,8 @@ export type ClientBootstrap = ClientBootstrapBase & ChatOperationBootstrapHandsh
 function parseChatOperationBootstrapHandshake(
   value: Record<string, unknown>,
 ): ChatOperationBootstrapHandshake {
-  const hasProtocol = Object.prototype.hasOwnProperty.call(value, 'chatOperationProtocolVersion');
-  const hasMode = Object.prototype.hasOwnProperty.call(value, 'chatOperationMode');
-  if (!hasProtocol && !hasMode) {
-    return { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' };
-  }
   if (value.chatOperationProtocolVersion === 2 && value.chatOperationMode === 'production') {
     return { chatOperationProtocolVersion: 2, chatOperationMode: 'production' };
-  }
-  if (value.chatOperationProtocolVersion === null && value.chatOperationMode === 'legacy') {
-    return { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' };
   }
   throw new Error('Sidecar returned an invalid Chat Operation capability handshake.');
 }
@@ -261,7 +232,6 @@ function parseChatOperationBootstrapHandshake(
 // chat panel shouldn't be reachable there, but guarding avoids a null-key
 // crash if something triggers bootstrap early.
 const NO_WORKSPACE_KEY = '__no_workspace__';
-const HISTORY_DISCOVERY_LIMIT = 10_000;
 const bootstraps = new Map<string, Promise<ClientBootstrap>>();
 
 function currentWorkspaceKey(): string {
@@ -433,14 +403,6 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
       endpoint.workspaceHeader,
     ),
   );
-  const historyClient = createOpencodeV2Client(
-    buildOpencodeV2ClientConfig(
-      endpoint.baseUrl,
-      endpoint.authHeader,
-      undefined,
-      endpoint.workspaceHeader,
-    ),
-  );
   const v2Client = createOpencodeV2Client(
     buildOpencodeV2ClientConfig(
       endpoint.baseUrl,
@@ -452,7 +414,6 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const schemaValue = Number(body.contextWindowPluginSchema);
   return {
     client,
-    historyClient,
     v2Client,
     directory,
     ...endpoint,
@@ -476,76 +437,9 @@ export async function getOpencodeV2Client(
   return v2Client;
 }
 
-export async function listOpencodeSessions(
-  workspaceKey = currentWorkspaceKey(),
-): Promise<{ sessions: SdkSession[]; directory: string | null }> {
-  const bootstrap = await getClientBootstrap(workspaceKey);
-  if (!bootstrap.directory) return { sessions: [], directory: null };
-
-  const [scoped, discovered] = await Promise.all([
-    unwrap(bootstrap.client.session.list({ query: { directory: bootstrap.directory } })),
-    unwrap(
-      bootstrap.historyClient.session.list({
-        roots: true,
-        limit: HISTORY_DISCOVERY_LIMIT,
-      }),
-    )
-      // Both SDK generations decode the same `/session` payload, but their
-      // generated `summary.diffs` declarations differ. History only consumes
-      // the shared session and ownership fields.
-      .then((sessions) => sessions as unknown as SdkSession[])
-      .catch((err) => {
-        // Compatibility discovery must never erase the canonical directory
-        // result. The caller can still render current history when the older
-        // unscoped endpoint is unavailable.
-        console.warn('[chat] legacy session discovery failed:', err);
-        return [] as SdkSession[];
-      }),
-  ]);
-  const sessionsById = new Map<string, SdkSession>();
-  for (const session of discovered) {
-    sessionsById.set(session.id, session);
-  }
-  for (const session of scoped) {
-    // Scoped `.tagma` results are the canonical payload for duplicate ids.
-    // Keep discovery-only sessions for legacy compatibility, but let the
-    // scoped directory win when both queries surface the same session.
-    sessionsById.set(session.id, session);
-  }
-  const sessions = [...sessionsById.values()];
-  return { sessions, directory: bootstrap.directory };
-}
-
 export interface ProviderModelCatalogV2Snapshot {
   providers: ProviderV2Info[];
   models: ModelV2Info[];
-}
-
-export type OpencodeSessionCreateV2Input = NonNullable<
-  Parameters<OpencodeV2Client['session']['create']>[0]
->;
-export type OpencodeSessionUpdateV2Input = Parameters<OpencodeV2Client['session']['update']>[0];
-export type OpencodeSessionV2 = V2Session;
-
-export interface OpencodeSessionDirectoryVerificationOptions {
-  timeoutMs?: number;
-  pollIntervalMs?: number;
-  signal?: AbortSignal;
-}
-
-export interface MoveOpencodeSessionDirectoryInput {
-  sessionID: string;
-  destinationDirectory: string;
-  expectedSourceDirectories?: readonly string[];
-  workspaceKey?: string;
-  verification?: OpencodeSessionDirectoryVerificationOptions;
-}
-
-export interface MoveOpencodeSessionDirectoryResult {
-  moved: boolean;
-  sourceDirectory: string;
-  destinationDirectory: string;
-  session: OpencodeSessionV2;
 }
 
 export async function getClientBootstrap(workspaceKey: string): Promise<ClientBootstrap> {
@@ -562,204 +456,6 @@ export async function getClientBootstrap(workspaceKey: string): Promise<ClientBo
   return pending;
 }
 
-function isAbsoluteOpencodeDirectory(value: string): boolean {
-  return (
-    value.startsWith('/') ||
-    /^[A-Za-z]:[\\/]/.test(value) ||
-    /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/.test(value)
-  );
-}
-
-function requiredAbsoluteOpencodeDirectory(value: string, label: string): string {
-  const directory = value.trim();
-  if (!directory || !isAbsoluteOpencodeDirectory(directory)) {
-    throw new Error(`${label} must be a non-empty absolute directory`);
-  }
-  return directory;
-}
-
-function requiredOpencodeSessionID(value: string): string {
-  const sessionID = value.trim();
-  if (!sessionID) throw new Error('opencode session relocation requires a sessionID');
-  return sessionID;
-}
-
-async function unwrapNoContent(
-  request: Promise<{ data?: void; error?: unknown; response: Response }>,
-  expectedStatus: number,
-): Promise<void> {
-  const result = await request.catch((err) => {
-    throw toOpencodeError(err);
-  });
-  if (result.error) throw toOpencodeError(result.error, result.response);
-  if (result.response.status !== expectedStatus) {
-    throw new Error(
-      `opencode returned ${result.response.status}; expected ${expectedStatus} with no content`,
-    );
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (!signal?.aborted) return;
-  if (signal.reason instanceof Error) throw signal.reason;
-  throw new DOMException('The operation was aborted', 'AbortError');
-}
-
-function waitForPollDelay(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
-  throwIfAborted(signal);
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, delayMs);
-    const onAbort = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-      try {
-        throwIfAborted(signal);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-async function readOpencodeSessionV2(
-  client: OpencodeV2Client,
-  sessionID: string,
-  signal?: AbortSignal,
-): Promise<OpencodeSessionV2> {
-  throwIfAborted(signal);
-  const session = await unwrap(client.session.get({ sessionID }, signal ? { signal } : undefined));
-  if (session.id !== sessionID) {
-    throw new Error(
-      `opencode returned session ${JSON.stringify(session.id)} while reading ${JSON.stringify(sessionID)}`,
-    );
-  }
-  return session;
-}
-
-export async function getOpencodeCanonicalDirectory(
-  workspaceKey = currentWorkspaceKey(),
-): Promise<string> {
-  const { directory } = await getClientBootstrap(workspaceKey);
-  if (!directory || !isAbsoluteOpencodeDirectory(directory)) {
-    throw new Error('opencode bootstrap did not return an absolute canonical directory');
-  }
-  return directory;
-}
-
-export async function getOpencodeSessionV2(
-  sessionID: string,
-  workspaceKey = currentWorkspaceKey(),
-  signal?: AbortSignal,
-): Promise<OpencodeSessionV2> {
-  const exactSessionID = requiredOpencodeSessionID(sessionID);
-  const client = await getOpencodeV2Client(workspaceKey);
-  return readOpencodeSessionV2(client, exactSessionID, signal);
-}
-
-export async function waitForOpencodeSessionDirectory(
-  sessionID: string,
-  expectedDirectory: string,
-  workspaceKey = currentWorkspaceKey(),
-  options: OpencodeSessionDirectoryVerificationOptions = {},
-): Promise<OpencodeSessionV2> {
-  const exactSessionID = requiredOpencodeSessionID(sessionID);
-  const exactDirectory = requiredAbsoluteOpencodeDirectory(
-    expectedDirectory,
-    'expected OpenCode session directory',
-  );
-  const timeoutMs = options.timeoutMs ?? 2_000;
-  const pollIntervalMs = options.pollIntervalMs ?? 25;
-  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
-    throw new Error('OpenCode session-directory timeout must be a non-negative number');
-  }
-  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs < 0) {
-    throw new Error('OpenCode session-directory poll interval must be a non-negative number');
-  }
-
-  const client = await getOpencodeV2Client(workspaceKey);
-  const startedAt = Date.now();
-  let lastDirectory: string | null = null;
-  while (true) {
-    const session = await readOpencodeSessionV2(client, exactSessionID, options.signal);
-    lastDirectory = session.directory;
-    if (sameFilesystemPathCoordinate(lastDirectory, exactDirectory)) return session;
-
-    const elapsedMs = Date.now() - startedAt;
-    if (elapsedMs >= timeoutMs) break;
-    await waitForPollDelay(Math.min(pollIntervalMs, timeoutMs - elapsedMs), options.signal);
-  }
-  throw new Error(
-    `OpenCode session ${JSON.stringify(exactSessionID)} did not move to the expected directory ` +
-      `${JSON.stringify(exactDirectory)} within ${timeoutMs}ms (last observed ${JSON.stringify(lastDirectory)})`,
-  );
-}
-
-export async function moveOpencodeSessionDirectory(
-  input: MoveOpencodeSessionDirectoryInput,
-): Promise<MoveOpencodeSessionDirectoryResult> {
-  const sessionID = requiredOpencodeSessionID(input.sessionID);
-  const destinationDirectory = requiredAbsoluteOpencodeDirectory(
-    input.destinationDirectory,
-    'OpenCode session destination',
-  );
-  const workspaceKey = input.workspaceKey ?? currentWorkspaceKey();
-  const client = await getOpencodeV2Client(workspaceKey);
-  const sourceSession = await readOpencodeSessionV2(client, sessionID, input.verification?.signal);
-  if (sourceSession.workspaceID !== undefined) {
-    throw new Error(
-      `OpenCode session ${JSON.stringify(sessionID)} has workspaceID and cannot be relocated safely`,
-    );
-  }
-  const sourceDirectory = sourceSession.directory;
-  if (!sourceDirectory) {
-    throw new Error(`OpenCode session ${JSON.stringify(sessionID)} has no source directory`);
-  }
-  if (input.expectedSourceDirectories) {
-    const expectedSources = input.expectedSourceDirectories.map((directory) =>
-      requiredAbsoluteOpencodeDirectory(directory, 'expected OpenCode session source directory'),
-    );
-    if (
-      expectedSources.length === 0 ||
-      !expectedSources.some((expected) => sameFilesystemPathCoordinate(sourceDirectory, expected))
-    ) {
-      throw new Error(
-        `OpenCode session ${JSON.stringify(sessionID)} is in unexpected source directory ${JSON.stringify(sourceDirectory)}`,
-      );
-    }
-  }
-  if (sameFilesystemPathCoordinate(sourceDirectory, destinationDirectory)) {
-    return {
-      moved: false,
-      sourceDirectory,
-      destinationDirectory,
-      session: sourceSession,
-    };
-  }
-
-  await unwrapNoContent(
-    client.experimental.controlPlane.moveSession(
-      {
-        sessionID,
-        destination: { directory: destinationDirectory },
-        moveChanges: false,
-      },
-      input.verification?.signal ? { signal: input.verification.signal } : undefined,
-    ),
-    204,
-  );
-  const session = await waitForOpencodeSessionDirectory(
-    sessionID,
-    destinationDirectory,
-    workspaceKey,
-    input.verification,
-  );
-  return { moved: true, sourceDirectory, destinationDirectory, session };
-}
-
 export async function fetchProviderModelCatalogV2(
   workspaceKey = currentWorkspaceKey(),
 ): Promise<ProviderModelCatalogV2Snapshot> {
@@ -769,22 +465,6 @@ export async function fetchProviderModelCatalogV2(
     unwrap(client.v2.model.list()),
   ]);
   return { providers: providerList.data, models: modelList.data };
-}
-
-export async function createOpencodeSessionV2(
-  body: OpencodeSessionCreateV2Input,
-  workspaceKey = currentWorkspaceKey(),
-): Promise<OpencodeSessionV2> {
-  const client = await getOpencodeV2Client(workspaceKey);
-  return unwrap(client.session.create(body));
-}
-
-export async function updateOpencodeSessionV2(
-  body: OpencodeSessionUpdateV2Input,
-  workspaceKey = currentWorkspaceKey(),
-): Promise<OpencodeSessionV2> {
-  const client = await getOpencodeV2Client(workspaceKey);
-  return unwrap(client.session.update(body));
 }
 
 /** Base URL of the opencode server for workspace-scoped diagnostic fetches. */
@@ -864,14 +544,6 @@ export async function restartOpencodeForConfig(
           endpoint.baseUrl,
           endpoint.authHeader,
           directory,
-          endpoint.workspaceHeader,
-        ),
-      ),
-      historyClient: createOpencodeV2Client(
-        buildOpencodeV2ClientConfig(
-          endpoint.baseUrl,
-          endpoint.authHeader,
-          undefined,
           endpoint.workspaceHeader,
         ),
       ),

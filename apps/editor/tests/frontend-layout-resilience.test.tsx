@@ -18,10 +18,7 @@ import { VERSION_STATUS_POPOVER_CLASSES } from '../src/components/VersionStatusB
 import { buildCompactToolbarItems, Toolbar } from '../src/components/board/Toolbar';
 import { CONTEXT_MENU_VIEWPORT_CLASSES } from '../src/components/board/ContextMenu';
 import { PipelineSummaryBar } from '../src/components/board/PipelineSummaryBar';
-import {
-  BootstrapOverlay,
-  CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES,
-} from '../src/components/chat/ChatPanel';
+import { BootstrapOverlay } from '../src/components/chat/ChatPanel';
 import { ChatComposer } from '../src/components/chat/ChatComposer';
 import { computeFloatingPanelPlacement } from '../src/components/chat/FloatingPanel';
 import { ConfirmModal } from '../src/components/ConfirmModal';
@@ -183,7 +180,6 @@ describe('frontend layout resilience', () => {
     for (const classes of [
       VERSION_STATUS_POPOVER_CLASSES,
       RUN_SEARCH_OVERLAY_CLASSES,
-      CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES,
       CONTEXT_MENU_VIEWPORT_CLASSES,
     ]) {
       expect(classes).toContain('100vw');

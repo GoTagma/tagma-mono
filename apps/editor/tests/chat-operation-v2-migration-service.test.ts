@@ -9,8 +9,6 @@ import {
   createChatOperationV2MigrationService,
   deriveChatOperationV2ResetPlanId,
   deriveChatOperationV2ResetRequestIdentity,
-  ChatOperationV2MigrationServiceError,
-  isChatOperationV2MigrationServiceEnabled,
 } from '../server/chat-operations/migration-service.js';
 import { ChatOperationV2Store } from '../server/chat-operations/store.js';
 import { WorkspaceState } from '../server/workspace-state.js';
@@ -73,17 +71,7 @@ afterEach(() => {
 });
 
 describe('Chat Operation V2 migration service facade', () => {
-  test('uses exact opt-in and explicit reset confirmation constants', () => {
-    expect(
-      isChatOperationV2MigrationServiceEnabled({ TAGMA_CHAT_OPERATION_V2_MIGRATION: '1' }),
-    ).toBe(true);
-    for (const value of [undefined, '', '0', 'true', ' 1']) {
-      expect(
-        isChatOperationV2MigrationServiceEnabled({
-          TAGMA_CHAT_OPERATION_V2_MIGRATION: value,
-        }),
-      ).toBe(false);
-    }
+  test('uses explicit reset confirmation and stable request identities', () => {
     expect(CHAT_OPERATION_V2_RESET_CONFIRMATION).toBe('RESET CHAT CONTROL DATA');
     expect(deriveChatOperationV2ResetPlanId('client-reset-1')).toBe(
       deriveChatOperationV2ResetPlanId('client-reset-1'),
@@ -158,7 +146,7 @@ describe('Chat Operation V2 migration service facade', () => {
     expect(randomCalls).toBe(0);
   });
 
-  test('runs startup import and observed path checks with receipt-only diagnostics', () => {
+  test('runs observed path checks with receipt-only diagnostics', () => {
     const fixture = setup('startup');
     const oldScope = fixture.store.ensureWorkspaceScope({
       workspaceScopeId: 'workspace-old',
@@ -184,23 +172,6 @@ describe('Chat Operation V2 migration service facade', () => {
       now: () => 100,
     })!;
     try {
-      const startup = service.runStartupLegacyImport({
-        workspace: fixture.ws,
-        workspaceScopeId: oldScope.workspaceScopeId,
-        migrationId: 'startup-migration',
-        plannedAtMs: 90,
-        completedResults: [],
-      });
-      expect(startup).toMatchObject({
-        receipt: { disposition: 'legacy_imported', replayed: false },
-        diagnostics: {
-          kind: 'legacy_startup',
-          registryDisposition: 'imported',
-          isolatedStageCount: 0,
-        },
-      });
-      expect(JSON.stringify(startup)).not.toContain(fixture.root);
-
       const observed = service.applyWorkspacePathCheck({
         workspace: fixture.ws,
         plan: {
@@ -237,56 +208,6 @@ describe('Chat Operation V2 migration service facade', () => {
         classification: 'clone',
         ownershipDisposition: 'new_scope_unowned',
       });
-    } finally {
-      stop(fixture);
-    }
-  });
-
-  test('serializes migration work process-wide across service instances', () => {
-    const fixture = setup('serialization');
-    const scope = fixture.store.ensureWorkspaceScope({
-      workspaceScopeId: 'workspace-serialize',
-      canonicalPath: fixture.root,
-      canonicalPathHmac: '5'.repeat(64),
-      recordHmac: '6'.repeat(64),
-      createdAt: 1,
-      controlGeneration: 1,
-    });
-    let nestedError: unknown;
-    let first = true;
-    const service = createChatOperationV2MigrationService({
-      enabled: true,
-      controlPaths: fixture.controlPaths,
-      getTrustedStore() {
-        if (first) {
-          first = false;
-          try {
-            service.runStartupLegacyImport({
-              workspace: fixture.ws,
-              workspaceScopeId: scope.workspaceScopeId,
-              migrationId: 'nested-migration',
-              plannedAtMs: 2,
-              completedResults: [],
-            });
-          } catch (error) {
-            nestedError = error;
-          }
-        }
-        return fixture.store;
-      },
-      closeTrustedStoreForReset: () => fixture.store.close(),
-      now: () => 3,
-    })!;
-    try {
-      service.runStartupLegacyImport({
-        workspace: fixture.ws,
-        workspaceScopeId: scope.workspaceScopeId,
-        migrationId: 'outer-migration',
-        plannedAtMs: 2,
-        completedResults: [],
-      });
-      expect(nestedError).toBeInstanceOf(ChatOperationV2MigrationServiceError);
-      expect(nestedError).toMatchObject({ code: 'migration_busy' });
     } finally {
       stop(fixture);
     }

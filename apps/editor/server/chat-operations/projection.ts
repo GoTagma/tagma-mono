@@ -513,13 +513,7 @@ function parseProjectionAdmission(value: ChatOperationV2ProjectionAdmission): {
   readonly rendererInstanceId: string;
 } {
   const conversationId = hostId(value.conversationId, 'Conversation id');
-  let admission: ChatOperationV2Admission;
-  try {
-    admission = parseChatOperationV2Admission(value);
-  } catch {
-    const { conversationId: _conversationId, ...legacyShape } = value;
-    admission = parseChatOperationV2Admission(legacyShape);
-  }
+  const admission = parseChatOperationV2Admission(value);
   return {
     admission,
     conversationId,

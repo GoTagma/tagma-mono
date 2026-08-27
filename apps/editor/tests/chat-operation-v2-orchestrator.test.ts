@@ -1062,7 +1062,7 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 
-  test('create and edit stay inside V2 as explicit authoring_deferred waits with no V1 handoff', async () => {
+  test('create and edit stay inside V2 as explicit authoring_deferred waits with no renderer handoff', async () => {
     const editInventory = createChatInventorySnapshot(6, [
       { id: 'pipeline-1', relativePath: 'demo/demo.yaml', contentHash: '5'.repeat(64) },
     ]);
@@ -2665,7 +2665,7 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 
-  test('restart preserves authoring_deferred without inventing intent or handing off to V1', async () => {
+  test('restart preserves authoring_deferred without inventing intent or handing authority to the renderer', async () => {
     const input = baseCreateInput('operation-restart-authoring-deferred');
     const first = createHarness([
       completedInvocation(

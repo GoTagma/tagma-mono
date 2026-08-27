@@ -809,9 +809,9 @@
   invocation and writes exactly one immutable terminal event.
 - Renderer Chat code is a versioned operation API client and event projection only. It may submit a
   frozen dirty-canvas snapshot and CAS-guarded clarification, permission, cancel, retry, discard, or
-  recovery choice, but may not call OpenCode mutations or stage/finalize primitives directly. Keep
-  legacy V1 readable/migratable during the atomic editor+sidecar cutover without giving any single
-  operation both V1 and V2 executors.
+  recovery choice, but may not call OpenCode mutations or stage/finalize primitives directly. V2 is
+  the only Desktop Chat execution protocol: do not add V1 import, recovery, migration, passthrough,
+  executor, or renderer-owned session paths; handshake mismatches fail closed.
 
 - Tagma may reuse OpenCode's user-level data root for provider login state, but it must never share
   the schema-bearing session database with a standalone OpenCode CLI. Every managed Chat and

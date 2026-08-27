@@ -8,7 +8,7 @@ bootstrapDevEnv();
 
 import express from 'express';
 import cors from 'cors';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { existsSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { S, bumpRevision, getState, closeStateEventClients } from './state.js';
@@ -61,7 +61,6 @@ import { resolveChatOperationV2ControlPaths } from './chat-operations/control-ro
 import {
   createChatOperationV2MigrationService,
   deriveChatOperationV2ResetRequestIdentity,
-  isChatOperationV2MigrationServiceEnabled,
 } from './chat-operations/migration-service.js';
 import { createManagedOpenCodeStructuredClassifierRunner } from './chat-operations/opencode-adapter.js';
 import { CHAT_OPERATION_V2_API_PROTOCOL_VERSION } from './chat-operations/api-requests.js';
@@ -161,28 +160,23 @@ const chatOperationV2Service = createChatOperationV2ShadowService({
 });
 const chatOperationV2MutationsEnabled =
   chatOperationV2Service !== null && chatOperationV2MutationsRequested;
-const chatOperationV2MigrationEnabled =
-  chatOperationV2Service !== null &&
-  (chatOperationV2ProductionCutover || isChatOperationV2MigrationServiceEnabled());
-const chatOperationV2MigrationService =
-  chatOperationV2Service && chatOperationV2MigrationEnabled
-    ? createChatOperationV2MigrationService({
-        enabled: true,
-        controlPaths: resolveChatOperationV2ControlPaths(),
-        getTrustedStore: () => chatOperationV2Service.getTrustedMigrationStore(),
-        closeTrustedStoreForReset: () =>
-          chatOperationV2Service.closeTrustedStoreForOfflineMigration(),
-        onResetActivated: () => {
-          chatOperationV2Service.invalidateAfterControlReset();
-          chatOperationV2CommitCoordinators.clear();
-        },
-        onResetAborted: () => {
-          chatOperationV2Service.invalidateAfterControlReset();
-          chatOperationV2CommitCoordinators.clear();
-        },
-      })
-    : null;
-const chatOperationV2MigratedWorkspaces = new Set<string>();
+const chatOperationV2MigrationService = chatOperationV2Service
+  ? createChatOperationV2MigrationService({
+      enabled: true,
+      controlPaths: resolveChatOperationV2ControlPaths(),
+      getTrustedStore: () => chatOperationV2Service.getTrustedMigrationStore(),
+      closeTrustedStoreForReset: () =>
+        chatOperationV2Service.closeTrustedStoreForOfflineMigration(),
+      onResetActivated: () => {
+        chatOperationV2Service.invalidateAfterControlReset();
+        chatOperationV2CommitCoordinators.clear();
+      },
+      onResetAborted: () => {
+        chatOperationV2Service.invalidateAfterControlReset();
+        chatOperationV2CommitCoordinators.clear();
+      },
+    })
+  : null;
 const unregisterChatOperationV2Diagnostics = registerServerDiagnosticsContributor(
   'chatOperationV2',
   () =>
@@ -598,25 +592,6 @@ function chatOperationV2HostInventoryFor(workDir: string) {
   };
 }
 
-function ensureChatOperationV2StartupMigration(workDir: string): void {
-  if (!chatOperationV2MigrationService || !chatOperationV2Service) return;
-  const { workspace } = chatOperationV2HostInventoryFor(workDir);
-  const context = chatOperationV2Service.getWorkspaceMigrationContext(workDir);
-  if (chatOperationV2MigratedWorkspaces.has(context.workspaceScopeId)) return;
-  const suffix = createHash('sha256')
-    .update(`tagma-chat-operation-v2-startup-migration\0${context.workspaceScopeId}`)
-    .digest('hex')
-    .slice(0, 48);
-  chatOperationV2MigrationService.runStartupLegacyImport({
-    workspace,
-    workspaceScopeId: context.workspaceScopeId,
-    migrationId: `migration-${suffix}`,
-    plannedAtMs: context.createdAt,
-    completedResults: [],
-  });
-  chatOperationV2MigratedWorkspaces.add(context.workspaceScopeId);
-}
-
 // Register route groups. Order matches the original file so anything that
 // relies on Express's first-match semantics still wins in the same place.
 registerPipelineRoutes(app);
@@ -645,7 +620,6 @@ registerChatOperationV2Routes(
           mutationsEnabled: true,
           service: chatOperationV2Service,
           createInputResolver: (workDir, request) => {
-            ensureChatOperationV2StartupMigration(workDir);
             const { workspace, inventory } = chatOperationV2HostInventoryFor(workDir);
             const seedOptions = buildOpencodeSeedOptions(workspace);
             return resolveChatOperationV2CreateAdmission(request, {
@@ -726,7 +700,6 @@ registerChatOperationV2ControlRoutes(
               clientRequestId,
               confirmation,
             });
-            chatOperationV2MigratedWorkspaces.clear();
             return result;
           },
         },

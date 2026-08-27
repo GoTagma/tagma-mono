@@ -3,11 +3,8 @@ import {
   Plus,
   Plug,
   History,
-  X,
   ChevronDown,
-  FastForward,
   AlertTriangle,
-  CheckCircle2,
   Loader2,
   Check,
   Download,
@@ -15,22 +12,10 @@ import {
   Brain,
   Terminal,
 } from 'lucide-react';
-import {
-  isChatModelSelectionBlocked,
-  useChatStore,
-  type ChatYamlPostAction,
-  type ChatYamlSessionResult,
-} from '../../store/chat-store';
+import { useChatStore } from '../../store/chat-store';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
-import { usePipelineStore } from '../../store/pipeline-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
-import { useEditorSettingsStore } from '../../store/editor-settings-store';
-import { useUIStore } from '../../store/ui-store';
-import { shouldShowForcePush } from '../../utils/chat-queue';
-import { hasLocalEditorChanges, resolveDirtyDiskChange } from '../../utils/chat-dirty-conflict';
-import { getLastLocalFieldEditAt } from '../../hooks/use-local-field';
-import { api } from '../../api/client';
-import type { ActivityEvent, OpencodeThreadEntry } from '../../api/opencode-chat';
+import type { ActivityEvent } from '../../api/opencode-chat';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { TurnActivityPanel } from './ActivityPanel';
@@ -40,29 +25,13 @@ import { MessageBubble } from './MessageBubble';
 import { BotBridgeStatusBadge } from './BotBridgeStatusBadge';
 import { FloatingPanel } from './FloatingPanel';
 import { ModelPickerDropdown } from './ModelPickerDropdown';
-// SessionYamlResultBubble stays re-exported from here for existing tests and
-// callers; its implementation lives in SessionYamlResult.tsx alongside the
-// fused bubble-footer variant.
-import { describeSessionYamlResult, SessionYamlResultBubble } from './SessionYamlResult';
 import { modelVariantIds, reconcileModelVariant } from '../../store/chat-provider-catalog';
-import {
-  chatPipelineDeploymentTarget,
-  chatPipelineDisplayName,
-  chatPipelineTargetInvalidReason,
-  selectVisibleChatCompletionResults,
-  type ChatPipelineLinkTarget,
-  type ChatPipelineOpenOutcome,
-  useChatPipelineTargetAvailability,
-  useOpenChatPipelineTarget,
-} from './chat-pipeline-link';
 import {
   buildConversationExport,
   conversationExportFilename,
   downloadConversationExport,
   type ChatExportFormat,
 } from '../../utils/chat-export';
-
-export { SessionYamlResultBubble };
 
 /**
  * Chat panel content — presentational. The RightDock owns width/animation/
@@ -106,73 +75,29 @@ export interface FlowStep {
 }
 
 function ConversationFlowBar() {
-  const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
   const pendingUserText = useChatStore((s) => s.pendingUserText);
-  const queuedMessages = useChatStore((s) => s.queuedMessages);
   const pendingActivity = useChatStore((s) => s.pendingActivity);
   const pendingPermissions = useChatStore((s) => s.pendingPermissions);
-  const turnStartedAt = useChatStore((s) => s.turnStartedAt);
-  const turnAssistantMessageIds = useChatStore((s) => s.turnAssistantMessageIds);
-  const reconciling = useChatStore((s) => s.reconciling);
-  const reconcilingSessionId = useChatStore((s) => s.reconcilingSessionId);
-  const currentSessionId = useChatStore((s) => s.currentSessionId);
-  const flushing = useChatStore((s) => s.flushing);
-  const postChatYamlAction = useChatStore((s) => s.postChatYamlAction);
   const sendError = useChatStore((s) => s.sendError);
-  const visibleReconciling = isChatReconciliationVisible({
-    reconciling,
-    currentSessionId,
-    reconcilingSessionId,
-  });
-  const visiblePostChatYamlAction = visibleReconciling ? postChatYamlAction : null;
 
-  const activity = useMemo(
-    () =>
-      selectConversationFlowActivity({
-        messages,
-        pendingActivity,
-        turnAssistantMessageIds,
-        turnStartedAt,
-      }),
-    [messages, pendingActivity, turnAssistantMessageIds, turnStartedAt],
-  );
+  const activity = pendingActivity;
   const steps = useMemo(
     () =>
       buildConversationFlowSteps({
         activity,
         sending,
         pendingUserText,
-        queuedCount: queuedMessages.length,
         pendingPermissionCount: pendingPermissions.length,
-        reconciling: visibleReconciling,
-        flushing,
-        postChatYamlAction: visiblePostChatYamlAction,
         sendError,
       }),
-    [
-      activity,
-      sending,
-      pendingUserText,
-      queuedMessages.length,
-      pendingPermissions.length,
-      visibleReconciling,
-      flushing,
-      visiblePostChatYamlAction,
-      sendError,
-    ],
+    [activity, sending, pendingUserText, pendingPermissions.length, sendError],
   );
 
-  return <ConversationFlowBarView steps={steps} queuedCount={queuedMessages.length} />;
+  return <ConversationFlowBarView steps={steps} />;
 }
 
-export function ConversationFlowBarView({
-  steps,
-  queuedCount,
-}: {
-  steps: FlowStep[];
-  queuedCount: number;
-}) {
+export function ConversationFlowBarView({ steps }: { steps: FlowStep[] }) {
   const hasSteps = steps.length > 0;
 
   if (!hasSteps) return null;
@@ -205,9 +130,6 @@ export function ConversationFlowBarView({
         <span className="min-w-0 flex-1 truncate text-tagma-text/90" title={majorStage}>
           {majorStage}
         </span>
-        {queuedCount > 0 && (
-          <span className="shrink-0 text-tagma-muted/70 tabular-nums">+{queuedCount} queued</span>
-        )}
         <span className="shrink-0 text-tagma-muted-dim tabular-nums">{Math.round(percent)}%</span>
       </div>
       <div
@@ -234,13 +156,10 @@ export function ConversationFlowBarView({
 }
 
 const CONVERSATION_FLOW_PROGRESS = {
-  queued: 5,
   starting: 12,
   working: 45,
   approval: 62,
   responding: 78,
-  finalizing: 90,
-  flushing: 96,
   complete: 100,
 } as const;
 
@@ -262,155 +181,10 @@ export function conversationFlowProgressPercent(steps: FlowStep[]): number {
 }
 
 function conversationFlowStepProgress(step: FlowStep): number {
-  if (step.key === 'queued') return CONVERSATION_FLOW_PROGRESS.queued;
   if (step.label === 'Request') return CONVERSATION_FLOW_PROGRESS.starting;
   if (step.key === 'permission') return CONVERSATION_FLOW_PROGRESS.approval;
   if (step.label === 'Response') return CONVERSATION_FLOW_PROGRESS.responding;
-  if (step.key === 'reconcile' || step.key === 'yaml-action') {
-    return CONVERSATION_FLOW_PROGRESS.finalizing;
-  }
-  if (step.key === 'flush') return CONVERSATION_FLOW_PROGRESS.flushing;
   return CONVERSATION_FLOW_PROGRESS.working;
-}
-
-/**
- * A turn can span several assistant envelopes (for example, tool use followed
- * by a final answer). While a turn is live, collect every tracked envelope;
- * after it finishes, use the latest user-message boundary so the generated
- * flow remains visible instead of snapping back to an empty placeholder.
- */
-export function selectConversationFlowActivity({
-  messages,
-  pendingActivity,
-  turnAssistantMessageIds,
-  turnStartedAt,
-}: {
-  messages: OpencodeThreadEntry[];
-  pendingActivity: ActivityEvent[];
-  turnAssistantMessageIds: string[];
-  turnStartedAt: number | null;
-}): ActivityEvent[] {
-  const activity = turnStartedAt === null ? [] : pendingActivity.slice();
-  const relevantMessages =
-    turnStartedAt === null
-      ? latestCompletedTurnMessages(messages)
-      : messages.filter((entry) => {
-          if (entry.info.role !== 'assistant' || isAbortErrorEntry(entry)) return false;
-          if (turnAssistantMessageIds.includes(entry.info.id)) return true;
-          const created = entry.info.time?.created;
-          const completed = entry.info.time?.completed;
-          return (
-            (typeof completed === 'number' && completed >= turnStartedAt) ||
-            (typeof created === 'number' && created >= turnStartedAt)
-          );
-        });
-
-  for (const entry of relevantMessages) {
-    if (entry.info.role !== 'assistant' || isAbortErrorEntry(entry)) continue;
-    activity.push(...(entry.activity ?? []));
-  }
-
-  return activity.sort((left, right) => left.startedAt - right.startedAt);
-}
-
-function latestCompletedTurnMessages(messages: OpencodeThreadEntry[]): OpencodeThreadEntry[] {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].info.role === 'user') return messages.slice(i + 1);
-  }
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const entry = messages[i];
-    if (
-      entry.info.role === 'assistant' &&
-      !isAbortErrorEntry(entry) &&
-      (entry.activity?.length ?? 0) > 0
-    ) {
-      return [entry];
-    }
-  }
-  return [];
-}
-
-function chatYamlRepairPresentation(action: ChatYamlPostAction): {
-  label: string;
-  detail: string;
-  title: string;
-} {
-  const phase =
-    action.phase ??
-    (action.trial
-      ? action.trial.kind === 'plan-required'
-        ? 'trial-planning'
-        : 'trial-repair'
-      : 'compile-repair');
-
-  switch (phase) {
-    case 'trial-planning':
-      return {
-        label: 'Test plan',
-        detail: 'planning targeted edge cases',
-        title: 'Planning targeted edge-case trial...',
-      };
-    case 'trial-running':
-      return {
-        label: 'Trial run',
-        detail: action.progress?.detail ?? 'running targeted host checks',
-        title: action.progress?.detail ?? 'Running targeted edge-case trial...',
-      };
-    case 'trial-repair':
-      return {
-        label: 'Trial run',
-        detail: 'repairing failed trial run',
-        title: 'Repairing failed trial run...',
-      };
-    case 'compile-repair':
-      return {
-        label: 'Validate YAML',
-        detail: 'checking generated pipeline',
-        title: 'Validating YAML...',
-      };
-  }
-}
-
-function compactElapsedDuration(milliseconds: number): string {
-  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
-}
-
-export function chatTrialProgressSegments(
-  progress: NonNullable<ChatYamlPostAction['progress']>,
-): string[] {
-  const segments: string[] = [];
-  if (progress.caseIndex !== null && progress.caseCount !== null) {
-    segments.push('Case ' + progress.caseIndex + '/' + progress.caseCount);
-  }
-  if (progress.caseTitle) segments.push(progress.caseTitle);
-  else if (progress.caseId) segments.push(progress.caseId);
-  if (progress.runNumber !== null && progress.runCount !== null) {
-    segments.push('Run ' + progress.runNumber + '/' + progress.runCount);
-  }
-  if (progress.taskId) segments.push(progress.taskId);
-  if (progress.taskStatus) segments.push(progress.taskStatus);
-  segments.push(
-    `Elapsed ${compactElapsedDuration((progress.heartbeatAt ?? progress.updatedAt) - progress.startedAt)}`,
-  );
-  return segments;
-}
-
-export function ChatTrialProgressView({
-  progress,
-}: {
-  progress: NonNullable<ChatYamlPostAction['progress']>;
-}) {
-  const segments = chatTrialProgressSegments(progress);
-  if (segments.length === 0) return null;
-  return (
-    <div className="select-text break-words text-tiny text-tagma-muted/70">
-      {segments.join(' / ')}
-    </div>
-  );
 }
 
 /**
@@ -418,53 +192,28 @@ export function ChatTrialProgressView({
  * stages are deliberately not guessed, so tool names, retries, permissions,
  * and YAML follow-up work appear in the order they really happen.
  */
-export function isChatReconciliationVisible(input: {
-  reconciling: boolean;
-  currentSessionId: string | null;
-  reconcilingSessionId: string | null;
-}): boolean {
-  return (
-    input.reconciling &&
-    input.currentSessionId !== null &&
-    input.currentSessionId === input.reconcilingSessionId
-  );
-}
-
 export function buildConversationFlowSteps({
   activity,
   sending,
   pendingUserText,
-  queuedCount,
   pendingPermissionCount,
-  reconciling,
-  flushing,
-  postChatYamlAction,
   sendError,
 }: {
   activity: ActivityEvent[];
   sending: boolean;
   pendingUserText: string | null;
-  queuedCount: number;
   pendingPermissionCount: number;
-  reconciling: boolean;
-  flushing: boolean;
-  postChatYamlAction: ReturnType<typeof useChatStore.getState>['postChatYamlAction'];
   sendError: string | null;
 }): FlowStep[] {
   const hasConversation =
     activity.length > 0 ||
     !!pendingUserText ||
     sending ||
-    queuedCount > 0 ||
     pendingPermissionCount > 0 ||
-    reconciling ||
-    flushing ||
-    !!postChatYamlAction ||
     !!sendError;
   if (!hasConversation) return [];
 
-  const hasRuntimeStage =
-    pendingPermissionCount > 0 || reconciling || flushing || !!postChatYamlAction || !!sendError;
+  const hasRuntimeStage = pendingPermissionCount > 0 || !!sendError;
   const steps = activity.map((event, index) =>
     conversationFlowStepFromActivity(
       event,
@@ -505,54 +254,6 @@ export function buildConversationFlowSteps({
       label: 'Waiting',
       detail: 'next OpenCode event',
       status: 'active',
-    });
-  }
-
-  if (reconciling) {
-    appendConversationFlowStep(steps, {
-      key: 'reconcile',
-      label: 'Check changes',
-      detail: 'refreshing workspace',
-      status: 'active',
-    });
-  }
-
-  if (postChatYamlAction) {
-    const repairPresentation =
-      postChatYamlAction.status === 'repairing'
-        ? chatYamlRepairPresentation(postChatYamlAction)
-        : null;
-    appendConversationFlowStep(steps, {
-      key: 'yaml-action',
-      label: repairPresentation
-        ? repairPresentation.label
-        : postChatYamlAction.status === 'failed'
-          ? 'Repair YAML'
-          : postChatYamlAction.kind === 'open-created'
-            ? 'Open YAML'
-            : 'Refresh YAML',
-      detail: repairPresentation
-        ? repairPresentation.detail
-        : postChatYamlAction.status === 'failed'
-          ? 'compile failed'
-          : postChatYamlAction.compile.summary,
-      status: postChatYamlAction.status === 'failed' ? 'error' : 'active',
-    });
-  }
-
-  if (flushing) {
-    appendConversationFlowStep(steps, {
-      key: 'flush',
-      label: 'Send queued',
-      detail: queuedCount > 0 ? queuedCount + ' messages' : undefined,
-      status: 'active',
-    });
-  } else if (queuedCount > 0 && steps.length === 0) {
-    steps.push({
-      key: 'queued',
-      label: 'Queued',
-      detail: queuedCount + ' messages',
-      status: 'pending',
     });
   }
 
@@ -630,11 +331,6 @@ function conversationFlowMajorStage(steps: FlowStep[], currentStep: FlowStep): s
   if (terminalStatus === 'error') return 'Needs attention';
   if (terminalStatus === 'complete') return 'Complete';
   if (currentStep.key === 'permission') return 'Waiting for approval';
-  if (currentStep.key === 'reconcile' || currentStep.key === 'yaml-action') {
-    return 'Finalizing changes';
-  }
-  if (currentStep.key === 'flush') return 'Sending queued messages';
-  if (currentStep.key === 'queued') return 'Queued';
   if (currentStep.label === 'Request') return 'Starting';
   if (currentStep.label === 'Response') return 'Responding';
   return 'Working';
@@ -702,12 +398,7 @@ export function BootstrapOverlay() {
 
 export function chatHeaderControlLocks(state: {
   ready: boolean;
-  hiddenTurnActive: boolean;
   sending: boolean;
-  pendingUserText: string | null;
-  queuedMessages: readonly unknown[];
-  reconciling: boolean;
-  flushing: boolean;
   yamlEditLocked: boolean;
 }): {
   modelSelectionBlocked: boolean;
@@ -715,80 +406,30 @@ export function chatHeaderControlLocks(state: {
   navigationBlocked: boolean;
 } {
   return {
-    modelSelectionBlocked: !state.ready || isChatModelSelectionBlocked(state),
-    providerBlocked:
-      !state.ready ||
-      state.hiddenTurnActive ||
-      state.sending ||
-      !!state.pendingUserText ||
-      state.queuedMessages.length > 0 ||
-      state.reconciling ||
-      state.flushing ||
-      state.yamlEditLocked,
-    navigationBlocked: !state.ready,
+    modelSelectionBlocked: !state.ready || state.sending,
+    providerBlocked: !state.ready || state.sending || state.yamlEditLocked,
+    navigationBlocked: !state.ready || state.sending,
   };
 }
 
 function ChatHeader() {
   const newSession = useChatStore((s) => s.newSession);
   const openHistory = useChatStore((s) => s.openHistory);
-  const refreshSessions = useChatStore((s) => s.refreshSessions);
   const openConnect = useChatStore((s) => s.openConnect);
-  const currentSessionId = useChatStore((s) => s.currentSessionId);
-  const sessions = useChatStore((s) => s.sessions);
-  const sessionStates = useChatStore((s) => s.sessionStates);
-  const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
-  const turnYamlResults = useChatStore((s) => s.turnYamlResults);
+  const activeOperation = useChatStore((s) => s.activeChatOperationV2);
   const hasMessages = useChatStore((s) => s.messages.length > 0);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const sending = useChatStore((s) => s.sending);
-  const pendingUserText = useChatStore((s) => s.pendingUserText);
-  const queuedMessages = useChatStore((s) => s.queuedMessages);
-  const reconciling = useChatStore((s) => s.reconciling);
-  const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
-  const hiddenTurnActive = Object.entries(sessionStates).some(
-    ([sessionId, runtime]) =>
-      sessionId !== currentSessionId &&
-      (runtime.sending ||
-        !!runtime.pendingUserText ||
-        runtime.queuedMessages.length > 0 ||
-        runtime.flushing),
-  );
   const { modelSelectionBlocked, providerBlocked, navigationBlocked } = chatHeaderControlLocks({
     ready,
-    hiddenTurnActive,
     sending,
-    pendingUserText,
-    queuedMessages,
-    reconciling,
-    flushing,
     yamlEditLocked,
   });
-  const currentSessionTitle =
-    sessions.find((session) => session.id === currentSessionId)?.title ?? currentSessionId;
-  const pipelineVerification = currentSessionId
-    ? (sessionYamlResults[currentSessionId] ?? null)
+  const currentSessionTitle = activeOperation
+    ? `Conversation ${new Date(activeOperation.createdAt).toLocaleString()}`
     : null;
-  const pipelineResultsByMessageId = useMemo(() => {
-    if (!currentSessionId) return {};
-    return Object.fromEntries(
-      Object.entries(turnYamlResults)
-        .map(([messageId, results]) => [
-          messageId,
-          results.filter((result) => result.sessionId === currentSessionId),
-        ])
-        .filter(([, results]) => results.length > 0),
-    );
-  }, [currentSessionId, turnYamlResults]);
-  const hasPipelineResults = Object.keys(pipelineResultsByMessageId).length > 0;
-
-  const handleHistory = () => {
-    refreshSessions().catch(() => {
-      /* best effort */
-    });
-    openHistory();
-  };
+  const handleHistory = () => openHistory();
 
   // No title/close here — the dock's tab strip (or detached header) already
   // labels the pane and owns the close affordance. Keep just chat-specific
@@ -836,25 +477,16 @@ function ChatHeader() {
       >
         <History size={14} />
       </button>
-      <ConversationExportButton
-        disabled={!hasMessages && !pipelineVerification && !hasPipelineResults}
-        pipelineResultsByMessageId={pipelineResultsByMessageId}
-        pipelineVerification={pipelineVerification}
-        title={currentSessionTitle}
-      />
+      <ConversationExportButton disabled={!hasMessages} title={currentSessionTitle} />
     </header>
   );
 }
 
 function ConversationExportButton({
   disabled,
-  pipelineResultsByMessageId,
-  pipelineVerification,
   title,
 }: {
   disabled: boolean;
-  pipelineResultsByMessageId: Record<string, ChatYamlSessionResult[]>;
-  pipelineVerification: ChatYamlSessionResult | null;
   title: string | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -867,8 +499,6 @@ function ConversationExportButton({
     const exported = buildConversationExport({
       format,
       messages: useChatStore.getState().messages,
-      pipelineResultsByMessageId,
-      pipelineVerification,
       title,
     });
     downloadConversationExport(exported, conversationExportFilename(title, format));
@@ -1021,59 +651,15 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
   );
 }
 
-export function selectAssistantMessageYamlResults({
-  entry,
-  sessionId,
-  turnYamlResults,
-}: {
-  entry: OpencodeThreadEntry;
-  sessionId: string | null;
-  turnYamlResults: Record<string, ChatYamlSessionResult[]>;
-}): ChatYamlSessionResult[] {
-  if (entry.info.role !== 'assistant' || !sessionId) return [];
-  return (turnYamlResults[entry.info.id] ?? []).filter((result) => result.sessionId === sessionId);
-}
-
-export function isSessionYamlResultAnchoredToVisibleMessage({
-  result,
-  sessionId,
-  messages,
-  turnYamlResults,
-}: {
-  result: ChatYamlSessionResult | null;
-  sessionId: string | null;
-  messages: readonly OpencodeThreadEntry[];
-  turnYamlResults: Record<string, ChatYamlSessionResult[]>;
-}): boolean {
-  if (!result || !sessionId) return false;
-  return messages.some((entry) =>
-    selectAssistantMessageYamlResults({ entry, sessionId, turnYamlResults }).some((candidate) =>
-      candidate.resultId && result.resultId
-        ? candidate.resultId === result.resultId
-        : candidate.completedAt === result.completedAt &&
-          (candidate.reconcile?.resultPath ?? candidate.path) ===
-            (result.reconcile?.resultPath ?? result.path),
-    ),
-  );
-}
-
 function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
-  const reconciling = useChatStore((s) => s.reconciling);
   const pendingUserText = useChatStore((s) => s.pendingUserText);
-  const queuedMessages = useChatStore((s) => s.queuedMessages);
   const sessionId = useChatStore((s) => s.currentSessionId);
-  const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
-  const turnYamlResults = useChatStore((s) => s.turnYamlResults);
-  const postChatYamlAction = useChatStore((s) => s.postChatYamlAction);
   const pendingPermissions = useChatStore((s) => s.pendingPermissions);
-  const turnStartedAt = useChatStore((s) => s.turnStartedAt);
-  const turnAssistantMessageIds = useChatStore((s) => s.turnAssistantMessageIds);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const sessionYamlResult = sessionId ? (sessionYamlResults[sessionId] ?? null) : null;
 
   // Expanded-state for activity panels lives at this layer (not as
   // component-local useState in MessageBubble) so the '__pending__'
@@ -1113,26 +699,9 @@ function ChatMessages() {
     [messages, pendingUserText],
   );
 
-  // The current-turn assistant message is considered "streaming" while
-  // `sending` is true. We derive it from turn ownership instead of the array
-  // tail because reconnects can replay historical assistant messages after the
-  // live one.
-  const currentTurnAssistantId = useMemo(() => {
-    if (turnStartedAt === null) return null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const entry = messages[i];
-      if (entry.info.role !== 'assistant') continue;
-      if (isAbortErrorEntry(entry)) continue;
-      if (turnAssistantMessageIds.includes(entry.info.id)) return entry.info.id;
-      const created = entry.info.time?.created;
-      const completed = entry.info.time?.completed;
-      if (typeof completed === 'number' && completed >= turnStartedAt) return entry.info.id;
-      if (typeof created !== 'number') continue;
-      if (created < turnStartedAt) continue;
-      return entry.info.id;
-    }
-    return null;
-  }, [messages, turnAssistantMessageIds, turnStartedAt]);
+  const currentTurnAssistantId = sending
+    ? ([...messages].reverse().find((entry) => entry.info.role === 'assistant')?.info.id ?? null)
+    : null;
   useEffect(() => {
     if (!currentTurnAssistantId) return;
     setExpandedActivity((prev) => {
@@ -1174,11 +743,11 @@ function ChatMessages() {
 
   // When the user submits, snap back to the tail even if they had scrolled up.
   useLayoutEffect(() => {
-    if (sending || pendingUserText || queuedMessages.length > 0) {
+    if (sending || pendingUserText) {
       followTailRef.current = true;
       scrollToBottom();
     }
-  }, [sending, pendingUserText, queuedMessages.length]);
+  }, [sending, pendingUserText]);
 
   // Observe the inner content box so late-rendering chunks (markdown,
   // code blocks, images) keep us pinned while we're following the tail.
@@ -1225,20 +794,7 @@ function ChatMessages() {
             </div>
           )}
           {messages.map((entry) => {
-            const messageYamlResults = selectAssistantMessageYamlResults({
-              entry,
-              sessionId,
-              turnYamlResults,
-            });
-            const isCurrentTurnAssistant =
-              entry.info.role === 'assistant' &&
-              !isAbortErrorEntry(entry) &&
-              turnStartedAt !== null &&
-              (turnAssistantMessageIds.includes(entry.info.id) ||
-                (typeof entry.info.time?.created === 'number' &&
-                  entry.info.time.created >= turnStartedAt) ||
-                (typeof entry.info.time?.completed === 'number' &&
-                  entry.info.time.completed >= turnStartedAt));
+            const isCurrentTurnAssistant = entry.info.id === currentTurnAssistantId;
             return (
               // content-visibility lets the browser skip layout/paint for
               // offscreen bubbles in long conversations; contain-intrinsic-
@@ -1250,9 +806,6 @@ function ChatMessages() {
                 className={'flex flex-col gap-3'}
                 style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}
               >
-                {/* Anchored pipeline results ride inside the assistant bubble
-                    (fused footer at the bottom of its text card) instead of
-                    trailing as a separate card. */}
                 <MessageBubble
                   entry={entry}
                   streaming={sending && currentTurnAssistantId === entry.info.id}
@@ -1260,7 +813,6 @@ function ChatMessages() {
                   onToggleActivity={toggleExpandedActivity}
                   isCurrentTurn={sending && isCurrentTurnAssistant}
                   surfaceActivitySummary={sending && entry.info.id === currentTurnAssistantId}
-                  yamlResults={messageYamlResults.length > 0 ? messageYamlResults : undefined}
                 />
               </div>
             );
@@ -1272,25 +824,6 @@ function ChatMessages() {
               onToggleExpanded={() => toggleExpandedActivity('__pending__')}
             />
           )}
-          {shouldShowForcePush({ sending, queuedCount: queuedMessages.length }) && (
-            <ForcePushButton />
-          )}
-          {queuedMessages.map((item, idx) => (
-            <QueuedUserBubble key={item.id} id={item.id} text={item.text} position={idx + 1} />
-          ))}
-          {shouldShowSessionYamlResult({
-            // A session result renders as a standalone bubble at the end of the
-            // conversation even when it is also fused into its owning (possibly
-            // much earlier) assistant message, so the "Open pipeline" action is
-            // always visible at the bottom where a user expects it after a long
-            // multi-round turn.
-            hasResult: !!sessionYamlResult,
-            sending,
-            reconciling,
-            hasPostChatAction: !!postChatYamlAction,
-          }) &&
-            sessionYamlResult && <SessionYamlResultBubble result={sessionYamlResult} />}
-          {postChatYamlAction && !sending && <YamlActionBubble />}
           {pendingPermissions.map((p) => (
             <PermissionBubble key={`${p.workspaceKey}:${p.sessionID}:${p.id}`} permission={p} />
           ))}
@@ -1314,384 +847,6 @@ function ChatMessages() {
   );
 }
 
-export function shouldShowSessionYamlResult(args: {
-  hasResult: boolean;
-  sending: boolean;
-  reconciling: boolean;
-  hasPostChatAction: boolean;
-}): boolean {
-  return args.hasResult && !args.sending && !args.reconciling && !args.hasPostChatAction;
-}
-
-function isAbortErrorEntry(entry: OpencodeThreadEntry): boolean {
-  return entry.info.role === 'assistant' && entry.info.error?.name === 'MessageAbortedError';
-}
-
-export const CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES =
-  'fixed inset-x-2 bottom-2 z-[260] flex max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-y-auto sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[360px] sm:max-h-[calc(100dvh-2rem)] sm:max-w-[calc(100vw-2rem)]';
-
-export function shouldShowChatCompletionToast(args: {
-  reconciling: boolean;
-  visibleResultCount: number;
-}): boolean {
-  return !args.reconciling && args.visibleResultCount > 0;
-}
-
-export function ChatCompletionToastCard({
-  result,
-  sessionTitle,
-  onOpen,
-  onDismiss,
-}: {
-  result: ChatYamlSessionResult;
-  sessionTitle: string;
-  onOpen?: (
-    target: ChatPipelineLinkTarget,
-  ) => ChatPipelineOpenOutcome | Promise<ChatPipelineOpenOutcome> | void;
-  onDismiss?: () => void;
-}) {
-  const pipelineName = chatPipelineDisplayName(result);
-  const deploymentTarget = chatPipelineDeploymentTarget(result);
-  const invalidTargetReason = chatPipelineTargetInvalidReason(result);
-  const { availability } = useChatPipelineTargetAvailability(deploymentTarget);
-  const openableTarget = deploymentTarget;
-  const [opening, setOpening] = useState(false);
-  const [openFailure, setOpenFailure] = useState<string | null>(null);
-  const unavailableReason =
-    openFailure ??
-    invalidTargetReason ??
-    (deploymentTarget && !availability.available ? availability.reason : null);
-  const ok = result.status === 'ready';
-  const blocked = result.status === 'blocked';
-  const passedWithWarnings = ok && result.trial?.kind === 'passed-with-warnings';
-  const warning = blocked || passedWithWarnings;
-  const presentation = describeSessionYamlResult(result);
-
-  useEffect(() => {
-    setOpenFailure(null);
-  }, [deploymentTarget?.path]);
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in overflow-hidden"
-    >
-      <div className="flex items-start gap-2.5 px-3 py-2.5">
-        <div
-          className={`w-1 self-stretch shrink-0 ${warning ? 'bg-tagma-warning' : ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
-        />
-        {ok ? (
-          <CheckCircle2
-            size={14}
-            className={`${passedWithWarnings ? 'text-tagma-warning' : 'text-tagma-ready'} shrink-0 mt-0.5`}
-          />
-        ) : (
-          <AlertTriangle
-            size={14}
-            className={`${blocked ? 'text-tagma-warning' : 'text-tagma-error'} shrink-0 mt-0.5`}
-          />
-        )}
-        <div className="min-w-0 flex-1 font-mono">
-          <div className="text-body text-tagma-text truncate" title={pipelineName}>
-            {pipelineName}
-          </div>
-          <div className="mt-0.5 text-tiny text-tagma-muted/70 truncate" title={sessionTitle}>
-            {sessionTitle}
-          </div>
-          <div className="mt-1 text-tiny text-tagma-muted/80 break-words">
-            {presentation.outcome}
-          </div>
-          {(deploymentTarget || invalidTargetReason) && (
-            <button
-              type="button"
-              disabled={!openableTarget || opening || !onOpen}
-              aria-busy={opening || undefined}
-              onClick={() => {
-                if (!openableTarget || opening || !onOpen) return;
-                setOpening(true);
-                setOpenFailure(null);
-                void Promise.resolve(onOpen(openableTarget))
-                  .then((outcome) => {
-                    if (outcome && !outcome.handled) setOpenFailure(outcome.reason);
-                  })
-                  .catch(() => setOpenFailure('The final pipeline could not be opened.'))
-                  .finally(() => setOpening(false));
-              }}
-              className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-caption text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
-              title={`Open ${pipelineName}`}
-            >
-              <FileText size={11} />
-              <span>{opening ? 'Opening…' : 'Open pipeline'}</span>
-            </button>
-          )}
-          {unavailableReason && (
-            <div
-              role={openFailure ? 'alert' : 'status'}
-              className={'mt-1 text-tiny text-tagma-warning break-words'}
-            >
-              {unavailableReason}
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="icon-btn shrink-0"
-          aria-label="Dismiss completion"
-        >
-          <X size={12} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function ChatCompletionToast({ contained = false }: { contained?: boolean } = {}) {
-  const currentSessionId = useChatStore((s) => s.currentSessionId);
-  const activeWorkspaceKey = usePipelineStore((s) => s.workDir || null);
-  const reconciling = useChatStore((s) => s.reconciling);
-  const sessions = useChatStore((s) => s.sessions);
-  const results = useChatStore((s) => s.sessionYamlResults);
-  const completedUnreadSessionIds = useChatStore((s) => s.completedUnreadSessionIds);
-  const dismissedIds = useChatStore((s) => s.dismissedSessionYamlResultToastIds);
-  const dismiss = useChatStore((s) => s.dismissSessionYamlResultToast);
-  const selectSession = useChatStore((s) => s.selectSession);
-  const openTarget = useOpenChatPipelineTarget();
-
-  const visibleResults = useMemo(
-    () =>
-      selectVisibleChatCompletionResults({
-        results,
-        completedUnreadSessionIds,
-        dismissedIds,
-        currentSessionId,
-        activeWorkspaceKey,
-      }),
-    [activeWorkspaceKey, completedUnreadSessionIds, currentSessionId, dismissedIds, results],
-  );
-
-  if (
-    !shouldShowChatCompletionToast({
-      reconciling,
-      visibleResultCount: visibleResults.length,
-    })
-  ) {
-    return null;
-  }
-
-  return (
-    <div
-      className={
-        contained
-          ? 'pointer-events-auto flex max-h-[min(18rem,45dvh)] w-full shrink-0 flex-col gap-2 overflow-y-auto'
-          : CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES
-      }
-    >
-      {visibleResults.map((result) => (
-        <ChatCompletionToastCard
-          key={result.sessionId}
-          result={result}
-          sessionTitle={
-            sessions.find((session) => session.id === result.sessionId)?.title ??
-            result.sessionId.slice(0, 8)
-          }
-          onOpen={async (target) => {
-            const outcome = await openTarget(target);
-            if (outcome.handled) {
-              void selectSession(result.sessionId).catch(() => {
-                /* best effort */
-              });
-            }
-            return outcome;
-          }}
-          onDismiss={() => dismiss(result.sessionId)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function YamlActionBubble() {
-  const action = useChatStore((s) => s.postChatYamlAction);
-  const clear = useChatStore((s) => s.clearPostChatYamlAction);
-  const currentYamlPath = usePipelineStore((s) => s.yamlPath);
-  const openFile = usePipelineStore((s) => s.openFile);
-  const saveFile = usePipelineStore((s) => s.saveFile);
-  const adoptDiskState = usePipelineStore((s) => s.adoptDiskState);
-  const syncLocalStateToServerMemory = usePipelineStore((s) => s.syncLocalStateToServerMemory);
-  const requestConfirm = useUIStore((s) => s.requestConfirm);
-  const policy = useEditorSettingsStore((s) => s.settings?.chatDirtyConflictPolicy ?? 'ask');
-  if (!action) return null;
-
-  const isOpen = action.kind === 'open-created';
-  const label = isOpen || action.path !== currentYamlPath ? 'Open YAML' : 'Refresh current YAML';
-  const title =
-    action.status === 'repairing'
-      ? chatYamlRepairPresentation(action).title
-      : action.status === 'failed'
-        ? 'Compile still failing'
-        : action.compile.summary;
-
-  const adoptCurrentYaml = async () => {
-    const state = await api.reloadFromDisk();
-    adoptDiskState(state, 'chat');
-    // Adopt is fired from a chat-driven dirty-conflict modal. If a follow-up
-    // turn has re-acquired the YAML edit lock locally before the user clicks,
-    // opt into the lock-owner bypass so per-binding fire() calls don't trip
-    // blockIfYamlEditLocked and surface a stale toast.
-    void usePipelineStore
-      .getState()
-      .autoSyncAllBindings('chat', { allowDuringYamlEditLock: true })
-      .catch(() => {
-        /* fire() already surfaces errors via errorMessage */
-      });
-    clear();
-  };
-
-  const openTargetYaml = async () => {
-    await openFile(action.path);
-    clear();
-  };
-
-  const saveCurrentAndOpenTargetYaml = async () => {
-    const saved = await saveFile();
-    if (!saved) return;
-    await openTargetYaml();
-  };
-
-  const preserveLocal = async () => {
-    await syncLocalStateToServerMemory();
-    clear();
-  };
-
-  const onClick = async () => {
-    if (action.status === 'repairing') return;
-    if (isOpen) {
-      const current = usePipelineStore.getState();
-      const hasLocalChanges = hasLocalEditorChanges({
-        isDirty: current.isDirty,
-        layoutDirty: current.layoutDirty,
-        lastLocalFieldEditAt: getLastLocalFieldEditAt(),
-      });
-      if (!hasLocalChanges) {
-        await openTargetYaml();
-        return;
-      }
-      requestConfirm({
-        title: 'Open new YAML?',
-        details: [
-          `Opening "${action.name}" will replace the current canvas view.`,
-          'Your current edits will be saved before switching.',
-        ],
-        confirmLabel: 'Save and open',
-        cancelLabel: 'Stay here',
-        onConfirm: () => {
-          void saveCurrentAndOpenTargetYaml();
-        },
-      });
-      return;
-    }
-
-    const current = usePipelineStore.getState();
-    if (current.yamlPath !== action.path) {
-      const hasLocalChanges = hasLocalEditorChanges({
-        isDirty: current.isDirty,
-        layoutDirty: current.layoutDirty,
-        lastLocalFieldEditAt: getLastLocalFieldEditAt(),
-      });
-      if (!hasLocalChanges) {
-        await openTargetYaml();
-        return;
-      }
-      requestConfirm({
-        title: 'Switch YAML?',
-        details: [
-          `The chat action targets "${action.name}", but another YAML is currently open.`,
-          'Your current edits will be saved before switching.',
-        ],
-        confirmLabel: 'Save and open',
-        cancelLabel: 'Keep current YAML',
-        onConfirm: () => {
-          void saveCurrentAndOpenTargetYaml();
-        },
-      });
-      return;
-    }
-
-    const hasLocalChanges = hasLocalEditorChanges({
-      isDirty: current.isDirty,
-      layoutDirty: current.layoutDirty,
-      lastLocalFieldEditAt: getLastLocalFieldEditAt(),
-    });
-    const decision = resolveDirtyDiskChange({
-      source: 'chat',
-      policy,
-      hasLocalChanges,
-    });
-    if (decision === 'adopt-disk') {
-      await adoptCurrentYaml();
-      return;
-    }
-    if (decision === 'preserve-local') {
-      await preserveLocal();
-      return;
-    }
-
-    void syncLocalStateToServerMemory();
-    requestConfirm({
-      title: 'Agent edited the file',
-      details: [
-        `The assistant modified "${action.name}" while you had unsaved changes on the canvas.`,
-        'Pick which version to keep. The editor has protected your current canvas while this dialog is open.',
-      ],
-      confirmLabel: "Use agent's changes",
-      cancelLabel: 'Keep my edits',
-      onConfirm: () => {
-        void adoptCurrentYaml();
-      },
-      onCancel: () => {
-        clear();
-      },
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-1 items-start">
-      <div className="section-label">yaml</div>
-      <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-caption font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
-        <div className="flex items-center gap-1.5 min-w-0">
-          {action.status === 'ready' ? (
-            <CheckCircle2 size={12} className="text-tagma-ready shrink-0" />
-          ) : action.status === 'repairing' ? (
-            <Loader2 size={12} className="text-tagma-muted animate-spin shrink-0" />
-          ) : (
-            <AlertTriangle size={12} className="text-tagma-error shrink-0" />
-          )}
-          <span className="truncate text-tagma-text">{action.name}</span>
-        </div>
-        <div className="select-text text-tagma-muted/80 break-words">{title}</div>
-        {action.status === 'repairing' && action.progress && (
-          <ChatTrialProgressView progress={action.progress} />
-        )}
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={action.status === 'repairing'}
-          className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-caption text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {action.status === 'repairing' ? (
-            <Loader2 size={11} className="animate-spin" />
-          ) : (
-            <Check size={11} />
-          )}
-          <span>{label}</span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /**
  * Optimistic user bubble for the text that was just submitted but hasn't yet
  * round-tripped through the server. Visually identical to a real user bubble
@@ -1706,61 +861,6 @@ export function PendingUserBubble({ text }: { text: string }) {
       <div className="max-w-[85%] min-w-0 flex flex-col gap-1.5 items-end">
         <div className="min-w-0 max-w-full">
           <div className="select-text px-3 py-2 text-label font-sans whitespace-pre-wrap break-words chat-user-bubble text-tagma-text opacity-80 animate-pulse">
-            {text}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ForcePushButton() {
-  const flushQueueNow = useChatStore((s) => s.flushQueueNow);
-  const flushing = useChatStore((s) => s.flushing);
-  return (
-    <div className="flex flex-col items-end">
-      <button
-        type="button"
-        onClick={() => void flushQueueNow()}
-        disabled={flushing}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-caption font-mono uppercase tracking-wide border border-tagma-muted/30 bg-tagma-surface/40 text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        title="Interrupt current turn and send queued messages now"
-        aria-label="Interrupt current turn and send queued messages now"
-      >
-        <FastForward size={11} />
-        <span>send queued now</span>
-      </button>
-    </div>
-  );
-}
-
-export function QueuedUserBubble({
-  id,
-  text,
-  position,
-}: {
-  id: string;
-  text: string;
-  position: number;
-}) {
-  const cancelQueuedMessage = useChatStore((s) => s.cancelQueuedMessage);
-  return (
-    <div className="flex flex-col gap-1 items-end">
-      <div className="section-label flex items-center gap-2">
-        <span>queued #{position}</span>
-        <button
-          type="button"
-          onClick={() => cancelQueuedMessage(id)}
-          className="p-0.5 text-tagma-muted/60 hover:text-tagma-error transition-colors"
-          title="Withdraw queued message"
-          aria-label="Withdraw queued message"
-        >
-          <X size={10} />
-        </button>
-      </div>
-      <div className="max-w-[85%] min-w-0 flex flex-col gap-1.5 items-end">
-        <div className="min-w-0 max-w-full">
-          <div className="select-text px-3 py-2 text-label font-sans whitespace-pre-wrap break-words chat-user-bubble-queued text-tagma-muted">
             {text}
           </div>
         </div>

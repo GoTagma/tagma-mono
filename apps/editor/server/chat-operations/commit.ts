@@ -49,8 +49,7 @@ export interface ChatCommitBindingTransition {
 
 export interface ChatCommitIntendedResult {
   readonly resultId: string;
-  /** Null is accepted only when parsing a legacy pre-pending-message WAL record. */
-  readonly pendingMessageId: string | null;
+  readonly pendingMessageId: string;
   readonly bindingId: string;
   readonly coordinateId: string;
   readonly terminalOutcome: 'completed_published' | 'completed_forked';
@@ -482,28 +481,14 @@ function freezeBindingTransition(value: unknown): ChatCommitBindingTransition {
   });
 }
 
-function freezeIntendedResult(
-  value: unknown,
-  allowLegacyPendingMessage: boolean,
-): ChatCommitIntendedResult {
-  const legacy =
-    isPlainRecord(value) && !Object.prototype.hasOwnProperty.call(value, 'pendingMessageId');
+function freezeIntendedResult(value: unknown): ChatCommitIntendedResult {
   assertExactKeys(
     value,
-    legacy
-      ? ['resultId', 'bindingId', 'coordinateId', 'terminalOutcome']
-      : ['resultId', 'pendingMessageId', 'bindingId', 'coordinateId', 'terminalOutcome'],
+    ['resultId', 'pendingMessageId', 'bindingId', 'coordinateId', 'terminalOutcome'],
     'Chat commit intended result',
   );
   assertOpaqueId(value.resultId, 'Chat commit intended resultId');
-  const pendingMessageId = legacy ? null : value.pendingMessageId;
-  if (pendingMessageId === null) {
-    if (!allowLegacyPendingMessage) {
-      throw new Error('Fresh Chat commit authority requires a pending messageId.');
-    }
-  } else {
-    assertOpaqueId(pendingMessageId, 'Chat commit pending messageId');
-  }
+  assertOpaqueId(value.pendingMessageId, 'Chat commit pending messageId');
   assertOpaqueId(value.bindingId, 'Chat commit intended bindingId');
   assertOpaqueId(value.coordinateId, 'Chat commit intended coordinateId');
   if (
@@ -514,22 +499,11 @@ function freezeIntendedResult(
   }
   return Object.freeze({
     resultId: value.resultId,
-    pendingMessageId,
+    pendingMessageId: value.pendingMessageId,
     bindingId: value.bindingId,
     coordinateId: value.coordinateId,
     terminalOutcome: value.terminalOutcome,
   });
-}
-
-function intendedResultHashAuthority(value: ChatCommitIntendedResult) {
-  return value.pendingMessageId === null
-    ? {
-        resultId: value.resultId,
-        bindingId: value.bindingId,
-        coordinateId: value.coordinateId,
-        terminalOutcome: value.terminalOutcome,
-      }
-    : value;
 }
 
 function canonicalArtifactSet(artifacts: readonly ChatCommitArtifactPlan[]): unknown {
@@ -547,7 +521,6 @@ function canonicalBackupSet(artifacts: readonly ChatCommitArtifactPlan[]): unkno
 
 function sealChatCommitPrepareRecordInternal(
   value: SealChatCommitPrepareRecordInput,
-  allowLegacyPendingMessage: boolean,
 ): ChatCommitPrepareRecord {
   assertExactKeys(
     value,
@@ -582,7 +555,7 @@ function sealChatCommitPrepareRecordInternal(
     throw new Error('Chat commit prepare requires a reserved fallback coordinate and identity.');
   }
   const bindingTransition = freezeBindingTransition(value.bindingTransition);
-  const intendedResult = freezeIntendedResult(value.intendedResult, allowLegacyPendingMessage);
+  const intendedResult = freezeIntendedResult(value.intendedResult);
   assertNonNegativeInteger(value.cancellationGeneration, 'Chat commit cancellation generation');
   assertNonNegativeInteger(value.preparedAt, 'Chat commit prepared timestamp');
 
@@ -618,7 +591,7 @@ function sealChatCommitPrepareRecordInternal(
 
   const artifactSetHash = hashCanonical(canonicalArtifactSet(artifacts));
   const backupSetHash = hashCanonical(canonicalBackupSet(artifacts));
-  const intendedResultForHash = intendedResultHashAuthority(intendedResult);
+  const intendedResultForHash = intendedResult;
   const authoritativeForHash = {
     version: CHAT_COMMIT_WAL_RECORD_VERSION,
     recordType: 'commit_prepare' as const,
@@ -645,7 +618,7 @@ function sealChatCommitPrepareRecordInternal(
 export function sealChatCommitPrepareRecord(
   value: SealChatCommitPrepareRecordInput,
 ): ChatCommitPrepareRecord {
-  return sealChatCommitPrepareRecordInternal(value, false);
+  return sealChatCommitPrepareRecordInternal(value);
 }
 
 function freezeDecisionEvidence(value: unknown): ChatCommitDecisionEvidence {
@@ -760,7 +733,7 @@ export function decideChatCommit(
     backupSetHash: evidence.backupSetHash,
     fallbackReservationHash: evidence.fallbackReservationHash,
     bindingTransition: canonicalPrepare.bindingTransition,
-    intendedResult: intendedResultHashAuthority(canonicalPrepare.intendedResult),
+    intendedResult: canonicalPrepare.intendedResult,
     cancellationGeneration: evidence.cancellationGeneration,
     decidedAt: evidence.decidedAt,
   };
@@ -851,23 +824,20 @@ function parseChatCommitPrepareRecordInternal(value: unknown): ChatCommitPrepare
     throw new Error('Chat commit prepare record version, type, or phase is invalid.');
   }
   const prepareHash = normalizeHash(value.prepareHash, 'Chat commit prepare record hash');
-  const rebuilt = sealChatCommitPrepareRecordInternal(
-    {
-      commitId: value.commitId as string,
-      operationId: value.operationId as string,
-      operationGeneration: value.operationGeneration as number,
-      stageId: value.stageId as string,
-      target: value.target as unknown as ChatCommitTargetAuthority,
-      stagedSnapshotHash: value.stagedSnapshotHash as string,
-      artifacts: value.artifacts as unknown as readonly ChatCommitArtifactPlan[],
-      fallback: value.fallback as unknown as ChatCommitFallbackReservation,
-      bindingTransition: value.bindingTransition as unknown as ChatCommitBindingTransition,
-      intendedResult: value.intendedResult as unknown as ChatCommitIntendedResult,
-      cancellationGeneration: value.cancellationGeneration as number,
-      preparedAt: value.preparedAt as number,
-    },
-    true,
-  );
+  const rebuilt = sealChatCommitPrepareRecordInternal({
+    commitId: value.commitId as string,
+    operationId: value.operationId as string,
+    operationGeneration: value.operationGeneration as number,
+    stageId: value.stageId as string,
+    target: value.target as unknown as ChatCommitTargetAuthority,
+    stagedSnapshotHash: value.stagedSnapshotHash as string,
+    artifacts: value.artifacts as unknown as readonly ChatCommitArtifactPlan[],
+    fallback: value.fallback as unknown as ChatCommitFallbackReservation,
+    bindingTransition: value.bindingTransition as unknown as ChatCommitBindingTransition,
+    intendedResult: value.intendedResult as unknown as ChatCommitIntendedResult,
+    cancellationGeneration: value.cancellationGeneration as number,
+    preparedAt: value.preparedAt as number,
+  });
   if (
     normalizeHash(value.artifactSetHash, 'Chat commit artifact set hash') !==
       rebuilt.artifactSetHash ||
@@ -942,7 +912,7 @@ export function parseChatCommitDecisionRecord(value: unknown): ChatCommitDecisio
     'Chat commit decision fallback reservation hash',
   );
   const bindingTransition = freezeBindingTransition(value.bindingTransition);
-  const intendedResult = freezeIntendedResult(value.intendedResult, true);
+  const intendedResult = freezeIntendedResult(value.intendedResult);
   assertNonNegativeInteger(
     value.cancellationGeneration,
     'Chat commit decision cancellation generation',
@@ -974,7 +944,7 @@ export function parseChatCommitDecisionRecord(value: unknown): ChatCommitDecisio
     backupSetHash,
     fallbackReservationHash,
     bindingTransition,
-    intendedResult: intendedResultHashAuthority(intendedResult),
+    intendedResult: intendedResult,
     cancellationGeneration: value.cancellationGeneration,
     decidedAt: value.decidedAt,
   };
@@ -1065,7 +1035,7 @@ export function sealChatCommitApplyRecord(
     publication: input.publication,
     preservedPrimaryLive: input.publication === 'fallback',
     bindingTransition,
-    result: intendedResultHashAuthority(result),
+    result: result,
     terminalOutcome: result.terminalOutcome,
     appliedAt: input.appliedAt,
   };
@@ -1122,7 +1092,7 @@ export function parseChatCommitApplyRecord(value: unknown): ChatCommitApplyRecor
     throw new Error('Chat commit apply live-byte preservation flag is inconsistent.');
   }
   const bindingTransition = freezeBindingTransition(value.bindingTransition);
-  const result = freezeIntendedResult(value.result, true);
+  const result = freezeIntendedResult(value.result);
   if (
     value.terminalOutcome !== result.terminalOutcome ||
     bindingTransition.toBindingId !== result.bindingId ||
@@ -1147,7 +1117,7 @@ export function parseChatCommitApplyRecord(value: unknown): ChatCommitApplyRecor
     publication,
     preservedPrimaryLive: value.preservedPrimaryLive,
     bindingTransition,
-    result: intendedResultHashAuthority(result),
+    result: result,
     terminalOutcome: result.terminalOutcome,
     appliedAt: value.appliedAt,
   };

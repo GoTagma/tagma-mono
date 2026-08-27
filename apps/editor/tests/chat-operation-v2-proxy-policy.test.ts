@@ -51,17 +51,16 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
     );
   });
 
-  test('publishes one exact renderer bootstrap handshake for production and legacy modes', () => {
+  test('publishes only the exact V2 production renderer bootstrap handshake', () => {
     expect(chatOperationV2ProxyHandshake(productionEnv)).toEqual({
       chatOperationProtocolVersion: 2,
       chatOperationMode: 'production',
     });
-    expect(chatOperationV2ProxyHandshake({ TAGMA_CHAT_OPERATION_V2_SHADOW: '1' })).toEqual({
-      chatOperationProtocolVersion: null,
-      chatOperationMode: 'legacy',
-    });
+    expect(() => chatOperationV2ProxyHandshake({ TAGMA_CHAT_OPERATION_V2_SHADOW: '1' })).toThrow(
+      /V2 production mode is not enabled/i,
+    );
+    expect(() => chatOperationV2ProxyHandshake({})).toThrow(/V2 production mode is not enabled/i);
     expect(Object.isFrozen(chatOperationV2ProxyHandshake(productionEnv))).toBe(true);
-    expect(Object.isFrozen(chatOperationV2ProxyHandshake({}))).toBe(true);
   });
 
   test('keeps shadow read-only unless an exact internal or production mutation gate is active', () => {
@@ -86,24 +85,23 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
     );
   });
 
-  test('preserves the legacy raw proxy byte-for-byte unless the dual cutover is active', () => {
-    const legacyRequests = [
+  test('fails raw proxy traffic closed when the V2 production gate is absent', () => {
+    for (const [method, requestUrl] of [
+      ['GET', '/session'],
       ['POST', '/session'],
-      ['PATCH', '/session/ses_1'],
       ['POST', '/session/ses_1/message'],
-      ['POST', '/api/session/ses_1/interrupt'],
-      ['POST', '/question/request_1/reply'],
-      ['GET', '/session/%2e%2e/auth/openai'],
-      ['TRACE', 'https://example.invalid/session'],
-    ] as const;
-    for (const [method, requestUrl] of legacyRequests) {
+    ] as const) {
       expect(
         evaluateChatOperationV2RendererProxyPolicy({
           env: { TAGMA_CHAT_OPERATION_V2_SHADOW: '1' },
           method,
           requestUrl,
         }),
-      ).toEqual({ kind: 'legacy_passthrough' });
+      ).toEqual({
+        kind: 'reject_protocol_mismatch',
+        status: 426,
+        body: CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH,
+      });
     }
   });
 
@@ -214,14 +212,14 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
       ).toBe('reject_protocol_mismatch');
     }
 
-    const legacyOutside = `/session?directory=${encodeURIComponent(outside)}&path=unsafe`;
+    const ungatedOutside = `/session?directory=${encodeURIComponent(outside)}&path=unsafe`;
     expect(
       sanitizeChatOperationV2RendererProxyRequestUrl({
         env: { TAGMA_CHAT_OPERATION_V2_SHADOW: '1' },
-        requestUrl: legacyOutside,
+        requestUrl: ungatedOutside,
         tagmaRoot,
-      }),
-    ).toEqual({ kind: 'allow_request_url', requestUrl: legacyOutside });
+      }).kind,
+    ).toBe('reject_protocol_mismatch');
   });
 
   test('keeps provider auth as the sole explicit non-operation raw mutation exception', () => {
@@ -352,11 +350,11 @@ describe('ChatTurn Operation V2 raw OpenCode proxy policy', () => {
       expect(await rejected.json()).toEqual(CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH);
 
       delete process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
-      const legacy = await fetch(`${baseUrl}/api/opencode/chat/proxy/session`, { method: 'POST' });
-      expect(legacy.status).toBe(400);
-      expect(await legacy.json()).toMatchObject({
-        error: expect.stringContaining('No workspace bound'),
+      const ungated = await fetch(`${baseUrl}/api/opencode/chat/proxy/session`, {
+        method: 'POST',
       });
+      expect(ungated.status).toBe(426);
+      expect(await ungated.json()).toEqual(CHAT_OPERATION_V2_PROXY_PROTOCOL_MISMATCH);
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

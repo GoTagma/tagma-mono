@@ -46,6 +46,7 @@ export function bootstrapDevEnv(): void {
       bundledOpencodeDbSchemaVersion?: number;
       channel?: string;
       updateManifestBaseUrl?: string;
+      chatOperationProtocolVersion?: number;
     };
   }
 
@@ -137,5 +138,10 @@ export function bootstrapDevEnv(): void {
   }
   if (!process.env.TAGMA_OPENCODE_ACTIVE_SOURCE) {
     process.env.TAGMA_OPENCODE_ACTIVE_SOURCE = 'bundled';
+  }
+
+  if (pkg.tagma?.chatOperationProtocolVersion === 2) {
+    process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = '1';
+    process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER = '2';
   }
 }

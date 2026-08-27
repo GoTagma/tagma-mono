@@ -167,14 +167,14 @@ test('commit prepare seals a strict versioned WAL record without filesystem coor
       },
     }),
   ).toThrow('stable logical result');
-  const { pendingMessageId: _pendingMessageId, ...legacyIntendedResult } =
+  const { pendingMessageId: _pendingMessageId, ...incompleteIntendedResult } =
     prepareInput().intendedResult;
   expect(() =>
     sealChatCommitPrepareRecord({
       ...prepareInput(),
-      intendedResult: legacyIntendedResult as never,
+      intendedResult: incompleteIntendedResult as never,
     }),
-  ).toThrow('pending messageId');
+  ).toThrow('missing or unknown fields');
   expect(() =>
     sealChatCommitPrepareRecord({
       ...prepareInput(),

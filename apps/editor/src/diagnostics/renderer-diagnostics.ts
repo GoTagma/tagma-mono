@@ -11,12 +11,6 @@ const MAX_TOOL_CALL_SUMMARIES = 100;
 const MAX_RUN_TASK_STATUSES = 250;
 const MAX_PENDING_APPROVALS = 100;
 const MAX_VALIDATION_SUMMARIES = 100;
-const MAX_TRIAL_PLAN_ATTEMPT_IDS = 50;
-const MAX_TRIAL_PLAN_REJECTIONS = 50;
-const MAX_TRIAL_MANUAL_EXECUTION_GRANTS = 32;
-const MAX_TRIAL_NOT_RUN_CASES = 8;
-const MAX_TRIALABILITY_ITEMS = 64;
-const MAX_TRIALABILITY_MESSAGES = 32;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -60,10 +54,6 @@ function conciseText(value: unknown, maxChars = 512): string | null {
   const redacted = redactDiagnosticText(value).replace(/\s+/g, ' ').trim();
   if (!redacted) return null;
   return redacted.slice(0, maxChars);
-}
-
-function finiteNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function contentSummary(value: unknown, knownBytes?: unknown): UnknownRecord {
@@ -160,18 +150,6 @@ function toolCallSummaries(messages: readonly unknown[]): {
   return {
     sourceCount: calls.length,
     summaries: calls.slice(-MAX_TOOL_CALL_SUMMARIES),
-  };
-}
-
-function finishedTurnSummary(value: unknown): UnknownRecord | null {
-  const turn = record(value);
-  if (Object.keys(turn).length === 0) return null;
-  return {
-    id: turn.id ?? null,
-    sessionId: turn.sessionId ?? null,
-    endedAt: turn.endedAt ?? null,
-    hidden: turn.hidden === true,
-    termination: turn.termination ?? null,
   };
 }
 
@@ -304,29 +282,6 @@ function logSummary(value: unknown): UnknownRecord | null {
   };
 }
 
-function compactPrerequisiteState(value: unknown): unknown {
-  if (typeof value === 'string') return value;
-  const prerequisite = record(value);
-  if (Object.keys(prerequisite).length === 0) return null;
-  const baseline = record(prerequisite.baseline);
-  const blockers = Array.isArray(prerequisite.blockers) ? prerequisite.blockers : [];
-  const blockerKindCounts: Record<string, number> = {};
-  for (const rawBlocker of blockers) {
-    const kind = record(rawBlocker).kind;
-    if (typeof kind === 'string') blockerKindCounts[kind] = (blockerKindCounts[kind] ?? 0) + 1;
-  }
-  return {
-    state: prerequisite.state ?? null,
-    baselineMode: baseline.mode ?? null,
-    baselineTargetTaskCount: Array.isArray(baseline.targetTaskIds)
-      ? baseline.targetTaskIds.length
-      : 0,
-    inputCount: Array.isArray(prerequisite.inputs) ? prerequisite.inputs.length : 0,
-    blockerCount: blockers.length,
-    blockerKindCounts,
-  };
-}
-
 function requirementSummary(value: unknown): UnknownRecord {
   const items = Array.isArray(value)
     ? value
@@ -357,310 +312,6 @@ function statusCounts(value: readonly UnknownRecord[]): Record<string, number> {
   return counts;
 }
 
-function compactTrialPlanTelemetry(value: unknown): UnknownRecord | null {
-  const telemetry = record(value);
-  if (Object.keys(telemetry).length === 0) return null;
-  const attemptIds = (Array.isArray(telemetry.attemptIds) ? telemetry.attemptIds : [])
-    .map((attemptId) => conciseText(attemptId, 128))
-    .filter((attemptId): attemptId is string => attemptId !== null)
-    .slice(-MAX_TRIAL_PLAN_ATTEMPT_IDS);
-  const rejections = (Array.isArray(telemetry.rejections) ? telemetry.rejections : [])
-    .slice(-MAX_TRIAL_PLAN_REJECTIONS)
-    .map((rawRejection) => {
-      const rejection = record(rawRejection);
-      return {
-        fingerprint: conciseText(rejection.fingerprint, 128),
-        count: finiteNumber(rejection.count),
-        message: conciseText(rejection.message),
-      };
-    });
-  return {
-    version: finiteNumber(telemetry.version),
-    relativeYamlPath: conciseText(telemetry.relativeYamlPath),
-    attemptIds,
-    toolAttemptCount: finiteNumber(telemetry.toolAttemptCount),
-    validationRejectionCount: finiteNumber(telemetry.validationRejectionCount),
-    repeatedValidationRejectionCount: finiteNumber(telemetry.repeatedValidationRejectionCount),
-    successfulWriteCount: finiteNumber(telemetry.successfulWriteCount),
-    firstAttemptAt: finiteNumber(telemetry.firstAttemptAt),
-    lastAttemptAt: finiteNumber(telemetry.lastAttemptAt),
-    elapsedMs: finiteNumber(telemetry.elapsedMs),
-    rejections,
-  };
-}
-
-function compactTrialabilityCollection<T>(
-  value: unknown,
-  limit: number,
-  mapItem: (item: unknown) => T | null,
-): UnknownRecord {
-  const source = Array.isArray(value) ? value : [];
-  const items = source
-    .slice(0, limit)
-    .map(mapItem)
-    .filter((item): item is T => item !== null);
-  return {
-    totalCount: source.length,
-    returnedCount: items.length,
-    omittedCount: Math.max(0, source.length - items.length),
-    items,
-  };
-}
-
-function compactTrialabilityDeclaration(value: unknown): UnknownRecord | null {
-  const declaration = record(value);
-  if (Object.keys(declaration).length === 0) return null;
-  return {
-    protocolVersion: finiteNumber(declaration.protocolVersion),
-    interaction: conciseText(declaration.interaction, 64),
-    unattended: conciseText(declaration.unattended, 64),
-    filesystem: conciseText(declaration.filesystem, 64),
-    network: conciseText(declaration.network, 64),
-    secrets: conciseText(declaration.secrets, 64),
-    runtime: conciseText(declaration.runtime, 64),
-  };
-}
-
-function compactTrialabilityReport(value: unknown): UnknownRecord | null {
-  const report = record(value);
-  if (Object.keys(report).length === 0) return null;
-  const enforcement = record(report.enforcement);
-  const sandboxCases = record(enforcement.sandboxCases);
-  const liveSmokeBaselineValue = enforcement.liveSmokeBaseline;
-  const liveSmokeBaseline = record(liveSmokeBaselineValue);
-  const hasLiveSmokeBaseline =
-    liveSmokeBaselineValue !== null &&
-    liveSmokeBaselineValue !== undefined &&
-    Object.keys(liveSmokeBaseline).length > 0;
-  return {
-    protocolVersion: finiteNumber(report.protocolVersion),
-    mode: conciseText(report.mode, 64),
-    runnable: typeof report.runnable === 'boolean' ? report.runnable : null,
-    containment: {
-      sandboxCases: { level: 'application', osSandbox: false },
-      liveSmokeBaseline: hasLiveSmokeBaseline
-        ? { level: 'host-authority', osSandbox: false }
-        : null,
-    },
-    enforcement: {
-      sandboxCases: {
-        workspace: conciseText(sandboxCases.workspace, 64),
-        stdin: conciseText(sandboxCases.stdin, 64),
-        tty: conciseText(sandboxCases.tty, 64),
-        secrets: conciseText(sandboxCases.secrets, 64),
-        filesystem: conciseText(sandboxCases.filesystem, 128),
-        network: conciseText(sandboxCases.network, 64),
-        process: conciseText(sandboxCases.process, 64),
-      },
-      liveSmokeBaseline: hasLiveSmokeBaseline
-        ? {
-            workspace: conciseText(liveSmokeBaseline.workspace, 64),
-            stdin: conciseText(liveSmokeBaseline.stdin, 64),
-            tty: conciseText(liveSmokeBaseline.tty, 64),
-            secrets: conciseText(liveSmokeBaseline.secrets, 64),
-            filesystem: conciseText(liveSmokeBaseline.filesystem, 128),
-            network: conciseText(liveSmokeBaseline.network, 64),
-            process: conciseText(liveSmokeBaseline.process, 64),
-          }
-        : null,
-    },
-    items: compactTrialabilityCollection(report.items, MAX_TRIALABILITY_ITEMS, (rawItem) => {
-      const item = record(rawItem);
-      const occurrence = finiteNumber(item.occurrence);
-      return {
-        component: conciseText(item.component, 64),
-        taskId: conciseText(item.taskId, 256),
-        type: conciseText(item.type, 256),
-        provider: conciseText(item.provider, 256),
-        declaration: compactTrialabilityDeclaration(item.declaration),
-        disposition: conciseText(item.disposition, 64),
-        ...(occurrence === null ? {} : { occurrence }),
-      };
-    }),
-    blockers: compactTrialabilityCollection(report.blockers, MAX_TRIALABILITY_MESSAGES, (item) =>
-      conciseText(item),
-    ),
-    warnings: compactTrialabilityCollection(report.warnings, MAX_TRIALABILITY_MESSAGES, (item) =>
-      conciseText(item),
-    ),
-  };
-}
-
-function compactTrialExecutionCoverage(value: unknown): UnknownRecord | null {
-  const coverage = record(value);
-  if (Object.keys(coverage).length === 0) return null;
-  const terminalTaskIds = Array.isArray(coverage.terminalTaskIds) ? coverage.terminalTaskIds : [];
-  const sandboxCases = Array.isArray(coverage.sandboxCases) ? coverage.sandboxCases : [];
-  let executedSandboxCaseCount = 0;
-  let automaticTriggerSatisfactionCount = 0;
-  for (const value of sandboxCases) {
-    const testCase = record(value);
-    if (testCase.executed === true) executedSandboxCaseCount += 1;
-    if (Array.isArray(testCase.automaticTriggerSatisfactions)) {
-      automaticTriggerSatisfactionCount += testCase.automaticTriggerSatisfactions.length;
-    }
-  }
-  const liveSmoke = record(coverage.liveSmoke);
-  return {
-    terminalTaskCount: terminalTaskIds.length,
-    sandboxCaseCount: sandboxCases.length,
-    executedSandboxCaseCount,
-    automaticTriggerSatisfactionCount,
-    liveSmoke:
-      Object.keys(liveSmoke).length === 0
-        ? null
-        : {
-            executed: liveSmoke.executed === true,
-            targetTaskCount: Array.isArray(liveSmoke.targetTaskIds)
-              ? liveSmoke.targetTaskIds.length
-              : 0,
-            closureTaskCount: Array.isArray(liveSmoke.closureTaskIds)
-              ? liveSmoke.closureTaskIds.length
-              : 0,
-            automaticManualTaskCount: Array.isArray(liveSmoke.automaticManualTaskIds)
-              ? liveSmoke.automaticManualTaskIds.length
-              : 0,
-          },
-  };
-}
-
-function compactTrial(value: unknown): UnknownRecord | null {
-  const trial = record(value);
-  if (Object.keys(trial).length === 0) return null;
-  const plan = record(trial.plan);
-  const manualGrantSource = Array.isArray(trial.manualExecutionGrants)
-    ? trial.manualExecutionGrants
-    : [];
-  const manualGrantItems = manualGrantSource
-    .slice(0, MAX_TRIAL_MANUAL_EXECUTION_GRANTS)
-    .map((item) => {
-      const grant = record(item);
-      return {
-        taskId: conciseText(grant.taskId, 256),
-        approvalCount: finiteNumber(grant.approvalCount),
-      };
-    });
-  const notRunCaseSource = Array.isArray(trial.notRunCases) ? trial.notRunCases : [];
-  const notRunCases = notRunCaseSource.slice(0, MAX_TRIAL_NOT_RUN_CASES).map((item) => {
-    const testCase = record(item);
-    return {
-      id: conciseText(testCase.id),
-      title: conciseText(testCase.title),
-      reason: conciseText(testCase.reason, 64),
-      detail: conciseText(testCase.detail),
-    };
-  });
-  return {
-    success: trial.success ?? null,
-    kind: trial.kind ?? null,
-    ran: trial.ran ?? null,
-    runId: trial.runId ?? null,
-    summary: conciseText(trial.summary),
-    durationMs: trial.durationMs ?? null,
-    totalTaskCount: trial.totalTaskCount ?? null,
-    omittedTaskCount: trial.omittedTaskCount ?? null,
-    taskStatusCounts: trial.taskStatusCounts ?? null,
-    omittedTaskStatusCounts: trial.omittedTaskStatusCounts ?? null,
-    repairAuthorization: trial.repairAuthorization ?? null,
-    trialPlanRepairAttemptId: conciseText(trial.trialPlanRepairAttemptId, 128),
-    prerequisiteState: compactPrerequisiteState(trial.prerequisiteState),
-    trialMode: trial.trialMode ?? null,
-    trialabilityReport: compactTrialabilityReport(trial.trialabilityReport),
-    verificationMode: trial.verificationMode ?? null,
-    executionCoverage: compactTrialExecutionCoverage(trial.executionCoverage),
-    plannedCaseCount: trial.plannedCaseCount ?? null,
-    caseResultCount: trial.caseResultCount ?? null,
-    notRunCaseCount: trial.notRunCaseCount ?? null,
-    notRunCases,
-    manualExecutionGrants: {
-      totalCount: manualGrantSource.length,
-      returnedCount: manualGrantItems.length,
-      omittedCount: Math.max(0, manualGrantSource.length - manualGrantItems.length),
-      items: manualGrantItems,
-    },
-    returnedCaseCount: Array.isArray(trial.cases) ? trial.cases.length : 0,
-    planTelemetry: compactTrialPlanTelemetry(trial.planTelemetry),
-    plan: Object.keys(plan).length
-      ? {
-          goalCount: Array.isArray(plan.goals) ? plan.goals.length : 0,
-          coverageCount: Array.isArray(plan.coverage) ? plan.coverage.length : 0,
-          findingCount: Array.isArray(plan.findings) ? plan.findings.length : 0,
-          caseCount: Array.isArray(plan.cases) ? plan.cases.length : 0,
-        }
-      : null,
-  };
-}
-
-function compactSessionYamlResult(value: unknown): UnknownRecord | null {
-  const result = record(value);
-  if (Object.keys(result).length === 0) return null;
-  const compile = record(result.compile);
-  const planning = record(result.planningTelemetry);
-  const reconcile = record(result.reconcile);
-  const progress = record(result.progress);
-  return {
-    sessionId: result.sessionId ?? null,
-    workspaceKey: result.workspaceKey ?? null,
-    kind: result.kind ?? null,
-    path: result.path ?? null,
-    name: result.name ?? null,
-    pipelineName: result.pipelineName ?? null,
-    status: result.status ?? null,
-    phase: result.phase ?? null,
-    compile: {
-      success: compile.success ?? null,
-      summary: conciseText(compile.summary),
-      validation: validationSummary(compile.validation),
-    },
-    trial: compactTrial(result.trial),
-    progress: Object.keys(progress).length
-      ? {
-          stageId: progress.stageId ?? null,
-          trialId: progress.trialId ?? null,
-          phase: progress.phase ?? null,
-          startedAt: progress.startedAt ?? null,
-          updatedAt: progress.updatedAt ?? null,
-          heartbeatAt: progress.heartbeatAt ?? null,
-          caseId: progress.caseId ?? null,
-          caseIndex: progress.caseIndex ?? null,
-          caseCount: progress.caseCount ?? null,
-          runNumber: progress.runNumber ?? null,
-          runCount: progress.runCount ?? null,
-          taskId: progress.taskId ?? null,
-          taskStatus: progress.taskStatus ?? null,
-        }
-      : null,
-    repairAttempts: result.repairAttempts ?? null,
-    planningTelemetry: Object.keys(planning).length
-      ? {
-          promptCount: planning.promptCount ?? null,
-          toolAttemptCount: planning.toolAttemptCount ?? null,
-          validationRejectionCount: planning.validationRejectionCount ?? null,
-          repeatedValidationRejectionCount: planning.repeatedValidationRejectionCount ?? null,
-          elapsedMs: planning.elapsedMs ?? null,
-          inputTokens: planning.inputTokens ?? null,
-          outputTokens: planning.outputTokens ?? null,
-          reasoningTokens: planning.reasoningTokens ?? null,
-          cacheReadTokens: planning.cacheReadTokens ?? null,
-          cacheWriteTokens: planning.cacheWriteTokens ?? null,
-          cost: planning.cost ?? null,
-        }
-      : null,
-    reconcile: Object.keys(reconcile).length
-      ? {
-          outcome: reconcile.outcome ?? null,
-          conflicts: Array.isArray(reconcile.conflicts) ? reconcile.conflicts.slice(0, 50) : [],
-          localBranchPersisted: reconcile.localBranchPersisted ?? null,
-          resultPath: reconcile.resultPath ?? null,
-          compileSuccess: reconcile.compileSuccess ?? null,
-          trialRunSuccess: reconcile.trialRunSuccess ?? null,
-          trialVerification: reconcile.trialVerification ?? null,
-        }
-      : null,
-    completedAt: result.completedAt ?? null,
-  };
-}
-
 function cleanPageHref(rawHref: string): string {
   try {
     const url = new URL(rawHref);
@@ -672,79 +323,6 @@ function cleanPageHref(rawHref: string): string {
   }
 }
 
-function backgroundSessionRecency(state: UnknownRecord, yamlResult: UnknownRecord): number {
-  const postChatYamlAction = record(state.postChatYamlAction);
-  if (
-    state.sending === true ||
-    state.flushing === true ||
-    (Array.isArray(state.pendingPermissions) && state.pendingPermissions.length > 0) ||
-    (Array.isArray(state.queuedMessages) && state.queuedMessages.length > 0) ||
-    Object.keys(postChatYamlAction).length > 0
-  ) {
-    return Number.POSITIVE_INFINITY;
-  }
-  const postChatProgress = record(postChatYamlAction.progress);
-  const resultProgress = record(yamlResult.progress);
-  return Math.max(
-    finiteNumber(state.lastActivityAt) ?? Number.NEGATIVE_INFINITY,
-    finiteNumber(state.turnStartedAt) ?? Number.NEGATIVE_INFINITY,
-    finiteNumber(postChatYamlAction.completedAt) ?? Number.NEGATIVE_INFINITY,
-    finiteNumber(postChatProgress.heartbeatAt) ??
-      finiteNumber(postChatProgress.updatedAt) ??
-      finiteNumber(postChatProgress.startedAt) ??
-      Number.NEGATIVE_INFINITY,
-    finiteNumber(yamlResult.completedAt) ?? Number.NEGATIVE_INFINITY,
-    finiteNumber(resultProgress.heartbeatAt) ??
-      finiteNumber(resultProgress.updatedAt) ??
-      finiteNumber(resultProgress.startedAt) ??
-      Number.NEGATIVE_INFINITY,
-  );
-}
-
-function backgroundSessionSummaries(chat: UnknownRecord): {
-  sourceCount: number;
-  summaries: UnknownRecord[];
-} {
-  const currentSessionId = typeof chat.currentSessionId === 'string' ? chat.currentSessionId : null;
-  const states = record(chat.sessionStates);
-  const sessionYamlResults = record(chat.sessionYamlResults);
-  const backgroundSessionIds = [
-    ...new Set([...Object.keys(states), ...Object.keys(sessionYamlResults)]),
-  ].filter((sessionId) => sessionId !== currentSessionId);
-  const returnedSessionIds = backgroundSessionIds
-    .map((sessionId, insertionIndex) => ({
-      sessionId,
-      insertionIndex,
-      recency: backgroundSessionRecency(
-        record(states[sessionId]),
-        record(sessionYamlResults[sessionId]),
-      ),
-    }))
-    .sort((left, right) => {
-      if (left.recency !== right.recency) return left.recency < right.recency ? -1 : 1;
-      return left.insertionIndex - right.insertionIndex;
-    })
-    .slice(-MAX_CHAT_SESSIONS)
-    .map((item) => item.sessionId);
-  return {
-    sourceCount: backgroundSessionIds.length,
-    summaries: returnedSessionIds.map((sessionId) => {
-      const state = record(states[sessionId]);
-      return {
-        sessionId,
-        sending: state.sending === true,
-        messageCount: Array.isArray(state.messages) ? state.messages.length : 0,
-        pendingPermissionCount: Array.isArray(state.pendingPermissions)
-          ? state.pendingPermissions.length
-          : 0,
-        queuedMessageCount: Array.isArray(state.queuedMessages) ? state.queuedMessages.length : 0,
-        postChatYamlActionSummary: compactSessionYamlResult(state.postChatYamlAction),
-        sessionYamlResultSummary: compactSessionYamlResult(sessionYamlResults[sessionId] ?? null),
-      };
-    }),
-  };
-}
-
 export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnapshotInput) {
   const chat = input.chat;
   const pipeline = input.pipeline;
@@ -753,24 +331,16 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
     ? chat.messages.slice(-MAX_CURRENT_CHAT_MESSAGES)
     : [];
   const messageCount = Array.isArray(chat.messages) ? chat.messages.length : 0;
-  const sourceSessions = Array.isArray(chat.sessions) ? chat.sessions : [];
-  const sessions = sourceSessions.slice(-MAX_CHAT_SESSIONS);
   const sourceLogs = Array.isArray(run.logs) ? run.logs : [];
   const logs = sourceLogs.slice(-MAX_RUN_LOGS);
   const sourcePipelineLogs = Array.isArray(run.pipelineLogs) ? run.pipelineLogs : [];
   const pipelineLogs = sourcePipelineLogs.slice(-MAX_RUN_LOGS);
-  const currentSessionId = typeof chat.currentSessionId === 'string' ? chat.currentSessionId : null;
-  const sessionYamlResults = record(chat.sessionYamlResults);
-  const sessionYamlResult = currentSessionId
-    ? (sessionYamlResults[currentSessionId] ?? null)
-    : null;
   const summarizedMessages = messageSummaries(messages);
   const summarizedToolCalls = toolCallSummaries(messages);
   const summarizedConfig = pipelineConfigSummary(pipeline.config);
   const summarizedValidation = validationSummary(pipeline.validationErrors);
   const summarizedTasks = taskStatusSummaries(run.tasks);
   const summarizedApprovals = pendingApprovalSummaries(run.pendingApprovals);
-  const summarizedBackgroundSessions = backgroundSessionSummaries(chat);
 
   return sanitizeDiagnosticValue(
     {
@@ -783,39 +353,18 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
       chat: {
         bootstrapStatus: chat.bootstrapStatus ?? null,
         bootstrapError: chat.bootstrapError ?? null,
-        agent: chat.agent ?? null,
         model: chat.model ?? null,
         reasoningEffort: chat.reasoningEffort ?? null,
-        currentSessionId: chat.currentSessionId ?? null,
-        sessions,
-        sessionCount: sourceSessions.length,
-        returnedSessionCount: sessions.length,
-        omittedSessionCount: Math.max(0, sourceSessions.length - sessions.length),
-        sessionEvidence: {
-          layer: 'renderer-diagnostics-session-window',
-          limit: MAX_CHAT_SESSIONS,
-          truncated: sourceSessions.length > sessions.length,
-          omittedSessionCount: Math.max(0, sourceSessions.length - sessions.length),
-        },
-        backgroundSessions: summarizedBackgroundSessions.summaries,
-        backgroundSessionCount: summarizedBackgroundSessions.sourceCount,
-        returnedBackgroundSessionCount: summarizedBackgroundSessions.summaries.length,
-        omittedBackgroundSessionCount: Math.max(
-          0,
-          summarizedBackgroundSessions.sourceCount - summarizedBackgroundSessions.summaries.length,
-        ),
-        backgroundSessionEvidence: {
-          layer: 'renderer-diagnostics-background-session-window',
-          limit: MAX_CHAT_SESSIONS,
-          truncated:
-            summarizedBackgroundSessions.sourceCount >
-            summarizedBackgroundSessions.summaries.length,
-          omittedBackgroundSessionCount: Math.max(
-            0,
-            summarizedBackgroundSessions.sourceCount -
-              summarizedBackgroundSessions.summaries.length,
-          ),
-        },
+        executionMode: chat.chatExecutionMode ?? null,
+        activeOperation: chat.activeChatOperationV2 ?? null,
+        operations: Array.isArray(chat.chatOperationV2Operations)
+          ? chat.chatOperationV2Operations.slice(-MAX_CHAT_SESSIONS)
+          : [],
+        operationCount: Array.isArray(chat.chatOperationV2Operations)
+          ? chat.chatOperationV2Operations.length
+          : 0,
+        connected: chat.chatOperationV2Connected === true,
+        latestCursor: chat.chatOperationV2LatestCursor ?? null,
         messages,
         messageSummaries: summarizedMessages,
         messageCount,
@@ -844,39 +393,18 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
           ),
         },
         sending: chat.sending === true,
-        abortRecovery: chat.abortRecovery ?? null,
-        reconciling: chat.reconciling === true,
-        reconcilingSessionId: chat.reconcilingSessionId ?? null,
-        flushing: chat.flushing === true,
-        skipYamlReconciliation: chat.skipYamlReconciliation === true,
         pendingUserText: chat.pendingUserText ?? null,
         pendingUserTextSummary: contentSummary(chat.pendingUserText),
-        queuedMessages: Array.isArray(chat.queuedMessages) ? chat.queuedMessages : [],
-        queuedMessageCount: Array.isArray(chat.queuedMessages) ? chat.queuedMessages.length : 0,
         pendingPermissions: Array.isArray(chat.pendingPermissions) ? chat.pendingPermissions : [],
         pendingPermissionCount: Array.isArray(chat.pendingPermissions)
           ? chat.pendingPermissions.length
           : 0,
-        turnStartedAt: chat.turnStartedAt ?? null,
-        lastActivityAt: chat.lastActivityAt ?? null,
-        sessionStatus: chat.sessionStatus ?? null,
-        turnHealth: chat.turnHealth ?? null,
-        activeChatYamlLifecycle: chat.activeChatYamlLifecycle ?? null,
-        postChatYamlAction: chat.postChatYamlAction ?? null,
-        postChatYamlActionSummary: compactSessionYamlResult(chat.postChatYamlAction),
         sendError: chat.sendError ?? null,
         completionWarning: chat.completionWarning ?? null,
         composerDraft: chat.composerDraft ?? '',
         composerAttachments: Array.isArray(chat.composerAttachments)
           ? chat.composerAttachments
           : [],
-        finishedTurnQueueLength: Array.isArray(chat.finishedTurnQueue)
-          ? chat.finishedTurnQueue.length
-          : 0,
-        lastFinishedTurn: chat.lastFinishedTurn ?? null,
-        lastFinishedTurnSummary: finishedTurnSummary(chat.lastFinishedTurn),
-        sessionYamlResult,
-        sessionYamlResultSummary: compactSessionYamlResult(sessionYamlResult),
       },
       pipeline: {
         workDir: pipeline.workDir ?? '',
@@ -982,7 +510,6 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
     page: { href: string; visibilityState: string; online: boolean };
     chat: {
       messages: unknown[];
-      backgroundSessions: UnknownRecord[];
       [key: string]: unknown;
     };
     pipeline: UnknownRecord;

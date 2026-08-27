@@ -18,6 +18,8 @@ const keys = [
   'TAGMA_OPENCODE_DB_SCHEMA_VERSION',
   'TAGMA_OPENCODE_ACTIVE_VERSION',
   'TAGMA_OPENCODE_ACTIVE_SOURCE',
+  'TAGMA_CHAT_OPERATION_V2_SHADOW',
+  'TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER',
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>(keys.map((key) => [key, process.env[key]]));
@@ -50,6 +52,7 @@ describe('bootstrapDevEnv', () => {
         updateManifestBaseUrl: string;
         bundledOpencodeVersion: string;
         bundledOpencodeDbSchemaVersion: number;
+        chatOperationProtocolVersion: number;
       };
     };
 
@@ -74,6 +77,9 @@ describe('bootstrapDevEnv', () => {
     );
     expect(process.env.TAGMA_OPENCODE_ACTIVE_VERSION).toBe(pkg.tagma.bundledOpencodeVersion);
     expect(process.env.TAGMA_OPENCODE_ACTIVE_SOURCE).toBe('bundled');
+    expect(pkg.tagma.chatOperationProtocolVersion).toBe(2);
+    expect(process.env.TAGMA_CHAT_OPERATION_V2_SHADOW).toBe('1');
+    expect(process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER).toBe('2');
   });
 
   test('preserves explicit environment overrides', () => {

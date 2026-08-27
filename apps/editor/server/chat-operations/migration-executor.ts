@@ -6,12 +6,6 @@ import {
   parseChatOperationV2MigrationPlan,
   type AdoptMovedWorkspaceMutation,
   type ExplicitChatControlResetPlan,
-  type ImportLegacyV1StageRecoveryMutation,
-  type LegacyV1BindingMutation,
-  type LegacyV1HistoryOnlyResult,
-  type LegacyV1InventoryProjectionEntry,
-  type LegacyV1MigrationPlan,
-  type QuarantineLegacyV1RegistryMutation,
   type WorkspaceAdoptionPreconditionCode,
   type WorkspacePathChangePlan,
 } from './migration.js';
@@ -21,7 +15,6 @@ export const CHAT_OPERATION_V2_MIGRATION_EXECUTION_VERSION = 1 as const;
 
 export type ChatOperationV2MigrationExecutionErrorCode =
   | 'migration_execution_conflict'
-  | 'legacy_evidence_conflict'
   | 'store_transaction_failed'
   | 'workspace_adoption_evidence_conflict'
   | 'workspace_adoption_precondition_failed'
@@ -46,24 +39,17 @@ export class ChatOperationV2MigrationExecutionError extends Error {
 }
 
 export type ChatOperationV2MigrationExecutionDisposition =
-  | 'legacy_imported'
-  | 'legacy_quarantined'
-  | 'workspace_observed'
-  | 'workspace_adopted'
-  | 'control_reset';
+  'workspace_observed' | 'workspace_adopted' | 'control_reset';
 
 /** Durable, content-minimized execution record written with the mutation. */
 export interface ChatOperationV2MigrationExecutionRecord {
   readonly version: typeof CHAT_OPERATION_V2_MIGRATION_EXECUTION_VERSION;
   readonly planId: string;
   readonly planHash: string;
-  readonly planKind: 'legacy_v1_import' | 'workspace_path_change' | 'reset_chat_control_data';
+  readonly planKind: 'workspace_path_change' | 'reset_chat_control_data';
   readonly disposition: ChatOperationV2MigrationExecutionDisposition;
   readonly appliedAtMs: number;
   readonly sqliteMutationCount: number;
-  readonly importedBindingCount: number;
-  readonly importedStageCount: number;
-  readonly historyOnlyCount: number;
   readonly inventoryCount: number;
   readonly controlGeneration: number | null;
   /** Hash-only receipt of deterministic DB/key archive identities; never paths or key bytes. */
@@ -76,20 +62,6 @@ export interface ChatOperationV2MigrationExecutionRecord {
 
 export interface ChatOperationV2MigrationExecutionReceipt extends ChatOperationV2MigrationExecutionRecord {
   readonly replayed: boolean;
-}
-
-export interface ChatOperationV2LegacyBindingExecutionEvidence {
-  readonly status: LegacyV1BindingMutation['status'];
-  readonly sourceRecordHash: string;
-  readonly evidenceHash: string;
-  readonly targetIdentity: string;
-}
-
-export interface ChatOperationV2LegacyStageExecutionEvidence {
-  readonly sourceRecordHash: string;
-  readonly targetIdentity: string;
-  readonly sessionId: string;
-  readonly evidenceHashes: ImportLegacyV1StageRecoveryMutation['evidenceHashes'];
 }
 
 export interface ChatOperationV2ControlArchiveInspection {
@@ -119,14 +91,6 @@ export interface ChatOperationV2NewControlKeyEvidence {
 }
 
 export interface ChatOperationV2MigrationFileAdapter {
-  /** Read-only certificate lookup; it must not move, delete, or rewrite a pipeline. */
-  verifyLegacyBindingEvidence(
-    mutation: LegacyV1BindingMutation,
-  ): ChatOperationV2LegacyBindingExecutionEvidence;
-  /** Re-authenticates all four active-stage evidence domains at execution time. */
-  verifyLegacyStageEvidence(
-    mutation: ImportLegacyV1StageRecoveryMutation,
-  ): ChatOperationV2LegacyStageExecutionEvidence;
   inspectControlArchives(
     plan: ExplicitChatControlResetPlan,
   ): ChatOperationV2ControlArchiveSetInspection;
@@ -163,17 +127,6 @@ export interface ChatOperationV2WorkspaceAdoptionExecutionEvidence {
 export interface ChatOperationV2MigrationStoreTransaction {
   getExecution(planId: string): ChatOperationV2MigrationExecutionRecord | null;
   recordExecution(record: ChatOperationV2MigrationExecutionRecord): void;
-  importLegacyBinding(mutation: LegacyV1BindingMutation): void;
-  importLegacyStageRecovery(mutation: ImportLegacyV1StageRecoveryMutation): void;
-  quarantineLegacyRegistry(
-    workspaceScopeId: string,
-    mutation: QuarantineLegacyV1RegistryMutation,
-  ): void;
-  recordLegacyHistory(workspaceScopeId: string, result: LegacyV1HistoryOnlyResult): void;
-  replaceInventoryProjection(
-    workspaceScopeId: string,
-    inventory: readonly LegacyV1InventoryProjectionEntry[],
-  ): void;
   inspectWorkspaceAdoption(
     mutation: AdoptMovedWorkspaceMutation,
   ): ChatOperationV2WorkspaceAdoptionExecutionEvidence;
@@ -273,7 +226,7 @@ function appliedAt(now: () => number): number {
 }
 
 function planIdOf(plan: ReturnType<typeof parseChatOperationV2MigrationPlan>): string {
-  return plan.kind === 'legacy_v1_import' ? plan.migrationId : plan.planId;
+  return plan.planId;
 }
 
 function receipt(
@@ -297,9 +250,6 @@ const EXECUTION_RECORD_KEYS = [
   'disposition',
   'appliedAtMs',
   'sqliteMutationCount',
-  'importedBindingCount',
-  'importedStageCount',
-  'historyOnlyCount',
   'inventoryCount',
   'controlGeneration',
   'controlArchiveSetHash',
@@ -313,8 +263,6 @@ function recordForPlan(
   appliedAtMs: number,
 ): ChatOperationV2MigrationExecutionRecord {
   switch (plan.kind) {
-    case 'legacy_v1_import':
-      return buildLegacyExecution(plan, appliedAtMs);
     case 'workspace_path_change':
       return buildWorkspaceExecution(plan, appliedAtMs);
     case 'reset_chat_control_data':
@@ -373,96 +321,6 @@ function existingReceipt(
   return existing ? receipt(assertExecutionRecord(existing, plan), true) : null;
 }
 
-function buildLegacyExecution(
-  plan: LegacyV1MigrationPlan,
-  appliedAtMs: number,
-): ChatOperationV2MigrationExecutionRecord {
-  const mutations = plan.sqliteTransaction.mutations;
-  return Object.freeze({
-    version: CHAT_OPERATION_V2_MIGRATION_EXECUTION_VERSION,
-    planId: plan.migrationId,
-    planHash: plan.planHash,
-    planKind: 'legacy_v1_import',
-    disposition:
-      plan.registryDisposition === 'quarantined' ? 'legacy_quarantined' : 'legacy_imported',
-    appliedAtMs,
-    sqliteMutationCount: mutations.length,
-    importedBindingCount: mutations.filter((mutation) => mutation.kind === 'import_legacy_binding')
-      .length,
-    importedStageCount: mutations.filter(
-      (mutation) => mutation.kind === 'import_legacy_stage_recovery',
-    ).length,
-    historyOnlyCount: plan.historyOnlyResults.length,
-    inventoryCount: plan.inventoryProjection.length,
-    controlGeneration: null,
-    controlArchiveSetHash: null,
-    resetRequestHash: null,
-    resetTrigger: null,
-    resetOldKeyDisposition: null,
-  });
-}
-
-function validateLegacyEvidence(
-  plan: LegacyV1MigrationPlan,
-  files: ChatOperationV2MigrationFileAdapter,
-): void {
-  for (const mutation of plan.sqliteTransaction.mutations) {
-    if (mutation.kind === 'quarantine_legacy_registry') continue;
-    if (mutation.kind === 'import_legacy_binding') {
-      let evidence: ChatOperationV2LegacyBindingExecutionEvidence;
-      try {
-        evidence = files.verifyLegacyBindingEvidence(mutation);
-      } catch (error) {
-        throw executionError(
-          'legacy_evidence_conflict',
-          'Legacy binding evidence could not be re-authenticated.',
-          [mutation.bindingId],
-          error,
-        );
-      }
-      if (
-        evidence.status !== mutation.status ||
-        evidence.sourceRecordHash !== mutation.sourceRecordHash ||
-        evidence.evidenceHash !== mutation.evidenceHash ||
-        evidence.targetIdentity !== mutation.target.identity
-      ) {
-        throw executionError(
-          'legacy_evidence_conflict',
-          'Legacy binding evidence changed before migration execution.',
-          [mutation.bindingId],
-        );
-      }
-      continue;
-    }
-    let evidence: ChatOperationV2LegacyStageExecutionEvidence;
-    try {
-      evidence = files.verifyLegacyStageEvidence(mutation);
-    } catch (error) {
-      throw executionError(
-        'legacy_evidence_conflict',
-        'Legacy active-stage evidence could not be re-authenticated.',
-        [mutation.stageId],
-        error,
-      );
-    }
-    if (
-      evidence.sourceRecordHash !== mutation.sourceRecordHash ||
-      evidence.targetIdentity !== mutation.target.identity ||
-      evidence.sessionId !== mutation.sessionId ||
-      evidence.evidenceHashes.stageDigest !== mutation.evidenceHashes.stageDigest ||
-      evidence.evidenceHashes.relocation !== mutation.evidenceHashes.relocation ||
-      evidence.evidenceHashes.lock !== mutation.evidenceHashes.lock ||
-      evidence.evidenceHashes.session !== mutation.evidenceHashes.session
-    ) {
-      throw executionError(
-        'legacy_evidence_conflict',
-        'Legacy active-stage evidence is incomplete or changed.',
-        [mutation.stageId],
-      );
-    }
-  }
-}
-
 function runStoreTransaction<T>(
   store: ChatOperationV2MigrationStoreAdapter,
   message: string,
@@ -474,42 +332,6 @@ function runStoreTransaction<T>(
     if (error instanceof ChatOperationV2MigrationExecutionError) throw error;
     throw executionError('store_transaction_failed', message, [], error);
   }
-}
-
-function executeLegacyPlan(
-  plan: LegacyV1MigrationPlan,
-  options: ExecuteChatOperationV2MigrationOptions,
-  now: () => number,
-): ChatOperationV2MigrationExecutionReceipt {
-  validateLegacyEvidence(plan, options.files);
-  const execution = buildLegacyExecution(plan, appliedAt(now));
-  return runStoreTransaction(
-    options.store,
-    'Legacy V1 migration transaction failed.',
-    (transaction) => {
-      const prior = transaction.getExecution(plan.migrationId);
-      if (prior) return receipt(assertExecutionRecord(prior, plan), true);
-      for (const mutation of plan.sqliteTransaction.mutations) {
-        switch (mutation.kind) {
-          case 'import_legacy_binding':
-            transaction.importLegacyBinding(mutation);
-            break;
-          case 'import_legacy_stage_recovery':
-            transaction.importLegacyStageRecovery(mutation);
-            break;
-          case 'quarantine_legacy_registry':
-            transaction.quarantineLegacyRegistry(plan.workspaceScopeId, mutation);
-            break;
-        }
-      }
-      for (const result of plan.historyOnlyResults) {
-        transaction.recordLegacyHistory(plan.workspaceScopeId, result);
-      }
-      transaction.replaceInventoryProjection(plan.workspaceScopeId, plan.inventoryProjection);
-      transaction.recordExecution(execution);
-      return receipt(execution, false);
-    },
-  );
 }
 
 function buildWorkspaceExecution(
@@ -525,9 +347,6 @@ function buildWorkspaceExecution(
       plan.request === 'adopt_moved_workspace' ? 'workspace_adopted' : 'workspace_observed',
     appliedAtMs,
     sqliteMutationCount: plan.sqliteTransaction.mutations.length,
-    importedBindingCount: 0,
-    importedStageCount: 0,
-    historyOnlyCount: 0,
     inventoryCount: 0,
     controlGeneration: plan.oldScope.controlGeneration,
     controlArchiveSetHash: null,
@@ -636,9 +455,6 @@ function buildResetExecution(
     disposition: 'control_reset',
     appliedAtMs,
     sqliteMutationCount: plan.sqliteTransaction.mutations.length,
-    importedBindingCount: 0,
-    importedStageCount: 0,
-    historyOnlyCount: 0,
     inventoryCount: plan.inventoryProjection.length,
     controlGeneration: plan.newControl.controlGeneration,
     controlArchiveSetHash: createHash('sha256')
@@ -929,10 +745,5 @@ export function executeChatOperationV2Migration(
   }
   const replay = existingReceipt(options, plan);
   if (replay) return replay;
-  switch (plan.kind) {
-    case 'legacy_v1_import':
-      return executeLegacyPlan(plan, options, now);
-    case 'workspace_path_change':
-      return executeWorkspacePlan(plan, options, now);
-  }
+  return executeWorkspacePlan(plan, options, now);
 }

@@ -28,7 +28,7 @@ import {
   type ChatOperationV2Wake,
 } from '../api/chat-operations';
 
-export type ChatOperationExecutionMode = 'legacy-v1' | 'operation-v2' | 'unavailable';
+export type ChatOperationExecutionMode = 'operation-v2' | 'unavailable';
 
 export interface ChatOperationV2CapabilityHandshake {
   readonly chatOperationProtocolVersion?: unknown;
@@ -42,23 +42,15 @@ export class ChatOperationV2CapabilityError extends Error {
   }
 }
 
-/**
- * The authenticated `/api/opencode/chat/ensure` response is the cutover
- * boundary. Older sidecars omit both fields; current legacy sidecars return
- * the exact null/legacy pair. Any partial or contradictory declaration is
- * version skew, not permission to guess an executor.
- */
+/** The authenticated `/api/opencode/chat/ensure` response must declare V2 exactly. */
 export function resolveChatOperationExecutionMode(
   handshake: ChatOperationV2CapabilityHandshake,
 ): ChatOperationExecutionMode {
   const protocol = handshake.chatOperationProtocolVersion;
   const mode = handshake.chatOperationMode;
   if (protocol === 2 && mode === 'production') return 'operation-v2';
-  if ((protocol === undefined && mode === undefined) || (protocol === null && mode === 'legacy')) {
-    return 'legacy-v1';
-  }
   throw new ChatOperationV2CapabilityError(
-    'The sidecar returned an inconsistent Chat Operation capability handshake.',
+    'The sidecar does not support the required Chat Operation V2 production protocol.',
   );
 }
 
@@ -198,6 +190,7 @@ export interface ChatOperationV2Controller {
     choice: ChatOperationV2InteractiveRecoveryChoice,
   ): Promise<ChatOperationV2MutationResult>;
   selectConversation(conversationId: string): void;
+  selectOperation(operationId: string): Promise<void>;
   startNewConversation(): void;
   dispose(): void;
 }
@@ -233,7 +226,7 @@ class Controller implements ChatOperationV2Controller {
   readonly #onWake: ((wake: ChatOperationV2Wake) => void) | undefined;
   readonly #onDetail: ((detail: ChatOperationV2OperationDetail) => void) | undefined;
   #snapshot: ChatOperationV2ControllerSnapshot = {
-    executionMode: 'legacy-v1',
+    executionMode: 'unavailable',
     workspaceKey: null,
     operations: [],
     inventory: null,
@@ -301,8 +294,8 @@ class Controller implements ChatOperationV2Controller {
 
     const epoch = ++this.#activationEpoch;
     this.#activationController?.abort();
-    this.#activationController = mode === 'operation-v2' ? new AbortController() : null;
-    this.#conversationId = mode === 'operation-v2' ? conversationId : null;
+    this.#activationController = new AbortController();
+    this.#conversationId = conversationId;
     this.#mutationsInFlight.clear();
     this.#closeCurrentSubscription();
     this.#snapshot = {
@@ -316,8 +309,6 @@ class Controller implements ChatOperationV2Controller {
       error: null,
     };
     this.#emit();
-    if (mode === 'legacy-v1') return mode;
-
     await this.#refreshSnapshot(epoch, true);
     return mode;
   }
@@ -452,6 +443,22 @@ class Controller implements ChatOperationV2Controller {
     this.#emit();
   }
 
+  async selectOperation(operationId: string): Promise<void> {
+    const authority = this.captureActivationAuthority();
+    const operation = this.#snapshot.operations.find(
+      (candidate) => candidate.operationId === operationId,
+    );
+    if (!operation) throw new Error('The selected Chat Operation V2 record is unavailable.');
+    const current = this.#snapshot.activeOperation;
+    if (current && current.phase !== 'terminal' && current.operationId !== operationId) {
+      throw new Error('Wait for the live Chat Operation V2 request to finish.');
+    }
+    this.#conversationId = operation.conversationId;
+    this.#snapshot = { ...this.#snapshot, activeOperation: operation, error: null };
+    this.#emit();
+    await this.#refreshOperationDetail(authority, operationId);
+  }
+
   startNewConversation(): void {
     const { activeOperation } = this.#requireProduction();
     if (this.#mutationsInFlight.size > 0) {
@@ -465,7 +472,7 @@ class Controller implements ChatOperationV2Controller {
   }
 
   dispose(): void {
-    this.#reset(null, 'legacy-v1', null);
+    this.#reset(null, 'unavailable', null);
   }
 
   async #mutate(

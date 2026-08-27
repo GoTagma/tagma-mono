@@ -1,14 +1,6 @@
 import { useMemo } from 'react';
 import { motion } from 'motion/react';
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ChevronDown,
-  FileCode2,
-  Loader2,
-  Plus,
-  X as XIcon,
-} from 'lucide-react';
+import { ArrowLeft, FileCode2, Loader2, Plus, X as XIcon } from 'lucide-react';
 import { ProductLogo } from './ProductLogo';
 import type { WorkspaceYamlEntry } from '../api/client';
 import { formatRelative } from '../utils/format-relative';
@@ -16,7 +8,6 @@ import { formatRelative } from '../utils/format-relative';
 interface PipelinePickerProps {
   workDir: string;
   workspaceYamls: WorkspaceYamlEntry[];
-  failedDraftPaths?: ReadonlySet<string>;
   yamlEditLocked: boolean;
   openingPath: string | null;
   onPickPipeline: (path: string) => void;
@@ -120,7 +111,6 @@ function PipelineRow({
 export function PipelinePicker({
   workDir,
   workspaceYamls,
-  failedDraftPaths,
   yamlEditLocked,
   openingPath,
   onPickPipeline,
@@ -133,14 +123,6 @@ export function PipelinePicker({
     [workspaceYamls],
   );
 
-  const failedDrafts = useMemo(
-    () => sorted.filter((entry) => failedDraftPaths?.has(entry.path) === true),
-    [failedDraftPaths, sorted],
-  );
-  const activePipelines = useMemo(
-    () => sorted.filter((entry) => failedDraftPaths?.has(entry.path) !== true),
-    [failedDraftPaths, sorted],
-  );
   const wsName = basename(workDir);
   const wsRoot = workDir.replace(/[/\\]+$/, '');
   const isOpening = openingPath !== null;
@@ -189,63 +171,22 @@ export function PipelinePicker({
           </span>
         </div>
 
-        {/* Lists stay bounded so the workspace actions remain visible. Failed
-            Chat forks are preserved but collapsed away from ordinary pipelines. */}
-        {(activePipelines.length > 0 || failedDrafts.length === 0) && (
-          <ul
-            className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border"
-            aria-busy={isOpening}
-          >
-            {activePipelines.map((entry) => (
-              <PipelineRow
-                key={entry.path}
-                entry={entry}
-                isOpening={isOpening}
-                openingPath={openingPath}
-                yamlEditLocked={yamlEditLocked}
-                onPickPipeline={onPickPipeline}
-                onDeletePipeline={onDeletePipeline}
-              />
-            ))}
-          </ul>
-        )}
-
-        {failedDrafts.length > 0 && (
-          <details className="group mt-3 border border-tagma-border">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-left text-tagma-warning hover:bg-tagma-elevated/40">
-              <AlertTriangle size={11} className="shrink-0" />
-              <span className="min-w-0 flex-1 text-body font-medium">Failed Chat drafts</span>
-              <span className="shrink-0 font-mono text-caption text-tagma-muted-dim">
-                {failedDrafts.length} preserved
-              </span>
-              <ChevronDown
-                size={11}
-                aria-hidden="true"
-                className="shrink-0 transition-transform group-open:rotate-180"
-              />
-            </summary>
-            <p className="border-t border-tagma-border/60 px-3 py-2 text-caption text-tagma-muted">
-              Verification failed, so Tagma kept these drafts instead of overwriting another
-              pipeline. Expand a draft to inspect it or remove it explicitly.
-            </p>
-            <ul
-              className="flex max-h-[min(40dvh,16rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border-t border-tagma-border/60"
-              aria-busy={isOpening}
-            >
-              {failedDrafts.map((entry) => (
-                <PipelineRow
-                  key={entry.path}
-                  entry={entry}
-                  isOpening={isOpening}
-                  openingPath={openingPath}
-                  yamlEditLocked={yamlEditLocked}
-                  onPickPipeline={onPickPipeline}
-                  onDeletePipeline={onDeletePipeline}
-                />
-              ))}
-            </ul>
-          </details>
-        )}
+        <ul
+          className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border"
+          aria-busy={isOpening}
+        >
+          {sorted.map((entry) => (
+            <PipelineRow
+              key={entry.path}
+              entry={entry}
+              isOpening={isOpening}
+              openingPath={openingPath}
+              yamlEditLocked={yamlEditLocked}
+              onPickPipeline={onPickPipeline}
+              onDeletePipeline={onDeletePipeline}
+            />
+          ))}
+        </ul>
 
         {/* Footer action */}
         <button

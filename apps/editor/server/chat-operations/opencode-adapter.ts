@@ -285,7 +285,7 @@ function parseHistoryRecord(
 
 /**
  * Maps the pinned v2 native create/prompt/history APIs and the compatibility
- * rich prompt onto one Host-owned session identity. It does not use a V1 SDK.
+ * rich prompt onto one Host-owned session identity. It never delegates execution authority to the renderer.
  */
 export class OpenCodeSdkAdapter
   implements OpenCodeInvocationNativeClient, OpenCodeRichClassifierClient

@@ -55,18 +55,8 @@ export function ProviderConnectDialog() {
   const customProviders = useChatStore((s) => s.customProviders);
   const workDir = usePipelineStore((s) => s.workDir);
   const sending = useChatStore((s) => s.sending);
-  const pendingUserText = useChatStore((s) => s.pendingUserText);
-  const queuedMessages = useChatStore((s) => s.queuedMessages);
-  const reconciling = useChatStore((s) => s.reconciling);
-  const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
-  const blocked =
-    sending ||
-    !!pendingUserText ||
-    queuedMessages.length > 0 ||
-    reconciling ||
-    flushing ||
-    yamlEditLocked;
+  const blocked = sending || yamlEditLocked;
 
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);

@@ -70,15 +70,9 @@ import {
   type ChatCommitPrepareRecord,
   type ChatCommitRecoveryEvidence,
 } from '../server/chat-operations/commit.js';
-import {
-  deriveChatOperationV2ControlResetRequestHash,
-  executeChatOperationV2Migration,
-  type ChatOperationV2MigrationFileAdapter,
-} from '../server/chat-operations/migration-executor.js';
-import { createChatOperationV2StoreMigrationAdapter } from '../server/chat-operations/migration-runtime.js';
+import { deriveChatOperationV2ControlResetRequestHash } from '../server/chat-operations/migration-executor.js';
 import {
   planExplicitChatControlReset,
-  planLegacyV1ChatMigration,
   planWorkspacePathChange,
 } from '../server/chat-operations/migration.js';
 import type { ChatOperationV2State } from '../server/chat-operations/types.js';
@@ -95,100 +89,6 @@ const ADMISSION_HASH_B = 'b'.repeat(64);
 const ADMISSION_HASH_C = 'c'.repeat(64);
 const ADMISSION_HASH_D = 'd'.repeat(64);
 const migrationHash = (character: string): string => character.repeat(64);
-
-function trustedMigrationEvidence(character: string) {
-  return {
-    authentication: 'trusted' as const,
-    expectedHash: migrationHash(character),
-    observedHash: migrationHash(character),
-    evidenceHash: migrationHash(character.toUpperCase()),
-  };
-}
-
-function legacyMigrationPlanFixture(workspaceScopeId: string) {
-  return planLegacyV1ChatMigration({
-    migrationId: 'store-legacy-migration',
-    workspaceScopeId,
-    plannedAtMs: 1_900_000_000_000,
-    registry: {
-      sourceRegistryId: 'legacy-registry',
-      authentication: 'trusted',
-      evidenceHash: migrationHash('a'),
-      quarantineId: null,
-    },
-    bindings: [
-      {
-        sourceBindingId: 'legacy-source-binding',
-        bindingId: 'legacy-imported-binding',
-        migrationOperationId: 'legacy-migration-operation',
-        ownerSessionId: 'legacy-owner-session',
-        resultId: 'legacy-result',
-        sourceRecordHash: migrationHash('b'),
-        target: { platform: 'posix', coordinate: 'legacy/legacy.yaml' },
-        targetEvidence: {
-          kind: 'present',
-          expectedContentHash: migrationHash('c'),
-          observedContentHash: migrationHash('c'),
-          evidenceHash: migrationHash('d'),
-        },
-      },
-    ],
-    activeStages: [
-      {
-        sourceStageId: 'legacy-source-stage',
-        stageId: 'legacy-stage-recovery',
-        recoveryOperationId: 'legacy-recovery-operation',
-        sessionId: 'legacy-stage-session',
-        sourceRecordHash: migrationHash('e'),
-        target: { platform: 'posix', coordinate: 'stage/stage.yaml' },
-        stageDigest: trustedMigrationEvidence('1'),
-        relocationEvidence: trustedMigrationEvidence('2'),
-        lockEvidence: trustedMigrationEvidence('3'),
-        sessionEvidence: trustedMigrationEvidence('4'),
-      },
-    ],
-    completedResults: [
-      {
-        sourceResultId: 'legacy-history-result',
-        projectionHash: migrationHash('5'),
-        completedAtMs: 1_899_999_999_000,
-      },
-    ],
-    inventory: [
-      { platform: 'posix', targetCoordinate: 'legacy/legacy.yaml' },
-      { platform: 'posix', targetCoordinate: 'stage/stage.yaml' },
-      { platform: 'posix', targetCoordinate: 'unowned/unowned.yaml' },
-    ],
-  });
-}
-
-function legacyMigrationExecution(
-  plan: ReturnType<typeof legacyMigrationPlanFixture>,
-  appliedAtMs = 1_900_000_000_100,
-) {
-  return {
-    version: 1 as const,
-    planId: plan.migrationId,
-    planHash: plan.planHash,
-    planKind: 'legacy_v1_import' as const,
-    disposition: 'legacy_imported' as const,
-    appliedAtMs,
-    sqliteMutationCount: plan.sqliteTransaction.mutations.length,
-    importedBindingCount: plan.sqliteTransaction.mutations.filter(
-      ({ kind }) => kind === 'import_legacy_binding',
-    ).length,
-    importedStageCount: plan.sqliteTransaction.mutations.filter(
-      ({ kind }) => kind === 'import_legacy_stage_recovery',
-    ).length,
-    historyOnlyCount: plan.historyOnlyResults.length,
-    inventoryCount: plan.inventoryProjection.length,
-    controlGeneration: null,
-    controlArchiveSetHash: null,
-    resetRequestHash: null,
-    resetTrigger: null,
-    resetOldKeyDisposition: null,
-  };
-}
 
 function controlResetPlanFixture(
   databasePath: string,
@@ -270,9 +170,6 @@ function controlResetExecution(
     disposition: 'control_reset' as const,
     appliedAtMs,
     sqliteMutationCount: plan.sqliteTransaction.mutations.length,
-    importedBindingCount: 0,
-    importedStageCount: 0,
-    historyOnlyCount: 0,
     inventoryCount: plan.inventoryProjection.length,
     controlGeneration: plan.newControl.controlGeneration,
     controlArchiveSetHash: createHash('sha256')
@@ -1833,7 +1730,6 @@ describe('ChatTurn Operation V2 trusted store schema', () => {
       'interactive_requests',
       'invocation_outbox',
       'invocation_source_cursors',
-      'migration_authority_records',
       'migration_control_reset_sessions',
       'migration_executions',
       'migration_inventory_projection',
@@ -2508,7 +2404,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
   });
 
   migrationStoreTest(
-    'migrates exact V1/V2/V3/V4/V5 stores and fails closed on migration checksum or index drift',
+    'migrates exact schema versions 1–5 and fails closed on migration checksum or index drift',
     () => {
       const databasePath = makeDatabasePath();
       const initial = openStore(databasePath);
@@ -2597,7 +2493,6 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       v2.exec('DROP TABLE migration_control_reset_sessions');
       v2.exec('DROP TABLE control_lineages');
       v2.exec('DROP TABLE migration_inventory_projection');
-      v2.exec('DROP TABLE migration_authority_records');
       v2.exec('DROP TABLE migration_executions');
       v2.query('DELETE FROM migration_records WHERE schema_version IN (3, 4, 5, 6)').run();
       v2.close();
@@ -2624,7 +2519,6 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       v1.exec('DROP TABLE migration_control_reset_sessions');
       v1.exec('DROP TABLE control_lineages');
       v1.exec('DROP TABLE migration_inventory_projection');
-      v1.exec('DROP TABLE migration_authority_records');
       v1.exec('DROP TABLE migration_executions');
       v1.exec('DROP TABLE interactive_requests');
       v1.query('DELETE FROM migration_records WHERE schema_version IN (2, 3, 4, 5, 6)').run();
@@ -2674,334 +2568,6 @@ describe('ChatTurn Operation V2 migration runtime authority', () => {
         .get()?.count,
     ).toBe(1);
     inspection.close();
-  });
-
-  test('executes and replays the concrete migration coordinator through the Store adapter', () => {
-    const store = openStore();
-    const scope = store.ensureWorkspaceScope(workspaceScope());
-    const plan = legacyMigrationPlanFixture(scope.workspaceScopeId);
-    const files: ChatOperationV2MigrationFileAdapter = {
-      verifyLegacyBindingEvidence(mutation) {
-        return {
-          status: mutation.status,
-          sourceRecordHash: mutation.sourceRecordHash,
-          evidenceHash: mutation.evidenceHash,
-          targetIdentity: mutation.target.identity,
-        };
-      },
-      verifyLegacyStageEvidence(mutation) {
-        return {
-          sourceRecordHash: mutation.sourceRecordHash,
-          targetIdentity: mutation.target.identity,
-          sessionId: mutation.sessionId,
-          evidenceHashes: mutation.evidenceHashes,
-        };
-      },
-      inspectControlArchives() {
-        throw new Error('Legacy import must not inspect control archives.');
-      },
-      archiveControlFiles() {
-        throw new Error('Legacy import must not archive control files.');
-      },
-      installNewControlKey() {
-        throw new Error('Legacy import must not install a control key.');
-      },
-      discardFailedNewControlKey() {
-        throw new Error('Legacy import must not discard a control key.');
-      },
-      restoreControlFiles() {
-        throw new Error('Legacy import must not restore control files.');
-      },
-      disposeControlResetKey() {},
-    };
-    const adapter = createChatOperationV2StoreMigrationAdapter(store);
-
-    const first = executeChatOperationV2Migration(plan, {
-      store: adapter,
-      files,
-      now: () => 1_900_000_000_500,
-    });
-    const replay = executeChatOperationV2Migration(plan, {
-      store: adapter,
-      files,
-      now: () => 1_900_000_000_501,
-    });
-
-    expect(first).toMatchObject({
-      planId: plan.migrationId,
-      disposition: 'legacy_imported',
-      replayed: false,
-      controlArchiveSetHash: null,
-    });
-    expect(replay).toEqual({ ...first, replayed: true });
-    const { replayed: _replayed, ...storedFirst } = first;
-    expect(store.readMigrationExecution(plan.migrationId)).toEqual(storedFirst);
-    store.close();
-  });
-
-  test('imports certified legacy control evidence and records the execution receipt last', () => {
-    const databasePath = makeDatabasePath();
-    const store = openStore(databasePath);
-    const scope = store.ensureWorkspaceScope(workspaceScope());
-    const plan = legacyMigrationPlanFixture(scope.workspaceScopeId);
-    const execution = legacyMigrationExecution(plan);
-    const adapter = createChatOperationV2StoreMigrationAdapter(store);
-
-    const receipt = store.runMigrationImmediate((transaction) => {
-      expect(transaction.getExecution(plan.migrationId)).toBeNull();
-      for (const mutation of plan.sqliteTransaction.mutations) {
-        if (mutation.kind === 'import_legacy_binding') {
-          transaction.importLegacyBinding(mutation);
-        } else if (mutation.kind === 'import_legacy_stage_recovery') {
-          transaction.importLegacyStageRecovery(mutation);
-        } else {
-          transaction.quarantineLegacyRegistry(plan.workspaceScopeId, mutation);
-        }
-      }
-      for (const history of plan.historyOnlyResults) {
-        transaction.recordLegacyHistory(plan.workspaceScopeId, history);
-      }
-      transaction.replaceInventoryProjection(plan.workspaceScopeId, plan.inventoryProjection);
-      transaction.recordExecution(execution);
-      return execution;
-    });
-
-    expect(receipt).toEqual(execution);
-    expect(adapter.readExecution(plan.migrationId)).toEqual(execution);
-    expect(store.readMigrationExecution(plan.migrationId)).toEqual(execution);
-    expect(
-      store.runMigrationImmediate((transaction) => transaction.getExecution(plan.migrationId)),
-    ).toEqual(execution);
-    expect(() =>
-      store.runMigrationImmediate((transaction) => {
-        transaction.getExecution(plan.migrationId);
-        transaction.replaceInventoryProjection(plan.workspaceScopeId, []);
-      }),
-    ).toThrow(expect.objectContaining({ code: 'migration_execution_conflict' }));
-    store.close();
-
-    const inspection = new Database(databasePath, { readonly: true, strict: true });
-    expect(
-      inspection
-        .query<{ count: number }, []>('SELECT COUNT(*) AS count FROM migration_authority_records')
-        .get()?.count,
-    ).toBe(3);
-    expect(
-      inspection
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) AS count FROM migration_inventory_projection',
-        )
-        .get()?.count,
-    ).toBe(plan.inventoryProjection.length);
-    expect(
-      inspection
-        .query<{ count: number }, []>(
-          "SELECT COUNT(*) AS count FROM migration_inventory_projection WHERE ownership = 'session_owned' AND binding_id = 'legacy-imported-binding'",
-        )
-        .get()?.count,
-    ).toBe(1);
-    const serialized = inspection
-      .query<{ authority_canonical: Uint8Array }, []>(
-        'SELECT authority_canonical FROM migration_authority_records ORDER BY authority_kind',
-      )
-      .all()
-      .map(({ authority_canonical }) => new TextDecoder().decode(authority_canonical))
-      .join('\n');
-    expect(serialized).not.toContain('pipeline:');
-    expect(serialized).not.toContain('yamlBytes');
-    inspection.close();
-
-    const reopened = openStore(databasePath);
-    expect(reopened.readMigrationExecution(plan.migrationId)).toEqual(execution);
-    reopened.close();
-  });
-
-  test('quarantines unauthenticated legacy registry evidence without importing ownership', () => {
-    const databasePath = makeDatabasePath();
-    const store = openStore(databasePath);
-    const scope = store.ensureWorkspaceScope(workspaceScope());
-    const plan = planLegacyV1ChatMigration({
-      migrationId: 'store-legacy-quarantine',
-      workspaceScopeId: scope.workspaceScopeId,
-      plannedAtMs: 1_900_000_000_300,
-      registry: {
-        sourceRegistryId: 'legacy-invalid-registry',
-        authentication: 'invalid_hmac',
-        evidenceHash: migrationHash('a'),
-        quarantineId: 'legacy-registry-quarantine',
-      },
-      bindings: [],
-      activeStages: [],
-      completedResults: [],
-      inventory: [{ platform: 'posix', targetCoordinate: 'quarantine/unowned.yaml' }],
-    });
-    const mutation = plan.sqliteTransaction.mutations[0];
-    if (!mutation || mutation.kind !== 'quarantine_legacy_registry') {
-      throw new Error('Expected quarantine mutation.');
-    }
-    const execution = {
-      version: 1 as const,
-      planId: plan.migrationId,
-      planHash: plan.planHash,
-      planKind: 'legacy_v1_import' as const,
-      disposition: 'legacy_quarantined' as const,
-      appliedAtMs: 1_900_000_000_301,
-      sqliteMutationCount: 1,
-      importedBindingCount: 0,
-      importedStageCount: 0,
-      historyOnlyCount: 0,
-      inventoryCount: plan.inventoryProjection.length,
-      controlGeneration: null,
-      controlArchiveSetHash: null,
-      resetRequestHash: null,
-      resetTrigger: null,
-      resetOldKeyDisposition: null,
-    };
-
-    store.runMigrationImmediate((transaction) => {
-      transaction.quarantineLegacyRegistry(plan.workspaceScopeId, mutation);
-      transaction.replaceInventoryProjection(plan.workspaceScopeId, plan.inventoryProjection);
-      transaction.recordExecution(execution);
-    });
-    store.close();
-
-    const inspection = new Database(databasePath, { readonly: true, strict: true });
-    const quarantine = inspection
-      .query<{ authority_canonical: Uint8Array }, []>(
-        "SELECT authority_canonical FROM migration_authority_records WHERE authority_kind = 'legacy_registry_quarantine'",
-      )
-      .get();
-    expect(quarantine).not.toBeNull();
-    const serialized = new TextDecoder().decode(quarantine?.authority_canonical);
-    expect(serialized).toContain('"ownershipImport":"forbidden"');
-    expect(serialized).not.toContain('ownerSessionId');
-    expect(
-      inspection
-        .query<{ count: number }, []>(
-          "SELECT COUNT(*) AS count FROM migration_inventory_projection WHERE ownership = 'unowned'",
-        )
-        .get()?.count,
-    ).toBe(1);
-    inspection.close();
-  });
-
-  test('rolls every legacy mutation back on faults and rejects async transaction escape', async () => {
-    const databasePath = makeDatabasePath();
-    const store = openStore(databasePath);
-    const scope = store.ensureWorkspaceScope(workspaceScope());
-    const plan = legacyMigrationPlanFixture(scope.workspaceScopeId);
-    const binding = plan.sqliteTransaction.mutations.find(
-      (mutation) => mutation.kind === 'import_legacy_binding',
-    );
-    if (!binding || binding.kind !== 'import_legacy_binding') {
-      throw new Error('Expected legacy binding fixture.');
-    }
-
-    expect(() =>
-      store.runMigrationImmediate((transaction) => {
-        transaction.importLegacyBinding(binding);
-        transaction.replaceInventoryProjection(plan.workspaceScopeId, plan.inventoryProjection);
-        throw new Error('injected migration failure');
-      }),
-    ).toThrow('injected migration failure');
-    expect(store.readMigrationExecution(plan.migrationId)).toBeNull();
-    expect(() =>
-      store.runMigrationImmediate((transaction) => {
-        transaction.importLegacyBinding(binding);
-        return Promise.resolve('escaped') as never;
-      }),
-    ).toThrow(expect.objectContaining({ code: 'migration_transaction_required' }));
-    await Promise.resolve();
-    store.close();
-
-    const inspection = new Database(databasePath, { readonly: true, strict: true });
-    expect(
-      inspection
-        .query<{ count: number }, []>('SELECT COUNT(*) AS count FROM migration_authority_records')
-        .get()?.count,
-    ).toBe(0);
-    expect(
-      inspection
-        .query<{ count: number }, []>(
-          'SELECT COUNT(*) AS count FROM migration_inventory_projection',
-        )
-        .get()?.count,
-    ).toBe(0);
-    inspection.close();
-  });
-
-  test('replaces legacy inventory only within the explicitly named workspace scope', () => {
-    const databasePath = makeDatabasePath();
-    const store = openStore(databasePath);
-    const firstScope = store.ensureWorkspaceScope(workspaceScope('inventory-first'));
-    const secondScope = store.ensureWorkspaceScope(workspaceScope('inventory-second'));
-    const entry = {
-      workspaceScopeId: secondScope.workspaceScopeId,
-      platform: 'posix' as const,
-      targetCoordinate: 'second/second.yaml',
-      targetIdentity: 'second/second.yaml',
-      ownership: 'unowned' as const,
-      bindingId: null,
-      ownerSessionId: null,
-    };
-    const execution = (planId: string, planHash: string, inventoryCount: number) => ({
-      version: 1 as const,
-      planId,
-      planHash,
-      planKind: 'legacy_v1_import' as const,
-      disposition: 'legacy_imported' as const,
-      appliedAtMs: 1_900_000_000_700,
-      sqliteMutationCount: 0,
-      importedBindingCount: 0,
-      importedStageCount: 0,
-      historyOnlyCount: 0,
-      inventoryCount,
-      controlGeneration: null,
-      controlArchiveSetHash: null,
-      resetRequestHash: null,
-      resetTrigger: null,
-      resetOldKeyDisposition: null,
-    });
-    store.runMigrationImmediate((transaction) => {
-      transaction.replaceInventoryProjection(secondScope.workspaceScopeId, [entry]);
-      transaction.recordExecution(execution('inventory-second-plan', migrationHash('a'), 1));
-    });
-    store.runMigrationImmediate((transaction) => {
-      transaction.replaceInventoryProjection(firstScope.workspaceScopeId, []);
-      transaction.recordExecution(execution('inventory-first-plan', migrationHash('b'), 0));
-    });
-    store.close();
-
-    const inspection = new Database(databasePath, { readonly: true, strict: true });
-    expect(
-      inspection
-        .query<{ workspace_scope_id: string }, []>(
-          'SELECT workspace_scope_id FROM migration_inventory_projection',
-        )
-        .all(),
-    ).toEqual([{ workspace_scope_id: secondScope.workspaceScopeId }]);
-    inspection.close();
-  });
-
-  test('fails closed when durable migration execution projections are tampered', () => {
-    const databasePath = makeDatabasePath();
-    const store = openStore(databasePath);
-    const scope = store.ensureWorkspaceScope(workspaceScope());
-    const plan = legacyMigrationPlanFixture(scope.workspaceScopeId);
-    const execution = legacyMigrationExecution(plan);
-    store.runMigrationImmediate((transaction) => transaction.recordExecution(execution));
-    store.close();
-
-    const tampered = new Database(databasePath, { strict: true });
-    tampered
-      .query('UPDATE migration_executions SET plan_hash = ? WHERE plan_id = ?')
-      .run(migrationHash('0'), execution.planId);
-    tampered.close();
-    const reopened = openStore(databasePath);
-    expect(() => reopened.readMigrationExecution(execution.planId)).toThrow(
-      expect.objectContaining({ code: 'corrupt_store' }),
-    );
-    reopened.close();
   });
 
   test('adopts an empty moved scope by exact CAS and re-signs the old scope at the new coordinate', () => {
@@ -3061,9 +2627,6 @@ describe('ChatTurn Operation V2 migration runtime authority', () => {
       disposition: 'workspace_adopted' as const,
       appliedAtMs: 1_900_000_000_201,
       sqliteMutationCount: 1,
-      importedBindingCount: 0,
-      importedStageCount: 0,
-      historyOnlyCount: 0,
       inventoryCount: 0,
       controlGeneration: oldScope.controlGeneration,
       controlArchiveSetHash: null,

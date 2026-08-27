@@ -9,9 +9,7 @@ import {
   fstatSync,
   lstatSync,
   openSync,
-  readdirSync,
   readSync,
-  realpathSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -19,21 +17,12 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
-import { listChatYamlStage, type ChatYamlStageDescriptor } from '../chat-yaml-staging.js';
-import { parseChatPipelineBinding, type ChatPipelineBinding } from '../chat-pipeline-binding.js';
-import { tagmaDirOf } from '../pipeline-paths.js';
-import {
-  readAuthenticatedServerRecordSync,
-  type ServerRecordContext,
-} from '../server-record-auth.js';
 import type { WorkspaceState } from '../workspace-state.js';
 import {
   executeChatOperationV2Migration,
   type ChatOperationV2BeginControlResetResult,
   type ChatOperationV2ControlArchiveEvidence,
   type ChatOperationV2ControlArchiveInspection,
-  type ChatOperationV2LegacyBindingExecutionEvidence,
-  type ChatOperationV2LegacyStageExecutionEvidence,
   type ChatOperationV2MigrationExecutionReceipt,
   type ChatOperationV2MigrationExecutionRecord,
   type ChatOperationV2MigrationFileAdapter,
@@ -42,15 +31,9 @@ import {
   type ExecuteChatOperationV2MigrationOptions,
 } from './migration-executor.js';
 import {
-  planLegacyV1ChatMigration,
   planExplicitChatControlReset,
   deriveChatOperationV2ControlResetArchiveSuffix,
   type ChatOperationV2MigrationPlan,
-  type LegacyV1ActiveStageMigrationCandidate,
-  type LegacyV1BindingMigrationCandidate,
-  type LegacyV1BindingMutation,
-  type LegacyV1CompletedResultEvidence,
-  type LegacyV1MigrationPlan,
   type ExplicitChatControlResetPlan,
 } from './migration.js';
 import {
@@ -61,36 +44,9 @@ import type { ChatOperationV2ControlPaths } from './control-root.js';
 import { ChatOperationV2Store } from './store.js';
 import { buildChatOperationV2HostInventory } from './inventory.js';
 
-const LEGACY_BINDING_DIRECTORY = '.chat-pipeline-bindings';
-const LEGACY_BINDING_RECORD = 'bindings.json';
-const LEGACY_BINDING_REGISTRY_VERSION = 1;
-const LEGACY_STAGING_DIRECTORY = '.chat-staging';
-const LEGACY_STAGE_METADATA = 'stage.json';
-const MAX_AUTHENTICATED_RECORD_BYTES = 5 * 1024 * 1024;
-const MAX_STAGE_TREE_ENTRIES = 10_000;
-const MAX_STAGE_TREE_BYTES = 256 * 1024 * 1024;
-const MAX_STAGE_TREE_DEPTH = 64;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const HOST_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,199})$/;
 const KEY_ID = /^sha256:[0-9a-f]{64}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export type LegacyV1MigrationDiagnosticReason =
-  | 'invalid_hmac'
-  | 'corrupt'
-  | 'stage_metadata_untrusted'
-  | 'stage_target_missing'
-  | 'stage_relocation_missing'
-  | 'stage_relocation_ambiguous'
-  | 'stage_lock_untrusted'
-  | 'stage_session_untrusted'
-  | 'stage_tree_untrusted';
-
-export interface LegacyV1MigrationDiagnostic {
-  readonly kind: 'legacy_registry_quarantined' | 'legacy_stage_isolated';
-  readonly id: string;
-  readonly reason: LegacyV1MigrationDiagnosticReason;
-}
 
 export interface OfflineChatOperationV2ControlLineageInspection {
   /** Host-private exact coordinate; never copied into plans or receipts. */
@@ -134,30 +90,6 @@ export function inspectChatOperationV2RawControlKeyState(
       { cause: error },
     );
   }
-}
-
-export interface LegacyV1SessionInspection {
-  readonly sessionId: string;
-  readonly directory: string;
-  readonly status: 'idle' | 'busy' | 'missing';
-}
-
-export interface PrepareLegacyV1ChatMigrationInput {
-  readonly workspace: WorkspaceState;
-  readonly workspaceScopeId: string;
-  readonly migrationId: string;
-  readonly plannedAtMs: number;
-  /** History-only evidence; it can never create binding or publication authority. */
-  readonly completedResults: readonly LegacyV1CompletedResultEvidence[];
-  readonly inspectSession?: (sessionId: string) => LegacyV1SessionInspection | null;
-  readonly controlPaths?: ChatOperationV2ControlPaths;
-  readonly evidenceNow?: () => number;
-}
-
-export interface PreparedLegacyV1ChatMigration {
-  readonly plan: LegacyV1MigrationPlan;
-  readonly files: ChatOperationV2MigrationFileAdapter;
-  readonly diagnostics: readonly LegacyV1MigrationDiagnostic[];
 }
 
 export interface PrepareExplicitChatOperationV2ControlResetInput {
@@ -243,58 +175,13 @@ export function createChatOperationV2StoreMigrationAdapter(
   });
 }
 
-interface LegacyBindingRegistryRead {
-  readonly authentication: 'trusted' | 'invalid_hmac' | 'corrupt';
-  readonly sourceRegistryId: string;
-  readonly evidenceHash: string;
-  readonly payloadHash: string | null;
-  readonly bindings: readonly ChatPipelineBinding[];
-  readonly registryPath: string;
-  readonly context: ServerRecordContext;
-}
-
-interface LegacyBindingCertificate {
-  readonly importedBindingId: string;
-  readonly sourceBindingId: string;
-  readonly sourceRecordHash: string;
-  readonly targetPath: string;
-  readonly targetIdentity: string;
-  readonly status: LegacyV1BindingMutation['status'];
-  readonly targetContentHash: string | null;
-  readonly evidenceHash: string;
-  readonly registryPath: string;
-  readonly registryContext: ServerRecordContext;
-  readonly registryPayloadHash: string;
-}
-
-interface LegacyStageCertificate {
-  readonly importedStageId: string;
-  readonly sourceStageId: string;
-  readonly workspaceScopeId: string;
-  readonly sourceRecordHash: string;
-  readonly targetIdentity: string;
-  readonly sessionId: string;
-  readonly evidenceHashes: {
-    readonly stageDigest: string;
-    readonly relocation: string;
-    readonly lock: string;
-    readonly session: string;
-  };
-}
-
 export interface NodeMigrationFileAdapterOptions {
   readonly controlPaths?: ChatOperationV2ControlPaths;
-  readonly workspace?: WorkspaceState;
-  readonly inspectSession?: (sessionId: string) => LegacyV1SessionInspection | null;
-  readonly evidenceNow?: () => number;
   /** One-shot Host authority consumed by this adapter; never serialized. */
   readonly resetKeyMaterial?: ChatOperationV2ResetKeyMaterial;
 }
 
-interface InternalNodeMigrationFileAdapterOptions extends NodeMigrationFileAdapterOptions {
-  readonly bindingCertificates?: ReadonlyMap<string, LegacyBindingCertificate>;
-  readonly stageCertificates?: ReadonlyMap<string, LegacyStageCertificate>;
-}
+type InternalNodeMigrationFileAdapterOptions = NodeMigrationFileAdapterOptions;
 
 export interface ChatOperationV2ResetKeyMaterial {
   readonly keyId: string;
@@ -356,10 +243,6 @@ function canonicalJson(value: unknown): string {
     .sort()
     .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
     .join(',')}}`;
-}
-
-function canonicalHash(value: unknown): string {
-  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
 }
 
 function hashBytes(value: string | Uint8Array): string {
@@ -592,187 +475,6 @@ function hashRegularFile(filePath: string, maximumBytes = Number.MAX_SAFE_INTEGE
   }
 }
 
-function readBoundedRegularBytes(filePath: string): Buffer {
-  const before = lstatSync(filePath);
-  if (before.isSymbolicLink() || !before.isFile() || before.size > MAX_AUTHENTICATED_RECORD_BYTES) {
-    throw new Error('Legacy authenticated record must be one bounded regular file.');
-  }
-  const noFollow = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0;
-  const descriptor = openSync(filePath, constants.O_RDONLY | noFollow);
-  try {
-    const opened = fstatSync(descriptor);
-    if (!opened.isFile() || opened.size !== before.size) {
-      throw new Error('Legacy authenticated record changed before it was opened.');
-    }
-    const bytes = Buffer.alloc(opened.size);
-    let offset = 0;
-    while (offset < bytes.byteLength) {
-      const count = readSync(descriptor, bytes, offset, bytes.byteLength - offset, offset);
-      if (count <= 0) throw new Error('Legacy authenticated record ended before its size.');
-      offset += count;
-    }
-    const after = fstatSync(descriptor);
-    if (after.size !== opened.size || after.mtimeMs !== opened.mtimeMs) {
-      throw new Error('Legacy authenticated record changed while it was read.');
-    }
-    return bytes;
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
-function legacyRegistryPaths(workspace: WorkspaceState): {
-  readonly registryPath: string;
-  readonly context: ServerRecordContext;
-} {
-  if (!workspace.workDir) throw new Error('Workspace directory is not set.');
-  const workspaceTagmaDir = realpathSync.native(resolve(tagmaDirOf(workspace.workDir)));
-  const controlRoot = join(workspaceTagmaDir, LEGACY_BINDING_DIRECTORY);
-  return {
-    registryPath: join(controlRoot, LEGACY_BINDING_RECORD),
-    context: {
-      workspaceTagmaDir,
-      controlRoot,
-      stageId: 'workspace-chat-pipeline-bindings',
-      kind: 'chat-bindings',
-    },
-  };
-}
-
-function assertUniqueLegacyBindings(bindings: readonly ChatPipelineBinding[]): void {
-  const ids = new Set<string>();
-  const requests = new Set<string>();
-  const targets = new Set<string>();
-  for (const binding of bindings) {
-    const request = `${binding.sessionId}\0${binding.bindingRequestId}`;
-    const target =
-      process.platform === 'win32'
-        ? binding.targetRelativePath.toLowerCase()
-        : binding.targetRelativePath;
-    if (ids.has(binding.id) || requests.has(request) || targets.has(target)) {
-      throw new Error('Legacy binding registry contains duplicate authority.');
-    }
-    ids.add(binding.id);
-    requests.add(request);
-    targets.add(target);
-  }
-}
-
-function readLegacyBindingRegistry(workspace: WorkspaceState): LegacyBindingRegistryRead {
-  const { registryPath, context } = legacyRegistryPaths(workspace);
-  const sourceRegistryId = `legacy-registry-${hashBytes(registryPath).slice(0, 32)}`;
-  if (!existsSync(registryPath)) {
-    const payload = { version: LEGACY_BINDING_REGISTRY_VERSION, bindings: [] };
-    const payloadHash = canonicalHash(payload);
-    return {
-      authentication: 'trusted',
-      sourceRegistryId,
-      evidenceHash: canonicalHash({ authentication: 'trusted', payloadHash }),
-      payloadHash,
-      bindings: [],
-      registryPath,
-      context,
-    };
-  }
-  let bytes: Buffer;
-  try {
-    assertNoSymlinkPath(context.workspaceTagmaDir, registryPath);
-    bytes = readBoundedRegularBytes(registryPath);
-  } catch {
-    return {
-      authentication: 'corrupt',
-      sourceRegistryId,
-      evidenceHash: canonicalHash({ authentication: 'corrupt', unreadable: true }),
-      payloadHash: null,
-      bindings: [],
-      registryPath,
-      context,
-    };
-  }
-  let syntacticallyJson = false;
-  try {
-    const parsed = JSON.parse(bytes.toString('utf8')) as unknown;
-    syntacticallyJson = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
-  } catch {
-    // Classified below as corrupt rather than invalid-HMAC.
-  }
-  let payload: { version?: unknown; bindings?: unknown };
-  try {
-    payload = readAuthenticatedServerRecordSync(registryPath, context);
-  } catch {
-    const authentication = syntacticallyJson ? 'invalid_hmac' : 'corrupt';
-    return {
-      authentication,
-      sourceRegistryId,
-      evidenceHash: canonicalHash({ authentication, rawHash: hashBytes(bytes) }),
-      payloadHash: null,
-      bindings: [],
-      registryPath,
-      context,
-    };
-  }
-  try {
-    if (payload.version !== LEGACY_BINDING_REGISTRY_VERSION || !Array.isArray(payload.bindings)) {
-      throw new Error('Legacy registry schema is invalid.');
-    }
-    const bindings = payload.bindings.map(parseChatPipelineBinding);
-    assertUniqueLegacyBindings(bindings);
-    const normalized = { version: LEGACY_BINDING_REGISTRY_VERSION, bindings };
-    const payloadHash = canonicalHash(normalized);
-    return {
-      authentication: 'trusted',
-      sourceRegistryId,
-      evidenceHash: canonicalHash({ authentication: 'trusted', payloadHash }),
-      payloadHash,
-      bindings,
-      registryPath,
-      context,
-    };
-  } catch {
-    return {
-      authentication: 'corrupt',
-      sourceRegistryId,
-      evidenceHash: canonicalHash({ authentication: 'corrupt', rawHash: hashBytes(bytes) }),
-      payloadHash: null,
-      bindings: [],
-      registryPath,
-      context,
-    };
-  }
-}
-
-function targetPath(tagmaDir: string, coordinate: string): string {
-  const target = resolve(tagmaDir, ...coordinate.split('/'));
-  if (!isWithin(target, tagmaDir) || samePath(target, tagmaDir)) {
-    throw new Error('Legacy binding target escaped the workspace .tagma root.');
-  }
-  assertNoSymlinkPath(tagmaDir, target);
-  return target;
-}
-
-function targetObservation(
-  tagmaDir: string,
-  coordinate: string,
-): {
-  readonly status: 'published' | 'released';
-  readonly path: string;
-  readonly hash: string | null;
-} {
-  const path = targetPath(tagmaDir, coordinate);
-  if (!existsSync(path)) return { status: 'released', path, hash: null };
-  return { status: 'published', path, hash: hashRegularFile(path) };
-}
-
-function bindingEvidenceHash(input: {
-  readonly registryPayloadHash: string;
-  readonly sourceRecordHash: string;
-  readonly targetIdentity: string;
-  readonly status: 'published' | 'released';
-  readonly targetContentHash: string | null;
-}): string {
-  return canonicalHash({ schemaVersion: 1, domain: 'legacy_v1_binding', ...input });
-}
-
 function derivedId(kind: string, source: string): string {
   return `${kind}-${hashBytes(source).slice(0, 32)}`;
 }
@@ -889,245 +591,6 @@ export function prepareExplicitChatOperationV2ControlReset(
   }
 }
 
-function stageTreeHash(root: string): string {
-  const rootStat = lstatSync(root);
-  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
-    throw new Error('Legacy stage root must be one regular directory.');
-  }
-  const digest = createHash('sha256');
-  let entries = 0;
-  let bytes = 0;
-  const visit = (directory: string, relativeDirectory: string, depth: number): void => {
-    if (depth > MAX_STAGE_TREE_DEPTH) throw new Error('Legacy stage tree is too deep.');
-    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    )) {
-      entries += 1;
-      if (entries > MAX_STAGE_TREE_ENTRIES) throw new Error('Legacy stage tree is too large.');
-      const absolute = join(directory, entry.name);
-      const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
-      const stat = lstatSync(absolute);
-      if (stat.isSymbolicLink()) throw new Error('Legacy stage tree contains a symlink.');
-      if (stat.isDirectory()) {
-        digest.update(`dir\0${relativePath}\0`);
-        visit(absolute, relativePath, depth + 1);
-        continue;
-      }
-      if (!stat.isFile()) throw new Error('Legacy stage tree contains a non-regular entry.');
-      bytes += stat.size;
-      if (bytes > MAX_STAGE_TREE_BYTES) throw new Error('Legacy stage tree bytes are too large.');
-      digest.update(`file\0${relativePath}\0${hashRegularFile(absolute, MAX_STAGE_TREE_BYTES)}\0`);
-    }
-  };
-  visit(root, '', 0);
-  return digest.digest('hex');
-}
-
-function stageRecord(workspace: WorkspaceState, stageId: string) {
-  if (!workspace.workDir) throw new Error('Workspace directory is not set.');
-  const workspaceTagmaDir = realpathSync.native(resolve(tagmaDirOf(workspace.workDir)));
-  const rootDir = join(workspaceTagmaDir, LEGACY_STAGING_DIRECTORY, stageId);
-  const metadataPath = join(rootDir, LEGACY_STAGE_METADATA);
-  const context: ServerRecordContext = {
-    workspaceTagmaDir,
-    controlRoot: rootDir,
-    stageId,
-    kind: 'stage-metadata',
-  };
-  const payload = readAuthenticatedServerRecordSync<Record<string, unknown>>(metadataPath, context);
-  return { rootDir, payload, payloadHash: canonicalHash(payload) };
-}
-
-function canonicalExistingPath(value: string): string {
-  return comparablePath(realpathSync.native(resolve(value)));
-}
-
-function evidenceHash(domain: string, domainHash: string): string {
-  return canonicalHash({ schemaVersion: 1, domain, domainHash });
-}
-
-interface ObservedStageEvidence {
-  readonly sourceRecordHash: string;
-  readonly targetIdentity: string;
-  readonly sessionId: string;
-  readonly evidenceHashes: LegacyStageCertificate['evidenceHashes'];
-  readonly candidate: LegacyV1ActiveStageMigrationCandidate;
-}
-
-function observeStage(
-  workspace: WorkspaceState,
-  stageId: string,
-  workspaceScopeId: string,
-  inspectSession: ((sessionId: string) => LegacyV1SessionInspection | null) | undefined,
-  now: () => number,
-):
-  | { readonly ok: true; readonly evidence: ObservedStageEvidence }
-  | {
-      readonly ok: false;
-      readonly reason: Exclude<LegacyV1MigrationDiagnosticReason, 'invalid_hmac' | 'corrupt'>;
-    } {
-  let descriptor: ChatYamlStageDescriptor;
-  let record: ReturnType<typeof stageRecord>;
-  try {
-    descriptor = listChatYamlStage(workspace, stageId);
-    record = stageRecord(workspace, stageId);
-  } catch {
-    return { ok: false, reason: 'stage_metadata_untrusted' };
-  }
-  const targetCoordinate =
-    descriptor.pipelineBinding?.targetRelativePath ?? descriptor.activeRelativePath;
-  if (!targetCoordinate) return { ok: false, reason: 'stage_target_missing' };
-  const target = normalizeChatOperationV2TargetCoordinate(targetCoordinate, pathPlatform());
-  const relocation = descriptor.sessionRelocation;
-  if (!relocation) return { ok: false, reason: 'stage_relocation_missing' };
-  if (relocation.phase === 'restoring') {
-    return { ok: false, reason: 'stage_relocation_ambiguous' };
-  }
-  if (!HOST_ID.test(relocation.sessionId)) {
-    return { ok: false, reason: 'stage_session_untrusted' };
-  }
-  const ownerLockHash = record.payload.ownerLockHash;
-  const liveLock = workspace.yamlEditLock;
-  if (
-    typeof ownerLockHash !== 'string' ||
-    !SHA256_HEX.test(ownerLockHash) ||
-    !liveLock ||
-    liveLock.expiresAt <= now() ||
-    hashBytes(liveLock.id) !== ownerLockHash
-  ) {
-    return { ok: false, reason: 'stage_lock_untrusted' };
-  }
-  const session = inspectSession?.(relocation.sessionId) ?? null;
-  const expectedDirectory =
-    relocation.phase === 'staged' ? relocation.targetDirectory : relocation.sourceDirectory;
-  let observedDirectory: string | null = null;
-  let requiredDirectory: string | null = null;
-  try {
-    if (session) observedDirectory = canonicalExistingPath(session.directory);
-    requiredDirectory = canonicalExistingPath(expectedDirectory);
-  } catch {
-    return { ok: false, reason: 'stage_session_untrusted' };
-  }
-  if (
-    !session ||
-    session.sessionId !== relocation.sessionId ||
-    session.status !== 'idle' ||
-    observedDirectory === null ||
-    requiredDirectory === null ||
-    !samePath(observedDirectory, requiredDirectory)
-  ) {
-    return { ok: false, reason: 'stage_session_untrusted' };
-  }
-  let treeHash: string;
-  try {
-    treeHash = stageTreeHash(record.rootDir);
-  } catch {
-    return { ok: false, reason: 'stage_tree_untrusted' };
-  }
-  let finalRecord: ReturnType<typeof stageRecord>;
-  try {
-    finalRecord = stageRecord(workspace, stageId);
-  } catch {
-    return { ok: false, reason: 'stage_metadata_untrusted' };
-  }
-  if (finalRecord.payloadHash !== record.payloadHash) {
-    return { ok: false, reason: 'stage_metadata_untrusted' };
-  }
-  const finalLock = workspace.yamlEditLock;
-  if (
-    !finalLock ||
-    finalLock.id !== liveLock.id ||
-    finalLock.expiresAt <= now() ||
-    hashBytes(finalLock.id) !== ownerLockHash
-  ) {
-    return { ok: false, reason: 'stage_lock_untrusted' };
-  }
-  let finalSession: LegacyV1SessionInspection | null = null;
-  let finalSessionDirectory: string | null = null;
-  try {
-    finalSession = inspectSession?.(relocation.sessionId) ?? null;
-    if (finalSession) finalSessionDirectory = canonicalExistingPath(finalSession.directory);
-  } catch {
-    return { ok: false, reason: 'stage_session_untrusted' };
-  }
-  if (
-    !finalSession ||
-    finalSession.sessionId !== session.sessionId ||
-    finalSession.status !== 'idle' ||
-    finalSessionDirectory !== observedDirectory
-  ) {
-    return { ok: false, reason: 'stage_session_untrusted' };
-  }
-  const stageDigestHash = canonicalHash({ metadataHash: record.payloadHash, treeHash });
-  const relocationHash = canonicalHash(relocation);
-  const lockHash = canonicalHash({ ownerLockHash, liveLockIdHash: hashBytes(finalLock.id) });
-  const sessionHash = canonicalHash({
-    sessionId: finalSession.sessionId,
-    directory: finalSessionDirectory,
-    status: finalSession.status,
-  });
-  const evidenceHashes = {
-    stageDigest: evidenceHash('legacy_v1_stage_digest', stageDigestHash),
-    relocation: evidenceHash('legacy_v1_stage_relocation', relocationHash),
-    lock: evidenceHash('legacy_v1_stage_lock', lockHash),
-    session: evidenceHash('legacy_v1_stage_session', sessionHash),
-  };
-  const candidate: LegacyV1ActiveStageMigrationCandidate = {
-    sourceStageId: stageId,
-    stageId: derivedId('legacy-stage', `${workspaceScopeId}\0${stageId}`),
-    recoveryOperationId: derivedId('legacy-stage-recovery', `${workspaceScopeId}\0${stageId}`),
-    sessionId: relocation.sessionId,
-    sourceRecordHash: record.payloadHash,
-    target: { platform: target.platform, coordinate: target.coordinate },
-    stageDigest: {
-      authentication: 'trusted',
-      expectedHash: stageDigestHash,
-      observedHash: stageDigestHash,
-      evidenceHash: evidenceHashes.stageDigest,
-    },
-    relocationEvidence: {
-      authentication: 'trusted',
-      expectedHash: relocationHash,
-      observedHash: relocationHash,
-      evidenceHash: evidenceHashes.relocation,
-    },
-    lockEvidence: {
-      authentication: 'trusted',
-      expectedHash: lockHash,
-      observedHash: lockHash,
-      evidenceHash: evidenceHashes.lock,
-    },
-    sessionEvidence: {
-      authentication: 'trusted',
-      expectedHash: sessionHash,
-      observedHash: sessionHash,
-      evidenceHash: evidenceHashes.session,
-    },
-  };
-  return {
-    ok: true,
-    evidence: {
-      sourceRecordHash: record.payloadHash,
-      targetIdentity: target.identity,
-      sessionId: relocation.sessionId,
-      evidenceHashes,
-      candidate,
-    },
-  };
-}
-
-function stageIds(workspace: WorkspaceState): string[] {
-  if (!workspace.workDir) return [];
-  const root = join(tagmaDirOf(workspace.workDir), LEGACY_STAGING_DIRECTORY);
-  if (!existsSync(root)) return [];
-  const stat = lstatSync(root);
-  if (stat.isSymbolicLink() || !stat.isDirectory()) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && UUID.test(entry.name))
-    .map(({ name }) => name)
-    .sort();
-}
-
 class NodeChatOperationV2MigrationFileAdapter implements ChatOperationV2MigrationFileAdapter {
   readonly #options: InternalNodeMigrationFileAdapterOptions;
   #resetKey: Buffer | null = null;
@@ -1144,65 +607,6 @@ class NodeChatOperationV2MigrationFileAdapter implements ChatOperationV2Migratio
     } else {
       this.#resetKeyId = null;
     }
-  }
-
-  verifyLegacyBindingEvidence(
-    mutation: LegacyV1BindingMutation,
-  ): ChatOperationV2LegacyBindingExecutionEvidence {
-    const certificate = this.#options.bindingCertificates?.get(mutation.bindingId);
-    const workspace = this.#options.workspace;
-    if (!certificate || !workspace) throw new Error('Legacy binding certificate is unavailable.');
-    const registry = readLegacyBindingRegistry(workspace);
-    if (
-      registry.authentication !== 'trusted' ||
-      registry.payloadHash !== certificate.registryPayloadHash
-    ) {
-      throw new Error('Legacy binding registry evidence changed.');
-    }
-    const binding = registry.bindings.find(({ id }) => id === certificate.sourceBindingId);
-    if (!binding) throw new Error('Legacy binding source record disappeared.');
-    const sourceRecordHash = canonicalHash(binding);
-    const tagmaDir = realpathSync.native(resolve(tagmaDirOf(workspace.workDir)));
-    const observed = targetObservation(tagmaDir, binding.targetRelativePath);
-    const target = normalizeChatOperationV2TargetCoordinate(
-      binding.targetRelativePath,
-      pathPlatform(),
-    );
-    const observedEvidenceHash = bindingEvidenceHash({
-      registryPayloadHash: registry.payloadHash,
-      sourceRecordHash,
-      targetIdentity: target.identity,
-      status: observed.status,
-      targetContentHash: observed.hash,
-    });
-    return {
-      status: observed.status,
-      sourceRecordHash,
-      evidenceHash: observedEvidenceHash,
-      targetIdentity: target.identity,
-    };
-  }
-
-  verifyLegacyStageEvidence(
-    mutation: Parameters<ChatOperationV2MigrationFileAdapter['verifyLegacyStageEvidence']>[0],
-  ): ChatOperationV2LegacyStageExecutionEvidence {
-    const certificate = this.#options.stageCertificates?.get(mutation.stageId);
-    const workspace = this.#options.workspace;
-    if (!certificate || !workspace) throw new Error('Legacy stage certificate is unavailable.');
-    const observed = observeStage(
-      workspace,
-      certificate.sourceStageId,
-      certificate.workspaceScopeId,
-      this.#options.inspectSession,
-      this.#options.evidenceNow ?? Date.now,
-    );
-    if (!observed.ok) throw new Error(`Legacy stage evidence is unavailable: ${observed.reason}.`);
-    return {
-      sourceRecordHash: observed.evidence.sourceRecordHash,
-      targetIdentity: observed.evidence.targetIdentity,
-      sessionId: observed.evidence.sessionId,
-      evidenceHashes: observed.evidence.evidenceHashes,
-    };
   }
 
   inspectControlArchives(
@@ -1578,153 +982,6 @@ export function createNodeChatOperationV2MigrationFileAdapter(
   return new NodeChatOperationV2MigrationFileAdapter(options);
 }
 
-export function prepareLegacyV1ChatMigration(
-  input: PrepareLegacyV1ChatMigrationInput,
-): PreparedLegacyV1ChatMigration {
-  const registry = readLegacyBindingRegistry(input.workspace);
-  const diagnostics: LegacyV1MigrationDiagnostic[] = [];
-  const bindingCertificates = new Map<string, LegacyBindingCertificate>();
-  const stageCertificates = new Map<string, LegacyStageCertificate>();
-  const inventory = inventoryCoordinates(input.workspace);
-  if (registry.authentication !== 'trusted' || registry.payloadHash === null) {
-    const quarantineReason =
-      registry.authentication === 'trusted' ? ('corrupt' as const) : registry.authentication;
-    diagnostics.push({
-      kind: 'legacy_registry_quarantined',
-      id: 'registry',
-      reason: quarantineReason,
-    });
-    const plan = planLegacyV1ChatMigration({
-      migrationId: input.migrationId,
-      workspaceScopeId: input.workspaceScopeId,
-      plannedAtMs: input.plannedAtMs,
-      registry: {
-        sourceRegistryId: registry.sourceRegistryId,
-        authentication: quarantineReason,
-        evidenceHash: registry.evidenceHash,
-        quarantineId: derivedId('legacy-registry-quarantine', input.migrationId),
-      },
-      bindings: [],
-      activeStages: [],
-      completedResults: [],
-      inventory,
-    });
-    return Object.freeze({
-      plan,
-      files: createNodeChatOperationV2MigrationFileAdapter({
-        controlPaths: input.controlPaths,
-        workspace: input.workspace,
-        inspectSession: input.inspectSession,
-        evidenceNow: input.evidenceNow,
-      }),
-      diagnostics: Object.freeze(diagnostics),
-    });
-  }
-
-  if (!input.workspace.workDir) throw new Error('Workspace directory is not set.');
-  const tagmaDir = realpathSync.native(resolve(tagmaDirOf(input.workspace.workDir)));
-  const bindings: LegacyV1BindingMigrationCandidate[] = [];
-  for (const binding of registry.bindings) {
-    const target = normalizeChatOperationV2TargetCoordinate(
-      binding.targetRelativePath,
-      pathPlatform(),
-    );
-    const observed = targetObservation(tagmaDir, binding.targetRelativePath);
-    const sourceRecordHash = canonicalHash(binding);
-    const bindingAuthoritySource = `${input.workspaceScopeId}\0${binding.id}`;
-    const importedBindingId = derivedId('legacy-binding', bindingAuthoritySource);
-    const observedEvidenceHash = bindingEvidenceHash({
-      registryPayloadHash: registry.payloadHash,
-      sourceRecordHash,
-      targetIdentity: target.identity,
-      status: observed.status,
-      targetContentHash: observed.hash,
-    });
-    const candidate: LegacyV1BindingMigrationCandidate = {
-      sourceBindingId: binding.id,
-      bindingId: importedBindingId,
-      migrationOperationId: derivedId('legacy-binding-operation', bindingAuthoritySource),
-      ownerSessionId: binding.sessionId,
-      resultId: derivedId('legacy-binding-result', bindingAuthoritySource),
-      sourceRecordHash,
-      target: { platform: target.platform, coordinate: target.coordinate },
-      targetEvidence:
-        observed.status === 'published'
-          ? {
-              kind: 'present',
-              expectedContentHash: observed.hash!,
-              observedContentHash: observed.hash!,
-              evidenceHash: observedEvidenceHash,
-            }
-          : { kind: 'missing', evidenceHash: observedEvidenceHash },
-    };
-    bindings.push(candidate);
-    bindingCertificates.set(importedBindingId, {
-      importedBindingId,
-      sourceBindingId: binding.id,
-      sourceRecordHash,
-      targetPath: observed.path,
-      targetIdentity: target.identity,
-      status: observed.status,
-      targetContentHash: observed.hash,
-      evidenceHash: observedEvidenceHash,
-      registryPath: registry.registryPath,
-      registryContext: registry.context,
-      registryPayloadHash: registry.payloadHash,
-    });
-  }
-
-  const activeStages: LegacyV1ActiveStageMigrationCandidate[] = [];
-  for (const stageId of stageIds(input.workspace)) {
-    const observed = observeStage(
-      input.workspace,
-      stageId,
-      input.workspaceScopeId,
-      input.inspectSession,
-      input.evidenceNow ?? Date.now,
-    );
-    if (!observed.ok) {
-      diagnostics.push({ kind: 'legacy_stage_isolated', id: stageId, reason: observed.reason });
-      continue;
-    }
-    activeStages.push(observed.evidence.candidate);
-    stageCertificates.set(observed.evidence.candidate.stageId, {
-      importedStageId: observed.evidence.candidate.stageId,
-      sourceStageId: stageId,
-      workspaceScopeId: input.workspaceScopeId,
-      sourceRecordHash: observed.evidence.sourceRecordHash,
-      targetIdentity: observed.evidence.targetIdentity,
-      sessionId: observed.evidence.sessionId,
-      evidenceHashes: observed.evidence.evidenceHashes,
-    });
-  }
-
-  const plan = planLegacyV1ChatMigration({
-    migrationId: input.migrationId,
-    workspaceScopeId: input.workspaceScopeId,
-    plannedAtMs: input.plannedAtMs,
-    registry: {
-      sourceRegistryId: registry.sourceRegistryId,
-      authentication: 'trusted',
-      evidenceHash: registry.evidenceHash,
-      quarantineId: null,
-    },
-    bindings,
-    activeStages,
-    completedResults: input.completedResults,
-    inventory,
-  });
-  const files = new NodeChatOperationV2MigrationFileAdapter({
-    controlPaths: input.controlPaths,
-    workspace: input.workspace,
-    inspectSession: input.inspectSession,
-    evidenceNow: input.evidenceNow,
-    bindingCertificates,
-    stageCertificates,
-  });
-  return Object.freeze({ plan, files, diagnostics: Object.freeze(diagnostics) });
-}
-
 export interface ChatOperationV2MigrationRuntimeOptions {
   readonly workspace: WorkspaceState;
   readonly store: ChatOperationV2MigrationStoreAdapter;
@@ -1735,15 +992,7 @@ export interface ChatOperationV2MigrationRuntimeOptions {
 export interface ChatOperationV2MigrationRuntime {
   execute(
     plan: Exclude<ChatOperationV2MigrationPlan, { kind: 'reset_chat_control_data' }>,
-    files?: ChatOperationV2MigrationFileAdapter,
   ): ChatOperationV2MigrationExecutionReceipt;
-  prepareLegacyV1(
-    input: Omit<PrepareLegacyV1ChatMigrationInput, 'workspace' | 'controlPaths'>,
-  ): PreparedLegacyV1ChatMigration;
-  migrateLegacyV1(input: Omit<PrepareLegacyV1ChatMigrationInput, 'workspace' | 'controlPaths'>): {
-    readonly prepared: PreparedLegacyV1ChatMigration;
-    readonly receipt: ChatOperationV2MigrationExecutionReceipt;
-  };
   resetControlData(
     plan: ExplicitChatControlResetPlan,
     keyMaterial: ChatOperationV2ResetKeyMaterial,
@@ -1755,7 +1004,6 @@ export function createChatOperationV2MigrationRuntime(
 ): ChatOperationV2MigrationRuntime {
   const controlFiles = createNodeChatOperationV2MigrationFileAdapter({
     controlPaths: options.controlPaths,
-    workspace: options.workspace,
   });
   const executeWithFiles = (
     plan: ChatOperationV2MigrationPlan,
@@ -1768,28 +1016,14 @@ export function createChatOperationV2MigrationRuntime(
     } satisfies ExecuteChatOperationV2MigrationOptions);
   const execute = (
     plan: Exclude<ChatOperationV2MigrationPlan, { kind: 'reset_chat_control_data' }>,
-    files: ChatOperationV2MigrationFileAdapter = controlFiles,
   ) => {
     if ((plan as ChatOperationV2MigrationPlan).kind === 'reset_chat_control_data') {
-      throw new Error('Explicit control reset is available only through resetControlData.');
+      throw new Error('Control reset may execute only through resetControlData.');
     }
-    return executeWithFiles(plan, files);
+    return executeWithFiles(plan, controlFiles);
   };
-  const prepareLegacyV1 = (
-    input: Omit<PrepareLegacyV1ChatMigrationInput, 'workspace' | 'controlPaths'>,
-  ) =>
-    prepareLegacyV1ChatMigration({
-      ...input,
-      workspace: options.workspace,
-      controlPaths: options.controlPaths,
-    });
   return Object.freeze({
     execute,
-    prepareLegacyV1,
-    migrateLegacyV1(input: Omit<PrepareLegacyV1ChatMigrationInput, 'workspace' | 'controlPaths'>) {
-      const prepared = prepareLegacyV1(input);
-      return Object.freeze({ prepared, receipt: execute(prepared.plan, prepared.files) });
-    },
     resetControlData(
       plan: ExplicitChatControlResetPlan,
       keyMaterial: ChatOperationV2ResetKeyMaterial,
@@ -1800,7 +1034,6 @@ export function createChatOperationV2MigrationRuntime(
       }
       const files = createNodeChatOperationV2MigrationFileAdapter({
         controlPaths: options.controlPaths,
-        workspace: options.workspace,
         resetKeyMaterial: keyMaterial,
       });
       try {

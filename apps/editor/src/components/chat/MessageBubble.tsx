@@ -49,8 +49,7 @@ import {
 } from './StructuredParts';
 import { getRenderableMessageParts, shouldRenderMessageBubble } from './message-rendering';
 import { TurnActivityPanel } from './ActivityPanel';
-import { SessionYamlResultBubble, SessionYamlResultFooter } from './SessionYamlResult';
-import { useChatStore, type ChatYamlSessionResult } from '../../store/chat-store';
+import { useChatStore } from '../../store/chat-store';
 import { parseChatContextWindowMarker } from '../../../shared/chat-context-window.js';
 import {
   extractAskAiContextReferences,
@@ -63,10 +62,7 @@ import {
 // bubble whose entry actually changed — re-parsing every bubble's markdown
 // per SSE chunk was the dominant streaming cost. ChatPanel passes stable
 // props: primitives plus a useCallback'd onToggleActivity keyed by message
-// id, and the store replaces (never mutates) the streaming entry. The one
-// exception: `yamlResults` is a freshly-selected array per ChatMessages
-// render, so bubbles carrying a pipeline result skip the memo win — fine in
-// practice because they are rare and belong to already-finished turns.
+// id, and the store replaces (never mutates) the streaming entry.
 export const MessageBubble = memo(function MessageBubble({
   entry,
   streaming = false,
@@ -74,7 +70,6 @@ export const MessageBubble = memo(function MessageBubble({
   onToggleActivity,
   isCurrentTurn = false,
   surfaceActivitySummary = false,
-  yamlResults,
 }: {
   entry: OpencodeThreadEntry;
   streaming?: boolean;
@@ -82,7 +77,6 @@ export const MessageBubble = memo(function MessageBubble({
   onToggleActivity?: (messageId: string) => void;
   isCurrentTurn?: boolean;
   surfaceActivitySummary?: boolean;
-  yamlResults?: readonly ChatYamlSessionResult[];
 }) {
   const role = entry.info.role;
   const attachmentReferences =
@@ -116,14 +110,6 @@ export const MessageBubble = memo(function MessageBubble({
   // Visible structured parts get visual treatment in PartRenderer / StructuredParts.tsx.
   const renderableParts = getRenderableMessageParts(entry.parts);
 
-  // Anchored pipeline results fuse into the bottom of this bubble's last
-  // text card (see PartRenderer's `cardFooter`). A message with results but
-  // no text part — tool-only turns — keeps the standalone result card.
-  const fusedResults = role === 'assistant' && yamlResults?.length ? yamlResults : null;
-  const lastTextPartId = fusedResults
-    ? ([...renderableParts].reverse().find((p) => p.type === 'text')?.id ?? null)
-    : null;
-
   // The streaming caret rides the tail of the live text part — the same last-
   // text-part lookup as the fused results, but tracked independently so a
   // result-bearing finished turn never shows it.
@@ -136,8 +122,7 @@ export const MessageBubble = memo(function MessageBubble({
   if (
     !shouldRenderMessageBubble({ info: entry.info, parts: renderableParts }) &&
     !hasActivity &&
-    attachmentReferences.length === 0 &&
-    !fusedResults
+    attachmentReferences.length === 0
   ) {
     return null;
   }
@@ -183,25 +168,10 @@ export const MessageBubble = memo(function MessageBubble({
                 role={role}
                 streaming={streaming}
                 showStreamingCursor={part.id === streamingTextPartId}
-                cardFooter={
-                  fusedResults && part.id === lastTextPartId ? (
-                    <SessionYamlResultFooter results={fusedResults} />
-                  ) : null
-                }
               />
             </div>
           ),
         )}
-        {role === 'assistant' &&
-          fusedResults &&
-          !lastTextPartId &&
-          fusedResults.map((result) => (
-            <SessionYamlResultBubble
-              key={result.resultId ?? result.completedAt}
-              result={result}
-              showOpenAction={false}
-            />
-          ))}
         {role === 'user' && <UserMessageContextNote entry={entry} />}
         {role === 'assistant' && <AssistantMessageFooter info={entry.info as AssistantMessage} />}
         {role === 'assistant' && (

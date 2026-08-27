@@ -414,7 +414,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         providerDef,
       );
       // Rebuild the Location after readiness so 1.18.18's native catalog
-      // consumes the isolated V1 provider config through its config bridge.
+      // consumes the isolated provider config through its config bridge.
       expect(
         await readSdkData(
           client.instance.dispose({ directory: tagmaCwd }),

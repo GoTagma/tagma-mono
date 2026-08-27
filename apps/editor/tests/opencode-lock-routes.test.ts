@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +9,8 @@ let seedCalls = 0;
 let ensureCalls = 0;
 let restartCalls = 0;
 let watcherCalls = 0;
+const originalChatV2Shadow = process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
+const originalChatV2Cutover = process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
 
 mock.module('../server/opencode-lifecycle.js', () => ({
   ensureOpencode: async () => {
@@ -111,11 +113,23 @@ function workspaceWithLock(workDir: string): WorkspaceState {
 }
 
 beforeEach(() => {
+  process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = '1';
+  process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER = '2';
   seedChanged = true;
   seedCalls = 0;
   ensureCalls = 0;
   restartCalls = 0;
   watcherCalls = 0;
+});
+
+afterAll(() => {
+  if (originalChatV2Shadow === undefined) delete process.env.TAGMA_CHAT_OPERATION_V2_SHADOW;
+  else process.env.TAGMA_CHAT_OPERATION_V2_SHADOW = originalChatV2Shadow;
+  if (originalChatV2Cutover === undefined) {
+    delete process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER;
+  } else {
+    process.env.TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER = originalChatV2Cutover;
+  }
 });
 
 describe('OpenCode routes under a workspace YAML lock', () => {
@@ -166,8 +180,8 @@ describe('OpenCode routes under a workspace YAML lock', () => {
         // runtime reports not-ready and the chat store fails closed.
         contextWindowPluginReady: false,
         contextWindowPluginSchema: 0,
-        chatOperationProtocolVersion: null,
-        chatOperationMode: 'legacy',
+        chatOperationProtocolVersion: 2,
+        chatOperationMode: 'production',
       });
       expect({ seedCalls, ensureCalls, restartCalls, watcherCalls }).toEqual({
         seedCalls: 0,

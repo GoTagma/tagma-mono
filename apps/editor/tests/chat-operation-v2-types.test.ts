@@ -86,14 +86,13 @@ describe('ChatTurn Operation V2 state vocabulary', () => {
     ]);
   });
 
-  test('admits exactly one operation protocol generation', () => {
+  test('admits only the V2 operation protocol', () => {
     expect(CHAT_OPERATION_V2_PROTOCOL_VERSION).toBe(2);
-    expect(CHAT_OPERATION_PROTOCOLS).toEqual(['v1', 'v2']);
-    expect(isChatOperationProtocol('v1')).toBe(true);
+    expect(CHAT_OPERATION_PROTOCOLS).toEqual(['v2']);
     expect(isChatOperationProtocol('v2')).toBe(true);
-    expect(isChatOperationProtocol('v1+v2')).toBe(false);
-    expect(isChatOperationProtocol(['v1', 'v2'])).toBe(false);
-    expect(violationCodes({ ...validNonterminalState, protocol: 'v1' })).toContain(
+    expect(isChatOperationProtocol('unsupported')).toBe(false);
+    expect(isChatOperationProtocol(['v2'])).toBe(false);
+    expect(violationCodes({ ...validNonterminalState, protocol: 'unsupported' })).toContain(
       'invalid_protocol',
     );
   });

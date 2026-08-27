@@ -136,13 +136,6 @@ function fakeApi() {
 }
 
 test('authenticates only the exact production capability pair', () => {
-  expect(resolveChatOperationExecutionMode({})).toBe('legacy-v1');
-  expect(
-    resolveChatOperationExecutionMode({
-      chatOperationProtocolVersion: null,
-      chatOperationMode: 'legacy',
-    }),
-  ).toBe('legacy-v1');
   expect(
     resolveChatOperationExecutionMode({
       chatOperationProtocolVersion: 2,
@@ -151,6 +144,8 @@ test('authenticates only the exact production capability pair', () => {
   ).toBe('operation-v2');
 
   for (const handshake of [
+    {},
+    { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' },
     { chatOperationProtocolVersion: 2 },
     { chatOperationMode: 'production' },
     { chatOperationProtocolVersion: 1, chatOperationMode: 'production' },
@@ -163,7 +158,7 @@ test('authenticates only the exact production capability pair', () => {
   }
 });
 
-test('keeps legacy mode side-effect free and activates V2 from snapshot before SSE', async () => {
+test('activates V2 from snapshot before SSE', async () => {
   const fake = fakeApi();
   fake.setSnapshot(
     snapshot(
@@ -189,16 +184,6 @@ test('keeps legacy mode side-effect free and activates V2 from snapshot before S
     },
     onChange: (value) => projections.push(value),
   });
-
-  await expect(
-    controller.activate({
-      workspaceKey: 'D:\\repo',
-      handshake: { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' },
-    }),
-  ).resolves.toBe('legacy-v1');
-  expect(fake.calls).toEqual([]);
-  expect(fake.subscriptions).toEqual([]);
-  expect(idCalls).toBe(0);
 
   await expect(
     controller.activate({
@@ -434,7 +419,7 @@ test('routes every active-operation decision with current CAS and updates projec
   });
 });
 
-test('closes V2 ownership before changing workspace or returning to legacy mode', async () => {
+test('closes V2 ownership when disposed', async () => {
   const fake = fakeApi();
   const controller = createChatOperationV2Controller({ api: fake.api });
   await controller.activate({
@@ -444,14 +429,12 @@ test('closes V2 ownership before changing workspace or returning to legacy mode'
   });
   expect(fake.subscriptions).toHaveLength(1);
 
-  await controller.activate({
-    workspaceKey: 'D:\\repo-b',
-    handshake: { chatOperationProtocolVersion: null, chatOperationMode: 'legacy' },
-  });
+  controller.dispose();
+
   expect(fake.subscriptions[0]!.closeCount).toBe(1);
   expect(controller.getSnapshot()).toMatchObject({
-    executionMode: 'legacy-v1',
-    workspaceKey: 'D:\\repo-b',
+    executionMode: 'unavailable',
+    workspaceKey: null,
     activeOperation: null,
   });
 });
