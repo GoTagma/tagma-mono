@@ -118,9 +118,10 @@ Do not amend the same commit to include these files after naming them with the c
   bytes before replay and never generalize it to structured classifier results.
 - Treat pending OpenCode permission and question requests as process-local evidence, not durable
   state. Live requests are first-wins, but OpenCode 1.18.18 drops them on restart; permission
-  recreation is denied and stale question replies are not found. Persist the Host request
-  independently; after restart recover via a new controlled invocation/repair decision or an
-  explicit failure, never by claiming that the old OpenCode drain can still accept a reply.
+  and question replies against the stale request are not found. Persist the Host request
+  independently; never recreate the old runtime request after restart, and recover via a new
+  controlled invocation/repair decision or an explicit failure rather than claiming that the old
+  OpenCode drain can still accept a reply.
 - `commit_decided` is the sole publish linearization point. Before it, cancellation may end as
   `cancelled_precommit`; after it, Stop appends audit only and recovery must roll forward to a
   published or forked result without overwriting third-party bytes. Terminal outcome, commit

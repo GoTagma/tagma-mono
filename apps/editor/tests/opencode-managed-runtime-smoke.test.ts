@@ -678,40 +678,25 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
           )
         ).data,
       ).toEqual([]);
-      expect(
-        (
-          await readSdkData(
-            restartedV2Client.v2.session.permission.create({
-              sessionID: nativeSessionId,
-              id: permissionRequestId,
-              action: 'external_directory',
-              resources: ['file:///tagma-conformance-outside-workspace'],
-              metadata: { purpose: 'chat-operation-v2-conformance' },
-            }),
-            'v2 native permission.create same-id recreation after restart',
-          )
-        ).data,
-      ).toEqual({ id: permissionRequestId, effect: 'deny' });
-      const replacementPermissionRequestId = `per_tagma_rehydrated_${conformanceSuffix}`;
-      expect(
-        (
-          await readSdkData(
-            restartedV2Client.v2.session.permission.create({
-              sessionID: nativeSessionId,
-              id: replacementPermissionRequestId,
-              action: 'external_directory',
-              resources: ['file:///tagma-conformance-outside-workspace'],
-              metadata: { purpose: 'chat-operation-v2-conformance' },
-            }),
-            'v2 native permission.create replacement after restart',
-          )
-        ).data,
-      ).toEqual({ id: replacementPermissionRequestId, effect: 'deny' });
+      // A create call would be a new permission evaluation, not a rehydration
+      // attempt: request IDs do not participate in PermissionV2 policy. Its
+      // cold AgentV2 registry can also briefly fail closed before normal policy
+      // loads, so asserting that a recreated request is denied is racy across
+      // platforms. The durable boundary is that the old request cannot be
+      // replied to after restart.
+      const stalePermissionReply = await restartedNoThrowV2Client.v2.session.permission.reply({
+        sessionID: nativeSessionId,
+        requestID: permissionRequestId,
+        reply: 'reject',
+        message: 'Tagma stale permission reply after restart',
+      });
+      expect(stalePermissionReply.response.status).toBe(404);
+      expect(stalePermissionReply.error).toMatchObject({ _tag: 'PermissionNotFoundError' });
       expect(
         (
           await readSdkData(
             restartedV2Client.v2.session.permission.list({ sessionID: nativeSessionId }),
-            'v2 native permission.list after denied rehydration',
+            'v2 native permission.list after stale reply',
           )
         ).data,
       ).toEqual([]);

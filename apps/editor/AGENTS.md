@@ -770,10 +770,12 @@
   cursors on ordinary JSON reads.
 - OpenCode 1.18.18 permission pending is not restart-durable. While the process is live, the first
   reply consumes the request and a duplicate reply returns 404. After restart, get/list no longer
-  expose the request, and recreating it with either the old or a fresh OpenCode request id returns
-  `deny`. Keep the stable user-facing request and CAS in the Host store, but recover the work through
-  a new controlled invocation/repair path or an explicit failure; never present the old drain as
-  resumable.
+  expose the request and replying to the stale request returns 404. Do not probe recovery by calling
+  permission create: request ids do not affect policy evaluation, and the cold AgentV2 registry may
+  briefly fail closed before the configured policy loads, making create results timing-dependent
+  across platforms. Keep the stable user-facing request and CAS in the Host store, but recover the
+  work through a new controlled invocation/repair path or an explicit failure; never recreate or
+  present the old drain as resumable.
 - Native question pending has the same process boundary: live reply or reject is first-wins and all
   repeats return 404; restart clears the pending request while preserving the session, admission,
   and existing durable history, without a hidden provider continuation. The pinned native question
