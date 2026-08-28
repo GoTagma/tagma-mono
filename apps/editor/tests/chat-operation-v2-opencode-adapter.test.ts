@@ -109,6 +109,7 @@ interface SdkHistoryEvent {
 
 interface HarnessOptions {
   nativePrompt?: 'admit' | 'conflict-after-admit' | 'throw-after-admit';
+  historyVisibilityDelayReads?: number;
   richSdkFailure?: { readonly status: number; readonly error: unknown };
   richPrompt?: (
     input: OpenCodeAdapterRichPromptInput | OpenCodeAdapterTextPromptInput,
@@ -203,6 +204,7 @@ function createHarness(options: HarnessOptions = {}) {
   let richCallCount = 0;
   let textProviderCallCount = 0;
   let textResponseLosses = options.textResponseLosses ?? 0;
+  let hiddenHistoryReadsRemaining = options.historyVisibilityDelayReads ?? 0;
   let nativeSessionCreated = false;
 
   const client: OpenCodeAdapterSdkClient = {
@@ -266,6 +268,10 @@ function createHarness(options: HarnessOptions = {}) {
               },
               response: { status: 404 },
             });
+          }
+          if (history.length > 0 && hiddenHistoryReadsRemaining > 0) {
+            hiddenHistoryReadsRemaining -= 1;
+            return sdkOk({ data: [], hasMore: false });
           }
           const records = history.filter((event) => event.durable.seq > input.after);
           return sdkOk({
@@ -421,7 +427,11 @@ function readonlyRequest(
 
 function setup(
   options: HarnessOptions = {},
-  runnerOptions: { readonly useDefaultExecutionId?: boolean } = {},
+  runnerOptions: {
+    readonly useDefaultExecutionId?: boolean;
+    readonly admissionSourceAttempts?: number;
+    readonly admissionSourceDelayMs?: number;
+  } = {},
 ) {
   const harness = createHarness(options);
   const store = new MemoryInvocationStore(harness.calls);
@@ -436,6 +446,12 @@ function setup(
     store,
     nativeClient: adapter,
     richClient: adapter,
+    ...(runnerOptions.admissionSourceAttempts === undefined
+      ? {}
+      : { admissionSourceAttempts: runnerOptions.admissionSourceAttempts }),
+    ...(runnerOptions.admissionSourceDelayMs === undefined
+      ? {}
+      : { admissionSourceDelayMs: runnerOptions.admissionSourceDelayMs }),
     ...(runnerOptions.useDefaultExecutionId
       ? {}
       : {
@@ -472,6 +488,29 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       'sdk.native.history',
       'sdk.rich.prompt',
     ]);
+  });
+
+  test('waits for a newly admitted history event without resubmitting the native prompt', async () => {
+    const { harness, runner } = setup({ historyVisibilityDelayReads: 2 });
+
+    expect(await runner.run(request())).toMatchObject({ kind: 'completed' });
+    expect(harness.nativePromptRequests).toHaveLength(1);
+    expect(harness.calls.filter((call) => call === 'sdk.native.history')).toHaveLength(4);
+    expect(harness.richCallCount()).toBe(1);
+  });
+
+  test('reports bounded history unavailability without claiming response loss', async () => {
+    const { harness, runner } = setup(
+      { historyVisibilityDelayReads: 3 },
+      { admissionSourceAttempts: 2, admissionSourceDelayMs: 0 },
+    );
+
+    expect(await runner.run(request())).toEqual({
+      kind: 'provider_unavailable',
+      code: 'execution_history_unavailable',
+    });
+    expect(harness.nativePromptRequests).toHaveLength(1);
+    expect(harness.richRequests).toHaveLength(0);
   });
 
   test('admits natively, then sends exactly one distinct compatibility rich classifier message', async () => {

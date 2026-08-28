@@ -46,6 +46,11 @@
   `submitted_unknown` for transport loss where submission really cannot be determined. After a
   deterministic model-specific classifier failure, an unchanged model selection must not allocate
   another operation; the normal model picker is the sole recovery action.
+- Native prompt admission and its durable history projection are not required to become visible in
+  the same tick. After receiving an exact `admittedSeq`, poll boundedly for that same source event
+  before starting the rich classifier. A temporarily missing event must never trigger another
+  native prompt or be mislabeled as response loss; conflicting sequence, identity, or digest
+  evidence still fails closed immediately.
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.

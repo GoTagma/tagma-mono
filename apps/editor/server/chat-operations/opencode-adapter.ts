@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { createOpencodeClient as createOpencodeV2Client } from '@opencode-ai/sdk/v2/client';
 
@@ -39,6 +40,8 @@ const NATIVE_REQUEST_DIGEST_PATTERN =
   /^<tagma-chat-operation-v2-native-request request-digest="sha256:([0-9a-f]{64})" \/>$/;
 const DEFAULT_HISTORY_PAGE_LIMIT = 100;
 const DEFAULT_HISTORY_MAX_PAGES = 64;
+const DEFAULT_ADMISSION_SOURCE_ATTEMPTS = 40;
+const DEFAULT_ADMISSION_SOURCE_DELAY_MS = 50;
 const READONLY_TEXT_RECOVERY_TIMEOUT_MS = 5 * 60_000;
 const MAX_READONLY_TEXT_OUTPUT_BYTES = 1024 * 1024;
 
@@ -871,6 +874,7 @@ export type OpenCodeStructuredClassifierProviderCode =
   | 'admission_evidence_conflict'
   | 'history_protocol_conflict'
   | 'execution_identity_conflict'
+  | 'execution_history_unavailable'
   | 'structured_output_error'
   | 'model_error'
   | 'model_incompatible'
@@ -955,6 +959,8 @@ export interface OpenCodeStructuredClassifierRunnerOptions {
   }) => string;
   readonly historyPageLimit?: number;
   readonly historyMaxPages?: number;
+  readonly admissionSourceAttempts?: number;
+  readonly admissionSourceDelayMs?: number;
 }
 
 interface FrozenClassifierRun {
@@ -1005,6 +1011,14 @@ interface OwnedReadonlyTextRun {
   readonly result: Promise<OpenCodeReadonlyTextResult>;
 }
 
+type AdmissionSourceLookup =
+  | {
+      readonly kind: 'found';
+      readonly source: { readonly aggregateSeq: number; readonly eventId: string };
+    }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'conflict' };
+
 /**
  * Runs the one compatibility-rich classifier call permitted by conformance.
  * A recovered native admission cannot prove a rich result, so it is never
@@ -1020,6 +1034,8 @@ export class OpenCodeStructuredClassifierRunner {
   >;
   private readonly historyPageLimit: number;
   private readonly historyMaxPages: number;
+  private readonly admissionSourceAttempts: number;
+  private readonly admissionSourceDelayMs: number;
   private readonly ownedRuns = new Map<string, OwnedClassifierRun>();
   private readonly ownedReadonlyRuns = new Map<string, OwnedReadonlyTextRun>();
   private readonly activeSessions = new Map<string, string>();
@@ -1033,17 +1049,25 @@ export class OpenCodeStructuredClassifierRunner {
       options.nextExecutionMessageId ?? deriveOpenCodeExecutionMessageId;
     this.historyPageLimit = options.historyPageLimit ?? DEFAULT_HISTORY_PAGE_LIMIT;
     this.historyMaxPages = options.historyMaxPages ?? DEFAULT_HISTORY_MAX_PAGES;
+    this.admissionSourceAttempts =
+      options.admissionSourceAttempts ?? DEFAULT_ADMISSION_SOURCE_ATTEMPTS;
+    this.admissionSourceDelayMs =
+      options.admissionSourceDelayMs ?? DEFAULT_ADMISSION_SOURCE_DELAY_MS;
     if (
       !Number.isSafeInteger(this.historyPageLimit) ||
       this.historyPageLimit < 1 ||
       this.historyPageLimit > 1_000 ||
       !Number.isSafeInteger(this.historyMaxPages) ||
       this.historyMaxPages < 1 ||
-      this.historyMaxPages > 1_000
+      this.historyMaxPages > 1_000 ||
+      !Number.isSafeInteger(this.admissionSourceAttempts) ||
+      this.admissionSourceAttempts < 1 ||
+      this.admissionSourceAttempts > 1_000 ||
+      !Number.isSafeInteger(this.admissionSourceDelayMs) ||
+      this.admissionSourceDelayMs < 0 ||
+      this.admissionSourceDelayMs > 1_000
     ) {
-      throw new TypeError(
-        'OpenCode classifier history bounds must be integers between 1 and 1000.',
-      );
+      throw new TypeError('OpenCode classifier history bounds and retry policy are invalid.');
     }
   }
 
@@ -1359,13 +1383,23 @@ export class OpenCodeStructuredClassifierRunner {
       if (admission.kind !== 'admitted' || admission.recoveredFromHistory) {
         return { kind: 'provider_unavailable', code: 'submitted_unknown' };
       }
-      const source = await this.resolveAdmissionSource({
-        sessionId: input.sessionId,
-        inputId: input.inputId,
-        requestDigest: input.requestDigest,
-        aggregateSeq: admission.admittedAggregateSeq,
-      }).catch(() => null);
-      if (!source) return { kind: 'provider_unavailable', code: 'submitted_unknown' };
+      let source: { readonly aggregateSeq: number; readonly eventId: string } | null;
+      try {
+        source = await this.resolveAdmissionSource(
+          {
+            sessionId: input.sessionId,
+            inputId: input.inputId,
+            requestDigest: input.requestDigest,
+            aggregateSeq: admission.admittedAggregateSeq,
+          },
+          input.signal,
+        );
+      } catch {
+        return { kind: 'provider_unavailable', code: 'history_protocol_conflict' };
+      }
+      if (!source) {
+        return { kind: 'provider_unavailable', code: 'execution_history_unavailable' };
+      }
       if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
 
       const executionMessageId = this.nextExecutionMessageId({
@@ -1577,17 +1611,24 @@ export class OpenCodeStructuredClassifierRunner {
           submissionUnknown: true,
         };
       }
-      const source = await this.resolveAdmissionSource({
-        sessionId: input.sessionId,
-        inputId: input.inputId,
-        requestDigest: input.requestDigest,
-        aggregateSeq: admission.admittedAggregateSeq,
-      }).catch(() => null);
+      let source: { readonly aggregateSeq: number; readonly eventId: string } | null;
+      try {
+        source = await this.resolveAdmissionSource(
+          {
+            sessionId: input.sessionId,
+            inputId: input.inputId,
+            requestDigest: input.requestDigest,
+            aggregateSeq: admission.admittedAggregateSeq,
+          },
+          input.signal,
+        );
+      } catch {
+        return { kind: 'provider_unavailable', code: 'history_protocol_conflict' };
+      }
       if (!source) {
         return {
           kind: 'provider_unavailable',
-          code: 'submitted_unknown',
-          submissionUnknown: true,
+          code: 'execution_history_unavailable',
         };
       }
       const authorized = admission.recoveredFromHistory
@@ -1616,12 +1657,37 @@ export class OpenCodeStructuredClassifierRunner {
     }
   }
 
-  private async resolveAdmissionSource(input: {
+  private async resolveAdmissionSource(
+    input: {
+      readonly sessionId: string;
+      readonly inputId: string;
+      readonly requestDigest: string;
+      readonly aggregateSeq: number;
+    },
+    signal: AbortSignal,
+  ): Promise<{ readonly aggregateSeq: number; readonly eventId: string } | null> {
+    for (let attempt = 0; attempt < this.admissionSourceAttempts; attempt += 1) {
+      const lookup = await this.readAdmissionSource(input);
+      if (lookup.kind === 'found') return lookup.source;
+      if (lookup.kind === 'conflict') {
+        throw new Error('OpenCode admission history conflicts with Host evidence.');
+      }
+      if (attempt + 1 >= this.admissionSourceAttempts || signal.aborted) return null;
+      try {
+        await delay(this.admissionSourceDelayMs, undefined, { signal });
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  private async readAdmissionSource(input: {
     readonly sessionId: string;
     readonly inputId: string;
     readonly requestDigest: string;
     readonly aggregateSeq: number;
-  }): Promise<{ readonly aggregateSeq: number; readonly eventId: string } | null> {
+  }): Promise<AdmissionSourceLookup> {
     let after = Math.max(0, input.aggregateSeq - 1);
     for (let pageIndex = 0; pageIndex < this.historyMaxPages; pageIndex += 1) {
       const page = await this.nativeClient.listHistory({
@@ -1631,21 +1697,24 @@ export class OpenCodeStructuredClassifierRunner {
       });
       let nextAfter = after;
       for (const item of page.records) {
-        if (item.aggregateSeq <= after) return null;
+        if (item.aggregateSeq <= after) return { kind: 'conflict' };
         nextAfter = item.aggregateSeq;
         if (item.aggregateSeq < input.aggregateSeq) continue;
-        if (item.aggregateSeq > input.aggregateSeq) return null;
+        if (item.aggregateSeq > input.aggregateSeq) return { kind: 'conflict' };
         return item.type === 'session.next.prompt.admitted' &&
           item.sessionId === input.sessionId &&
           item.inputId === input.inputId &&
           item.requestDigest === input.requestDigest
-          ? { aggregateSeq: item.aggregateSeq, eventId: item.eventId }
-          : null;
+          ? {
+              kind: 'found',
+              source: { aggregateSeq: item.aggregateSeq, eventId: item.eventId },
+            }
+          : { kind: 'conflict' };
       }
-      if (!page.hasMore || nextAfter === after) return null;
+      if (!page.hasMore || nextAfter === after) return { kind: 'missing' };
       after = nextAfter;
     }
-    return null;
+    return { kind: 'conflict' };
   }
 
   private async resolveAdmissionSourceByIdentity(input: {
