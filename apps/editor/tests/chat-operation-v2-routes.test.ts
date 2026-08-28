@@ -1067,6 +1067,8 @@ describe('Chat Operation V2 mutations', () => {
       ['commit_coordinator_unavailable', 503, 'chat_operation_action_unavailable'],
       ['projection_unavailable', 503, 'chat_operation_action_unavailable'],
       ['unsafe_mutation_result', 503, 'chat_operation_action_unavailable'],
+      ['classifier_model_incompatible', 409, 'chat_operation_action_unavailable'],
+      ['classifier_model_unavailable', 409, 'chat_operation_action_unavailable'],
       ['authoring_target_conflict', 409, 'chat_operation_conflict'],
       ['operation_mismatch', 404, 'operation_not_found'],
       ['workspace_mismatch', 404, 'operation_not_found'],

@@ -25,7 +25,11 @@ import { registerCustomProvidersRoutes } from './routes/custom-providers.js';
 import { registerRequirementsRoutes } from './routes/requirements.js';
 import { registerPythonAgentRoutes } from './routes/python-agent.js';
 import { registerSecretsRoutes } from './routes/secrets.js';
-import { ensureRealTagmaDirectory, shutdownOpencode } from './opencode-lifecycle.js';
+import {
+  ensureOpencode,
+  ensureRealTagmaDirectory,
+  shutdownOpencode,
+} from './opencode-lifecycle.js';
 import { registerEditorRoutes } from './routes/editor.js';
 import { registerSidecarRoutes } from './routes/sidecar.js';
 import { registerReleaseRoutes } from './routes/release.js';
@@ -79,6 +83,7 @@ import {
 } from './chat-operations/http-body.js';
 import { buildOpencodeSeedOptions } from './opencode-seed-options.js';
 import { readEditorSettings } from './plugins/loader.js';
+import { readManagedOpenCodeClassifierModelAuthority } from './opencode-provider-state.js';
 import { registerChatOperationV2LegacyStageFence } from './chat-operations/legacy-stage-fence.js';
 import { registerServerDiagnosticsContributor } from './diagnostics-contributors.js';
 import { registerChatOperationV2ControlRoutes } from './routes/chat-control.js';
@@ -624,10 +629,18 @@ registerChatOperationV2Routes(
           enabled: true,
           mutationsEnabled: true,
           service: chatOperationV2Service,
-          createInputResolver: (workDir, request) => {
+          createInputResolver: async (workDir, request) => {
             const { workspace, inventory } = chatOperationV2HostInventoryFor(workDir);
             const seedOptions = buildOpencodeSeedOptions(workspace);
             const editorSettings = readEditorSettings(workspace);
+            const tagmaCwd = ensureRealTagmaDirectory(workDir);
+            const classifierModel = await readManagedOpenCodeClassifierModelAuthority(
+              await ensureOpencode(tagmaCwd),
+              {
+                providerID: request.payload.provider,
+                modelID: request.payload.model,
+              },
+            );
             return resolveChatOperationV2CreateAdmission(request, {
               inventory: inventory.inventory,
               candidates: inventory.candidates,
@@ -650,6 +663,7 @@ registerChatOperationV2Routes(
                 structuredOutputOnly: true,
                 textReplay: true,
               },
+              classifierModel,
               features: {
                 schemaVersion: 1,
                 protocolVersion: CHAT_OPERATION_V2_API_PROTOCOL_VERSION,

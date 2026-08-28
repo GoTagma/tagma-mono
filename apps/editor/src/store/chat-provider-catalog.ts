@@ -278,6 +278,21 @@ export function reconcileModelPick(
   return null;
 }
 
+/**
+ * Return Host-projected tool capability for an exact configured model.
+ * `null` means the provider metadata is temporarily unavailable and must not
+ * be mistaken for a negative capability.
+ */
+export function modelToolCapability(
+  providers: readonly Provider[],
+  pick: ModelPick | null,
+): boolean | null {
+  if (!pick) return null;
+  const provider = providers.find((entry) => entry.id === pick.providerID);
+  const model = provider?.models?.[pick.modelID];
+  return typeof model?.capabilities?.toolcall === 'boolean' ? model.capabilities.toolcall : null;
+}
+
 function modelPickExists(providers: Provider[], pick: ModelPick): boolean {
   return providers.some(
     (provider) =>

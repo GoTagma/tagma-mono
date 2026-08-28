@@ -31,6 +31,13 @@ function authority(): ChatOperationV2HostAdmissionAuthority {
     settings: { maxSteps: 100, pythonToolsEnabled: false },
     repairMaxAttempts: 25,
     capabilities: { opencode: '1.18.18', structuredOutput: true },
+    classifierModel: {
+      providerID: 'openai',
+      modelID: 'gpt-5',
+      configured: true,
+      toolCall: true,
+      status: 'active',
+    },
     features: { protocol: 2, readonly: true, shadow: true },
     validateCanonicalYaml: (yaml) => {
       if (!yaml.startsWith('version:')) throw new Error('invalid YAML');
@@ -143,6 +150,45 @@ describe('Chat Operation V2 Host admission resolver', () => {
     expect(() => resolveChatOperationV2CreateAdmission(changed, authority())).toThrow(
       /unknown Host candidate/i,
     );
+  });
+
+  test('rejects classifier models that the Host cannot authenticate as tool-capable', () => {
+    expect(() =>
+      resolveChatOperationV2CreateAdmission(request(false), {
+        ...authority(),
+        classifierModel: {
+          providerID: 'openai',
+          modelID: 'gpt-5',
+          configured: false,
+          toolCall: null,
+          status: null,
+        },
+      }),
+    ).toThrow(/not configured/i);
+    expect(() =>
+      resolveChatOperationV2CreateAdmission(request(false), {
+        ...authority(),
+        classifierModel: {
+          providerID: 'openai',
+          modelID: 'gpt-5',
+          configured: true,
+          toolCall: false,
+          status: 'active',
+        },
+      }),
+    ).toThrow(/structured Tagma Chat classifier/i);
+    expect(() =>
+      resolveChatOperationV2CreateAdmission(request(false), {
+        ...authority(),
+        classifierModel: {
+          providerID: 'other',
+          modelID: 'gpt-5',
+          configured: true,
+          toolCall: true,
+          status: 'active',
+        },
+      }),
+    ).toThrow(/does not match/i);
   });
 
   test('rejects mismatched inventory/classifier projections', () => {

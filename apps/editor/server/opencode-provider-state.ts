@@ -8,6 +8,14 @@ import {
 import { createStreamingLoopbackFetch } from './loopback-fetch.js';
 import type { OpencodeHandle } from './opencode-lifecycle.js';
 
+export interface OpenCodeClassifierModelAuthority {
+  readonly providerID: string;
+  readonly modelID: string;
+  readonly configured: boolean;
+  readonly toolCall: boolean | null;
+  readonly status: string | null;
+}
+
 type ProviderStateArea = 'provider-list' | 'auth-methods' | 'model-catalog';
 
 export interface ReadManagedOpenCodeProviderStateOptions {
@@ -39,6 +47,67 @@ function settledValue<T>(
   if (result.status === 'fulfilled') return { available: true, value: result.value };
   onUnavailable?.(area, result.reason);
   return { available: false, value: fallback };
+}
+
+export function resolveConfiguredOpenCodeClassifierModelAuthority(
+  providers: TagmaOpenCodeProviderState['configured']['providers'],
+  input: { readonly providerID: string; readonly modelID: string },
+  catalogModels: NonNullable<TagmaOpenCodeProviderState['modelCatalog']>['models'] = [],
+): OpenCodeClassifierModelAuthority {
+  const provider = providers.find((entry) => entry.id === input.providerID);
+  const model = provider?.models?.[input.modelID];
+  const catalogModel = catalogModels.find(
+    (entry) => entry.providerID === input.providerID && entry.id === input.modelID,
+  );
+  return {
+    providerID: input.providerID,
+    modelID: input.modelID,
+    configured: model !== undefined,
+    toolCall:
+      typeof catalogModel?.capabilities.tools === 'boolean'
+        ? catalogModel.capabilities.tools
+        : typeof model?.capabilities?.toolcall === 'boolean'
+          ? model.capabilities.toolcall
+          : null,
+    status:
+      typeof catalogModel?.status === 'string'
+        ? catalogModel.status
+        : typeof model?.status === 'string'
+          ? model.status
+          : null,
+  };
+}
+
+export async function readManagedOpenCodeClassifierModelAuthority(
+  handle: OpencodeHandle,
+  input: { readonly providerID: string; readonly modelID: string },
+  options: { readonly signal?: AbortSignal } = {},
+): Promise<OpenCodeClassifierModelAuthority> {
+  const client = createOpencodeClient({
+    baseUrl: handle.baseUrl,
+    directory: handle.cwd,
+    headers: { Authorization: handle.auth.authorization },
+    throwOnError: true,
+    fetch: createStreamingLoopbackFetch(handle.baseUrl),
+  });
+  const v2Client = createOpencodeV2Client({
+    baseUrl: handle.baseUrl,
+    directory: handle.cwd,
+    headers: { Authorization: handle.auth.authorization },
+    throwOnError: true,
+    fetch: createStreamingLoopbackFetch(handle.baseUrl),
+  });
+  const [configured, catalogModels] = await Promise.all([
+    sdkData(client.config.providers({ signal: options.signal }), 'OpenCode configured providers'),
+    sdkData(v2Client.v2.model.list(undefined, { signal: options.signal }), 'OpenCode model catalog')
+      .then((result) => result.data)
+      .catch(() => []),
+  ]);
+  return resolveConfiguredOpenCodeClassifierModelAuthority(
+    configured.providers,
+    input,
+    catalogModels,
+  );
 }
 
 /**

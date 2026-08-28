@@ -53,6 +53,7 @@ import {
 import {
   fetchConfiguredProviderModels,
   fetchProviderCatalog,
+  modelToolCapability,
   reconcileModelPick,
   reconcileModelVariant,
   refreshProvidersAndAuth,
@@ -114,6 +115,7 @@ interface ChatStore {
   chatOperationV2Inventory: ChatOperationV2Inventory | null;
   activeChatOperationV2: ChatOperationV2Projection | null;
   activeChatOperationV2Failure: ChatOperationV2FailureProjection | null;
+  activeChatOperationV2FailureModel: ModelPick | null;
   activeChatOperationV2Request: ActiveChatOperationV2Request | null;
   chatOperationV2Connected: boolean;
   chatOperationV2LatestCursor: number;
@@ -381,6 +383,20 @@ function chatControlsBlockedMessage(): string {
   return 'Wait for the current Chat Operation V2 request to finish.';
 }
 
+const CHAT_OPERATION_V2_MODEL_SELECTION_FAILURE_CODES = new Set([
+  'model_error',
+  'model_incompatible',
+  'model_unavailable',
+  'provider_request_rejected',
+  'structured_output_error',
+]);
+
+export function chatOperationV2FailureRequiresModelChange(
+  failure: ChatOperationV2FailureProjection | null,
+): boolean {
+  return failure !== null && CHAT_OPERATION_V2_MODEL_SELECTION_FAILURE_CODES.has(failure.code);
+}
+
 const CHAT_OPERATION_V2_RENDERER_INSTANCE_STORAGE_KEY =
   'tagma.chat-operation-v2.renderer-instance.v1';
 const CHAT_OPERATION_V2_CONVERSATION_STORAGE_PREFIX = 'tagma.chat-operation-v2.conversation.v1:';
@@ -498,6 +514,7 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
           chatOperationV2QuestionRequests: {},
           chatOperationV2InteractiveRecoveryRequests: {},
           activeChatOperationV2Failure: null,
+          activeChatOperationV2FailureModel: null,
           sending: false,
           pendingUserText: null,
           pendingActivity: [],
@@ -512,6 +529,7 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
         chatOperationV2QuestionRequests: {},
         chatOperationV2InteractiveRecoveryRequests: {},
         activeChatOperationV2Failure: null,
+        activeChatOperationV2FailureModel: null,
       };
     }
 
@@ -530,6 +548,7 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
             pendingPermissions: [],
             activeChatOperationV2Request: null,
             activeChatOperationV2Failure: null,
+            activeChatOperationV2FailureModel: null,
             chatOperationV2ClarificationRequests: {},
             chatOperationV2QuestionRequests: {},
             chatOperationV2InteractiveRecoveryRequests: {},
@@ -692,6 +711,12 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
         attachments: requestAttachments,
       },
       activeChatOperationV2Failure: detail.failure,
+      activeChatOperationV2FailureModel:
+        detail.failure === null
+          ? null
+          : newlyRetryable
+            ? previous.model
+            : previous.activeChatOperationV2FailureModel,
       pendingUserText: null,
       completionWarning,
       ...(newlyRetryable && previous.composerDraft.trim().length === 0
@@ -745,6 +770,20 @@ async function sendChatOperationV2(
   const model = state.model;
   if (!model) {
     const error = new Error('Select a model before sending a Chat Operation V2 request.');
+    set({ sendError: error.message });
+    throw error;
+  }
+  if (
+    state.activeChatOperationV2?.executionState === 'retryable_failure' &&
+    chatOperationV2FailureRequiresModelChange(state.activeChatOperationV2Failure) &&
+    sameModelPick(model, state.activeChatOperationV2FailureModel)
+  ) {
+    const error = new Error('Choose another model before sending this message again.');
+    set({ sendError: error.message });
+    throw error;
+  }
+  if (modelToolCapability(state.providers, model) === false) {
+    const error = new Error('Choose a model that supports tools before sending this message.');
     set({ sendError: error.message });
     throw error;
   }
@@ -920,6 +959,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   chatOperationV2Inventory: null,
   activeChatOperationV2: null,
   activeChatOperationV2Failure: null,
+  activeChatOperationV2FailureModel: null,
   activeChatOperationV2Request: null,
   chatOperationV2Connected: false,
   chatOperationV2LatestCursor: 0,
@@ -1171,6 +1211,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               chatOperationV2Inventory: null,
               activeChatOperationV2: null,
               activeChatOperationV2Failure: null,
+              activeChatOperationV2FailureModel: null,
               activeChatOperationV2Request: null,
               chatOperationV2Connected: false,
               chatOperationV2LatestCursor: 0,

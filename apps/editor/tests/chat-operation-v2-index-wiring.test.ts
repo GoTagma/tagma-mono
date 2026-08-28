@@ -29,7 +29,9 @@ test('sidecar wires the opt-in Chat Operation V2 Host surface and closes its aut
     '{ enabled: true, mutationsEnabled: false, service: chatOperationV2Service }',
   );
   expect(source).toContain('service: chatOperationV2Service,');
-  expect(source).toContain('createInputResolver: (workDir, request) =>');
+  expect(source).toContain('createInputResolver: async (workDir, request) =>');
+  expect(source).toContain('readManagedOpenCodeClassifierModelAuthority(');
+  expect(source).toContain('classifierModel,');
   expect(source).toContain('clarificationInputResolver: (workDir, request) =>');
   expect(source).toContain('chatOperationV2HostInventoryFor(workDir)');
   expect(source).toContain('buildChatOperationV2HostInventory({');

@@ -12,7 +12,7 @@ import {
   Brain,
   Terminal,
 } from 'lucide-react';
-import { useChatStore } from '../../store/chat-store';
+import { chatOperationV2FailureRequiresModelChange, useChatStore } from '../../store/chat-store';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
@@ -66,20 +66,28 @@ export function ChatPanel() {
   );
 }
 
-export function RetryableOperationNoticeView() {
+export function RetryableOperationNoticeView({
+  needsModelChange = false,
+}: {
+  needsModelChange?: boolean;
+}) {
   return (
     <section
-      aria-label="Chat message ready to resend"
+      aria-label={needsModelChange ? 'Chat model change required' : 'Chat message ready to resend'}
       className="shrink-0 border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2"
     >
       <div className="flex min-w-0 items-start gap-2">
         <AlertTriangle size={12} className="mt-0.5 shrink-0 text-tagma-warning" />
         <div className="min-w-0 flex-1">
           <div className="text-label font-sans text-tagma-text">
-            Your message is ready to send again
+            {needsModelChange
+              ? 'Choose another model to continue'
+              : 'Your message is ready to send again'}
           </div>
           <div className="mt-0.5 text-caption font-mono text-tagma-muted">
-            Review it in the composer below, then send when ready.
+            {needsModelChange
+              ? 'This model could not run Tagma Chat. Your message is preserved below.'
+              : 'Review it in the composer below, then send when ready.'}
           </div>
         </div>
       </div>
@@ -91,8 +99,11 @@ function RetryableOperationNotice() {
   const retryable = useChatStore(
     (state) => state.activeChatOperationV2?.executionState === 'retryable_failure',
   );
+  const needsModelChange = useChatStore((state) =>
+    chatOperationV2FailureRequiresModelChange(state.activeChatOperationV2Failure),
+  );
   if (!retryable) return null;
-  return <RetryableOperationNoticeView />;
+  return <RetryableOperationNoticeView needsModelChange={needsModelChange} />;
 }
 
 export type FlowStepStatus = 'pending' | 'active' | 'complete' | 'error';

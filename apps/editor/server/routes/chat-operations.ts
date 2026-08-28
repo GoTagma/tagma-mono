@@ -297,6 +297,13 @@ function mapMutationError(error: unknown): PublicRouteError {
         kind: 'chat_operation_action_unavailable',
         error: 'This Chat operation action is temporarily unavailable.',
       };
+    case 'classifier_model_incompatible':
+    case 'classifier_model_unavailable':
+      return {
+        status: 409,
+        kind: 'chat_operation_action_unavailable',
+        error: 'The selected model cannot run Tagma Chat. Choose another model.',
+      };
     case 'operation_conflict':
     case 'host_inventory_conflict':
     case 'unknown_candidate':

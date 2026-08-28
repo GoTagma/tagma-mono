@@ -109,6 +109,7 @@ interface SdkHistoryEvent {
 
 interface HarnessOptions {
   nativePrompt?: 'admit' | 'conflict-after-admit' | 'throw-after-admit';
+  richSdkFailure?: { readonly status: number; readonly error: unknown };
   richPrompt?: (
     input: OpenCodeAdapterRichPromptInput | OpenCodeAdapterTextPromptInput,
     signal: AbortSignal | undefined,
@@ -283,6 +284,12 @@ function createHarness(options: HarnessOptions = {}) {
         calls.push('sdk.rich.prompt');
         richCallCount += 1;
         richRequests.push(input);
+        if (options.richSdkFailure) {
+          return Promise.resolve({
+            error: options.richSdkFailure.error,
+            response: { status: options.richSdkFailure.status },
+          });
+        }
         const authored = options.richPrompt?.(input, requestOptions?.signal);
         if (authored !== undefined) return sdkOk(authored);
         if (input.format.type === 'text') {
@@ -880,10 +887,12 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(await runner.run(input)).toEqual({
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
+      submissionUnknown: true,
     });
     expect(await runner.run(input)).toEqual({
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
+      submissionUnknown: true,
     });
     expect(harness.richCallCount()).toBe(1);
     expect(executionIdAllocations()).toBe(1);
@@ -913,6 +922,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(await first.runner.run(input)).toEqual({
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
+      submissionUnknown: true,
     });
 
     const restartedAdapter = new OpenCodeSdkAdapter({
@@ -950,6 +960,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(await first.runner.run(input)).toEqual({
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
+      submissionUnknown: true,
     });
 
     const restartedAdapter = new OpenCodeSdkAdapter({
@@ -1142,6 +1153,44 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       code: 'model_error',
     });
   });
+
+  test.each([
+    [
+      'missing model',
+      { status: 400, error: { _tag: 'ProviderModelNotFoundError' } },
+      'model_unavailable',
+    ],
+    [
+      'unsupported structured tool',
+      { status: 400, error: { name: 'UnsupportedToolError' } },
+      'model_incompatible',
+    ],
+    [
+      'provider authentication',
+      { status: 401, error: { code: 'AUTHENTICATION_FAILED' } },
+      'provider_authentication_failed',
+    ],
+    [
+      'provider rate limit',
+      { status: 429, error: { code: 'RATE_LIMITED' } },
+      'provider_rate_limited',
+    ],
+    [
+      'bounded provider rejection',
+      { status: 400, error: { name: 'BadRequestError', data: { secret: 'do not leak' } } },
+      'provider_request_rejected',
+    ],
+  ] as const)(
+    'keeps a definitive %s SDK rejection distinct from response loss',
+    async (_label, richSdkFailure, expectedCode) => {
+      const { runner } = setup({ richSdkFailure });
+
+      expect(await runner.run(request())).toEqual({
+        kind: 'provider_unavailable',
+        code: expectedCode,
+      });
+    },
+  );
 
   test('does not retry pinned StructuredOutputError responses', async () => {
     const { harness, runner } = setup({

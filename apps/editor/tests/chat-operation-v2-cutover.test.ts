@@ -100,6 +100,7 @@ function detail(
   pendingInput: unknown = null,
   result: unknown = null,
   attachments: readonly { referenceId: string; label: string; content: string }[] = [],
+  failureCode = 'provider_unavailable',
 ) {
   return {
     protocolVersion: 2,
@@ -120,7 +121,7 @@ function detail(
         projectedOperation.executionState === 'retryable_failure'
           ? {
               stage: 'classification',
-              code: 'provider_unavailable',
+              code: failureCode,
               invocationId: null,
               outboxStatus: null,
               recordedAt: projectedOperation.updatedAt,
@@ -147,6 +148,8 @@ afterEach(async () => {
     chatOperationV2Operations: [],
     chatOperationV2Inventory: null,
     activeChatOperationV2: null,
+    activeChatOperationV2Failure: null,
+    activeChatOperationV2FailureModel: null,
     activeChatOperationV2Request: null,
     chatOperationV2Connected: false,
     chatOperationV2LatestCursor: 0,
@@ -357,6 +360,8 @@ test('returns provider failures to the normal composer and replaces them on the 
     throw new Error(`Unexpected request: ${url}`);
   }) as unknown as typeof fetch;
 
+  useChatStore.setState({ model: { providerID: 'deepseek', modelID: 'deepseek-v4-flash' } });
+
   await activateChatOperationExecutionForWorkspace(workspace, {
     chatOperationProtocolVersion: 2,
     chatOperationMode: 'production',
@@ -409,6 +414,47 @@ test('returns provider failures to the normal composer and replaces them on the 
       executionState: 'running',
     },
   });
+});
+
+test('does not create another operation for the same definitively rejected model', async () => {
+  setClientWorkspace(workspace);
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  const requests: Array<{ url: string; method: string }> = [];
+  let retryable = operation({
+    version: 2,
+    phase: 'awaiting_input',
+    waitReason: 'provider_unavailable',
+    executionState: 'retryable_failure',
+    updatedAt: 250,
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    requests.push({ url, method });
+    if (url === '/api/chat/operations/snapshot') {
+      const correlation = useChatStore.getState();
+      retryable = operation({
+        ...retryable,
+        conversationId: correlation.chatOperationV2ConversationId!,
+        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
+      });
+      return Response.json(snapshot([retryable]));
+    }
+    if (url === '/api/chat/operations/operation-cutover-1') {
+      return Response.json(detail(retryable, null, null, [], 'model_unavailable'));
+    }
+    throw new Error(`Unexpected request: ${method} ${url}`);
+  }) as unknown as typeof fetch;
+  useChatStore.setState({ model: { providerID: 'deepseek', modelID: 'deepseek-v4-flash' } });
+
+  await activateChatOperationExecutionForWorkspace(workspace, {
+    chatOperationProtocolVersion: 2,
+    chatOperationMode: 'production',
+  });
+
+  await expect(useChatStore.getState().send('request')).rejects.toThrow(/choose another model/i);
+  expect(requests.filter(({ method }) => method === 'POST')).toEqual([]);
+  expect(useChatStore.getState().sendError).toMatch(/choose another model/i);
 });
 
 test('projects strict Host result messages into the existing transcript', async () => {

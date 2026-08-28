@@ -190,6 +190,70 @@ function requireSuccessfulSdkData(result: OpenCodeAdapterSdkResult): unknown {
   return result.data;
 }
 
+class OpenCodeDefinitivePromptError extends Error {
+  constructor(readonly code: OpenCodeStructuredClassifierProviderCode) {
+    super('OpenCode returned a definitive bounded prompt failure.');
+    this.name = 'OpenCodeDefinitivePromptError';
+  }
+}
+
+function sdkErrorSignals(value: unknown, depth = 0): string[] {
+  if (depth > 2 || typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const signals: string[] = [];
+    for (const key of ['_tag', 'name', 'code', 'type']) {
+      const descriptor = descriptors[key];
+      if (descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        const field = descriptor.value;
+        if (typeof field === 'string' && field.length <= 128) signals.push(field.toLowerCase());
+      }
+    }
+    for (const key of ['data', 'error', 'cause']) {
+      const descriptor = descriptors[key];
+      if (descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        signals.push(...sdkErrorSignals(descriptor.value, depth + 1));
+      }
+    }
+    return signals;
+  } catch {
+    return [];
+  }
+}
+
+function classifierSdkFailureCode(
+  result: OpenCodeAdapterSdkResult,
+): OpenCodeStructuredClassifierProviderCode | null {
+  const status = Number.isInteger(result.response?.status) ? result.response.status : null;
+  if (
+    result.error === undefined &&
+    status !== null &&
+    status >= 200 &&
+    status < 300 &&
+    result.data !== undefined
+  ) {
+    return null;
+  }
+  const signal = sdkErrorSignals(result.error).join(' ');
+  if (/provider.?model.?not.?found|model.?not.?found|unknown.?model|invalid.?model/.test(signal)) {
+    return 'model_unavailable';
+  }
+  if (
+    /unsupported.?tool|tool.?unsupported|tools.?not.?supported|structured.?output.?unsupported/.test(
+      signal,
+    )
+  ) {
+    return 'model_incompatible';
+  }
+  if (/auth|unauthorized|forbidden|credential/.test(signal) || status === 401 || status === 403) {
+    return 'provider_authentication_failed';
+  }
+  if (/rate|quota|too.?many/.test(signal) || status === 429) return 'provider_rate_limited';
+  if (status !== null && status >= 400 && status < 500) return 'provider_request_rejected';
+  if (status !== null && status >= 500) return 'provider_unavailable';
+  return 'provider_invocation_failed';
+}
+
 function safeNonNegativeInteger(value: unknown): number | null {
   return Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : null;
 }
@@ -427,6 +491,8 @@ export class OpenCodeSdkAdapter
       },
       { signal: input.signal },
     );
+    const failureCode = classifierSdkFailureCode(result);
+    if (failureCode) throw new OpenCodeDefinitivePromptError(failureCode);
     const response = record(requireSuccessfulSdkData(result));
     const info = record(response?.info);
     if (!info || typeof info.parentID !== 'string') {
@@ -807,6 +873,13 @@ export type OpenCodeStructuredClassifierProviderCode =
   | 'execution_identity_conflict'
   | 'structured_output_error'
   | 'model_error'
+  | 'model_incompatible'
+  | 'model_unavailable'
+  | 'provider_authentication_failed'
+  | 'provider_rate_limited'
+  | 'provider_request_rejected'
+  | 'provider_unavailable'
+  | 'provider_invocation_failed'
   | 'malformed_structured_result'
   | 'malformed_text_result'
   | 'readonly_replay_not_authorized';
@@ -1128,7 +1201,7 @@ export class OpenCodeStructuredClassifierRunner {
     }
     const result = this.execute(input).catch((): OpenCodeClassifierCoreResult => ({
       kind: 'provider_unavailable',
-      code: 'submitted_unknown',
+      code: 'provider_invocation_failed',
     }));
     this.ownedRuns.set(input.invocationId, {
       operationId: input.operationId,
@@ -1321,10 +1394,15 @@ export class OpenCodeStructuredClassifierRunner {
           schema: input.prompt.schema,
           signal: input.signal,
         });
-      } catch {
-        return input.signal.aborted
-          ? { kind: 'cancelled', code: 'aborted' }
-          : { kind: 'provider_unavailable', code: 'submitted_unknown' };
+      } catch (error) {
+        if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
+        return error instanceof OpenCodeDefinitivePromptError
+          ? { kind: 'provider_unavailable', code: error.code }
+          : {
+              kind: 'provider_unavailable',
+              code: 'submitted_unknown',
+              submissionUnknown: true,
+            };
       }
       if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
       if (response.messageId !== executionMessageId) {

@@ -29,6 +29,17 @@ describe('Chat Operation V2 activity panel', () => {
     expect(html).not.toContain('animate-spin');
   });
 
+  test('uses the existing model picker as the only action for a definitive model failure', () => {
+    const html = renderToStaticMarkup(
+      createElement(RetryableOperationNoticeView, { needsModelChange: true }),
+    );
+
+    expect(html).toContain('Choose another model to continue');
+    expect(html).toContain('Your message is preserved below');
+    expect(html).toContain('aria-label="Chat model change required"');
+    expect(html).not.toContain('<button');
+  });
+
   test('renders a user-input wait with a static warning instead of a generation spinner', () => {
     const html = renderToStaticMarkup(
       createElement(TurnActivityPanel, {

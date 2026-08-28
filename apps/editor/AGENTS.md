@@ -39,6 +39,13 @@
   failure. Restore the frozen request once into the normal Composer; the next ordinary Send must
   discard the old operation through Host authority before creating a new operation with the current
   provider/model selection.
+- Chat V2 Host admission must authenticate the exact selected model against the managed configured
+  provider catalog and require explicit tool-call capability before creating an operation. Missing
+  V2 metadata alone is not a negative capability for configured custom models. A returned SDK/HTTP
+  rejection is definitive and must retain a bounded model/auth/rate-limit/request code; reserve
+  `submitted_unknown` for transport loss where submission really cannot be determined. After a
+  deterministic model-specific classifier failure, an unchanged model selection must not allocate
+  another operation; the normal model picker is the sole recovery action.
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
