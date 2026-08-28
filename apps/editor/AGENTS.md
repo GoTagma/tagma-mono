@@ -31,6 +31,14 @@
   Host-resolved binding. Host compile/Trial repair already carries an authenticated target and goes
   directly back to `tagma-pipeline`. The legacy router path remains only for non-desktop and
   unfinished older turns. Never use diagnosis/discussion as an authoring pre-reader.
+- Before an operation reaches reservation, Stop and Discard remain owned by the read-only
+  orchestrator; the authoring engine has no operation context yet. A classifier-side
+  `provider_unavailable` discard must terminalize as `discarded` without allocating an authoring
+  runtime. After reservation, preserve the authoring and commit cleanup paths. Do not expose Host
+  stages, outbox states, or a cluster of retry/discard/provider controls for an ordinary retryable
+  failure. Restore the frozen request once into the normal Composer; the next ordinary Send must
+  discard the old operation through Host authority before creating a new operation with the current
+  provider/model selection.
 - A pipeline specialist's successful compile is still pending host verification. The router must
   relay the exact `authoring complete; host verification pending` status; only later host
   reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.

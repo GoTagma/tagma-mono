@@ -99,6 +99,7 @@ function detail(
   projectedOperation: ChatOperationV2Projection,
   pendingInput: unknown = null,
   result: unknown = null,
+  attachments: readonly { referenceId: string; label: string; content: string }[] = [],
 ) {
   return {
     protocolVersion: 2,
@@ -111,7 +112,7 @@ function detail(
         role: 'user',
         createdAt: projectedOperation.createdAt,
         text: 'request',
-        attachments: [],
+        attachments,
       },
       inventory: inventory(),
       pendingInput,
@@ -281,7 +282,7 @@ test('production sends and Stop use only the operation API for one executor', as
   expect(useChatStore.getState().chatOperationV2ConversationId).not.toBe(firstConversationId);
 });
 
-test('projects provider unavailability as a sealed retryable failure instead of live generation', async () => {
+test('returns provider failures to the normal composer and replaces them on the next send', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
   const requests: Array<{ url: string; method: string; body: unknown }> = [];
@@ -292,6 +293,17 @@ test('projects provider unavailability as a sealed retryable failure instead of 
     executionState: 'retryable_failure',
     updatedAt: 250,
   });
+  let replacement = operation({
+    operationId: 'operation-cutover-2',
+    version: 1,
+    phase: 'classifying',
+    executionState: 'running',
+    updatedAt: 280,
+  });
+  let projectedOperation = retryable;
+  const retryAttachments = [
+    { referenceId: 'retry-context', label: 'context', content: 'bounded evidence' },
+  ];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
@@ -304,36 +316,43 @@ test('projects provider unavailability as a sealed retryable failure instead of 
         conversationId: correlation.chatOperationV2ConversationId!,
         rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
       });
+      projectedOperation = retryable;
       return Response.json(snapshot([retryable]));
     }
     if (url === '/api/chat/operations/operation-cutover-1') {
-      return Response.json(detail(retryable));
-    }
-    if (url === '/api/chat/operations/operation-cutover-1/retry') {
-      retryable = operation({
-        ...retryable,
-        version: 3,
-        updatedAt: 260,
-      });
-      return Response.json({
-        protocolVersion: 2,
-        result: { kind: 'provider_unavailable', operation: retryable },
-      });
+      return Response.json(detail(projectedOperation, null, null, retryAttachments));
     }
     if (url === '/api/chat/operations/operation-cutover-1/discard') {
       retryable = operation({
         ...retryable,
-        version: 4,
+        version: 3,
         phase: 'terminal',
         waitReason: null,
         executionState: 'terminal',
         terminalOutcome: 'discarded',
         updatedAt: 270,
       });
+      projectedOperation = retryable;
       return Response.json({
         protocolVersion: 2,
         result: { kind: 'discarded', operation: retryable },
       });
+    }
+    if (url === '/api/chat/operations' && method === 'POST') {
+      const correlation = useChatStore.getState();
+      replacement = operation({
+        ...replacement,
+        conversationId: correlation.chatOperationV2ConversationId!,
+        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
+      });
+      projectedOperation = replacement;
+      return Response.json({
+        protocolVersion: 2,
+        result: { kind: 'in_progress', operation: replacement },
+      });
+    }
+    if (url === '/api/chat/operations/operation-cutover-2') {
+      return Response.json(detail(replacement));
     }
     throw new Error(`Unexpected request: ${url}`);
   }) as unknown as typeof fetch;
@@ -342,6 +361,7 @@ test('projects provider unavailability as a sealed retryable failure instead of 
     chatOperationProtocolVersion: 2,
     chatOperationMode: 'production',
   });
+  useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
 
   expect(useChatStore.getState()).toMatchObject({
     sending: false,
@@ -349,38 +369,45 @@ test('projects provider unavailability as a sealed retryable failure instead of 
       operationId: 'operation-cutover-1',
       executionState: 'retryable_failure',
     },
-    pendingActivity: [
-      {
-        kind: 'operation-failed',
-        startedAt: 100,
-        endedAt: 250,
-        detail: 'Provider unavailable',
-      },
-    ],
+    pendingActivity: [],
+    composerDraft: 'request',
+    composerAttachments: [{ id: 'retry-context', label: 'context', content: 'bounded evidence' }],
   });
 
-  await useChatStore.getState().retryActiveChatOperationV2();
-  expect(
-    requests.find(({ url }) => url === '/api/chat/operations/operation-cutover-1/retry'),
-  ).toMatchObject({
+  useChatStore.setState({ composerDraft: '' });
+  await useChatStore.getState().send('request');
+  const discardIndex = requests.findIndex(
+    ({ url }) => url === '/api/chat/operations/operation-cutover-1/discard',
+  );
+  const replacementIndex = requests.findIndex(
+    ({ url, method }) => url === '/api/chat/operations' && method === 'POST',
+  );
+  expect(discardIndex).toBeGreaterThan(-1);
+  expect(replacementIndex).toBeGreaterThan(discardIndex);
+  expect(requests[discardIndex]).toMatchObject({
     method: 'POST',
+    body: { expectedVersion: 2 },
+  });
+  expect(requests[replacementIndex]).toMatchObject({
     body: {
-      protocolVersion: 2,
-      operationId: 'operation-cutover-1',
-      expectedGeneration: 1,
-      expectedVersion: 2,
+      payload: {
+        request: {
+          text: 'request',
+          attachments: [
+            { referenceId: 'retry-context', label: 'context', content: 'bounded evidence' },
+          ],
+        },
+        provider: 'openai',
+        model: 'gpt-5.4',
+      },
     },
   });
-
-  await useChatStore.getState().changeProviderForActiveChatOperationV2();
-  expect(
-    requests.find(({ url }) => url === '/api/chat/operations/operation-cutover-1/discard'),
-  ).toMatchObject({ method: 'POST', body: { expectedVersion: 3 } });
   expect(useChatStore.getState()).toMatchObject({
-    sending: false,
-    connectOpen: true,
-    composerDraft: 'request',
-    activeChatOperationV2: { executionState: 'terminal', terminalOutcome: 'discarded' },
+    sending: true,
+    activeChatOperationV2: {
+      operationId: 'operation-cutover-2',
+      executionState: 'running',
+    },
   });
 });
 

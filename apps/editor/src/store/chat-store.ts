@@ -444,21 +444,7 @@ let chatOperationV2Controller: ChatOperationV2Controller | null = null;
 
 function chatOperationV2Activity(operation: ChatOperationV2Projection | null): ActivityEvent[] {
   if (!operation || operation.executionState === 'terminal') return [];
-  if (operation.executionState === 'retryable_failure') {
-    return [
-      {
-        kind: 'operation-failed',
-        startedAt: operation.createdAt,
-        endedAt: operation.updatedAt,
-        count: 1,
-        detail:
-          operation.waitReason === 'provider_unavailable'
-            ? 'Provider unavailable'
-            : 'Explicit retry required',
-        key: `chat-operation-v2:${operation.operationId}:retryable-failure`,
-      },
-    ];
-  }
+  if (operation.executionState === 'retryable_failure') return [];
   if (operation.executionState === 'waiting_for_user') {
     return [
       {
@@ -625,6 +611,15 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
     const pendingPermissions = previous.pendingPermissions.filter(
       (permission) => permission.sessionID !== operationId,
     );
+    const requestAttachments = detail.userMessage.attachments.map((attachment) => ({
+      id: attachment.referenceId,
+      label: attachment.label,
+      content: attachment.content,
+    }));
+    const newlyRetryable =
+      detail.operation.executionState === 'retryable_failure' &&
+      detail.failure !== null &&
+      previous.activeChatOperationV2Failure?.recordedAt !== detail.failure.recordedAt;
     let completionWarning = previous.completionWarning;
 
     if (
@@ -694,15 +689,17 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
       activeChatOperationV2Request: {
         operationId,
         text: detail.userMessage.text,
-        attachments: detail.userMessage.attachments.map((attachment) => ({
-          id: attachment.referenceId,
-          label: attachment.label,
-          content: attachment.content,
-        })),
+        attachments: requestAttachments,
       },
       activeChatOperationV2Failure: detail.failure,
       pendingUserText: null,
       completionWarning,
+      ...(newlyRetryable && previous.composerDraft.trim().length === 0
+        ? { composerDraft: detail.userMessage.text }
+        : {}),
+      ...(newlyRetryable && previous.composerAttachments.length === 0
+        ? { composerAttachments: requestAttachments }
+        : {}),
     };
   });
 }
@@ -809,6 +806,10 @@ async function sendChatOperationV2(
 
   try {
     const activeOperationId = state.activeChatOperationV2?.operationId ?? null;
+    const retryableOperation =
+      state.activeChatOperationV2?.executionState === 'retryable_failure'
+        ? state.activeChatOperationV2
+        : null;
     const clarificationRequestId = activeOperationId
       ? (state.chatOperationV2ClarificationRequests[activeOperationId] ?? null)
       : null;
@@ -822,6 +823,16 @@ async function sendChatOperationV2(
     }
     if (questionRequest && attachments.length > 0) {
       throw new Error('Question replies cannot include Chat context attachments.');
+    }
+    if (retryableOperation) {
+      const discarded = await controller.discard();
+      if (!activationIsCurrent()) return;
+      if (
+        discarded.operation.operationId !== retryableOperation.operationId ||
+        discarded.operation.executionState !== 'terminal'
+      ) {
+        throw new Error('The previous request is still being recovered.');
+      }
     }
     await (clarificationRequestId && activeOperationId
       ? controller.replyClarification(activeOperationId, {

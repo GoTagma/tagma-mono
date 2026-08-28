@@ -651,6 +651,19 @@ export class ChatOperationV2Service {
     const authority = this.#readonlyAuthorityForWorkspace(workspacePath);
     const operation = this.#requireOperationInWorkspace(authority, request.operationId);
     if (operation.phase === 'terminal') return { kind: 'already_terminal', operation };
+    if (
+      CHAT_OPERATION_V2_PHASES.indexOf(operation.phase) <
+      CHAT_OPERATION_V2_PHASES.indexOf('reserving')
+    ) {
+      return this.#trackReadonlyCall(
+        this.#orchestratorForWorkspace(authority).discardOperation({
+          operationId: operation.operationId,
+          expectedGeneration: request.expectedGeneration,
+          expectedVersion: request.expectedVersion,
+          requestId: request.clientRequestId,
+        }),
+      );
+    }
     const runtime = this.#authoringRuntimeForWorkspace(authority);
     return this.#trackReadonlyCall(
       runtime.engine.discard({

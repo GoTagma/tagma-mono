@@ -171,7 +171,10 @@ export function ChatComposer() {
   const abort = useChatStore((s) => s.abort);
   const sending = useChatStore((s) => s.sending);
   const operationActive = useChatStore(
-    (s) => !!s.activeChatOperationV2 && s.activeChatOperationV2.executionState !== 'terminal',
+    (s) =>
+      !!s.activeChatOperationV2 &&
+      s.activeChatOperationV2.executionState !== 'terminal' &&
+      s.activeChatOperationV2.executionState !== 'retryable_failure',
   );
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');

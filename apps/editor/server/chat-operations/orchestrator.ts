@@ -251,9 +251,9 @@ export interface StopChatOperationV2Input {
   readonly requestId: string;
 }
 
-export type StopChatOperationV2Result =
+type PreReservationTerminationResult<Outcome extends 'cancelled_precommit' | 'discarded'> =
   | {
-      readonly kind: 'cancelled_precommit';
+      readonly kind: Outcome;
       readonly operation: StoredChatOperationV2;
     }
   | {
@@ -264,6 +264,10 @@ export type StopChatOperationV2Result =
       readonly kind: 'already_terminal';
       readonly operation: StoredChatOperationV2;
     };
+
+export type StopChatOperationV2Result = PreReservationTerminationResult<'cancelled_precommit'>;
+
+export type DiscardChatOperationV2Result = PreReservationTerminationResult<'discarded'>;
 
 export interface RetryChatOperationV2Input {
   readonly operationId: string;
@@ -1160,8 +1164,22 @@ export class ChatOperationV2ReadonlyOrchestrator {
   }
 
   async stopOperation(input: StopChatOperationV2Input): Promise<StopChatOperationV2Result> {
+    return this.terminateOperation(input, 'cancelled_precommit');
+  }
+
+  async discardOperation(input: StopChatOperationV2Input): Promise<DiscardChatOperationV2Result> {
+    return this.terminateOperation(input, 'discarded');
+  }
+
+  private async terminateOperation<Outcome extends 'cancelled_precommit' | 'discarded'>(
+    input: StopChatOperationV2Input,
+    outcome: Outcome,
+  ): Promise<PreReservationTerminationResult<Outcome>> {
     assertHostId(input.operationId, 'Operation id');
-    assertHostId(input.requestId, 'Stop request id');
+    assertHostId(
+      input.requestId,
+      outcome === 'discarded' ? 'Discard request id' : 'Stop request id',
+    );
     assertOperationCas(input.expectedGeneration, input.expectedVersion);
     const current = this.requireOperation(input.operationId);
     if (current.phase === 'terminal') return { kind: 'already_terminal', operation: current };
@@ -1222,20 +1240,20 @@ export class ChatOperationV2ReadonlyOrchestrator {
         ...stateOf(latest),
         phase: 'terminal',
         waitReason: null,
-        terminalOutcome: 'cancelled_precommit',
+        terminalOutcome: outcome,
         activeInvocationId: null,
         pendingPermissionRequestId: null,
       },
       'operation_terminal',
       {
-        outcome: 'cancelled_precommit',
+        outcome,
         resultId: null,
         bindingId: null,
         artifactSetHash: null,
       },
     );
     await Promise.all(interruptPromises);
-    if (terminal.applied) return { kind: 'cancelled_precommit', operation: terminal.operation };
+    if (terminal.applied) return { kind: outcome, operation: terminal.operation };
     return terminal.operation.phase === 'terminal'
       ? { kind: 'already_terminal', operation: terminal.operation }
       : { kind: 'stale', operation: terminal.operation };

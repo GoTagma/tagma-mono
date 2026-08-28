@@ -1490,6 +1490,56 @@ describe('ChatTurn Operation V2 service activation', () => {
     ]);
   });
 
+  test('discard terminalizes a provider-unavailable classifier before authoring starts', async () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const runner = new FakeReadonlyRunner([
+      { kind: 'provider_unavailable', code: 'submitted_unknown', submissionUnknown: true },
+    ]);
+    const runtime = new FakeServiceAuthoringRuntime();
+    const { service, factoryScopes } = createMutationService({
+      controlDir,
+      runner,
+      runtime,
+    });
+
+    const unavailable = await service.createAndDispatchReadonly(
+      workspace,
+      readonlyCreateInput('request-discard-classifier-failure'),
+    );
+    expect(unavailable).toMatchObject({
+      kind: 'provider_unavailable',
+      operation: {
+        phase: 'awaiting_input',
+        waitReason: 'provider_unavailable',
+        terminalOutcome: null,
+      },
+    });
+
+    const discarded = await service.discardReadonly(workspace, {
+      protocolVersion: 2,
+      clientRequestId: 'discard-classifier-failure',
+      operationId: unavailable.operation.operationId,
+      expectedGeneration: unavailable.operation.generation,
+      expectedVersion: unavailable.operation.version,
+    });
+
+    expect(discarded).toMatchObject({
+      kind: 'discarded',
+      operation: {
+        phase: 'terminal',
+        waitReason: null,
+        terminalOutcome: 'discarded',
+        activeInvocationId: null,
+      },
+    });
+    expect(runner.calls.map(({ purpose }) => purpose)).toEqual(['classifier']);
+    expect(runtime.invocations).toHaveLength(0);
+    expect(factoryScopes).toEqual([]);
+  });
+
   test('a restarted service recovers and resumes durable read-only invocation ids', async () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');

@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe('chat composer draft', () => {
-  test('blocks a new turn while a retryable operation is active even though generation stopped', () => {
+  test('blocks a new turn while another operation is actively running', () => {
     expect(
       getChatComposerAvailability({
         hasContent: true,

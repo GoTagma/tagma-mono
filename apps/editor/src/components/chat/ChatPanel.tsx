@@ -16,7 +16,6 @@ import { useChatStore } from '../../store/chat-store';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
-import type { ChatOperationV2FailureProjection } from '../../api/chat-operations';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { TurnActivityPanel } from './ActivityPanel';
@@ -58,7 +57,7 @@ export function ChatPanel() {
           bootstrapStatus === 'idle' ||
           bootstrapStatus === 'error') && <BootstrapOverlay />}
       </div>
-      <RetryableOperationBanner />
+      <RetryableOperationNotice />
       <CompletionWarningBanner />
       <ErrorBanner />
       <ChatComposer />
@@ -67,67 +66,20 @@ export function ChatPanel() {
   );
 }
 
-type RetryableOperationPendingAction = 'retry' | 'change-provider' | 'discard' | null;
-
-export function RetryableOperationBannerView({
-  pendingAction,
-  failure,
-  onRetry,
-  onChangeProvider,
-  onDiscard,
-}: {
-  pendingAction: RetryableOperationPendingAction;
-  failure: ChatOperationV2FailureProjection | null;
-  onRetry: () => void;
-  onChangeProvider: () => void;
-  onDiscard: () => void;
-}) {
-  const disabled = pendingAction !== null;
-  const authoringHandoff = failure?.code === 'authoring_handoff_retry_required';
+export function RetryableOperationNoticeView() {
   return (
     <section
-      aria-label="Chat operation needs attention"
+      aria-label="Chat message ready to resend"
       className="shrink-0 border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2"
     >
       <div className="flex min-w-0 items-start gap-2">
         <AlertTriangle size={12} className="mt-0.5 shrink-0 text-tagma-warning" />
         <div className="min-w-0 flex-1">
           <div className="text-label font-sans text-tagma-text">
-            {authoringHandoff ? 'Authoring handoff needs retry' : 'Provider unavailable'}
+            Your message is ready to send again
           </div>
           <div className="mt-0.5 text-caption font-mono text-tagma-muted">
-            {authoringHandoff
-              ? 'The Host kept this frozen request but could not start its authoring phase.'
-              : 'The Host paused this frozen request before a provider response was available.'}
-          </div>
-          {failure && (
-            <div className="mt-1 text-caption font-mono text-tagma-muted">
-              Stage: {failure.stage} · {failure.code} · outbox: {failure.outboxStatus ?? 'none'}
-            </div>
-          )}
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              className="btn-warning-inline"
-              disabled={disabled}
-              onClick={onRetry}
-            >
-              {pendingAction === 'retry' ? 'Retrying…' : 'Retry same request'}
-            </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={disabled}
-              onClick={onChangeProvider}
-              title="Discard this operation, restore its request, then open Connect providers"
-            >
-              {pendingAction === 'change-provider'
-                ? 'Opening providers…'
-                : 'Discard & change provider'}
-            </button>
-            <button type="button" className="btn-secondary" disabled={disabled} onClick={onDiscard}>
-              {pendingAction === 'discard' ? 'Discarding…' : 'Discard'}
-            </button>
+            Review it in the composer below, then send when ready.
           </div>
         </div>
       </div>
@@ -135,34 +87,12 @@ export function RetryableOperationBannerView({
   );
 }
 
-function RetryableOperationBanner() {
+function RetryableOperationNotice() {
   const retryable = useChatStore(
     (state) => state.activeChatOperationV2?.executionState === 'retryable_failure',
   );
-  const retry = useChatStore((state) => state.retryActiveChatOperationV2);
-  const failure = useChatStore((state) => state.activeChatOperationV2Failure);
-  const changeProvider = useChatStore((state) => state.changeProviderForActiveChatOperationV2);
-  const discard = useChatStore((state) => state.discardActiveChatOperationV2);
-  const [pendingAction, setPendingAction] = useState<RetryableOperationPendingAction>(null);
-
   if (!retryable) return null;
-  const run = (
-    action: Exclude<RetryableOperationPendingAction, null>,
-    mutation: () => Promise<void>,
-  ) => {
-    if (pendingAction !== null) return;
-    setPendingAction(action);
-    void mutation().finally(() => setPendingAction(null));
-  };
-  return (
-    <RetryableOperationBannerView
-      pendingAction={pendingAction}
-      failure={failure}
-      onRetry={() => run('retry', retry)}
-      onChangeProvider={() => run('change-provider', changeProvider)}
-      onDiscard={() => run('discard', discard)}
-    />
-  );
+  return <RetryableOperationNoticeView />;
 }
 
 export type FlowStepStatus = 'pending' | 'active' | 'complete' | 'error';

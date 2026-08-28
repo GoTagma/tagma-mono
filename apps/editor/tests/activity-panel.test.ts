@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ActivityEvent } from '../src/api/opencode-chat';
 import { advanceLiveActivityNow, TurnActivityPanel } from '../src/components/chat/ActivityPanel';
-import { RetryableOperationBannerView } from '../src/components/chat/ChatPanel';
+import { RetryableOperationNoticeView } from '../src/components/chat/ChatPanel';
 
 const activity = [
   { kind: 'request-sent', startedAt: 0, endedAt: 100, count: 1 },
@@ -18,52 +18,15 @@ const activity = [
 ] satisfies ActivityEvent[];
 
 describe('Chat Operation V2 activity panel', () => {
-  test('renders provider failure as actionable attention UI without a live spinner', () => {
-    const html = renderToStaticMarkup(
-      createElement(RetryableOperationBannerView, {
-        pendingAction: null,
-        failure: {
-          stage: 'classification',
-          code: 'provider_transport_unavailable',
-          invocationId: 'classifier-invocation-1',
-          outboxStatus: 'failed_terminal',
-          recordedAt: 100,
-        },
-        onRetry: () => {},
-        onChangeProvider: () => {},
-        onDiscard: () => {},
-      }),
-    );
+  test('returns a failed request to the normal composer without technical recovery controls', () => {
+    const html = renderToStaticMarkup(createElement(RetryableOperationNoticeView));
 
-    expect(html).toContain('Provider unavailable');
-    expect(html).toContain('Retry same request');
-    expect(html).toContain('Discard &amp; change provider');
-    expect(html).toContain('>Discard<');
-    expect(html).toContain(
-      'classification · provider_transport_unavailable · outbox: failed_terminal',
-    );
+    expect(html).toContain('Your message is ready to send again');
+    expect(html).not.toContain('Provider unavailable');
+    expect(html).not.toContain('classification');
+    expect(html).not.toContain('outbox');
+    expect(html).not.toContain('<button');
     expect(html).not.toContain('animate-spin');
-  });
-
-  test('labels an authoring handoff separately from provider unavailability', () => {
-    const html = renderToStaticMarkup(
-      createElement(RetryableOperationBannerView, {
-        pendingAction: null,
-        failure: {
-          stage: 'authoring',
-          code: 'authoring_handoff_retry_required',
-          invocationId: null,
-          outboxStatus: null,
-          recordedAt: 100,
-        },
-        onRetry: () => {},
-        onChangeProvider: () => {},
-        onDiscard: () => {},
-      }),
-    );
-
-    expect(html).toContain('Authoring handoff needs retry');
-    expect(html).not.toContain('The Host paused this frozen request before a provider response');
   });
 
   test('renders a user-input wait with a static warning instead of a generation spinner', () => {
