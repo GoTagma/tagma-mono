@@ -392,6 +392,39 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events[0]?.type).toBe('operation_created');
   });
 
+  test('diagnosis without a canvas snapshot runs with explicit request-only authority', async () => {
+    const classifier = {
+      kind: 'diagnosis',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const { orchestrator, runner, store } = createHarness([
+      completedInvocation(classifier, 3),
+      completedInvocation(null, 4),
+    ]);
+
+    const result = await orchestrator.createAndDispatch({
+      ...baseCreateInput('operation-request-only-diagnosis'),
+      request: {
+        schemaVersion: 1,
+        text: 'Diagnose why this empty workspace has no runnable pipeline.',
+        attachments: [],
+      },
+    });
+
+    expect(result.kind).toBe('completed_readonly');
+    expect(runner.calls.map(({ purpose }) => purpose)).toEqual(['classifier', 'diagnosis']);
+    expect(runner.calls[1]?.readSnapshot).toBeNull();
+    expect(store.getOperationAdmission('operation-request-only-diagnosis')?.readSnapshotHash).toBe(
+      null,
+    );
+    const diagnosisWire = JSON.parse(
+      new TextDecoder().decode(runner.calls[1]?.canonicalRequestBytes),
+    ) as { access: unknown };
+    expect(diagnosisWire.access).toEqual({ kind: 'none' });
+  });
+
   test('a terminal CAS winner cannot leave a read-only result message orphaned', async () => {
     const { store, runner, now } = createHarness([
       completedInvocation(
@@ -1433,6 +1466,136 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 
+  test('malformed classifier text gets one Host-owned repair invocation before routing', async () => {
+    const classifier = {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const { orchestrator, runner, store } = createHarness([
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      completedInvocation(classifier, 42),
+      completedInvocation(null, 43),
+    ]);
+
+    const result = await orchestrator.createAndDispatch(
+      baseCreateInput('operation-classifier-protocol-repair'),
+    );
+
+    expect(result.kind).toBe('completed_readonly');
+    expect(runner.calls.map(({ purpose }) => purpose)).toEqual([
+      'classifier',
+      'classifier',
+      'discussion',
+    ]);
+    const initial = runner.calls[0]!;
+    const repair = runner.calls[1]!;
+    expect(repair.invocationId).not.toBe(initial.invocationId);
+    expect(repair.sessionId).not.toBe(initial.sessionId);
+    expect(repair.inputId).not.toBe(initial.inputId);
+    expect(repair.canonicalRequestBytes).not.toEqual(initial.canonicalRequestBytes);
+    const repairEnvelope = JSON.parse(new TextDecoder().decode(repair.canonicalRequestBytes)) as {
+      prompt: { system: string };
+    };
+    expect(repairEnvelope.prompt.system).toContain('bounded repair attempt 2 of 2');
+    expect(
+      store
+        .listInvocationOutbox('workspace-scope-1')
+        .filter(({ purpose }) => purpose === 'classifier'),
+    ).toEqual([
+      expect.objectContaining({
+        status: 'failed_terminal',
+        failureCode: 'malformed_text_result',
+      }),
+      expect.objectContaining({ status: 'settled', failureCode: null }),
+    ]);
+    const events = store.listOperationEvents({
+      workspaceScopeId: 'workspace-scope-1',
+      after: 0,
+      limit: 100,
+    });
+    if (events.kind !== 'events') throw new Error('Expected retained operation events.');
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        type: 'classifier_protocol_repair_started',
+        payload: expect.objectContaining({ attempt: 2, maxAttempts: 2 }),
+      }),
+    );
+  });
+
+  test('two malformed classifier results fail closed without an unbounded retry loop', async () => {
+    const { orchestrator, runner, store } = createHarness([
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+    ]);
+
+    const result = await orchestrator.createAndDispatch(
+      baseCreateInput('operation-classifier-protocol-repair-exhausted'),
+    );
+
+    expect(result.kind).toBe('provider_unavailable');
+    expect(result.operation).toMatchObject({
+      phase: 'awaiting_input',
+      waitReason: 'provider_unavailable',
+      activeInvocationId: null,
+    });
+    expect(runner.calls.map(({ purpose }) => purpose)).toEqual(['classifier', 'classifier']);
+    expect(
+      store
+        .listInvocationOutbox('workspace-scope-1')
+        .filter(({ purpose }) => purpose === 'classifier'),
+    ).toEqual([
+      expect.objectContaining({
+        status: 'failed_terminal',
+        failureCode: 'malformed_text_result',
+      }),
+      expect.objectContaining({
+        status: 'failed_terminal',
+        failureCode: 'malformed_text_result',
+      }),
+    ]);
+  });
+
+  test('an explicit retry gets a fresh bounded classifier repair cycle', async () => {
+    const classifier = {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const { orchestrator, runner } = createHarness([
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      completedInvocation(classifier, 44),
+      completedInvocation(null, 45),
+    ]);
+
+    const first = await orchestrator.createAndDispatch(
+      baseCreateInput('operation-classifier-protocol-explicit-retry'),
+    );
+    expect(first.kind).toBe('provider_unavailable');
+
+    const retried = await orchestrator.retryOperation({
+      operationId: first.operation.operationId,
+      expectedGeneration: first.operation.generation,
+      expectedVersion: first.operation.version,
+      requestId: 'retry-classifier-protocol-cycle',
+    });
+
+    expect(retried.kind).toBe('completed_readonly');
+    expect(runner.calls.map(({ purpose }) => purpose)).toEqual([
+      'classifier',
+      'classifier',
+      'classifier',
+      'classifier',
+      'discussion',
+    ]);
+    expect(runner.calls[2]?.canonicalRequestBytes).toEqual(runner.calls[0]?.canonicalRequestBytes);
+    expect(runner.calls[3]?.canonicalRequestBytes).toEqual(runner.calls[1]?.canonicalRequestBytes);
+  });
+
   test('read-only main provider retry allocates a new session/input without reclassifying', async () => {
     const classifier = {
       kind: 'discussion',
@@ -2069,7 +2232,7 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     ).toMatchObject({ operationId: secondInput.operationId });
   });
 
-  test('restart recovers classifier response loss through reconciliation without a new prompt identity', async () => {
+  test('restart recovers classifier text and continues without a new classifier identity', async () => {
     const input = baseCreateInput('operation-restart-classifier-loss');
     const first = createHarness([
       { kind: 'provider_unavailable', code: 'response_lost', submissionUnknown: true },
@@ -2088,15 +2251,27 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     });
     stores.push(reopened);
     const recoveryRunner = new FakeDurableInvocationRunner(
-      [],
-      [{ kind: 'provider_unavailable', code: 'structured_response_unavailable' }],
+      [completedInvocation(null, 151)],
+      [
+        completedInvocation(
+          {
+            kind: 'discussion',
+            targetCandidateId: null,
+            clarification: null,
+            candidateIds: [],
+          },
+          150,
+        ),
+      ],
     );
+    const allocatedKinds: string[] = [];
     const restarted = new ChatOperationV2ReadonlyOrchestrator({
       persistence: reopened,
       runner: recoveryRunner,
       now: first.now,
       nextHostId: (kind) => {
-        throw new Error(`Restart recovery must not allocate ${kind}.`);
+        allocatedKinds.push(kind);
+        return `recovery-${kind}-${allocatedKinds.length}`;
       },
     });
 
@@ -2113,8 +2288,9 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     });
 
     expect(recovered.kind).toBe('recovered');
-    expect(resumed.kind).toBe('provider_unavailable');
-    expect(recoveryRunner.calls).toHaveLength(0);
+    expect(resumed.kind).toBe('completed_readonly');
+    expect(recoveryRunner.calls.map(({ purpose }) => purpose)).toEqual(['discussion']);
+    expect(allocatedKinds.some((kind) => kind.startsWith('classifier-'))).toBe(false);
     expect(recoveryRunner.reconciliations).toHaveLength(1);
     expect(recoveryRunner.reconciliations[0]).toMatchObject({
       invocationId: originalOutbox.invocationId,
@@ -2125,20 +2301,162 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(reopened.listInvocationOutbox('workspace-scope-1')).toEqual([
       expect.objectContaining({
         invocationId: originalOutbox.invocationId,
-        status: 'submitted_unknown',
+        status: 'settled',
       }),
+      expect.objectContaining({ purpose: 'discussion', status: 'settled' }),
     ]);
-    expect(reopened.listUsageLedger(input.operationId)).toHaveLength(1);
+    expect(reopened.listUsageLedger(input.operationId)).toHaveLength(2);
     const events = reopened.listOperationEvents({
       workspaceScopeId: input.workspaceScopeId,
       after: 0,
       limit: 100,
     });
     if (events.kind !== 'events') throw new Error('Expected retained operation events.');
-    expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(0);
+    expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 
-  test('explicit retry after recovered structured response loss allocates a new Host invocation', async () => {
+  test('restart reconciles the durable classifier repair attempt without repeating either prompt', async () => {
+    const input = baseCreateInput('operation-restart-classifier-protocol-repair');
+    const first = createHarness([
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      { kind: 'provider_unavailable', code: 'response_lost', submissionUnknown: true },
+    ]);
+    const initial = await first.orchestrator.createAndDispatch(input);
+    expect(initial.kind).toBe('provider_unavailable');
+    const classifierOutboxes = first.store
+      .listInvocationOutbox(input.workspaceScopeId)
+      .filter(({ purpose }) => purpose === 'classifier');
+    expect(classifierOutboxes).toEqual([
+      expect.objectContaining({
+        status: 'failed_terminal',
+        failureCode: 'malformed_text_result',
+      }),
+      expect.objectContaining({ status: 'submitted_unknown' }),
+    ]);
+    const repairOutbox = classifierOutboxes[1]!;
+    first.store.close();
+
+    const reopened = openChatOperationV2Store({
+      databasePath: join(first.root, 'chat-operation-v2.sqlite'),
+      keyId: `sha256:${'a'.repeat(64)}`,
+      now: first.now,
+    });
+    stores.push(reopened);
+    const recoveryRunner = new FakeDurableInvocationRunner(
+      [completedInvocation(null, 155)],
+      [
+        completedInvocation(
+          {
+            kind: 'discussion',
+            targetCandidateId: null,
+            clarification: null,
+            candidateIds: [],
+          },
+          154,
+        ),
+      ],
+    );
+    const restarted = new ChatOperationV2ReadonlyOrchestrator({
+      persistence: reopened,
+      runner: recoveryRunner,
+      now: first.now,
+      nextHostId: (() => {
+        let sequence = 0;
+        return (kind) => `${kind}-repair-recovery-${++sequence}`;
+      })(),
+    });
+
+    const recovered = restarted.recoverOperationContext({
+      operationId: input.operationId,
+      workspaceScopeId: input.workspaceScopeId,
+      inventory: input.inventory,
+      candidates: input.candidates,
+    });
+    const resumed = await restarted.resumeRecoveredOperation({
+      operationId: input.operationId,
+      expectedGeneration: initial.operation.generation,
+      expectedVersion: initial.operation.version,
+    });
+
+    expect(recovered).toMatchObject({ kind: 'recovered', activePurpose: 'classifier' });
+    expect(resumed.kind).toBe('completed_readonly');
+    expect(recoveryRunner.reconciliations).toHaveLength(1);
+    expect(recoveryRunner.reconciliations[0]).toMatchObject({
+      invocationId: repairOutbox.invocationId,
+      sessionId: repairOutbox.sessionId,
+      inputId: repairOutbox.inputId,
+      purpose: 'classifier',
+    });
+    expect(
+      createHash('sha256')
+        .update(recoveryRunner.reconciliations[0]!.canonicalRequestBytes)
+        .digest('hex'),
+    ).toBe(repairOutbox.requestDigest);
+    expect(recoveryRunner.calls.map(({ purpose }) => purpose)).toEqual(['discussion']);
+  });
+
+  test('restart preserves an exhausted classifier protocol failure for an explicit fresh retry', async () => {
+    const input = baseCreateInput('operation-restart-classifier-protocol-exhausted');
+    const first = createHarness([
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+    ]);
+    const initial = await first.orchestrator.createAndDispatch(input);
+    expect(initial.kind).toBe('provider_unavailable');
+    first.store.close();
+
+    const reopened = openChatOperationV2Store({
+      databasePath: join(first.root, 'chat-operation-v2.sqlite'),
+      keyId: `sha256:${'a'.repeat(64)}`,
+      now: first.now,
+    });
+    stores.push(reopened);
+    const recoveryRunner = new FakeDurableInvocationRunner([
+      { kind: 'provider_unavailable', code: 'malformed_text_result' },
+      completedInvocation(
+        {
+          kind: 'discussion',
+          targetCandidateId: null,
+          clarification: null,
+          candidateIds: [],
+        },
+        156,
+      ),
+      completedInvocation(null, 157),
+    ]);
+    let sequence = 0;
+    const restarted = new ChatOperationV2ReadonlyOrchestrator({
+      persistence: reopened,
+      runner: recoveryRunner,
+      now: first.now,
+      nextHostId: (kind) => `${kind}-exhausted-recovery-${++sequence}`,
+    });
+
+    const recovered = restarted.recoverOperationContext({
+      operationId: input.operationId,
+      workspaceScopeId: input.workspaceScopeId,
+      inventory: input.inventory,
+      candidates: input.candidates,
+    });
+    expect(recovered).toMatchObject({ kind: 'recovered', activePurpose: null });
+
+    const retried = await restarted.retryOperation({
+      operationId: input.operationId,
+      expectedGeneration: recovered.operation.generation,
+      expectedVersion: recovered.operation.version,
+      requestId: 'retry-after-restart-classifier-protocol-exhausted',
+    });
+
+    expect(retried.kind).toBe('completed_readonly');
+    expect(recoveryRunner.reconciliations).toHaveLength(0);
+    expect(recoveryRunner.calls.map(({ purpose }) => purpose)).toEqual([
+      'classifier',
+      'classifier',
+      'discussion',
+    ]);
+  });
+
+  test('explicit retry after unrecoverable classifier text allocates a new Host invocation', async () => {
     const input = baseCreateInput('operation-restart-explicit-retry');
     const first = createHarness([
       { kind: 'provider_unavailable', code: 'response_lost', submissionUnknown: true },
@@ -2167,7 +2485,7 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
         ),
         completedInvocation(null, 151),
       ],
-      [{ kind: 'provider_unavailable', code: 'structured_response_unavailable' }],
+      [{ kind: 'provider_unavailable', code: 'submitted_unknown' }],
     );
     let allowRetryIds = false;
     let idSequence = 0;

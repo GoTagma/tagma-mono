@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
 import { normalizeChatOperationV2TargetCoordinate } from '../server/chat-operations/binding.js';
 import {
+  deriveChatCommitCoordinateId,
   sealChatCommitPrepareRecord,
   type ChatCommitPrepareRecord,
 } from '../server/chat-operations/commit.js';
@@ -55,16 +56,19 @@ afterEach(async () => {
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 interface RuntimeOptions {
-  readonly verification?: readonly ('repair' | 'passed')[];
+  readonly verification?: readonly ('repair' | 'trial_plan' | 'unverified' | 'passed')[];
   readonly authoringDisposition?: 'changed' | 'no_change';
+  readonly repairDisposition?: 'changed' | 'no_change';
   readonly interactive?: readonly ChatOperationV2RuntimeInteractiveRequest[];
   readonly blockInvocation?: boolean;
   readonly corruptRelocation?: boolean;
   readonly failForwardOnce?: boolean;
   readonly failResultPersistence?: boolean;
   readonly providerUnavailableOnce?: boolean;
+  readonly providerUnavailablePurpose?: 'authoring' | 'repair' | 'trial_plan';
   readonly providerFailureCode?: string;
   readonly providerSubmissionUnknown?: boolean;
+  readonly relocationUnavailableOnce?: boolean;
 }
 
 class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPersistence {
@@ -94,7 +98,18 @@ class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPe
           purpose: 'authoring',
           createdAt: input.capturedAt,
           text: input.text ?? '',
-          attachments: [],
+          attachments:
+            input.verificationNotice === null
+              ? []
+              : [
+                  {
+                    attachmentId: `notice-${input.invocationId}`,
+                    kind: 'notice',
+                    mediaType: 'text/plain',
+                    label: 'Pipeline published without completed Trial verification',
+                    content: input.verificationNotice.summary,
+                  },
+                ],
           evidence: {
             capture: 'host_completion',
             requestDigest: input.requestDigest,
@@ -140,14 +155,17 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
   readonly interruptedInvocationIds: string[] = [];
   readonly ensureStageCalls: string[] = [];
   readonly verifyCalls: string[] = [];
+  readonly relocationIds: string[] = [];
 
   stage: ChatOperationV2AuthoringStage | null = null;
   relocation: ChatOperationV2SessionRelocation | null = null;
+  stageSessionId: string | null = null;
   prepare: ChatCommitPrepareRecord | null = null;
   private verificationIndex = 0;
   private interactiveConsumed = false;
   private forwardFailed = false;
   private providerFailed = false;
+  private relocationFailed = false;
 
   constructor(
     private readonly fallbackBindingId: string,
@@ -157,6 +175,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
 
   async ensureStage(input: Parameters<ChatOperationV2AuthoringRuntime['ensureStage']>[0]) {
     this.ensureStageCalls.push(input.stageId);
+    this.stageSessionId ??= input.sessionId;
     this.stage ??= Object.freeze({
       schemaVersion: 1 as const,
       operationId: input.operationId,
@@ -179,10 +198,15 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
   async inspectStage() {
     return this.stage === null
       ? { kind: 'missing' as const }
-      : { kind: 'present' as const, stage: this.stage };
+      : {
+          kind: 'present' as const,
+          stage: this.stage,
+          sessionId: this.relocation?.sessionId ?? this.stageSessionId!,
+        };
   }
 
   async relocateSession(input: Parameters<ChatOperationV2AuthoringRuntime['relocateSession']>[0]) {
+    this.relocationIds.push(input.relocationId);
     const stageDirectoryIdentity = this.options.corruptRelocation
       ? hash('foreign-stage')
       : input.stage.stageDirectoryIdentity;
@@ -196,9 +220,14 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       sessionId: input.sessionId,
       sourceDirectoryIdentity: input.stage.sourceDirectoryIdentity,
       stageDirectoryIdentity,
-      phase: 'staged',
+      phase:
+        this.options.relocationUnavailableOnce && !this.relocationFailed ? 'prepared' : 'staged',
       updatedAt: this.now(),
     });
+    if (this.options.relocationUnavailableOnce && !this.relocationFailed) {
+      this.relocationFailed = true;
+      throw new Error('simulated OpenCode relocation outage');
+    }
     return this.relocation;
   }
 
@@ -251,7 +280,12 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       });
       return { kind: 'cancelled', code: 'cancelled_precommit' };
     }
-    if (this.options.providerUnavailableOnce && !this.providerFailed) {
+    if (
+      this.options.providerUnavailableOnce &&
+      !this.providerFailed &&
+      (!this.options.providerUnavailablePurpose ||
+        this.options.providerUnavailablePurpose === request.purpose)
+    ) {
       this.providerFailed = true;
       const unavailable = {
         kind: 'provider_unavailable',
@@ -266,7 +300,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       disposition:
         request.purpose === 'authoring'
           ? (this.options.authoringDisposition ?? 'changed')
-          : 'changed',
+          : (this.options.repairDisposition ?? 'changed'),
       text: 'Authoring complete; Host verification pending.',
       executionMessageId: `execution-message-${this.invocationRequests.length}`,
       finishCode: 'stop',
@@ -323,13 +357,38 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         evidenceHash: hash(`evidence-${this.verificationIndex}`),
       };
     }
+    if (disposition === 'trial_plan') {
+      return {
+        kind: 'trial_plan_required',
+        trialId: `trial-${this.verificationIndex}`,
+        planHash: null,
+        caseCount: 0,
+        passedCount: 0,
+        failedCount: 0,
+        warningCount: 0,
+        planRequest: {
+          reason: 'missing',
+          relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+          pipelineHash: 'a'.repeat(40),
+          message: 'A Trial Plan is required for this compiled pipeline.',
+          maxAttempts: 2,
+          requiredCoverage: ['multiple-inputs'],
+          attemptId: 'trial-plan-attempt-1',
+          requiredSandboxInputs: [],
+        },
+      };
+    }
+    const commitCoordinateId = deriveChatCommitCoordinateId(
+      input.workspaceScopeId,
+      input.stage.target.identity,
+    );
     this.prepare = sealChatCommitPrepareRecord({
       commitId: `commit-${input.operationId}`,
       operationId: input.operationId,
       operationGeneration: input.operationGeneration,
       stageId: input.stage.stageId,
       target: {
-        coordinateId: input.targetId,
+        coordinateId: commitCoordinateId,
         casHash: hash('target-cas'),
         workspaceRevision: 7,
       },
@@ -353,18 +412,36 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         toBindingId: input.bindingId,
         fromStatus: 'reserved',
         toStatus: 'published',
-        targetCoordinateId: input.targetId,
+        targetCoordinateId: commitCoordinateId,
       },
       intendedResult: {
         resultId: 'result-1',
         pendingMessageId: 'pending-result-1',
         bindingId: input.bindingId,
-        coordinateId: input.targetId,
+        coordinateId: commitCoordinateId,
         terminalOutcome: 'completed_published',
       },
       cancellationGeneration: 0,
       preparedAt: this.now(),
     });
+    if (disposition === 'unverified') {
+      return {
+        kind: 'unverified',
+        trialId: `trial-${this.verificationIndex}`,
+        planHash: null,
+        caseCount: 0,
+        passedCount: 0,
+        failedCount: 0,
+        warningCount: 0,
+        trialStatus: 'blocked',
+        errorCode: 'trial_blocked',
+        diagnosticCodes: ['trial_blocked'],
+        redactedSummary: 'Trial requires an explicitly authorized Live Smoke Test.',
+        stagedSnapshotHash: input.stage.snapshotHash,
+        artifactSetHash: this.prepare.artifactSetHash,
+        artifactCount: this.prepare.artifacts.length,
+      };
+    }
     return {
       kind: 'passed',
       trialId: `trial-${this.verificationIndex}`,
@@ -673,6 +750,48 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     ).resolves.toMatchObject({ kind: 'commit_handoff_required', operation: result.operation });
   });
 
+  test('publishes compile-valid blocked Trial output with durable unverified notice and no repair turn', async () => {
+    const { engine, store, runtime, resultPersistence } = createHarness({
+      verification: ['unverified'],
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'commit_preparing',
+      repairAttempts: 0,
+    });
+    expect(runtime.prepare?.target.coordinateId).not.toBe('primary-target');
+    expect(resultPersistence.calls).toEqual([
+      expect.objectContaining({
+        purpose: 'authoring',
+        verificationNotice: {
+          status: 'unverified',
+          code: 'trial_blocked',
+          summary: 'Trial requires an explicitly authorized Live Smoke Test.',
+        },
+      }),
+    ]);
+    expect(store.getPendingResultMessage('operation-1')?.message.attachments).toEqual([
+      expect.objectContaining({
+        kind: 'notice',
+        mediaType: 'text/plain',
+        label: 'Pipeline published without completed Trial verification',
+        content: 'Trial requires an explicitly authorized Live Smoke Test.',
+      }),
+    ]);
+    const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (events.kind !== 'events') throw new Error('Expected authoring event page.');
+    expect(
+      events.events.find(({ type }) => type === 'trial_status_changed')?.payload,
+    ).toMatchObject({
+      status: 'blocked',
+      errorCode: 'trial_blocked',
+    });
+  });
+
   test('bounds repair attempts and re-verifies after each controlled repair invocation', async () => {
     const { engine, store, runtime, resultPersistence } = createHarness({
       verification: ['repair', 'repair', 'passed'],
@@ -742,6 +861,119 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       true,
     );
     expect(store.getResultProjection('operation-1')).toBeNull();
+  });
+
+  test('ends a repair chain after a no-change response without rerunning identical verification', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['repair', 'repair', 'repair'],
+      repairDisposition: 'no_change',
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('discarded');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'repair',
+    ]);
+    expect(runtime.verifyCalls).toHaveLength(1);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'terminal',
+      terminalOutcome: 'discarded',
+      repairAttempts: 1,
+    });
+  });
+
+  test('routes a Host Trial Plan request through its dedicated internal invocation without spending repair budget', async () => {
+    const { engine, store, runtime, resultPersistence } = createHarness({
+      verification: ['trial_plan', 'passed'],
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+    ]);
+    expect(runtime.invocationRequests[1]).toMatchObject({
+      repairAttempt: 0,
+      trialPlanRequest: {
+        attemptId: 'trial-plan-attempt-1',
+        pipelineHash: 'a'.repeat(40),
+      },
+    });
+    expect(runtime.verifyCalls).toHaveLength(2);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'commit_preparing',
+      repairAttempts: 0,
+    });
+    expect(
+      resultPersistence.calls.map(({ purpose, rendererProjectable }) => ({
+        purpose,
+        rendererProjectable,
+      })),
+    ).toEqual([
+      { purpose: 'trial_plan', rendererProjectable: false },
+      { purpose: 'authoring', rendererProjectable: true },
+    ]);
+  });
+
+  test('explicitly retries an unavailable Trial Plan invocation with the same Host plan authority', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['trial_plan', 'passed'],
+      providerUnavailableOnce: true,
+      providerUnavailablePurpose: 'trial_plan',
+      providerSubmissionUnknown: false,
+    });
+
+    const first = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(first.kind).toBe('provider_unavailable');
+    const waiting = store.getOperation('operation-1')!;
+    expect(waiting).toMatchObject({
+      phase: 'repairing',
+      waitReason: 'provider_unavailable',
+      repairAttempts: 0,
+    });
+
+    const retried = await engine.retryProviderUnavailable({
+      operationId: waiting.operationId,
+      workspaceScopeId: waiting.workspaceScopeId,
+      expectedGeneration: waiting.generation,
+      expectedVersion: waiting.version,
+      requestId: 'retry-trial-plan-1',
+    });
+
+    expect(retried.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    expect(runtime.invocationRequests[2]!.trialPlanRequest).toEqual(
+      runtime.invocationRequests[1]!.trialPlanRequest,
+    );
+    expect(store.getOperation('operation-1')).toMatchObject({ repairAttempts: 0 });
+  });
+
+  test('ends a Trial Plan chain when the dedicated planner produces no staged artifact change', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['trial_plan', 'trial_plan'],
+      repairDisposition: 'no_change',
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('discarded');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+    ]);
+    expect(runtime.verifyCalls).toHaveLength(1);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      terminalOutcome: 'discarded',
+      repairAttempts: 0,
+    });
   });
 
   test('uses the no-op terminal path without preparing a commit WAL', async () => {
@@ -870,6 +1102,43 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(runtime.invocationRequests[1]!.sessionId).toBe(runtime.invocationRequests[0]!.sessionId);
   });
 
+  test('seals a relocation outage as retryable staging and resumes the same durable relocation', async () => {
+    const { engine, store, runtime, resultPersistence, now, nextHostId } = createHarness({
+      relocationUnavailableOnce: true,
+    });
+
+    const first = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(first.kind).toBe('provider_unavailable');
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'staging',
+      waitReason: 'provider_unavailable',
+      activeInvocationId: null,
+    });
+    expect(runtime.invocationRequests).toHaveLength(0);
+    expect(runtime.relocation).toMatchObject({ phase: 'prepared' });
+
+    const restartedEngine = new ChatOperationV2AuthoringEngine({
+      persistence: store,
+      runtime,
+      resultPersistence,
+      now,
+      nextHostId,
+    });
+    const current = store.getOperation('operation-1')!;
+    const retried = await restartedEngine.retryProviderUnavailable({
+      operationId: current.operationId,
+      workspaceScopeId: current.workspaceScopeId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'explicit-staging-retry',
+    });
+
+    expect(retried.kind).toBe('commit_preparing');
+    expect(runtime.relocationIds).toEqual([runtime.relocationIds[0], runtime.relocationIds[0]]);
+    expect(runtime.invocationRequests).toHaveLength(1);
+  });
+
   test('maps an unknown authoring runtime failure code before durable persistence', async () => {
     const { engine, store } = createHarness({
       providerUnavailableOnce: true,
@@ -934,6 +1203,46 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       record: { status: 'released', releaseReason: 'discarded' },
     });
     expect(store.listCommitWal('scope-1')).toHaveLength(0);
+  });
+
+  test('reconstructs durable stage authority so Discard still terminalizes after a Host restart', async () => {
+    const { engine, store, runtime, resultPersistence, now, nextHostId } = createHarness({
+      providerUnavailableOnce: true,
+      providerSubmissionUnknown: false,
+    });
+    const first = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(first.kind).toBe('provider_unavailable');
+    const waiting = store.getOperation('operation-1')!;
+    expect(waiting).toMatchObject({
+      phase: 'authoring',
+      waitReason: 'provider_unavailable',
+      activeInvocationId: null,
+    });
+
+    const restartedEngine = new ChatOperationV2AuthoringEngine({
+      persistence: store,
+      runtime,
+      resultPersistence,
+      now,
+      nextHostId,
+    });
+    const discarded = await restartedEngine.discard({
+      operationId: waiting.operationId,
+      expectedGeneration: waiting.generation,
+      expectedVersion: waiting.version,
+      requestId: 'discard-after-restart-1',
+    });
+
+    expect(discarded.kind).toBe('discarded');
+    expect(store.getOperation(waiting.operationId)).toMatchObject({
+      phase: 'terminal',
+      terminalOutcome: 'discarded',
+    });
+    expect(runtime.restoredRelocationIds).toHaveLength(1);
+    expect(runtime.discardedStageIds).toEqual([waiting.stageId!]);
+    expect(store.getBindingLease(waiting.bindingId!)).toMatchObject({
+      record: { status: 'released', releaseReason: 'discarded' },
+    });
   });
 
   test('atomically consumes a pending interactive request when Stop wins the race', async () => {

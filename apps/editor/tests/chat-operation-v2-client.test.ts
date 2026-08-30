@@ -384,6 +384,26 @@ test('preserves ordinary read failures as typed API errors', async () => {
   await expect(result).rejects.toMatchObject({ status: 404, kind: 'operation_not_found' });
 });
 
+test('preserves a pre-admission model configuration failure as a typed API error', async () => {
+  globalThis.fetch = (async () =>
+    Response.json(
+      {
+        protocolVersion: 2,
+        kind: 'chat_operation_model_unavailable',
+        error:
+          'The selected model is not configured in the current OpenCode runtime. Refresh models or choose a configured model. Your message is preserved.',
+      },
+      { status: 409 },
+    )) as unknown as typeof fetch;
+
+  const result = createChatOperationV2(createMutationInput());
+  await expect(result).rejects.toBeInstanceOf(ChatOperationV2ApiError);
+  await expect(result).rejects.toMatchObject({
+    status: 409,
+    kind: 'chat_operation_model_unavailable',
+  });
+});
+
 test('reads an exclusive-cursor JSON event page', async () => {
   setClientWorkspace('D:\\repo');
   globalThis.fetch = (async (input: RequestInfo | URL) => {

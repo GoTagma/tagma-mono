@@ -31,13 +31,37 @@ describe('Chat Operation V2 activity panel', () => {
 
   test('uses the existing model picker as the only action for a definitive model failure', () => {
     const html = renderToStaticMarkup(
-      createElement(RetryableOperationNoticeView, { needsModelChange: true }),
+      createElement(RetryableOperationNoticeView, { failureCode: 'model_unavailable' }),
     );
 
-    expect(html).toContain('Choose another model to continue');
+    expect(html).toContain('Selected model is unavailable');
+    expect(html).toContain('Choose another model');
     expect(html).toContain('Your message is preserved below');
     expect(html).toContain('aria-label="Chat model change required"');
     expect(html).not.toContain('<button');
+  });
+
+  test('shows a specific retryable provider reason without requiring a model change', () => {
+    const html = renderToStaticMarkup(
+      createElement(RetryableOperationNoticeView, { failureCode: 'provider_rate_limited' }),
+    );
+
+    expect(html).toContain('Provider rate limit reached');
+    expect(html).toContain('send again with the same model');
+    expect(html).toContain('Reason: Rate limit');
+    expect(html).toContain('aria-label="Chat message ready to resend"');
+    expect(html).not.toContain('Choose another model');
+  });
+
+  test('explains legacy generic model errors and still permits same-model retry', () => {
+    const html = renderToStaticMarkup(
+      createElement(RetryableOperationNoticeView, { failureCode: 'model_error' }),
+    );
+
+    expect(html).toContain('Model request failed');
+    expect(html).toContain('could not safely identify the provider cause');
+    expect(html).toContain('send again with the same model');
+    expect(html).not.toContain('Choose another model');
   });
 
   test('renders a user-input wait with a static warning instead of a generation spinner', () => {

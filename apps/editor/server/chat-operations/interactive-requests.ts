@@ -237,13 +237,18 @@ export interface MarkChatOperationV2InteractiveRecoveryRequiredInput {
   readonly expectedRecordHash: string;
   readonly previousOpenCodeProcessGeneration: number;
   readonly nextOpenCodeProcessGeneration: number;
+  /**
+   * A Host can lose its process-local drain even if the managed OpenCode child
+   * did not restart. Omitting this preserves the original process-change path.
+   */
+  readonly recoveryCause?: 'opencode_process_generation_changed' | 'host_interactive_drain_lost';
   readonly observedAt: number;
 }
 
 export type ChatOperationV2InteractiveRecoveryRequiredDisposition =
   | {
       readonly kind: 'recovery_required';
-      readonly reason: 'opencode_process_generation_changed';
+      readonly reason: 'opencode_process_generation_changed' | 'host_interactive_drain_lost';
       readonly forwardingCommand: null;
     }
   | {
@@ -1345,8 +1350,8 @@ function parseRecoveryRequiredInput(
       'nextOpenCodeProcessGeneration',
       'observedAt',
     ],
-    [],
-    'Interactive process-change evidence',
+    ['recoveryCause'],
+    'Interactive recovery evidence',
   );
   if (record.schemaVersion !== CHAT_OPERATION_V2_INTERACTIVE_REQUEST_SCHEMA_VERSION) {
     return fail(
@@ -1367,6 +1372,16 @@ function parseRecoveryRequiredInput(
   if (nextOpenCodeProcessGeneration < previousOpenCodeProcessGeneration) {
     return fail('invalid_counter', 'OpenCode process generation cannot regress.');
   }
+  const recoveryCause =
+    record.recoveryCause === undefined
+      ? 'opencode_process_generation_changed'
+      : record.recoveryCause;
+  if (
+    recoveryCause !== 'opencode_process_generation_changed' &&
+    recoveryCause !== 'host_interactive_drain_lost'
+  ) {
+    return fail('invalid_state', 'Interactive recovery cause is invalid.');
+  }
   return {
     schemaVersion: CHAT_OPERATION_V2_INTERACTIVE_REQUEST_SCHEMA_VERSION,
     hostRequestId: opaqueId(record.hostRequestId, 'Process-change hostRequestId'),
@@ -1383,6 +1398,7 @@ function parseRecoveryRequiredInput(
     expectedRecordHash: hash(record.expectedRecordHash, 'Process-change record hash'),
     previousOpenCodeProcessGeneration,
     nextOpenCodeProcessGeneration,
+    recoveryCause,
     observedAt: timestamp(record.observedAt, 'Process-change observedAt'),
   };
 }
@@ -1422,7 +1438,8 @@ export function markChatOperationV2InteractiveRequestRecoveryRequired(
   }
   if (
     evidence.previousOpenCodeProcessGeneration !== request.openCodeProcessGeneration ||
-    evidence.nextOpenCodeProcessGeneration === request.openCodeProcessGeneration
+    (evidence.recoveryCause !== 'host_interactive_drain_lost' &&
+      evidence.nextOpenCodeProcessGeneration === request.openCodeProcessGeneration)
   ) {
     return staleRecoveryRequired(request, 'process_generation_unchanged');
   }
@@ -1450,7 +1467,7 @@ export function markChatOperationV2InteractiveRequestRecoveryRequired(
     request: next,
     disposition: {
       kind: 'recovery_required',
-      reason: 'opencode_process_generation_changed',
+      reason: evidence.recoveryCause ?? 'opencode_process_generation_changed',
       forwardingCommand: null,
     },
   });

@@ -383,6 +383,29 @@ function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+/**
+ * Commit coordinates and authoring candidate ids are separate Host namespaces. This stable
+ * identity seals one workspace-owned target without exposing its relative filesystem coordinate.
+ */
+export function deriveChatCommitCoordinateId(
+  workspaceScopeId: string,
+  targetIdentity: string,
+): string {
+  if (
+    typeof workspaceScopeId !== 'string' ||
+    workspaceScopeId.length === 0 ||
+    workspaceScopeId.length > 256 ||
+    workspaceScopeId.includes('\0') ||
+    typeof targetIdentity !== 'string' ||
+    targetIdentity.length === 0 ||
+    targetIdentity.length > 4_096 ||
+    targetIdentity.includes('\0')
+  ) {
+    throw new Error('Chat commit coordinate identity input is invalid.');
+  }
+  return `coordinate_${sha256(`${workspaceScopeId}\0${targetIdentity}`).slice(0, 48)}`;
+}
+
 function hashCanonical(value: unknown): string {
   return sha256(JSON.stringify(value));
 }

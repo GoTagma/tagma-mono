@@ -19,7 +19,8 @@ import {
 } from './clarification.js';
 import {
   buildChatPipelineIntentClassificationPrompt,
-  resolveStructuredChatPipelineIntent,
+  resolveChatPipelineIntentDecision,
+  type ChatPipelineIntentClassificationAttempt,
   type ChatPipelineIntentCandidate,
   type ResolvedChatPipelineIntent,
 } from '../../shared/chat-pipeline-intent-classifier.js';
@@ -50,8 +51,10 @@ import {
   type ChatOperationV2ResultMessage,
   type ChatOperationV2ResultPersistence,
 } from './results.js';
+import { buildReadonlyTextCanonicalRequestBytes } from './readonly-text.js';
 
 const encoder = new TextEncoder();
+const MAX_CLASSIFIER_PROTOCOL_ATTEMPTS = 2 as const;
 
 export type ChatOperationV2ReadonlyInvocationPurpose = 'classifier' | 'discussion' | 'diagnosis';
 
@@ -76,7 +79,7 @@ export interface ChatOperationV2DurableInvocationRequest {
   readonly model: string;
   readonly variant: string | null;
   readonly canonicalRequestBytes: Uint8Array;
-  /** Diagnosis receives only this persisted sealed value; discussion/classifier receive null. */
+  /** Diagnosis may receive this persisted sealed value; discussion/classifier receive null. */
   readonly readSnapshot: ChatReadSnapshot | null;
   readonly signal: AbortSignal;
 }
@@ -333,6 +336,7 @@ interface OperationContext {
   readonly inventory: ChatInventorySnapshot;
   candidates: readonly ChatPipelineIntentCandidate[];
   classifier: InvocationIdentity;
+  classifierAttempt: ChatPipelineIntentClassificationAttempt;
   main: InvocationIdentity | null;
   intent: ResolvedChatPipelineIntent | null;
   recoveredAuthoringDeferred: boolean;
@@ -700,6 +704,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       inventory,
       candidates,
       classifier: this.invocationIdentity('classifier'),
+      classifierAttempt: 1,
       main: null,
       intent: null,
       recoveredAuthoringDeferred: false,
@@ -765,8 +770,18 @@ export class ChatOperationV2ReadonlyOrchestrator {
     }
 
     const clarificationThread = this.persistence.getOperationClarificationThread(input.operationId);
-    const expectedClassifierDigest = sha256(
-      this.classifierRequestBytes(admission.request.text, candidates, clarificationThread),
+    const expectedClassifierDigests = new Map<string, ChatPipelineIntentClassificationAttempt>(
+      ([1, 2] as const).map((attempt) => [
+        sha256(
+          this.classifierRequestBytes(
+            admission.request.text,
+            candidates,
+            clarificationThread,
+            attempt,
+          ),
+        ),
+        attempt,
+      ]),
     );
     const classifiers = operationOutboxes
       .filter(({ purpose }) => purpose === 'classifier')
@@ -780,17 +795,33 @@ export class ChatOperationV2ReadonlyOrchestrator {
       !operationOutboxes.some(({ invocationId }) => invocationId === operation.activeInvocationId);
     const matchingClassifiers = classifiers.filter(
       ({ requestDigest, status }) =>
-        requestDigest === expectedClassifierDigest &&
-        status !== 'failed_terminal' &&
-        status !== 'interrupted',
+        expectedClassifierDigests.has(requestDigest) && status !== 'interrupted',
     );
-    if (!recoveringFreshClassifier && matchingClassifiers.length === 0) {
+    const recoverableClassifiers = matchingClassifiers.filter(
+      ({ status }) => status !== 'failed_terminal',
+    );
+    const failedClassifiers = matchingClassifiers.filter(
+      ({ status }) => status === 'failed_terminal',
+    );
+    const recoveringDefinitiveClassifierFailure =
+      operation.phase === 'awaiting_input' &&
+      operation.waitReason === 'provider_unavailable' &&
+      operation.activeInvocationId === null &&
+      recoverableClassifiers.length === 0 &&
+      failedClassifiers.length > 0;
+    if (
+      !recoveringFreshClassifier &&
+      !recoveringDefinitiveClassifierFailure &&
+      recoverableClassifiers.length === 0
+    ) {
       return this.supersedeRecoveredStaleInventory(operation);
     }
     const durableClassifierOutbox =
-      !recoveringFreshClassifier && matchingClassifiers.length === 1
-        ? matchingClassifiers[0]!
-        : null;
+      !recoveringFreshClassifier && recoverableClassifiers.length === 1
+        ? recoverableClassifiers[0]!
+        : recoveringDefinitiveClassifierFailure
+          ? failedClassifiers.at(-1)!
+          : null;
     const historicalClassifiers = classifiers.filter(
       ({ invocationId }) => invocationId !== durableClassifierOutbox?.invocationId,
     );
@@ -798,7 +829,9 @@ export class ChatOperationV2ReadonlyOrchestrator {
       ({ purpose }) => purpose === 'discussion' || purpose === 'diagnosis',
     );
     if (
-      (!recoveringFreshClassifier && matchingClassifiers.length !== 1) ||
+      (!recoveringFreshClassifier &&
+        !recoveringDefinitiveClassifierFailure &&
+        recoverableClassifiers.length !== 1) ||
       historicalClassifiers.some(
         ({ status }) => !['settled', 'failed_terminal', 'interrupted'].includes(status),
       ) ||
@@ -845,6 +878,15 @@ export class ChatOperationV2ReadonlyOrchestrator {
           usageId: this.nextHostId('classifier-usage'),
         })
       : identityFor(durableClassifierOutbox!);
+    const classifierAttempt = durableClassifierOutbox
+      ? expectedClassifierDigests.get(durableClassifierOutbox.requestDigest)!
+      : classifiers.some(
+            ({ requestDigest, failureCode }) =>
+              expectedClassifierDigests.get(requestDigest) === 1 &&
+              failureCode === 'malformed_text_result',
+          )
+        ? 2
+        : 1;
     const main = mainOutbox ? identityFor(mainOutbox) : null;
     const readSnapshot = this.persistence.getOperationReadSnapshot(input.operationId);
 
@@ -877,11 +919,11 @@ export class ChatOperationV2ReadonlyOrchestrator {
     }
 
     if (mainOutbox) {
-      const mainBytes = this.readonlyMainRequestBytes(
-        admission.request,
-        mainOutbox.purpose as 'discussion' | 'diagnosis',
+      const mainBytes = buildReadonlyTextCanonicalRequestBytes({
+        request: admission.request,
+        purpose: mainOutbox.purpose as 'discussion' | 'diagnosis',
         readSnapshot,
-      );
+      });
       if (sha256(mainBytes) !== mainOutbox.requestDigest) {
         return this.supersedeRecoveredStaleInventory(operation);
       }
@@ -893,6 +935,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       inventory,
       candidates,
       classifier,
+      classifierAttempt,
       main,
       intent,
       recoveredAuthoringDeferred:
@@ -900,11 +943,19 @@ export class ChatOperationV2ReadonlyOrchestrator {
       recoveredFreshClassifier: recoveringFreshClassifier,
     };
     this.contexts.set(operation.operationId, context);
+    const failedInvocationAwaitingRetry =
+      operation.phase === 'awaiting_input' &&
+      operation.waitReason === 'provider_unavailable' &&
+      operation.activeInvocationId === null &&
+      (durableClassifierOutbox?.status === 'failed_terminal' ||
+        mainOutbox?.status === 'failed_terminal');
     return {
       kind: 'recovered',
       operation,
       activePurpose:
-        operation.waitReason === 'clarification' || operation.waitReason === 'user_retry'
+        operation.waitReason === 'clarification' ||
+        operation.waitReason === 'user_retry' ||
+        failedInvocationAwaitingRetry
           ? null
           : mainOutbox
             ? (mainOutbox.purpose as 'discussion' | 'diagnosis')
@@ -957,6 +1008,16 @@ export class ChatOperationV2ReadonlyOrchestrator {
       throw new Error('Recovered operation has no reconcilable invocation purpose.');
     }
     const identity = context.main ?? context.classifier;
+    const observed = this.requireOperation(context.operationId);
+    const observedOutbox = this.persistence.getInvocationOutbox(identity.invocationId);
+    if (
+      observed.phase === 'awaiting_input' &&
+      observed.waitReason === 'provider_unavailable' &&
+      observed.activeInvocationId === null &&
+      observedOutbox?.status === 'failed_terminal'
+    ) {
+      return { kind: 'provider_unavailable', operation: observed };
+    }
     const admission = this.requireAdmission(context.operationId);
     const readSnapshot =
       purpose === 'diagnosis'
@@ -968,8 +1029,13 @@ export class ChatOperationV2ReadonlyOrchestrator {
             admission.request.text,
             context.candidates,
             this.persistence.getOperationClarificationThread(context.operationId),
+            context.classifierAttempt,
           )
-        : this.readonlyMainRequestBytes(admission.request, purpose, readSnapshot);
+        : buildReadonlyTextCanonicalRequestBytes({
+            request: admission.request,
+            purpose,
+            readSnapshot,
+          });
     const reconciled = await this.runner.reconcile({
       operationId: context.operationId,
       workspaceScopeId: context.workspaceScopeId,
@@ -1051,12 +1117,10 @@ export class ChatOperationV2ReadonlyOrchestrator {
       this.settleCancelledInvocation(context.operationId, identity.invocationId);
       return this.cancelFromInvocation(context.operationId);
     }
-    if (purpose === 'classifier') {
-      throw new Error(
-        'Recovered structured classifier completion has no authoritative durable rich result.',
-      );
-    }
     this.recordRecoveredCompletion(context, identity, reconciled);
+    if (purpose === 'classifier') {
+      return this.completeClassifierResult(context, reconciled);
+    }
     return this.terminalizeReadonlyCompletion(context, identity, purpose, reconciled);
   }
 
@@ -1445,6 +1509,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       inventory,
       candidates,
       classifier,
+      classifierAttempt: 1,
       main: null,
       intent: null,
       recoveredAuthoringDeferred: false,
@@ -1528,13 +1593,14 @@ export class ChatOperationV2ReadonlyOrchestrator {
       if (!context.recoveredAuthoringDeferred) {
         return { kind: 'in_progress', operation: current };
       }
-      // OpenCode's rich structured classifier result is not durable. After a
-      // restart, only an explicit user retry may issue a fresh invocation; the
-      // old same-id request must remain a dedupe/no-reprompt boundary.
+      // The authoring handoff decision is not yet a standalone durable Host
+      // record. After a completed handoff restart, only explicit user retry may
+      // issue a fresh classifier invocation; never guess write intent.
       context.recoveredAuthoringDeferred = false;
       context.intent = null;
       context.main = null;
       context.classifier = this.invocationIdentity('classifier');
+      context.classifierAttempt = 1;
       const classifying = this.transition(current, {
         ...stateOf(current),
         phase: 'classifying',
@@ -1559,16 +1625,13 @@ export class ChatOperationV2ReadonlyOrchestrator {
         classifierOutbox &&
         !['settled', 'interrupted', 'failed_terminal'].includes(classifierOutbox.status)
       ) {
-        this.failInvocationOutbox(
-          current.operationId,
-          classifierOutbox,
-          'structured_response_unavailable',
-        );
+        this.failInvocationOutbox(current.operationId, classifierOutbox, 'response_lost');
       }
       // An explicit retry is a new Host invocation. Reusing an earlier input
       // id would return OpenCode's same-id cached result and could never make
       // progress after a durable provider failure.
       context.classifier = this.invocationIdentity('classifier');
+      context.classifierAttempt = 1;
       const classifying = this.transition(current, {
         ...stateOf(current),
         phase: 'classifying',
@@ -1587,7 +1650,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       if (previous) {
         const outbox = this.persistence.getInvocationOutbox(previous.invocationId);
         if (outbox && !['settled', 'interrupted', 'failed_terminal'].includes(outbox.status)) {
-          this.failInvocationOutbox(current.operationId, outbox, 'structured_response_unavailable');
+          this.failInvocationOutbox(current.operationId, outbox, 'response_lost');
         }
       }
       context.main = this.invocationIdentity(context.intent.kind);
@@ -1608,6 +1671,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
         admission.request.text,
         context.candidates,
         this.persistence.getOperationClarificationThread(context.operationId),
+        context.classifierAttempt,
       ),
       null,
     );
@@ -1615,6 +1679,42 @@ export class ChatOperationV2ReadonlyOrchestrator {
       return this.cancelFromInvocation(context.operationId);
     }
     if (classifierResult.kind !== 'completed') {
+      if (
+        classifierResult.kind === 'provider_unavailable' &&
+        classifierResult.code === 'malformed_text_result' &&
+        context.classifierAttempt < MAX_CLASSIFIER_PROTOCOL_ATTEMPTS
+      ) {
+        const current = this.requireOperation(context.operationId);
+        if (current.phase === 'terminal') return this.resultFor(current);
+        if (
+          current.phase !== 'classifying' ||
+          current.activeInvocationId !== context.classifier.invocationId
+        ) {
+          return { kind: 'in_progress', operation: current };
+        }
+        const nextAttempt = (context.classifierAttempt +
+          1) as ChatPipelineIntentClassificationAttempt;
+        const nextClassifier = this.invocationIdentity('classifier');
+        const repairing = this.transition(
+          current,
+          {
+            ...stateOf(current),
+            phase: 'classifying',
+            waitReason: null,
+            activeInvocationId: nextClassifier.invocationId,
+          },
+          'classifier_protocol_repair_started',
+          {
+            attempt: nextAttempt,
+            maxAttempts: MAX_CLASSIFIER_PROTOCOL_ATTEMPTS,
+            previousFailureCode: 'malformed_text_result',
+          },
+        );
+        if (!repairing.applied) return this.resultFor(repairing.operation);
+        context.classifier = nextClassifier;
+        context.classifierAttempt = nextAttempt;
+        return this.runClassifier(context);
+      }
       const current = this.requireOperation(context.operationId);
       if (current.phase === 'terminal') return this.resultFor(current);
       const waiting = this.transition(current, {
@@ -1628,6 +1728,15 @@ export class ChatOperationV2ReadonlyOrchestrator {
         : this.resultFor(waiting.operation);
     }
 
+    return this.completeClassifierResult(context, classifierResult);
+  }
+
+  private async completeClassifierResult(
+    context: OperationContext,
+    classifierResult: Extract<ChatOperationV2DurableInvocationResult, { kind: 'completed' }>,
+  ): Promise<ChatOperationV2ReadonlyDispatchResult> {
+    const admission = this.requireAdmission(context.operationId);
+
     const settledClassifier = this.requireOperation(context.operationId);
     if (settledClassifier.phase === 'terminal') return this.resultFor(settledClassifier);
     const classifierCleared = this.transition(settledClassifier, {
@@ -1640,7 +1749,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
 
     let intent: ResolvedChatPipelineIntent;
     try {
-      intent = resolveStructuredChatPipelineIntent(
+      intent = resolveChatPipelineIntentDecision(
         classifierResult.structuredOutput,
         context.candidates,
       );
@@ -1751,12 +1860,14 @@ export class ChatOperationV2ReadonlyOrchestrator {
     originalText: string,
     candidates: readonly ChatPipelineIntentCandidate[],
     thread: ChatOperationV2ClarificationThread | null,
+    attempt: ChatPipelineIntentClassificationAttempt = 1,
   ): Uint8Array {
     return canonicalBytes({
       purpose: 'classifier',
       prompt: buildChatPipelineIntentClassificationPrompt(
         clarificationClassificationText(originalText, thread),
         candidates,
+        attempt,
       ),
     });
   }
@@ -1793,7 +1904,11 @@ export class ChatOperationV2ReadonlyOrchestrator {
       context,
       mainIdentity,
       mainPurpose,
-      this.readonlyMainRequestBytes(admission.request, mainPurpose, readSnapshot),
+      buildReadonlyTextCanonicalRequestBytes({
+        request: admission.request,
+        purpose: mainPurpose,
+        readSnapshot,
+      }),
       readSnapshot,
     );
     if (mainResult.kind === 'cancelled') {
@@ -1960,21 +2075,6 @@ export class ChatOperationV2ReadonlyOrchestrator {
       throw new Error('Read-only terminal transition did not seal its stable result identity.');
     }
     return { kind: 'completed_readonly', operation: terminal.operation };
-  }
-
-  private readonlyMainRequestBytes(
-    request: ChatOperationV2AdmissionRequest,
-    purpose: 'discussion' | 'diagnosis',
-    readSnapshot: ChatReadSnapshot | null,
-  ): Uint8Array {
-    return canonicalBytes({
-      purpose,
-      request,
-      access:
-        purpose === 'diagnosis'
-          ? { kind: 'sealed_snapshot_only', snapshot: readSnapshot }
-          : { kind: 'none' },
-    });
   }
 
   private async runInvocation(

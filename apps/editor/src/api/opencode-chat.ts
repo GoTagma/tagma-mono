@@ -13,18 +13,16 @@ import {
   type OAuth as V2OAuth,
   type OpencodeClient as OpencodeV2Client,
   type ProviderAuthAuthorization as V2ProviderAuthAuthorization,
-  type ProviderAuthMethod as V2ProviderAuthMethod,
   type WellKnownAuth as V2WellKnownAuth,
 } from '@opencode-ai/sdk/v2/client';
-import type {
-  Agent as SdkAgent,
-  Message,
-  Model as SdkModel,
-  Part,
-  Provider as SdkProvider,
-} from '@opencode-ai/sdk/client';
+import type { Agent as SdkAgent, Message, Part } from '@opencode-ai/sdk/client';
 import { api, getClientAuthToken, getClientWorkspace } from './client';
 import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-errors.js';
+import type {
+  TagmaConfiguredOpenCodeModel,
+  TagmaConfiguredOpenCodeProvider,
+  TagmaOpenCodeProviderAuthMethod,
+} from '../../shared/opencode-provider-state.js';
 
 /**
  * Opencode 1.14 returns a `hidden: true` marker on internal utility agents
@@ -38,25 +36,20 @@ import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-er
 export type Agent = SdkAgent & { hidden?: boolean };
 
 /**
- * The legacy SDK's `config.providers()` model omits variants, while the v2
- * model catalog exposes the exact provider/model-specific variant set. Keep
- * that metadata on the shared picker shape so callers do not have to fall
- * back to a fixed reasoning-effort enum.
+ * Chat picker data is the Host-sanitized provider-state contract, never a raw
+ * OpenCode SDK configuration object. This keeps API keys, headers, request
+ * settings, and opaque variant payloads out of renderer memory by type as
+ * well as at runtime.
  */
-export type Model = SdkModel & {
-  variants?: Record<string, Record<string, unknown>>;
-};
+export type Model = TagmaConfiguredOpenCodeModel;
+export type Provider = TagmaConfiguredOpenCodeProvider;
 
-export type Provider = Omit<SdkProvider, 'models'> & {
-  models: Record<string, Model>;
-};
-
-/** Auth shapes are authoritative in the v2 compatibility client. */
+/** Auth presentation shapes are Host-projected before reaching the renderer. */
 export type ApiAuth = V2ApiAuth;
 export type Auth = V2Auth;
 export type OAuth = V2OAuth;
 export type ProviderAuthAuthorization = V2ProviderAuthAuthorization;
-export type ProviderAuthMethod = V2ProviderAuthMethod;
+export type ProviderAuthMethod = TagmaOpenCodeProviderAuthMethod;
 export type WellKnownAuth = V2WellKnownAuth;
 export type AuthPrompt = NonNullable<ProviderAuthMethod['prompts']>[number];
 

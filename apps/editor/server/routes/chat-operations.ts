@@ -1,5 +1,7 @@
 import type express from 'express';
 
+import type { ChatOperationV2PublicApiError } from '../../shared/chat-operation-v2-api-errors.js';
+
 import {
   ChatOperationV2ApiRequestError,
   classifyChatOperationV2ApiRequestError,
@@ -179,20 +181,7 @@ export type ChatOperationV2RouteOptions =
   | EnabledChatOperationV2MutationRouteOptions
   | DisabledChatOperationV2RouteOptions;
 
-interface PublicRouteError {
-  readonly status: number;
-  readonly kind:
-    | 'operation_not_found'
-    | 'invalid_cursor'
-    | 'invalid_limit'
-    | 'cursor_conflict'
-    | 'chat_operation_service_unavailable'
-    | 'chat_operation_read_failed'
-    | 'chat_operation_action_unavailable'
-    | 'chat_operation_conflict'
-    | 'chat_operation_mutation_failed';
-  readonly error: string;
-}
+type PublicRouteError = ChatOperationV2PublicApiError;
 
 const OPERATION_NOT_FOUND: PublicRouteError = {
   status: 404,
@@ -297,12 +286,12 @@ function mapMutationError(error: unknown): PublicRouteError {
         kind: 'chat_operation_action_unavailable',
         error: 'This Chat operation action is temporarily unavailable.',
       };
-    case 'classifier_model_incompatible':
-    case 'classifier_model_unavailable':
+    case 'selected_model_unavailable':
       return {
         status: 409,
-        kind: 'chat_operation_action_unavailable',
-        error: 'The selected model cannot run Tagma Chat. Choose another model.',
+        kind: 'chat_operation_model_unavailable',
+        error:
+          'The selected model is not configured in the current OpenCode runtime. Refresh models or choose a configured model. Your message is preserved.',
       };
     case 'operation_conflict':
     case 'host_inventory_conflict':

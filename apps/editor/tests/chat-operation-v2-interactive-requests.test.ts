@@ -382,6 +382,49 @@ describe('ChatTurn Operation V2 interactive request records', () => {
     });
   });
 
+  test('records Host drain loss even when the OpenCode process generation is unchanged', () => {
+    const live = sealChatOperationV2InteractiveRequest(permissionInput());
+    const unchangedProcess = markChatOperationV2InteractiveRequestRecoveryRequired(live, {
+      schemaVersion: CHAT_OPERATION_V2_INTERACTIVE_REQUEST_SCHEMA_VERSION,
+      hostRequestId: live.hostRequestId,
+      operationId: live.operationId,
+      expectedOperationGeneration: live.operationGeneration,
+      expectedOperationVersion: live.operationVersion,
+      expectedRecordHash: live.recordHash,
+      previousOpenCodeProcessGeneration: permissionInput().openCodeProcessGeneration,
+      nextOpenCodeProcessGeneration: permissionInput().openCodeProcessGeneration,
+      observedAt: permissionInput().requestedAt + 1,
+    });
+    const recovered = markChatOperationV2InteractiveRequestRecoveryRequired(live, {
+      schemaVersion: CHAT_OPERATION_V2_INTERACTIVE_REQUEST_SCHEMA_VERSION,
+      hostRequestId: live.hostRequestId,
+      operationId: live.operationId,
+      expectedOperationGeneration: live.operationGeneration,
+      expectedOperationVersion: live.operationVersion,
+      expectedRecordHash: live.recordHash,
+      previousOpenCodeProcessGeneration: permissionInput().openCodeProcessGeneration,
+      nextOpenCodeProcessGeneration: permissionInput().openCodeProcessGeneration,
+      recoveryCause: 'host_interactive_drain_lost',
+      observedAt: permissionInput().requestedAt + 1,
+    });
+
+    expect(unchangedProcess.disposition).toEqual({
+      kind: 'stale',
+      reason: 'process_generation_unchanged',
+      forwardingCommand: null,
+    });
+    expect(recovered.disposition).toEqual({
+      kind: 'recovery_required',
+      reason: 'host_interactive_drain_lost',
+      forwardingCommand: null,
+    });
+    expect(recovered.request).toMatchObject({
+      state: 'recovery_required',
+      openCodeRequestId: null,
+      openCodeProcessGeneration: null,
+    });
+  });
+
   test('rejects forged grants, raw paths, credentials, and tool input at every client boundary', () => {
     expect(() =>
       sealChatOperationV2InteractiveRequest({

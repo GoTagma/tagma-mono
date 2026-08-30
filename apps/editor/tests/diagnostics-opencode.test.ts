@@ -250,49 +250,114 @@ describe('OpenCode diagnostics reader', () => {
     const { dependencies, requestUrls } = harness([
       [{ id: 'chat-1', directory: OPENCODE_DIR }],
       [],
-      [{ info: { id: 'message-1' }, parts: [{ type: 'text', text: 'failure detail' }] }],
+      {
+        data: [
+          {
+            id: 'message-1',
+            type: 'user',
+            format: { type: 'text' },
+            content: [{ type: 'text', text: 'failure detail' }],
+          },
+        ],
+        cursor: { previous: 'cursor-newer', next: 'cursor-older' },
+      },
     ]);
 
     const result = await readDiagnosticsOpencodeMessages(
       WORKSPACE_DIR,
       'chat-1',
-      { limit: 50, before: 'message-9' },
+      { limit: 50, before: 'cursor-page-2' },
       dependencies,
     );
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
       requestUrl('/session', { limit: '10000' }),
-      requestUrl('/session/chat-1/message', {
-        directory: OPENCODE_DIR,
+      requestUrl('/api/session/chat-1/message', {
         limit: '50',
-        before: 'message-9',
+        order: 'desc',
+        cursor: 'cursor-page-2',
       }),
     ]);
     expect(result).toMatchObject({
       workspaceKey: WORKSPACE_DIR,
       sessionId: 'chat-1',
       limit: 50,
-      before: 'message-9',
+      before: 'cursor-page-2',
       returnedMessageCount: 1,
       pagination: {
-        layer: 'opencode-message-query',
+        layer: 'opencode-v2-message-page',
         returnedCount: 1,
-        boundaryReached: false,
-        nextBefore: null,
+        boundaryReached: true,
+        nextBefore: 'cursor-older',
       },
-      messages: [{ info: { id: 'message-1' } }],
+      messages: [{ id: 'message-1', format: { type: 'text' } }],
     });
   });
 
-  test('reads messages for a discovered Windows session using its stored directory casing', async () => {
+  test('uses the Host-authoritative read-only result when OpenCode has no public text projection', async () => {
+    const { dependencies, requestUrls } = harness([
+      [{ id: 'chat-1', directory: OPENCODE_DIR }],
+      [],
+      { data: [], cursor: { previous: null, next: null } },
+    ]);
+    const dependenciesWithHostProjection = {
+      ...dependencies,
+      getHostSessionProjection: () => ({
+        source: 'chat-operation-v2-result' as const,
+        operationId: 'operation-1',
+        invocationId: 'invocation-1',
+        purpose: 'discussion',
+        terminalOutcome: 'completed_readonly',
+        resultId: 'result-1',
+        messages: [
+          { role: 'user', text: 'Explain this workspace.' },
+          { role: 'assistant', text: 'This is the durable Host result.' },
+        ],
+      }),
+    } as DiagnosticsOpencodeDependencies;
+
+    const result = await readDiagnosticsOpencodeMessages(
+      WORKSPACE_DIR,
+      'chat-1',
+      { limit: 50 },
+      dependenciesWithHostProjection,
+    );
+
+    expect(requestUrls.at(-1)).toBe(
+      requestUrl('/api/session/chat-1/message', { limit: '50', order: 'desc' }),
+    );
+    expect(result).toMatchObject({
+      returnedMessageCount: 2,
+      messageSource: {
+        kind: 'chat-operation-v2-result',
+        operationId: 'operation-1',
+        invocationId: 'invocation-1',
+        purpose: 'discussion',
+      },
+      pagination: {
+        layer: 'chat-operation-v2-result',
+        boundaryReached: false,
+        nextBefore: null,
+      },
+      messages: [
+        { role: 'user', text: 'Explain this workspace.' },
+        { role: 'assistant', text: 'This is the durable Host result.' },
+      ],
+    });
+  });
+
+  test('reads messages for a discovered Windows session through the identity-scoped V2 endpoint', async () => {
     const runtimeDirectory = 'c:\\case-sensitive-opencode\\.tagma';
     const storedDirectory = 'C:\\CASE-SENSITIVE-OPENCODE\\.tagma\\';
     const { dependencies, requestUrls } = harness(
       [
         [],
         [{ id: 'chat-1', directory: storedDirectory }],
-        [{ info: { id: 'message-1' }, parts: [] }],
+        {
+          data: [{ id: 'message-1', type: 'user', content: [] }],
+          cursor: { previous: null, next: null },
+        },
       ],
       { handleCwd: runtimeDirectory },
     );
@@ -302,9 +367,9 @@ describe('OpenCode diagnostics reader', () => {
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: runtimeDirectory, limit: '100' }),
       requestUrl('/session', { limit: '10000' }),
-      requestUrl('/session/chat-1/message', {
-        directory: storedDirectory,
+      requestUrl('/api/session/chat-1/message', {
         limit: '25',
+        order: 'desc',
       }),
     ]);
   });
@@ -317,7 +382,16 @@ describe('OpenCode diagnostics reader', () => {
         { id: 'delegated-child', directory: delegatedDirectory, parentID: 'chat-1' },
       ],
       [],
-      [{ info: { id: 'message-1' }, parts: [{ type: 'text', text: 'child report' }] }],
+      {
+        data: [
+          {
+            id: 'message-1',
+            type: 'assistant',
+            content: [{ type: 'text', text: 'child report' }],
+          },
+        ],
+        cursor: {},
+      },
     ]);
 
     const result = await readDiagnosticsOpencodeMessages(
@@ -330,15 +404,15 @@ describe('OpenCode diagnostics reader', () => {
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
       requestUrl('/session', { limit: '10000' }),
-      requestUrl('/session/delegated-child/message', {
-        directory: delegatedDirectory,
+      requestUrl('/api/session/delegated-child/message', {
         limit: '25',
+        order: 'desc',
       }),
     ]);
     expect(result).toMatchObject({
       workspaceKey: WORKSPACE_DIR,
       sessionId: 'delegated-child',
-      messages: [{ info: { id: 'message-1' } }],
+      messages: [{ id: 'message-1', type: 'assistant' }],
     });
   });
 

@@ -71,9 +71,11 @@ Do not amend the same commit to include these files after naming them with the c
 
 ## Chat Session Pipeline Ownership
 
-- Classify natural-language desktop Chat intent before allocating a writable pipeline: use a
-  tool-free schema-constrained model result over Host-issued candidate ids, then let the Host
-  resolve and atomically bind create/edit. Discussion and diagnosis own no pipeline.
+- Classify natural-language desktop Chat intent before allocating a writable pipeline with an
+  ordinary tool-free text response. The Host strictly parses one bounded JSON object, accepts only
+  the fixed decision fields and Host-issued candidate ids, then resolves and atomically binds
+  create/edit. Never require provider-native structured output or model tool capability for
+  classification, discussion, or diagnosis. Discussion and diagnosis own no pipeline.
 - Different sessions may share one read-only origin but must never share a writable target. Persist
   Host-authenticated binding identity separately from names/paths, reuse a target only for its owning
   session, and publish edits to the branch rather than overwriting the origin.
@@ -101,26 +103,48 @@ Do not amend the same commit to include these files after naming them with the c
   and input ids, and after an unknown response reconcile admission from durable history before any
   retry. OpenCode SSE is only a wake-up source: join its stable source event id to history, which is
   authoritative for durable type and aggregate sequence, before projecting a Host event.
-- OpenCode 1.18.18 structured compatibility prompts require the sole internal
-  `StructuredOutput` exception beside wildcard tool denial; otherwise schema output fails. Their
-  rich result has no public durable history/message projection, so a lost successful response must
-  become provider-unavailable and must never trigger an automatic compatibility re-prompt. A later
-  explicit user retry is a new Host invocation, not recovery of the old result.
+- Classifier, discussion, and diagnosis compatibility prompts use `format: text` with wildcard tool
+  denial and no `StructuredOutput` exception. Classification safety comes from strict Host parsing,
+  bounded fields, and Host candidate-id resolution, not provider schema enforcement. Only a
+  create/edit decision may enter authoring, where actual model tool failures are reported as an
+  authoring-stage capability error rather than a global Chat admission failure.
+- Put the classifier's complete fixed schema and valid kind-specific shapes in its ordinary text
+  prompt. If and only if a response violates that bounded text contract, the Host may make one
+  automatic repair attempt with a fresh invocation/session/input/outbox identity and an explicit
+  attempt-2 prompt. Never loosen parsing, reuse the cached message id, persist or echo the rejected
+  provider text, or auto-retry authentication, billing, rate-limit, transport, content, model, or
+  unknown-response failures. A later explicit user Retry starts a new bounded two-attempt cycle.
+- Chat admission authenticates only that the exact provider/model pair exists in managed configured
+  providers. Model-catalog capability and status metadata is advisory UI data: never fetch it on the
+  Send critical path, place it in the durable capability hash, or let it affect idempotency and
+  recovery. The capability hash seals installed Host/runtime behavior, not provider claims.
+- OpenCode 1.18.18 session status is a sparse activity map: absence means idle, while explicit
+  busy/retry state and pending permission/question requests mean active. A relocation dependency
+  failure must become a durable retryable `staging` wait, preserve any prepared relocation identity,
+  and recover the Host-authenticated stage session across restart; it must never escape as a generic
+  mutation error while the Renderer continues projecting the operation as running.
+- Keep the public Chat V2 error kind and HTTP-status mapping in one shared sidecar/Renderer contract.
+  A missing configured model is a model-configuration conflict, never a generic action outage or
+  evidence that the model lacks tool capability; preserve the Composer request with that distinction.
 - Packaged V2 cutover is declared in `apps/electron/package.json` with
   `tagma.chatOperationProtocolVersion: 2`; `runtime-paths.ts` only emits
   `TAGMA_CHAT_OPERATION_V2_SHADOW=1` and `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2` when that
   gate passes. The control store schema version is 6, and schema mismatches fail closed.
-- Tool-free text compatibility prompts have a different pinned contract: public message reads are
-  still unavailable on a Host-created native session, but replaying the exact same Host message id
-  returns the cached text before and after restart without another provider call. Permit that one
-  digest-authenticated same-id replay for discussion/diagnosis recovery; reject changed caller
-  bytes before replay and never generalize it to structured classifier results.
+- Tool-free text compatibility prompts have no public message read on a Host-created native session,
+  but replaying the exact same Host message id returns cached text before and after restart without
+  another provider call. Permit that one digest-authenticated same-id replay for classifier,
+  discussion, and diagnosis recovery; reject changed caller bytes before any OpenCode access.
 - Treat pending OpenCode permission and question requests as process-local evidence, not durable
   state. Live requests are first-wins, but OpenCode 1.18.18 drops them on restart; permission
   and question replies against the stale request are not found. Persist the Host request
   independently; never recreate the old runtime request after restart, and recover via a new
   controlled invocation/repair decision or an explicit failure rather than claiming that the old
   OpenCode drain can still accept a reply.
+- On first use by a freshly constructed Host, atomically convert any durable `live_pending`
+  permission/question request into `recovery_required` before renderer projection, while retaining
+  its active authoring/repair phase. A reply that itself discovers the missing drain must take the
+  same CAS transition. Keep explicit Host-drain-loss evidence distinct from a verified OpenCode
+  process-generation change; the latter must retain its strict generation-change check.
 - `commit_decided` is the sole publish linearization point. Before it, cancellation may end as
   `cancelled_precommit`; after it, Stop appends audit only and recovery must roll forward to a
   published or forked result without overwriting third-party bytes. Terminal outcome, commit

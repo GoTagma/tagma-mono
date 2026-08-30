@@ -374,6 +374,13 @@ test('tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts a
   expect(doc).toContain('tagma-yaml-contract: "allow"');
   expect(doc).toContain('tagma-native-primitives: "allow"');
   expect(doc).toContain('YAML, manifest, layout, requirements, and `.compile.log`');
+  expect(doc).toContain('An empty `compileDiagnostics` array');
+  expect(doc).toContain('static Host compilation evidence only');
+  expect(doc).toContain('never proves that a dependency binary is installed');
+  expect(doc).toContain('`fromDriver: opencode`');
+  expect(doc).toContain('Tagma-managed runtime dependency');
+  expect(doc).toContain('`No CLI tools required yet.`');
+  expect(doc).toContain('Do not invent schema fields');
   expect(doc).not.toContain('<previous-chat-yaml-reconcile>');
   expect(doc).toContain('ROUTE_MISMATCH: pipeline_work');
   expect(doc).not.toContain('tagma_yaml_skeleton: allow');
@@ -410,14 +417,15 @@ test('every staged file-reading specialist denies unscoped discovery', () => {
   expect(general).toContain('external_directory: deny');
 });
 
-test('pipeline intent classifier is hidden, tool-free, and schema-output only', () => {
+test('pipeline intent classifier is hidden, tool-free, and Host-validated text only', () => {
   const doc = buildTagmaPipelineIntentClassifierAgent();
 
   expect(doc).toContain('name: tagma-pipeline-intent-classifier');
   expect(doc).toContain('hidden: true');
   expect(doc).toContain('task: false');
   expect(doc).toContain('edit: deny');
-  expect(doc).toContain('The Host supplies the JSON Schema');
+  expect(doc).toContain('Return exactly one JSON object');
+  expect(doc).toContain('The Host parses the text');
   expect(doc).not.toContain('TAGMA_ROUTE_MODE');
 });
 

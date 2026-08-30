@@ -95,10 +95,18 @@ user-owned support files, runtime mode, capability report, and Host prerequisite
 prompt and triggered closures always run again. The live Trial status includes a Host heartbeat
 and elapsed time during long, otherwise-silent model tasks.
 
-Desktop Chat routes pipeline work in two phases. A temporary tool-free model session first returns a
-JSON-Schema classification: discussion, read-only diagnosis, create, edit of one Host-issued pipeline
-candidate, or clarification. Tagma allocates no pipeline for discussion/diagnosis and asks rather than
-guessing when a write target is ambiguous.
+Desktop Chat routes pipeline work in two phases. A tool-free text invocation first returns one small
+JSON decision: discussion, read-only diagnosis, create, edit of one Host-issued pipeline candidate,
+or clarification. The Host strictly parses that text and accepts only its fixed fields and candidate
+ids; provider-native structured output is not required. The ordinary prompt carries the complete
+fixed schema and valid kind-specific shapes. If the model still violates that text contract, the
+Host performs at most one automatic repair with a fresh durable invocation identity; other provider
+failures are never auto-retried, and a second malformed result fails closed while preserving the
+request. Tagma allocates no pipeline for
+discussion/diagnosis and asks rather than guessing when a write target is ambiguous. Model tools are
+needed only after a create/edit decision reaches the isolated authoring branch. Send authenticates
+the exact configured provider/model pair without consulting advisory model capability or status
+metadata, so catalog refreshes cannot change request identity or recovery.
 
 Every mutating Chat session owns a Host-authenticated pipeline branch. Sessions may clone the same
 read-only origin, but they never share a writable target; a session reuses only its own published
@@ -144,7 +152,11 @@ timeline and logs independently with each response's own `nextCursor`.
 The diagnostics token is independent from the sidecar management token, rotates on every enable,
 authorizes only `GET` below `/api/diagnostics/v1`, and is revoked on disable or shutdown. OpenCode
 history reads never start, restart, prompt, or mutate OpenCode; they return `409` when it is not
-running. Captured logs, renderer reports, timeline comparison state, timeline events, and all
+running. OpenCode's compatibility-text sessions may have no public message projection; for an empty
+first page, the message endpoint can return the authenticated immutable Host-visible
+discussion/diagnosis result and labels that source explicitly. It never exposes internal classifier
+text or uses this fallback for cursor pagination. Captured logs, renderer reports, timeline
+comparison state, timeline events, and all
 cursors are cleared whenever a session rotates or ends, so a later workspace cannot inherit them.
 Renderer console/error capture exists only during the matching diagnostics session and is restored
 without overwriting a console wrapper installed later by another feature. Normal Chat health probes

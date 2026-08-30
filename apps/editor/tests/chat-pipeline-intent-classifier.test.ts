@@ -9,7 +9,9 @@ import type { ChatPipelineIntentCandidate } from '../shared/chat-pipeline-intent
 const {
   buildChatPipelineIntentCandidates,
   buildChatPipelineIntentClassificationPrompt,
-  resolveStructuredChatPipelineIntent,
+  parseChatPipelineIntentClassificationText,
+  resolveChatPipelineIntentDecision,
+  TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS,
 } = sharedIntentClassifier;
 
 const candidates: ChatPipelineIntentCandidate[] = [
@@ -42,8 +44,8 @@ describe('Chat pipeline semantic intent classification', () => {
     expect(compatibilityIntentClassifier.buildChatPipelineIntentClassificationPrompt).toBe(
       sharedIntentClassifier.buildChatPipelineIntentClassificationPrompt,
     );
-    expect(compatibilityIntentClassifier.resolveStructuredChatPipelineIntent).toBe(
-      sharedIntentClassifier.resolveStructuredChatPipelineIntent,
+    expect(compatibilityIntentClassifier.resolveChatPipelineIntentDecision).toBe(
+      sharedIntentClassifier.resolveChatPipelineIntentDecision,
     );
 
     const sharedSource = readFileSync(
@@ -134,10 +136,70 @@ describe('Chat pipeline semantic intent classification', () => {
     expect(candidateSchema).toMatchObject({ type: 'array', maxItems: 0 });
     expect(JSON.stringify(prompt.schema)).not.toContain('"enum":[]');
     expect(
-      resolveStructuredChatPipelineIntent({ kind: 'create', targetCandidateId: null }, []),
+      resolveChatPipelineIntentDecision({ kind: 'create', targetCandidateId: null }, []),
     ).toEqual({
       kind: 'create',
     });
+  });
+
+  test('uses a tool-free text contract and parses only one exact bounded JSON result', () => {
+    const prompt = buildChatPipelineIntentClassificationPrompt('explain this', candidates);
+    const text = JSON.stringify({
+      kind: 'diagnosis',
+      targetCandidateId: 'pipeline-1',
+      clarification: null,
+      candidateIds: [],
+    });
+
+    expect(TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS).toEqual({ '*': false });
+    expect(prompt.system).toContain('exactly one JSON object');
+    expect(prompt.system).toContain('Valid exact shapes');
+    expect(prompt.system).toContain(
+      '{"kind":"create","targetCandidateId":null,"clarification":null,"candidateIds":[]}',
+    );
+    expect(prompt.user).toContain('<host-output-schema>');
+    expect(prompt.user).toContain('&quot;candidateIds&quot;');
+    expect(parseChatPipelineIntentClassificationText(text, candidates)).toEqual({
+      kind: 'diagnosis',
+      target: candidates[0],
+    });
+    expect(() => parseChatPipelineIntentClassificationText(`Result:\n${text}`, candidates)).toThrow(
+      /JSON/i,
+    );
+    expect(() =>
+      parseChatPipelineIntentClassificationText(
+        JSON.stringify({
+          kind: 'edit',
+          targetCandidateId: '/workspace/model-authored.yaml',
+          clarification: null,
+          candidateIds: [],
+        }),
+        candidates,
+      ),
+    ).toThrow(/unknown Host pipeline candidate/i);
+    expect(() =>
+      parseChatPipelineIntentClassificationText(
+        JSON.stringify({
+          kind: 'discussion',
+          targetCandidateId: null,
+          clarification: null,
+          candidateIds: [],
+          extra: 'not allowed',
+        }),
+        candidates,
+      ),
+    ).toThrow(/fields/i);
+    expect(() =>
+      parseChatPipelineIntentClassificationText(
+        JSON.stringify({
+          kind: 'clarify',
+          targetCandidateId: null,
+          clarification: 'x'.repeat(501),
+          candidateIds: ['pipeline-1'],
+        }),
+        candidates,
+      ),
+    ).toThrow(/bound/i);
   });
 
   test('binds an edit only through a Host-issued candidate id', () => {
@@ -177,7 +239,7 @@ describe('Chat pipeline semantic intent classification', () => {
     expect(JSON.stringify(prompt.schema)).not.toContain('C:/repo/.tagma/orders/orders.yaml');
 
     expect(
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         { kind: 'edit', targetCandidateId: 'pipeline-2' },
         candidates,
       ),
@@ -187,7 +249,7 @@ describe('Chat pipeline semantic intent classification', () => {
     });
 
     expect(() =>
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         { kind: 'edit', targetCandidateId: 'C:/repo/.tagma/orders/orders.yaml' },
         candidates,
       ),
@@ -196,34 +258,31 @@ describe('Chat pipeline semantic intent classification', () => {
 
   test('resolves every intent kind with the existing strict target semantics', () => {
     expect(
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         { kind: 'discussion', targetCandidateId: null },
         candidates,
       ),
     ).toEqual({ kind: 'discussion' });
     expect(
-      resolveStructuredChatPipelineIntent(
-        { kind: 'diagnosis', targetCandidateId: null },
-        candidates,
-      ),
+      resolveChatPipelineIntentDecision({ kind: 'diagnosis', targetCandidateId: null }, candidates),
     ).toEqual({ kind: 'diagnosis', target: null });
     expect(
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         { kind: 'diagnosis', targetCandidateId: 'pipeline-1' },
         candidates,
       ),
     ).toEqual({ kind: 'diagnosis', target: candidates[0] });
     expect(
-      resolveStructuredChatPipelineIntent({ kind: 'create', targetCandidateId: null }, candidates),
+      resolveChatPipelineIntentDecision({ kind: 'create', targetCandidateId: null }, candidates),
     ).toEqual({ kind: 'create' });
     expect(
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         { kind: 'edit', targetCandidateId: 'pipeline-2' },
         candidates,
       ),
     ).toEqual({ kind: 'edit', target: candidates[1] });
     expect(
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         {
           kind: 'clarify',
           targetCandidateId: null,
@@ -239,22 +298,22 @@ describe('Chat pipeline semantic intent classification', () => {
     });
 
     expect(() =>
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         { kind: 'discussion', targetCandidateId: 'pipeline-1' },
         candidates,
       ),
     ).toThrow('discussion classification cannot select');
     expect(() =>
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         { kind: 'create', targetCandidateId: 'pipeline-1' },
         candidates,
       ),
     ).toThrow('create classification cannot reuse');
     expect(() =>
-      resolveStructuredChatPipelineIntent({ kind: 'edit', targetCandidateId: null }, candidates),
+      resolveChatPipelineIntentDecision({ kind: 'edit', targetCandidateId: null }, candidates),
     ).toThrow('edit classification requires one Host pipeline candidate');
     expect(() =>
-      resolveStructuredChatPipelineIntent(
+      resolveChatPipelineIntentDecision(
         {
           kind: 'clarify',
           targetCandidateId: null,

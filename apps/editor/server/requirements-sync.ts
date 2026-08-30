@@ -783,6 +783,13 @@ function ensureBinaryBodySections(body: string, binaries: readonly RequirementsB
   return `${next.replace(/\s+$/g, '')}\n\n${additions}\n`;
 }
 
+function isUntouchedGeneratedBody(existing: ParsedRequirements): boolean {
+  const generatedFor = existing.frontmatter?.generatedFor;
+  const binaries = existing.frontmatter?.binaries;
+  if (typeof generatedFor !== 'string' || !Array.isArray(binaries)) return false;
+  return existing.body.trim() === buildInitialBody(generatedFor, binaries).trim();
+}
+
 // ── Main entry point ────────────────────────────────────────────────────────
 
 /**
@@ -823,9 +830,11 @@ export function runRequirementsSync(yamlPath: string): void {
   };
 
   const body =
-    existing?.body !== undefined
-      ? ensureBinaryBodySections(existing.body, binaries)
-      : buildInitialBody(yamlBasename, binaries);
+    existing?.body === undefined
+      ? buildInitialBody(yamlBasename, binaries)
+      : existing.frontmatter?.generatedFor !== yamlBasename && isUntouchedGeneratedBody(existing)
+        ? buildInitialBody(yamlBasename, binaries)
+        : ensureBinaryBodySections(existing.body, binaries);
 
   try {
     atomicWriteFileSync(

@@ -1,5 +1,13 @@
 import { afterEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -695,4 +703,53 @@ test('runRequirementsSync preserves body + agent-owned env when YAML changes', (
   expect(after.body).toContain('- macOS: `brew install git`');
   expect(after.body).toContain('### `bun`');
   expect(after.body).toContain('TODO: install instructions for `bun`');
+});
+
+test('runRequirementsSync retargets an untouched generated body when a pipeline is branched', () => {
+  const { tagmaDir } = makeWorkspace();
+  const sourceYaml = writeYaml(
+    tagmaDir,
+    'source.yaml',
+    'pipeline:\n  name: source\n  tracks: []\n',
+  );
+  runRequirementsSync(sourceYaml);
+
+  const targetYaml = writeYaml(tagmaDir, 'target.yaml', readFileSync(sourceYaml, 'utf8'));
+  copyFileSync(requirementsPath(sourceYaml), requirementsPath(targetYaml));
+  runRequirementsSync(targetYaml);
+
+  const target = parseRequirementsMd(readFileSync(requirementsPath(targetYaml), 'utf8'));
+  expect(target.frontmatter?.generatedFor).toBe('target.yaml');
+  expect(target.body).toContain('# Requirements for `target.yaml`');
+  expect(target.body).not.toContain('`source.yaml`');
+});
+
+test('runRequirementsSync preserves a customized body when a pipeline is branched', () => {
+  const { tagmaDir } = makeWorkspace();
+  const sourceYaml = writeYaml(
+    tagmaDir,
+    'source.yaml',
+    'pipeline:\n  name: source\n  tracks: []\n',
+  );
+  runRequirementsSync(sourceYaml);
+  const sourceRequirements = parseRequirementsMd(
+    readFileSync(requirementsPath(sourceYaml), 'utf8'),
+  );
+  writeFileSync(
+    requirementsPath(sourceYaml),
+    serializeRequirementsMd({
+      frontmatter: sourceRequirements.frontmatter,
+      body: '# Team-owned deployment requirements\n\nKeep this exact guidance.\n',
+    }),
+  );
+
+  const targetYaml = writeYaml(tagmaDir, 'target.yaml', readFileSync(sourceYaml, 'utf8'));
+  copyFileSync(requirementsPath(sourceYaml), requirementsPath(targetYaml));
+  runRequirementsSync(targetYaml);
+
+  const target = parseRequirementsMd(readFileSync(requirementsPath(targetYaml), 'utf8'));
+  expect(target.frontmatter?.generatedFor).toBe('target.yaml');
+  expect(target.body.trim()).toBe(
+    '# Team-owned deployment requirements\n\nKeep this exact guidance.',
+  );
 });

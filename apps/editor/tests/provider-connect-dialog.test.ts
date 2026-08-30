@@ -149,8 +149,16 @@ describe('provider auth method row identity', () => {
     } as ProviderAuthMethod;
     const changedPrompt = {
       ...method,
-      prompts: [{ ...(method.prompts?.[0] as object), message: 'GitHub Enterprise URL' }],
-    } as ProviderAuthMethod;
+      prompts: [
+        {
+          type: 'text',
+          key: 'enterpriseUrl',
+          message: 'GitHub Enterprise URL',
+          placeholder: 'https://github.example.com',
+          when: { key: 'deploymentType', op: 'eq', value: 'enterprise' },
+        },
+      ],
+    } satisfies ProviderAuthMethod;
 
     expect(providerAuthMethodKey('github-copilot', method, 0)).not.toBe(
       providerAuthMethodKey('github-copilot', method, 1),

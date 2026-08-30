@@ -6,19 +6,19 @@ import {
   type OpenCodeInvocationStore,
 } from '../server/chat-operations/opencode-invocation.js';
 import {
-  ChatOperationV2OpenCodeClassifierRunner,
+  ChatOperationV2OpenCodeReadonlyRunner,
   OpenCodeSdkAdapter,
-  OpenCodeStructuredClassifierRunner,
+  OpenCodeReadonlyInvocationRunner,
   buildNativeRequestDigestMarker,
   buildReadonlyTextCanonicalRequestBytes,
-  buildStructuredClassifierCanonicalRequestBytes,
+  buildClassifierTextCanonicalRequestBytes,
   deriveOpenCodeExecutionMessageId,
   extractNativeRequestDigest,
   type OpenCodeAdapterNativePromptInput,
-  type OpenCodeAdapterRichPromptInput,
+  type OpenCodeAdapterClassifierTextPromptInput,
   type OpenCodeAdapterSdkClient,
   type OpenCodeAdapterTextPromptInput,
-  type OpenCodeStructuredClassifierRunRequest,
+  type OpenCodeTextClassifierRunRequest,
 } from '../server/chat-operations/opencode-adapter.js';
 import type { ChatOperationV2AdmissionRequest } from '../server/chat-operations/admission.js';
 import type { ChatOperationV2DurableInvocationRequest } from '../server/chat-operations/orchestrator.js';
@@ -112,7 +112,7 @@ interface HarnessOptions {
   historyVisibilityDelayReads?: number;
   richSdkFailure?: { readonly status: number; readonly error: unknown };
   richPrompt?: (
-    input: OpenCodeAdapterRichPromptInput | OpenCodeAdapterTextPromptInput,
+    input: OpenCodeAdapterClassifierTextPromptInput | OpenCodeAdapterTextPromptInput,
     signal: AbortSignal | undefined,
   ) => unknown;
   textResponseLosses?: number;
@@ -198,7 +198,9 @@ function sdkOk<T>(data: T, status = 200) {
 function createHarness(options: HarnessOptions = {}) {
   const calls: string[] = [];
   const history: SdkHistoryEvent[] = [];
-  const richRequests: Array<OpenCodeAdapterRichPromptInput | OpenCodeAdapterTextPromptInput> = [];
+  const richRequests: Array<
+    OpenCodeAdapterClassifierTextPromptInput | OpenCodeAdapterTextPromptInput
+  > = [];
   const nativePromptRequests: OpenCodeAdapterNativePromptInput[] = [];
   const textCache = new Map<string, unknown>();
   let richCallCount = 0;
@@ -309,6 +311,10 @@ function createHarness(options: HarnessOptions = {}) {
             return sdkOk(cached);
           }
           textProviderCallCount += 1;
+          const text =
+            input.agent === 'tagma-pipeline-intent-classifier'
+              ? JSON.stringify(discussionOutput())
+              : READONLY_TEXT_RESULT;
           const response = {
             info: {
               id: `assistant-${input.messageID}`,
@@ -324,7 +330,7 @@ function createHarness(options: HarnessOptions = {}) {
                 cache: { read: 3, write: 2 },
               },
             },
-            parts: [{ type: 'text', text: READONLY_TEXT_RESULT }],
+            parts: [{ type: 'text', text }],
           };
           textCache.set(key, response);
           if (textResponseLosses > 0) {
@@ -379,14 +385,15 @@ function discussionOutput() {
 }
 
 function request(
-  overrides: Partial<OpenCodeStructuredClassifierRunRequest> = {},
-): OpenCodeStructuredClassifierRunRequest {
+  overrides: Partial<OpenCodeTextClassifierRunRequest> = {},
+): OpenCodeTextClassifierRunRequest {
   return {
     operationId: 'operation-1',
+    workspaceScopeId: 'scope-1',
     invocationId: 'invocation-1',
     sessionId: 'ses_host_classifier_1',
     inputId: 'msg_host_native_1',
-    canonicalRequestBytes: buildStructuredClassifierCanonicalRequestBytes(
+    canonicalRequestBytes: buildClassifierTextCanonicalRequestBytes(
       'Please explain how this pipeline works.',
       candidates,
     ),
@@ -441,11 +448,11 @@ function setup(
   });
   const controller = new OpenCodeInvocationController({ store, client: adapter });
   let executionIdAllocations = 0;
-  const runner = new OpenCodeStructuredClassifierRunner({
+  const runner = new OpenCodeReadonlyInvocationRunner({
     controller,
     store,
     nativeClient: adapter,
-    richClient: adapter,
+    textPromptClient: adapter,
     ...(runnerOptions.admissionSourceAttempts === undefined
       ? {}
       : { admissionSourceAttempts: runnerOptions.admissionSourceAttempts }),
@@ -461,7 +468,7 @@ function setup(
           },
         }),
   });
-  const durableRunner = new ChatOperationV2OpenCodeClassifierRunner(runner);
+  const durableRunner = new ChatOperationV2OpenCodeReadonlyRunner(runner);
   return {
     adapter,
     controller,
@@ -513,7 +520,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(harness.richRequests).toHaveLength(0);
   });
 
-  test('admits natively, then sends exactly one distinct compatibility rich classifier message', async () => {
+  test('admits natively, then sends one tool-free text classifier message', async () => {
     const { harness, runner, executionIdAllocations } = setup();
     const input = request();
 
@@ -525,12 +532,12 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       admittedAggregateSeq: 1,
       source: { aggregateSeq: 1, eventId: 'evt_1' },
       usage: {
-        inputTokens: 11,
-        outputTokens: 7,
-        reasoningTokens: 3,
-        cacheReadTokens: 2,
-        cacheWriteTokens: 1,
-        costMicrounits: 123,
+        inputTokens: 13,
+        outputTokens: 5,
+        reasoningTokens: 1,
+        cacheReadTokens: 3,
+        cacheWriteTokens: 2,
+        costMicrounits: 321,
       },
     });
     expect(executionIdAllocations()).toBe(1);
@@ -549,21 +556,20 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(rich?.model).toEqual(input.model);
     expect(rich?.variant).toBe('high');
     expect(rich?.tools).toEqual(TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS);
-    expect(Object.keys(rich?.tools as Record<string, boolean>)).toEqual(['*', 'StructuredOutput']);
+    expect(Object.keys(rich?.tools as Record<string, boolean>)).toEqual(['*']);
     expect((rich?.tools as Record<string, boolean>)['*']).toBe(false);
-    expect((rich?.tools as Record<string, boolean>).StructuredOutput).toBe(true);
     const expectedPrompt = buildChatPipelineIntentClassificationPrompt(
       input.userText,
       input.candidates,
     );
     expect(rich?.system).toBe(expectedPrompt.system);
     expect(rich?.parts).toEqual([{ type: 'text', text: expectedPrompt.user }]);
-    expect(rich?.format).toEqual({ type: 'json_schema', schema: expectedPrompt.schema });
+    expect(rich?.format).toEqual({ type: 'text' });
     expect(rich?.format).not.toHaveProperty('retryCount');
     expect(rich).not.toHaveProperty('noReply');
   });
 
-  test('implements the orchestrator runner with authenticated canonical bytes and structured output', async () => {
+  test('implements the orchestrator runner with authenticated bytes and a safe Host decision', async () => {
     const { durableRunner, harness } = setup();
     const input = request();
 
@@ -639,6 +645,47 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     });
   });
 
+  test('preserves a specific safe provider failure for discussion without requiring text parts', async () => {
+    const { durableRunner, harness } = setup({
+      richPrompt: (input) => ({
+        info: {
+          id: `assistant-${input.messageID}`,
+          parentID: input.messageID,
+          error: {
+            name: 'APIError',
+            data: {
+              message: 'private rate-limit response body',
+              statusCode: 429,
+              isRetryable: true,
+            },
+          },
+          finish: 'error',
+        },
+      }),
+    });
+
+    expect(await durableRunner.run(readonlyRequest('discussion'))).toEqual({
+      kind: 'provider_unavailable',
+      code: 'provider_rate_limited',
+    });
+    expect(harness.richCallCount()).toBe(1);
+  });
+
+  test('keeps a definitive read-only SDK rejection distinct from response loss', async () => {
+    const { durableRunner, harness } = setup({
+      richSdkFailure: {
+        status: 401,
+        error: { name: 'ProviderAuthError', data: { private: 'do not persist' } },
+      },
+    });
+
+    expect(await durableRunner.run(readonlyRequest('diagnosis'))).toEqual({
+      kind: 'provider_unavailable',
+      code: 'provider_authentication_failed',
+    });
+    expect(harness.richCallCount()).toBe(1);
+  });
+
   test('derives a restart-stable execution message id from Host invocation identity', async () => {
     const { durableRunner, harness } = setup({}, { useDefaultExecutionId: true });
     const input = readonlyRequest('discussion');
@@ -677,6 +724,13 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(rich?.tools).toEqual({ '*': false });
     expect(rich?.format).toEqual({ type: 'text' });
     expect(rich?.system).toContain('sealed Host snapshot');
+    expect(rich?.system).toContain('empty `compileDiagnostics` array');
+    expect(rich?.system).toContain('static Host compilation evidence only');
+    expect(rich?.system).toContain('`fromDriver: opencode`');
+    expect(rich?.system).toContain('Tagma-managed runtime dependency');
+    expect(rich?.system).toContain('Do not invent schema fields');
+    expect(rich?.system).toContain('Never group `.compile.log` with runtime evidence');
+    expect(rich?.system).toContain('Never combine compilation and preflight into one claim');
     const providerContext = JSON.parse(
       rich?.parts[0]?.text.split('\n').slice(1, -1).join('\n') ?? '{}',
     ) as Record<string, unknown>;
@@ -688,6 +742,37 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     });
     expect(providerContext.sealedSnapshot).not.toHaveProperty('workspaceScopeId');
     expect(providerContext.sealedSnapshot).not.toHaveProperty('candidateDiskHash');
+  });
+
+  test('runs diagnosis without a canvas snapshot as authenticated request-only context', async () => {
+    const { durableRunner, harness } = setup();
+    const readSnapshot = null;
+    const input = readonlyRequest('diagnosis', {
+      canonicalRequestBytes: buildReadonlyTextCanonicalRequestBytes({
+        purpose: 'diagnosis',
+        request: readonlyAdmissionRequest,
+        readSnapshot,
+      }),
+      readSnapshot,
+    });
+
+    const result = await durableRunner.run(input);
+
+    expect(result).toMatchObject({ kind: 'completed', structuredOutput: READONLY_TEXT_RESULT });
+    const rich = harness.richRequests[0];
+    expect(rich?.agent).toBe('tagma-pipeline-diagnosis');
+    expect(rich?.tools).toEqual({ '*': false });
+    expect(rich?.format).toEqual({ type: 'text' });
+    expect(rich?.system).toContain('No sealed pipeline snapshot is available');
+    const providerContext = JSON.parse(
+      rich?.parts[0]?.text.split('\n').slice(1, -1).join('\n') ?? '{}',
+    ) as Record<string, unknown>;
+    expect(providerContext).not.toHaveProperty('sealedSnapshot');
+    expect(providerContext).toMatchObject({
+      schemaVersion: 1,
+      purpose: 'diagnosis',
+      request: readonlyAdmissionRequest,
+    });
   });
 
   test('rejects diagnosis when the caller snapshot differs from the authenticated canonical bytes', async () => {
@@ -739,17 +824,19 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       workspaceDirectory: '/workspace',
       resolveClient: async () => first.harness.client,
     });
-    const restartedStructuredRunner = new OpenCodeStructuredClassifierRunner({
+    const restartedReadonlyInvocationRunner = new OpenCodeReadonlyInvocationRunner({
       controller: new OpenCodeInvocationController({
         store: first.store,
         client: restartedAdapter,
       }),
       store: first.store,
       nativeClient: restartedAdapter,
-      richClient: restartedAdapter,
+      textPromptClient: restartedAdapter,
       nextExecutionMessageId: () => 'msg_host_execution_1',
     });
-    const restartedRunner = new ChatOperationV2OpenCodeClassifierRunner(restartedStructuredRunner);
+    const restartedRunner = new ChatOperationV2OpenCodeReadonlyRunner(
+      restartedReadonlyInvocationRunner,
+    );
     const { signal: _signal, ...recoveryRequest } = input;
 
     expect(await restartedRunner.reconcile(recoveryRequest)).toMatchObject({
@@ -789,13 +876,12 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(first.harness.textProviderCallCount()).toBe(1);
   });
 
-  test('returns only the resolved safe classifier shape, not extra provider fields', async () => {
+  test('rejects classifier text with provider-authored extra fields', async () => {
     const { runner } = setup({
       richPrompt: (richInput) => ({
         info: {
           id: `assistant-${richInput.messageID}`,
           parentID: richInput.messageID,
-          structured: { ...discussionOutput(), unexpectedProviderField: 'do not return' },
           finish: 'stop',
           cost: 0,
           tokens: {
@@ -805,16 +891,22 @@ describe('Chat Operation V2 OpenCode adapter', () => {
             cache: { read: 0, write: 0 },
           },
         },
-        parts: [],
+        parts: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              ...discussionOutput(),
+              unexpectedProviderField: 'do not return',
+            }),
+          },
+        ],
       }),
     });
     const input = request();
 
     const result = await runner.run(input);
 
-    expect(result).toMatchObject({ kind: 'completed', structuredOutput: discussionOutput() });
-    if (result.kind !== 'completed') throw new Error('expected completed classifier result');
-    expect(result.structuredOutput).not.toHaveProperty('unexpectedProviderField');
+    expect(result).toEqual({ kind: 'provider_unavailable', code: 'malformed_text_result' });
   });
 
   test('rejects non-canonical orchestrator bytes before outbox or SDK access', async () => {
@@ -873,7 +965,6 @@ describe('Chat Operation V2 OpenCode adapter', () => {
         info: {
           id: `assistant-${input.messageID}`,
           parentID: input.messageID,
-          structured,
           finish: 'stop',
           cost: 0,
           tokens: {
@@ -883,7 +974,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
             cache: { read: 0, write: 0 },
           },
         },
-        parts: [],
+        parts: [{ type: 'text', text: JSON.stringify(structured) }],
       }),
     });
 
@@ -892,50 +983,43 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(result).toMatchObject({ kind: 'completed', structuredOutput: structured, intent });
   });
 
-  test('treats a native 409 recovered from history as admitted-but-result-unavailable', async () => {
+  test('continues text classification after recovering a native 409 from history', async () => {
     const { harness, runner } = setup({ nativePrompt: 'conflict-after-admit' });
 
     const result = await runner.run(request());
 
-    expect(result).toEqual({ kind: 'provider_unavailable', code: 'submitted_unknown' });
+    expect(result).toMatchObject({ kind: 'completed', structuredOutput: discussionOutput() });
     expect(harness.nativePromptRequests).toHaveLength(1);
-    expect(harness.richRequests).toHaveLength(0);
+    expect(harness.richRequests).toHaveLength(1);
     expect(harness.history).toHaveLength(1);
   });
 
-  test('recovers a lost native admission response once without starting rich execution', async () => {
+  test('continues text classification after a lost native admission response', async () => {
     const { harness, runner } = setup({ nativePrompt: 'throw-after-admit' });
 
-    expect(await runner.run(request())).toEqual({
-      kind: 'provider_unavailable',
-      code: 'submitted_unknown',
+    expect(await runner.run(request())).toMatchObject({
+      kind: 'completed',
+      structuredOutput: discussionOutput(),
     });
     expect(harness.nativePromptRequests).toHaveLength(1);
     expect(harness.history).toHaveLength(1);
-    expect(harness.richRequests).toHaveLength(0);
+    expect(harness.richRequests).toHaveLength(1);
   });
 
-  test('never sends a second rich message after compatibility response loss', async () => {
-    const { executionIdAllocations, harness, runner } = setup({
-      richPrompt: () => {
-        throw new Error('simulated committed rich response loss');
-      },
-    });
+  test('recovers one classifier transport loss through the identical cached text id', async () => {
+    const { executionIdAllocations, harness, runner } = setup({ textResponseLosses: 1 });
     const input = request();
 
-    expect(await runner.run(input)).toEqual({
-      kind: 'provider_unavailable',
-      code: 'submitted_unknown',
-      submissionUnknown: true,
+    expect(await runner.run(input)).toMatchObject({
+      kind: 'completed',
+      structuredOutput: discussionOutput(),
     });
-    expect(await runner.run(input)).toEqual({
-      kind: 'provider_unavailable',
-      code: 'submitted_unknown',
-      submissionUnknown: true,
-    });
-    expect(harness.richCallCount()).toBe(1);
+    expect(await runner.run(input)).toMatchObject({ kind: 'completed' });
+    expect(harness.richCallCount()).toBe(2);
+    expect(harness.textProviderCallCount()).toBe(1);
     expect(executionIdAllocations()).toBe(1);
     expect(harness.richRequests[0]?.messageID).toBe('msg_host_execution_1');
+    expect(harness.richRequests[1]?.messageID).toBe('msg_host_execution_1');
   });
 
   test('coalesces concurrent calls for the same Host invocation and execution id', async () => {
@@ -951,12 +1035,8 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(executionIdAllocations()).toBe(1);
   });
 
-  test('restart reconciliation proves native admission but does not fake rich result recovery', async () => {
-    const first = setup({
-      richPrompt: () => {
-        throw new Error('simulated committed rich response loss');
-      },
-    });
+  test('restart run recovers cached classifier text with the same execution id', async () => {
+    const first = setup({ textResponseLosses: 2 });
     const input = request();
     expect(await first.runner.run(input)).toEqual({
       kind: 'provider_unavailable',
@@ -972,29 +1052,26 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       store: first.store,
       client: restartedAdapter,
     });
-    const restartedRunner = new OpenCodeStructuredClassifierRunner({
+    const restartedRunner = new OpenCodeReadonlyInvocationRunner({
       controller: restartedController,
       store: first.store,
       nativeClient: restartedAdapter,
-      richClient: restartedAdapter,
-      nextExecutionMessageId: () => 'msg_host_execution_after_restart',
+      textPromptClient: restartedAdapter,
+      nextExecutionMessageId: () => 'msg_host_execution_1',
     });
     const callsBeforeRestartRun = first.harness.calls.length;
 
-    expect(await restartedRunner.run(input)).toEqual({
-      kind: 'provider_unavailable',
-      code: 'submitted_unknown',
+    expect(await restartedRunner.run(input)).toMatchObject({
+      kind: 'completed',
+      structuredOutput: discussionOutput(),
     });
-    expect(first.harness.richCallCount()).toBe(1);
-    expect(first.harness.calls.slice(callsBeforeRestartRun)).toEqual(['outbox.prepare']);
+    expect(first.harness.richCallCount()).toBe(3);
+    expect(first.harness.textProviderCallCount()).toBe(1);
+    expect(first.harness.calls.slice(callsBeforeRestartRun)).toContain('sdk.native.history');
   });
 
-  test('orchestrator reconciliation reads native history only and always leaves rich result unavailable', async () => {
-    const first = setup({
-      richPrompt: () => {
-        throw new Error('simulated committed rich response loss');
-      },
-    });
+  test('orchestrator reconciliation recovers cached classifier text after restart', async () => {
+    const first = setup({ textResponseLosses: 2 });
     const input = request();
     expect(await first.runner.run(input)).toEqual({
       kind: 'provider_unavailable',
@@ -1006,17 +1083,19 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       workspaceDirectory: '/workspace',
       resolveClient: async () => first.harness.client,
     });
-    const restartedStructuredRunner = new OpenCodeStructuredClassifierRunner({
+    const restartedReadonlyInvocationRunner = new OpenCodeReadonlyInvocationRunner({
       controller: new OpenCodeInvocationController({
         store: first.store,
         client: restartedAdapter,
       }),
       store: first.store,
       nativeClient: restartedAdapter,
-      richClient: restartedAdapter,
-      nextExecutionMessageId: () => 'msg_must_not_be_used',
+      textPromptClient: restartedAdapter,
+      nextExecutionMessageId: () => 'msg_host_execution_1',
     });
-    const restartedRunner = new ChatOperationV2OpenCodeClassifierRunner(restartedStructuredRunner);
+    const restartedRunner = new ChatOperationV2OpenCodeReadonlyRunner(
+      restartedReadonlyInvocationRunner,
+    );
     const nativePromptCalls = first.harness.nativePromptRequests.length;
     const richCalls = first.harness.richCallCount();
 
@@ -1034,13 +1113,17 @@ describe('Chat Operation V2 OpenCode adapter', () => {
         canonicalRequestBytes: input.canonicalRequestBytes,
         readSnapshot: null,
       }),
-    ).toEqual({ kind: 'provider_unavailable', code: 'submitted_unknown' });
+    ).toMatchObject({
+      kind: 'completed',
+      structuredOutput: discussionOutput(),
+      text: null,
+    });
     expect(first.harness.nativePromptRequests).toHaveLength(nativePromptCalls);
-    expect(first.harness.richCallCount()).toBe(richCalls);
-    expect(first.harness.calls.at(-1)).toBe('sdk.native.history');
+    expect(first.harness.richCallCount()).toBe(richCalls + 1);
+    expect(first.harness.textProviderCallCount()).toBe(1);
   });
 
-  test('reconciliation records proven native admission without any prompt submission', async () => {
+  test('reconciliation starts text classification from a proven native admission', async () => {
     const state = setup();
     const input = request();
     const requestDigest = sha256CanonicalOpenCodeRequest(input.canonicalRequestBytes);
@@ -1079,28 +1162,30 @@ describe('Chat Operation V2 OpenCode adapter', () => {
         canonicalRequestBytes: input.canonicalRequestBytes,
         readSnapshot: null,
       }),
-    ).toEqual({ kind: 'provider_unavailable', code: 'submitted_unknown' });
+    ).toMatchObject({
+      kind: 'completed',
+      structuredOutput: discussionOutput(),
+      text: null,
+    });
     expect(state.store.getInvocationOutbox(input.invocationId)).toMatchObject({
-      status: 'admitted',
+      status: 'running',
       admittedAggregateSeq: 1,
     });
     expect(state.harness.nativePromptRequests).toHaveLength(0);
-    expect(state.harness.richRequests).toHaveLength(0);
-    expect(state.harness.calls).toEqual(['outbox.prepare', 'sdk.native.history']);
+    expect(state.harness.richRequests).toHaveLength(1);
+    expect(state.harness.calls).toEqual([
+      'outbox.prepare',
+      'sdk.native.history',
+      'sdk.rich.prompt',
+    ]);
   });
 
-  test('fails closed on a malformed structured result', async () => {
+  test('fails closed on malformed classifier text', async () => {
     const { runner } = setup({
       richPrompt: (input) => ({
         info: {
           id: `assistant-${input.messageID}`,
           parentID: input.messageID,
-          structured: {
-            kind: 'edit',
-            targetCandidateId: 'model-authored-path',
-            clarification: null,
-            candidateIds: [],
-          },
           finish: 'stop',
           cost: 0,
           tokens: {
@@ -1110,28 +1195,32 @@ describe('Chat Operation V2 OpenCode adapter', () => {
             cache: { read: 0, write: 0 },
           },
         },
-        parts: [],
+        parts: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              kind: 'edit',
+              targetCandidateId: 'model-authored-path',
+              clarification: null,
+              candidateIds: [],
+            }),
+          },
+        ],
       }),
     });
 
     expect(await runner.run(request())).toEqual({
       kind: 'provider_unavailable',
-      code: 'malformed_structured_result',
+      code: 'malformed_text_result',
     });
   });
 
-  test('orchestrator runner rejects malformed structured output before settling it as completed', async () => {
+  test('orchestrator runner rejects malformed classifier text before settling completion', async () => {
     const { durableRunner } = setup({
       richPrompt: (richInput) => ({
         info: {
           id: `assistant-${richInput.messageID}`,
           parentID: richInput.messageID,
-          structured: {
-            kind: 'edit',
-            targetCandidateId: 'model-authored-path',
-            clarification: null,
-            candidateIds: [],
-          },
           finish: 'stop',
           cost: 0,
           tokens: {
@@ -1141,7 +1230,17 @@ describe('Chat Operation V2 OpenCode adapter', () => {
             cache: { read: 0, write: 0 },
           },
         },
-        parts: [],
+        parts: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              kind: 'edit',
+              targetCandidateId: 'model-authored-path',
+              clarification: null,
+              candidateIds: [],
+            }),
+          },
+        ],
       }),
     });
     const input = request();
@@ -1161,10 +1260,10 @@ describe('Chat Operation V2 OpenCode adapter', () => {
         readSnapshot: null,
         signal: input.signal,
       }),
-    ).toEqual({ kind: 'provider_unavailable', code: 'malformed_structured_result' });
+    ).toEqual({ kind: 'provider_unavailable', code: 'malformed_text_result' });
   });
 
-  test('returns a typed provider failure for model errors without leaking the provider payload', async () => {
+  test('returns a typed provider failure for unknown errors without leaking the provider payload', async () => {
     const { runner } = setup({
       richPrompt: (input) => ({
         info: {
@@ -1189,9 +1288,207 @@ describe('Chat Operation V2 OpenCode adapter', () => {
 
     expect(await runner.run(request())).toEqual({
       kind: 'provider_unavailable',
-      code: 'model_error',
+      code: 'provider_invocation_failed',
     });
   });
+
+  test.each([
+    [
+      'provider authentication',
+      {
+        name: 'ProviderAuthError',
+        data: { providerID: 'provider-1', message: 'secret authentication detail' },
+      },
+      'provider_authentication_failed',
+    ],
+    [
+      'unknown provider failure',
+      {
+        name: 'UnknownError',
+        data: {
+          message: 'user content mentioned an unknown model and API key',
+          ref: 'private-ref',
+        },
+      },
+      'provider_invocation_failed',
+    ],
+    ['malformed scalar provider failure', 'secret upstream error', 'provider_invocation_failed'],
+    [
+      'model output length',
+      { name: 'MessageOutputLengthError', data: { private: 'do not leak' } },
+      'model_output_length',
+    ],
+    [
+      'aborted provider message',
+      { name: 'MessageAbortedError', data: { message: 'secret abort detail' } },
+      'provider_invocation_aborted',
+    ],
+    [
+      'model context overflow',
+      {
+        name: 'ContextOverflowError',
+        data: { message: 'secret context detail', responseBody: 'do not leak' },
+      },
+      'model_context_overflow',
+    ],
+    [
+      'provider content filter',
+      { name: 'ContentFilterError', data: { message: 'secret filter detail' } },
+      'provider_content_filtered',
+    ],
+    [
+      'provider billing',
+      {
+        name: 'APIError',
+        data: { message: 'secret billing detail', statusCode: 402, isRetryable: false },
+      },
+      'provider_billing_required',
+    ],
+    [
+      'provider rate limit',
+      {
+        name: 'APIError',
+        data: { message: 'secret rate detail', statusCode: 429, isRetryable: true },
+      },
+      'provider_rate_limited',
+    ],
+    [
+      'retryable provider outage',
+      {
+        name: 'APIError',
+        data: { message: 'secret outage detail', statusCode: 503, isRetryable: true },
+      },
+      'provider_unavailable',
+    ],
+    [
+      'authentication status over conflicting model text',
+      {
+        name: 'APIError',
+        data: { message: 'unknown model', statusCode: 401, isRetryable: false },
+      },
+      'provider_authentication_failed',
+    ],
+    [
+      'authentication status over conflicting structured-output text',
+      {
+        name: 'APIError',
+        data: { message: 'structured output error', statusCode: 401, isRetryable: false },
+      },
+      'provider_authentication_failed',
+    ],
+    [
+      'billing status over conflicting rate-limit text',
+      {
+        name: 'APIError',
+        data: { message: 'rate limit', statusCode: 402, isRetryable: false },
+      },
+      'provider_billing_required',
+    ],
+    [
+      'rate-limit status over conflicting billing text',
+      {
+        name: 'APIError',
+        data: { message: 'insufficient credits', statusCode: 429, isRetryable: true },
+      },
+      'provider_rate_limited',
+    ],
+    [
+      'rate-limit status over conflicting content-policy text',
+      {
+        name: 'APIError',
+        data: {
+          message: 'content filter and context overflow',
+          statusCode: 429,
+          isRetryable: true,
+        },
+      },
+      'provider_rate_limited',
+    ],
+    [
+      'provider request rejection',
+      {
+        name: 'APIError',
+        data: { message: 'secret rejection detail', statusCode: 422, isRetryable: false },
+      },
+      'provider_request_rejected',
+    ],
+    [
+      'retryable API error without status',
+      {
+        name: 'APIError',
+        data: { message: 'secret transient detail', isRetryable: true },
+      },
+      'provider_unavailable',
+    ],
+  ] as const)(
+    'classifies a rich %s without persisting provider content',
+    async (_label, error, expectedCode) => {
+      const { runner } = setup({
+        richPrompt: (input) => ({
+          info: {
+            id: `assistant-${input.messageID}`,
+            parentID: input.messageID,
+            error,
+            structured: undefined,
+            cost: 0,
+            tokens: {
+              input: 1,
+              output: 0,
+              reasoning: 0,
+              cache: { read: 0, write: 0 },
+            },
+          },
+          parts: [],
+        }),
+      });
+
+      expect(await runner.run(request())).toEqual({
+        kind: 'provider_unavailable',
+        code: expectedCode,
+      });
+    },
+  );
+
+  test.each([
+    ['unknown model', 'The requested provider model was not found.', 'model_unavailable'],
+    [
+      'unsupported structured output',
+      'This model does not support tools or structured output.',
+      'model_incompatible',
+    ],
+    [
+      'billing without status',
+      'Insufficient credits for this request.',
+      'provider_billing_required',
+    ],
+  ] as const)(
+    'classifies bounded APIError signal %s without returning the message',
+    async (_label, message, expectedCode) => {
+      const { runner } = setup({
+        richPrompt: (input) => ({
+          info: {
+            id: `assistant-${input.messageID}`,
+            parentID: input.messageID,
+            error: { name: 'APIError', data: { message, isRetryable: false } },
+            structured: undefined,
+            cost: 0,
+            tokens: {
+              input: 1,
+              output: 0,
+              reasoning: 0,
+              cache: { read: 0, write: 0 },
+            },
+          },
+          parts: [],
+        }),
+      });
+
+      expect(await runner.run(request())).toEqual({
+        kind: 'provider_unavailable',
+        code: expectedCode,
+      });
+    },
+  );
 
   test.each([
     [
@@ -1231,7 +1528,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     },
   );
 
-  test('does not retry pinned StructuredOutputError responses', async () => {
+  test('does not retry a legacy pinned StructuredOutputError response', async () => {
     const { harness, runner } = setup({
       richPrompt: (input) => ({
         info: {

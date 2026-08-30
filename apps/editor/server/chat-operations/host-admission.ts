@@ -10,10 +10,7 @@ import type { ChatInventorySnapshot } from './snapshots.js';
 export const CHAT_OPERATION_V2_HOST_ADMISSION_SCHEMA_VERSION = 1 as const;
 
 export type ChatOperationV2HostAdmissionErrorCode =
-  | 'classifier_model_incompatible'
-  | 'classifier_model_unavailable'
-  | 'invalid_host_authority'
-  | 'host_inventory_conflict';
+  'selected_model_unavailable' | 'invalid_host_authority' | 'host_inventory_conflict';
 
 export class ChatOperationV2HostAdmissionError extends Error {
   constructor(
@@ -46,13 +43,11 @@ export interface ChatOperationV2HostAdmissionAuthority {
   readonly repairMaxAttempts: number;
   /** Sidecar/runtime capabilities proved by the installed build. */
   readonly capabilities: ChatOperationV2HostAuthorityValue;
-  /** Exact configured model capability resolved by the Host for this request. */
-  readonly classifierModel: {
+  /** Exact selected model state resolved by the Host for this request. */
+  readonly selectedModel: {
     readonly providerID: string;
     readonly modelID: string;
     readonly configured: boolean;
-    readonly toolCall: boolean | null;
-    readonly status: string | null;
   };
   /** Exact server-side feature/cutover state for this admission. */
   readonly features: ChatOperationV2HostAuthorityValue;
@@ -205,21 +200,15 @@ export function resolveChatOperationV2CreateAdmission(
   }
   const payload = request.payload;
   if (
-    authority.classifierModel.providerID !== payload.provider ||
-    authority.classifierModel.modelID !== payload.model
+    authority.selectedModel.providerID !== payload.provider ||
+    authority.selectedModel.modelID !== payload.model
   ) {
-    invalidAuthority('classifier model authority does not match the requested model.');
+    invalidAuthority('selected model authority does not match the requested model.');
   }
-  if (!authority.classifierModel.configured) {
+  if (!authority.selectedModel.configured) {
     throw new ChatOperationV2HostAdmissionError(
-      'classifier_model_unavailable',
+      'selected_model_unavailable',
       'The selected model is not configured in the managed OpenCode runtime.',
-    );
-  }
-  if (authority.classifierModel.toolCall !== true) {
-    throw new ChatOperationV2HostAdmissionError(
-      'classifier_model_incompatible',
-      'The selected model cannot run the structured Tagma Chat classifier.',
     );
   }
   const dirtySnapshot = payload.dirtySnapshot;
@@ -259,7 +248,6 @@ export function resolveChatOperationV2CreateAdmission(
     }),
     capabilityHash: hashChatOperationV2HostAuthority('capabilities', {
       runtime: authority.capabilities,
-      classifierModel: authority.classifierModel,
     }),
     featureHash: hashChatOperationV2HostAuthority('features', authority.features),
     rendererInstanceId: payload.rendererInstanceId,

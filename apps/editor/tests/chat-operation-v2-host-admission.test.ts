@@ -31,12 +31,10 @@ function authority(): ChatOperationV2HostAdmissionAuthority {
     settings: { maxSteps: 100, pythonToolsEnabled: false },
     repairMaxAttempts: 25,
     capabilities: { opencode: '1.18.18', structuredOutput: true },
-    classifierModel: {
+    selectedModel: {
       providerID: 'openai',
       modelID: 'gpt-5',
       configured: true,
-      toolCall: true,
-      status: 'active',
     },
     features: { protocol: 2, readonly: true, shadow: true },
     validateCanonicalYaml: (yaml) => {
@@ -152,43 +150,58 @@ describe('Chat Operation V2 Host admission resolver', () => {
     );
   });
 
-  test('rejects classifier models that the Host cannot authenticate as tool-capable', () => {
+  test('requires an exact configured model without imposing tool capability on Chat admission', () => {
     expect(() =>
       resolveChatOperationV2CreateAdmission(request(false), {
         ...authority(),
-        classifierModel: {
+        selectedModel: {
           providerID: 'openai',
           modelID: 'gpt-5',
           configured: false,
-          toolCall: null,
-          status: null,
         },
       }),
     ).toThrow(/not configured/i);
-    expect(() =>
+    expect(
       resolveChatOperationV2CreateAdmission(request(false), {
         ...authority(),
-        classifierModel: {
+        selectedModel: {
           providerID: 'openai',
           modelID: 'gpt-5',
           configured: true,
-          toolCall: false,
-          status: 'active',
         },
       }),
-    ).toThrow(/structured Tagma Chat classifier/i);
+    ).toMatchObject({ provider: 'openai', model: 'gpt-5' });
     expect(() =>
       resolveChatOperationV2CreateAdmission(request(false), {
         ...authority(),
-        classifierModel: {
+        selectedModel: {
           providerID: 'other',
           modelID: 'gpt-5',
           configured: true,
-          toolCall: true,
-          status: 'active',
         },
       }),
     ).toThrow(/does not match/i);
+  });
+
+  test('keeps advisory model metadata out of durable capability authority', () => {
+    const firstHost = authority();
+    const first = resolveChatOperationV2CreateAdmission(request(false), firstHost);
+    const hostWithAdvisoryMetadata = {
+      ...firstHost,
+      selectedModel: {
+        ...firstHost.selectedModel,
+        toolCall: false,
+        status: 'deprecated',
+      },
+    };
+    const second = resolveChatOperationV2CreateAdmission(request(false), hostWithAdvisoryMetadata);
+
+    expect(second.capabilityHash).toBe(first.capabilityHash);
+    expect(first.capabilityHash).toBe(
+      hashChatOperationV2HostAuthority('capabilities', {
+        runtime: firstHost.capabilities,
+      }),
+    );
   });
 
   test('rejects mismatched inventory/classifier projections', () => {

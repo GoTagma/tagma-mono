@@ -321,7 +321,7 @@ function expectQuestionNotFound(result: SdkResponse<unknown>): void {
 }
 
 if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
-  test('pinned OpenCode preserves question and rich-classifier conformance boundaries', async () => {
+  test('pinned OpenCode preserves question, text, and legacy schema conformance boundaries', async () => {
     const electronPackage = JSON.parse(
       readFileSync(resolve(import.meta.dirname, '..', '..', 'electron', 'package.json'), 'utf8'),
     ) as {

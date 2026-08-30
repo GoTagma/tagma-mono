@@ -12,7 +12,7 @@ test('sidecar wires the opt-in Chat Operation V2 Host surface and closes its aut
   );
   expect(source).toContain('createChatOperationV2ShadowService');
   expect(source).toContain('const chatOperationV2Service = createChatOperationV2ShadowService({');
-  expect(source).toContain('createManagedOpenCodeStructuredClassifierRunner');
+  expect(source).toContain('createManagedOpenCodeReadonlyInvocationRunner');
   expect(source).toContain('ensureRealTagmaDirectory(canonicalWorkspaceRoot)');
   expect(source).toContain('registerChatOperationV2Routes(');
   expect(source).toContain('registerChatOperationV2LegacyStageFence(app);');
@@ -30,8 +30,8 @@ test('sidecar wires the opt-in Chat Operation V2 Host surface and closes its aut
   );
   expect(source).toContain('service: chatOperationV2Service,');
   expect(source).toContain('createInputResolver: async (workDir, request) =>');
-  expect(source).toContain('readManagedOpenCodeClassifierModelAuthority(');
-  expect(source).toContain('classifierModel,');
+  expect(source).toContain('readManagedOpenCodeSelectedModelAuthority(');
+  expect(source).toContain('selectedModel,');
   expect(source).toContain('clarificationInputResolver: (workDir, request) =>');
   expect(source).toContain('chatOperationV2HostInventoryFor(workDir)');
   expect(source).toContain('buildChatOperationV2HostInventory({');

@@ -52,6 +52,7 @@ import {
   computeWorkspaceScopeRecordHmac,
   createWorkspaceIdentity,
 } from '../server/chat-operations/workspace-identity.js';
+import { sealChatOperationV2InteractiveRequest } from '../server/chat-operations/interactive-requests.js';
 import type { ChatOperationV2MutationService } from '../server/routes/chat-operations.js';
 import { appendChatOperationV2ResultMessage } from '../server/chat-operations/results.js';
 
@@ -127,6 +128,7 @@ const fixtureHash = (value: string): string => createHash('sha256').update(value
 interface ServiceAuthoringRuntimeOptions {
   readonly interactive?: readonly ChatOperationV2RuntimeInteractiveRequest[];
   readonly providerUnavailableOnce?: boolean;
+  readonly relocationUnavailableOnce?: boolean;
   readonly block?: boolean;
 }
 
@@ -136,15 +138,18 @@ class FakeServiceAuthoringRuntime implements ChatOperationV2AuthoringRuntimeCore
   readonly forwarded: unknown[] = [];
   readonly interrupts: string[] = [];
   readonly stages = new Map<string, ChatOperationV2AuthoringStage>();
+  readonly stageSessions = new Map<string, string>();
   readonly relocations = new Map<string, ChatOperationV2SessionRelocation>();
   private interactiveIndex = 0;
   private providerUnavailable = false;
+  private relocationUnavailable = false;
   private timestamp = 1_950_000_000_000;
 
   constructor(readonly options: ServiceAuthoringRuntimeOptions = {}) {}
 
   async ensureStage(input: Parameters<ChatOperationV2AuthoringRuntimeCore['ensureStage']>[0]) {
     this.stageIds.push(input.stageId);
+    this.stageSessions.set(input.operationId, input.sessionId);
     let stage = this.stages.get(input.operationId);
     if (!stage) {
       stage = Object.freeze({
@@ -170,7 +175,12 @@ class FakeServiceAuthoringRuntime implements ChatOperationV2AuthoringRuntimeCore
 
   async inspectStage(input: Parameters<ChatOperationV2AuthoringRuntimeCore['inspectStage']>[0]) {
     const stage = this.stages.get(input.operationId);
-    return stage ? { kind: 'present' as const, stage } : { kind: 'missing' as const };
+    const sessionId =
+      this.relocations.get(input.operationId)?.sessionId ??
+      this.stageSessions.get(input.operationId);
+    return stage && sessionId
+      ? { kind: 'present' as const, stage, sessionId }
+      : { kind: 'missing' as const };
   }
 
   async relocateSession(
@@ -186,10 +196,17 @@ class FakeServiceAuthoringRuntime implements ChatOperationV2AuthoringRuntimeCore
       sessionId: input.sessionId,
       sourceDirectoryIdentity: input.stage.sourceDirectoryIdentity,
       stageDirectoryIdentity: input.stage.stageDirectoryIdentity,
-      phase: 'staged',
+      phase:
+        this.options.relocationUnavailableOnce && !this.relocationUnavailable
+          ? 'prepared'
+          : 'staged',
       updatedAt: ++this.timestamp,
     });
     this.relocations.set(input.operationId, relocation);
+    if (this.options.relocationUnavailableOnce && !this.relocationUnavailable) {
+      this.relocationUnavailable = true;
+      throw new Error('simulated service relocation outage');
+    }
     return relocation;
   }
 
@@ -554,6 +571,139 @@ function seedWorkspaceOperation(
         payload: { fixture: operationId },
       },
     });
+  } finally {
+    store.close();
+    control.key.fill(0);
+  }
+}
+
+function seedProcessLostInteractiveWait(
+  controlDir: string,
+  workspacePath: string,
+  workspaceScopeId: string,
+  operationId: string,
+  workspaceScopeCreatedAt = 1_777_777_777_800,
+) {
+  const control = prepareChatOperationV2Control({
+    env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+  });
+  const store = openChatOperationV2Store({
+    databasePath: control.databasePath,
+    keyId: control.keyId,
+  });
+  try {
+    const identity = createWorkspaceIdentity(workspacePath, control.key);
+    const createdAt = workspaceScopeCreatedAt;
+    const authorityFields = {
+      workspaceScopeId,
+      canonicalPath: identity.canonicalPath,
+      createdAt,
+      controlGeneration: 1,
+    };
+    store.ensureWorkspaceScope({
+      ...identity,
+      ...authorityFields,
+      recordHmac: computeWorkspaceScopeRecordHmac(authorityFields, control.key),
+    });
+    const created = store.createOperation({
+      operationId,
+      clientRequestId: `${operationId}-request`,
+      workspaceScopeId,
+      state: createInitialChatOperationV2State(),
+      createdAt,
+      admission: sealChatOperationV2Admission({
+        schemaVersion: 1,
+        request: {
+          schemaVersion: 1,
+          text: 'Service fixture process-local interactive request.',
+          attachments: [],
+        },
+        provider: 'fixture-provider',
+        model: 'fixture-model',
+        variant: null,
+        agentPolicyHash: 'a'.repeat(64),
+        settingsHash: 'b'.repeat(64),
+        capabilityHash: 'c'.repeat(64),
+        featureHash: 'd'.repeat(64),
+        rendererInstanceId: 'renderer-fixture',
+        conversationId: 'conversation-fixture',
+        inventoryRevision: 1,
+        inventoryDigest: 'e'.repeat(64),
+        readSnapshotHash: null,
+        purpose: 'classifier',
+        admittedAt: createdAt,
+      }),
+      event: {
+        eventId: `${operationId}-created`,
+        type: 'operation_created',
+        timestamp: createdAt,
+        payload: { fixture: operationId },
+      },
+    });
+    const invocationId = `${operationId}-authoring-invocation`;
+    store.prepareInvocationOutbox({
+      operationId,
+      invocationId,
+      purpose: 'authoring',
+      sessionId: `${operationId}-session`,
+      inputId: `${operationId}-input`,
+      requestDigest: 'f'.repeat(64),
+      preparedAt: createdAt + 1,
+    });
+    const authoring = store.transitionOperation({
+      operationId,
+      expectedGeneration: created.generation,
+      expectedVersion: created.version,
+      state: {
+        ...createInitialChatOperationV2State(),
+        phase: 'authoring',
+        activeInvocationId: invocationId,
+      },
+      updatedAt: createdAt + 2,
+      event: {
+        eventId: `${operationId}-authoring`,
+        type: 'fixture_authoring',
+        timestamp: createdAt + 2,
+      },
+    });
+    if (!authoring.applied) throw new Error('Expected authoring fixture transition.');
+    const request = sealChatOperationV2InteractiveRequest({
+      schemaVersion: 1,
+      hostRequestId: `permission:${operationId}`,
+      operationId,
+      operationGeneration: authoring.operation.generation,
+      operationVersion: authoring.operation.version + 1,
+      invocationId,
+      kind: 'permission',
+      content: {
+        actionCode: 'workspace_write',
+        resourceCode: 'staged_pipeline',
+      },
+      openCodeRequestId: `opencode-${operationId}`,
+      openCodeProcessGeneration: 77,
+      requestedAt: createdAt + 3,
+    });
+    const waiting = store.transitionOperation({
+      operationId,
+      expectedGeneration: authoring.operation.generation,
+      expectedVersion: authoring.operation.version,
+      state: {
+        ...createInitialChatOperationV2State(),
+        phase: 'authoring',
+        waitReason: 'permission',
+        activeInvocationId: invocationId,
+        pendingPermissionRequestId: request.hostRequestId,
+      },
+      interactiveRequestUpdate: { kind: 'create', request },
+      updatedAt: request.requestedAt,
+      event: {
+        eventId: `${operationId}-interactive-pending`,
+        type: 'fixture_interactive_pending',
+        timestamp: request.requestedAt,
+      },
+    });
+    if (!waiting.applied) throw new Error('Expected interactive wait fixture transition.');
+    return { operation: waiting.operation, request };
   } finally {
     store.close();
     control.key.fill(0);
@@ -1126,6 +1276,12 @@ describe('ChatTurn Operation V2 service activation', () => {
         candidates: [],
       }),
     ).rejects.toEqual(expect.objectContaining({ code: 'readonly_runner_unavailable' }));
+    expect(
+      service.getDiagnosticsReadonlySessionProjection(
+        workspace,
+        'ses_tagma_discussion_00000000000000000000000000000000',
+      ),
+    ).toBeNull();
     expect(existsSync(controlDir)).toBe(false);
     expect(service.getDiagnosticsSnapshot()).toMatchObject({
       initialized: false,
@@ -1188,7 +1344,26 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(runner.calls.map(({ purpose }) => purpose)).toEqual(['classifier', 'discussion']);
     expect(new Set(runner.calls.map(({ operationId }) => operationId)).size).toBe(1);
     expect(runner.calls[0]?.operationId).toMatch(/^operation-[0-9a-f-]{36}$/);
+    expect(runner.calls[0]?.sessionId).toMatch(/^ses_tagma_classifier_[0-9a-f]{32}$/);
+    expect(runner.calls[0]?.inputId).toMatch(/^msg_tagma_classifier_[0-9a-f]{32}$/);
+    expect(runner.calls[1]?.sessionId).toMatch(/^ses_tagma_discussion_[0-9a-f]{32}$/);
+    expect(runner.calls[1]?.inputId).toMatch(/^msg_tagma_discussion_[0-9a-f]{32}$/);
     expect(service.getWorkspaceSnapshot(workspace).operations).toHaveLength(1);
+    expect(
+      service.getDiagnosticsReadonlySessionProjection(workspace, runner.calls[1]!.sessionId),
+    ).toMatchObject({
+      source: 'chat-operation-v2-result',
+      operationId: runner.calls[1]!.operationId,
+      invocationId: runner.calls[1]!.invocationId,
+      purpose: 'discussion',
+      messages: [
+        { role: 'user', text: 'Explain this workspace.' },
+        { role: 'assistant', text: 'Tagma pipelines connect task outputs to inputs.' },
+      ],
+    });
+    expect(
+      service.getDiagnosticsReadonlySessionProjection(workspace, runner.calls[0]!.sessionId),
+    ).toBeNull();
   });
 
   test('client request retries return one durable operation and reject changed admission', async () => {
@@ -1660,6 +1835,67 @@ describe('ChatTurn Operation V2 service activation', () => {
 });
 
 describe('ChatTurn Operation V2 authoring service integration', () => {
+  test('recovers retryable staging from authenticated stage authority after a service restart', async () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const randomUUID = deterministicUuidFactory();
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(
+        { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+        197,
+      ),
+    ]);
+    const runtime = new FakeServiceAuthoringRuntime({ relocationUnavailableOnce: true });
+    const first = createMutationService({ controlDir, runner, runtime, randomUUID });
+
+    const unavailable = await first.service.createAndDispatchReadonly(
+      workspace,
+      readonlyCreateInput('service-staging-recovery'),
+    );
+    expect(unavailable).toMatchObject({
+      kind: 'provider_unavailable',
+      operation: { phase: 'staging', waitReason: 'provider_unavailable' },
+    });
+    expect(
+      first.service.getOperationProjection(workspace, unavailable.operation.operationId),
+    ).toMatchObject({
+      operation: { executionState: 'retryable_failure' },
+      failure: { stage: 'authoring', code: 'session_relocation_unavailable' },
+    });
+
+    await first.service.close();
+    services.splice(services.indexOf(first.service), 1);
+    const restarted = createMutationService({
+      controlDir,
+      runner: new FakeReadonlyRunner([]),
+      runtime,
+      randomUUID,
+    });
+    expect(await restarted.service.getStartupAuthoringRecovery(workspace)).toEqual([
+      expect.objectContaining({
+        operationId: unavailable.operation.operationId,
+        action: 'await_provider_retry',
+        phase: 'staging',
+        relocationPhase: 'prepared',
+      }),
+    ]);
+
+    const current = restarted.service.getOperationProjection(
+      workspace,
+      unavailable.operation.operationId,
+    ).operation;
+    const retried = await restarted.service.retryReadonly(workspace, {
+      operationId: current.operationId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'service-staging-recovery-retry',
+    });
+    expect(retried.kind).toBe('completed_noop');
+    expect(runtime.invocations).toHaveLength(1);
+  });
+
   test('explicit Retry resumes a transient authoring handoff without reusing or rerunning the classifier', async () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');
@@ -1857,6 +2093,16 @@ describe('ChatTurn Operation V2 authoring service integration', () => {
     expect(runtime.invocations).toHaveLength(2);
     expect(runtime.invocations[0]!.sessionId).not.toBe('conversation-create-window-a');
     expect(runtime.invocations[1]!.sessionId).not.toBe('conversation-edit-window-b');
+    expect(
+      runtime.invocations.every(({ sessionId }) =>
+        /^ses_tagma_authoring_[0-9a-f]{32}$/.test(sessionId),
+      ),
+    ).toBe(true);
+    expect(
+      runtime.invocations.every(({ inputId }) =>
+        /^msg_tagma_authoring_[0-9a-f]{32}$/.test(inputId),
+      ),
+    ).toBe(true);
     expect(runtime.stageIds).toHaveLength(2);
     expect(runtime.stageIds.every((id) => /^[a-f0-9-]{36}$/i.test(id))).toBe(true);
     expect(targets.calls).toEqual([
@@ -2092,6 +2338,96 @@ describe('ChatTurn Operation V2 authoring service integration', () => {
     ]);
   });
 
+  test('reconciles a process-lost interactive request before renderer projection', () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const fixture = seedProcessLostInteractiveWait(
+      controlDir,
+      workspace,
+      'scope-process-lost-interactive',
+      'operation-process-lost-interactive',
+    );
+    const runtime = new FakeServiceAuthoringRuntime();
+    const { service } = createMutationService({
+      controlDir,
+      runner: new FakeReadonlyRunner([]),
+      runtime,
+    });
+
+    const detail = service.getOperationProjection(workspace, fixture.operation.operationId);
+
+    expect(detail.operation).toMatchObject({
+      phase: 'authoring',
+      waitReason: 'user_recovery_choice',
+      executionState: 'waiting_for_user',
+      pendingInputKind: 'permission',
+    });
+    expect(detail.pendingInput).toMatchObject({
+      kind: 'permission',
+      state: 'recovery_required',
+      content: {
+        actionCode: 'workspace_write',
+        resourceCode: 'staged_pipeline',
+      },
+    });
+    expect(detail.operation.version).toBe(fixture.operation.version + 1);
+    expect(runtime.invocations).toEqual([]);
+  });
+
+  test('converts a reply that discovers a lost live drain into recovery authority', async () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const runtime = new FakeServiceAuthoringRuntime();
+    const { service } = createMutationService({
+      controlDir,
+      runner: new FakeReadonlyRunner([
+        completedReadonlyInvocation(
+          { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+          230,
+        ),
+      ]),
+      runtime,
+    });
+    await expect(
+      service.createAndDispatchReadonly(
+        workspace,
+        readonlyCreateInput('service-runtime-bootstrap'),
+      ),
+    ).resolves.toMatchObject({ kind: 'completed_noop' });
+    const scope = service.getWorkspaceMigrationContext(workspace);
+    const fixture = seedProcessLostInteractiveWait(
+      controlDir,
+      workspace,
+      scope.workspaceScopeId,
+      'operation-runtime-lost-interactive',
+      scope.createdAt,
+    );
+
+    const result = await service.permissionReplyReadonly(workspace, {
+      protocolVersion: 2,
+      clientRequestId: 'service-runtime-lost-reply',
+      operationId: fixture.operation.operationId,
+      expectedGeneration: fixture.operation.generation,
+      expectedVersion: fixture.operation.version,
+      payload: { requestId: fixture.request.hostRequestId, choice: 'allow_once' },
+    });
+
+    expect(result).toMatchObject({ kind: 'recovery_required' });
+    expect(service.getOperationProjection(workspace, fixture.operation.operationId)).toMatchObject({
+      operation: {
+        phase: 'authoring',
+        waitReason: 'user_recovery_choice',
+        pendingInputKind: 'permission',
+      },
+      pendingInput: { kind: 'permission', state: 'recovery_required' },
+    });
+    expect(runtime.forwarded).toEqual([]);
+  });
+
   test('startup projects durable interactive recovery and explicit retry allocates a fresh Host session', async () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');
@@ -2197,6 +2533,8 @@ describe('ChatTurn Operation V2 authoring service integration', () => {
     expect(retried).toMatchObject({ kind: 'completed_noop' });
     expect(runtime.invocations).toHaveLength(2);
     expect(runtime.invocations[1]!.sessionId).not.toBe(firstSessionId);
+    expect(firstSessionId).toMatch(/^ses_tagma_authoring_[0-9a-f]{32}$/);
+    expect(runtime.invocations[1]!.sessionId).toMatch(/^ses_tagma_recovery_[0-9a-f]{32}$/);
     expect(runtime.invocations[1]!.sessionId).toBe(
       runtime.relocations.get(waiting.operationId)!.sessionId,
     );

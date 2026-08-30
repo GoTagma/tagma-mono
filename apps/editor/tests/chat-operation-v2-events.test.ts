@@ -47,6 +47,11 @@ const payloads = {
     accepted: true,
     errorCode: null,
   },
+  classifier_protocol_repair_started: {
+    attempt: 2,
+    maxAttempts: 2,
+    previousFailureCode: 'malformed_text_result',
+  },
   snapshot_frozen: {
     snapshotId: 'snapshot-01',
     snapshotKind: 'editor_base',

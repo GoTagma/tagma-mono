@@ -53,12 +53,14 @@ import {
 import {
   fetchConfiguredProviderModels,
   fetchProviderCatalog,
-  modelToolCapability,
   reconcileModelPick,
   reconcileModelVariant,
   refreshProvidersAndAuth,
   type ProviderCatalogEntry,
 } from './chat-provider-catalog';
+import { chatOperationV2FailureRequiresModelChange } from '../utils/chat-operation-v2-failure';
+
+export { chatOperationV2FailureRequiresModelChange } from '../utils/chat-operation-v2-failure';
 
 // Re-export for backward compatibility — external consumers (ProviderConnectDialog, etc.)
 // import this type from chat-store.
@@ -383,20 +385,6 @@ function chatControlsBlockedMessage(): string {
   return 'Wait for the current Chat Operation V2 request to finish.';
 }
 
-const CHAT_OPERATION_V2_MODEL_SELECTION_FAILURE_CODES = new Set([
-  'model_error',
-  'model_incompatible',
-  'model_unavailable',
-  'provider_request_rejected',
-  'structured_output_error',
-]);
-
-export function chatOperationV2FailureRequiresModelChange(
-  failure: ChatOperationV2FailureProjection | null,
-): boolean {
-  return failure !== null && CHAT_OPERATION_V2_MODEL_SELECTION_FAILURE_CODES.has(failure.code);
-}
-
 const CHAT_OPERATION_V2_RENDERER_INSTANCE_STORAGE_KEY =
   'tagma.chat-operation-v2.renderer-instance.v1';
 const CHAT_OPERATION_V2_CONVERSATION_STORAGE_PREFIX = 'tagma.chat-operation-v2.conversation.v1:';
@@ -639,7 +627,15 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
       detail.operation.executionState === 'retryable_failure' &&
       detail.failure !== null &&
       previous.activeChatOperationV2Failure?.recordedAt !== detail.failure.recordedAt;
-    let completionWarning = previous.completionWarning;
+    const resultNotice = detail.result?.messages
+      .flatMap((message) => message.attachments)
+      .filter((attachment) => attachment.kind === 'notice')
+      .at(-1);
+    let completionWarning = detail.result
+      ? resultNotice
+        ? `${resultNotice.label}: ${resultNotice.content}`.slice(0, 4_096)
+        : null
+      : previous.completionWarning;
 
     if (
       detail.pendingInput?.kind === 'clarification' ||
@@ -782,12 +778,6 @@ async function sendChatOperationV2(
     set({ sendError: error.message });
     throw error;
   }
-  if (modelToolCapability(state.providers, model) === false) {
-    const error = new Error('Choose a model that supports tools before sending this message.');
-    set({ sendError: error.message });
-    throw error;
-  }
-
   const pipeline = usePipelineStore.getState();
   let localRevision: number | null = null;
   let candidateId: string | null = null;

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import type { ChatPipelineTrialRunResult } from '../chat-pipeline-trial-run.js';
 import type { ChatOperationV2Admission } from './admission.js';
 import {
   normalizeChatOperationV2TargetCoordinate,
@@ -7,7 +8,11 @@ import {
   type ChatOperationV2BindingTerminalTransaction,
   type ChatOperationV2TargetCoordinate,
 } from './binding.js';
-import { parseChatCommitPrepareRecord, type ChatCommitPrepareRecord } from './commit.js';
+import {
+  deriveChatCommitCoordinateId,
+  parseChatCommitPrepareRecord,
+  type ChatCommitPrepareRecord,
+} from './commit.js';
 import { toHostOperationEventInput } from './events.js';
 import {
   chatOperationV2ProviderFailureCode,
@@ -48,6 +53,11 @@ export const CHAT_OPERATION_V2_SESSION_RELOCATION_SCHEMA_VERSION = 1 as const;
 export const CHAT_OPERATION_V2_AUTHORING_RECOVERY_SCHEMA_VERSION = 1 as const;
 export const CHAT_OPERATION_V2_AUTHORING_MAX_COMPLETED_TEXT_BYTES = 1024 * 1024;
 
+export type ChatOperationV2AuthoringInvocationPurpose = 'authoring' | 'repair' | 'trial_plan';
+export type ChatOperationV2TrialPlanRequest = Readonly<
+  NonNullable<ChatPipelineTrialRunResult['planRequest']>
+>;
+
 /**
  * The frozen V2 operation wire vocabulary has one historical `permission` wait slot. The
  * authoring engine uses that slot for both OpenCode permission and question drains, while the
@@ -59,6 +69,7 @@ export const CHAT_OPERATION_V2_AUTHORING_INTERACTIVE_WAIT_REASON = 'permission' 
 const HOST_ID_RE = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,127})$/;
 const SAFE_CODE_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const SHA256_RE = /^[a-f0-9]{64}$/;
+const SHA1_RE = /^[a-f0-9]{40}$/;
 const encoder = new TextEncoder();
 
 function canonicalJson(value: unknown): string {
@@ -443,8 +454,10 @@ export interface ChatOperationV2AuthoringInvocationRequest {
   readonly invocationId: string;
   readonly sessionId: string;
   readonly inputId: string;
-  readonly purpose: 'authoring' | 'repair';
+  readonly purpose: ChatOperationV2AuthoringInvocationPurpose;
   readonly repairAttempt: number;
+  /** Present only for the dedicated Host-authorized Trial Plan invocation. */
+  readonly trialPlanRequest: ChatOperationV2TrialPlanRequest | null;
   readonly admission: ChatOperationV2Admission;
   readonly canonicalRequestBytes: Uint8Array;
   readonly stage: ChatOperationV2AuthoringStage;
@@ -485,23 +498,50 @@ interface VerificationBase {
   readonly warningCount: number;
 }
 
+interface VerificationArtifactAuthority {
+  readonly stagedSnapshotHash: string;
+  readonly artifactSetHash: string;
+  readonly artifactCount: number;
+}
+
+export interface ChatOperationV2AuthoringVerificationNotice {
+  readonly status: 'unverified';
+  readonly code: string;
+  readonly summary: string;
+}
+
 export type ChatOperationV2AuthoringVerificationResult =
-  | (VerificationBase & {
-      readonly kind: 'passed';
-      readonly stagedSnapshotHash: string;
-      readonly artifactSetHash: string;
-      readonly artifactCount: number;
-    })
+  | (VerificationBase &
+      VerificationArtifactAuthority & {
+        readonly kind: 'passed';
+      })
+  | (VerificationBase &
+      VerificationArtifactAuthority & {
+        readonly kind: 'unverified';
+        readonly trialStatus: 'blocked' | 'failed';
+        readonly errorCode: string;
+        readonly diagnosticCodes: readonly string[];
+        readonly redactedSummary: string;
+      })
   | (VerificationBase & {
       readonly kind: 'repair_required';
       readonly diagnosticCodes: readonly string[];
       readonly evidenceHash: string;
     })
   | (VerificationBase & {
+      readonly kind: 'trial_plan_required';
+      readonly planRequest: ChatOperationV2TrialPlanRequest;
+    })
+  | (VerificationBase & {
       readonly kind: 'discard';
       readonly errorCode: string;
       readonly diagnosticCodes: readonly string[];
     });
+
+export type ChatOperationV2AuthoringPublishableVerification = Extract<
+  ChatOperationV2AuthoringVerificationResult,
+  { readonly kind: 'passed' | 'unverified' }
+>;
 
 export interface ChatOperationV2AuthoringRuntime {
   ensureStage(input: {
@@ -528,7 +568,12 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly stageId: string;
   }): Promise<
     | { readonly kind: 'missing' }
-    | { readonly kind: 'present'; readonly stage: ChatOperationV2AuthoringStage }
+    | {
+        readonly kind: 'present';
+        readonly stage: ChatOperationV2AuthoringStage;
+        /** Host-authenticated session identity persisted with the stage authority. */
+        readonly sessionId: string;
+      }
   >;
   relocateSession(input: {
     readonly operationId: string;
@@ -593,7 +638,7 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly binding: ChatOperationV2BindingReservedRecord;
     readonly stage: ChatOperationV2AuthoringStage;
     readonly relocation: ChatOperationV2SessionRelocation;
-    readonly verification: Extract<ChatOperationV2AuthoringVerificationResult, { kind: 'passed' }>;
+    readonly verification: ChatOperationV2AuthoringPublishableVerification;
     readonly targetId: string;
     readonly resultAuthority: ChatOperationV2AuthoringVisibleResultAuthority;
   }): Promise<ChatCommitPrepareRecord>;
@@ -610,7 +655,7 @@ export interface PersistChatOperationV2AuthoringInvocationResultInput {
   readonly requestDigest: string;
   readonly admittedAggregateSeq: number;
   readonly capturedAt: number;
-  readonly purpose: 'authoring' | 'repair';
+  readonly purpose: ChatOperationV2AuthoringInvocationPurpose;
   readonly text: string | null;
   readonly finishCode: string;
   readonly source: {
@@ -618,8 +663,10 @@ export interface PersistChatOperationV2AuthoringInvocationResultInput {
     readonly aggregateSeq: number;
     readonly eventId: string;
   };
-  /** Repair evidence is durable but never renderer-projectable. */
+  /** Repair and Trial Plan evidence is durable but never renderer-projectable. */
   readonly rendererProjectable: boolean;
+  /** Host-authored Trial state; provider output never controls this notice. */
+  readonly verificationNotice: ChatOperationV2AuthoringVerificationNotice | null;
 }
 
 export interface PersistedChatOperationV2AuthoringInvocationResult {
@@ -644,6 +691,7 @@ export interface ChatOperationV2AuthoringResultPersistence {
 export type ChatOperationV2AuthoringPersistence = Pick<
   ChatOperationV2Store,
   | 'getOperation'
+  | 'getWorkspaceOperationSnapshot'
   | 'getOperationAdmission'
   | 'getInteractiveRequest'
   | 'listPendingInteractiveRequests'
@@ -728,6 +776,7 @@ export interface MarkChatOperationV2AuthoringInteractiveRestartInput {
   readonly expectedGeneration: number;
   readonly expectedVersion: number;
   readonly nextOpenCodeProcessGeneration: number;
+  readonly recoveryCause?: 'opencode_process_generation_changed' | 'host_interactive_drain_lost';
   readonly observedAt: number;
 }
 
@@ -851,7 +900,7 @@ export interface ChatOperationV2AuthoringVisibleResultAuthority {
 }
 
 interface PendingVisibleAuthoringCompletion {
-  readonly persistenceInput: PersistChatOperationV2AuthoringInvocationResultInput;
+  persistenceInput: PersistChatOperationV2AuthoringInvocationResultInput;
 }
 
 interface OperationContext {
@@ -864,6 +913,7 @@ interface OperationContext {
   binding: ChatOperationV2BindingReservedRecord;
   stage: ChatOperationV2AuthoringStage | null;
   relocation: ChatOperationV2SessionRelocation | null;
+  pendingTrialPlanRequest: ChatOperationV2TrialPlanRequest | null;
   pendingVisibleCompletion: PendingVisibleAuthoringCompletion | null;
   visibleResult: ChatOperationV2AuthoringVisibleResultAuthority | null;
 }
@@ -927,6 +977,148 @@ function assertRuntimeCode(value: unknown, label: string): asserts value is stri
   }
 }
 
+function assertBoundedRuntimeText(
+  value: unknown,
+  label: string,
+  maxBytes: number,
+): asserts value is string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    !isWellFormedUnicode(value) ||
+    encoder.encode(value).byteLength > maxBytes
+  ) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      `${label} is invalid.`,
+    );
+  }
+}
+
+function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanRequest {
+  if (!isPlainRecord(value)) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan request is invalid.',
+    );
+  }
+  const allowedKeys = new Set([
+    'reason',
+    'relativePlanPath',
+    'pipelineHash',
+    'message',
+    'maxAttempts',
+    'requiredCoverage',
+    'attemptId',
+    'requiredSandboxInputs',
+    'unavailableBaselineInputs',
+  ]);
+  const requiredKeys = [
+    'reason',
+    'relativePlanPath',
+    'pipelineHash',
+    'message',
+    'maxAttempts',
+    'requiredCoverage',
+    'attemptId',
+  ] as const;
+  if (
+    Object.keys(value).some((key) => !allowedKeys.has(key)) ||
+    requiredKeys.some((key) => !(key in value)) ||
+    !['missing', 'stale', 'invalid'].includes(String(value.reason))
+  ) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan request contains missing or unknown authority fields.',
+    );
+  }
+  assertBoundedRuntimeText(value.relativePlanPath, 'Trial Plan relative path', 4096);
+  if (
+    value.relativePlanPath.startsWith('/') ||
+    value.relativePlanPath.includes('\\') ||
+    value.relativePlanPath
+      .split('/')
+      .some((segment) => !segment || segment === '.' || segment === '..') ||
+    !value.relativePlanPath.endsWith('.trial-plan.json')
+  ) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan path is not a normalized staged relative path.',
+    );
+  }
+  if (typeof value.pipelineHash !== 'string' || !SHA1_RE.test(value.pipelineHash)) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan pipeline hash must be a SHA-1 hash.',
+    );
+  }
+  assertBoundedRuntimeText(value.message, 'Trial Plan message', 64 * 1024);
+  assertCounter(value.maxAttempts, 'Trial Plan maximum attempts', 1);
+  if ((value.maxAttempts as number) > 16) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan attempt budget exceeds its Host bound.',
+    );
+  }
+  if (
+    !Array.isArray(value.requiredCoverage) ||
+    value.requiredCoverage.length === 0 ||
+    value.requiredCoverage.length > 16 ||
+    value.requiredCoverage.some(
+      (dimension) =>
+        typeof dimension !== 'string' ||
+        dimension.length === 0 ||
+        dimension.length > 64 ||
+        !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(dimension),
+    )
+  ) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan coverage requirements are invalid.',
+    );
+  }
+  if (new Set(value.requiredCoverage).size !== value.requiredCoverage.length) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan coverage requirements contain duplicates.',
+    );
+  }
+  if (typeof value.attemptId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(value.attemptId)) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan attempt id is invalid.',
+    );
+  }
+  for (const key of ['requiredSandboxInputs', 'unavailableBaselineInputs'] as const) {
+    const inputs = value[key];
+    if (inputs === undefined) continue;
+    if (!Array.isArray(inputs) || inputs.length > 64) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_runtime_result',
+        `Trial Plan ${key} are invalid.`,
+      );
+    }
+    for (const input of inputs) {
+      if (!isPlainRecord(input) || !exactKeys(input, ['taskId', 'type', 'path', 'fixturePath'])) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          `Trial Plan ${key} entry is invalid.`,
+        );
+      }
+      assertBoundedRuntimeText(input.taskId, `Trial Plan ${key} task id`, 1024);
+      assertBoundedRuntimeText(input.path, `Trial Plan ${key} path`, 4096);
+      assertBoundedRuntimeText(input.fixturePath, `Trial Plan ${key} fixture path`, 4096);
+      if (input.type !== 'file' && input.type !== 'directory') {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          `Trial Plan ${key} input type is invalid.`,
+        );
+      }
+    }
+  }
+  return value as unknown as ChatOperationV2TrialPlanRequest;
+}
+
 function validateVerification(
   result: ChatOperationV2AuthoringVerificationResult,
 ): ChatOperationV2AuthoringVerificationResult {
@@ -959,6 +1151,27 @@ function validateVerification(
     assertHash(result.stagedSnapshotHash, 'Verified staged snapshot hash');
     assertHash(result.artifactSetHash, 'Verified artifact set hash');
     assertCounter(result.artifactCount, 'Verified artifact count');
+  } else if (result.kind === 'unverified') {
+    assertHash(result.stagedSnapshotHash, 'Unverified staged snapshot hash');
+    assertHash(result.artifactSetHash, 'Unverified artifact set hash');
+    assertCounter(result.artifactCount, 'Unverified artifact count');
+    if (result.trialStatus !== 'blocked' && result.trialStatus !== 'failed') {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_runtime_result',
+        'Unverified Trial status is invalid.',
+      );
+    }
+    assertRuntimeCode(result.errorCode, 'Trial error code');
+    assertBoundedRuntimeText(result.redactedSummary, 'Trial diagnostic summary', 8 * 1024);
+    if (!Array.isArray(result.diagnosticCodes) || result.diagnosticCodes.length > 16) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_runtime_result',
+        'Trial diagnostics are invalid.',
+      );
+    }
+    for (const code of result.diagnosticCodes) assertRuntimeCode(code, 'Trial diagnostic code');
+  } else if (result.kind === 'trial_plan_required') {
+    validateTrialPlanRequest(result.planRequest);
   } else {
     if (!Array.isArray(result.diagnosticCodes) || result.diagnosticCodes.length > 16) {
       throw new ChatOperationV2AuthoringProtocolError(
@@ -1122,6 +1335,7 @@ export class ChatOperationV2AuthoringEngine {
       binding,
       stage: null,
       relocation: null,
+      pendingTrialPlanRequest: null,
       pendingVisibleCompletion: null,
       visibleResult: null,
     };
@@ -1186,19 +1400,93 @@ export class ChatOperationV2AuthoringEngine {
       diagnosticCodes: [],
     });
 
-    const relocation = parseChatOperationV2SessionRelocation(
-      await this.runtime.relocateSession({
-        operationId: context.operationId,
-        operationGeneration: stagingOperation.generation,
-        bindingId: context.binding.bindingId,
-        sessionId: context.sessionId,
-        relocationId: this.hostId('relocation'),
-        stage,
-      }),
-    );
+    return this.continueSessionRelocation(context, stagingOperation, stage);
+  }
+
+  private async continueSessionRelocation(
+    context: OperationContext,
+    stagingOperation: StoredChatOperationV2,
+    stage: ChatOperationV2AuthoringStage,
+  ): Promise<ChatOperationV2AuthoringDispatchResult> {
+    let relocation: ChatOperationV2SessionRelocation;
+    try {
+      await this.recoverPreparedRelocation(context, stagingOperation, stage);
+      relocation = parseChatOperationV2SessionRelocation(
+        await this.runtime.relocateSession({
+          operationId: context.operationId,
+          operationGeneration: stagingOperation.generation,
+          bindingId: context.binding.bindingId,
+          sessionId: context.sessionId,
+          relocationId: context.relocation?.relocationId ?? this.hostId('relocation'),
+          stage,
+        }),
+      );
+    } catch (error) {
+      if (
+        error instanceof ChatOperationV2AuthoringProtocolError ||
+        (error instanceof Error && error.name === 'ChatOperationV2StoreError')
+      ) {
+        throw error;
+      }
+      // A relocation can fail after its journal was durably prepared. Capture
+      // that exact identity so an explicit retry never invents a conflicting
+      // relocation id. A transient inspection failure is retried later too.
+      try {
+        await this.recoverPreparedRelocation(context, stagingOperation, stage);
+      } catch (inspectionError) {
+        if (
+          inspectionError instanceof ChatOperationV2AuthoringProtocolError ||
+          (inspectionError instanceof Error && inspectionError.name === 'ChatOperationV2StoreError')
+        ) {
+          throw inspectionError;
+        }
+      }
+      return this.waitForStagingRetry(context.operationId);
+    }
     this.assertRelocationMatches(context, stage, relocation, 'staged');
     context.relocation = relocation;
     return this.runControlledInvocation(context, 'authoring', 0, null);
+  }
+
+  private async recoverPreparedRelocation(
+    context: OperationContext,
+    operation: StoredChatOperationV2,
+    stage: ChatOperationV2AuthoringStage,
+  ): Promise<void> {
+    if (context.relocation?.phase === 'staged') return;
+    const value = await this.runtime.inspectSessionRelocation({
+      operationId: operation.operationId,
+      operationGeneration: operation.generation,
+      stageId: stage.stageId,
+      sessionId: context.sessionId,
+    });
+    if (!value) return;
+    const relocation = parseChatOperationV2SessionRelocation(value);
+    if (relocation.phase !== 'prepared' && relocation.phase !== 'staged') {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_relocation',
+        'Staging retry found a relocation outside its forward lifecycle.',
+      );
+    }
+    this.assertRelocationMatches(context, stage, relocation, relocation.phase);
+    context.relocation = relocation;
+  }
+
+  private waitForStagingRetry(operationId: string): ChatOperationV2AuthoringDispatchResult {
+    const current = this.requireOperation(operationId);
+    if (current.phase === 'terminal') return terminalResult(current);
+    if (current.phase !== 'staging') return { kind: 'in_progress', operation: current };
+    const waiting = this.transition(current, {
+      ...stateOf(current),
+      waitReason: 'provider_unavailable',
+      activeInvocationId: null,
+      pendingPermissionRequestId: null,
+    });
+    return waiting.applied
+      ? { kind: 'provider_unavailable', operation: waiting.operation }
+      : waiting.reason !== 'terminal'
+        ? { kind: 'stale', operation: waiting.operation }
+        : terminalResult(waiting.operation);
   }
 
   private assertStageMatches(
@@ -1246,7 +1534,7 @@ export class ChatOperationV2AuthoringEngine {
   }
 
   private invocationIdentity(
-    purpose: 'authoring' | 'repair',
+    purpose: ChatOperationV2AuthoringInvocationPurpose,
     relocatedSessionId: string,
   ): InvocationIdentity {
     return {
@@ -1259,7 +1547,7 @@ export class ChatOperationV2AuthoringEngine {
 
   private async runControlledInvocation(
     context: OperationContext,
-    purpose: 'authoring' | 'repair',
+    purpose: ChatOperationV2AuthoringInvocationPurpose,
     repairAttempt: number,
     repairEvidence: {
       readonly evidenceHash: string;
@@ -1272,6 +1560,11 @@ export class ChatOperationV2AuthoringEngine {
         'authority_mismatch',
         'Authoring stage is unavailable.',
       );
+    }
+    const trialPlanRequest =
+      purpose === 'trial_plan' ? validateTrialPlanRequest(context.pendingTrialPlanRequest) : null;
+    if (purpose !== 'trial_plan' && context.pendingTrialPlanRequest !== null) {
+      context.pendingTrialPlanRequest = null;
     }
     const admission = this.persistence.getOperationAdmission(context.operationId);
     if (!admission) {
@@ -1295,6 +1588,7 @@ export class ChatOperationV2AuthoringEngine {
       originHash: context.originHash,
       admission,
       repairEvidence,
+      trialPlanRequest,
     });
     const preparedAt = this.now();
     const outbox = this.persistence.prepareInvocationOutbox({
@@ -1353,7 +1647,7 @@ export class ChatOperationV2AuthoringEngine {
     if (
       interactiveRecoveryInput &&
       (active.interactive?.disposition.kind !== 'start_new_controlled_invocation' ||
-        active.interactive.disposition.purpose !== (purpose === 'authoring' ? 'retry' : 'repair'))
+        active.interactive.disposition.purpose !== (purpose === 'repair' ? 'repair' : 'retry'))
     ) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
@@ -1377,6 +1671,7 @@ export class ChatOperationV2AuthoringEngine {
         inputId: identity.inputId,
         purpose,
         repairAttempt,
+        trialPlanRequest,
         admission,
         canonicalRequestBytes: Uint8Array.from(requestBytes),
         stage: context.stage,
@@ -1447,6 +1742,7 @@ export class ChatOperationV2AuthoringEngine {
         finishCode: result.finishCode,
         source: { sessionId: identity.sessionId, ...result.source },
         rendererProjectable: purpose === 'authoring',
+        verificationNotice: null,
       };
       if (purpose === 'authoring') {
         context.pendingVisibleCompletion = { persistenceInput };
@@ -1490,6 +1786,9 @@ export class ChatOperationV2AuthoringEngine {
     }
     if (purpose === 'authoring' && result.disposition === 'no_change') {
       return this.finishPrecommit(context, 'completed_noop');
+    }
+    if (purpose !== 'authoring' && result.disposition === 'no_change') {
+      return this.finishPrecommit(context, 'discarded');
     }
     const verifying = this.transition(operationAfterInvocation, {
       ...stateOf(operationAfterInvocation),
@@ -1679,7 +1978,15 @@ export class ChatOperationV2AuthoringEngine {
       message.invocationId !== input.invocationId ||
       message.purpose !== 'authoring' ||
       message.evidence.executionMessageId !== input.executionMessageId ||
-      message.text !== (input.text ?? '')
+      message.text !== (input.text ?? '') ||
+      (input.verificationNotice === null
+        ? message.attachments.length !== 0
+        : message.attachments.length !== 1 ||
+          message.attachments[0]?.kind !== 'notice' ||
+          message.attachments[0]?.mediaType !== 'text/plain' ||
+          message.attachments[0]?.label !==
+            'Pipeline published without completed Trial verification' ||
+          message.attachments[0]?.content !== input.verificationNotice.summary)
     ) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
@@ -2031,7 +2338,9 @@ export class ChatOperationV2AuthoringEngine {
           ? verification.warningCount > 0
             ? 'passed_with_warnings'
             : 'passed'
-          : 'failed',
+          : verification.kind === 'unverified'
+            ? verification.trialStatus
+            : 'failed',
       planHash: verification.planHash,
       caseCount: verification.caseCount,
       passedCount: verification.passedCount,
@@ -2040,9 +2349,13 @@ export class ChatOperationV2AuthoringEngine {
       errorCode:
         verification.kind === 'passed'
           ? null
-          : verification.kind === 'repair_required'
-            ? 'repair_required'
-            : verification.errorCode,
+          : verification.kind === 'unverified'
+            ? verification.errorCode
+            : verification.kind === 'repair_required'
+              ? 'repair_required'
+              : verification.kind === 'trial_plan_required'
+                ? 'trial_plan_required'
+                : verification.errorCode,
     });
     const current = this.requireOperation(context.operationId);
     if (current.phase === 'terminal') return terminalResult(current);
@@ -2055,6 +2368,30 @@ export class ChatOperationV2AuthoringEngine {
         evidenceHash: verification.evidenceHash,
         diagnosticCodes: verification.diagnosticCodes,
       });
+    }
+    if (verification.kind === 'trial_plan_required') {
+      context.pendingTrialPlanRequest = verification.planRequest;
+      return this.runControlledInvocation(context, 'trial_plan', current.repairAttempts, null);
+    }
+    context.pendingTrialPlanRequest = null;
+    if (verification.kind === 'unverified') {
+      const pendingCompletion = context.pendingVisibleCompletion;
+      if (!pendingCompletion && !context.visibleResult) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'authority_mismatch',
+          'Unverified authoring completion lost its pending visible result authority.',
+        );
+      }
+      if (pendingCompletion) {
+        pendingCompletion.persistenceInput = {
+          ...pendingCompletion.persistenceInput,
+          verificationNotice: {
+            status: 'unverified',
+            code: verification.errorCode,
+            summary: verification.redactedSummary,
+          },
+        };
+      }
     }
     await this.persistVisibleCompletion(context);
     const operationAfterResultPersistence = this.requireOperation(context.operationId);
@@ -2138,7 +2475,7 @@ export class ChatOperationV2AuthoringEngine {
   private assertCommitPrepareMatches(
     context: OperationContext,
     operation: StoredChatOperationV2,
-    verification: Extract<ChatOperationV2AuthoringVerificationResult, { kind: 'passed' }>,
+    verification: ChatOperationV2AuthoringPublishableVerification,
     prepare: ChatCommitPrepareRecord,
   ): void {
     if (
@@ -2148,7 +2485,8 @@ export class ChatOperationV2AuthoringEngine {
       prepare.bindingTransition.fromBindingId !== context.binding.bindingId ||
       prepare.intendedResult.resultId !== context.visibleResult?.resultId ||
       prepare.intendedResult.pendingMessageId !== context.visibleResult?.pendingMessageId ||
-      prepare.target.coordinateId !== context.targetId ||
+      prepare.target.coordinateId !==
+        deriveChatCommitCoordinateId(context.workspaceScopeId, context.binding.target.identity) ||
       prepare.stagedSnapshotHash !== verification.stagedSnapshotHash ||
       prepare.artifactSetHash !== verification.artifactSetHash ||
       prepare.artifacts.length !== verification.artifactCount
@@ -2474,6 +2812,9 @@ export class ChatOperationV2AuthoringEngine {
         'Operation pending interactive authority is missing from the trusted store.',
       );
     }
+    const context =
+      this.contexts.get(input.operationId) ??
+      (current.stageId ? await this.recoverDurableStageContext(current) : null);
     if (pendingInteractive) {
       this.appendEvent(current.operationId, 'operation_cancel_requested', {
         requestId: input.requestId,
@@ -2495,7 +2836,6 @@ export class ChatOperationV2AuthoringEngine {
         this.interactiveByHostRequest.get(interactiveId)?.reject(new Error('cancelled_precommit'));
         this.currentInteractiveByOperation.delete(input.operationId);
       }
-      const context = this.contexts.get(input.operationId);
       if (!context) {
         return { kind: 'stale', operation: this.requireOperation(input.operationId) };
       }
@@ -2541,7 +2881,6 @@ export class ChatOperationV2AuthoringEngine {
     if (dispatch && controller) {
       result = await dispatch;
     } else {
-      const context = this.contexts.get(input.operationId);
       if (!context) return { kind: 'stale', operation: this.requireOperation(input.operationId) };
       // A dispatch can be waiting after provider completion at the durable result boundary. It has
       // no abort controller at that point, so awaiting it would make Stop depend on the very hook
@@ -2584,7 +2923,20 @@ export class ChatOperationV2AuthoringEngine {
     if (current.waitReason !== 'provider_unavailable' || current.activeInvocationId !== null) {
       return { kind: 'in_progress', operation: current };
     }
-    const context = this.contexts.get(current.operationId);
+    let context = this.contexts.get(current.operationId);
+    if (!context && current.phase === 'staging') {
+      context = await this.recoverDurableStageContext(current);
+    }
+    if (current.phase === 'staging') {
+      const stagingContext = context;
+      if (!stagingContext || !stagingContext.stage) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_stage',
+          'Staging retry lost its authenticated stage.',
+        );
+      }
+      return this.continueSessionRelocation(stagingContext, current, stagingContext.stage);
+    }
     if (!context) {
       const lastSessionId = this.persistence
         .listInvocationOutbox(current.workspaceScopeId)
@@ -2615,14 +2967,19 @@ export class ChatOperationV2AuthoringEngine {
           left.preparedAt - right.preparedAt || left.invocationId.localeCompare(right.invocationId),
       );
     const previous = invocations.at(-1);
-    if (!previous || (previous.purpose !== 'authoring' && previous.purpose !== 'repair')) {
+    if (!previous || !['authoring', 'repair', 'trial_plan'].includes(previous.purpose)) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
         'Provider retry cannot identify the previous authoring invocation purpose.',
       );
     }
-    const purpose = previous.purpose;
-    const repairAttempt = purpose === 'repair' ? current.repairAttempts + 1 : 0;
+    const purpose = previous.purpose as ChatOperationV2AuthoringInvocationPurpose;
+    const repairAttempt =
+      purpose === 'repair'
+        ? current.repairAttempts + 1
+        : purpose === 'trial_plan'
+          ? current.repairAttempts
+          : 0;
     if (purpose === 'repair' && repairAttempt > current.repairMaxAttempts) {
       throw new ChatOperationV2AuthoringProtocolError(
         'invalid_counter',
@@ -2632,9 +2989,149 @@ export class ChatOperationV2AuthoringEngine {
     return this.runControlledInvocation(context, purpose, repairAttempt, null);
   }
 
+  private async recoverDurableStageContext(
+    operation: StoredChatOperationV2,
+  ): Promise<OperationContext> {
+    const lease = operation.bindingId
+      ? this.persistence.getBindingLease(operation.bindingId)
+      : null;
+    if (
+      !lease ||
+      lease.record.status !== 'reserved' ||
+      lease.record.operationId !== operation.operationId ||
+      lease.record.workspaceScopeId !== operation.workspaceScopeId ||
+      !operation.stageId
+    ) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Staging recovery lost its reserved binding or stage identity.',
+      );
+    }
+    const stageInspection = await this.runtime.inspectStage({
+      operationId: operation.operationId,
+      operationGeneration: operation.generation,
+      stageId: operation.stageId,
+    });
+    if (stageInspection.kind !== 'present') {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_stage',
+        'Staging recovery stage is missing.',
+      );
+    }
+    assertHostId(stageInspection.sessionId, 'Recovered staging session id');
+    const stage = parseStage(stageInspection.stage);
+    const context: OperationContext = {
+      operationId: operation.operationId,
+      workspaceScopeId: operation.workspaceScopeId,
+      sessionId: stageInspection.sessionId,
+      intent: lease.originHash === null ? 'create' : 'edit',
+      targetId: stage.targetId,
+      originHash: lease.originHash,
+      binding: lease.record,
+      stage,
+      relocation: null,
+      pendingTrialPlanRequest: null,
+      pendingVisibleCompletion: null,
+      visibleResult: null,
+    };
+    this.assertStageMatches(context, operation, stage);
+    const relocationValue = await this.runtime.inspectSessionRelocation({
+      operationId: operation.operationId,
+      operationGeneration: operation.generation,
+      stageId: stage.stageId,
+      sessionId: context.sessionId,
+    });
+    if (relocationValue) {
+      const relocation = parseChatOperationV2SessionRelocation(relocationValue);
+      this.assertRelocationMatches(context, stage, relocation, relocation.phase);
+      context.relocation = relocation;
+    }
+    this.contexts.set(operation.operationId, context);
+    return context;
+  }
+
   async markInteractiveRestartRecoveryRequired(
     input: MarkChatOperationV2AuthoringInteractiveRestartInput,
   ): Promise<MarkChatOperationV2AuthoringInteractiveRestartResult> {
+    return this.markInteractiveRestartRecoveryRequiredNow(input);
+  }
+
+  /**
+   * A freshly constructed Host owns no OpenCode interactive drain, even when
+   * its durable store still contains a live request. Resolve that split-brain
+   * state before projecting it to a renderer: the renderer must choose an
+   * explicit recovery action instead of trying to forward a stale reply.
+   *
+   * The observed process generation may equal the persisted generation. A
+   * Host restart can lose the in-memory drain while its OpenCode child remains
+   * alive, so equality is evidence of an observed Host boundary rather than a
+   * claim that the child process necessarily restarted.
+   */
+  recoverProcessLocalInteractiveWaitsAfterHostRestart(
+    workspaceScopeId: string,
+    observedAt: number,
+  ): readonly MarkChatOperationV2AuthoringInteractiveRestartResult[] {
+    assertHostId(workspaceScopeId, 'Interactive recovery workspace scope id');
+    assertTimestamp(observedAt, 'Interactive recovery observation timestamp');
+    const recovered: MarkChatOperationV2AuthoringInteractiveRestartResult[] = [];
+    const operations = this.persistence
+      .getWorkspaceOperationSnapshot(workspaceScopeId)
+      .operations.filter(
+        (operation) =>
+          operation.phase !== 'terminal' &&
+          operation.waitReason === CHAT_OPERATION_V2_AUTHORING_INTERACTIVE_WAIT_REASON &&
+          operation.pendingPermissionRequestId !== null,
+      );
+    for (const operation of operations) {
+      const hostRequestId = operation.pendingPermissionRequestId;
+      if (hostRequestId === null) continue;
+      const request = this.persistence.getInteractiveRequest({
+        workspaceScopeId,
+        operationId: operation.operationId,
+        hostRequestId,
+      });
+      if (
+        !request ||
+        request.state !== 'live_pending' ||
+        request.openCodeProcessGeneration === null
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'authority_mismatch',
+          'Durable process-local interactive authority cannot be recovered safely.',
+        );
+      }
+      const result = this.markInteractiveRestartRecoveryRequiredNow({
+        operationId: operation.operationId,
+        workspaceScopeId,
+        hostRequestId,
+        expectedGeneration: operation.generation,
+        expectedVersion: operation.version,
+        nextOpenCodeProcessGeneration: request.openCodeProcessGeneration,
+        recoveryCause: 'host_interactive_drain_lost',
+        observedAt: Math.max(observedAt, request.requestedAt),
+      });
+      if (result.kind === 'recovery_required') {
+        recovered.push(result);
+        continue;
+      }
+      const latest = this.requireOperation(operation.operationId);
+      if (
+        latest.phase !== 'terminal' &&
+        latest.waitReason === CHAT_OPERATION_V2_AUTHORING_INTERACTIVE_WAIT_REASON &&
+        latest.pendingPermissionRequestId === hostRequestId
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'authority_mismatch',
+          'Concurrent interactive recovery left a live process-local request unresolved.',
+        );
+      }
+    }
+    return Object.freeze(recovered);
+  }
+
+  private markInteractiveRestartRecoveryRequiredNow(
+    input: MarkChatOperationV2AuthoringInteractiveRestartInput,
+  ): MarkChatOperationV2AuthoringInteractiveRestartResult {
     assertHostId(input.operationId, 'Interactive restart operation id');
     assertHostId(input.workspaceScopeId, 'Interactive restart workspace scope id');
     assertHostId(input.hostRequestId, 'Interactive restart Host request id');
@@ -2688,6 +3185,7 @@ export class ChatOperationV2AuthoringEngine {
           expectedRecordHash: request.recordHash,
           previousOpenCodeProcessGeneration: request.openCodeProcessGeneration,
           nextOpenCodeProcessGeneration: input.nextOpenCodeProcessGeneration,
+          ...(input.recoveryCause ? { recoveryCause: input.recoveryCause } : {}),
           observedAt: input.observedAt,
         },
       },
@@ -2798,9 +3296,39 @@ export class ChatOperationV2AuthoringEngine {
       );
     }
     const context = await this.recoverAuthoringContext(current, request);
-    const purpose =
-      input.choice === 'repair_new_invocation' ? ('repair' as const) : ('authoring' as const);
-    const repairAttempt = purpose === 'repair' ? current.repairAttempts + 1 : 0;
+    if (!oldOutbox) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Interactive recovery invocation outbox is missing.',
+      );
+    }
+    if (!['authoring', 'repair', 'trial_plan'].includes(oldOutbox.purpose)) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Interactive recovery outbox is not an authoring invocation.',
+      );
+    }
+    if (oldOutbox.purpose === 'trial_plan' && input.choice === 'repair_new_invocation') {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'A lost Trial Plan interaction cannot authorize pipeline repair.',
+      );
+    }
+    const purpose: ChatOperationV2AuthoringInvocationPurpose =
+      input.choice === 'repair_new_invocation'
+        ? 'repair'
+        : oldOutbox.purpose === 'trial_plan'
+          ? 'trial_plan'
+          : 'authoring';
+    if (purpose === 'trial_plan') {
+      await this.recoverTrialPlanRequest(context, current);
+    }
+    const repairAttempt =
+      purpose === 'repair'
+        ? current.repairAttempts + 1
+        : purpose === 'trial_plan'
+          ? current.repairAttempts
+          : 0;
     if (purpose === 'repair' && repairAttempt > current.repairMaxAttempts) {
       throw new ChatOperationV2AuthoringProtocolError(
         'invalid_counter',
@@ -2808,6 +3336,37 @@ export class ChatOperationV2AuthoringEngine {
       );
     }
     return this.runControlledInvocation(context, purpose, repairAttempt, null, recoveryInput);
+  }
+
+  private async recoverTrialPlanRequest(
+    context: OperationContext,
+    operation: StoredChatOperationV2,
+  ): Promise<void> {
+    if (!context.stage) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_stage',
+        'Trial Plan recovery stage is missing.',
+      );
+    }
+    const verification = validateVerification(
+      await this.runtime.verifyStage({
+        operationId: context.operationId,
+        workspaceScopeId: context.workspaceScopeId,
+        operationGeneration: operation.generation,
+        bindingId: context.binding.bindingId,
+        targetId: context.targetId,
+        stage: context.stage,
+        repairAttempts: operation.repairAttempts,
+        signal: new AbortController().signal,
+      }),
+    );
+    if (verification.kind !== 'trial_plan_required') {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Trial Plan recovery no longer has the same Host-issued planning authority.',
+      );
+    }
+    context.pendingTrialPlanRequest = verification.planRequest;
   }
 
   private async recoverAuthoringContext(
@@ -2866,6 +3425,7 @@ export class ChatOperationV2AuthoringEngine {
       binding: lease.record,
       stage,
       relocation: previousRelocation,
+      pendingTrialPlanRequest: null,
       pendingVisibleCompletion: null,
       visibleResult: null,
     };

@@ -16,6 +16,7 @@ export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
   'operation_cancel_requested',
   'clarification_requested',
   'clarification_resolved',
+  'classifier_protocol_repair_started',
   'snapshot_frozen',
   'invocation_prepared',
   'invocation_submission_unknown',
@@ -178,6 +179,11 @@ export interface ChatOperationV2HostEventPayloads {
     readonly round: number;
     readonly accepted: boolean;
     readonly errorCode: string | null;
+  };
+  readonly classifier_protocol_repair_started: {
+    readonly attempt: number;
+    readonly maxAttempts: number;
+    readonly previousFailureCode: string;
   };
   readonly snapshot_frozen: {
     readonly snapshotId: string;
@@ -549,6 +555,13 @@ const payloadValidators = {
     typeof value.accepted === 'boolean' &&
     isNullableSafeCode(value.errorCode) &&
     (value.accepted ? value.errorCode === null : value.errorCode !== null),
+  classifier_protocol_repair_started: (value) =>
+    isPlainRecord(value) &&
+    hasExactKeys(value, ['attempt', 'maxAttempts', 'previousFailureCode']) &&
+    isCount(value.attempt, 2) &&
+    isCount(value.maxAttempts, 2) &&
+    (value.attempt as number) <= (value.maxAttempts as number) &&
+    isSafeCode(value.previousFailureCode),
   snapshot_frozen: (value) =>
     isPlainRecord(value) &&
     hasExactKeys(value, [

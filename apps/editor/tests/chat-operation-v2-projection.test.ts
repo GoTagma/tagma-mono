@@ -318,7 +318,7 @@ describe('ChatTurn Operation V2 renderer projection', () => {
       ...state({ phase: 'awaiting_input', waitReason: 'clarification', clarificationRounds: 1 }),
     });
     const retryable = operation('operation-retryable', {
-      ...state({ phase: 'awaiting_input', waitReason: 'provider_unavailable' }),
+      ...state({ phase: 'authoring', waitReason: 'provider_unavailable' }),
     });
     const terminal = operation('operation-terminal', {
       ...state({ phase: 'terminal', terminalOutcome: 'cancelled_precommit' }),
@@ -399,6 +399,30 @@ describe('ChatTurn Operation V2 renderer projection', () => {
     expect(JSON.stringify(detail.failure)).not.toContain('private-session-id');
     expect(JSON.stringify(detail.failure)).not.toContain('private-input-id');
     expect(JSON.stringify(detail.failure)).not.toContain(HASH_A);
+  });
+
+  test('projects a pre-invocation staging outage as retryable without inventing provider evidence', () => {
+    const retryable = operation('operation-staging-failure', {
+      ...state({ phase: 'staging', waitReason: 'provider_unavailable' }),
+      updatedAt: 145,
+    });
+    const value = harness({ operations: [retryable], outboxes: [] });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      retryable.operationId,
+    );
+
+    expect(detail.operation.executionState).toBe('retryable_failure');
+    expect(detail.failure).toEqual({
+      stage: 'authoring',
+      code: 'session_relocation_unavailable',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: 145,
+    });
   });
 
   test('projects an authoring handoff retry without mislabeling a settled classifier as failed', () => {
@@ -680,6 +704,53 @@ describe('ChatTurn Operation V2 renderer projection', () => {
       expect(JSON.stringify(detail.pendingInput)).not.toContain('private-opencode');
       expect(JSON.stringify(detail.pendingInput)).not.toContain('99');
     }
+  });
+
+  test('projects a live authoring permission while retaining its stage authority', () => {
+    const operationId = 'operation-authoring-permission';
+    const view = interactiveView('permission', operationId);
+    const waiting = operation(operationId, {
+      ...state({
+        phase: 'authoring',
+        waitReason: 'permission',
+        activeInvocationId: view.invocationId,
+        bindingId: 'binding-retained',
+        stageId: 'stage-retained',
+        pendingPermissionRequestId: view.hostRequestId,
+      }),
+    });
+    const value = harness({
+      operations: [waiting],
+      interactive: { [operationId]: [view] },
+    });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      operationId,
+    );
+    const workspace = readChatOperationV2WorkspaceProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+    );
+
+    expect(detail.operation.executionState).toBe('waiting_for_user');
+    expect(detail.pendingInput).toMatchObject({
+      kind: 'permission',
+      operationId,
+      hostRequestId: view.hostRequestId,
+      state: 'live_pending',
+    });
+    expect(workspace.operations).toMatchObject([
+      {
+        operationId,
+        phase: 'authoring',
+        waitReason: 'permission',
+        executionState: 'waiting_for_user',
+      },
+    ]);
   });
 
   test('rejects operation mismatches, unsafe pending content, absolute inventory paths, and unknown fields', () => {

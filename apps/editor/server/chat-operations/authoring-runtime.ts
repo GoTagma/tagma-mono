@@ -27,7 +27,7 @@ import {
 } from '../chat-yaml-staging.js';
 import { createStreamingLoopbackFetch } from '../loopback-fetch.js';
 import { ensureOpencode, ensureRealTagmaDirectory } from '../opencode-lifecycle.js';
-import { TAGMA_PIPELINE_AGENT } from '../opencode-seed.js';
+import { TAGMA_PIPELINE_AGENT, TAGMA_TRIAL_PLANNER_AGENT } from '../opencode-seed.js';
 import {
   assertPipelineYamlPath,
   pipelineCompileLogPath,
@@ -50,11 +50,13 @@ import {
   parseChatOperationV2SessionRelocation,
   sealChatOperationV2SessionRelocation,
   type ChatOperationV2AuthoringInvocationRequest,
+  type ChatOperationV2AuthoringInvocationPurpose,
   type ChatOperationV2AuthoringInvocationResult,
   type ChatOperationV2AuthoringInvocationUsage,
   type ChatOperationV2AuthoringRuntime,
   type ChatOperationV2AuthoringStage,
   type ChatOperationV2AuthoringVerificationResult,
+  type ChatOperationV2TrialPlanRequest,
   type ChatOperationV2RuntimeInteractiveRequest,
   type ChatOperationV2SessionRelocation,
 } from './authoring.js';
@@ -66,7 +68,11 @@ import {
   type OpenCodeInvocationOutcome,
   type OpenCodeInvocationStore,
 } from './opencode-invocation.js';
-import { OpenCodeSdkAdapter, type OpenCodeAdapterSdkClient } from './opencode-adapter.js';
+import {
+  OpenCodeSdkAdapter,
+  openCodeProviderFailureCode,
+  type OpenCodeAdapterSdkClient,
+} from './opencode-adapter.js';
 
 const AUTHORING_AUTHORITY_VERSION = 1 as const;
 const AUTHORING_AUTHORITY_FILE = 'chat-operation-v2-authoring-runtime.json';
@@ -103,6 +109,21 @@ function safeCode(value: string, fallback: string): string {
     .replace(/^_+|_+$/g, '')
     .slice(0, 64);
   return SAFE_CODE_RE.test(normalized) ? normalized : fallback;
+}
+
+/**
+ * OpenCode 1.18.18 exposes `/session/status` as a sparse activity map: an idle
+ * session may be absent altogether. Only an explicit idle record or absence is
+ * quiescent; malformed and explicitly active records fail closed as active.
+ */
+export function isOpenCodeSessionStatusActive(status: unknown): boolean {
+  if (status === undefined) return false;
+  return !(
+    typeof status === 'object' &&
+    status !== null &&
+    !Array.isArray(status) &&
+    (status as { readonly type?: unknown }).type === 'idle'
+  );
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -326,7 +347,7 @@ export interface ManagedChatOperationV2InvocationAuthority {
   readonly invocationId: string;
   readonly sessionId: string;
   readonly inputId: string;
-  readonly purpose: 'authoring' | 'repair';
+  readonly purpose: ChatOperationV2AuthoringInvocationPurpose;
   /** Renderer correlation metadata only; never an OpenCode or binding identity. */
   readonly conversationId: string;
   readonly requestDigest: string;
@@ -371,7 +392,7 @@ export interface ManagedChatOperationV2AuthoringStagingAdapter {
     readonly stageId: string;
     readonly intent: 'create' | 'edit';
     readonly targetRelativePath: string;
-    readonly workingRelativePath: string;
+    readonly sourceRelativePath: string | null;
     readonly originHash: string | null;
   }): Promise<ManagedChatOperationV2AuthoringStageSnapshot>;
   inspectStage(stageId: string): Promise<ManagedChatOperationV2AuthoringStageSnapshot | null>;
@@ -475,7 +496,7 @@ export interface ManagedChatOperationV2AuthoringOpenCodeAdapter {
     readonly invocationId: string;
     readonly sessionId: string;
     readonly inputId: string;
-    readonly purpose: 'authoring' | 'repair';
+    readonly purpose: ChatOperationV2AuthoringInvocationPurpose;
     readonly canonicalRequestBytes: Uint8Array;
     readonly stageDirectory: string;
   }): Promise<ManagedChatOperationV2AdmissionResult>;
@@ -485,7 +506,7 @@ export interface ManagedChatOperationV2AuthoringOpenCodeAdapter {
     readonly invocationId: string;
     readonly sessionId: string;
     readonly inputId: string;
-    readonly purpose: 'authoring' | 'repair';
+    readonly purpose: ChatOperationV2AuthoringInvocationPurpose;
     readonly canonicalRequestBytes: Uint8Array;
     readonly stageDirectory: string;
   }): Promise<ManagedChatOperationV2AdmissionResult>;
@@ -493,9 +514,10 @@ export interface ManagedChatOperationV2AuthoringOpenCodeAdapter {
     readonly invocationId: string;
     readonly sessionId: string;
     readonly executionMessageId: string;
-    readonly purpose: 'authoring' | 'repair';
+    readonly purpose: ChatOperationV2AuthoringInvocationPurpose;
     readonly stageDirectory: string;
     readonly targetRelativePath: string;
+    readonly trialPlanRequest: ChatOperationV2TrialPlanRequest | null;
     readonly admission: ChatOperationV2Admission;
     readonly canonicalRequestBytes: Uint8Array;
     readonly signal: AbortSignal;
@@ -577,38 +599,49 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     stageId: string;
     intent: 'create' | 'edit';
     targetRelativePath: string;
-    workingRelativePath: string;
+    sourceRelativePath: string | null;
     originHash: string | null;
   }): Promise<ManagedChatOperationV2AuthoringStageSnapshot> {
     const workDir = this.workDir();
-    if (input.intent === 'create' && input.workingRelativePath !== input.targetRelativePath) {
-      throw new Error('Authenticated create working and publish targets must match.');
-    }
-    const target = assertPipelineYamlPath(
+    const source = input.sourceRelativePath
+      ? assertPipelineYamlPath(
+          workDir,
+          resolve(tagmaDirOf(workDir), input.sourceRelativePath),
+          'Chat Operation V2 authenticated edit origin',
+        )
+      : null;
+    const liveTarget = assertPipelineYamlPath(
       workDir,
-      resolve(tagmaDirOf(workDir), input.workingRelativePath),
-      'Chat Operation V2 staged working target',
+      resolve(tagmaDirOf(workDir), input.targetRelativePath),
+      'Chat Operation V2 isolated publish target',
     );
     if (input.intent === 'edit') {
-      if (!existsSync(target) || input.originHash === null) {
+      if (!source || !existsSync(source) || input.originHash === null) {
         throw new Error('Authenticated edit origin is unavailable.');
       }
-      if (sha256(readFileSync(target)) !== input.originHash) {
+      if (sha256(readFileSync(source)) !== input.originHash) {
         throw new Error('Authenticated edit origin hash changed before staging.');
       }
-    } else if (input.originHash !== null || existsSync(target)) {
+    } else if (source || input.originHash !== null || existsSync(liveTarget)) {
       throw new Error('Authenticated create target is unavailable.');
     }
     const descriptor = createChatYamlStage(this.workspace, {
       stageId: input.stageId,
       ...(input.intent === 'edit'
-        ? { activePath: target }
+        ? {
+            activePath: source,
+            hostEditTargetRelativePath: input.targetRelativePath,
+          }
         : {
             requestedAction: CREATE_NEW_PIPELINE_ACTION_KIND,
-            hostCreateTargetRelativePath: input.workingRelativePath,
+            hostCreateTargetRelativePath: input.targetRelativePath,
           }),
     });
-    return this.snapshot(descriptor);
+    const snapshot = this.snapshot(descriptor);
+    if (snapshot.workingRelativePath !== input.targetRelativePath) {
+      throw new Error('Authenticated staged working and publish targets diverged.');
+    }
+    return snapshot;
   }
 
   async inspectStage(
@@ -923,37 +956,61 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
     let settled = false;
     const monitor = this.monitorInteractive(client, processGeneration, input, () => settled);
     try {
-      const result = await unwrapSdk<any>(
-        client.session.prompt(
-          {
-            sessionID: input.sessionId,
-            messageID: input.executionMessageId,
-            agent: TAGMA_PIPELINE_AGENT,
-            model: { providerID: input.admission.provider, modelID: input.admission.model },
-            ...(input.admission.variant ? { variant: input.admission.variant } : {}),
-            system:
-              'Operate only inside the authenticated staged Tagma workspace. Author exactly the supplied relative pipeline target and finish with a concise status.',
-            parts: [
-              {
-                type: 'text',
-                text: buildAuthoringPrompt(input),
-              },
-            ],
-          },
-          { signal: input.signal },
-        ),
+      const prompt = buildManagedChatOperationV2ExecutionPrompt(input);
+      const sdkResult = await client.session.prompt(
+        {
+          sessionID: input.sessionId,
+          messageID: input.executionMessageId,
+          agent: prompt.agent,
+          model: { providerID: input.admission.provider, modelID: input.admission.model },
+          ...(input.admission.variant ? { variant: input.admission.variant } : {}),
+          system: prompt.system,
+          parts: [
+            {
+              type: 'text',
+              text: prompt.text,
+            },
+          ],
+        },
+        { signal: input.signal },
       );
+      if (
+        sdkResult.error !== undefined ||
+        sdkResult.data === undefined ||
+        !sdkResult.response?.ok
+      ) {
+        return {
+          kind: 'provider_unavailable',
+          code: openCodeProviderFailureCode(
+            sdkResult.error,
+            Number.isInteger(sdkResult.response?.status) ? sdkResult.response.status : null,
+          ),
+        };
+      }
+      const result = sdkResult.data;
       const info = sdkRecord(result?.info);
+      if (info?.error !== undefined && info.error !== null) {
+        return {
+          kind: 'provider_unavailable',
+          code: openCodeProviderFailureCode(info.error),
+        };
+      }
       return {
         kind: 'completed',
         text: responseText(result),
         finishCode: safeCode(String(info?.finish ?? 'stop'), 'stop'),
         usage: parseAuthoringUsage(info),
       };
-    } catch {
-      return input.signal.aborted
-        ? { kind: 'cancelled', code: 'cancelled_precommit' }
-        : { kind: 'provider_unavailable', code: 'response_lost', submissionUnknown: true };
+    } catch (error) {
+      if (input.signal.aborted) return { kind: 'cancelled', code: 'cancelled_precommit' };
+      const code = openCodeProviderFailureCode(error);
+      return {
+        kind: 'provider_unavailable',
+        code,
+        ...(code === 'provider_invocation_failed' || code === 'provider_unavailable'
+          ? { submissionUnknown: true as const }
+          : {}),
+      };
     } finally {
       settled = true;
       void monitor.catch(() => undefined);
@@ -1134,7 +1191,7 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
         unwrapSdk<any[]>(scoped.client.question.list({ directory })),
       ]);
       if (
-        [...sessionIds].some((sessionId) => statuses[sessionId]?.type !== 'idle') ||
+        [...sessionIds].some((sessionId) => isOpenCodeSessionStatusActive(statuses[sessionId])) ||
         [...permissions, ...questions].some((request) => sessionIds.has(request?.sessionID))
       ) {
         return 'busy';
@@ -1202,26 +1259,72 @@ function boundedInteractiveText(value: unknown, fallback: string, maxLength: num
   return normalized || fallback;
 }
 
-function buildAuthoringPrompt(
+export interface ManagedChatOperationV2ExecutionPrompt {
+  readonly agent: typeof TAGMA_PIPELINE_AGENT | typeof TAGMA_TRIAL_PLANNER_AGENT;
+  readonly system: string;
+  readonly text: string;
+}
+
+export function buildManagedChatOperationV2ExecutionPrompt(
   input: Parameters<ManagedChatOperationV2AuthoringOpenCodeAdapter['execute']>[0],
-): string {
+): ManagedChatOperationV2ExecutionPrompt {
+  if (input.purpose === 'trial_plan') {
+    if (
+      input.trialPlanRequest === null ||
+      input.trialPlanRequest.relativePlanPath !== pipelineTrialPlanPath(input.targetRelativePath)
+    ) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Trial Plan invocation does not match the authenticated staged target.',
+      );
+    }
+    return {
+      agent: TAGMA_TRIAL_PLANNER_AGENT,
+      system:
+        'Operate only inside the authenticated staged Tagma workspace. Read only the exact staged target and relevant companions; mutate only through the dedicated Trial Plan tool for the Host-issued attempt.',
+      text: [
+        '<tagma-internal>',
+        '<mode>targeted_trial_planning</mode>',
+        `<agent-root>${escapeXml(input.stageDirectory)}</agent-root>`,
+        `<target>${escapeXml(input.targetRelativePath)}</target>`,
+        `<trial-plan-request>${escapeXml(canonicalJson(input.trialPlanRequest))}</trial-plan-request>`,
+        `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
+        '</tagma-internal>',
+      ].join('\n'),
+    };
+  }
+  if (input.trialPlanRequest !== null) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'authority_mismatch',
+      'Pipeline authoring invocation unexpectedly carries Trial Plan authority.',
+    );
+  }
   const attachments = input.admission.request.attachments
     .map(
       (attachment) =>
         `<attachment label="${escapeXml(attachment.label)}">${escapeXml(attachment.content)}</attachment>`,
     )
     .join('\n');
-  return [
-    '<tagma-chat-operation-v2-authoring>',
-    `<purpose>${input.purpose}</purpose>`,
-    `<target>${escapeXml(input.targetRelativePath)}</target>`,
-    `<request>${escapeXml(input.admission.request.text)}</request>`,
-    attachments,
-    `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
-    '</tagma-chat-operation-v2-authoring>',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  return {
+    agent: TAGMA_PIPELINE_AGENT,
+    system: [
+      'Operate only inside the authenticated staged Tagma workspace. Author exactly the supplied relative pipeline target and finish with a concise status.',
+      'Every target and companion path visible to you uses staging coordinates; the Host may remap publication to another target.',
+      'The compile log is not a published artifact. Report its status only as staging evidence.',
+      'Do not claim a published path or that a compile-log file remains after publication; the Host alone reports publication.',
+    ].join(' '),
+    text: [
+      '<tagma-chat-operation-v2-authoring>',
+      `<purpose>${input.purpose}</purpose>`,
+      `<target>${escapeXml(input.targetRelativePath)}</target>`,
+      `<request>${escapeXml(input.admission.request.text)}</request>`,
+      attachments,
+      `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
+      '</tagma-chat-operation-v2-authoring>',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  };
 }
 
 function escapeXml(value: string): string {
@@ -1366,6 +1469,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         exactPipelineRelativePath(authority.targetRelativePath) !== authority.targetRelativePath ||
         exactPipelineRelativePath(authority.workingRelativePath) !==
           authority.workingRelativePath ||
+        authority.workingRelativePath !== authority.targetRelativePath ||
         !isAbsolute(authority.sourceDirectory) ||
         !isAbsolute(authority.stageDirectory) ||
         authority.sourceDirectory === authority.stageDirectory ||
@@ -1391,6 +1495,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       for (const [invocationId, invocation] of invocations) {
         if (
           invocation.invocationId !== invocationId ||
+          !['authoring', 'repair', 'trial_plan'].includes(invocation.purpose) ||
           typeof invocation.conversationId !== 'string' ||
           !invocation.conversationId ||
           authority.conversationId !== invocation.conversationId ||
@@ -1440,9 +1545,11 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       intent: input.intent,
       originHash: input.originHash,
     });
-    const workingRelativePath = exactPipelineRelativePath(
-      input.intent === 'edit' ? (resolvedTarget.sourceRelativePath ?? '') : targetRelativePath,
-    );
+    const sourceRelativePath =
+      resolvedTarget.sourceRelativePath === null
+        ? null
+        : exactPipelineRelativePath(resolvedTarget.sourceRelativePath);
+    const workingRelativePath = targetRelativePath;
     if (
       (input.intent === 'create' && resolvedTarget.sourceRelativePath !== null) ||
       (input.intent === 'edit' && resolvedTarget.sourceRelativePath === null)
@@ -1474,7 +1581,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         stageId: input.stageId,
         intent: input.intent,
         targetRelativePath,
-        workingRelativePath,
+        sourceRelativePath,
         originHash: input.originHash,
       });
       const createdAt = this.now();
@@ -1567,7 +1674,11 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         'Recovered stage authority does not match its filesystem stage.',
       );
     }
-    return { kind: 'present' as const, stage: authority.stage };
+    return {
+      kind: 'present' as const,
+      stage: authority.stage,
+      sessionId: authority.relocation?.sessionId ?? authority.sessionId,
+    };
   }
 
   private relocationRecord(
@@ -1904,6 +2015,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       if (
         invocation.sessionId !== request.sessionId ||
         invocation.inputId !== request.inputId ||
+        invocation.purpose !== request.purpose ||
         invocation.conversationId !== request.admission.conversationId ||
         invocation.requestDigest !== digest
       ) {
@@ -1957,6 +2069,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       purpose: request.purpose,
       stageDirectory: authority.stageDirectory,
       targetRelativePath: authority.workingRelativePath,
+      trialPlanRequest: request.trialPlanRequest,
       admission: request.admission,
       canonicalRequestBytes: Uint8Array.from(request.canonicalRequestBytes),
       signal: request.signal,
@@ -1979,6 +2092,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     request: Omit<ChatOperationV2AuthoringInvocationRequest, 'signal' | 'requestInteractive'>,
   ) {
     const authority = await this.authority(request.stage.stageId);
+    this.assertInvocationAuthority(authority, request);
     const invocation = authority.invocations[request.invocationId];
     const digest = sha256(request.canonicalRequestBytes);
     if (
@@ -1986,6 +2100,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       authority.conversationId !== request.admission.conversationId ||
       invocation.sessionId !== request.sessionId ||
       invocation.inputId !== request.inputId ||
+      invocation.purpose !== request.purpose ||
       invocation.conversationId !== request.admission.conversationId ||
       invocation.requestDigest !== digest
     ) {
@@ -2053,7 +2168,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
 
   private assertInvocationAuthority(
     authority: ManagedChatOperationV2AuthoringAuthorityRecord,
-    request: ChatOperationV2AuthoringInvocationRequest,
+    request: Omit<ChatOperationV2AuthoringInvocationRequest, 'signal' | 'requestInteractive'>,
   ): void {
     this.assertScope(request.workspaceScopeId);
     if (
@@ -2062,7 +2177,11 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       authority.stage.stageId !== request.stage.stageId ||
       !authority.relocation ||
       authority.relocation.recordHash !== request.relocation.recordHash ||
-      authority.relocation.phase !== 'staged'
+      authority.relocation.phase !== 'staged' ||
+      (request.purpose === 'trial_plan') !== (request.trialPlanRequest !== null) ||
+      (request.trialPlanRequest !== null &&
+        request.trialPlanRequest.relativePlanPath !==
+          pipelineTrialPlanPath(authority.workingRelativePath))
     ) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
@@ -2147,10 +2266,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         (error.message.includes('cannot also mutate') ||
           error.message.includes('verify only its classified target'));
       const diagnostic = scopeViolation ? 'stage_scope_violation' : 'compile_unavailable';
-      return verificationRepair(id, [diagnostic], {
-        compileAvailable: false,
-        scopeViolation,
-      });
+      return verificationDiscard(id, diagnostic, [diagnostic]);
     }
     if (!compile.success) {
       const diagnostics = ['compile_failed', ...(!compile.parseOk ? ['compile_parse_failed'] : [])];
@@ -2172,7 +2288,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     } catch {
       return input.signal.aborted
         ? verificationDiscard(id, 'verification_cancelled', [])
-        : verificationRepair(id, ['trial_unavailable'], { trialAvailable: false });
+        : verificationDiscard(id, 'trial_unavailable', ['trial_unavailable']);
     }
     const cases = Array.isArray(trial.cases) ? trial.cases : [];
     const caseCount = Number.isSafeInteger(trial.plannedCaseCount)
@@ -2185,7 +2301,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     );
     const warningCount = trial.kind === 'passed-with-warnings' ? Math.min(caseCount, 1) : 0;
     const planHash = trial.plan ? sha256(canonicalJson(trial.plan)) : null;
-    if (input.signal.aborted || trial.kind === 'aborted' || trial.kind === 'timed-out') {
+    if (input.signal.aborted || trial.kind === 'aborted') {
       return {
         ...verificationDiscard(id, 'verification_cancelled', [
           safeCode(`trial_${trial.kind}`, 'trial_failed'),
@@ -2213,6 +2329,57 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       };
     }
     const diagnostic = safeCode(`trial_${trial.kind.replace(/-/g, '_')}`, 'trial_failed');
+    if (trial.kind === 'plan-required') {
+      if (!trial.planRequest) {
+        return {
+          ...verificationDiscard(id, 'trial_plan_request_invalid', [diagnostic]),
+          planHash,
+          caseCount,
+          passedCount,
+          failedCount,
+          warningCount,
+        };
+      }
+      return {
+        kind: 'trial_plan_required' as const,
+        trialId: id,
+        planHash,
+        caseCount,
+        passedCount,
+        failedCount,
+        warningCount,
+        planRequest: trial.planRequest,
+      };
+    }
+    if (trial.repairAuthorization !== 'pipeline-change-allowed') {
+      const current = await this.requireCurrentSnapshot(authority);
+      return {
+        kind: 'unverified' as const,
+        trialId: id,
+        planHash,
+        caseCount,
+        passedCount,
+        failedCount,
+        warningCount,
+        trialStatus:
+          trial.kind === 'blocked' ||
+          trial.kind === 'preflight-failed' ||
+          trial.kind === 'setup-failed' ||
+          trial.kind === 'busy'
+            ? ('blocked' as const)
+            : ('failed' as const),
+        errorCode: diagnostic,
+        diagnosticCodes: [diagnostic],
+        redactedSummary: boundedInteractiveText(
+          trial.summary,
+          'Trial verification could not complete.',
+          4_096,
+        ),
+        stagedSnapshotHash: current.snapshotHash,
+        artifactSetHash: current.artifactSetHash,
+        artifactCount: current.artifactCount,
+      };
+    }
     return {
       ...verificationRepair(id, [diagnostic], {
         kind: trial.kind,

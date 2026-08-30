@@ -1,4 +1,13 @@
 import { getClientAuthToken, getClientWorkspace } from './client';
+import {
+  CHAT_OPERATION_V2_API_ERROR_KINDS,
+  hasExpectedChatOperationV2ApiErrorStatus,
+  isChatOperationV2ApiErrorKind,
+  type ChatOperationV2ApiErrorKind,
+} from '../../shared/chat-operation-v2-api-errors.js';
+
+export { CHAT_OPERATION_V2_API_ERROR_KINDS };
+export type { ChatOperationV2ApiErrorKind };
 
 /**
  * Renderer-local wire constant. Keep the parity test in
@@ -139,6 +148,7 @@ export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
   'operation_cancel_requested',
   'clarification_requested',
   'clarification_resolved',
+  'classifier_protocol_repair_started',
   'snapshot_frozen',
   'invocation_prepared',
   'invocation_submission_unknown',
@@ -201,6 +211,11 @@ export interface ChatOperationV2HostEventPayloads {
     readonly round: number;
     readonly accepted: boolean;
     readonly errorCode: string | null;
+  };
+  readonly classifier_protocol_repair_started: {
+    readonly attempt: number;
+    readonly maxAttempts: number;
+    readonly previousFailureCode: string;
   };
   readonly snapshot_frozen: {
     readonly snapshotId: string;
@@ -752,22 +767,6 @@ export class ChatOperationV2ProtocolError extends Error {
   }
 }
 
-export const CHAT_OPERATION_V2_API_ERROR_KINDS = [
-  'operation_not_found',
-  'invalid_cursor',
-  'invalid_limit',
-  'cursor_conflict',
-  'chat_operation_service_unavailable',
-  'chat_operation_read_failed',
-  'chat_operation_protocol_mismatch',
-  'chat_operation_invalid_request',
-  'chat_operation_action_unavailable',
-  'chat_operation_conflict',
-  'chat_operation_mutation_failed',
-] as const;
-
-export type ChatOperationV2ApiErrorKind = (typeof CHAT_OPERATION_V2_API_ERROR_KINDS)[number];
-
 export const CHAT_OPERATION_V2_API_REQUEST_PROBLEMS = [
   'invalid_shape',
   'invalid_keys',
@@ -979,6 +978,14 @@ function isHostEventPayload(type: ChatOperationV2HostEventType, value: unknown):
         typeof value.accepted === 'boolean' &&
         isNullableSafeCode(value.errorCode) &&
         (value.accepted ? value.errorCode === null : value.errorCode !== null)
+      );
+    case 'classifier_protocol_repair_started':
+      return (
+        hasEventPayloadKeys(value, ['attempt', 'maxAttempts', 'previousFailureCode']) &&
+        isEventCount(value.attempt, 2) &&
+        isEventCount(value.maxAttempts, 2) &&
+        value.attempt <= value.maxAttempts &&
+        isSafeCode(value.previousFailureCode)
       );
     case 'snapshot_frozen':
       return (
@@ -2040,32 +2047,6 @@ async function requestJson(
   return { response, body };
 }
 
-function hasExpectedApiErrorStatus(status: number, kind: ChatOperationV2ApiErrorKind): boolean {
-  if (status === 0) {
-    return kind === 'chat_operation_service_unavailable' || kind === 'chat_operation_read_failed';
-  }
-  switch (kind) {
-    case 'operation_not_found':
-      return status === 404;
-    case 'invalid_cursor':
-    case 'invalid_limit':
-    case 'cursor_conflict':
-      return status === 400;
-    case 'chat_operation_service_unavailable':
-    case 'chat_operation_action_unavailable':
-      return status === 503;
-    case 'chat_operation_read_failed':
-    case 'chat_operation_mutation_failed':
-      return status === 500;
-    case 'chat_operation_conflict':
-      return status === 409;
-    case 'chat_operation_protocol_mismatch':
-      return status === 426;
-    case 'chat_operation_invalid_request':
-      return status === 400;
-  }
-}
-
 function parseApiError(status: number, value: unknown): ChatOperationV2ApiError {
   if (!isPlainRecord(value)) {
     invalid('API error envelope has missing or unknown fields');
@@ -2074,12 +2055,12 @@ function parseApiError(status: number, value: unknown): ChatOperationV2ApiError 
 
   if (hasExactKeys(value, ['protocolVersion', 'kind', 'error'])) {
     if (
-      !includesValue(CHAT_OPERATION_V2_API_ERROR_KINDS, value.kind) ||
+      !isChatOperationV2ApiErrorKind(value.kind) ||
       value.kind === 'chat_operation_protocol_mismatch' ||
       value.kind === 'chat_operation_invalid_request' ||
       typeof value.error !== 'string' ||
       value.error.length === 0 ||
-      !hasExpectedApiErrorStatus(status, value.kind)
+      !hasExpectedChatOperationV2ApiErrorStatus(status, value.kind)
     ) {
       invalid('API error projection is invalid');
     }

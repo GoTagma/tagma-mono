@@ -128,6 +128,7 @@ interface ChatOperationV2ReadonlyWorkspaceRuntime extends ChatOperationV2Readonl
 }
 
 interface ChatOperationV2AuthoringWorkspaceRuntime extends ChatOperationV2ReadonlyWorkspaceAuthority {
+  readonly authoringRuntime: ChatOperationV2AuthoringRuntime;
   readonly engine: ChatOperationV2AuthoringEngine;
   readonly commitCoordinator: ChatOperationV2AuthoringCommitCoordinator;
   readonly targetResolver: ChatOperationV2AuthoringTargetResolver;
@@ -150,6 +151,16 @@ export interface ChatOperationV2DiagnosticsSnapshot {
   readonly initialized: boolean;
   readonly storeOpen: boolean;
   readonly schemaVersion: number;
+}
+
+export interface ChatOperationV2DiagnosticsReadonlySessionProjection {
+  readonly source: 'chat-operation-v2-result';
+  readonly operationId: string;
+  readonly invocationId: string;
+  readonly purpose: 'discussion' | 'diagnosis';
+  readonly terminalOutcome: ChatOperationV2RendererOperationSummary['terminalOutcome'];
+  readonly resultId: string | null;
+  readonly messages: readonly unknown[];
 }
 
 export interface ChatOperationV2WorkspaceMigrationContext {
@@ -458,6 +469,60 @@ export class ChatOperationV2Service {
       authority.scope.workspaceScopeId,
       operationId,
     );
+  }
+
+  /**
+   * Compatibility text calls intentionally have no public OpenCode message projection. Join the
+   * Host-authenticated session identity back to the immutable visible Chat result instead of
+   * scraping OpenCode's private compatibility storage. Internal classifier text is never exposed.
+   */
+  getDiagnosticsReadonlySessionProjection(
+    workspacePath: string,
+    sessionId: string,
+  ): ChatOperationV2DiagnosticsReadonlySessionProjection | null {
+    const authority = this.#authority;
+    if (this.#closed || authority === null) return null;
+    const identity = createWorkspaceIdentity(workspacePath, authority.key, this.#identityOptions);
+    const storedScope = authority.store.findWorkspaceScope(identity);
+    if (!storedScope) return null;
+    const scope = parseTrustedWorkspaceScopeRecord(storedScope, authority.key, {
+      platform: this.#identityOptions.platform,
+    });
+    const matches = authority.store
+      .listInvocationOutbox(scope.workspaceScopeId)
+      .filter((outbox) => outbox.sessionId === sessionId);
+    if (matches.length !== 1) return null;
+    const outbox = matches[0]!;
+    if (outbox.purpose !== 'discussion' && outbox.purpose !== 'diagnosis') return null;
+    const operation = authority.store.getOperation(outbox.operationId);
+    const admission = authority.store.getOperationAdmission(outbox.operationId);
+    const result = authority.store.getResultProjection(outbox.operationId);
+    if (
+      !operation ||
+      operation.workspaceScopeId !== scope.workspaceScopeId ||
+      !admission ||
+      (result && result.purpose !== outbox.purpose)
+    ) {
+      return null;
+    }
+    const userMessage = Object.freeze({
+      operationId: operation.operationId,
+      role: 'user' as const,
+      createdAt: admission.admittedAt,
+      text: admission.request.text,
+      attachments: Object.freeze(
+        admission.request.attachments.map((attachment) => Object.freeze({ ...attachment })),
+      ),
+    });
+    return Object.freeze({
+      source: 'chat-operation-v2-result' as const,
+      operationId: outbox.operationId,
+      invocationId: outbox.invocationId,
+      purpose: outbox.purpose,
+      terminalOutcome: operation.terminalOutcome,
+      resultId: result?.resultId ?? null,
+      messages: Object.freeze([userMessage, ...(result?.messages ?? [])]),
+    });
   }
 
   projectMutationResult(
@@ -798,18 +863,28 @@ export class ChatOperationV2Service {
         .filter(
           (outbox) =>
             outbox.operationId === operation.operationId &&
-            (outbox.purpose === 'authoring' || outbox.purpose === 'repair'),
+            (outbox.purpose === 'authoring' ||
+              outbox.purpose === 'repair' ||
+              outbox.purpose === 'trial_plan'),
         )
         .sort(
           (left, right) =>
             left.preparedAt - right.preparedAt ||
             left.invocationId.localeCompare(right.invocationId),
         );
-      const sessionId =
+      let sessionId =
         (operation.activeInvocationId
           ? outboxes.find(({ invocationId }) => invocationId === operation.activeInvocationId)
               ?.sessionId
           : null) ?? outboxes.at(-1)?.sessionId;
+      if (!sessionId && operation.stageId) {
+        const stageInspection = await runtime.authoringRuntime.inspectStage({
+          operationId: operation.operationId,
+          operationGeneration: operation.generation,
+          stageId: operation.stageId,
+        });
+        if (stageInspection.kind === 'present') sessionId = stageInspection.sessionId;
+      }
       if (!sessionId) {
         entries.push({
           operationId: operation.operationId,
@@ -853,6 +928,8 @@ export class ChatOperationV2Service {
     ) {
       return { kind: 'stale', reason: 'recovery_required', operation };
     }
+    const openCodeRequestId = interactive.openCodeRequestId;
+    const openCodeProcessGeneration = interactive.openCodeProcessGeneration;
     const runtime = this.#authoringRuntimeForWorkspace(authority);
     const decision =
       kind === 'question'
@@ -861,22 +938,43 @@ export class ChatOperationV2Service {
     const answers =
       kind === 'question' ? (request as ChatOperationV2QuestionReplyRequest).payload.answers : [];
     return this.#trackReadonlyCall(
-      runtime.engine.respondInteractive({
-        schemaVersion: 1,
-        hostRequestId: interactive.hostRequestId,
-        operationId: interactive.operationId,
-        expectedOperationGeneration: interactive.operationGeneration,
-        expectedOperationVersion: interactive.operationVersion,
-        expectedRecordHash: interactive.recordHash,
-        invocationId: interactive.invocationId,
-        kind,
-        openCodeRequestId: interactive.openCodeRequestId,
-        openCodeProcessGeneration: interactive.openCodeProcessGeneration,
-        clientRequestId: request.clientRequestId,
-        decision,
-        answers,
-        respondedAt: Math.max(this.#now(), interactive.requestedAt),
-      }),
+      (async () => {
+        const response = await runtime.engine.respondInteractive({
+          schemaVersion: 1,
+          hostRequestId: interactive.hostRequestId,
+          operationId: interactive.operationId,
+          expectedOperationGeneration: interactive.operationGeneration,
+          expectedOperationVersion: interactive.operationVersion,
+          expectedRecordHash: interactive.recordHash,
+          invocationId: interactive.invocationId,
+          kind,
+          openCodeRequestId,
+          openCodeProcessGeneration,
+          clientRequestId: request.clientRequestId,
+          decision,
+          answers,
+          respondedAt: Math.max(this.#now(), interactive.requestedAt),
+        });
+        if (response.kind !== 'stale' || response.reason !== 'recovery_required') {
+          return response;
+        }
+        // The in-memory drain can disappear after runtime construction (for
+        // example, a managed OpenCode restart). The persisted request remains
+        // authoritative; atomically expose recovery rather than leaving the
+        // renderer to retry a reply that cannot be forwarded.
+        return runtime.engine.markInteractiveRestartRecoveryRequired({
+          operationId: operation.operationId,
+          workspaceScopeId: operation.workspaceScopeId,
+          hostRequestId: interactive.hostRequestId,
+          expectedGeneration: operation.generation,
+          expectedVersion: operation.version,
+          // Equality is intentional: the Host may have lost its drain while
+          // the OpenCode child retained the same process generation.
+          nextOpenCodeProcessGeneration: openCodeProcessGeneration,
+          recoveryCause: 'host_interactive_drain_lost',
+          observedAt: Math.max(this.#now(), interactive.requestedAt),
+        });
+      })(),
     );
   }
 
@@ -1031,7 +1129,15 @@ export class ChatOperationV2Service {
   }
 
   #nextHostId(kind: string): string {
-    return `${kind}-${this.#randomUUID()}`;
+    const uuid = this.#randomUUID();
+    const nativeIdentity = /^(?<purpose>[A-Za-z0-9-]+)-(?<identity>session|input)$/.exec(kind);
+    if (!nativeIdentity?.groups) return `${kind}-${uuid}`;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)) {
+      throw new TypeError('The Host OpenCode identity generator did not return a raw UUID.');
+    }
+    const prefix = nativeIdentity.groups.identity === 'session' ? 'ses' : 'msg';
+    const purpose = nativeIdentity.groups.purpose.replace(/-/g, '_').toLowerCase();
+    return `${prefix}_tagma_${purpose}_${uuid.replace(/-/g, '').toLowerCase()}`;
   }
 
   #nextRawStageId(): string {
@@ -1063,13 +1169,49 @@ export class ChatOperationV2Service {
     }
     const authority = this.#authorityForUse();
     const scope = this.#resolveWorkspaceScope(workspacePath);
-    return { scope, store: authority.store };
+    const workspaceAuthority = { scope, store: authority.store };
+    this.#recoverProcessLocalInteractiveWaitsAfterHostRestart(workspaceAuthority);
+    return workspaceAuthority;
   }
 
   #workspaceAuthorityForUse(workspacePath: string): ChatOperationV2ReadonlyWorkspaceAuthority {
     const authority = this.#authorityForUse();
     const scope = this.#resolveWorkspaceScope(workspacePath);
-    return { scope, store: authority.store };
+    const workspaceAuthority = { scope, store: authority.store };
+    this.#recoverProcessLocalInteractiveWaitsAfterHostRestart(workspaceAuthority);
+    return workspaceAuthority;
+  }
+
+  /**
+   * A new sidecar has no in-memory OpenCode permission/question drains. Before
+   * it projects a persisted live request, atomically turn that request into a
+   * durable recovery choice. Existing workspace runtimes are intentionally
+   * skipped: their engine still owns the live drain for this Host process.
+   */
+  #recoverProcessLocalInteractiveWaitsAfterHostRestart(
+    authority: ChatOperationV2ReadonlyWorkspaceAuthority,
+  ): void {
+    const runtimeKey = authority.scope.canonicalPathHmac;
+    if (this.#authoringRuntimes.has(runtimeKey)) return;
+    const hasLiveInteractiveWait = authority.store
+      .getWorkspaceOperationSnapshot(authority.scope.workspaceScopeId)
+      .operations.some(
+        (operation) =>
+          operation.phase !== 'terminal' &&
+          operation.waitReason === 'permission' &&
+          operation.pendingPermissionRequestId !== null,
+      );
+    if (!hasLiveInteractiveWait) return;
+    const runtime = this.#authoringRuntimeForWorkspace(authority);
+    try {
+      runtime.engine.recoverProcessLocalInteractiveWaitsAfterHostRestart(
+        authority.scope.workspaceScopeId,
+        this.#now(),
+      );
+    } catch (error) {
+      this.#authoringRuntimes.delete(runtimeKey);
+      throw error;
+    }
   }
 
   #orchestratorForWorkspace(
@@ -1147,6 +1289,7 @@ export class ChatOperationV2Service {
     workspaceRuntime = {
       scope: authority.scope,
       store: authority.store,
+      authoringRuntime: runtime,
       engine: new ChatOperationV2AuthoringEngine({
         persistence: authority.store,
         runtime,

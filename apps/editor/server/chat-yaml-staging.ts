@@ -1002,6 +1002,25 @@ function copyPipelineArtifacts(
   );
 }
 
+/**
+ * Seeds an isolated edit target from one authenticated source snapshot. Host-owned
+ * companions are regenerated for the target coordinate; runtime compile evidence
+ * is deliberately not inherited from the source pipeline.
+ */
+function copyPipelineArtifactsToTarget(sourceYamlPath: string, destinationYamlPath: string): void {
+  const remappedArtifacts: readonly [string, string][] = [
+    [sourceYamlPath, destinationYamlPath],
+    [pipelineLayoutPath(sourceYamlPath), pipelineLayoutPath(destinationYamlPath)],
+    [pipelineRequirementsPath(sourceYamlPath), pipelineRequirementsPath(destinationYamlPath)],
+  ];
+  for (const [sourceArtifact, destinationArtifact] of remappedArtifacts) {
+    copyTextArtifact(sourceArtifact, destinationArtifact);
+  }
+  syncPipelineSupportTree(sourceYamlPath, destinationYamlPath);
+  runPipelineManifestSync(destinationYamlPath);
+  runRequirementsSync(destinationYamlPath);
+}
+
 function writeMetadata(paths: StagePaths, metadata: ChatYamlStageMetadata): void {
   writeAuthenticatedServerRecordSync(
     paths.metadataPath,
@@ -1418,6 +1437,8 @@ export function createChatYamlStage(
     routeIntentRequired?: boolean;
     /** Trusted V2 binding coordinate for a create; never renderer-authored path text. */
     hostCreateTargetRelativePath?: string;
+    /** Trusted V2 edit branch coordinate; the activePath remains its authenticated origin. */
+    hostEditTargetRelativePath?: string;
     pipelineBinding?: {
       sessionId: string;
       bindingRequestId: string;
@@ -1484,6 +1505,19 @@ export function createChatYamlStage(
       );
     }
     if (
+      options.hostEditTargetRelativePath !== undefined &&
+      (options.stageId === undefined ||
+        !options.activePath ||
+        requestedAction !== null ||
+        options.routeIntentRequired === true ||
+        options.pipelineBinding ||
+        options.hostCreateTargetRelativePath !== undefined)
+    ) {
+      throw new Error(
+        'A Host V2 edit target requires one authenticated origin without legacy routing authority.',
+      );
+    }
+    if (
       options.pipelineBinding &&
       ((requestedAction === CREATE_NEW_PIPELINE_ACTION_KIND &&
         options.pipelineBinding.intent !== 'create') ||
@@ -1506,6 +1540,10 @@ export function createChatYamlStage(
       options.hostCreateTargetRelativePath === undefined
         ? null
         : assertHostCreateTargetRelativePath(options.hostCreateTargetRelativePath);
+    const hostEditTargetRelativePath =
+      options.hostEditTargetRelativePath === undefined
+        ? null
+        : assertHostCreateTargetRelativePath(options.hostEditTargetRelativePath);
     if (
       hostCreateTargetRelativePath &&
       sourceRelativePaths.some((candidate) =>
@@ -1513,6 +1551,25 @@ export function createChatYamlStage(
       )
     ) {
       throw new Error('Host create target collides with an inventoried pipeline.');
+    }
+    if (
+      hostEditTargetRelativePath &&
+      (activeRelativePath === null ||
+        sourceRelativePaths.some((candidate) =>
+          samePipelineRelativePath(candidate, hostEditTargetRelativePath),
+        ))
+    ) {
+      throw new Error('Host edit target requires an inventoried origin and a fresh branch.');
+    }
+    if (hostEditTargetRelativePath) {
+      const originBasePath = resolveRelativeInside(paths.baseTagmaDir, activeRelativePath!);
+      const targetBasePath = resolveRelativeInside(paths.baseTagmaDir, hostEditTargetRelativePath);
+      copyPipelineArtifactsToTarget(originBasePath, targetBasePath);
+      const hashes = pipelineArtifactHashes(targetBasePath);
+      if (!hashes) throw new Error('Failed to capture Host edit branch base snapshot.');
+      baseEntries.push({ relativePath: hostEditTargetRelativePath, ...hashes });
+      copyPipelineArtifacts(paths.baseTagmaDir, targetBasePath, paths.agentTagmaDir);
+      activeRelativePath = hostEditTargetRelativePath;
     }
     const createTargetRelativePath =
       pipelineBinding?.intent === 'create'

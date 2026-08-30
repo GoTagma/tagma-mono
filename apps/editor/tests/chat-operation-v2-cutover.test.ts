@@ -213,6 +213,19 @@ test('production sends and Stop use only the operation API for one executor', as
   usePipelineStore.setState({ isDirty: false, layoutDirty: false } as never);
   useChatStore.setState({
     model: { providerID: 'openai', modelID: 'gpt-5.4' },
+    providers: [
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        models: {
+          'gpt-5.4': {
+            id: 'gpt-5.4',
+            name: 'GPT-5.4',
+            capabilities: { toolcall: false },
+          },
+        },
+      },
+    ] as never,
     reasoningEffort: 'high',
     composerAttachments: [{ id: 'context-1', label: 'failure', content: 'bounded evidence' }],
   });
@@ -285,7 +298,7 @@ test('production sends and Stop use only the operation API for one executor', as
   expect(useChatStore.getState().chatOperationV2ConversationId).not.toBe(firstConversationId);
 });
 
-test('returns provider failures to the normal composer and replaces them on the next send', async () => {
+test('returns a generic model failure to the composer and permits same-model resend', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
   const requests: Array<{ url: string; method: string; body: unknown }> = [];
@@ -323,7 +336,7 @@ test('returns provider failures to the normal composer and replaces them on the 
       return Response.json(snapshot([retryable]));
     }
     if (url === '/api/chat/operations/operation-cutover-1') {
-      return Response.json(detail(projectedOperation, null, null, retryAttachments));
+      return Response.json(detail(projectedOperation, null, null, retryAttachments, 'model_error'));
     }
     if (url === '/api/chat/operations/operation-cutover-1/discard') {
       retryable = operation({
@@ -366,7 +379,6 @@ test('returns provider failures to the normal composer and replaces them on the 
     chatOperationProtocolVersion: 2,
     chatOperationMode: 'production',
   });
-  useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
 
   expect(useChatStore.getState()).toMatchObject({
     sending: false,
@@ -402,8 +414,8 @@ test('returns provider failures to the normal composer and replaces them on the 
             { referenceId: 'retry-context', label: 'context', content: 'bounded evidence' },
           ],
         },
-        provider: 'openai',
-        model: 'gpt-5.4',
+        provider: 'deepseek',
+        model: 'deepseek-v4-flash',
       },
     },
   });
@@ -457,7 +469,52 @@ test('does not create another operation for the same definitively rejected model
   expect(useChatStore.getState().sendError).toMatch(/choose another model/i);
 });
 
-test('projects strict Host result messages into the existing transcript', async () => {
+test('surfaces a pre-admission model configuration failure without calling it a capability mismatch', async () => {
+  setClientWorkspace(workspace);
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  const modelError =
+    'The selected model is not configured in the current OpenCode runtime. Refresh models or choose a configured model. Your message is preserved.';
+  const attachments = [{ id: 'context-1', label: 'context', content: 'bounded context' }];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    if (url === '/api/chat/operations/snapshot') return Response.json(snapshot());
+    if (url === '/api/chat/operations' && method === 'POST') {
+      return Response.json(
+        {
+          protocolVersion: 2,
+          kind: 'chat_operation_model_unavailable',
+          error: modelError,
+        },
+        { status: 409 },
+      );
+    }
+    throw new Error(`Unexpected request: ${method} ${url}`);
+  }) as unknown as typeof fetch;
+  useChatStore.setState({
+    model: { providerID: 'deepseek', modelID: 'removed-model' },
+    composerAttachments: attachments,
+  });
+
+  await activateChatOperationExecutionForWorkspace(workspace, {
+    chatOperationProtocolVersion: 2,
+    chatOperationMode: 'production',
+  });
+
+  await expect(useChatStore.getState().send('request')).rejects.toMatchObject({
+    kind: 'chat_operation_model_unavailable',
+  });
+  expect(useChatStore.getState()).toMatchObject({
+    sending: false,
+    pendingUserText: null,
+    composerAttachments: attachments,
+    sendError: `Chat Operation V2 failed: ${modelError}`,
+  });
+  expect(useChatStore.getState().sendError).not.toMatch(/capability|tool|structured/i);
+});
+
+test('projects strict Host result notices into the transcript and completion warning', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
   let completed = operation();
@@ -479,7 +536,15 @@ test('projects strict Host result messages into the existing transcript', async 
         createdAt: 130,
         text: 'Projected Host answer.',
         contentHash: 'd'.repeat(64),
-        attachments: [],
+        attachments: [
+          {
+            attachmentId: 'notice-01',
+            kind: 'notice',
+            mediaType: 'text/plain',
+            label: 'Pipeline published without completed Trial verification',
+            content: 'Trial requires an explicitly authorized Live Smoke Test.',
+          },
+        ],
       },
     ],
   });
@@ -524,7 +589,9 @@ test('projects strict Host result messages into the existing transcript', async 
   expect((useChatStore.getState().messages[1]!.parts[0] as { text: string }).text).toBe(
     'Projected Host answer.',
   );
-  expect(useChatStore.getState().completionWarning).toBeNull();
+  expect(useChatStore.getState().completionWarning).toBe(
+    'Pipeline published without completed Trial verification: Trial requires an explicitly authorized Live Smoke Test.',
+  );
 });
 
 test('production permission decisions use V2 CAS and never raw OpenCode replies', async () => {

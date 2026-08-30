@@ -26,11 +26,17 @@
   If that bounded recovery is also unusable, surface the observed failure without claiming success
   or speculating about an infrastructure cause.
 - A Host-authenticated `create-new-pipeline` or `fill-manual-new-pipeline` action dispatches
-  `tagma-pipeline` directly. Every other desktop Chat request first runs the isolated structured
+  `tagma-pipeline` directly. Every other desktop Chat request first runs the isolated tool-free text
   intent classifier, then dispatches discussion/diagnosis directly or gives `tagma-pipeline` the
   Host-resolved binding. Host compile/Trial repair already carries an authenticated target and goes
   directly back to `tagma-pipeline`. The legacy router path remains only for non-desktop and
   unfinished older turns. Never use diagnosis/discussion as an authoring pre-reader.
+- The text classifier prompt must carry the complete fixed schema plus valid kind-specific JSON
+  shapes in-band. Only `malformed_text_result` receives one automatic Host-owned protocol repair:
+  allocate a fresh invocation/session/input/outbox identity, use the explicit attempt-2 prompt, and
+  retain both usage/failure records. Do not reuse the first cached message id, expose rejected model
+  text, weaken the parser, or auto-retry any other provider failure. Restart recovery must select
+  the durable attempt by request digest, and an explicit user Retry starts a fresh two-attempt cycle.
 - Before an operation reaches reservation, Stop and Discard remain owned by the read-only
   orchestrator; the authoring engine has no operation context yet. A classifier-side
   `provider_unavailable` discard must terminalize as `discarded` without allocating an authoring
@@ -40,15 +46,33 @@
   discard the old operation through Host authority before creating a new operation with the current
   provider/model selection.
 - Chat V2 Host admission must authenticate the exact selected model against the managed configured
-  provider catalog and require explicit tool-call capability before creating an operation. Missing
-  V2 metadata alone is not a negative capability for configured custom models. A returned SDK/HTTP
-  rejection is definitive and must retain a bounded model/auth/rate-limit/request code; reserve
+  provider catalog, but must not require tool-call or provider-native structured-output capability
+  before creating an operation. Do not query advisory V2 model-catalog metadata on Send or include
+  model capability/status fields in the durable capability hash; they must not perturb request
+  identity, retry, or recovery. Classification, discussion, and diagnosis are text-only. A returned
+  SDK/HTTP rejection is definitive and must retain a bounded model/auth/rate-limit/request code; reserve
   `submitted_unknown` for transport loss where submission really cannot be determined. After a
-  deterministic model-specific classifier failure, an unchanged model selection must not allocate
-  another operation; the normal model picker is the sole recovery action.
+  deterministic missing-model failure, an unchanged model selection must not allocate another
+  operation; the normal model picker is the sole recovery action. `model_incompatible` requires a
+  model change only when its failure stage is authoring or repair.
+- A diagnosis request may legitimately have no sealed canvas snapshot. In that case its canonical
+  read authority is `none`, its prompt must state that no artifact was supplied, and the response
+  must remain request-only. Only a diagnosis with a non-null sealed snapshot may claim artifact
+  inspection. Discussion never accepts a snapshot.
+- Public Chat V2 API errors must use the shared discriminated kind-to-HTTP-status contract on both
+  sides of the wire. Report a selected provider/model absent from configured providers as the typed
+  model-configuration error and preserve the Composer request; never relabel it as a capability
+  mismatch or generic action outage.
+- Classify classifier assistant failures from OpenCode's pinned error union and `APIError`
+  status/retryability before crossing the Host boundary. Persist only the stable allowlisted
+  category; never persist provider messages, response bodies, headers, metadata, or arbitrary error
+  names. `model_unavailable`, plus authoring/repair-stage `model_incompatible`, require a different model. Authentication,
+  billing, rate limit, content filter, context/output limits, structured-output failure, transient,
+  unknown, and legacy `model_error` records must explain their safe reason and allow the preserved
+  request to be edited or explicitly resent with the same model.
 - Native prompt admission and its durable history projection are not required to become visible in
   the same tick. After receiving an exact `admittedSeq`, poll boundedly for that same source event
-  before starting the rich classifier. A temporarily missing event must never trigger another
+  before starting the text classifier. A temporarily missing event must never trigger another
   native prompt or be mislabeled as response loss; conflicting sequence, identity, or digest
   evidence still fails closed immediately.
 - A pipeline specialist's successful compile is still pending host verification. The router must
@@ -77,8 +101,9 @@
   never inherit the Chat model into a non-`opencode` driver, an existing-pipeline edit, or runtime
   resolution. Derive create/fill actions only from structured UI/Host state, never from
   natural-language phrase lists. The current editor-created manual-new draft structurally selects
-  fill. Every other desktop request runs the tool-free `tagma-pipeline-intent-classifier` with a
-  JSON Schema over Host-issued candidate ids. It may return discussion, diagnosis, create, edit of
+  fill. Every other desktop request runs the tool-free `tagma-pipeline-intent-classifier` and asks
+  for one bounded JSON text object over Host-issued candidate ids. The Host, not the provider,
+  validates the fixed fields and ids. It may return discussion, diagnosis, create, edit of
   exactly one candidate, or clarification; ambiguity must ask instead of guessing. Only then may
   the Host atomically reserve a session-owned binding. Different sessions may share one read-only
   origin but never a writable target. The worker receives that authenticated binding directly and
@@ -266,6 +291,15 @@
   must still recover from the signed host record; a lost HTTP response must never delete a local
   journal after the corresponding host mutation may have committed. Keep the finished-turn queue
   and stage intact on any unverified restore or cleanup failure.
+- OpenCode 1.18.18 `/session/status` is a sparse activity map: an omitted session is idle, exactly
+  like an explicit `idle` entry. Explicit `busy`/`retry` entries and matching permission/question
+  requests are active; malformed explicit entries fail closed. Never synthesize activity merely
+  because a known session id is absent from the status map.
+- An operational failure while relocating an authoring session must seal the operation as a
+  retryable `staging` wait instead of escaping as a generic mutation error or leaving a projected
+  running operation. Preserve and reuse any prepared relocation id, recover its session identity
+  from the authenticated stage record after restart, and let explicit Retry resume that exact
+  relocation before allocating an authoring invocation.
 - A quiescence deadline error must name the evidence it waited on: the blocking session ids,
   their status/permission/question kind, and the owning directory. A bare "did not become idle"
   message discards the only clue that distinguishes a stuck delegated child from a renderer-side
@@ -689,6 +723,11 @@
 - Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
   or transient trial-plan hash changed. A report-only/external-boundary response must reuse the
   prior failed evidence and end that repair chain instead of consuming another attempt.
+- `plan-required` is a Host Trial Plan phase, never YAML-repair evidence. Dispatch one internal
+  `trial_plan` invocation to the dedicated Trial Plan agent with the exact Host-issued staged path,
+  YAML hash, attempt id, and bounded request; do not consume the pipeline-repair budget or expose
+  its text to the renderer. A `no_change` result from either repair or Trial planning ends that
+  chain without rerunning identical verification. Only a changed staged snapshot may be reverified.
 - Before publication, compare executable references removed from the immutable base YAML with the
   staged agent-owned requirements body/frontmatter. Do not finalize while removed environment
   names, PowerShell cmdlets, or external binaries remain documented; repair YAML and its sibling
@@ -769,30 +808,29 @@
 
 ## Managed OpenCode Execution
 
+- Keep Host-assigned OpenCode identities in OpenCode's native namespaces: session ids are
+  `ses_tagma_<purpose>_<uuidhex>` and native admission input ids are
+  `msg_tagma_<purpose>_<uuidhex>`. Internal operation, invocation, usage, request, and event ids
+  remain separate Host identities; never pass their `<kind>-<uuid>` form to native session or
+  prompt endpoints.
 - ChatTurn Operation V2 consumes OpenCode 1.18.18 through a durable Host outbox. The native
   conformance contract is: duplicate session create is idempotent; the same input id plus identical
   payload returns the original 200 admission before and after process restart; the same id plus
   different bytes returns 409; and committed admission remains discoverable after a client-side
   response loss. Never swap in a new native id when delivery is uncertain.
-- Compatibility `json_schema` uses OpenCode's internal `StructuredOutput` tool. Keep normal tools
-  wildcard-denied but explicitly allow only `StructuredOutput`; wildcard denial alone removes
-  schema enforcement. Even then, a lost rich response has no public durable projection in 1.18.18:
-  native history/messages are empty and compatibility message reads fail. Same-id replay does not
-  call the provider again but returns `StructuredOutputError`, so mark the invocation unavailable
-  and do not auto-reprompt; only an explicit user retry may create a new invocation.
-- Compatibility text responses on a Host-created native session also cannot be read through public
-  message endpoints, but exact same-message-id replay returns the cached text across restart with
-  no provider reinvocation. Discussion/diagnosis recovery may perform that single replay only after
-  authenticating the canonical request digest; different bytes fail before OpenCode access. Do not
-  apply this exception to `json_schema`, whose replay loses the structured result.
+- Classifier, discussion, and diagnosis compatibility requests all use `format: text`, wildcard
+  tool denial, and no `StructuredOutput` exception. Public message reads remain unavailable on a
+  Host-created native session, but exact same-message-id replay returns cached text across restart
+  with no provider reinvocation. Recovery may perform that replay only after authenticating the
+  canonical request digest and outbox boundary; different bytes fail before OpenCode access.
 - A renderer-issued explicit Retry after `provider_unavailable` always allocates a new Host
   invocation, session/input identity for classification/read-only execution. Same-id runner caches
   exist only to coalesce concurrent duplicates and prevent a compatibility rich re-prompt; they are
   never the identity for a later user retry. Authoring/repair retries likewise allocate a fresh
   invocation and input under their controlled session.
 - `user_retry` is the Host-owned authoring handoff/recovery boundary. An explicit Retry must resume
-  the same live authoring handoff without rerunning classification. After restart, where the rich
-  classifier result is intentionally unavailable, that explicit user action starts a fresh
+  the same live authoring handoff without rerunning classification. After restart, where a completed
+  authoring handoff decision is not yet stored as a standalone Host record, that explicit user action starts a fresh
   classifier invocation and may then rebuild the handoff; the raw retry route must never return an
   inert `in_progress` result for this state.
 - Persist provider failures as bounded safe codes in the existing invocation outbox and Host event
@@ -862,7 +900,9 @@
   `retryable_failure`, or `terminal`). Renderer activity, composer/header locks, and spinners must
   follow that field rather than infer liveness from `phase`. A retryable failure is sealed, stops
   elapsed-time/spinner UI, keeps the operation mutation-locked, and offers only Host CAS actions:
-  retry, discard-and-change-provider, or discard.
+  retry, discard-and-change-provider, or discard. Project non-null wait reasons before phase, and
+  after reservation derive failure evidence only from authoring/repair outboxes; a settled
+  classifier must never be relabeled as the cause of a staging failure.
 
 - Tagma may reuse OpenCode's user-level data root for provider login state, but it must never share
   the schema-bearing session database with a standalone OpenCode CLI. Every managed Chat and
@@ -1153,6 +1193,11 @@
   orphans, and cycles; Chat history may continue hiding delegated sessions. Read messages with each
   verified root or descendant's stored directory because OpenCode directory matching may be
   case-sensitive on Windows.
+- Read verified session messages through OpenCode's V2 cursor projection. A tool-free compatibility
+  session can have an empty first page even after a successful response; diagnostics may then join
+  its authenticated outbox session id to the immutable Host-visible discussion/diagnosis result.
+  Keep this fallback read-only and already-open-authority-only, never expose classifier text, never
+  initialize a control store, and never substitute Host results for a caller-supplied history cursor.
 
 ## Focused Editor Tests
 

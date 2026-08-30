@@ -9,12 +9,15 @@ export interface ChatPipelineIntentCandidate {
   manualNewDraft: boolean;
 }
 
-// OpenCode 1.18.18 implements json_schema through this internal-only tool.
-// The wildcard denial keeps every model-facing filesystem/shell/task tool off.
+// Intent routing is deliberately ordinary text generation. The wildcard
+// denial keeps every model-facing filesystem/shell/task/structured-output
+// tool off; the Host parses and validates the bounded JSON text itself.
 export const TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS = Object.freeze({
   '*': false,
-  StructuredOutput: true,
 });
+
+const MAX_CLASSIFICATION_TEXT_BYTES = 16 * 1024;
+const encoder = new TextEncoder();
 
 export type ResolvedChatPipelineIntent =
   | { kind: 'discussion' }
@@ -30,8 +33,11 @@ export type ResolvedChatPipelineIntent =
 export interface ChatPipelineIntentClassificationPrompt {
   system: string;
   user: string;
+  /** Host validation and in-band text descriptor; never provider-native structured output. */
   schema: Record<string, unknown>;
 }
+
+export type ChatPipelineIntentClassificationAttempt = 1 | 2;
 
 export function buildChatPipelineIntentCandidates(
   entries: readonly { path: string; pipelineName: string | null }[],
@@ -100,8 +106,67 @@ function nullableCandidateSchema(candidateIds: readonly string[]): Record<string
 export function buildChatPipelineIntentClassificationPrompt(
   userText: string,
   candidates: readonly ChatPipelineIntentCandidate[],
+  attempt: ChatPipelineIntentClassificationAttempt = 1,
 ): ChatPipelineIntentClassificationPrompt {
   const candidateIds = candidates.map((candidate) => candidate.id);
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['kind', 'targetCandidateId', 'clarification', 'candidateIds'],
+    properties: {
+      kind: {
+        type: 'string',
+        enum: ['discussion', 'diagnosis', 'create', 'edit', 'clarify'],
+      },
+      targetCandidateId: nullableCandidateSchema(candidateIds),
+      clarification: {
+        anyOf: [{ type: 'string', minLength: 1, maxLength: 500 }, { type: 'null' }],
+      },
+      candidateIds: {
+        type: 'array',
+        uniqueItems: true,
+        maxItems: candidateIds.length,
+        items:
+          candidateIds.length > 0 ? { type: 'string', enum: candidateIds } : { type: 'string' },
+      },
+    },
+  };
+  const exactShapes = [
+    {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    },
+    {
+      kind: 'diagnosis',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    },
+    {
+      kind: 'create',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    },
+    ...(candidateIds.length > 0
+      ? [
+          {
+            kind: 'edit',
+            targetCandidateId: candidateIds[0],
+            clarification: null,
+            candidateIds: [],
+          },
+        ]
+      : []),
+    {
+      kind: 'clarify',
+      targetCandidateId: null,
+      clarification: 'Ask one concise question.',
+      candidateIds: [],
+    },
+  ].map((shape) => JSON.stringify(shape));
   const inventory = candidates
     .map(
       (candidate) =>
@@ -115,7 +180,15 @@ export function buildChatPipelineIntentClassificationPrompt(
   return {
     system: [
       'Classify one Tagma Chat request before any pipeline branch is allocated.',
-      'Return only the supplied JSON schema. Do not use tools or inspect files.',
+      ...(attempt === 2
+        ? [
+            'This is bounded repair attempt 2 of 2 because the first response violated the output contract.',
+          ]
+        : []),
+      'Return exactly one JSON object and no markdown, prose, or code fence.',
+      'The object must have exactly kind, targetCandidateId, clarification, and candidateIds.',
+      `Valid exact shapes are: ${exactShapes.join('; ')}.`,
+      'Do not use tools or inspect files.',
       'Use discussion when no concrete pipeline needs inspection or mutation.',
       'Use diagnosis for read-only inspection, explanation, debugging, review, or why/how questions.',
       'Use create only when the user wants a new pipeline rather than changing an inventoried one.',
@@ -129,36 +202,82 @@ export function buildChatPipelineIntentClassificationPrompt(
       '<inventory>',
       inventory,
       '</inventory>',
+      '<host-output-schema>',
+      escapeXml(JSON.stringify(schema)),
+      '</host-output-schema>',
       `<request>${escapeXml(userText)}</request>`,
       '</tagma-pipeline-intent-request>',
     ].join('\n'),
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['kind', 'targetCandidateId', 'clarification', 'candidateIds'],
-      properties: {
-        kind: {
-          type: 'string',
-          enum: ['discussion', 'diagnosis', 'create', 'edit', 'clarify'],
-        },
-        targetCandidateId: nullableCandidateSchema(candidateIds),
-        clarification: {
-          anyOf: [{ type: 'string', minLength: 1, maxLength: 500 }, { type: 'null' }],
-        },
-        candidateIds: {
-          type: 'array',
-          uniqueItems: true,
-          maxItems: candidateIds.length,
-          items:
-            candidateIds.length > 0 ? { type: 'string', enum: candidateIds } : { type: 'string' },
-        },
-      },
-    },
+    schema,
   };
 }
 
-/** Resolve and fail-close the model's schema-constrained classification. */
-export function resolveStructuredChatPipelineIntent(
+/**
+ * Parse the model's ordinary text result at the Host boundary. This is the
+ * syntactic counterpart to `resolveChatPipelineIntentDecision`: it replaces
+ * provider-native schema enforcement without weakening candidate authority.
+ */
+export function parseChatPipelineIntentClassificationText(
+  text: string,
+  candidates: readonly ChatPipelineIntentCandidate[],
+): ResolvedChatPipelineIntent {
+  if (
+    typeof text !== 'string' ||
+    text.length === 0 ||
+    encoder.encode(text).byteLength > MAX_CLASSIFICATION_TEXT_BYTES
+  ) {
+    throw new Error('The pipeline intent classifier returned invalid bounded JSON text.');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.trim());
+  } catch {
+    throw new Error('The pipeline intent classifier did not return exactly one JSON object.');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('The pipeline intent classifier JSON result is not an object.');
+  }
+  const result = parsed as Record<string, unknown>;
+  const keys = Object.keys(result).sort();
+  if (keys.join(',') !== 'candidateIds,clarification,kind,targetCandidateId') {
+    throw new Error('The pipeline intent classifier returned missing or unknown fields.');
+  }
+  if (
+    (result.targetCandidateId !== null && typeof result.targetCandidateId !== 'string') ||
+    (result.clarification !== null && typeof result.clarification !== 'string') ||
+    !Array.isArray(result.candidateIds) ||
+    result.candidateIds.length > candidates.length ||
+    result.candidateIds.some(
+      (id) => typeof id !== 'string' || id.length === 0 || id.length > 256,
+    ) ||
+    new Set(result.candidateIds).size !== result.candidateIds.length
+  ) {
+    throw new Error('The pipeline intent classifier returned invalid field types or bounds.');
+  }
+  if (typeof result.targetCandidateId === 'string' && result.targetCandidateId.length > 256) {
+    throw new Error('The pipeline intent classifier target exceeded its bound.');
+  }
+  const clarification = result.clarification;
+  if (
+    typeof clarification === 'string' &&
+    (clarification.trim().length === 0 ||
+      Array.from(clarification).length > 500 ||
+      encoder.encode(clarification).byteLength > 2_000)
+  ) {
+    throw new Error('The pipeline intent classifier clarification exceeded its bound.');
+  }
+  if (result.kind === 'clarify') {
+    if (result.targetCandidateId !== null || typeof clarification !== 'string') {
+      throw new Error('A clarification classification has invalid fields.');
+    }
+  } else if (clarification !== null || result.candidateIds.length !== 0) {
+    throw new Error('A non-clarification classification has invalid clarification fields.');
+  }
+  return resolveChatPipelineIntentDecision(result, candidates);
+}
+
+/** Resolve and fail-close an already parsed classification decision. */
+export function resolveChatPipelineIntentDecision(
   structured: unknown,
   candidates: readonly ChatPipelineIntentCandidate[],
 ): ResolvedChatPipelineIntent {

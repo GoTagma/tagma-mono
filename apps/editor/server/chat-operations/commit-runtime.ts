@@ -30,10 +30,11 @@ import {
   type ChatOperationV2BindingTerminalTransaction,
   type ChatOperationV2TargetCoordinate,
 } from './binding.js';
-import type {
-  ChatCommitDecisionEvidence,
-  ChatCommitFallbackReservation,
-  ChatCommitPrepareRecord,
+import {
+  deriveChatCommitCoordinateId,
+  type ChatCommitDecisionEvidence,
+  type ChatCommitFallbackReservation,
+  type ChatCommitPrepareRecord,
 } from './commit.js';
 import {
   ChatCommitExecutor,
@@ -647,7 +648,7 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
     const authority = {
       version: RESERVATION_VERSION,
       commitId,
-      coordinateId: opaqueId('coordinate', this.#workspaceScopeId, target.identity),
+      coordinateId: deriveChatCommitCoordinateId(this.#workspaceScopeId, target.identity),
       bindingId: opaqueId('binding', commitId, 'fallback'),
       resultId,
       target,
@@ -691,7 +692,7 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
     if (
       record.bindingId !== opaqueId('binding', record.commitId, 'fallback') ||
       record.coordinateId !==
-        opaqueId('coordinate', this.#workspaceScopeId, record.target.identity) ||
+        deriveChatCommitCoordinateId(this.#workspaceScopeId, record.target.identity) ||
       record.resultId !== resultId
     ) {
       throw new ChatCommitExecutorError(
@@ -710,8 +711,7 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
     resultId: string;
     resultAuthority: ChatOperationV2AuthoringVisibleResultAuthority;
   }): Promise<CommitExecutionContext> {
-    const primaryCoordinateId = opaqueId(
-      'coordinate',
+    const primaryCoordinateId = deriveChatCommitCoordinateId(
       this.#workspaceScopeId,
       input.binding.target.identity,
     );

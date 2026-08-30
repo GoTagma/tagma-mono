@@ -22,10 +22,24 @@ export interface DiagnosticsOpencodeSessionOptions {
   offset?: number;
 }
 
+export interface DiagnosticsHostSessionProjection {
+  readonly source: 'chat-operation-v2-result';
+  readonly operationId: string;
+  readonly invocationId: string;
+  readonly purpose: 'discussion' | 'diagnosis';
+  readonly terminalOutcome: string | null;
+  readonly resultId: string | null;
+  readonly messages: readonly unknown[];
+}
+
 export interface DiagnosticsOpencodeDependencies {
   getWorkspace: (workspaceKey: string) => { workDir: string } | null | undefined;
   getHandle: (cwd: string) => OpencodeHandle | null;
   fetchOpencode: (input: OpencodeProxyRequest) => Promise<Response>;
+  getHostSessionProjection?: (
+    workspaceKey: string,
+    sessionId: string,
+  ) => DiagnosticsHostSessionProjection | null;
 }
 
 const DEFAULT_DEPENDENCIES: DiagnosticsOpencodeDependencies = {
@@ -33,6 +47,23 @@ const DEFAULT_DEPENDENCIES: DiagnosticsOpencodeDependencies = {
   getHandle: getOpencodeHandle,
   fetchOpencode: fetchOpencodeProxy,
 };
+
+export function createDiagnosticsOpencodeMessageReader(
+  getHostSessionProjection: NonNullable<
+    DiagnosticsOpencodeDependencies['getHostSessionProjection']
+  >,
+): (
+  workspaceKey: string | null,
+  sessionId: string,
+  options: DiagnosticsOpencodeMessageOptions,
+) => Promise<unknown> {
+  const dependencies: DiagnosticsOpencodeDependencies = {
+    ...DEFAULT_DEPENDENCIES,
+    getHostSessionProjection,
+  };
+  return (workspaceKey, sessionId, options) =>
+    readDiagnosticsOpencodeMessages(workspaceKey, sessionId, options, dependencies);
+}
 
 export class DiagnosticsReadError extends Error {
   constructor(
@@ -135,6 +166,40 @@ function unwrapArray(payload: unknown, label: string): unknown[] {
     return (payload as { data: unknown[] }).data;
   }
   throw new DiagnosticsReadError(502, `OpenCode returned an invalid ${label} payload.`);
+}
+
+interface OpenCodeMessagePage {
+  messages: unknown[];
+  previousCursor: string | null;
+  nextCursor: string | null;
+}
+
+function parseOptionalCursor(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function unwrapMessagePage(payload: unknown): OpenCodeMessagePage {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new DiagnosticsReadError(502, 'OpenCode returned an invalid message page payload.');
+  }
+  const data = (payload as { data?: unknown }).data;
+  const cursor = (payload as { cursor?: unknown }).cursor;
+  if (!Array.isArray(data) || !cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
+    throw new DiagnosticsReadError(502, 'OpenCode returned an invalid message page payload.');
+  }
+  const previous = (cursor as { previous?: unknown }).previous;
+  const next = (cursor as { next?: unknown }).next;
+  if (
+    (previous !== undefined && previous !== null && parseOptionalCursor(previous) === null) ||
+    (next !== undefined && next !== null && parseOptionalCursor(next) === null)
+  ) {
+    throw new DiagnosticsReadError(502, 'OpenCode returned an invalid message page cursor.');
+  }
+  return {
+    messages: data,
+    previousCursor: parseOptionalCursor(previous),
+    nextCursor: parseOptionalCursor(next),
+  };
 }
 
 interface WorkspaceSessionDiscovery {
@@ -246,22 +311,6 @@ function sessionParentId(value: unknown): string | null {
   return typeof parentId === 'string' && parentId.trim() ? parentId.trim() : null;
 }
 
-function sessionDirectory(value: unknown): string | null {
-  if (!value || typeof value !== 'object') return null;
-  const directory = (value as { directory?: unknown }).directory;
-  return typeof directory === 'string' && directory.trim() ? directory.trim() : null;
-}
-
-function messageId(value: unknown): string | null {
-  if (!value || typeof value !== 'object') return null;
-  const direct = (value as { id?: unknown }).id;
-  if (typeof direct === 'string' && direct.trim()) return direct;
-  const info = (value as { info?: unknown }).info;
-  if (!info || typeof info !== 'object') return null;
-  const nested = (info as { id?: unknown }).id;
-  return typeof nested === 'string' && nested.trim() ? nested : null;
-}
-
 export async function readDiagnosticsOpencodeSessions(
   workspaceKey: string | null,
   dependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
@@ -334,19 +383,33 @@ export async function readDiagnosticsOpencodeMessages(
   }
 
   const query = new URLSearchParams({
-    directory: sessionDirectory(session) ?? handle.cwd,
     limit: String(options.limit),
+    order: 'desc',
   });
-  if (options.before) query.set('before', options.before);
-  const messages = unwrapArray(
+  if (options.before) query.set('cursor', options.before);
+  const page = unwrapMessagePage(
     await requestOpencodeJson(
       handle,
-      `/session/${encodeURIComponent(requestedSessionId)}/message?${query}`,
+      `/api/session/${encodeURIComponent(requestedSessionId)}/message?${query}`,
       dependencies,
     ),
-    'message list',
   );
-  const boundaryReached = messages.length >= options.limit;
+  const hostProjection =
+    page.messages.length === 0 && options.before === undefined
+      ? (dependencies.getHostSessionProjection?.(workspaceKey!, requestedSessionId) ?? null)
+      : null;
+  const messages = hostProjection?.messages ?? page.messages;
+  const messageSource = hostProjection
+    ? {
+        kind: hostProjection.source,
+        operationId: hostProjection.operationId,
+        invocationId: hostProjection.invocationId,
+        purpose: hostProjection.purpose,
+        terminalOutcome: hostProjection.terminalOutcome,
+        resultId: hostProjection.resultId,
+      }
+    : { kind: 'opencode-v2-projection' as const };
+  const paginationLayer = hostProjection ? 'chat-operation-v2-result' : 'opencode-v2-message-page';
   return sanitizeDiagnosticValue(
     {
       workspaceKey,
@@ -354,13 +417,15 @@ export async function readDiagnosticsOpencodeMessages(
       limit: options.limit,
       before: options.before ?? null,
       returnedMessageCount: messages.length,
+      messageSource,
       pagination: {
-        layer: 'opencode-message-query',
+        layer: paginationLayer,
         limit: options.limit,
         before: options.before ?? null,
         returnedCount: messages.length,
-        boundaryReached,
-        nextBefore: boundaryReached ? messageId(messages.at(-1)) : null,
+        boundaryReached: hostProjection ? false : page.nextCursor !== null,
+        previousBefore: hostProjection ? null : page.previousCursor,
+        nextBefore: hostProjection ? null : page.nextCursor,
       },
       sessionDiscovery: discovery.sourceQueries,
       messages,

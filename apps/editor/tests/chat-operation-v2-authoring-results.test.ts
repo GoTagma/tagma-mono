@@ -6,7 +6,9 @@ import type {
   StoredInvocationOutboxRecord,
 } from '../server/chat-operations/store.js';
 
-function outbox(purpose: 'authoring' | 'repair' = 'authoring'): StoredInvocationOutboxRecord {
+function outbox(
+  purpose: 'authoring' | 'repair' | 'trial_plan' = 'authoring',
+): StoredInvocationOutboxRecord {
   return {
     invocationId: `invocation-${purpose}`,
     workspaceScopeId: 'workspace-1',
@@ -53,7 +55,7 @@ function harness(record = outbox()) {
   };
 }
 
-function input(purpose: 'authoring' | 'repair' = 'authoring') {
+function input(purpose: 'authoring' | 'repair' | 'trial_plan' = 'authoring') {
   return {
     operationId: 'operation-1',
     workspaceScopeId: 'workspace-1',
@@ -66,10 +68,11 @@ function input(purpose: 'authoring' | 'repair' = 'authoring') {
     admittedAggregateSeq: 7,
     capturedAt: 10,
     purpose,
-    text: purpose === 'authoring' ? 'Updated the pipeline.' : 'Internal repair details.',
+    text: purpose === 'authoring' ? 'Updated the pipeline.' : 'Internal invocation details.',
     finishCode: 'stop',
     source: { sessionId: 'session-1', aggregateSeq: 8, eventId: 'event-1' },
     rendererProjectable: purpose === 'authoring',
+    verificationNotice: null,
   } as const;
 }
 
@@ -88,6 +91,28 @@ describe('Chat Operation V2 authoring result persistence adapter', () => {
     expect(first.pendingMessageHash).toBe(first.message!.messageHash);
   });
 
+  test('seals a Host-authored unverified Trial notice into the visible authoring result', async () => {
+    const fixture = harness();
+    const result = await fixture.persistence.persistCompletedInvocationResult({
+      ...input(),
+      verificationNotice: {
+        status: 'unverified',
+        code: 'trial_blocked',
+        summary: 'Trial requires an explicitly authorized Live Smoke Test.',
+      },
+    });
+
+    expect(result.message?.attachments).toEqual([
+      expect.objectContaining({
+        attachmentId: expect.stringMatching(/^notice_[a-f0-9]{48}$/),
+        kind: 'notice',
+        mediaType: 'text/plain',
+        label: 'Pipeline published without completed Trial verification',
+        content: 'Trial requires an explicitly authorized Live Smoke Test.',
+      }),
+    ]);
+  });
+
   test('drops repair text and relies on settled outbox evidence', async () => {
     const fixture = harness(outbox('repair'));
     const result = await fixture.persistence.persistCompletedInvocationResult(input('repair'));
@@ -101,7 +126,23 @@ describe('Chat Operation V2 authoring result persistence adapter', () => {
       message: null,
       messageCount: 0,
     });
-    expect(JSON.stringify(result)).not.toContain('Internal repair details');
+    expect(JSON.stringify(result)).not.toContain('Internal invocation details');
+  });
+
+  test('drops dedicated Trial Plan text and relies on settled outbox evidence', async () => {
+    const fixture = harness(outbox('trial_plan'));
+    const result = await fixture.persistence.persistCompletedInvocationResult(input('trial_plan'));
+
+    expect(result).toMatchObject({
+      invocationId: 'invocation-trial_plan',
+      rendererProjectable: false,
+      resultId: null,
+      pendingMessageId: null,
+      pendingMessageHash: null,
+      message: null,
+      messageCount: 0,
+    });
+    expect(JSON.stringify(result)).not.toContain('Internal invocation details');
   });
 
   test('fails closed when invocation settlement authority differs', async () => {

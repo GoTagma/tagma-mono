@@ -57,6 +57,18 @@ export const TAGMA_CONTEXT_PACKAGER_AGENT = 'tagma-context-packager';
 export const TAGMA_PIPELINE_SECTION_BUILDER_AGENT = 'tagma-pipeline-section-builder';
 export const TAGMA_TRIAL_PLANNER_AGENT = 'tagma-trial-planner';
 
+export const TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT = `## Evidence Semantics
+
+- An empty \`compileDiagnostics\` array means only that the frozen editor snapshot contains no captured diagnostics. It is not evidence that Host compilation, preflight, Trial, or a pipeline run occurred.
+- When its bytes are actually supplied, \`.compile.log\` is static Host compilation evidence only. A successful parse or compile result applies to those exact pipeline bytes; it never proves that a dependency binary is installed, preflight succeeded, a task ran, outputs were observed, or task order was exercised. Never request or cite \`.compile.log\` as runtime or dependency-probe evidence.
+- Keep configuration, captured diagnostics, static compilation, and runtime observations as disjoint evidence classes. Never group \`.compile.log\` with runtime evidence, including in examples or next steps. If both are missing, request compile evidence and Trial/run/task-output evidence separately and use each only for claims in its own class.
+- Preflight is separate environment/runtime evidence and requires an explicit preflight result. Never combine compilation and preflight into one claim, such as "compiled/preflighted" or "compilation/preflight". Before returning, check that every mention of \`.compile.log\` is limited to static compile or parse claims and never implies preflight or dependency availability.
+- Manifest, layout, and requirements are companion metadata, not execution evidence. Make runtime claims only from explicit Trial, run, reconciliation, or task-output evidence present in the handoff.
+- A requirements entry named \`opencode\` with \`fromDriver: opencode\` is a Tagma-managed runtime dependency, not an operator-installed CLI. It is intentionally omitted from the human \`## CLI tools\` list, so the generated \`No CLI tools required yet.\` marker is not contradictory. Do not recommend installing or probing this managed binary. Treat other binaries according to their supplied requirement metadata.
+- Do not invent schema fields, task kinds, validation properties, or commands. Recommend a contract field only when the supplied artifact or an allowed loaded skill proves it exists. When static schema cannot prove a runtime value, state the required runtime observation without fabricating a YAML mechanism.
+- Do not claim that an artifact was inspected unless its content is present in the sealed handoff or was read through an allowed path. A filename or candidate path alone is not its content.
+`;
+
 export function buildTagmaRouterAgent(): string {
   return `---
 description: Classify and delegate Tagma chat turns.
@@ -165,7 +177,7 @@ permission:
   tagma_trial_plan: deny
 ---
 
-Classify exactly one Tagma Chat request from the Host-provided frozen pipeline inventory. The Host supplies the JSON Schema and owns candidate ids, path resolution, branch allocation, and write authority. Return only that schema-constrained result. Never inspect files, call tools, delegate, invent a candidate, or turn a path/name into authority. Ambiguity must return the schema's clarification result instead of guessing.
+Classify exactly one Tagma Chat request from the Host-provided frozen pipeline inventory. Return exactly one JSON object using the four Host-declared fields and no markdown or prose. The Host parses the text, validates every field and candidate id, and owns path resolution, branch allocation, and write authority. Never inspect files, call tools, delegate, invent a candidate, or turn a path/name into authority. Ambiguity must return a clarification decision instead of guessing.
 `;
 }
 
@@ -306,6 +318,8 @@ You are the Tagma pipeline diagnosis agent. Investigate a concrete pipeline, YAM
 - When \`<chat-staging>\` is present, \`<agent-root>\` is the sole filesystem read/write boundary. Do not inspect or access the live workspace or live \`.tagma\` outside it. Without staging, stay on the exact handed-off workspace paths.
 - Do not delegate workspace discovery. Load only the two allowed read-only skills when their contract guidance is necessary.
 - Never write, edit, patch, create, rename, delete, or run commands. Never modify \`.compile.log\` or any generated companion artifact.
+
+${TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT}
 
 ## Routing Boundary
 

@@ -5,7 +5,7 @@ import { createOpencodeClient as createOpencodeV2Client } from '@opencode-ai/sdk
 
 import {
   buildChatPipelineIntentClassificationPrompt,
-  resolveStructuredChatPipelineIntent,
+  parseChatPipelineIntentClassificationText,
   TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS,
   type ChatPipelineIntentCandidate,
   type ResolvedChatPipelineIntent,
@@ -15,6 +15,7 @@ import { ensureOpencode } from '../opencode-lifecycle.js';
 import {
   TAGMA_GENERAL_DISCUSSION_AGENT,
   TAGMA_PIPELINE_DIAGNOSIS_AGENT,
+  TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT,
   TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT,
 } from '../opencode-seed.js';
 import {
@@ -32,6 +33,10 @@ import type {
   ChatOperationV2DurableInvocationResult,
   ChatOperationV2DurableInvocationRunner,
 } from './orchestrator.js';
+import {
+  buildReadonlyTextCanonicalRequestBytes,
+  type ChatOperationV2ReadonlyTextPurpose,
+} from './readonly-text.js';
 import type { ChatReadSnapshot } from './snapshots.js';
 
 const encoder = new TextEncoder();
@@ -73,17 +78,14 @@ export interface OpenCodeAdapterNativeHistoryInput {
   readonly limit: number;
 }
 
-export interface OpenCodeAdapterRichPromptInput {
+export interface OpenCodeAdapterClassifierTextPromptInput {
   readonly sessionID: string;
   readonly messageID: string;
   readonly agent: typeof TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT;
   readonly model: { readonly providerID: string; readonly modelID: string };
   readonly variant?: string;
   readonly tools: typeof TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS;
-  readonly format: {
-    readonly type: 'json_schema';
-    readonly schema: Record<string, unknown>;
-  };
+  readonly format: { readonly type: 'text' };
   readonly system: string;
   readonly parts: readonly [{ readonly type: 'text'; readonly text: string }];
 }
@@ -112,7 +114,7 @@ export interface OpenCodeAdapterSdkClient {
   };
   readonly session: {
     prompt(
-      input: OpenCodeAdapterRichPromptInput | OpenCodeAdapterTextPromptInput,
+      input: OpenCodeAdapterClassifierTextPromptInput | OpenCodeAdapterTextPromptInput,
       options?: { readonly signal?: AbortSignal },
     ): Promise<OpenCodeAdapterSdkResult>;
   };
@@ -134,33 +136,32 @@ export interface OpenCodeClassifierUsage {
   readonly outcome: 'completed' | 'zero_token';
 }
 
-export interface OpenCodeRichClassifierResponse {
-  readonly messageId: string;
-  readonly structuredOutput: unknown;
-  readonly errorName: string | null;
-  readonly finishCode: string;
-  readonly usage: OpenCodeClassifierUsage | null;
-}
-
-export interface OpenCodeRichTextResponse {
+export interface OpenCodeIntentClassifierTextResponse {
   readonly messageId: string;
   readonly text: string;
-  readonly errorName: string | null;
+  readonly failureCode: OpenCodePromptProviderFailureCode | null;
   readonly finishCode: string;
   readonly usage: OpenCodeClassifierUsage | null;
 }
 
-export interface OpenCodeRichClassifierClient {
-  promptStructuredClassifier(input: {
+export interface OpenCodeReadonlyTextResponse {
+  readonly messageId: string;
+  readonly text: string;
+  readonly failureCode: OpenCodePromptProviderFailureCode | null;
+  readonly finishCode: string;
+  readonly usage: OpenCodeClassifierUsage | null;
+}
+
+export interface OpenCodeTextPromptClient {
+  promptIntentClassifierText(input: {
     readonly sessionId: string;
     readonly executionMessageId: string;
     readonly model: { readonly providerID: string; readonly modelID: string };
     readonly variant: string | null;
     readonly system: string;
     readonly user: string;
-    readonly schema: Record<string, unknown>;
     readonly signal: AbortSignal;
-  }): Promise<OpenCodeRichClassifierResponse>;
+  }): Promise<OpenCodeIntentClassifierTextResponse>;
   promptReadonlyText(input: {
     readonly purpose: 'discussion' | 'diagnosis';
     readonly sessionId: string;
@@ -170,7 +171,7 @@ export interface OpenCodeRichClassifierClient {
     readonly system: string;
     readonly user: string;
     readonly signal: AbortSignal;
-  }): Promise<OpenCodeRichTextResponse>;
+  }): Promise<OpenCodeReadonlyTextResponse>;
   interruptSession(sessionId: string): Promise<void>;
 }
 
@@ -194,7 +195,7 @@ function requireSuccessfulSdkData(result: OpenCodeAdapterSdkResult): unknown {
 }
 
 class OpenCodeDefinitivePromptError extends Error {
-  constructor(readonly code: OpenCodeStructuredClassifierProviderCode) {
+  constructor(readonly code: OpenCodePromptProviderFailureCode) {
     super('OpenCode returned a definitive bounded prompt failure.');
     this.name = 'OpenCodeDefinitivePromptError';
   }
@@ -212,7 +213,7 @@ function sdkErrorSignals(value: unknown, depth = 0): string[] {
         if (typeof field === 'string' && field.length <= 128) signals.push(field.toLowerCase());
       }
     }
-    for (const key of ['data', 'error', 'cause']) {
+    for (const key of ['data', 'detail', 'error', 'cause']) {
       const descriptor = descriptors[key];
       if (descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
         signals.push(...sdkErrorSignals(descriptor.value, depth + 1));
@@ -224,9 +225,148 @@ function sdkErrorSignals(value: unknown, depth = 0): string[] {
   }
 }
 
-function classifierSdkFailureCode(
+function sdkErrorMessages(value: unknown, depth = 0): string[] {
+  if (depth > 2 || typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const messages: string[] = [];
+    const message = descriptors.message;
+    if (
+      message &&
+      Object.prototype.hasOwnProperty.call(message, 'value') &&
+      typeof message.value === 'string' &&
+      message.value.length <= 512
+    ) {
+      messages.push(message.value.toLowerCase());
+    }
+    for (const key of ['data', 'detail', 'error', 'cause']) {
+      const descriptor = descriptors[key];
+      if (descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        messages.push(...sdkErrorMessages(descriptor.value, depth + 1));
+      }
+    }
+    return messages;
+  } catch {
+    return [];
+  }
+}
+
+function sdkErrorStatus(value: unknown, depth = 0): number | null {
+  if (depth > 2 || typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    for (const key of ['statusCode', 'status']) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) continue;
+      const field = descriptor.value;
+      if (Number.isInteger(field) && (field as number) >= 100 && (field as number) <= 599) {
+        return field as number;
+      }
+    }
+    for (const key of ['data', 'detail', 'error', 'cause']) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) continue;
+      const nested = sdkErrorStatus(descriptor.value, depth + 1);
+      if (nested !== null) return nested;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function sdkErrorRetryable(value: unknown, depth = 0): boolean | null {
+  if (depth > 2 || typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const retryable = descriptors.isRetryable;
+    if (
+      retryable &&
+      Object.prototype.hasOwnProperty.call(retryable, 'value') &&
+      typeof retryable.value === 'boolean'
+    ) {
+      return retryable.value;
+    }
+    for (const key of ['data', 'detail', 'error', 'cause']) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) continue;
+      const nested = sdkErrorRetryable(descriptor.value, depth + 1);
+      if (nested !== null) return nested;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function openCodeProviderFailureCode(
+  error: unknown,
+  responseStatus: number | null = null,
+): OpenCodePromptProviderFailureCode {
+  const identifiers = sdkErrorSignals(error);
+  const identifierSignal = identifiers.join(' ');
+  const signal = identifiers.includes('apierror')
+    ? `${identifierSignal} ${sdkErrorMessages(error).join(' ')}`
+    : identifierSignal;
+  const status = sdkErrorStatus(error) ?? responseStatus;
+  const retryable = sdkErrorRetryable(error);
+
+  if (identifiers.includes('structuredoutputerror')) {
+    return 'structured_output_error';
+  }
+  if (identifiers.includes('providerautherror')) return 'provider_authentication_failed';
+  if (identifiers.includes('messageoutputlengtherror')) return 'model_output_length';
+  if (identifiers.includes('messageabortederror')) return 'provider_invocation_aborted';
+  if (identifiers.includes('contextoverflowerror')) return 'model_context_overflow';
+  if (identifiers.includes('contentfiltererror')) return 'provider_content_filtered';
+  if (status === 401 || status === 403) return 'provider_authentication_failed';
+  if (status === 402) return 'provider_billing_required';
+  if (status === 429) return 'provider_rate_limited';
+  if (status === 408 || (status !== null && status >= 500)) {
+    return 'provider_unavailable';
+  }
+  if (/structured.?output.?error/.test(signal)) return 'structured_output_error';
+  if (/context.?overflow|context.?length|context.?window/.test(signal)) {
+    return 'model_context_overflow';
+  }
+  if (/content.?filter|content.?policy|moderation/.test(signal)) {
+    return 'provider_content_filtered';
+  }
+  if (
+    /provider.?model.?not.?found|model.{0,24}(?:not.?found|does.?not.?exist)|unknown.?model|invalid.?model/.test(
+      signal,
+    )
+  ) {
+    return 'model_unavailable';
+  }
+  if (
+    /unsupported.?tool|tool.?unsupported|tools.?not.?supported|structured.?output.?unsupported|does.?not.?support.{0,32}(?:tool|structured.?output)/.test(
+      signal,
+    )
+  ) {
+    return 'model_incompatible';
+  }
+  if (/auth|unauthorized|forbidden|credential|api.?key/.test(signal)) {
+    return 'provider_authentication_failed';
+  }
+  if (
+    /insufficient.?credit|insufficient.?quota|billing|payment.?required|credit.?balance/.test(
+      signal,
+    )
+  ) {
+    return 'provider_billing_required';
+  }
+  if (/rate.?limit|too.?many.?requests|quota.?exceeded/.test(signal)) {
+    return 'provider_rate_limited';
+  }
+  if (status !== null && status >= 400 && status < 500) return 'provider_request_rejected';
+  if (retryable === true) return 'provider_unavailable';
+  return 'provider_invocation_failed';
+}
+
+function promptSdkFailureCode(
   result: OpenCodeAdapterSdkResult,
-): OpenCodeStructuredClassifierProviderCode | null {
+): OpenCodePromptProviderFailureCode | null {
   const status = Number.isInteger(result.response?.status) ? result.response.status : null;
   if (
     result.error === undefined &&
@@ -237,24 +377,7 @@ function classifierSdkFailureCode(
   ) {
     return null;
   }
-  const signal = sdkErrorSignals(result.error).join(' ');
-  if (/provider.?model.?not.?found|model.?not.?found|unknown.?model|invalid.?model/.test(signal)) {
-    return 'model_unavailable';
-  }
-  if (
-    /unsupported.?tool|tool.?unsupported|tools.?not.?supported|structured.?output.?unsupported/.test(
-      signal,
-    )
-  ) {
-    return 'model_incompatible';
-  }
-  if (/auth|unauthorized|forbidden|credential/.test(signal) || status === 401 || status === 403) {
-    return 'provider_authentication_failed';
-  }
-  if (/rate|quota|too.?many/.test(signal) || status === 429) return 'provider_rate_limited';
-  if (status !== null && status >= 400 && status < 500) return 'provider_request_rejected';
-  if (status !== null && status >= 500) return 'provider_unavailable';
-  return 'provider_invocation_failed';
+  return openCodeProviderFailureCode(result.error, status);
 }
 
 function safeNonNegativeInteger(value: unknown): number | null {
@@ -355,7 +478,7 @@ function parseHistoryRecord(
  * rich prompt onto one Host-owned session identity. It never delegates execution authority to the renderer.
  */
 export class OpenCodeSdkAdapter
-  implements OpenCodeInvocationNativeClient, OpenCodeRichClassifierClient
+  implements OpenCodeInvocationNativeClient, OpenCodeTextPromptClient
 {
   private readonly workspaceDirectory: string;
   private readonly resolveClient: () => Promise<OpenCodeAdapterSdkClient>;
@@ -469,16 +592,15 @@ export class OpenCodeSdkAdapter
     return { records, hasMore: envelope.hasMore };
   }
 
-  async promptStructuredClassifier(input: {
+  async promptIntentClassifierText(input: {
     readonly sessionId: string;
     readonly executionMessageId: string;
     readonly model: { readonly providerID: string; readonly modelID: string };
     readonly variant: string | null;
     readonly system: string;
     readonly user: string;
-    readonly schema: Record<string, unknown>;
     readonly signal: AbortSignal;
-  }): Promise<OpenCodeRichClassifierResponse> {
+  }): Promise<OpenCodeIntentClassifierTextResponse> {
     const client = await this.resolveClient();
     const result = await client.session.prompt(
       {
@@ -488,24 +610,37 @@ export class OpenCodeSdkAdapter
         model: input.model,
         ...(input.variant ? { variant: input.variant } : {}),
         tools: TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS,
-        format: { type: 'json_schema', schema: input.schema },
+        format: { type: 'text' },
         system: input.system,
         parts: [{ type: 'text', text: input.user }],
       },
       { signal: input.signal },
     );
-    const failureCode = classifierSdkFailureCode(result);
+    const failureCode = promptSdkFailureCode(result);
     if (failureCode) throw new OpenCodeDefinitivePromptError(failureCode);
     const response = record(requireSuccessfulSdkData(result));
     const info = record(response?.info);
     if (!info || typeof info.parentID !== 'string') {
-      throw new Error('OpenCode rich classifier returned a malformed response envelope.');
+      throw new Error('OpenCode text classifier returned a malformed response envelope.');
     }
-    const providerError = record(info.error);
+    const providerError = info.error === undefined || info.error === null ? null : info.error;
+    if (providerError === null && !Array.isArray(response?.parts)) {
+      throw new Error('OpenCode text classifier returned a malformed response envelope.');
+    }
+    const text = Array.isArray(response?.parts)
+      ? response.parts
+          .map((value) => record(value))
+          .filter(
+            (part): part is Record<string, unknown> =>
+              part?.type === 'text' && typeof part.text === 'string',
+          )
+          .map((part) => part.text as string)
+          .join('')
+      : '';
     return {
       messageId: info.parentID,
-      structuredOutput: info.structured,
-      errorName: typeof providerError?.name === 'string' ? providerError.name : null,
+      text,
+      failureCode: providerError === null ? null : openCodeProviderFailureCode(providerError),
       finishCode: safeFinishCode(info.finish),
       usage: safeUsage(info),
     };
@@ -520,7 +655,7 @@ export class OpenCodeSdkAdapter
     readonly system: string;
     readonly user: string;
     readonly signal: AbortSignal;
-  }): Promise<OpenCodeRichTextResponse> {
+  }): Promise<OpenCodeReadonlyTextResponse> {
     const client = await this.resolveClient();
     const result = await client.session.prompt(
       {
@@ -539,20 +674,27 @@ export class OpenCodeSdkAdapter
       },
       { signal: input.signal },
     );
+    const sdkFailureCode = promptSdkFailureCode(result);
+    if (sdkFailureCode) throw new OpenCodeDefinitivePromptError(sdkFailureCode);
     const response = record(requireSuccessfulSdkData(result));
     const info = record(response?.info);
-    if (!info || typeof info.parentID !== 'string' || !Array.isArray(response?.parts)) {
+    if (!info || typeof info.parentID !== 'string') {
       throw new Error('OpenCode read-only text returned a malformed response envelope.');
     }
-    const text = response.parts
-      .map((value) => record(value))
-      .filter(
-        (part): part is Record<string, unknown> =>
-          part?.type === 'text' && typeof part.text === 'string',
-      )
-      .map((part) => part.text as string)
-      .join('');
-    const providerError = record(info.error);
+    const providerError = info.error === undefined || info.error === null ? null : info.error;
+    if (providerError === null && !Array.isArray(response?.parts)) {
+      throw new Error('OpenCode read-only text returned a malformed response envelope.');
+    }
+    const text = Array.isArray(response?.parts)
+      ? response.parts
+          .map((value) => record(value))
+          .filter(
+            (part): part is Record<string, unknown> =>
+              part?.type === 'text' && typeof part.text === 'string',
+          )
+          .map((part) => part.text as string)
+          .join('')
+      : '';
     if (
       providerError === null &&
       (!text.trim() || encoder.encode(text).byteLength > MAX_READONLY_TEXT_OUTPUT_BYTES)
@@ -562,7 +704,7 @@ export class OpenCodeSdkAdapter
     return {
       messageId: info.parentID,
       text,
-      errorName: typeof providerError?.name === 'string' ? providerError.name : null,
+      failureCode: providerError === null ? null : openCodeProviderFailureCode(providerError),
       finishCode: safeFinishCode(info.finish),
       usage: safeUsage(info),
     };
@@ -592,7 +734,7 @@ function canonicalJson(value: unknown): string {
     .join(',')}}`;
 }
 
-export function buildStructuredClassifierCanonicalRequestBytes(
+export function buildClassifierTextCanonicalRequestBytes(
   userText: string,
   candidates: readonly ChatPipelineIntentCandidate[],
 ): Uint8Array {
@@ -608,7 +750,7 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-export function parseStructuredClassifierCanonicalRequestBytes(
+export function parseClassifierTextCanonicalRequestBytes(
   bytes: Uint8Array,
 ): ReturnType<typeof buildChatPipelineIntentClassificationPrompt> {
   let value: unknown;
@@ -642,35 +784,14 @@ export function parseStructuredClassifierCanonicalRequestBytes(
   };
 }
 
-export type OpenCodeReadonlyTextPurpose = 'discussion' | 'diagnosis';
+export type OpenCodeReadonlyTextPurpose = ChatOperationV2ReadonlyTextPurpose;
+
+export { buildReadonlyTextCanonicalRequestBytes } from './readonly-text.js';
 
 export interface OpenCodeReadonlyTextPrompt {
   readonly purpose: OpenCodeReadonlyTextPurpose;
   readonly system: string;
   readonly user: string;
-}
-
-export function buildReadonlyTextCanonicalRequestBytes(input: {
-  readonly purpose: OpenCodeReadonlyTextPurpose;
-  readonly request: ChatOperationV2AdmissionRequest;
-  readonly readSnapshot: ChatReadSnapshot | null;
-}): Uint8Array {
-  if (input.purpose === 'discussion' && input.readSnapshot !== null) {
-    throw new TypeError('Discussion cannot receive a read snapshot.');
-  }
-  if (input.purpose === 'diagnosis' && input.readSnapshot === null) {
-    throw new TypeError('Diagnosis requires its sealed read snapshot.');
-  }
-  return encoder.encode(
-    canonicalJson({
-      purpose: input.purpose,
-      request: input.request,
-      access:
-        input.purpose === 'diagnosis'
-          ? { kind: 'sealed_snapshot_only', snapshot: input.readSnapshot }
-          : { kind: 'none' },
-    }),
-  );
 }
 
 function requireReadonlyAdmissionRequest(value: unknown): ChatOperationV2AdmissionRequest {
@@ -741,32 +862,39 @@ export function parseReadonlyTextCanonicalRequestBytes(input: {
   const request = requireReadonlyAdmissionRequest(envelope.request);
   let snapshot: ChatReadSnapshot | null = null;
   if (input.purpose === 'discussion') {
-    if (
-      input.readSnapshot !== null ||
-      Object.keys(access).join(',') !== 'kind' ||
-      access.kind !== 'none'
-    ) {
+    if (input.readSnapshot !== null) {
       throw new Error('Discussion invocation cannot carry snapshot authority.');
     }
   } else {
-    if (
-      input.readSnapshot === null ||
-      Object.keys(access).sort().join(',') !== 'kind,snapshot' ||
-      access.kind !== 'sealed_snapshot_only' ||
-      !record(access.snapshot) ||
-      canonicalJson(access.snapshot) !== canonicalJson(input.readSnapshot)
-    ) {
-      throw new Error('Diagnosis invocation does not match its sealed Host snapshot.');
-    }
     snapshot = input.readSnapshot;
+  }
+  if (
+    !sameBytes(
+      input.bytes,
+      buildReadonlyTextCanonicalRequestBytes({
+        purpose: input.purpose,
+        request,
+        readSnapshot: snapshot,
+      }),
+    )
+  ) {
+    throw new Error('Read-only invocation does not match its Host authority.');
   }
   const system =
     input.purpose === 'diagnosis'
-      ? [
-          'Answer this Tagma diagnosis using only the sealed Host snapshot in the request.',
-          'Do not use tools, inspect live files, or claim access to workspace state outside that snapshot.',
-          'Explain evidence, uncertainty, and safe next steps without modifying anything.',
-        ].join(' ')
+      ? snapshot
+        ? [
+            'Answer this Tagma diagnosis using only the sealed Host snapshot in the request.',
+            'Do not use tools, inspect live files, or claim access to workspace state outside that snapshot.',
+            'Explain evidence, uncertainty, and safe next steps without modifying anything.',
+            TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT,
+          ].join(' ')
+        : [
+            'Answer this Tagma diagnosis using only the Host-authenticated request.',
+            'No sealed pipeline snapshot is available; do not claim that pipeline or workspace artifacts were inspected.',
+            'Do not use tools or modify anything. Explain the evidence limit, uncertainty, and safe next steps.',
+            TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT,
+          ].join(' ')
       : [
           'Answer this Tagma read-only discussion using only the Host-authenticated request.',
           'Do not use tools, inspect files, or claim that pipeline or workspace state was modified.',
@@ -812,9 +940,7 @@ function classifierValidationCandidates(
   }));
 }
 
-function safeStructuredClassifierOutput(
-  intent: ResolvedChatPipelineIntent,
-): Record<string, unknown> {
+function safeClassifierDecision(intent: ResolvedChatPipelineIntent): Record<string, unknown> {
   switch (intent.kind) {
     case 'discussion':
       return {
@@ -854,8 +980,9 @@ function safeStructuredClassifierOutput(
   }
 }
 
-export interface OpenCodeStructuredClassifierRunRequest {
+export interface OpenCodeTextClassifierRunRequest {
   readonly operationId: string;
+  readonly workspaceScopeId: string;
   readonly invocationId: string;
   readonly sessionId: string;
   readonly inputId: string;
@@ -867,7 +994,7 @@ export interface OpenCodeStructuredClassifierRunRequest {
   readonly signal: AbortSignal;
 }
 
-export type OpenCodeStructuredClassifierProviderCode =
+export type OpenCodePromptProviderFailureCode =
   | 'submitted_unknown'
   | 'request_digest_conflict'
   | 'session_identity_conflict'
@@ -877,9 +1004,14 @@ export type OpenCodeStructuredClassifierProviderCode =
   | 'execution_history_unavailable'
   | 'structured_output_error'
   | 'model_error'
+  | 'model_context_overflow'
   | 'model_incompatible'
+  | 'model_output_length'
   | 'model_unavailable'
   | 'provider_authentication_failed'
+  | 'provider_billing_required'
+  | 'provider_content_filtered'
+  | 'provider_invocation_aborted'
   | 'provider_rate_limited'
   | 'provider_request_rejected'
   | 'provider_unavailable'
@@ -900,13 +1032,13 @@ interface OpenCodeClassifierCompletedResult {
 
 type OpenCodeClassifierUnavailableResult = {
   readonly kind: 'provider_unavailable';
-  readonly code: OpenCodeStructuredClassifierProviderCode;
+  readonly code: OpenCodePromptProviderFailureCode;
   readonly submissionUnknown?: true;
 };
 
 type OpenCodeClassifierCancelledResult = { readonly kind: 'cancelled'; readonly code: 'aborted' };
 
-export type OpenCodeStructuredClassifierResult =
+export type OpenCodeTextClassifierResult =
   | (OpenCodeClassifierCompletedResult & { readonly intent: ResolvedChatPipelineIntent })
   | OpenCodeClassifierUnavailableResult
   | OpenCodeClassifierCancelledResult;
@@ -914,7 +1046,7 @@ export type OpenCodeStructuredClassifierResult =
 type OpenCodeClassifierCoreResult =
   | (OpenCodeClassifierCompletedResult & {
       readonly intent: ResolvedChatPipelineIntent | null;
-      readonly safeStructuredOutput: Record<string, unknown>;
+      readonly safeDecision: Record<string, unknown>;
     })
   | OpenCodeClassifierUnavailableResult
   | OpenCodeClassifierCancelledResult;
@@ -945,11 +1077,11 @@ export function deriveOpenCodeExecutionMessageId(input: {
   return `msg_tagma_exec_${digest.slice(0, 40)}`;
 }
 
-export interface OpenCodeStructuredClassifierRunnerOptions {
+export interface OpenCodeReadonlyInvocationRunnerOptions {
   readonly controller: OpenCodeInvocationController;
   readonly store?: OpenCodeInvocationStore;
   readonly nativeClient: OpenCodeInvocationNativeClient;
-  readonly richClient: OpenCodeRichClassifierClient;
+  readonly textPromptClient: OpenCodeTextPromptClient;
   readonly nextExecutionMessageId?: (input: {
     readonly operationId: string;
     readonly invocationId: string;
@@ -965,6 +1097,7 @@ export interface OpenCodeStructuredClassifierRunnerOptions {
 
 interface FrozenClassifierRun {
   readonly operationId: string;
+  readonly workspaceScopeId: string;
   readonly invocationId: string;
   readonly sessionId: string;
   readonly inputId: string;
@@ -980,6 +1113,7 @@ interface FrozenClassifierRun {
 
 interface OwnedClassifierRun {
   readonly operationId: string;
+  readonly workspaceScopeId: string;
   readonly sessionId: string;
   readonly inputId: string;
   readonly requestDigest: string;
@@ -1004,11 +1138,22 @@ interface FrozenReadonlyTextRun {
 
 interface OwnedReadonlyTextRun {
   readonly operationId: string;
+  readonly workspaceScopeId: string;
   readonly sessionId: string;
   readonly inputId: string;
   readonly purpose: OpenCodeReadonlyTextPurpose;
   readonly requestDigest: string;
   readonly result: Promise<OpenCodeReadonlyTextResult>;
+}
+
+interface TextReplayAuthority {
+  readonly operationId: string;
+  readonly workspaceScopeId: string;
+  readonly invocationId: string;
+  readonly sessionId: string;
+  readonly inputId: string;
+  readonly purpose: 'classifier' | OpenCodeReadonlyTextPurpose;
+  readonly requestDigest: string;
 }
 
 type AdmissionSourceLookup =
@@ -1019,18 +1164,14 @@ type AdmissionSourceLookup =
   | { readonly kind: 'missing' }
   | { readonly kind: 'conflict' };
 
-/**
- * Runs the one compatibility-rich classifier call permitted by conformance.
- * A recovered native admission cannot prove a rich result, so it is never
- * replayed. User retry must allocate a new Host invocation outside this class.
- */
-export class OpenCodeStructuredClassifierRunner {
+/** Runs tool-free text classification behind the same durable outbox boundary. */
+export class OpenCodeReadonlyInvocationRunner {
   private readonly controller: OpenCodeInvocationController;
   private readonly store: OpenCodeInvocationStore | null;
   private readonly nativeClient: OpenCodeInvocationNativeClient;
-  private readonly richClient: OpenCodeRichClassifierClient;
+  private readonly textPromptClient: OpenCodeTextPromptClient;
   private readonly nextExecutionMessageId: NonNullable<
-    OpenCodeStructuredClassifierRunnerOptions['nextExecutionMessageId']
+    OpenCodeReadonlyInvocationRunnerOptions['nextExecutionMessageId']
   >;
   private readonly historyPageLimit: number;
   private readonly historyMaxPages: number;
@@ -1040,11 +1181,11 @@ export class OpenCodeStructuredClassifierRunner {
   private readonly ownedReadonlyRuns = new Map<string, OwnedReadonlyTextRun>();
   private readonly activeSessions = new Map<string, string>();
 
-  constructor(options: OpenCodeStructuredClassifierRunnerOptions) {
+  constructor(options: OpenCodeReadonlyInvocationRunnerOptions) {
     this.controller = options.controller;
     this.store = options.store ?? null;
     this.nativeClient = options.nativeClient;
-    this.richClient = options.richClient;
+    this.textPromptClient = options.textPromptClient;
     this.nextExecutionMessageId =
       options.nextExecutionMessageId ?? deriveOpenCodeExecutionMessageId;
     this.historyPageLimit = options.historyPageLimit ?? DEFAULT_HISTORY_PAGE_LIMIT;
@@ -1067,14 +1208,14 @@ export class OpenCodeStructuredClassifierRunner {
       this.admissionSourceDelayMs < 0 ||
       this.admissionSourceDelayMs > 1_000
     ) {
-      throw new TypeError('OpenCode classifier history bounds and retry policy are invalid.');
+      throw new TypeError('OpenCode read-only history bounds and retry policy are invalid.');
     }
   }
 
-  run(input: OpenCodeStructuredClassifierRunRequest): Promise<OpenCodeStructuredClassifierResult> {
+  run(input: OpenCodeTextClassifierRunRequest): Promise<OpenCodeTextClassifierResult> {
     const candidates = input.candidates.map((candidate) => Object.freeze({ ...candidate }));
     const prompt = buildChatPipelineIntentClassificationPrompt(input.userText, candidates);
-    const expectedRequestBytes = buildStructuredClassifierCanonicalRequestBytes(
+    const expectedRequestBytes = buildClassifierTextCanonicalRequestBytes(
       input.userText,
       candidates,
     );
@@ -1088,6 +1229,7 @@ export class OpenCodeStructuredClassifierRunner {
     }
     const frozen: FrozenClassifierRun = {
       operationId: input.operationId,
+      workspaceScopeId: input.workspaceScopeId,
       invocationId: input.invocationId,
       sessionId: input.sessionId,
       inputId: input.inputId,
@@ -1100,15 +1242,15 @@ export class OpenCodeStructuredClassifierRunner {
       variant: input.variant,
       signal: input.signal,
     };
-    return this.start(frozen).then((result): OpenCodeStructuredClassifierResult => {
+    return this.start(frozen).then((result): OpenCodeTextClassifierResult => {
       if (result.kind !== 'completed') return result;
       if (!result.intent) {
         return { kind: 'provider_unavailable', code: 'malformed_structured_result' };
       }
-      const { safeStructuredOutput, ...completed } = result;
+      const { safeDecision, ...completed } = result;
       return {
         ...completed,
-        structuredOutput: safeStructuredOutput,
+        structuredOutput: safeDecision,
         intent: result.intent,
       };
     });
@@ -1116,6 +1258,7 @@ export class OpenCodeStructuredClassifierRunner {
 
   runCanonicalClassifier(input: {
     readonly operationId: string;
+    readonly workspaceScopeId: string;
     readonly invocationId: string;
     readonly sessionId: string;
     readonly inputId: string;
@@ -1128,6 +1271,7 @@ export class OpenCodeStructuredClassifierRunner {
     const requestBytes = Uint8Array.from(input.canonicalRequestBytes);
     return this.start({
       operationId: input.operationId,
+      workspaceScopeId: input.workspaceScopeId,
       invocationId: input.invocationId,
       sessionId: input.sessionId,
       inputId: input.inputId,
@@ -1178,6 +1322,7 @@ export class OpenCodeStructuredClassifierRunner {
     if (existing) {
       if (
         existing.operationId !== input.operationId ||
+        existing.workspaceScopeId !== input.workspaceScopeId ||
         existing.sessionId !== input.sessionId ||
         existing.inputId !== input.inputId ||
         existing.purpose !== input.purpose ||
@@ -1197,6 +1342,7 @@ export class OpenCodeStructuredClassifierRunner {
     }));
     this.ownedReadonlyRuns.set(input.invocationId, {
       operationId: input.operationId,
+      workspaceScopeId: input.workspaceScopeId,
       sessionId: input.sessionId,
       inputId: input.inputId,
       purpose: input.purpose,
@@ -1211,6 +1357,7 @@ export class OpenCodeStructuredClassifierRunner {
     if (existing) {
       if (
         existing.operationId !== input.operationId ||
+        existing.workspaceScopeId !== input.workspaceScopeId ||
         existing.sessionId !== input.sessionId ||
         existing.inputId !== input.inputId ||
         existing.requestDigest !== input.requestDigest ||
@@ -1229,6 +1376,7 @@ export class OpenCodeStructuredClassifierRunner {
     }));
     this.ownedRuns.set(input.invocationId, {
       operationId: input.operationId,
+      workspaceScopeId: input.workspaceScopeId,
       sessionId: input.sessionId,
       inputId: input.inputId,
       requestDigest: input.requestDigest,
@@ -1244,7 +1392,100 @@ export class OpenCodeStructuredClassifierRunner {
   }): Promise<void> {
     const sessionId = this.activeSessions.get(`${input.operationId}\u0000${input.invocationId}`);
     if (!sessionId) return;
-    await this.richClient.interruptSession(sessionId).catch(() => undefined);
+    await this.textPromptClient.interruptSession(sessionId).catch(() => undefined);
+  }
+
+  /**
+   * Recover a classifier text result through OpenCode's exact same-message-id
+   * cache. Canonical bytes, durable admission, and the running boundary are
+   * authenticated before the compatibility prompt is replayed.
+   */
+  async reconcileCanonicalClassifier(input: {
+    readonly operationId: string;
+    readonly workspaceScopeId: string;
+    readonly invocationId: string;
+    readonly sessionId: string;
+    readonly inputId: string;
+    readonly canonicalRequestBytes: Uint8Array;
+    readonly prompt: ReturnType<typeof buildChatPipelineIntentClassificationPrompt>;
+    readonly model: { readonly providerID: string; readonly modelID: string };
+    readonly variant: string | null;
+  }): Promise<OpenCodeClassifierCoreResult> {
+    const requestBytes = Uint8Array.from(input.canonicalRequestBytes);
+    const frozen: FrozenClassifierRun = {
+      operationId: input.operationId,
+      workspaceScopeId: input.workspaceScopeId,
+      invocationId: input.invocationId,
+      sessionId: input.sessionId,
+      inputId: input.inputId,
+      requestBytes,
+      requestDigest: sha256CanonicalOpenCodeRequest(requestBytes),
+      prompt: Object.freeze({
+        system: input.prompt.system,
+        user: input.prompt.user,
+        schema: Object.freeze({ ...input.prompt.schema }),
+      }),
+      candidates: classifierValidationCandidates(input.prompt.schema),
+      candidateAuthority: false,
+      model: Object.freeze({ ...input.model }),
+      variant: input.variant,
+      signal: AbortSignal.timeout(READONLY_TEXT_RECOVERY_TIMEOUT_MS),
+    };
+    const replayAuthority: TextReplayAuthority = {
+      operationId: frozen.operationId,
+      workspaceScopeId: frozen.workspaceScopeId,
+      invocationId: frozen.invocationId,
+      sessionId: frozen.sessionId,
+      inputId: frozen.inputId,
+      purpose: 'classifier',
+      requestDigest: frozen.requestDigest,
+    };
+    if (!this.exactTextOutbox(replayAuthority)) {
+      return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
+    }
+    const source = await this.reconcileNativeAdmission({
+      operationId: frozen.operationId,
+      workspaceScopeId: frozen.workspaceScopeId,
+      invocationId: frozen.invocationId,
+      sessionId: frozen.sessionId,
+      inputId: frozen.inputId,
+      purpose: 'classifier',
+      canonicalRequestBytes: requestBytes,
+    }).catch(() => null);
+    if (!source) {
+      return {
+        kind: 'provider_unavailable',
+        code: 'submitted_unknown',
+        submissionUnknown: true,
+      };
+    }
+    if (!this.markTextRunning(replayAuthority, source.aggregateSeq)) {
+      return { kind: 'provider_unavailable', code: 'readonly_replay_not_authorized' };
+    }
+    const executionMessageId = this.textExecutionMessageId(replayAuthority);
+    if (!executionMessageId) {
+      return { kind: 'provider_unavailable', code: 'execution_identity_conflict' };
+    }
+    const activeKey = `${frozen.operationId}\u0000${frozen.invocationId}`;
+    this.activeSessions.set(activeKey, frozen.sessionId);
+    try {
+      const result = await this.promptClassifierTextResult(
+        frozen,
+        replayAuthority,
+        source,
+        executionMessageId,
+        false,
+      );
+      return result.kind === 'cancelled'
+        ? {
+            kind: 'provider_unavailable',
+            code: 'submitted_unknown',
+            submissionUnknown: true,
+          }
+        : result;
+    } finally {
+      this.activeSessions.delete(activeKey);
+    }
   }
 
   /**
@@ -1278,7 +1519,7 @@ export class OpenCodeStructuredClassifierRunner {
       variant: input.variant,
       signal: AbortSignal.timeout(READONLY_TEXT_RECOVERY_TIMEOUT_MS),
     };
-    if (!this.exactReadonlyOutbox(frozen)) {
+    if (!this.exactTextOutbox(frozen)) {
       return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
     }
     const source = await this.reconcileNativeAdmission({
@@ -1297,10 +1538,10 @@ export class OpenCodeStructuredClassifierRunner {
         submissionUnknown: true,
       };
     }
-    if (!this.hasReadonlyReplayAuthority(frozen, source.aggregateSeq)) {
+    if (!this.markTextRunning(frozen, source.aggregateSeq)) {
       return { kind: 'provider_unavailable', code: 'readonly_replay_not_authorized' };
     }
-    const executionMessageId = this.readonlyExecutionMessageId(frozen);
+    const executionMessageId = this.textExecutionMessageId(frozen);
     if (!executionMessageId) {
       return { kind: 'provider_unavailable', code: 'execution_identity_conflict' };
     }
@@ -1380,8 +1621,12 @@ export class OpenCodeStructuredClassifierRunner {
       if (admission.kind === 'conflict') {
         return { kind: 'provider_unavailable', code: admission.code };
       }
-      if (admission.kind !== 'admitted' || admission.recoveredFromHistory) {
-        return { kind: 'provider_unavailable', code: 'submitted_unknown' };
+      if (admission.kind !== 'admitted') {
+        return {
+          kind: 'provider_unavailable',
+          code: 'submitted_unknown',
+          submissionUnknown: true,
+        };
       }
       let source: { readonly aggregateSeq: number; readonly eventId: string } | null;
       try {
@@ -1401,84 +1646,111 @@ export class OpenCodeStructuredClassifierRunner {
         return { kind: 'provider_unavailable', code: 'execution_history_unavailable' };
       }
       if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
-
-      const executionMessageId = this.nextExecutionMessageId({
+      const replayAuthority: TextReplayAuthority = {
         operationId: input.operationId,
+        workspaceScopeId: input.workspaceScopeId,
         invocationId: input.invocationId,
         sessionId: input.sessionId,
         inputId: input.inputId,
         purpose: 'classifier',
-      });
-      if (
-        executionMessageId === input.inputId ||
-        !/^msg_[A-Za-z0-9_-]{1,240}$/.test(executionMessageId)
-      ) {
+        requestDigest: input.requestDigest,
+      };
+      const authorized = this.markTextRunning(replayAuthority, source.aggregateSeq);
+      if (!authorized) {
+        return {
+          kind: 'provider_unavailable',
+          code: admission.recoveredFromHistory
+            ? 'readonly_replay_not_authorized'
+            : 'request_digest_conflict',
+        };
+      }
+      const executionMessageId = this.textExecutionMessageId(replayAuthority);
+      if (!executionMessageId) {
         return { kind: 'provider_unavailable', code: 'execution_identity_conflict' };
       }
+      return this.promptClassifierTextResult(
+        input,
+        replayAuthority,
+        source,
+        executionMessageId,
+        !admission.recoveredFromHistory,
+      );
+    } finally {
+      this.activeSessions.delete(activeKey);
+    }
+  }
 
-      let response: OpenCodeRichClassifierResponse;
+  private async promptClassifierTextResult(
+    input: FrozenClassifierRun,
+    replayAuthority: TextReplayAuthority,
+    source: { readonly aggregateSeq: number; readonly eventId: string },
+    executionMessageId: string,
+    allowOneTransportReplay: boolean,
+  ): Promise<OpenCodeClassifierCoreResult> {
+    const attempts = allowOneTransportReplay ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
+      if (attempt > 0 && !this.hasTextReplayAuthority(replayAuthority, source.aggregateSeq)) {
+        return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
+      }
+      let response: OpenCodeIntentClassifierTextResponse;
       try {
-        response = await this.richClient.promptStructuredClassifier({
+        response = await this.textPromptClient.promptIntentClassifierText({
           sessionId: input.sessionId,
           executionMessageId,
           model: input.model,
           variant: input.variant,
           system: input.prompt.system,
           user: input.prompt.user,
-          schema: input.prompt.schema,
           signal: input.signal,
         });
       } catch (error) {
         if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
-        return error instanceof OpenCodeDefinitivePromptError
-          ? { kind: 'provider_unavailable', code: error.code }
-          : {
-              kind: 'provider_unavailable',
-              code: 'submitted_unknown',
-              submissionUnknown: true,
-            };
+        if (error instanceof OpenCodeDefinitivePromptError) {
+          return { kind: 'provider_unavailable', code: error.code };
+        }
+        if (attempt + 1 < attempts) continue;
+        return {
+          kind: 'provider_unavailable',
+          code: 'submitted_unknown',
+          submissionUnknown: true,
+        };
       }
-      if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
       if (response.messageId !== executionMessageId) {
         return { kind: 'provider_unavailable', code: 'execution_identity_conflict' };
       }
-      if (response.errorName === 'StructuredOutputError') {
-        return { kind: 'provider_unavailable', code: 'structured_output_error' };
-      }
-      if (response.errorName !== null) {
-        return { kind: 'provider_unavailable', code: 'model_error' };
+      if (response.failureCode !== null) {
+        return { kind: 'provider_unavailable', code: response.failureCode };
       }
       let intent: ResolvedChatPipelineIntent;
       try {
-        intent = resolveStructuredChatPipelineIntent(response.structuredOutput, input.candidates);
+        intent = parseChatPipelineIntentClassificationText(response.text, input.candidates);
       } catch {
-        return { kind: 'provider_unavailable', code: 'malformed_structured_result' };
+        return { kind: 'provider_unavailable', code: 'malformed_text_result' };
       }
+      const safeDecision = safeClassifierDecision(intent);
       return {
         kind: 'completed',
         intent,
-        structuredOutput: response.structuredOutput,
-        safeStructuredOutput: safeStructuredClassifierOutput(intent),
+        structuredOutput: safeDecision,
+        safeDecision,
         finishCode: response.finishCode,
-        admittedAggregateSeq: admission.admittedAggregateSeq,
+        admittedAggregateSeq: source.aggregateSeq,
         source,
         usage: response.usage,
         executionMessageId,
       };
-    } finally {
-      this.activeSessions.delete(activeKey);
     }
+    return {
+      kind: 'provider_unavailable',
+      code: 'submitted_unknown',
+      submissionUnknown: true,
+    };
   }
 
-  private exactReadonlyOutbox(input: {
-    readonly operationId: string;
-    readonly workspaceScopeId: string;
-    readonly invocationId: string;
-    readonly sessionId: string;
-    readonly inputId: string;
-    readonly purpose: OpenCodeReadonlyTextPurpose;
-    readonly requestDigest: string;
-  }): NonNullable<ReturnType<OpenCodeInvocationStore['getInvocationOutbox']>> | null {
+  private exactTextOutbox(
+    input: TextReplayAuthority,
+  ): NonNullable<ReturnType<OpenCodeInvocationStore['getInvocationOutbox']>> | null {
     const outbox = this.store?.getInvocationOutbox(input.invocationId) ?? null;
     return outbox &&
       outbox.operationId === input.operationId &&
@@ -1491,8 +1763,8 @@ export class OpenCodeStructuredClassifierRunner {
       : null;
   }
 
-  private markReadonlyRunning(input: FrozenReadonlyTextRun, aggregateSeq: number): boolean {
-    const outbox = this.exactReadonlyOutbox(input);
+  private markTextRunning(input: TextReplayAuthority, aggregateSeq: number): boolean {
+    const outbox = this.exactTextOutbox(input);
     if (!outbox || outbox.admittedAggregateSeq !== aggregateSeq) return false;
     if (outbox.status === 'running') return true;
     if (outbox.status !== 'admitted' || !this.store) return false;
@@ -1507,12 +1779,12 @@ export class OpenCodeStructuredClassifierRunner {
     );
   }
 
-  private hasReadonlyReplayAuthority(input: FrozenReadonlyTextRun, aggregateSeq: number): boolean {
-    const outbox = this.exactReadonlyOutbox(input);
+  private hasTextReplayAuthority(input: TextReplayAuthority, aggregateSeq: number): boolean {
+    const outbox = this.exactTextOutbox(input);
     return outbox?.status === 'running' && outbox.admittedAggregateSeq === aggregateSeq;
   }
 
-  private readonlyExecutionMessageId(input: FrozenReadonlyTextRun): string | null {
+  private textExecutionMessageId(input: TextReplayAuthority): string | null {
     const executionMessageId = this.nextExecutionMessageId({
       operationId: input.operationId,
       invocationId: input.invocationId,
@@ -1535,12 +1807,12 @@ export class OpenCodeStructuredClassifierRunner {
     const attempts = allowOneTransportReplay ? 2 : 1;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
-      if (attempt > 0 && !this.hasReadonlyReplayAuthority(input, source.aggregateSeq)) {
+      if (attempt > 0 && !this.hasTextReplayAuthority(input, source.aggregateSeq)) {
         return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
       }
-      let response: OpenCodeRichTextResponse;
+      let response: OpenCodeReadonlyTextResponse;
       try {
-        response = await this.richClient.promptReadonlyText({
+        response = await this.textPromptClient.promptReadonlyText({
           purpose: input.purpose,
           sessionId: input.sessionId,
           executionMessageId,
@@ -1550,8 +1822,11 @@ export class OpenCodeStructuredClassifierRunner {
           user: input.prompt.user,
           signal: input.signal,
         });
-      } catch {
+      } catch (error) {
         if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
+        if (error instanceof OpenCodeDefinitivePromptError) {
+          return { kind: 'provider_unavailable', code: error.code };
+        }
         if (attempt + 1 < attempts) continue;
         return {
           kind: 'provider_unavailable',
@@ -1562,8 +1837,8 @@ export class OpenCodeStructuredClassifierRunner {
       if (response.messageId !== executionMessageId) {
         return { kind: 'provider_unavailable', code: 'execution_identity_conflict' };
       }
-      if (response.errorName !== null) {
-        return { kind: 'provider_unavailable', code: 'model_error' };
+      if (response.failureCode !== null) {
+        return { kind: 'provider_unavailable', code: response.failureCode };
       }
       if (!response.text.trim()) {
         return { kind: 'provider_unavailable', code: 'malformed_text_result' };
@@ -1631,9 +1906,7 @@ export class OpenCodeStructuredClassifierRunner {
           code: 'execution_history_unavailable',
         };
       }
-      const authorized = admission.recoveredFromHistory
-        ? this.hasReadonlyReplayAuthority(input, source.aggregateSeq)
-        : this.markReadonlyRunning(input, source.aggregateSeq);
+      const authorized = this.markTextRunning(input, source.aggregateSeq);
       if (!authorized) {
         return {
           kind: 'provider_unavailable',
@@ -1642,7 +1915,7 @@ export class OpenCodeStructuredClassifierRunner {
             : 'request_digest_conflict',
         };
       }
-      const executionMessageId = this.readonlyExecutionMessageId(input);
+      const executionMessageId = this.textExecutionMessageId(input);
       if (!executionMessageId) {
         return { kind: 'provider_unavailable', code: 'execution_identity_conflict' };
       }
@@ -1748,8 +2021,8 @@ export class OpenCodeStructuredClassifierRunner {
 }
 
 /** Direct adapter for the sidecar orchestrator's durable runner contract. */
-export class ChatOperationV2OpenCodeClassifierRunner implements ChatOperationV2DurableInvocationRunner {
-  constructor(private readonly classifier: OpenCodeStructuredClassifierRunner) {}
+export class ChatOperationV2OpenCodeReadonlyRunner implements ChatOperationV2DurableInvocationRunner {
+  constructor(private readonly invocations: OpenCodeReadonlyInvocationRunner) {}
 
   async run(
     request: ChatOperationV2DurableInvocationRequest,
@@ -1761,13 +2034,14 @@ export class ChatOperationV2OpenCodeClassifierRunner implements ChatOperationV2D
       }
       let prompt: ReturnType<typeof buildChatPipelineIntentClassificationPrompt>;
       try {
-        prompt = parseStructuredClassifierCanonicalRequestBytes(request.canonicalRequestBytes);
+        prompt = parseClassifierTextCanonicalRequestBytes(request.canonicalRequestBytes);
       } catch {
         return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
       }
       try {
-        result = await this.classifier.runCanonicalClassifier({
+        result = await this.invocations.runCanonicalClassifier({
           operationId: request.operationId,
+          workspaceScopeId: request.workspaceScopeId,
           invocationId: request.invocationId,
           sessionId: request.sessionId,
           inputId: request.inputId,
@@ -1791,7 +2065,7 @@ export class ChatOperationV2OpenCodeClassifierRunner implements ChatOperationV2D
       } catch {
         return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
       }
-      result = await this.classifier.runCanonicalReadonlyText({
+      result = await this.invocations.runCanonicalReadonlyText({
         operationId: request.operationId,
         workspaceScopeId: request.workspaceScopeId,
         invocationId: request.invocationId,
@@ -1830,25 +2104,34 @@ export class ChatOperationV2OpenCodeClassifierRunner implements ChatOperationV2D
       if (request.readSnapshot !== null) {
         return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
       }
+      let prompt: ReturnType<typeof buildChatPipelineIntentClassificationPrompt>;
       try {
-        parseStructuredClassifierCanonicalRequestBytes(request.canonicalRequestBytes);
+        prompt = parseClassifierTextCanonicalRequestBytes(request.canonicalRequestBytes);
       } catch {
         return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
       }
-      try {
-        await this.classifier.reconcileNativeAdmission({
-          operationId: request.operationId,
-          workspaceScopeId: request.workspaceScopeId,
-          invocationId: request.invocationId,
-          sessionId: request.sessionId,
-          inputId: request.inputId,
-          purpose: 'classifier',
-          canonicalRequestBytes: request.canonicalRequestBytes,
-        });
-      } catch {
-        // Structured compatibility output has no public recoverable projection.
-      }
-      return { kind: 'provider_unavailable', code: 'submitted_unknown' };
+      const result = await this.invocations.reconcileCanonicalClassifier({
+        operationId: request.operationId,
+        workspaceScopeId: request.workspaceScopeId,
+        invocationId: request.invocationId,
+        sessionId: request.sessionId,
+        inputId: request.inputId,
+        canonicalRequestBytes: request.canonicalRequestBytes,
+        prompt,
+        model: { providerID: request.provider, modelID: request.model },
+        variant: request.variant,
+      });
+      if (result.kind !== 'completed') return result;
+      return {
+        kind: 'completed',
+        structuredOutput: result.safeDecision,
+        text: null,
+        executionMessageId: result.executionMessageId,
+        finishCode: result.finishCode,
+        admittedAggregateSeq: result.admittedAggregateSeq,
+        source: result.source,
+        usage: result.usage,
+      };
     }
     if (request.purpose !== 'discussion' && request.purpose !== 'diagnosis') {
       return { kind: 'provider_unavailable', code: 'unsupported_readonly_purpose' };
@@ -1863,7 +2146,7 @@ export class ChatOperationV2OpenCodeClassifierRunner implements ChatOperationV2D
     } catch {
       return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
     }
-    const result = await this.classifier.reconcileCanonicalReadonlyText({
+    const result = await this.invocations.reconcileCanonicalReadonlyText({
       operationId: request.operationId,
       workspaceScopeId: request.workspaceScopeId,
       invocationId: request.invocationId,
@@ -1889,7 +2172,7 @@ export class ChatOperationV2OpenCodeClassifierRunner implements ChatOperationV2D
   }
 
   interrupt(input: { readonly operationId: string; readonly invocationId: string }): Promise<void> {
-    return this.classifier.interrupt(input);
+    return this.invocations.interrupt(input);
   }
 }
 
@@ -1909,27 +2192,27 @@ export function createManagedOpenCodeSdkAdapter(workspaceDirectory: string): Ope
   });
 }
 
-export function createManagedOpenCodeStructuredClassifierRunner(options: {
+export function createManagedOpenCodeReadonlyInvocationRunner(options: {
   readonly workspaceDirectory: string;
   readonly store: OpenCodeInvocationStore;
-  readonly nextExecutionMessageId?: OpenCodeStructuredClassifierRunnerOptions['nextExecutionMessageId'];
+  readonly nextExecutionMessageId?: OpenCodeReadonlyInvocationRunnerOptions['nextExecutionMessageId'];
 }): {
   readonly adapter: OpenCodeSdkAdapter;
   readonly controller: OpenCodeInvocationController;
-  readonly structuredRunner: OpenCodeStructuredClassifierRunner;
-  readonly runner: ChatOperationV2OpenCodeClassifierRunner;
+  readonly readonlyInvocationRunner: OpenCodeReadonlyInvocationRunner;
+  readonly runner: ChatOperationV2OpenCodeReadonlyRunner;
 } {
   const adapter = createManagedOpenCodeSdkAdapter(options.workspaceDirectory);
   const controller = new OpenCodeInvocationController({ store: options.store, client: adapter });
-  const structuredRunner = new OpenCodeStructuredClassifierRunner({
+  const readonlyInvocationRunner = new OpenCodeReadonlyInvocationRunner({
     controller,
     store: options.store,
     nativeClient: adapter,
-    richClient: adapter,
+    textPromptClient: adapter,
     ...(options.nextExecutionMessageId
       ? { nextExecutionMessageId: options.nextExecutionMessageId }
       : {}),
   });
-  const runner = new ChatOperationV2OpenCodeClassifierRunner(structuredRunner);
-  return { adapter, controller, structuredRunner, runner };
+  const runner = new ChatOperationV2OpenCodeReadonlyRunner(readonlyInvocationRunner);
+  return { adapter, controller, readonlyInvocationRunner, runner };
 }

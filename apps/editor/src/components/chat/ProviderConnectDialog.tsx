@@ -665,7 +665,7 @@ export function isPromptVisible(prompt: AuthPrompt, answers: Record<string, stri
  *     `enterpriseUrl` leaking when `deploymentType === "github.com"`).
  *   - `allFilled` is the submit gate: every visible prompt must be non-empty.
  */
-function useAuthPrompts(prompts: AuthPrompt[] | undefined) {
+function useAuthPrompts(prompts: readonly AuthPrompt[] | undefined) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const visible = useMemo(() => {
     if (!prompts?.length) return [] as AuthPrompt[];
@@ -697,7 +697,7 @@ function PromptsSection({
   answers,
   setAnswer,
 }: {
-  prompts: AuthPrompt[];
+  prompts: readonly AuthPrompt[];
   answers: Record<string, string>;
   setAnswer: (key: string, value: string) => void;
 }) {
@@ -766,7 +766,7 @@ function ApiKeyRow({
 }: {
   providerId: string;
   label: string;
-  prompts?: AuthPrompt[];
+  prompts?: readonly AuthPrompt[];
   blocked: boolean;
 }) {
   const setProviderApiKey = useChatStore((s) => s.setProviderApiKey);
@@ -852,7 +852,7 @@ function OauthRow({
   providerId: string;
   label: string;
   methodIdx: number;
-  prompts?: AuthPrompt[];
+  prompts?: readonly AuthPrompt[];
   blocked: boolean;
 }) {
   const startProviderOauth = useChatStore((s) => s.startProviderOauth);

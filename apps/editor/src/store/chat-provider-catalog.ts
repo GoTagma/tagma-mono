@@ -59,7 +59,7 @@ export async function fetchConfiguredProviderModels(
   workspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<ConfiguredProviderModels> {
   const state = await fetchHostOpenCodeProviderState(workspaceKey);
-  const runtimeProviders = [...state.configured.providers] as Provider[];
+  const runtimeProviders = [...state.configured.providers];
 
   // `/config/providers` is the authoritative configured/runtime provider
   // membership. OpenCode's native-v2 projection is metadata-only here: while
@@ -97,48 +97,29 @@ export function buildProvidersFromV2Catalog(
     : catalog.providers;
   const legacyById = new Map(legacyProviders.map((provider) => [provider.id, provider]));
   const v2ProviderById = new Map(catalogProviders.map((provider) => [provider.id, provider]));
-  const modelsByProvider = new Map<string, Provider['models']>();
+  const modelsByProvider = new Map<string, Record<string, Provider['models'][string]>>();
 
   for (const model of catalog.models) {
     if (!v2ProviderById.has(model.providerID)) continue;
     const providerModels = modelsByProvider.get(model.providerID) ?? {};
     const legacyModel = legacyById.get(model.providerID)?.models?.[model.id];
     const v2Variants = Object.fromEntries(
-      (model.variants ?? [])
-        .filter(({ id }) => id.trim().length > 0)
-        .map(({ id, ...variant }) => [id, variant as Record<string, unknown>]),
+      (model.variants ?? []).filter((id) => id.trim().length > 0).map((id) => [id, {}]),
     );
     const runtimeVariants = enabledRuntimeVariants(legacyModel?.variants);
     providerModels[model.id] = {
-      ...(legacyModel ?? {}),
       id: model.id,
       providerID: model.providerID,
-      api: legacyModel?.api ?? {
-        id: model.api.id,
-        url: modelApiUrl(model.api),
-        npm: modelApiPackage(model.api),
-      },
       name: model.name,
       capabilities: {
-        temperature: legacyModel?.capabilities?.temperature ?? true,
-        reasoning: legacyModel?.capabilities?.reasoning ?? v2ModelSupportsReasoning(model),
-        attachment:
-          legacyModel?.capabilities?.attachment ??
-          ['audio', 'image', 'video', 'pdf'].some((kind) =>
-            model.capabilities.input.includes(kind),
-          ),
-        toolcall: model.capabilities.tools,
-        input: mediaCapabilities(model.capabilities.input),
-        output: mediaCapabilities(model.capabilities.output),
+        reasoning: legacyModel?.capabilities.reasoning ?? model.capabilities.reasoning,
+        toolcall: legacyModel?.capabilities.toolcall ?? model.capabilities.toolcall,
       },
-      cost: firstV2Cost(model.cost, legacyModel?.cost),
       limit: {
-        context: model.limit.context,
-        output: model.limit.output,
+        ...(model.limit.context === undefined ? {} : { context: model.limit.context }),
+        ...(model.limit.output === undefined ? {} : { output: model.limit.output }),
       },
       status: model.status,
-      options: legacyModel?.options ?? modelRequestOptions(model),
-      headers: legacyModel?.headers ?? model.request.headers,
       // OpenCode's v2 model catalog can omit provider-generated variants that
       // are still present in its runtime provider catalog. Merge both live
       // catalogs and let v2 metadata win when they describe the same variant.
@@ -150,17 +131,12 @@ export function buildProvidersFromV2Catalog(
   const providers = catalogProviders.flatMap((provider) => {
     const models = modelsByProvider.get(provider.id);
     if (!models || Object.keys(models).length === 0) return [];
-    const legacyProvider = legacyById.get(provider.id);
     return [
       {
-        ...(legacyProvider ?? {}),
         id: provider.id,
         name: provider.name,
-        source: legacyProvider?.source ?? 'api',
-        env: legacyProvider?.env ?? [],
-        options: legacyProvider?.options ?? providerOptions(provider),
         models,
-      } as Provider,
+      },
     ];
   });
 
@@ -176,76 +152,9 @@ export function buildProvidersFromV2Catalog(
 }
 
 function enabledRuntimeVariants(
-  variants: Provider['models'][string]['variants'],
+  variants: Provider['models'][string]['variants'] | undefined,
 ): NonNullable<Provider['models'][string]['variants']> {
-  return Object.fromEntries(
-    Object.entries(variants ?? {}).filter(([, variant]) => variant['disabled'] !== true),
-  );
-}
-
-function mediaCapabilities(values: string[]): Provider['models'][string]['capabilities']['input'] {
-  return {
-    text: values.includes('text'),
-    audio: values.includes('audio'),
-    image: values.includes('image'),
-    video: values.includes('video'),
-    pdf: values.includes('pdf'),
-  };
-}
-
-function firstV2Cost(
-  costs: ProviderModelCatalogV2Snapshot['models'][number]['cost'],
-  fallback?: Provider['models'][string]['cost'],
-): Provider['models'][string]['cost'] {
-  const cost = costs.find((entry) => !entry.tier) ?? costs[0];
-  if (!cost) return fallback ?? { input: 0, output: 0, cache: { read: 0, write: 0 } };
-  return {
-    input: cost.input,
-    output: cost.output,
-    cache: cost.cache,
-  };
-}
-
-function modelApiUrl(api: ProviderModelCatalogV2Snapshot['models'][number]['api']): string {
-  return typeof api.url === 'string' ? api.url : '';
-}
-
-function modelApiPackage(api: ProviderModelCatalogV2Snapshot['models'][number]['api']): string {
-  return api.type === 'aisdk' ? api.package : '';
-}
-
-function modelRequestOptions(
-  model: ProviderModelCatalogV2Snapshot['models'][number],
-): Record<string, unknown> {
-  return {
-    ...(model.api.settings ?? {}),
-    ...model.request.body,
-  };
-}
-
-function providerOptions(
-  provider: ProviderModelCatalogV2Snapshot['providers'][number],
-): Record<string, unknown> {
-  return {
-    ...(provider.api.settings ?? {}),
-    ...provider.request.body,
-  };
-}
-
-function v2ModelSupportsReasoning(
-  model: ProviderModelCatalogV2Snapshot['models'][number],
-): boolean {
-  const apiId = model.api.id.toLowerCase();
-  const apiUrl = modelApiUrl(model.api).toLowerCase();
-  if (apiId.includes('responses') || apiUrl.includes('/responses')) return true;
-  return hasReasoningConfig(model.api.settings) || hasReasoningConfig(model.request.body);
-}
-
-function hasReasoningConfig(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false;
-  if (!Object.prototype.hasOwnProperty.call(value, 'reasoning')) return false;
-  const reasoning = (value as { reasoning?: unknown }).reasoning;
-  return reasoning !== undefined && reasoning !== null && reasoning !== false;
+  return { ...(variants ?? {}) };
 }
 
 /**
@@ -278,21 +187,6 @@ export function reconcileModelPick(
   return null;
 }
 
-/**
- * Return Host-projected tool capability for an exact configured model.
- * `null` means the provider metadata is temporarily unavailable and must not
- * be mistaken for a negative capability.
- */
-export function modelToolCapability(
-  providers: readonly Provider[],
-  pick: ModelPick | null,
-): boolean | null {
-  if (!pick) return null;
-  const provider = providers.find((entry) => entry.id === pick.providerID);
-  const model = provider?.models?.[pick.modelID];
-  return typeof model?.capabilities?.toolcall === 'boolean' ? model.capabilities.toolcall : null;
-}
-
 function modelPickExists(providers: Provider[], pick: ModelPick): boolean {
   return providers.some(
     (provider) =>
@@ -307,9 +201,7 @@ export function modelVariantIds(providers: readonly Provider[], model: ModelPick
   const provider = providers.find((entry) => entry.id === model.providerID);
   const variants = provider?.models?.[model.modelID]?.variants;
   if (!variants) return [];
-  return Object.entries(variants)
-    .filter(([variant, options]) => variant.trim().length > 0 && options['disabled'] !== true)
-    .map(([variant]) => variant);
+  return Object.keys(variants).filter((variant) => variant.trim().length > 0);
 }
 
 /**

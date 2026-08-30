@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
 import { normalizeChatOperationV2TargetCoordinate } from '../server/chat-operations/binding.js';
 import {
+  buildManagedChatOperationV2ExecutionPrompt,
   createManagedChatOperationV2AuthoringRuntime,
+  isOpenCodeSessionStatusActive,
   type ManagedChatOperationV2AuthoringAuthorityRecord,
   type ManagedChatOperationV2AuthoringExecutionResult,
   type ManagedChatOperationV2AuthoringOpenCodeAdapter,
@@ -27,6 +29,11 @@ import {
   finalizeChatYamlStage,
   listChatYamlStage,
 } from '../server/chat-yaml-staging.js';
+import {
+  parseRequirementsMd,
+  requirementsPath,
+  runRequirementsSync,
+} from '../server/requirements-sync.js';
 import { WorkspaceState } from '../server/workspace-state.js';
 
 const roots: string[] = [];
@@ -78,7 +85,7 @@ class FakeStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapte
   readonly createCalls: Array<{
     stageId: string;
     targetRelativePath: string;
-    workingRelativePath: string;
+    sourceRelativePath: string | null;
     intent: string;
     originHash: string | null;
   }> = [];
@@ -116,7 +123,7 @@ class FakeStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapte
     stageId: string;
     intent: 'create' | 'edit';
     targetRelativePath: string;
-    workingRelativePath: string;
+    sourceRelativePath: string | null;
     originHash: string | null;
   }) {
     this.createCalls.push(input);
@@ -124,7 +131,7 @@ class FakeStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapte
       stageId: input.stageId,
       sourceDirectory: this.sourceDirectory,
       stageDirectory: this.stageDirectory,
-      workingRelativePath: input.workingRelativePath,
+      workingRelativePath: input.targetRelativePath,
       snapshotHash: sha256(`snapshot:${input.stageId}:initial`),
       artifactSetHash: sha256(`artifacts:${input.stageId}:initial`),
       artifactCount: 1,
@@ -405,6 +412,7 @@ function invocationRequest(
     inputId: 'authoring-input-1',
     purpose: 'authoring',
     repairAttempt: 0,
+    trialPlanRequest: null,
     admission: admission(),
     canonicalRequestBytes: new TextEncoder().encode('{"request":"one"}'),
     stage,
@@ -415,6 +423,68 @@ function invocationRequest(
 }
 
 describe('managed Chat Operation V2 authoring runtime', () => {
+  test('treats a missing OpenCode status-map entry as idle while failing closed on explicit activity', () => {
+    expect(isOpenCodeSessionStatusActive(undefined)).toBe(false);
+    expect(isOpenCodeSessionStatusActive({ type: 'idle' })).toBe(false);
+    expect(isOpenCodeSessionStatusActive({ type: 'busy' })).toBe(true);
+    expect(isOpenCodeSessionStatusActive({ type: 'retry', attempt: 1 })).toBe(true);
+    expect(isOpenCodeSessionStatusActive(null)).toBe(true);
+    expect(isOpenCodeSessionStatusActive({})).toBe(true);
+  });
+
+  test('selects the dedicated Trial Plan agent with exact Host-issued planning authority', () => {
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'trial-plan-invocation-1',
+      sessionId: 'session-root',
+      executionMessageId: 'execution-message-1',
+      purpose: 'trial_plan',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'pipeline/pipeline.yaml',
+      trialPlanRequest: {
+        reason: 'missing',
+        relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs'],
+        attemptId: 'trial-plan-attempt-1',
+      },
+      admission: admission(),
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.agent).toBe('tagma-trial-planner');
+    expect(prompt.text).toContain('<tagma-internal>');
+    expect(prompt.text).toContain('<mode>targeted_trial_planning</mode>');
+    expect(prompt.text).toContain('pipeline/pipeline.trial-plan.json');
+    expect(prompt.text).toContain('trial-plan-attempt-1');
+    expect(prompt.text).toContain('a'.repeat(40));
+    expect(prompt.text).not.toContain('<request>Build the pipeline.</request>');
+  });
+
+  test('keeps staged paths and compile logs out of model-authored publication claims', () => {
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'authoring-invocation-1',
+      sessionId: 'session-root',
+      executionMessageId: 'execution-message-1',
+      purpose: 'authoring',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'origin/origin.yaml',
+      trialPlanRequest: null,
+      admission: admission(),
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"authoring"}'),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.system).toContain('staging coordinates');
+    expect(prompt.system).toContain('may remap publication');
+    expect(prompt.system).toContain('compile log is not a published artifact');
+    expect(prompt.system).toContain('Do not claim a published path');
+  });
+
   test('pins provider-free durable admission before the sole authoring provider execution', () => {
     const conformance = readFileSync(
       fileURLToPath(new URL('./opencode-managed-runtime-smoke.test.ts', import.meta.url)),
@@ -513,7 +583,8 @@ describe('managed Chat Operation V2 authoring runtime', () => {
         signal: new AbortController().signal,
       }),
     ).resolves.toMatchObject({
-      kind: 'repair_required',
+      kind: 'discard',
+      errorCode: 'stage_scope_violation',
       diagnosticCodes: ['stage_scope_violation'],
     });
     await expect(
@@ -532,7 +603,9 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     const originFolder = join(workspaceRoot, '.tagma', 'alpha');
     mkdirSync(originFolder, { recursive: true });
     const source = 'pipeline:\n  name: Alpha\ntracks: []\n';
-    writeFileSync(join(originFolder, 'alpha.yaml'), source, 'utf8');
+    const originPath = join(originFolder, 'alpha.yaml');
+    writeFileSync(originPath, source, 'utf8');
+    runRequirementsSync(originPath);
     const workspace = new WorkspaceState(workspaceRoot);
     workspace.workDir = workspaceRoot;
     const runtime = createManagedChatOperationV2AuthoringRuntime({
@@ -574,17 +647,35 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       errorCode: 'stage_create_failed',
       diagnosticCodes: ['stage_create_failed'],
     });
-    expect(readFileSync(join(originFolder, 'alpha.yaml'), 'utf8')).toBe(source);
+    expect(readFileSync(originPath, 'utf8')).toBe(source);
     const result = await runtime.ensureStage(ensureInput);
     expect(result).toMatchObject({
       kind: 'ready',
       stage: { targetId: 'pipeline-alpha', target: binding.target },
     });
-    expect(listChatYamlStage(workspace, STAGE_ID, true)).toMatchObject({
-      activeRelativePath: 'alpha/alpha.yaml',
+    const descriptor = listChatYamlStage(workspace, STAGE_ID, true);
+    expect(descriptor).toMatchObject({
+      activeRelativePath: 'alpha-branch/alpha-branch.yaml',
       createTargetRelativePath: null,
       pipelineBinding: null,
     });
+    expect(result).toMatchObject({
+      kind: 'ready',
+      stage: { targetId: 'pipeline-alpha', target: binding.target },
+    });
+    expect(
+      readFileSync(join(descriptor.agentTagmaDir, 'alpha-branch', 'alpha-branch.yaml'), 'utf8'),
+    ).toBe(source);
+    const stagedRequirements = parseRequirementsMd(
+      readFileSync(
+        requirementsPath(join(descriptor.agentTagmaDir, 'alpha-branch', 'alpha-branch.yaml')),
+        'utf8',
+      ),
+    );
+    expect(stagedRequirements.frontmatter?.generatedFor).toBe('alpha-branch.yaml');
+    expect(stagedRequirements.body).toContain('# Requirements for `alpha-branch.yaml`');
+    expect(stagedRequirements.body).not.toContain('`alpha.yaml`');
+    expect(readFileSync(originPath, 'utf8')).toBe(source);
     await runtime.discardStage({
       operationId: 'operation-edit',
       operationGeneration: 1,
@@ -615,7 +706,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       {
         stageId: STAGE_ID,
         targetRelativePath: 'alpha/alpha.yaml',
-        workingRelativePath: 'alpha/alpha.yaml',
+        sourceRelativePath: null,
         intent: 'create',
         originHash: null,
       },
@@ -665,12 +756,12 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(value.staging.createCalls[0]).toMatchObject({
       intent: 'edit',
       targetRelativePath: 'branch/branch.yaml',
-      workingRelativePath: 'alpha/alpha.yaml',
+      sourceRelativePath: 'alpha/alpha.yaml',
       originHash: 'a'.repeat(64),
     });
     expect(value.staging.authorities.get(STAGE_ID)).toMatchObject({
       targetRelativePath: 'branch/branch.yaml',
-      workingRelativePath: 'alpha/alpha.yaml',
+      workingRelativePath: 'branch/branch.yaml',
       stage: { target: branchBinding.target },
     });
   });
@@ -958,6 +1049,109 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       failedCount: 0,
       stagedSnapshotHash: sha256('verified-stage'),
       artifactCount: 3,
+    });
+  });
+
+  test('keeps a Host Trial Plan request separate from pipeline repair authority', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      cases: [],
+      plannedCaseCount: 0,
+      planRequest: {
+        reason: 'missing',
+        relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required for this compiled pipeline.',
+        maxAttempts: 2,
+        requiredCoverage: ['representative-input'],
+        attemptId: 'trial-plan-attempt-1',
+        requiredSandboxInputs: [],
+      },
+    } as unknown as ChatPipelineTrialRunResult;
+
+    const verification = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+
+    expect(verification).toMatchObject({
+      kind: 'trial_plan_required',
+      planRequest: {
+        reason: 'missing',
+        pipelineHash: 'a'.repeat(40),
+        attemptId: 'trial-plan-attempt-1',
+      },
+    });
+    expect(verification).not.toHaveProperty('evidenceHash');
+  });
+
+  test('publishes compile-valid diagnostic-only Trial failures as unverified without granting repair authority', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      success: false,
+      kind: 'blocked',
+      ran: false,
+      repairAuthorization: 'diagnostic-only',
+      summary:
+        'Trial Interaction Protocol preflight blocked execution because Live Smoke was not authorized.',
+      cases: [],
+      plannedCaseCount: 0,
+    } as unknown as ChatPipelineTrialRunResult;
+
+    const blocked = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+
+    expect(blocked).toMatchObject({
+      kind: 'unverified',
+      trialStatus: 'blocked',
+      errorCode: 'trial_blocked',
+      diagnosticCodes: ['trial_blocked'],
+      redactedSummary:
+        'Trial Interaction Protocol preflight blocked execution because Live Smoke was not authorized.',
+      stagedSnapshotHash: value.stage.snapshotHash,
+      artifactCount: value.stage.artifactCount,
+    });
+    expect(blocked).not.toHaveProperty('evidenceHash');
+
+    value.staging.trialResult = {
+      success: false,
+      kind: 'failed',
+      ran: true,
+      repairAuthorization: 'pipeline-change-allowed',
+      cases: [{ id: 'case-1', success: false }],
+      plannedCaseCount: 1,
+    } as unknown as ChatPipelineTrialRunResult;
+    const repairable = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+
+    expect(repairable).toMatchObject({
+      kind: 'repair_required',
+      diagnosticCodes: ['trial_failed'],
     });
   });
 });

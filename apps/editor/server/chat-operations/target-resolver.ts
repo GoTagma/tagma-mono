@@ -19,6 +19,21 @@ function digest(...values: readonly string[]): string {
   return hash.digest('hex');
 }
 
+function isolatedTargetCoordinate(
+  inventory: ChatOperationV2HostInventory,
+  ...authority: readonly string[]
+): { readonly suffix: string; readonly relativePath: string } {
+  const suffix = digest(...authority).slice(0, 24);
+  const stem = `chat-${suffix}`;
+  const relativePath = `${stem}/${stem}.yaml`;
+  if (inventory.inventory.candidates.some((candidate) => candidate.relativePath === relativePath)) {
+    throw Object.assign(new Error('Authoring branch target is already present.'), {
+      code: 'host_inventory_conflict',
+    });
+  }
+  return { suffix, relativePath };
+}
+
 class HostInventoryAuthoringTargetResolver implements ChatOperationV2AuthoringTargetResolver {
   readonly #getCurrentInventory: () => ChatOperationV2HostInventory;
   readonly #platform: 'win32' | 'posix';
@@ -44,28 +59,27 @@ class HostInventoryAuthoringTargetResolver implements ChatOperationV2AuthoringTa
           code: 'host_inventory_conflict',
         });
       }
+      const { relativePath } = isolatedTargetCoordinate(
+        inventory,
+        'tagma-chat-operation-v2-edit-target',
+        input.operation.operationId,
+        candidate.id,
+        candidate.contentHash,
+      );
       return Object.freeze({
         targetId: candidate.id,
-        target: normalizeChatOperationV2TargetCoordinate(candidate.relativePath, this.#platform),
+        target: normalizeChatOperationV2TargetCoordinate(relativePath, this.#platform),
         originHash: candidate.contentHash,
       });
     }
 
-    const suffix = digest(
+    const { suffix, relativePath } = isolatedTargetCoordinate(
+      inventory,
       'tagma-chat-operation-v2-create-target',
       input.operation.operationId,
       input.evidence.requestId,
       input.evidence.requestHash,
-    ).slice(0, 24);
-    const stem = `chat-${suffix}`;
-    const relativePath = `${stem}/${stem}.yaml`;
-    if (
-      inventory.inventory.candidates.some((candidate) => candidate.relativePath === relativePath)
-    ) {
-      throw Object.assign(new Error('Authoring create target is already present.'), {
-        code: 'host_inventory_conflict',
-      });
-    }
+    );
     return Object.freeze({
       targetId: `target_${suffix}`,
       target: normalizeChatOperationV2TargetCoordinate(relativePath, this.#platform),

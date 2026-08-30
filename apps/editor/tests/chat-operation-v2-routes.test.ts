@@ -1067,8 +1067,7 @@ describe('Chat Operation V2 mutations', () => {
       ['commit_coordinator_unavailable', 503, 'chat_operation_action_unavailable'],
       ['projection_unavailable', 503, 'chat_operation_action_unavailable'],
       ['unsafe_mutation_result', 503, 'chat_operation_action_unavailable'],
-      ['classifier_model_incompatible', 409, 'chat_operation_action_unavailable'],
-      ['classifier_model_unavailable', 409, 'chat_operation_action_unavailable'],
+      ['selected_model_unavailable', 409, 'chat_operation_model_unavailable'],
       ['authoring_target_conflict', 409, 'chat_operation_conflict'],
       ['operation_mismatch', 404, 'operation_not_found'],
       ['workspace_mismatch', 404, 'operation_not_found'],
@@ -1089,6 +1088,12 @@ describe('Chat Operation V2 mutations', () => {
       );
       expect(res.statusCode).toBe(status);
       expect(res.body).toMatchObject({ protocolVersion: 2, kind });
+      if (code === 'selected_model_unavailable') {
+        expect(res.body).toMatchObject({
+          error:
+            'The selected model is not configured in the current OpenCode runtime. Refresh models or choose a configured model. Your message is preserved.',
+        });
+      }
       expect(JSON.stringify(res.body)).not.toContain('private');
     }
   });

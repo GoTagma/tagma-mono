@@ -51,8 +51,8 @@ class StoreAuthoringResultPersistence implements ChatOperationV2AuthoringResultP
     input: PersistChatOperationV2AuthoringInvocationResultInput,
   ): Promise<PersistedChatOperationV2AuthoringInvocationResult> {
     const outbox = requireSettledOutbox(this.store, input);
-    if (!input.rendererProjectable || input.purpose === 'repair') {
-      // Repair text is deliberately dropped. The settled outbox/usage/event
+    if (!input.rendererProjectable || input.purpose !== 'authoring') {
+      // Internal repair and Trial Plan text is deliberately dropped. The settled outbox/usage/event
       // retain durable content-minimized evidence without creating a visible
       // or orphaned result message.
       return Object.freeze({
@@ -86,7 +86,23 @@ class StoreAuthoringResultPersistence implements ChatOperationV2AuthoringResultP
       purpose: 'authoring',
       createdAt: input.capturedAt,
       text: input.text ?? 'Pipeline update completed.',
-      attachments: [],
+      attachments:
+        input.verificationNotice === null
+          ? []
+          : [
+              {
+                attachmentId: opaqueId(
+                  'notice',
+                  input.operationId,
+                  input.invocationId,
+                  input.verificationNotice.code,
+                ),
+                kind: 'notice' as const,
+                mediaType: 'text/plain' as const,
+                label: 'Pipeline published without completed Trial verification',
+                content: input.verificationNotice.summary,
+              },
+            ],
       evidence: {
         capture: input.text === null ? 'host_completion' : 'direct_response',
         requestDigest: input.requestDigest,

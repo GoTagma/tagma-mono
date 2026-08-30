@@ -31,6 +31,7 @@ import type {
   WorkspaceOperationSnapshot,
 } from './store.js';
 import {
+  CHAT_OPERATION_V2_PHASES,
   validateChatOperationV2State,
   type ChatOperationV2Phase,
   type ChatOperationV2TerminalOutcome,
@@ -768,7 +769,11 @@ function interactivePending(
     );
   }
   const expectedWait = state === 'live_pending' ? 'permission' : 'user_recovery_choice';
-  if (operation.phase !== 'awaiting_input' || operation.waitReason !== expectedWait) {
+  // Interactive OpenCode requests deliberately retain their active lifecycle
+  // phase (for example `authoring`) so the Host does not lose its binding and
+  // staging authority while waiting for a renderer decision. Unlike a
+  // clarification, they must not be normalized to `awaiting_input`.
+  if (operation.phase === 'terminal' || operation.waitReason !== expectedWait) {
     return fail(
       'pending_input_mismatch',
       'Interactive request does not match operation wait state.',
@@ -940,7 +945,6 @@ function rendererExecutionState(
   operation: StoredChatOperationV2,
 ): ChatOperationV2RendererExecutionState {
   if (operation.phase === 'terminal') return 'terminal';
-  if (operation.phase !== 'awaiting_input') return 'running';
 
   switch (operation.waitReason) {
     case 'provider_unavailable':
@@ -954,10 +958,9 @@ function rendererExecutionState(
     case 'retry_backoff':
       return 'running';
     case null:
-      return fail(
-        'invalid_record',
-        'An awaiting-input operation must project a concrete wait reason.',
-      );
+      return operation.phase === 'awaiting_input'
+        ? fail('invalid_record', 'An awaiting-input operation must project a concrete wait reason.')
+        : 'running';
   }
 }
 
@@ -1007,7 +1010,7 @@ function failureProjection(
   outboxes: readonly StoredInvocationOutboxRecord[],
 ): ChatOperationV2RendererFailureProjection | null {
   if (
-    operation.phase !== 'awaiting_input' ||
+    operation.phase === 'terminal' ||
     (operation.waitReason !== 'provider_unavailable' && operation.waitReason !== 'user_retry')
   ) {
     return null;
@@ -1021,13 +1024,29 @@ function failureProjection(
       recordedAt: operation.updatedAt,
     });
   }
+  const postReservation =
+    CHAT_OPERATION_V2_PHASES.indexOf(operation.phase) >=
+    CHAT_OPERATION_V2_PHASES.indexOf('reserving');
   const outbox =
     outboxes
-      .filter((entry) => entry.operationId === operation.operationId)
+      .filter(
+        (entry) =>
+          entry.operationId === operation.operationId &&
+          (!postReservation || entry.purpose === 'authoring' || entry.purpose === 'repair'),
+      )
       .sort(
         (left, right) =>
           right.preparedAt - left.preparedAt || right.invocationId.localeCompare(left.invocationId),
       )[0] ?? null;
+  if (!outbox && operation.phase === 'staging') {
+    return Object.freeze({
+      stage: 'authoring',
+      code: 'session_relocation_unavailable',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: operation.updatedAt,
+    });
+  }
   if (outbox && outbox.workspaceScopeId !== operation.workspaceScopeId) {
     return fail('workspace_mismatch', 'Invocation failure evidence belongs to another workspace.');
   }

@@ -56,6 +56,7 @@ import {
 } from './yaml-edit-lock.js';
 import { verifyTrialWitnessWorkerForBuild } from './chat-pipeline-trial-witness.js';
 import { diagnosticsHub, isDiagnosticsAgentPath } from './diagnostics.js';
+import { createDiagnosticsOpencodeMessageReader } from './diagnostics-opencode.js';
 import { registerDiagnosticsRoutes } from './routes/diagnostics.js';
 import { registerChatOperationV2Routes } from './routes/chat-operations.js';
 import { createChatOperationV2ShadowService } from './chat-operations/service.js';
@@ -65,7 +66,7 @@ import {
   createChatOperationV2MigrationService,
   deriveChatOperationV2ResetRequestIdentity,
 } from './chat-operations/migration-service.js';
-import { createManagedOpenCodeStructuredClassifierRunner } from './chat-operations/opencode-adapter.js';
+import { createManagedOpenCodeReadonlyInvocationRunner } from './chat-operations/opencode-adapter.js';
 import { CHAT_OPERATION_V2_API_PROTOCOL_VERSION } from './chat-operations/api-requests.js';
 import { buildChatOperationV2HostInventory } from './chat-operations/inventory.js';
 import { resolveChatOperationV2CreateAdmission } from './chat-operations/host-admission.js';
@@ -83,7 +84,7 @@ import {
 } from './chat-operations/http-body.js';
 import { buildOpencodeSeedOptions } from './opencode-seed-options.js';
 import { readEditorSettings } from './plugins/loader.js';
-import { readManagedOpenCodeClassifierModelAuthority } from './opencode-provider-state.js';
+import { readManagedOpenCodeSelectedModelAuthority } from './opencode-provider-state.js';
 import { registerChatOperationV2LegacyStageFence } from './chat-operations/legacy-stage-fence.js';
 import { registerServerDiagnosticsContributor } from './diagnostics-contributors.js';
 import { registerChatOperationV2ControlRoutes } from './routes/chat-control.js';
@@ -159,7 +160,7 @@ const chatOperationV2Service = createChatOperationV2ShadowService({
     getResultProjection: (operationId) => store.getResultProjection(operationId),
   }),
   readonlyRunnerFactory: ({ store, canonicalWorkspaceRoot }) =>
-    createManagedOpenCodeStructuredClassifierRunner({
+    createManagedOpenCodeReadonlyInvocationRunner({
       workspaceDirectory: ensureRealTagmaDirectory(canonicalWorkspaceRoot),
       store,
     }).runner,
@@ -634,7 +635,7 @@ registerChatOperationV2Routes(
             const seedOptions = buildOpencodeSeedOptions(workspace);
             const editorSettings = readEditorSettings(workspace);
             const tagmaCwd = ensureRealTagmaDirectory(workDir);
-            const classifierModel = await readManagedOpenCodeClassifierModelAuthority(
+            const selectedModel = await readManagedOpenCodeSelectedModelAuthority(
               await ensureOpencode(tagmaCwd),
               {
                 providerID: request.payload.provider,
@@ -646,8 +647,9 @@ registerChatOperationV2Routes(
               candidates: inventory.candidates,
               agentPolicy: {
                 schemaVersion: 1,
-                classifier: 'tagma-chat-pipeline-intent-v2',
-                tools: { '*': false, StructuredOutput: true },
+                classifier: 'tagma-chat-pipeline-intent-text-v3',
+                outputContract: 'host-validated-json-text',
+                tools: { '*': false },
               },
               settings: {
                 schemaVersion: 1,
@@ -660,10 +662,11 @@ registerChatOperationV2Routes(
                 opencodeVersion: process.env.TAGMA_OPENCODE_BUNDLED_VERSION ?? '1.18.18',
                 hostAssignedIds: true,
                 durableHistory: true,
-                structuredOutputOnly: true,
+                providerStructuredOutputRequired: false,
+                classifierTextReplay: true,
                 textReplay: true,
               },
-              classifierModel,
+              selectedModel,
               features: {
                 schemaVersion: 1,
                 protocolVersion: CHAT_OPERATION_V2_API_PROTOCOL_VERSION,
@@ -727,7 +730,13 @@ registerChatOperationV2ControlRoutes(
       }
     : { enabled: false },
 );
-registerDiagnosticsRoutes(app);
+registerDiagnosticsRoutes(app, {
+  readOpencodeMessages: createDiagnosticsOpencodeMessageReader(
+    (workspaceKey, sessionId) =>
+      chatOperationV2Service?.getDiagnosticsReadonlySessionProjection(workspaceKey, sessionId) ??
+      null,
+  ),
+});
 
 app.post('/api/shutdown', (req, res) => {
   if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {

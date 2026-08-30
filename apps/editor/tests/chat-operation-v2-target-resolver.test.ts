@@ -60,28 +60,32 @@ function hostInventory() {
 }
 
 describe('Chat Operation V2 Host authoring target resolver', () => {
-  test('resolves edit only from exact current inventory evidence', async () => {
+  test('resolves edit evidence onto a deterministic isolated writable branch', async () => {
     const inventory = hostInventory();
     const resolver = createChatOperationV2AuthoringTargetResolver({
       getCurrentInventory: () => inventory,
       platform: 'win32',
     });
-    expect(
-      await resolver.resolveTarget({
-        operation: operation(),
-        conversationId: 'conversation-1',
-        evidence: {
-          kind: 'edit',
-          candidateId: 'pipeline_1',
-          candidateContentHash: 'a'.repeat(64),
-          inventoryDigest: 'b'.repeat(64),
-        },
-      }),
-    ).toEqual({
+    const input = {
+      operation: operation(),
+      conversationId: 'conversation-1',
+      evidence: {
+        kind: 'edit' as const,
+        candidateId: 'pipeline_1',
+        candidateContentHash: 'a'.repeat(64),
+        inventoryDigest: 'b'.repeat(64),
+      },
+    };
+    const first = await resolver.resolveTarget(input);
+    expect(await resolver.resolveTarget(input)).toEqual(first);
+    expect(first).toMatchObject({
       targetId: 'pipeline_1',
-      target: { platform: 'win32', coordinate: 'alpha/alpha.yaml', identity: 'alpha/alpha.yaml' },
       originHash: 'a'.repeat(64),
+      target: { platform: 'win32' },
     });
+    expect(first.target.coordinate).toMatch(/^chat-[a-f0-9]{24}\/chat-[a-f0-9]{24}\.yaml$/);
+    expect(first.target.coordinate).not.toBe('alpha/alpha.yaml');
+    expect(JSON.stringify(first)).not.toContain('conversation-1');
   });
 
   test('allocates one deterministic contained create target without using renderer paths', async () => {
