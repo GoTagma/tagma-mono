@@ -1,5 +1,10 @@
 import { parseChatOperationV2Admission, type ChatOperationV2Admission } from './admission.js';
 import {
+  CHAT_OPERATION_V2_EXECUTION_STATES,
+  deriveChatOperationV2ExecutionState,
+  type ChatOperationV2ExecutionState,
+} from '../../shared/chat-operation-v2-execution-state.js';
+import {
   parseChatOperationV2ClarificationThread,
   type ChatOperationV2ClarificationThread,
   type ChatOperationV2PendingClarification,
@@ -20,6 +25,7 @@ import {
 import {
   CHAT_OPERATION_V2_RESULT_ATTACHMENT_KINDS,
   CHAT_OPERATION_V2_RESULT_ATTACHMENT_MEDIA_TYPES,
+  CHAT_OPERATION_V2_RESULT_SCHEMA_VERSION,
   CHAT_OPERATION_V2_VISIBLE_RESULT_PURPOSES,
   type ChatOperationV2RendererResultProjection,
 } from './results.js';
@@ -39,14 +45,8 @@ import {
 } from './types.js';
 
 export const CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION = 2 as const;
-export const CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES = [
-  'running',
-  'waiting_for_user',
-  'retryable_failure',
-  'terminal',
-] as const;
-export type ChatOperationV2RendererExecutionState =
-  (typeof CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES)[number];
+export const CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES = CHAT_OPERATION_V2_EXECUTION_STATES;
+export type ChatOperationV2RendererExecutionState = ChatOperationV2ExecutionState;
 export const CHAT_OPERATION_V2_PROJECTION_MAX_CANDIDATES = 1024;
 export const CHAT_OPERATION_V2_PROJECTION_MAX_NAME_BYTES = 1024;
 export const CHAT_OPERATION_V2_PROJECTION_MAX_PENDING_TEXT_BYTES = 64 * 1024;
@@ -818,12 +818,13 @@ function validateResultProjection(
       'completedAt',
       'contentHash',
       'resultHash',
+      'pipeline',
       'messages',
     ],
     'Renderer result projection',
   );
   if (
-    result.schemaVersion !== 1 ||
+    result.schemaVersion !== CHAT_OPERATION_V2_RESULT_SCHEMA_VERSION ||
     result.status !== 'completed' ||
     !CHAT_OPERATION_V2_VISIBLE_RESULT_PURPOSES.includes(result.purpose as never) ||
     result.operationId !== operation.operationId ||
@@ -844,6 +845,30 @@ function validateResultProjection(
   safeHash(result.contentHash, 'Result projection content hash');
   safeHash(result.resultHash, 'Result projection record hash');
   safeInteger(result.completedAt, 'Result completed timestamp');
+  const pipeline =
+    result.pipeline === null
+      ? null
+      : exactRecord(
+          result.pipeline,
+          ['disposition', 'relativeCoordinate', 'artifactSetHash'],
+          'Renderer pipeline result',
+        );
+  if (
+    (pipeline === null &&
+      (result.terminalOutcome === 'completed_published' ||
+        result.terminalOutcome === 'completed_forked')) ||
+    (pipeline !== null &&
+      ((result.terminalOutcome !== 'completed_published' &&
+        result.terminalOutcome !== 'completed_forked') ||
+        pipeline.disposition !==
+          (result.terminalOutcome === 'completed_published' ? 'published' : 'forked')))
+  ) {
+    return fail('result_mismatch', 'Result pipeline authority does not match terminal outcome.');
+  }
+  if (pipeline !== null) {
+    relativeCoordinate(pipeline.relativeCoordinate);
+    safeHash(pipeline.artifactSetHash, 'Result pipeline artifact set hash');
+  }
   if (
     (result.completedAt as number) > operation.updatedAt ||
     !Array.isArray(result.messages) ||
@@ -944,24 +969,10 @@ function operationSummary(
 function rendererExecutionState(
   operation: StoredChatOperationV2,
 ): ChatOperationV2RendererExecutionState {
-  if (operation.phase === 'terminal') return 'terminal';
-
-  switch (operation.waitReason) {
-    case 'provider_unavailable':
-    case 'user_retry':
-      return 'retryable_failure';
-    case 'clarification':
-    case 'permission':
-    case 'renderer_snapshot':
-    case 'user_recovery_choice':
-      return 'waiting_for_user';
-    case 'retry_backoff':
-      return 'running';
-    case null:
-      return operation.phase === 'awaiting_input'
-        ? fail('invalid_record', 'An awaiting-input operation must project a concrete wait reason.')
-        : 'running';
-  }
+  return (
+    deriveChatOperationV2ExecutionState(operation.phase, operation.waitReason) ??
+    fail('invalid_record', 'An awaiting-input operation must project a concrete wait reason.')
+  );
 }
 
 function failureStage(purpose: string): ChatOperationV2RendererFailureStage {

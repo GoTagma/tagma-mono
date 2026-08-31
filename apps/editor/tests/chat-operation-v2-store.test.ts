@@ -2947,7 +2947,7 @@ describe('ChatTurn Operation V2 result authority', () => {
       });
       expect(store.getResult(result.resultId)).toEqual(result);
       expect(store.getResultProjection(fixture.operation.operationId)).toEqual({
-        schemaVersion: 1,
+        schemaVersion: 2,
         resultId: result.resultId,
         operationId: result.operationId,
         generation: result.generation,
@@ -2957,6 +2957,7 @@ describe('ChatTurn Operation V2 result authority', () => {
         completedAt: result.terminal.terminalAt,
         contentHash: result.contentHash,
         resultHash: result.resultHash,
+        pipeline: null,
         messages: [
           {
             messageId: fixture.message.messageId,
@@ -3443,6 +3444,14 @@ describe('ChatTurn Operation V2 result authority', () => {
         terminalResultId: intendedResultId,
         bindingId: prepared.prepare.intendedResult.bindingId,
         artifactSetHash: prepared.prepare.artifactSetHash,
+      });
+      expect(store.getResultProjection(operation.operationId)).toMatchObject({
+        schemaVersion: 2,
+        pipeline: {
+          disposition: 'published',
+          relativeCoordinate: prepared.reserved.target.coordinate,
+          artifactSetHash: prepared.prepare.artifactSetHash,
+        },
       });
       expect(store.getCommitWal(prepared.prepare.commitId)?.apply).toEqual(apply);
       store.close();

@@ -251,7 +251,7 @@ function resultProjection(operationId = 'operation-result') {
     },
     sealedAt: 120,
   });
-  return projectChatOperationV2ResultForRenderer(result, [message]);
+  return projectChatOperationV2ResultForRenderer(result, [message], null);
 }
 
 function harness(input: {

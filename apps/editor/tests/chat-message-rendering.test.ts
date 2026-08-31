@@ -6,11 +6,68 @@ import {
   shouldRenderMessageBubble,
 } from '../src/components/chat/message-rendering';
 import { MessageBubble } from '../src/components/chat/MessageBubble';
+import {
+  ChatOperationV2PipelineResultView,
+  resolveChatOperationV2PipelineEntry,
+} from '../src/components/chat/ChatPanel';
 import type { OpencodeThreadEntry, Part, Provider, ToolState } from '../src/api/opencode-chat';
 import { useChatStore } from '../src/store/chat-store';
 import { inspectTaskToolCompletion } from '../src/utils/chat-tool-display';
 
 type CompletedToolState = Extract<ToolState, { status: 'completed' }>;
+
+test('published Chat Operation V2 results render one Open Pipeline action', () => {
+  const html = renderToStaticMarkup(
+    createElement(ChatOperationV2PipelineResultView, {
+      disposition: 'published',
+      relativeCoordinate: 'chat-result/chat-result.yaml',
+      opening: false,
+      disabledReason: null,
+      error: null,
+      onOpen: () => undefined,
+    }),
+  );
+
+  expect(html).toContain('aria-label="Published pipeline"');
+  expect(html).toContain('chat-result/chat-result.yaml');
+  expect(html).toContain('Open Pipeline');
+});
+
+test('published pipeline resolution matches one exact workspace entry and fails closed otherwise', () => {
+  const entry = {
+    name: 'chat-result.yaml',
+    path: 'E:\\workspace\\.tagma\\chat-result\\chat-result.yaml',
+    pipelineName: 'Chat Result',
+    contentHash: 'a'.repeat(64),
+    layoutHash: null,
+    layoutMtimeMs: null,
+    layoutSize: null,
+    mtimeMs: 1,
+    size: 1,
+  };
+
+  expect(
+    resolveChatOperationV2PipelineEntry({
+      workDir: 'e:\\workspace',
+      relativeCoordinate: 'chat-result/chat-result.yaml',
+      entries: [entry],
+    }),
+  ).toEqual(entry);
+  expect(
+    resolveChatOperationV2PipelineEntry({
+      workDir: 'e:\\workspace',
+      relativeCoordinate: '../chat-result.yaml',
+      entries: [entry],
+    }),
+  ).toBeNull();
+  expect(
+    resolveChatOperationV2PipelineEntry({
+      workDir: 'e:\\workspace',
+      relativeCoordinate: 'chat-result/chat-result.yaml',
+      entries: [entry, { ...entry }],
+    }),
+  ).toBeNull();
+});
 
 function completedToolState(output: string): CompletedToolState {
   return {

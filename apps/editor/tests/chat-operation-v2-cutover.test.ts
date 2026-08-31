@@ -148,6 +148,7 @@ afterEach(async () => {
     chatOperationV2Operations: [],
     chatOperationV2Inventory: null,
     activeChatOperationV2: null,
+    activeChatOperationV2Result: null,
     activeChatOperationV2Failure: null,
     activeChatOperationV2FailureModel: null,
     activeChatOperationV2Request: null,
@@ -519,7 +520,7 @@ test('projects strict Host result notices into the transcript and completion war
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
   let completed = operation();
   const projectedResult = () => ({
-    schemaVersion: 1,
+    schemaVersion: 2,
     resultId: 'result-01',
     operationId: completed.operationId,
     generation: completed.generation,
@@ -529,6 +530,7 @@ test('projects strict Host result notices into the transcript and completion war
     completedAt: 140,
     contentHash: 'b'.repeat(64),
     resultHash: 'c'.repeat(64),
+    pipeline: null,
     messages: [
       {
         messageId: 'assistant-result-01',
@@ -594,13 +596,97 @@ test('projects strict Host result notices into the transcript and completion war
   );
 });
 
+test('projects published pipeline authority for the Open Pipeline action', async () => {
+  setClientWorkspace(workspace);
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  let completed = operation();
+  const projectedResult = () => ({
+    schemaVersion: 2,
+    resultId: 'result-published-01',
+    operationId: completed.operationId,
+    generation: completed.generation,
+    purpose: 'authoring',
+    status: 'completed',
+    terminalOutcome: 'completed_published',
+    completedAt: 150,
+    contentHash: 'b'.repeat(64),
+    resultHash: 'c'.repeat(64),
+    pipeline: {
+      disposition: 'published',
+      relativeCoordinate: 'chat-result/chat-result.yaml',
+      artifactSetHash: 'e'.repeat(64),
+    },
+    messages: [
+      {
+        messageId: 'assistant-published-01',
+        role: 'assistant',
+        createdAt: 140,
+        text: 'Pipeline ready.',
+        contentHash: 'd'.repeat(64),
+        attachments: [],
+      },
+    ],
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === '/api/chat/operations/snapshot') return Response.json(snapshot());
+    if (url === '/api/chat/operations' && init?.method === 'POST') {
+      const request = JSON.parse(String(init.body)) as {
+        payload: { conversationId: string; rendererInstanceId: string };
+      };
+      completed = operation({
+        conversationId: request.payload.conversationId,
+        rendererInstanceId: request.payload.rendererInstanceId,
+        version: 2,
+        phase: 'terminal',
+        executionState: 'terminal',
+        terminalOutcome: 'completed_published',
+        hasResult: true,
+        updatedAt: 150,
+      });
+      return Response.json({
+        protocolVersion: 2,
+        result: { kind: 'completed_published', operation: completed },
+      });
+    }
+    if (url === '/api/chat/operations/operation-cutover-1') {
+      return Response.json(detail(completed, null, projectedResult()));
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as unknown as typeof fetch;
+  usePipelineStore.setState({ isDirty: false, layoutDirty: false } as never);
+  useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
+  await activateChatOperationExecutionForWorkspace(workspace, {
+    chatOperationProtocolVersion: 2,
+    chatOperationMode: 'production',
+  });
+
+  await useChatStore.getState().send('Build it.');
+
+  expect(
+    (
+      useChatStore.getState() as unknown as {
+        activeChatOperationV2Result: { pipeline: unknown } | null;
+      }
+    ).activeChatOperationV2Result,
+  ).toMatchObject({
+    pipeline: {
+      disposition: 'published',
+      relativeCoordinate: 'chat-result/chat-result.yaml',
+      artifactSetHash: 'e'.repeat(64),
+    },
+  });
+});
+
 test('production permission decisions use V2 CAS and never raw OpenCode replies', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
   const requests: Array<{ url: string; method: string; body: unknown }> = [];
   let waiting = operation({
     version: 2,
+    phase: 'authoring',
     waitReason: 'permission',
+    executionState: 'waiting_for_user',
     pendingInputKind: 'permission',
   });
   const foreground = operation({
@@ -610,7 +696,9 @@ test('production permission decisions use V2 CAS and never raw OpenCode replies'
   });
   let resolved = operation({
     version: 3,
+    phase: 'authoring',
     waitReason: null,
+    executionState: 'running',
     pendingInputKind: null,
     updatedAt: 501,
   });

@@ -13,6 +13,8 @@ import {
   Terminal,
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
+import { usePipelineStore } from '../../store/pipeline-store';
+import { api, type WorkspaceYamlEntry } from '../../api/client';
 import { chatOperationV2FailurePresentation } from '../../utils/chat-operation-v2-failure';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
@@ -881,6 +883,7 @@ function ChatMessages() {
               </div>
             );
           })}
+          <ChatOperationV2PipelineResult />
           {showPending && <PendingUserBubble text={pendingUserText!} />}
           {sending && !currentTurnAssistantId && (
             <PlaceholderAssistantBubble
@@ -908,6 +911,150 @@ function ChatMessages() {
         </button>
       )}
     </>
+  );
+}
+
+function normalizedPath(value: string): { value: string; caseInsensitive: boolean } | null {
+  const normalized = value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!normalized) return null;
+  return {
+    value: normalized,
+    caseInsensitive: /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//'),
+  };
+}
+
+function samePath(left: string, right: string): boolean {
+  const normalizedLeft = normalizedPath(left);
+  const normalizedRight = normalizedPath(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  const caseInsensitive = normalizedLeft.caseInsensitive || normalizedRight.caseInsensitive;
+  return caseInsensitive
+    ? normalizedLeft.value.toLowerCase() === normalizedRight.value.toLowerCase()
+    : normalizedLeft.value === normalizedRight.value;
+}
+
+export function resolveChatOperationV2PipelineEntry(args: {
+  workDir: string;
+  relativeCoordinate: string;
+  entries: readonly WorkspaceYamlEntry[];
+}): WorkspaceYamlEntry | null {
+  const root = normalizedPath(args.workDir);
+  const coordinate = args.relativeCoordinate.replace(/\\/g, '/');
+  if (
+    !root ||
+    coordinate.length === 0 ||
+    coordinate.startsWith('/') ||
+    /^[A-Za-z]:/.test(coordinate) ||
+    coordinate.split('/').some((segment) => !segment || segment === '.' || segment === '..')
+  ) {
+    return null;
+  }
+  const expected = `${root.value}/.tagma/${coordinate}`;
+  const matches = args.entries.filter((entry) => samePath(entry.path, expected));
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+export function ChatOperationV2PipelineResultView({
+  disposition,
+  relativeCoordinate,
+  opening,
+  disabledReason,
+  error,
+  onOpen,
+}: {
+  disposition: 'published' | 'forked';
+  relativeCoordinate: string;
+  opening: boolean;
+  disabledReason: string | null;
+  error: string | null;
+  onOpen: () => void;
+}) {
+  return (
+    <section
+      aria-label="Published pipeline"
+      className="border border-tagma-success/35 bg-tagma-surface px-3 py-2"
+    >
+      <div className="flex items-center gap-2 text-label font-sans text-tagma-text">
+        <Check size={12} className="shrink-0 text-tagma-success" />
+        <span>
+          {disposition === 'forked' ? 'Pipeline published as a fork' : 'Pipeline published'}
+        </span>
+      </div>
+      <code className="mt-1 block break-all text-caption text-tagma-muted">
+        {relativeCoordinate}
+      </code>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={opening || disabledReason !== null}
+          className="btn-primary"
+        >
+          {opening && <Loader2 size={11} className="animate-spin" />}
+          Open Pipeline
+        </button>
+        {disabledReason && (
+          <span className="text-caption text-tagma-warning">{disabledReason}</span>
+        )}
+      </div>
+      {error && <div className="mt-1 text-caption text-tagma-error">{error}</div>}
+    </section>
+  );
+}
+
+function ChatOperationV2PipelineResult() {
+  const result = useChatStore((state) => state.activeChatOperationV2Result);
+  const hasUnsavedChanges = usePipelineStore((state) => state.isDirty || state.layoutDirty);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pipeline = result?.pipeline ?? null;
+
+  useEffect(() => {
+    setOpening(false);
+    setError(null);
+  }, [result?.resultId]);
+
+  if (!pipeline) return null;
+
+  const openPublishedPipeline = async () => {
+    if (opening || hasUnsavedChanges) return;
+    setOpening(true);
+    setError(null);
+    try {
+      const pipelineState = usePipelineStore.getState();
+      const listed = await api.listWorkspaceYamls(pipelineState.workDir);
+      const entry = resolveChatOperationV2PipelineEntry({
+        workDir: pipelineState.workDir,
+        relativeCoordinate: pipeline.relativeCoordinate,
+        entries: listed.entries,
+      });
+      if (!entry)
+        throw new Error('The published pipeline is no longer available in this workspace.');
+      await usePipelineStore.getState().openFile(entry.path);
+      const opened = usePipelineStore.getState();
+      if (!opened.yamlPath || !samePath(opened.yamlPath, entry.path)) {
+        throw new Error(opened.errorMessage || 'The published pipeline could not be opened.');
+      }
+    } catch (openError) {
+      setError(
+        openError instanceof Error
+          ? openError.message
+          : 'The published pipeline could not be opened.',
+      );
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return (
+    <ChatOperationV2PipelineResultView
+      disposition={pipeline.disposition}
+      relativeCoordinate={pipeline.relativeCoordinate}
+      opening={opening}
+      disabledReason={hasUnsavedChanges ? 'Save or discard current edits before opening.' : null}
+      error={error}
+      onOpen={() => void openPublishedPipeline()}
+    />
   );
 }
 

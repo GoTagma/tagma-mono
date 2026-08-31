@@ -192,6 +192,34 @@ test('keeps the browser-only protocol constant in parity with the sidecar author
   );
 });
 
+test('accepts Host execution states derived from non-null wait reasons before phase', async () => {
+  const waitingForPermission = {
+    ...operation(),
+    phase: 'authoring' as const,
+    waitReason: 'permission' as const,
+    executionState: 'waiting_for_user' as const,
+    pendingInputKind: 'permission' as const,
+  };
+  const retryableStagingFailure = {
+    ...operation(),
+    operationId: 'operation-2',
+    phase: 'staging' as const,
+    waitReason: 'provider_unavailable' as const,
+    executionState: 'retryable_failure' as const,
+  };
+  const snapshot = {
+    ...workspaceSnapshot(),
+    operations: [waitingForPermission, retryableStagingFailure],
+  };
+  globalThis.fetch = (async () =>
+    Response.json({
+      protocolVersion: CHAT_OPERATION_V2_CLIENT_PROTOCOL_VERSION,
+      snapshot,
+    })) as unknown as typeof fetch;
+
+  await expect(fetchChatOperationV2Snapshot()).resolves.toEqual(snapshot);
+});
+
 test('reads a strict V2 workspace snapshot with the active workspace and auth identity', async () => {
   const requests: Array<{ url: string; headers: Headers }> = [];
   setClientWorkspace('D:\\repo with spaces');
@@ -241,7 +269,7 @@ test('parses strict result messages and rejects private projection coordinates o
     updatedAt: 120,
   };
   const result = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     resultId: 'result-01',
     operationId: 'operation-1',
     generation: 1,
@@ -251,6 +279,7 @@ test('parses strict result messages and rejects private projection coordinates o
     completedAt: 120,
     contentHash: 'b'.repeat(64),
     resultHash: 'c'.repeat(64),
+    pipeline: null,
     messages: [
       {
         messageId: 'assistant-01',

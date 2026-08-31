@@ -139,6 +139,7 @@ import {
   projectChatOperationV2ResultForRenderer,
   validateChatOperationV2ResultMessageAppend,
   type ChatOperationV2RendererResultProjection,
+  type ChatOperationV2RendererPipelineResult,
   type ChatOperationV2Result,
   type ChatOperationV2ResultMessage,
   type ChatOperationV2ResultPersistenceAppendResult,
@@ -4940,7 +4941,34 @@ export class ChatOperationV2Store {
     const messages = this.resultMessagesById(row.result_id);
     const result = resultFromRow(row, messages);
     this.assertResultOperationProjection(row, result);
-    return projectChatOperationV2ResultForRenderer(result, messages);
+    let pipeline: ChatOperationV2RendererPipelineResult | null = null;
+    if (
+      result.terminal.outcome === 'completed_published' ||
+      result.terminal.outcome === 'completed_forked'
+    ) {
+      const bindingId = result.terminal.bindingId;
+      const artifactSetHash = result.terminal.artifactSetHash;
+      const lease = bindingId === null ? null : this.getBindingLease(bindingId);
+      if (
+        bindingId === null ||
+        artifactSetHash === null ||
+        lease?.record.status !== 'published' ||
+        lease.record.bindingId !== bindingId ||
+        lease.record.publishedByOperationId !== operationId ||
+        lease.record.resultId !== result.resultId
+      ) {
+        throw new ChatOperationV2StoreError(
+          'corrupt_store',
+          'Published result binding authority is missing or inconsistent.',
+        );
+      }
+      pipeline = Object.freeze({
+        disposition: result.terminal.outcome === 'completed_published' ? 'published' : 'forked',
+        relativeCoordinate: lease.record.target.coordinate,
+        artifactSetHash,
+      });
+    }
+    return projectChatOperationV2ResultForRenderer(result, messages, pipeline);
   }
 
   getBindingLease(bindingId: string): StoredChatOperationV2BindingLease | null {

@@ -515,6 +515,7 @@ export interface ManagedChatOperationV2AuthoringOpenCodeAdapter {
     readonly sessionId: string;
     readonly executionMessageId: string;
     readonly purpose: ChatOperationV2AuthoringInvocationPurpose;
+    readonly intent: 'create' | 'edit';
     readonly stageDirectory: string;
     readonly targetRelativePath: string;
     readonly trialPlanRequest: ChatOperationV2TrialPlanRequest | null;
@@ -1305,6 +1306,10 @@ export function buildManagedChatOperationV2ExecutionPrompt(
         `<attachment label="${escapeXml(attachment.label)}">${escapeXml(attachment.content)}</attachment>`,
     )
     .join('\n');
+  const opencodeChatModel =
+    input.intent === 'create'
+      ? `<opencode-chat-model provider-id="${escapeXml(input.admission.provider)}" model-id="${escapeXml(input.admission.model)}" />`
+      : '';
   return {
     agent: TAGMA_PIPELINE_AGENT,
     system: [
@@ -1317,6 +1322,7 @@ export function buildManagedChatOperationV2ExecutionPrompt(
       '<tagma-chat-operation-v2-authoring>',
       `<purpose>${input.purpose}</purpose>`,
       `<target>${escapeXml(input.targetRelativePath)}</target>`,
+      opencodeChatModel,
       `<request>${escapeXml(input.admission.request.text)}</request>`,
       attachments,
       `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
@@ -2067,6 +2073,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       sessionId: request.sessionId,
       executionMessageId: invocation.executionMessageId,
       purpose: request.purpose,
+      intent: authority.intent,
       stageDirectory: authority.stageDirectory,
       targetRelativePath: authority.workingRelativePath,
       trialPlanRequest: request.trialPlanRequest,

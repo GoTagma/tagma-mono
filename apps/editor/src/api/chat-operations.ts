@@ -5,6 +5,11 @@ import {
   isChatOperationV2ApiErrorKind,
   type ChatOperationV2ApiErrorKind,
 } from '../../shared/chat-operation-v2-api-errors.js';
+import {
+  CHAT_OPERATION_V2_EXECUTION_STATES as SHARED_CHAT_OPERATION_V2_EXECUTION_STATES,
+  deriveChatOperationV2ExecutionState,
+  type ChatOperationV2ExecutionState as SharedChatOperationV2ExecutionState,
+} from '../../shared/chat-operation-v2-execution-state.js';
 
 export { CHAT_OPERATION_V2_API_ERROR_KINDS };
 export type { ChatOperationV2ApiErrorKind };
@@ -91,13 +96,8 @@ export const CHAT_OPERATION_V2_WAIT_REASONS = [
 export type ChatOperationV2WaitReason = (typeof CHAT_OPERATION_V2_WAIT_REASONS)[number];
 
 export const CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION = 2 as const;
-export const CHAT_OPERATION_V2_EXECUTION_STATES = [
-  'running',
-  'waiting_for_user',
-  'retryable_failure',
-  'terminal',
-] as const;
-export type ChatOperationV2ExecutionState = (typeof CHAT_OPERATION_V2_EXECUTION_STATES)[number];
+export const CHAT_OPERATION_V2_EXECUTION_STATES = SHARED_CHAT_OPERATION_V2_EXECUTION_STATES;
+export type ChatOperationV2ExecutionState = SharedChatOperationV2ExecutionState;
 
 export const CHAT_OPERATION_V2_FAILURE_STAGES = [
   'classification',
@@ -546,8 +546,14 @@ export interface ChatOperationV2ResultMessage {
   readonly attachments: readonly ChatOperationV2ResultAttachment[];
 }
 
+export interface ChatOperationV2PipelineResult {
+  readonly disposition: 'published' | 'forked';
+  readonly relativeCoordinate: string;
+  readonly artifactSetHash: string;
+}
+
 export interface ChatOperationV2ResultProjection {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly resultId: string;
   readonly operationId: string;
   readonly generation: number;
@@ -558,6 +564,7 @@ export interface ChatOperationV2ResultProjection {
   readonly completedAt: number;
   readonly contentHash: string;
   readonly resultHash: string;
+  readonly pipeline: ChatOperationV2PipelineResult | null;
   readonly messages: readonly ChatOperationV2ResultMessage[];
 }
 
@@ -1368,7 +1375,7 @@ function parseOperation(value: unknown): ChatOperationV2Projection {
     invalid('operation orthogonal state is invalid');
   }
 
-  if (value.executionState !== expectedExecutionState(value.phase, value.waitReason)) {
+  if (value.executionState !== deriveChatOperationV2ExecutionState(value.phase, value.waitReason)) {
     invalid('operation execution state is inconsistent');
   }
 
@@ -1403,28 +1410,6 @@ function parseOperation(value: unknown): ChatOperationV2Projection {
     invalid('operation pending input has no matching wait state');
   }
   return value as unknown as ChatOperationV2Projection;
-}
-
-function expectedExecutionState(
-  phase: ChatOperationV2Phase,
-  waitReason: ChatOperationV2WaitReason,
-): ChatOperationV2ExecutionState | null {
-  if (phase === 'terminal') return 'terminal';
-  if (phase !== 'awaiting_input') return 'running';
-  switch (waitReason) {
-    case 'provider_unavailable':
-    case 'user_retry':
-      return 'retryable_failure';
-    case 'clarification':
-    case 'permission':
-    case 'renderer_snapshot':
-    case 'user_recovery_choice':
-      return 'waiting_for_user';
-    case 'retry_backoff':
-      return 'running';
-    case null:
-      return null;
-  }
 }
 
 function parseWake(value: unknown): ChatOperationV2Wake {
@@ -1767,9 +1752,10 @@ function parseResultProjection(value: unknown): ChatOperationV2ResultProjection 
       'completedAt',
       'contentHash',
       'resultHash',
+      'pipeline',
       'messages',
     ]) ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== 2 ||
     !projectionHostId(value.resultId) ||
     !projectionHostId(value.operationId) ||
     !isPositiveInteger(value.generation) ||
@@ -1787,6 +1773,35 @@ function parseResultProjection(value: unknown): ChatOperationV2ResultProjection 
     value.messages.length > 64
   ) {
     invalid('result projection is invalid');
+  }
+  let pipeline: ChatOperationV2PipelineResult | null = null;
+  if (value.pipeline !== null) {
+    if (
+      !isPlainRecord(value.pipeline) ||
+      !hasExactKeys(value.pipeline, ['disposition', 'relativeCoordinate', 'artifactSetHash']) ||
+      !includesValue(['published', 'forked'] as const, value.pipeline.disposition) ||
+      !isHash(value.pipeline.artifactSetHash)
+    ) {
+      invalid('result pipeline projection is invalid');
+    }
+    pipeline = {
+      disposition: value.pipeline.disposition,
+      relativeCoordinate: parseRelativeCoordinate(value.pipeline.relativeCoordinate),
+      artifactSetHash: value.pipeline.artifactSetHash,
+    };
+  }
+  const expectedPipelineDisposition =
+    value.terminalOutcome === 'completed_published'
+      ? 'published'
+      : value.terminalOutcome === 'completed_forked'
+        ? 'forked'
+        : null;
+  if (
+    (expectedPipelineDisposition === null && pipeline !== null) ||
+    (expectedPipelineDisposition !== null &&
+      (pipeline === null || pipeline.disposition !== expectedPipelineDisposition))
+  ) {
+    invalid('result pipeline linkage is inconsistent');
   }
   const messages = value.messages.map((message) => {
     if (
@@ -1842,7 +1857,7 @@ function parseResultProjection(value: unknown): ChatOperationV2ResultProjection 
     invalid('result projection contains duplicate messages');
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     resultId: value.resultId,
     operationId: value.operationId,
     generation: value.generation,
@@ -1852,6 +1867,7 @@ function parseResultProjection(value: unknown): ChatOperationV2ResultProjection 
     completedAt: value.completedAt,
     contentHash: value.contentHash,
     resultHash: value.resultHash,
+    pipeline,
     messages,
   };
 }

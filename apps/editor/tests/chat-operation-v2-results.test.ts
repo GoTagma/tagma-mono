@@ -21,6 +21,7 @@ import {
 } from '../server/chat-operations/results.js';
 
 const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
 
 function messageInput(
   patch: Record<string, unknown> = {},
@@ -226,10 +227,10 @@ describe('ChatTurn Operation V2 durable result projection', () => {
       }),
     );
     const result = sealChatOperationV2Result(readonlyResultInput([message]));
-    const projection = projectChatOperationV2ResultForRenderer(result, [message]);
+    const projection = projectChatOperationV2ResultForRenderer(result, [message], null);
 
     expect(projection).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       resultId: result.resultId,
       operationId: result.operationId,
       generation: result.generation,
@@ -239,6 +240,7 @@ describe('ChatTurn Operation V2 durable result projection', () => {
       completedAt: 110,
       contentHash: result.contentHash,
       resultHash: result.resultHash,
+      pipeline: null,
       messages: [
         {
           messageId: message.messageId,
@@ -292,6 +294,41 @@ describe('ChatTurn Operation V2 durable result projection', () => {
       bindingId: 'binding-01',
       artifactSetHash: HASH_A,
     });
+    expect(
+      projectChatOperationV2ResultForRenderer(result, [message], {
+        disposition: 'published',
+        relativeCoordinate: 'published/published.yaml',
+        artifactSetHash: HASH_A,
+      }).pipeline,
+    ).toEqual({
+      disposition: 'published',
+      relativeCoordinate: 'published/published.yaml',
+      artifactSetHash: HASH_A,
+    });
+    expect(() => projectChatOperationV2ResultForRenderer(result, [message], null)).toThrow(
+      'pipeline result',
+    );
+
+    const forked = sealChatOperationV2Result({
+      ...readonlyResultInput([message], { purpose: 'authoring' }),
+      terminal: {
+        outcome: 'completed_forked',
+        operationVersion: 10,
+        terminalEventId: 'terminal-authoring-forked',
+        terminalResultId: 'result-01',
+        bindingId: 'binding-forked',
+        artifactSetHash: HASH_B,
+        terminalAt: 122,
+      },
+      sealedAt: 123,
+    });
+    expect(
+      projectChatOperationV2ResultForRenderer(forked, [message], {
+        disposition: 'forked',
+        relativeCoordinate: 'forked/forked.yaml',
+        artifactSetHash: HASH_B,
+      }).pipeline,
+    ).toMatchObject({ disposition: 'forked', relativeCoordinate: 'forked/forked.yaml' });
 
     expect(() =>
       sealChatOperationV2Result({

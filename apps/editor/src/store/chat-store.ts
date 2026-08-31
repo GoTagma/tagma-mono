@@ -19,6 +19,7 @@ import type {
   ChatOperationV2Inventory,
   ChatOperationV2OperationDetail,
   ChatOperationV2Projection,
+  ChatOperationV2ResultProjection,
 } from '../api/chat-operations';
 import type { Message, Part } from '@opencode-ai/sdk/client';
 import {
@@ -116,6 +117,7 @@ interface ChatStore {
   chatOperationV2Operations: readonly ChatOperationV2Projection[];
   chatOperationV2Inventory: ChatOperationV2Inventory | null;
   activeChatOperationV2: ChatOperationV2Projection | null;
+  activeChatOperationV2Result: ChatOperationV2ResultProjection | null;
   activeChatOperationV2Failure: ChatOperationV2FailureProjection | null;
   activeChatOperationV2FailureModel: ModelPick | null;
   activeChatOperationV2Request: ActiveChatOperationV2Request | null;
@@ -502,6 +504,7 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
           chatOperationV2QuestionRequests: {},
           chatOperationV2InteractiveRecoveryRequests: {},
           activeChatOperationV2Failure: null,
+          activeChatOperationV2Result: null,
           activeChatOperationV2FailureModel: null,
           sending: false,
           pendingUserText: null,
@@ -536,6 +539,7 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
             pendingPermissions: [],
             activeChatOperationV2Request: null,
             activeChatOperationV2Failure: null,
+            activeChatOperationV2Result: null,
             activeChatOperationV2FailureModel: null,
             chatOperationV2ClarificationRequests: {},
             chatOperationV2QuestionRequests: {},
@@ -707,6 +711,7 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
         attachments: requestAttachments,
       },
       activeChatOperationV2Failure: detail.failure,
+      activeChatOperationV2Result: detail.result,
       activeChatOperationV2FailureModel:
         detail.failure === null
           ? null
@@ -948,6 +953,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   chatOperationV2Operations: [],
   chatOperationV2Inventory: null,
   activeChatOperationV2: null,
+  activeChatOperationV2Result: null,
   activeChatOperationV2Failure: null,
   activeChatOperationV2FailureModel: null,
   activeChatOperationV2Request: null,
@@ -1200,6 +1206,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               chatOperationV2Operations: [],
               chatOperationV2Inventory: null,
               activeChatOperationV2: null,
+              activeChatOperationV2Result: null,
               activeChatOperationV2Failure: null,
               activeChatOperationV2FailureModel: null,
               activeChatOperationV2Request: null,
@@ -1427,6 +1434,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           currentSessionId: null,
           messages: [],
           activeChatOperationV2Request: null,
+          activeChatOperationV2Result: null,
           pendingUserText: null,
           pendingPermissions: [],
           chatOperationV2ClarificationRequests: {},

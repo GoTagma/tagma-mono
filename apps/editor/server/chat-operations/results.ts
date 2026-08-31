@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 export const CHAT_OPERATION_V2_RESULT_RECORD_VERSION = 1 as const;
-export const CHAT_OPERATION_V2_RESULT_SCHEMA_VERSION = 1 as const;
+export const CHAT_OPERATION_V2_RESULT_SCHEMA_VERSION = 2 as const;
 export const CHAT_OPERATION_V2_MAX_RESULT_TEXT_BYTES = 512 * 1024;
 export const CHAT_OPERATION_V2_MAX_RESULT_ATTACHMENTS = 16;
 export const CHAT_OPERATION_V2_MAX_RESULT_ATTACHMENT_LABEL_BYTES = 1024;
@@ -146,6 +146,12 @@ export interface ChatOperationV2RendererResultMessage {
   readonly attachments: readonly ChatOperationV2RendererResultAttachment[];
 }
 
+export interface ChatOperationV2RendererPipelineResult {
+  readonly disposition: 'published' | 'forked';
+  readonly relativeCoordinate: string;
+  readonly artifactSetHash: string;
+}
+
 export interface ChatOperationV2RendererResultProjection {
   readonly schemaVersion: typeof CHAT_OPERATION_V2_RESULT_SCHEMA_VERSION;
   readonly resultId: string;
@@ -157,6 +163,7 @@ export interface ChatOperationV2RendererResultProjection {
   readonly completedAt: number;
   readonly contentHash: string;
   readonly resultHash: string;
+  readonly pipeline: ChatOperationV2RendererPipelineResult | null;
   readonly messages: readonly ChatOperationV2RendererResultMessage[];
 }
 
@@ -1072,10 +1079,31 @@ export function assertChatOperationV2ResultImmutable(
 export function projectChatOperationV2ResultForRenderer(
   resultValue: unknown,
   messagesValue: readonly unknown[],
+  pipeline: ChatOperationV2RendererPipelineResult | null,
 ): ChatOperationV2RendererResultProjection {
   assertChatOperationV2ResultLinkage(resultValue, messagesValue);
   const result = parseChatOperationV2Result(resultValue);
   const messages = parseMessageLog(messagesValue);
+  const expectedDisposition =
+    result.terminal.outcome === 'completed_published'
+      ? 'published'
+      : result.terminal.outcome === 'completed_forked'
+        ? 'forked'
+        : null;
+  if (
+    (expectedDisposition === null && pipeline !== null) ||
+    (expectedDisposition !== null &&
+      (pipeline === null ||
+        pipeline.disposition !== expectedDisposition ||
+        pipeline.artifactSetHash !== result.terminal.artifactSetHash ||
+        typeof pipeline.relativeCoordinate !== 'string' ||
+        pipeline.relativeCoordinate.length === 0))
+  ) {
+    return fail(
+      'invalid_terminal_link',
+      'Renderer pipeline result does not match terminal binding authority.',
+    );
+  }
   return Object.freeze({
     schemaVersion: CHAT_OPERATION_V2_RESULT_SCHEMA_VERSION,
     resultId: result.resultId,
@@ -1087,6 +1115,7 @@ export function projectChatOperationV2ResultForRenderer(
     completedAt: result.terminal.terminalAt,
     contentHash: result.contentHash,
     resultHash: result.resultHash,
+    pipeline: pipeline === null ? null : Object.freeze({ ...pipeline }),
     messages: Object.freeze(
       messages.map((message) =>
         Object.freeze({

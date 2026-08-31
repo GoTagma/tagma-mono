@@ -438,6 +438,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       sessionId: 'session-root',
       executionMessageId: 'execution-message-1',
       purpose: 'trial_plan',
+      intent: 'create',
       stageDirectory: '/isolated/stage/.tagma',
       targetRelativePath: 'pipeline/pipeline.yaml',
       trialPlanRequest: {
@@ -470,6 +471,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       sessionId: 'session-root',
       executionMessageId: 'execution-message-1',
       purpose: 'authoring',
+      intent: 'create',
       stageDirectory: '/isolated/stage/.tagma',
       targetRelativePath: 'origin/origin.yaml',
       trialPlanRequest: null,
@@ -483,6 +485,26 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(prompt.system).toContain('may remap publication');
     expect(prompt.system).toContain('compile log is not a published artifact');
     expect(prompt.system).toContain('Do not claim a published path');
+    expect(prompt.text).toContain('<opencode-chat-model provider-id="openai" model-id="gpt-5" />');
+  });
+
+  test('keeps the snapped Chat model out of existing-pipeline edits', () => {
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'authoring-invocation-1',
+      sessionId: 'session-root',
+      executionMessageId: 'execution-message-1',
+      purpose: 'authoring',
+      intent: 'edit',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'origin/origin.yaml',
+      trialPlanRequest: null,
+      admission: admission(),
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"authoring"}'),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.text).not.toContain('<opencode-chat-model');
   });
 
   test('pins provider-free durable admission before the sole authoring provider execution', () => {
