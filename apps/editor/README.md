@@ -188,17 +188,22 @@ read time). An `invocation_submission_unknown` event adds a finite
 `submissionUnknown` explanation: exact `reasonCode`, the admission/execution `boundary`, history
 outcome, whether a native submission may have occurred, and whether provider execution may have
 started. Reasons distinguish preflight history request/scan failure, session-create transport
-loss, admission-prompt transport or conflict reconciliation, restart reconciliation, admission
-source history missing/request/scan/conflict outcomes, execution-prompt uncertainty, and missing
-durable settlement. Unknown legacy values collapse to `legacy_unknown`; raw exception or provider
-text is never returned.
+loss, admission-prompt transport, exact-replay transport, conflict reconciliation, restart
+reconciliation, admission source history missing/request/scan/conflict outcomes, execution-prompt
+uncertainty, and missing durable settlement. Unknown legacy values collapse to `legacy_unknown`;
+raw exception or provider text is never returned.
 
 Fresh Host invocations may continue when only their pre-submission history check is temporarily
 unavailable, because no request has yet been attempted under that fresh authority. Once a native
 submission may have occurred, Tagma performs up to 20 bounded history reconciliation reads at
 50 ms intervals. The same bounded policy correlates the exact durable source event after native
-admission. Tagma proceeds when that evidence appears and otherwise preserves `submitted_unknown`
-without blindly issuing another provider request.
+admission. If and only if a fresh provider-free admission prompt lost transport and those reads
+completed with exact history still missing, Tagma replays the same session id, input id, and
+canonical marker bytes once. OpenCode's pinned same-id contract makes that replay return the cached
+admission or create the original admission without provider execution. Recovery mode, unavailable
+or incomplete history, changed bytes, and any second replay remain fail-closed. If the one replay
+also loses transport, Tagma reconciles history once more and exposes an exact replay-boundary
+diagnostic before preserving `submitted_unknown`.
 
 Payloads are bounded, and known credential fields and common token formats are redacted. This is
 best-effort protection. Timeline events use explicit metadata allow-lists and are

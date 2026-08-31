@@ -54,6 +54,14 @@ describe('Chat Operation V2 submission-unknown diagnostics', () => {
       nativeSubmissionMayHaveOccurred: true,
       providerExecutionMayHaveStarted: false,
     });
+    expect(
+      describeChatOperationV2SubmissionUnknown('admission_prompt_replay_transport_history_missing'),
+    ).toMatchObject({
+      boundary: 'admission_prompt_replay',
+      historyOutcome: 'missing',
+      nativeSubmissionMayHaveOccurred: true,
+      providerExecutionMayHaveStarted: false,
+    });
   });
 
   test('maps unknown or hostile values to a content-free legacy category', () => {

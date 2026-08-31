@@ -9,6 +9,9 @@ export const CHAT_OPERATION_V2_SUBMISSION_UNKNOWN_REASONS = [
   'admission_prompt_transport_history_scan_incomplete',
   'admission_prompt_conflict_history_request_failed',
   'admission_prompt_conflict_history_scan_incomplete',
+  'admission_prompt_replay_transport_history_missing',
+  'admission_prompt_replay_transport_history_request_failed',
+  'admission_prompt_replay_transport_history_scan_incomplete',
   'admission_reconcile_history_missing',
   'admission_reconcile_history_request_failed',
   'admission_reconcile_history_scan_incomplete',
@@ -34,6 +37,7 @@ export type ChatOperationV2SubmissionUnknownBoundary =
   | 'admission_preflight_history'
   | 'session_create'
   | 'admission_prompt'
+  | 'admission_prompt_replay'
   | 'admission_reconciliation'
   | 'admission_source'
   | 'execution_prompt'
@@ -113,6 +117,24 @@ const DETAILS: Readonly<Record<ChatOperationV2SubmissionUnknownReason, Diagnosti
     },
     admission_prompt_conflict_history_scan_incomplete: {
       boundary: 'admission_prompt',
+      historyOutcome: 'scan_incomplete',
+      nativeSubmissionMayHaveOccurred: true,
+      providerExecutionMayHaveStarted: false,
+    },
+    admission_prompt_replay_transport_history_missing: {
+      boundary: 'admission_prompt_replay',
+      historyOutcome: 'missing',
+      nativeSubmissionMayHaveOccurred: true,
+      providerExecutionMayHaveStarted: false,
+    },
+    admission_prompt_replay_transport_history_request_failed: {
+      boundary: 'admission_prompt_replay',
+      historyOutcome: 'request_failed',
+      nativeSubmissionMayHaveOccurred: true,
+      providerExecutionMayHaveStarted: false,
+    },
+    admission_prompt_replay_transport_history_scan_incomplete: {
+      boundary: 'admission_prompt_replay',
       historyOutcome: 'scan_incomplete',
       nativeSubmissionMayHaveOccurred: true,
       providerExecutionMayHaveStarted: false,

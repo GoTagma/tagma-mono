@@ -851,10 +851,15 @@
   fresh invocation may continue after a pre-submission history-read outage; recovery may not infer
   that nothing was submitted. After create/prompt transport loss or conflict, poll exact durable
   history through one finite policy before returning `submitted_unknown`; use the same bounded
-  coordination when the exact admission source event lags a successful native response. Never
-  resubmit merely because admission evidence is late. Persist the finite reason code with invocation
-  purpose so diagnostics can distinguish preflight, session-create, admission-prompt,
-  reconciliation, admission-source, and provider-execution uncertainty without exception text.
+  coordination when the exact admission source event lags a successful native response. A fresh
+  provider-free admission prompt whose transport failed may be replayed exactly once only after
+  that finite reconciliation completes with `missing`: reuse the authenticated session id, input
+  id, and canonical bytes so OpenCode returns its idempotent cached admission or performs the first
+  admission without provider execution. Never replay from recovery, after request-failed or
+  scan-incomplete history, with changed bytes, or more than once. Reconcile again after replay
+  transport loss and persist a replay-specific finite reason. Diagnostics must distinguish
+  preflight, session-create, admission-prompt, exact-replay, reconciliation, admission-source, and
+  provider-execution uncertainty without exception text.
 - Native V2 SSE replay currently yields a stable `evt_*` id and parsed payload but omits the
   generated client's declared `event` field. Treat SSE as a wake-up signal and correlate that id
   with `session.history`, whose durable record supplies both event type and aggregate sequence.

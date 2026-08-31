@@ -584,6 +584,439 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
     expect(JSON.stringify(outcome)).not.toContain('sensitive');
   });
 
+  test('replays one fresh provider-free admission with the exact same ids and bytes after missing history', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"fresh exact replay"}}', 'utf8');
+    const requestDigest = sha256CanonicalOpenCodeRequest(requestBytes);
+    const calls: string[] = [];
+    const prompts: Array<{
+      sessionId: string;
+      inputId: string;
+      canonicalRequestBytes: Uint8Array;
+    }> = [];
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory(input) {
+        calls.push(`history:${input.sessionId}`);
+        return { records: [], hasMore: false };
+      },
+      async createSession(input) {
+        calls.push(`create:${input.sessionId}`);
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt(input) {
+        prompts.push({
+          sessionId: input.sessionId,
+          inputId: input.inputId,
+          canonicalRequestBytes: Uint8Array.from(input.canonicalRequestBytes),
+        });
+        calls.push(`prompt:${input.sessionId}:${input.inputId}`);
+        if (prompts.length === 1) {
+          input.canonicalRequestBytes.fill(0);
+          throw new Error('first admission response was lost after a hostile buffer mutation');
+        }
+        return {
+          kind: 'admitted',
+          admission: {
+            sessionId: input.sessionId,
+            inputId: input.inputId,
+            requestDigest,
+            aggregateSeq: 41,
+          },
+        };
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 2,
+      historyReconcileDelayMs: 0,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-fresh-exact-replay',
+      purpose: 'trial_plan',
+      sessionId: 'session-fresh-exact-replay',
+      inputId: 'input-fresh-exact-replay',
+      submissionMode: 'fresh',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(calls).toEqual([
+      'history:session-fresh-exact-replay',
+      'create:session-fresh-exact-replay',
+      'prompt:session-fresh-exact-replay:input-fresh-exact-replay',
+      'history:session-fresh-exact-replay',
+      'history:session-fresh-exact-replay',
+      'prompt:session-fresh-exact-replay:input-fresh-exact-replay',
+    ]);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toEqual(prompts[0]);
+    expect(outcome).toEqual({
+      kind: 'admitted',
+      invocationId: 'invocation-fresh-exact-replay',
+      sessionId: 'session-fresh-exact-replay',
+      inputId: 'input-fresh-exact-replay',
+      admittedAggregateSeq: 41,
+      recoveredFromHistory: false,
+    });
+    expect(store.getInvocationOutbox('invocation-fresh-exact-replay')).toMatchObject({
+      status: 'admitted',
+      admittedAggregateSeq: 41,
+      failureCode: null,
+    });
+  });
+
+  test('does not replay a fresh admission when reconciliation history is unreadable', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"history unavailable"}}', 'utf8');
+    let historyCalls = 0;
+    let promptCalls = 0;
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        historyCalls += 1;
+        if (historyCalls === 1) return { records: [], hasMore: false };
+        throw new Error('private history transport detail');
+      },
+      async createSession(input) {
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt() {
+        promptCalls += 1;
+        throw new Error('private admission transport detail');
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-fresh-history-unavailable',
+      purpose: 'trial_plan',
+      sessionId: 'session-fresh-history-unavailable',
+      inputId: 'input-fresh-history-unavailable',
+      submissionMode: 'fresh',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(promptCalls).toBe(1);
+    expect(outcome).toEqual({
+      kind: 'submitted_unknown',
+      invocationId: 'invocation-fresh-history-unavailable',
+      sessionId: 'session-fresh-history-unavailable',
+      inputId: 'input-fresh-history-unavailable',
+      reasonCode: 'admission_prompt_transport_history_request_failed',
+    });
+    expect(JSON.stringify(outcome)).not.toContain('private');
+  });
+
+  test('does not replay after a concurrent outbox transition revokes fresh admission authority', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"revoked replay"}}', 'utf8');
+    let historyCalls = 0;
+    let promptCalls = 0;
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        historyCalls += 1;
+        if (historyCalls === 2) {
+          expect(
+            store.updateInvocationOutbox({
+              invocationId: 'invocation-revoked-fresh-replay',
+              expectedStatus: 'submitted_unknown',
+              status: 'interrupted',
+              settledAt: 1_777_777_777_100,
+              updatedAt: 1_777_777_777_100,
+            }).applied,
+          ).toBe(true);
+        }
+        return { records: [], hasMore: false };
+      },
+      async createSession(input) {
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt() {
+        promptCalls += 1;
+        throw new Error('transport ended after cancellation won');
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-revoked-fresh-replay',
+      purpose: 'trial_plan',
+      sessionId: 'session-revoked-fresh-replay',
+      inputId: 'input-revoked-fresh-replay',
+      submissionMode: 'fresh',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(promptCalls).toBe(1);
+    expect(historyCalls).toBe(2);
+    expect(outcome).toMatchObject({
+      kind: 'submitted_unknown',
+      invocationId: 'invocation-revoked-fresh-replay',
+      reasonCode: 'admission_state_changed_without_evidence',
+    });
+    expect(store.getInvocationOutbox('invocation-revoked-fresh-replay')).toMatchObject({
+      status: 'interrupted',
+      failureCode: null,
+    });
+  });
+
+  test('bounds a fresh exact replay to one attempt and diagnoses a second transport loss', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"bounded replay"}}', 'utf8');
+    const prompts: Array<{
+      sessionId: string;
+      inputId: string;
+      requestDigest: string;
+    }> = [];
+    let historyCalls = 0;
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        historyCalls += 1;
+        return { records: [], hasMore: false };
+      },
+      async createSession(input) {
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt(input) {
+        prompts.push({
+          sessionId: input.sessionId,
+          inputId: input.inputId,
+          requestDigest: sha256CanonicalOpenCodeRequest(input.canonicalRequestBytes),
+        });
+        throw new Error('private repeated transport detail');
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-bounded-fresh-replay',
+      purpose: 'trial_plan',
+      sessionId: 'session-bounded-fresh-replay',
+      inputId: 'input-bounded-fresh-replay',
+      submissionMode: 'fresh',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(historyCalls).toBe(3);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toEqual(prompts[0]);
+    expect(outcome).toEqual({
+      kind: 'submitted_unknown',
+      invocationId: 'invocation-bounded-fresh-replay',
+      sessionId: 'session-bounded-fresh-replay',
+      inputId: 'input-bounded-fresh-replay',
+      reasonCode: 'admission_prompt_replay_transport_history_missing',
+    });
+    expect(JSON.stringify(outcome)).not.toContain('private');
+  });
+
+  test('converges bounded fresh admission jitter across delayed history and exact replay', async () => {
+    const { store } = openStore();
+    const scenarioCount = 64;
+    const states = new Map<
+      string,
+      {
+        readonly index: number;
+        readonly requestDigest: string;
+        readonly visibleAfter: number;
+        promptCalls: number;
+        postFailureHistoryCalls: number;
+        readonly prompts: Array<{
+          sessionId: string;
+          inputId: string;
+          requestDigest: string;
+        }>;
+      }
+    >();
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory(input) {
+        const state = states.get(input.sessionId);
+        if (!state || state.promptCalls === 0) return { records: [], hasMore: false };
+        state.postFailureHistoryCalls += 1;
+        if (state.postFailureHistoryCalls <= state.visibleAfter) {
+          return { records: [], hasMore: false };
+        }
+        return {
+          records: [
+            {
+              eventId: `event-jitter-${state.index}`,
+              type: 'session.next.prompt.admitted',
+              sessionId: input.sessionId,
+              inputId: `input-jitter-${state.index}`,
+              requestDigest: state.requestDigest,
+              aggregateSeq: 1_000 + state.index,
+            },
+          ],
+          hasMore: false,
+        };
+      },
+      async createSession(input) {
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt(input) {
+        const state = states.get(input.sessionId)!;
+        state.promptCalls += 1;
+        state.prompts.push({
+          sessionId: input.sessionId,
+          inputId: input.inputId,
+          requestDigest: sha256CanonicalOpenCodeRequest(input.canonicalRequestBytes),
+        });
+        if (state.promptCalls === 1) throw new Error('injected fresh admission jitter');
+        return {
+          kind: 'admitted',
+          admission: {
+            sessionId: input.sessionId,
+            inputId: input.inputId,
+            requestDigest: state.requestDigest,
+            aggregateSeq: 1_000 + state.index,
+          },
+        };
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 3,
+      historyReconcileDelayMs: 0,
+    });
+
+    for (let index = 0; index < scenarioCount; index += 1) {
+      const requestBytes = Buffer.from(`{"scenario":${index}}`, 'utf8');
+      const sessionId = `session-jitter-${index}`;
+      const requestDigest = sha256CanonicalOpenCodeRequest(requestBytes);
+      const state = {
+        index,
+        requestDigest,
+        visibleAfter: index % 4,
+        promptCalls: 0,
+        postFailureHistoryCalls: 0,
+        prompts: [],
+      };
+      states.set(sessionId, state);
+
+      const outcome = await controller.invoke({
+        operationId: 'operation-1',
+        invocationId: `invocation-jitter-${index}`,
+        purpose: 'trial_plan',
+        sessionId,
+        inputId: `input-jitter-${index}`,
+        submissionMode: 'fresh',
+        canonicalRequestBytes: requestBytes,
+      });
+
+      expect(outcome).toMatchObject({
+        kind: 'admitted',
+        invocationId: `invocation-jitter-${index}`,
+        sessionId,
+        inputId: `input-jitter-${index}`,
+        admittedAggregateSeq: 1_000 + index,
+      });
+      expect(state.promptCalls).toBe(state.visibleAfter < 3 ? 1 : 2);
+      if (state.promptCalls === 2) expect(state.prompts[1]).toEqual(state.prompts[0]);
+      expect(store.getInvocationOutbox(`invocation-jitter-${index}`)).toMatchObject({
+        status: 'admitted',
+        admittedAggregateSeq: 1_000 + index,
+      });
+    }
+
+    expect([...states.values()].reduce((total, state) => total + state.promptCalls, 0)).toBe(80);
+  }, 30_000);
+
+  test('keeps exact replay identities isolated across concurrent fresh admission jitter', async () => {
+    const { store } = openStore();
+    const scenarioCount = 16;
+    const requestDigests = new Map<string, string>();
+    const prompts = new Map<
+      string,
+      Array<{ sessionId: string; inputId: string; requestDigest: string }>
+    >();
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        return { records: [], hasMore: false };
+      },
+      async createSession(input) {
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt(input) {
+        const observed = prompts.get(input.inputId) ?? [];
+        observed.push({
+          sessionId: input.sessionId,
+          inputId: input.inputId,
+          requestDigest: sha256CanonicalOpenCodeRequest(input.canonicalRequestBytes),
+        });
+        prompts.set(input.inputId, observed);
+        if (observed.length === 1) throw new Error('concurrent injected admission jitter');
+        return {
+          kind: 'admitted',
+          admission: {
+            sessionId: input.sessionId,
+            inputId: input.inputId,
+            requestDigest: requestDigests.get(input.inputId)!,
+            aggregateSeq: 2_000 + Number(input.inputId.slice('input-concurrent-jitter-'.length)),
+          },
+        };
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 2,
+      historyReconcileDelayMs: 0,
+    });
+
+    const outcomes = await Promise.all(
+      Array.from({ length: scenarioCount }, (_, index) => {
+        const inputId = `input-concurrent-jitter-${index}`;
+        const requestBytes = Buffer.from(`{"concurrentScenario":${index}}`, 'utf8');
+        requestDigests.set(inputId, sha256CanonicalOpenCodeRequest(requestBytes));
+        return controller.invoke({
+          operationId: 'operation-1',
+          invocationId: `invocation-concurrent-jitter-${index}`,
+          purpose: 'trial_plan',
+          sessionId: `session-concurrent-jitter-${index}`,
+          inputId,
+          submissionMode: 'fresh',
+          canonicalRequestBytes: requestBytes,
+        });
+      }),
+    );
+
+    expect(outcomes).toHaveLength(scenarioCount);
+    for (let index = 0; index < scenarioCount; index += 1) {
+      expect(outcomes[index]).toMatchObject({
+        kind: 'admitted',
+        invocationId: `invocation-concurrent-jitter-${index}`,
+        sessionId: `session-concurrent-jitter-${index}`,
+        inputId: `input-concurrent-jitter-${index}`,
+        admittedAggregateSeq: 2_000 + index,
+      });
+      const observed = prompts.get(`input-concurrent-jitter-${index}`)!;
+      expect(observed).toHaveLength(2);
+      expect(observed[1]).toEqual(observed[0]);
+      expect(store.getInvocationOutbox(`invocation-concurrent-jitter-${index}`)).toMatchObject({
+        status: 'admitted',
+        admittedAggregateSeq: 2_000 + index,
+      });
+    }
+    expect([...prompts.values()].reduce((total, observed) => total + observed.length, 0)).toBe(32);
+  }, 30_000);
+
   test('reconciles delayed durable admission evidence before declaring a prompt response unknown', async () => {
     const { store } = openStore();
     const requestBytes = Buffer.from('{"prompt":{"text":"delayed admission"}}', 'utf8');

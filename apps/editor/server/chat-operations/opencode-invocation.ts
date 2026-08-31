@@ -187,6 +187,20 @@ function promptConflictHistoryReason(
     : 'admission_prompt_conflict_history_scan_incomplete';
 }
 
+function replayTransportHistoryReason(
+  result: Extract<
+    HistoryAdmissionResult | HistoryUnavailableResult,
+    { kind: 'missing' | 'unavailable' }
+  >,
+): ChatOperationV2SubmissionUnknownReason {
+  if (result.kind === 'missing') {
+    return 'admission_prompt_replay_transport_history_missing';
+  }
+  return result.reason === 'request_failed'
+    ? 'admission_prompt_replay_transport_history_request_failed'
+    : 'admission_prompt_replay_transport_history_scan_incomplete';
+}
+
 function reconciliationHistoryReason(
   result: Extract<
     HistoryAdmissionResult | HistoryUnavailableResult,
@@ -348,11 +362,22 @@ export class OpenCodeInvocationController {
       prompted = await this.client.prompt({
         sessionId: outbox.sessionId,
         inputId: outbox.inputId,
-        canonicalRequestBytes: requestBytes,
+        canonicalRequestBytes: Uint8Array.from(requestBytes),
       });
     } catch {
-      return this.recoverAfterTransportFailure(outbox, 'admission_prompt');
+      return this.recoverAfterTransportFailure(
+        outbox,
+        'admission_prompt',
+        submissionMode === 'fresh' ? requestBytes : null,
+      );
     }
+    return this.outcomeAfterPrompt(outbox, prompted);
+  }
+
+  private async outcomeAfterPrompt(
+    outbox: StoredInvocationOutboxRecord,
+    prompted: OpenCodePromptResult,
+  ): Promise<OpenCodeInvocationOutcome> {
     if (prompted.kind === 'conflict') {
       const recovered = await this.reconcileHistory(outbox);
       if (recovered.kind === 'admitted') {
@@ -375,6 +400,7 @@ export class OpenCodeInvocationController {
   private async recoverAfterTransportFailure(
     outbox: StoredInvocationOutboxRecord,
     boundary: 'session_create' | 'admission_prompt',
+    freshReplayRequestBytes: Uint8Array | null = null,
   ): Promise<OpenCodeInvocationOutcome> {
     const unknown = this.markSubmittedUnknown(outbox);
     if (unknown.admittedAggregateSeq !== null || unknown.status === 'failed_terminal') {
@@ -387,7 +413,45 @@ export class OpenCodeInvocationController {
     if (recovered.kind === 'conflict') {
       return this.conflict(unknown, 'history_protocol_conflict');
     }
+    if (
+      boundary === 'admission_prompt' &&
+      freshReplayRequestBytes !== null &&
+      recovered.kind === 'missing'
+    ) {
+      const replayAuthority = this.store.getInvocationOutbox(unknown.invocationId) ?? unknown;
+      if (
+        replayAuthority.status !== 'submitted_unknown' ||
+        replayAuthority.admittedAggregateSeq !== null
+      ) {
+        return this.outcomeForObservedStatus(replayAuthority);
+      }
+      return this.replayFreshAdmissionPrompt(replayAuthority, freshReplayRequestBytes);
+    }
     return this.unknownOutcome(unknown, transportHistoryReason(boundary, recovered));
+  }
+
+  private async replayFreshAdmissionPrompt(
+    outbox: StoredInvocationOutboxRecord,
+    requestBytes: Uint8Array,
+  ): Promise<OpenCodeInvocationOutcome> {
+    let prompted: OpenCodePromptResult;
+    try {
+      prompted = await this.client.prompt({
+        sessionId: outbox.sessionId,
+        inputId: outbox.inputId,
+        canonicalRequestBytes: Uint8Array.from(requestBytes),
+      });
+    } catch {
+      const recovered = await this.reconcileHistory(outbox);
+      if (recovered.kind === 'admitted') {
+        return this.admit(outbox, recovered.aggregateSeq, true);
+      }
+      if (recovered.kind === 'conflict') {
+        return this.conflict(outbox, 'history_protocol_conflict');
+      }
+      return this.unknownOutcome(outbox, replayTransportHistoryReason(recovered));
+    }
+    return this.outcomeAfterPrompt(outbox, prompted);
   }
 
   private async reconcileSubmittedUnknown(
