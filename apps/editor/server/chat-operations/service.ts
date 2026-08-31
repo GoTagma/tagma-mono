@@ -23,6 +23,7 @@ import {
   prepareChatOperationV2Control,
   type PrepareChatOperationV2ControlOptions,
 } from './control-root.js';
+import { CHAT_OPERATION_V2_SAFE_FAILURE_CODES } from './failure-codes.js';
 import {
   CHAT_OPERATION_V2_SCHEMA_VERSION,
   ChatOperationV2StoreError,
@@ -30,6 +31,7 @@ import {
   type ChatOperationV2Store,
   type ChatOperationV2StoreOptions,
   type ListOperationEventsResult,
+  type StoredHostOperationEvent,
   type StoredChatOperationV2,
   type WorkspaceOperationSnapshot,
 } from './store.js';
@@ -151,6 +153,38 @@ export interface ChatOperationV2DiagnosticsSnapshot {
   readonly initialized: boolean;
   readonly storeOpen: boolean;
   readonly schemaVersion: number;
+  readonly eventEvidence?: ChatOperationV2DiagnosticsEventEvidence;
+}
+
+export interface ChatOperationV2DiagnosticsEventSummary {
+  readonly workspaceSeq: number;
+  readonly operationId: string;
+  readonly operationVersion: number;
+  readonly generation: number;
+  readonly type: string;
+  readonly phase: StoredHostOperationEvent['phase'];
+  readonly waitReason: StoredHostOperationEvent['waitReason'];
+  readonly timestamp: number;
+  readonly terminal: boolean;
+  readonly diagnostic: Readonly<{
+    errorCode?: string;
+    reasonCode?: string;
+    diagnosticCodes?: readonly string[];
+    outcome?: string;
+    finishCode?: string;
+  }>;
+}
+
+export interface ChatOperationV2DiagnosticsEventEvidence {
+  readonly layer: 'chat-operation-v2-host-event-window';
+  readonly limit: number;
+  readonly retainedFloor: number;
+  readonly latestCursor: number;
+  readonly retainedEventCount: number;
+  readonly returnedEventCount: number;
+  readonly omittedEventCount: number;
+  readonly truncated: boolean;
+  readonly events: readonly ChatOperationV2DiagnosticsEventSummary[];
 }
 
 export interface ChatOperationV2DiagnosticsReadonlySessionProjection {
@@ -324,6 +358,60 @@ export function isChatOperationV2ShadowEnabled(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): boolean {
   return env[CHAT_OPERATION_V2_SHADOW_ENV] === '1';
+}
+
+const CHAT_OPERATION_V2_DIAGNOSTICS_EVENT_LIMIT = 100;
+const SAFE_DIAGNOSTIC_CODE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SAFE_DIAGNOSTIC_FAILURE_CODES = new Set<string>(CHAT_OPERATION_V2_SAFE_FAILURE_CODES);
+
+function safeDiagnosticsCode(value: unknown): string | null {
+  return typeof value === 'string' && SAFE_DIAGNOSTIC_CODE.test(value) ? value : null;
+}
+
+function safeDiagnosticsFailureCode(value: unknown): string | null {
+  return typeof value === 'string' && SAFE_DIAGNOSTIC_FAILURE_CODES.has(value) ? value : null;
+}
+
+function diagnosticsForEvent(
+  event: StoredHostOperationEvent,
+): ChatOperationV2DiagnosticsEventSummary['diagnostic'] {
+  const errorCode = safeDiagnosticsFailureCode(event.payload.errorCode);
+  const reasonCode = safeDiagnosticsCode(event.payload.reasonCode);
+  const outcome = safeDiagnosticsCode(event.payload.outcome);
+  const finishCode = safeDiagnosticsCode(event.payload.finishCode);
+  const diagnosticCodes = Array.isArray(event.payload.diagnosticCodes)
+    ? [
+        ...new Set(
+          event.payload.diagnosticCodes
+            .map(safeDiagnosticsFailureCode)
+            .filter((code): code is string => code !== null),
+        ),
+      ].slice(0, 8)
+    : [];
+  return Object.freeze({
+    ...(errorCode ? { errorCode } : {}),
+    ...(reasonCode ? { reasonCode } : {}),
+    ...(diagnosticCodes.length > 0 ? { diagnosticCodes: Object.freeze(diagnosticCodes) } : {}),
+    ...(outcome ? { outcome } : {}),
+    ...(finishCode ? { finishCode } : {}),
+  });
+}
+
+function diagnosticsEventSummary(
+  event: StoredHostOperationEvent,
+): ChatOperationV2DiagnosticsEventSummary {
+  return Object.freeze({
+    workspaceSeq: event.workspaceSeq,
+    operationId: event.operationId,
+    operationVersion: event.operationVersion,
+    generation: event.generation,
+    type: event.type,
+    phase: event.phase,
+    waitReason: event.waitReason,
+    timestamp: event.timestamp,
+    terminal: event.terminal,
+    diagnostic: diagnosticsForEvent(event),
+  });
 }
 
 export class ChatOperationV2Service {
@@ -1003,13 +1091,55 @@ export class ChatOperationV2Service {
     );
   }
 
-  getDiagnosticsSnapshot(): ChatOperationV2DiagnosticsSnapshot {
-    return {
+  getDiagnosticsSnapshot(workspacePath?: string | null): ChatOperationV2DiagnosticsSnapshot {
+    const lifecycle = {
       shadowEnabled: this.#shadowEnabled,
       mutationsEnabled: this.#mutationsEnabled,
       initialized: this.#initialized,
       storeOpen: this.#authority !== null,
       schemaVersion: CHAT_OPERATION_V2_SCHEMA_VERSION,
+    };
+    const authority = this.#authority;
+    if (!workspacePath || this.#closed || authority === null) return lifecycle;
+
+    const identity = createWorkspaceIdentity(workspacePath, authority.key, this.#identityOptions);
+    const storedScope = authority.store.findWorkspaceScope(identity);
+    if (!storedScope) return lifecycle;
+    const scope = parseTrustedWorkspaceScopeRecord(storedScope, authority.key, {
+      platform: this.#identityOptions.platform,
+    });
+    const workspace = authority.store.getWorkspaceOperationSnapshot(scope.workspaceScopeId);
+    const after = Math.max(
+      workspace.retainedFloor,
+      workspace.latestCursor - CHAT_OPERATION_V2_DIAGNOSTICS_EVENT_LIMIT,
+    );
+    const page = authority.store.listOperationEvents({
+      workspaceScopeId: scope.workspaceScopeId,
+      after,
+      limit: CHAT_OPERATION_V2_DIAGNOSTICS_EVENT_LIMIT,
+    });
+    if (page.kind !== 'events') {
+      throw new ChatOperationV2StoreError(
+        'invalid_cursor',
+        'Chat Operation diagnostics event window changed while it was being read.',
+      );
+    }
+    const events = Object.freeze(page.events.map(diagnosticsEventSummary));
+    const retainedEventCount = Math.max(0, page.latestCursor - page.retainedFloor);
+    const omittedEventCount = Math.max(0, retainedEventCount - events.length);
+    return {
+      ...lifecycle,
+      eventEvidence: Object.freeze({
+        layer: 'chat-operation-v2-host-event-window' as const,
+        limit: CHAT_OPERATION_V2_DIAGNOSTICS_EVENT_LIMIT,
+        retainedFloor: page.retainedFloor,
+        latestCursor: page.latestCursor,
+        retainedEventCount,
+        returnedEventCount: events.length,
+        omittedEventCount,
+        truncated: omittedEventCount > 0,
+        events,
+      }),
     };
   }
 

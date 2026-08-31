@@ -131,6 +131,9 @@ function fakeApi() {
     setOperation(value: ChatOperationV2Projection) {
       nextOperation = detail(value);
     },
+    setDetail(value: ChatOperationV2OperationDetail) {
+      nextOperation = value;
+    },
     setResult(value: ChatOperationV2MutationResult) {
       nextResult = value;
     },
@@ -334,6 +337,149 @@ test('uses authoritative snapshot reads after SSE wake-ups and resubscribes on c
   expect(fake.subscriptions[0]!.closeCount).toBe(1);
   expect(fake.subscriptions).toHaveLength(2);
   expect(fake.subscriptions[1]!.options.after).toBe(9);
+});
+
+test('promotes an SSE-discovered live operation while its create response is pending', async () => {
+  const fake = fakeApi();
+  const previous = operation({
+    operationId: 'operation-previous',
+    version: 4,
+    phase: 'terminal',
+    executionState: 'terminal',
+    terminalOutcome: 'discarded',
+    updatedAt: 150,
+  });
+  fake.setSnapshot(snapshot([previous], 10));
+  fake.setOperation(previous);
+
+  let resolveCreate!: (result: ChatOperationV2MutationResult) => void;
+  const pendingCreate = new Promise<ChatOperationV2MutationResult>((resolve) => {
+    resolveCreate = resolve;
+  });
+  const projectedDetails: ChatOperationV2OperationDetail[] = [];
+  const projectionEvents: string[] = [];
+  const controller = createChatOperationV2Controller({
+    api: {
+      ...fake.api,
+      create: async () => pendingCreate,
+    },
+    nextId: (purpose) => `${purpose}-01`,
+    onChange: (projectedSnapshot) =>
+      projectionEvents.push(`snapshot:${projectedSnapshot.activeOperation?.operationId ?? 'none'}`),
+    onDetail: (projectedDetail) => {
+      projectedDetails.push(projectedDetail);
+      projectionEvents.push(`detail:${projectedDetail.operation.operationId}`);
+    },
+  });
+  await controller.activate({
+    workspaceKey: 'D:\\repo',
+    handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    conversationId: 'conversation-01',
+  });
+
+  const send = controller.send({
+    request: { text: 'Create a pipeline.', attachments: [] },
+    provider: 'openai',
+    model: 'gpt-5.4',
+    variant: null,
+    localRevision: null,
+    candidateId: null,
+    conversationId: 'conversation-01',
+    dirtySnapshot: null,
+  });
+  const awaitingPermission = operation({
+    operationId: 'operation-awaiting-permission',
+    version: 7,
+    phase: 'authoring',
+    waitReason: 'permission',
+    executionState: 'waiting_for_user',
+    createdAt: 200,
+    updatedAt: 250,
+    pendingInputKind: 'permission',
+  });
+  fake.setDetail({
+    ...detail(awaitingPermission),
+    pendingInput: {
+      kind: 'permission',
+      operationId: awaitingPermission.operationId,
+      generation: awaitingPermission.generation,
+      operationVersion: awaitingPermission.version,
+      hostRequestId: 'permission-01',
+      state: 'live_pending',
+      requestedAt: 245,
+      content: { actionCode: 'edit', resourceCode: 'pipeline' },
+    },
+  });
+
+  fake.subscriptions[0]!.options.onWake({
+    workspaceSeq: 11,
+    operationId: awaitingPermission.operationId,
+  });
+  for (let index = 0; index < 6; index += 1) await Promise.resolve();
+
+  const activeBeforeCreateResponse = controller.getSnapshot().activeOperation;
+  const detailBeforeCreateResponse = projectedDetails.at(-1);
+  const projectionEventsBeforeCreateResponse = [...projectionEvents];
+  resolveCreate({ kind: 'in_progress', operation: awaitingPermission });
+  await send;
+
+  expect(activeBeforeCreateResponse).toMatchObject({
+    operationId: awaitingPermission.operationId,
+    executionState: 'waiting_for_user',
+    pendingInputKind: 'permission',
+  });
+  expect(detailBeforeCreateResponse?.pendingInput).toMatchObject({
+    kind: 'permission',
+    hostRequestId: 'permission-01',
+    state: 'live_pending',
+  });
+  expect(projectionEventsBeforeCreateResponse.slice(-2)).toEqual([
+    `snapshot:${awaitingPermission.operationId}`,
+    `detail:${awaitingPermission.operationId}`,
+  ]);
+});
+
+test('does not let a background SSE update replace a live active operation', async () => {
+  const fake = fakeApi();
+  const active = operation({
+    operationId: 'operation-active',
+    version: 3,
+    phase: 'executing_readonly',
+    updatedAt: 200,
+  });
+  fake.setSnapshot(snapshot([active], 4));
+  const controller = createChatOperationV2Controller({
+    api: fake.api,
+    nextId: (purpose) => `${purpose}-01`,
+  });
+  await controller.activate({
+    workspaceKey: 'D:\\repo',
+    handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    conversationId: 'conversation-01',
+  });
+
+  const background = operation({
+    operationId: 'operation-background',
+    version: 2,
+    phase: 'awaiting_input',
+    waitReason: 'clarification',
+    executionState: 'waiting_for_user',
+    createdAt: 210,
+    updatedAt: 250,
+    pendingInputKind: 'clarification',
+  });
+  fake.setOperation(background);
+  fake.subscriptions[0]!.options.onWake({
+    workspaceSeq: 5,
+    operationId: background.operationId,
+  });
+  for (let index = 0; index < 6; index += 1) await Promise.resolve();
+
+  expect(controller.getSnapshot().activeOperation).toMatchObject({
+    operationId: active.operationId,
+    phase: 'executing_readonly',
+  });
+  expect(controller.getSnapshot().operations).toContainEqual(background);
 });
 
 test('routes every active-operation decision with current CAS and updates projection', async () => {

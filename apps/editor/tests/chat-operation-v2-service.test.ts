@@ -1118,6 +1118,99 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(JSON.stringify(service.getDiagnosticsSnapshot())).not.toContain('ab'.repeat(32));
   });
 
+  test('diagnostics expose a bounded content-minimized Host event chronology', () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    seedWorkspaceOperation(controlDir, workspace, 'scope-diagnostics', 'operation-diagnostics');
+
+    const control = prepareChatOperationV2Control({
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+    });
+    const store = openChatOperationV2Store({
+      databasePath: control.databasePath,
+      keyId: control.keyId,
+    });
+    try {
+      for (let index = 0; index < 105; index += 1) {
+        store.appendOperationEvent({
+          operationId: 'operation-diagnostics',
+          eventId: `operation-diagnostics-progress-${index}`,
+          type: 'operation_state_changed',
+          timestamp: 1_777_777_778_000 + index,
+          payload: {
+            sequence: index,
+            invocationId: `sensitive-invocation-${index}`,
+            message: `sensitive-provider-message-${index}`,
+          },
+        });
+      }
+      store.appendOperationEvent({
+        operationId: 'operation-diagnostics',
+        eventId: 'operation-diagnostics-provider-failure',
+        type: 'invocation_failed_terminal',
+        timestamp: 1_777_777_779_000,
+        payload: {
+          errorCode: 'provider_rate_limited',
+          reasonCode: 'provider_response',
+          diagnosticCodes: [
+            'provider_rate_limited',
+            'provider_rate_limited',
+            'unknown_but_code_shaped',
+            'unsafe code with spaces',
+          ],
+          outcome: 'failed_terminal',
+          invocationId: 'sensitive-final-invocation',
+          requestDigest: 'f'.repeat(64),
+          message: 'sensitive-final-provider-message',
+        },
+      });
+    } finally {
+      store.close();
+      control.key.fill(0);
+    }
+
+    const service = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+    });
+    services.push(service);
+    service.getWorkspaceSnapshot(workspace);
+
+    const diagnostics = service.getDiagnosticsSnapshot(workspace);
+    expect(diagnostics.eventEvidence).toMatchObject({
+      layer: 'chat-operation-v2-host-event-window',
+      limit: 100,
+      retainedFloor: 0,
+      latestCursor: 107,
+      retainedEventCount: 107,
+      returnedEventCount: 100,
+      omittedEventCount: 7,
+      truncated: true,
+    });
+    expect(diagnostics.eventEvidence?.events).toHaveLength(100);
+    expect(diagnostics.eventEvidence?.events.at(-1)).toMatchObject({
+      workspaceSeq: 107,
+      operationId: 'operation-diagnostics',
+      type: 'invocation_failed_terminal',
+      phase: 'created',
+      waitReason: null,
+      timestamp: 1_777_777_779_000,
+      diagnostic: {
+        errorCode: 'provider_rate_limited',
+        reasonCode: 'provider_response',
+        diagnosticCodes: ['provider_rate_limited'],
+        outcome: 'failed_terminal',
+      },
+    });
+    const serialized = JSON.stringify(diagnostics);
+    expect(serialized).not.toContain('sensitive-invocation');
+    expect(serialized).not.toContain('sensitive-provider-message');
+    expect(serialized).not.toContain('f'.repeat(64));
+    expect(serialized).not.toContain('unknown_but_code_shaped');
+    expect(serialized).not.toContain('unsafe code with spaces');
+  });
+
   test('close is idempotent, does not initialize an unused service, and prevents reopening', () => {
     const root = makeTempRoot();
     const unusedControlDir = join(root, 'unused-control');

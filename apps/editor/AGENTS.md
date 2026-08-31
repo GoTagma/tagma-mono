@@ -840,6 +840,11 @@
   outbox status, and timestamp. The renderer diagnostics contributor may repeat that bounded
   projection, but must not expose native session/input ids, request digests, provider payloads,
   paths, or credentials.
+- The server Chat V2 diagnostics contributor may expose only a bounded tail of Host operation
+  events with explicit retained/returned/omitted counts. Keep event type, Host operation identity,
+  phase, wait reason, timestamp, and allowlisted code-shaped diagnostic fields; never forward the
+  event payload or source evidence, native invocation/session/input ids, request digests, provider
+  text, tool content, paths, or credentials.
 - Native V2 SSE replay currently yields a stable `evt_*` id and parsed payload but omits the
   generated client's declared `event` field. Treat SSE as a wake-up signal and correlate that id
   with `session.history`, whose durable record supplies both event type and aggregate sequence.
@@ -892,6 +897,11 @@
   recovery choice, but may not call OpenCode mutations or stage/finalize primitives directly. V2 is
   the only Desktop Chat execution protocol: do not add V1 import, recovery, migration, passthrough,
   executor, or renderer-owned session paths; handshake mismatches fail closed.
+- A correlated nonterminal operation discovered through Host SSE must replace a terminal active
+  operation before its create mutation response returns, so permission, question, clarification,
+  and recovery waits cannot be hidden behind stale history. Emit that active-operation projection
+  before its detail projection. A different operation must never displace an active nonterminal
+  operation; ordinary same-operation updates remain active.
 - Keep the removed renderer staging namespace (`/api/workspace/chat-yaml-stage/*`) behind an early
   HTTP 426 fence, before YAML-lock and revision middleware. Host V2 invokes staging, Trial, repair,
   and finalize as internal sidecar capabilities; do not register the legacy route adapter or add

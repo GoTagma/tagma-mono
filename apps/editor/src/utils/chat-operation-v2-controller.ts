@@ -218,6 +218,15 @@ function latestOperation(
   );
 }
 
+function shouldActivateOperation(
+  current: ChatOperationV2Projection | null,
+  candidate: ChatOperationV2Projection,
+): boolean {
+  if (current === null || current.operationId === candidate.operationId) return true;
+  if (current.phase !== 'terminal') return false;
+  return latestOperation([current, candidate])?.operationId === candidate.operationId;
+}
+
 class Controller implements ChatOperationV2Controller {
   readonly #api: ChatOperationV2ControllerApi;
   readonly #nextId: (purpose: string) => string;
@@ -700,9 +709,7 @@ class Controller implements ChatOperationV2Controller {
     if (!this.#isCurrentAuthority(authority) || !this.#matchesCorrelation(detail.operation)) {
       return null;
     }
-    const makeActive =
-      this.#snapshot.activeOperation === null ||
-      this.#snapshot.activeOperation.operationId === detail.operation.operationId;
+    const makeActive = shouldActivateOperation(this.#snapshot.activeOperation, detail.operation);
     if (!this.#applyOperation(detail.operation, makeActive)) return null;
     this.#onDetail?.(detail);
     return detail;

@@ -174,6 +174,14 @@ reports also feed the timeline: the first report from each renderer instance est
 meaningful summary changed. Snapshot capture timestamps and Chat turn-health heartbeat timestamps
 do not create timeline churn by themselves.
 
+When Chat Operation V2 control state is already open for the requested workspace,
+`context.features.chatOperationV2.eventEvidence` includes the newest 100 Host operation events.
+Each entry is content-minimized to its Host operation identity, version, phase, wait reason,
+timestamp, terminal flag, event type, and bounded code-shaped diagnostic fields. The window reports
+its retained, returned, and omitted counts. It never includes provider messages, arbitrary event
+payloads, source evidence, native invocation/session/input ids, request digests, tool content,
+paths, or credentials, and diagnostics never opens an otherwise-unused Chat control store.
+
 Payloads are bounded, and known credential fields and common token formats are redacted. This is
 best-effort protection. Timeline events use explicit metadata allow-lists and are
 content-minimized: they exclude raw authored message bodies, composer drafts, pending user text,

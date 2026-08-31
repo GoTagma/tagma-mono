@@ -90,7 +90,7 @@ test('sidecar diagnostics remain lazy and content-minimized for Chat Operation V
 
   expect(source).toContain('registerServerDiagnosticsContributor');
   expect(source).toContain("'chatOperationV2'");
-  expect(source).toContain('chatOperationV2Service?.getDiagnosticsSnapshot()');
+  expect(source).toContain('chatOperationV2Service?.getDiagnosticsSnapshot(workspaceKey)');
   expect(source).not.toMatch(/chatOperationV2[^\n]*(?:databasePath|controlDir|keyId|\.key)/);
 });
 

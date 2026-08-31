@@ -145,7 +145,10 @@ describe('diagnostics routes', () => {
         query: { after: expect.any(String), limit: '1-1000' },
         next: expect.stringContaining('nextCursor'),
       },
-      coverage: expect.arrayContaining([expect.stringContaining('content-minimized')]),
+      coverage: expect.arrayContaining([
+        expect.stringContaining('content-minimized'),
+        expect.stringContaining('Host operation event chronology'),
+      ]),
       privacy: expect.stringMatching(/local paths.*workspace inventory.*sensitive/i),
       sessionPagination: {
         query: { offset: expect.any(String), limit: expect.any(String) },

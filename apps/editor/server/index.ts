@@ -186,8 +186,8 @@ const chatOperationV2MigrationService = chatOperationV2Service
   : null;
 const unregisterChatOperationV2Diagnostics = registerServerDiagnosticsContributor(
   'chatOperationV2',
-  () =>
-    chatOperationV2Service?.getDiagnosticsSnapshot() ?? {
+  ({ workspaceKey }) =>
+    chatOperationV2Service?.getDiagnosticsSnapshot(workspaceKey) ?? {
       shadowEnabled: false,
       mutationsEnabled: false,
       initialized: false,
