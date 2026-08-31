@@ -1133,6 +1133,21 @@ describe('ChatTurn Operation V2 service activation', () => {
       keyId: control.keyId,
     });
     try {
+      store.prepareInvocationOutbox({
+        operationId: 'operation-diagnostics',
+        invocationId: 'trial-plan-invocation-diagnostics',
+        purpose: 'trial_plan',
+        sessionId: 'sensitive-trial-plan-session',
+        inputId: 'sensitive-trial-plan-input',
+        requestDigest: 'd'.repeat(64),
+        preparedAt: 1_777_777_777_900,
+      });
+      store.updateInvocationOutbox({
+        invocationId: 'trial-plan-invocation-diagnostics',
+        expectedStatus: 'prepared',
+        status: 'submitted_unknown',
+        updatedAt: 1_777_777_777_901,
+      });
       for (let index = 0; index < 105; index += 1) {
         store.appendOperationEvent({
           operationId: 'operation-diagnostics',
@@ -1149,19 +1164,13 @@ describe('ChatTurn Operation V2 service activation', () => {
       store.appendOperationEvent({
         operationId: 'operation-diagnostics',
         eventId: 'operation-diagnostics-provider-failure',
-        type: 'invocation_failed_terminal',
+        type: 'invocation_submission_unknown',
         timestamp: 1_777_777_779_000,
         payload: {
-          errorCode: 'provider_rate_limited',
-          reasonCode: 'provider_response',
-          diagnosticCodes: [
-            'provider_rate_limited',
-            'provider_rate_limited',
-            'unknown_but_code_shaped',
-            'unsafe code with spaces',
-          ],
-          outcome: 'failed_terminal',
-          invocationId: 'sensitive-final-invocation',
+          invocationId: 'trial-plan-invocation-diagnostics',
+          errorCode: 'submitted_unknown',
+          purpose: 'trial_plan',
+          reasonCode: 'admission_preflight_history_request_failed',
           requestDigest: 'f'.repeat(64),
           message: 'sensitive-final-provider-message',
         },
@@ -1179,6 +1188,7 @@ describe('ChatTurn Operation V2 service activation', () => {
 
     const diagnostics = service.getDiagnosticsSnapshot(workspace);
     expect(diagnostics.eventEvidence).toMatchObject({
+      schemaVersion: 2,
       layer: 'chat-operation-v2-host-event-window',
       limit: 100,
       retainedFloor: 0,
@@ -1192,19 +1202,31 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(diagnostics.eventEvidence?.events.at(-1)).toMatchObject({
       workspaceSeq: 107,
       operationId: 'operation-diagnostics',
-      type: 'invocation_failed_terminal',
+      type: 'invocation_submission_unknown',
       phase: 'created',
       waitReason: null,
       timestamp: 1_777_777_779_000,
       diagnostic: {
-        errorCode: 'provider_rate_limited',
-        reasonCode: 'provider_response',
-        diagnosticCodes: ['provider_rate_limited'],
-        outcome: 'failed_terminal',
+        errorCode: 'submitted_unknown',
+        reasonCode: 'admission_preflight_history_request_failed',
+      },
+      invocation: {
+        purpose: 'trial_plan',
+        currentStatus: 'submitted_unknown',
+        currentFailureCode: null,
+      },
+      submissionUnknown: {
+        reasonCode: 'admission_preflight_history_request_failed',
+        boundary: 'admission_preflight_history',
+        historyOutcome: 'request_failed',
+        nativeSubmissionMayHaveOccurred: false,
+        providerExecutionMayHaveStarted: false,
       },
     });
     const serialized = JSON.stringify(diagnostics);
     expect(serialized).not.toContain('sensitive-invocation');
+    expect(serialized).not.toContain('sensitive-trial-plan-session');
+    expect(serialized).not.toContain('sensitive-trial-plan-input');
     expect(serialized).not.toContain('sensitive-provider-message');
     expect(serialized).not.toContain('f'.repeat(64));
     expect(serialized).not.toContain('unknown_but_code_shaped');

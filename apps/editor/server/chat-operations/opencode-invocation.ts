@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import type {
   ListInvocationOutboxOptions,
@@ -7,6 +8,7 @@ import type {
   UpdateInvocationOutboxInput,
   UpdateInvocationOutboxResult,
 } from './store.js';
+import type { ChatOperationV2SubmissionUnknownReason } from './submission-diagnostics.js';
 
 export interface OpenCodeInvocationStore {
   prepareInvocationOutbox(input: PrepareInvocationOutboxInput): StoredInvocationOutboxRecord;
@@ -70,6 +72,8 @@ export interface HostAssignedOpenCodeInvocation {
   readonly purpose: string;
   readonly sessionId: string;
   readonly inputId: string;
+  /** Fresh calls may proceed when preflight history is temporarily unreadable; recovery never may. */
+  readonly submissionMode?: 'fresh' | 'recover';
   /** Frozen, canonical native admission bytes. The controller copies them before its first await. */
   readonly canonicalRequestBytes: Uint8Array;
 }
@@ -99,6 +103,7 @@ export type OpenCodeInvocationOutcome =
       readonly invocationId: string;
       readonly sessionId: string;
       readonly inputId: string;
+      readonly reasonCode: ChatOperationV2SubmissionUnknownReason;
     }
   | {
       readonly kind: 'conflict';
@@ -122,10 +127,14 @@ export interface OpenCodeInvocationControllerOptions {
   readonly now?: () => number;
   readonly historyPageLimit?: number;
   readonly historyMaxPages?: number;
+  readonly historyReconcileAttempts?: number;
+  readonly historyReconcileDelayMs?: number;
 }
 
 const DEFAULT_HISTORY_PAGE_LIMIT = 100;
 const DEFAULT_HISTORY_MAX_PAGES = 64;
+const DEFAULT_HISTORY_RECONCILE_ATTEMPTS = 20;
+const DEFAULT_HISTORY_RECONCILE_DELAY_MS = 50;
 const INVOCATION_CONFLICT_CODES = new Set<OpenCodeInvocationConflictCode>([
   'request_digest_conflict',
   'session_identity_conflict',
@@ -138,6 +147,58 @@ type HistoryAdmissionResult =
   | { readonly kind: 'missing' }
   | { readonly kind: 'conflict' };
 
+type HistoryUnavailableResult = {
+  readonly kind: 'unavailable';
+  readonly reason: 'request_failed' | 'scan_incomplete';
+};
+
+function preflightHistoryReason(
+  reason: HistoryUnavailableResult['reason'],
+): ChatOperationV2SubmissionUnknownReason {
+  return reason === 'request_failed'
+    ? 'admission_preflight_history_request_failed'
+    : 'admission_preflight_history_scan_incomplete';
+}
+
+function transportHistoryReason(
+  boundary: 'session_create' | 'admission_prompt',
+  result: Extract<
+    HistoryAdmissionResult | HistoryUnavailableResult,
+    { kind: 'missing' | 'unavailable' }
+  >,
+): ChatOperationV2SubmissionUnknownReason {
+  if (boundary === 'session_create') {
+    if (result.kind === 'missing') return 'session_create_transport_history_missing';
+    return result.reason === 'request_failed'
+      ? 'session_create_transport_history_request_failed'
+      : 'session_create_transport_history_scan_incomplete';
+  }
+  if (result.kind === 'missing') return 'admission_prompt_transport_history_missing';
+  return result.reason === 'request_failed'
+    ? 'admission_prompt_transport_history_request_failed'
+    : 'admission_prompt_transport_history_scan_incomplete';
+}
+
+function promptConflictHistoryReason(
+  reason: HistoryUnavailableResult['reason'],
+): ChatOperationV2SubmissionUnknownReason {
+  return reason === 'request_failed'
+    ? 'admission_prompt_conflict_history_request_failed'
+    : 'admission_prompt_conflict_history_scan_incomplete';
+}
+
+function reconciliationHistoryReason(
+  result: Extract<
+    HistoryAdmissionResult | HistoryUnavailableResult,
+    { kind: 'missing' | 'unavailable' }
+  >,
+): ChatOperationV2SubmissionUnknownReason {
+  if (result.kind === 'missing') return 'admission_reconcile_history_missing';
+  return result.reason === 'request_failed'
+    ? 'admission_reconcile_history_request_failed'
+    : 'admission_reconcile_history_scan_incomplete';
+}
+
 export function sha256CanonicalOpenCodeRequest(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -148,6 +209,8 @@ export class OpenCodeInvocationController {
   private readonly now: () => number;
   private readonly historyPageLimit: number;
   private readonly historyMaxPages: number;
+  private readonly historyReconcileAttempts: number;
+  private readonly historyReconcileDelayMs: number;
 
   constructor(options: OpenCodeInvocationControllerOptions) {
     this.store = options.store;
@@ -155,15 +218,25 @@ export class OpenCodeInvocationController {
     this.now = options.now ?? Date.now;
     this.historyPageLimit = options.historyPageLimit ?? DEFAULT_HISTORY_PAGE_LIMIT;
     this.historyMaxPages = options.historyMaxPages ?? DEFAULT_HISTORY_MAX_PAGES;
+    this.historyReconcileAttempts =
+      options.historyReconcileAttempts ?? DEFAULT_HISTORY_RECONCILE_ATTEMPTS;
+    this.historyReconcileDelayMs =
+      options.historyReconcileDelayMs ?? DEFAULT_HISTORY_RECONCILE_DELAY_MS;
     if (
       !Number.isSafeInteger(this.historyPageLimit) ||
       this.historyPageLimit < 1 ||
       this.historyPageLimit > 1_000 ||
       !Number.isSafeInteger(this.historyMaxPages) ||
       this.historyMaxPages < 1 ||
-      this.historyMaxPages > 1_000
+      this.historyMaxPages > 1_000 ||
+      !Number.isSafeInteger(this.historyReconcileAttempts) ||
+      this.historyReconcileAttempts < 1 ||
+      this.historyReconcileAttempts > 20 ||
+      !Number.isSafeInteger(this.historyReconcileDelayMs) ||
+      this.historyReconcileDelayMs < 0 ||
+      this.historyReconcileDelayMs > 5_000
     ) {
-      throw new TypeError('OpenCode history bounds must be integers between 1 and 1000.');
+      throw new TypeError('OpenCode history bounds or reconciliation policy are invalid.');
     }
   }
 
@@ -206,7 +279,7 @@ export class OpenCodeInvocationController {
     if (outbox.status !== 'prepared') {
       return this.outcomeForObservedStatus(outbox);
     }
-    return this.resumePrepared(outbox, requestBytes);
+    return this.resumePrepared(outbox, requestBytes, input.submissionMode ?? 'recover');
   }
 
   async reconcileUnresolved(
@@ -232,7 +305,7 @@ export class OpenCodeInvocationController {
       }
       outcomes.push(
         outbox.status === 'prepared'
-          ? await this.resumePrepared(outbox, requestBytes)
+          ? await this.resumePrepared(outbox, requestBytes, 'recover')
           : await this.reconcileSubmittedUnknown(outbox),
       );
     }
@@ -242,6 +315,7 @@ export class OpenCodeInvocationController {
   private async resumePrepared(
     outbox: StoredInvocationOutboxRecord,
     requestBytes: Uint8Array,
+    submissionMode: 'fresh' | 'recover',
   ): Promise<OpenCodeInvocationOutcome> {
     const existingAdmission = await this.safeQueryHistory(outbox);
     if (existingAdmission.kind === 'admitted') {
@@ -251,14 +325,19 @@ export class OpenCodeInvocationController {
       return this.conflict(outbox, 'history_protocol_conflict');
     }
     if (existingAdmission.kind === 'unavailable') {
-      return this.outcomeAfterSubmittedUnknownCas(this.markSubmittedUnknown(outbox));
+      if (submissionMode === 'recover') {
+        return this.outcomeAfterSubmittedUnknownCas(
+          this.markSubmittedUnknown(outbox),
+          preflightHistoryReason(existingAdmission.reason),
+        );
+      }
     }
 
     let created: OpenCodeCreateSessionResult;
     try {
       created = await this.client.createSession({ sessionId: outbox.sessionId });
     } catch {
-      return this.recoverAfterTransportFailure(outbox);
+      return this.recoverAfterTransportFailure(outbox, 'session_create');
     }
     if (created.kind !== 'created' || created.sessionId !== outbox.sessionId) {
       return this.conflict(outbox, 'session_identity_conflict');
@@ -272,15 +351,18 @@ export class OpenCodeInvocationController {
         canonicalRequestBytes: requestBytes,
       });
     } catch {
-      return this.recoverAfterTransportFailure(outbox);
+      return this.recoverAfterTransportFailure(outbox, 'admission_prompt');
     }
     if (prompted.kind === 'conflict') {
-      const recovered = await this.safeQueryHistory(outbox);
+      const recovered = await this.reconcileHistory(outbox);
       if (recovered.kind === 'admitted') {
         return this.admit(outbox, recovered.aggregateSeq, true);
       }
       if (recovered.kind === 'unavailable') {
-        return this.outcomeAfterSubmittedUnknownCas(this.markSubmittedUnknown(outbox));
+        return this.outcomeAfterSubmittedUnknownCas(
+          this.markSubmittedUnknown(outbox),
+          promptConflictHistoryReason(recovered.reason),
+        );
       }
       return this.conflict(outbox, 'admission_evidence_conflict');
     }
@@ -292,47 +374,62 @@ export class OpenCodeInvocationController {
 
   private async recoverAfterTransportFailure(
     outbox: StoredInvocationOutboxRecord,
+    boundary: 'session_create' | 'admission_prompt',
   ): Promise<OpenCodeInvocationOutcome> {
     const unknown = this.markSubmittedUnknown(outbox);
     if (unknown.admittedAggregateSeq !== null || unknown.status === 'failed_terminal') {
       return this.outcomeForObservedStatus(unknown);
     }
-    const recovered = await this.safeQueryHistory(unknown);
+    const recovered = await this.reconcileHistory(unknown);
     if (recovered.kind === 'admitted') {
       return this.admit(unknown, recovered.aggregateSeq, true);
     }
     if (recovered.kind === 'conflict') {
       return this.conflict(unknown, 'history_protocol_conflict');
     }
-    return this.unknownOutcome(unknown);
+    return this.unknownOutcome(unknown, transportHistoryReason(boundary, recovered));
   }
 
   private async reconcileSubmittedUnknown(
     outbox: StoredInvocationOutboxRecord,
   ): Promise<OpenCodeInvocationOutcome> {
-    const recovered = await this.safeQueryHistory(outbox);
+    const recovered = await this.reconcileHistory(outbox);
     if (recovered.kind === 'admitted') {
       return this.admit(outbox, recovered.aggregateSeq, true);
     }
     if (recovered.kind === 'conflict') {
       return this.conflict(outbox, 'history_protocol_conflict');
     }
-    return this.unknownOutcome(outbox);
+    return this.unknownOutcome(outbox, reconciliationHistoryReason(recovered));
   }
 
   private async safeQueryHistory(
     outbox: StoredInvocationOutboxRecord,
-  ): Promise<HistoryAdmissionResult | { readonly kind: 'unavailable' }> {
+  ): Promise<HistoryAdmissionResult | HistoryUnavailableResult> {
     try {
       return await this.queryHistory(outbox);
     } catch {
-      return { kind: 'unavailable' };
+      return { kind: 'unavailable', reason: 'request_failed' };
     }
+  }
+
+  private async reconcileHistory(
+    outbox: StoredInvocationOutboxRecord,
+  ): Promise<HistoryAdmissionResult | HistoryUnavailableResult> {
+    let observed: HistoryAdmissionResult | HistoryUnavailableResult = { kind: 'missing' };
+    for (let attempt = 0; attempt < this.historyReconcileAttempts; attempt += 1) {
+      observed = await this.safeQueryHistory(outbox);
+      if (observed.kind === 'admitted' || observed.kind === 'conflict') return observed;
+      if (attempt + 1 < this.historyReconcileAttempts && this.historyReconcileDelayMs > 0) {
+        await delay(this.historyReconcileDelayMs);
+      }
+    }
+    return observed;
   }
 
   private async queryHistory(
     outbox: StoredInvocationOutboxRecord,
-  ): Promise<HistoryAdmissionResult> {
+  ): Promise<HistoryAdmissionResult | HistoryUnavailableResult> {
     let exactSequence: number | null = null;
     let after = 0;
     for (let pageIndex = 0; pageIndex < this.historyMaxPages; pageIndex += 1) {
@@ -367,7 +464,7 @@ export class OpenCodeInvocationController {
       if (nextAfter === after) return { kind: 'conflict' };
       after = nextAfter;
     }
-    throw new Error('bounded OpenCode history scan is incomplete');
+    return { kind: 'unavailable', reason: 'scan_incomplete' };
   }
 
   private admit(
@@ -406,7 +503,9 @@ export class OpenCodeInvocationController {
     recoveredFromHistory: boolean,
   ): OpenCodeInvocationOutcome {
     if (admitted.status === 'failed_terminal') return this.outcomeForObservedStatus(admitted);
-    if (admitted.admittedAggregateSeq === null) return this.unknownOutcome(admitted);
+    if (admitted.admittedAggregateSeq === null) {
+      return this.unknownOutcome(admitted, 'admission_sequence_missing');
+    }
     return {
       kind: 'admitted',
       invocationId: admitted.invocationId,
@@ -429,18 +528,23 @@ export class OpenCodeInvocationController {
 
   private outcomeAfterSubmittedUnknownCas(
     outbox: StoredInvocationOutboxRecord,
+    reasonCode: ChatOperationV2SubmissionUnknownReason,
   ): OpenCodeInvocationOutcome {
     return outbox.status === 'submitted_unknown'
-      ? this.unknownOutcome(outbox)
+      ? this.unknownOutcome(outbox, reasonCode)
       : this.outcomeForObservedStatus(outbox);
   }
 
-  private unknownOutcome(outbox: StoredInvocationOutboxRecord): OpenCodeInvocationOutcome {
+  private unknownOutcome(
+    outbox: StoredInvocationOutboxRecord,
+    reasonCode: ChatOperationV2SubmissionUnknownReason,
+  ): OpenCodeInvocationOutcome {
     return {
       kind: 'submitted_unknown',
       invocationId: outbox.invocationId,
       sessionId: outbox.sessionId,
       inputId: outbox.inputId,
+      reasonCode,
     };
   }
 
@@ -464,7 +568,7 @@ export class OpenCodeInvocationController {
         recoveredFromHistory: true,
       };
     }
-    return this.unknownOutcome(outbox);
+    return this.unknownOutcome(outbox, 'admission_state_changed_without_evidence');
   }
 
   private safeStoredConflictCode(failureCode: string | null): OpenCodeInvocationConflictCode {

@@ -182,6 +182,24 @@ its retained, returned, and omitted counts. It never includes provider messages,
 payloads, source evidence, native invocation/session/input ids, request digests, tool content,
 paths, or credentials, and diagnostics never opens an otherwise-unused Chat control store.
 
+The event window is `schemaVersion: 2`. Invocation events also include a safe `invocation` summary
+(`purpose`, durable outbox `currentStatus`, and allowlisted `currentFailureCode` at diagnostics
+read time). An `invocation_submission_unknown` event adds a finite
+`submissionUnknown` explanation: exact `reasonCode`, the admission/execution `boundary`, history
+outcome, whether a native submission may have occurred, and whether provider execution may have
+started. Reasons distinguish preflight history request/scan failure, session-create transport
+loss, admission-prompt transport or conflict reconciliation, restart reconciliation, admission
+source history missing/request/scan/conflict outcomes, execution-prompt uncertainty, and missing
+durable settlement. Unknown legacy values collapse to `legacy_unknown`; raw exception or provider
+text is never returned.
+
+Fresh Host invocations may continue when only their pre-submission history check is temporarily
+unavailable, because no request has yet been attempted under that fresh authority. Once a native
+submission may have occurred, Tagma performs up to 20 bounded history reconciliation reads at
+50 ms intervals. The same bounded policy correlates the exact durable source event after native
+admission. Tagma proceeds when that evidence appears and otherwise preserves `submitted_unknown`
+without blindly issuing another provider request.
+
 Payloads are bounded, and known credential fields and common token formats are redacted. This is
 best-effort protection. Timeline events use explicit metadata allow-lists and are
 content-minimized: they exclude raw authored message bodies, composer drafts, pending user text,

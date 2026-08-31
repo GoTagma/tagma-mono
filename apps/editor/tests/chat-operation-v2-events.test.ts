@@ -70,7 +70,9 @@ const payloads = {
   },
   invocation_submission_unknown: {
     invocationId: 'invocation-01',
-    errorCode: 'response_lost',
+    errorCode: 'submitted_unknown',
+    purpose: 'trial_plan',
+    reasonCode: 'admission_preflight_history_request_failed',
   },
   invocation_admitted: { invocationId: 'invocation-01', admittedAggregateSeq: 41 },
   invocation_started: { invocationId: 'invocation-01' },
@@ -299,6 +301,24 @@ describe('ChatTurn Operation V2 durable Host event allowlist', () => {
       violationCodes({
         ...event('invocation_submission_unknown'),
         payload: { invocationId: 'invocation-01', errorCode: 'C:\\private\\prompt.txt' },
+      }),
+    ).toContain('invalid_payload');
+  });
+
+  test('keeps legacy submission-unknown events readable while validating detailed reasons', () => {
+    expect(
+      violationCodes({
+        ...event('invocation_submission_unknown'),
+        payload: { invocationId: 'invocation-legacy', errorCode: 'submitted_unknown' },
+      }),
+    ).not.toContain('invalid_payload');
+    expect(
+      violationCodes({
+        ...event('invocation_submission_unknown'),
+        payload: {
+          ...payloads.invocation_submission_unknown,
+          reasonCode: 'unknown_but_code_shaped',
+        },
       }),
     ).toContain('invalid_payload');
   });

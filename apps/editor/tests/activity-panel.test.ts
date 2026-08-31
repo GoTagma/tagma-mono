@@ -53,6 +53,18 @@ describe('Chat Operation V2 activity panel', () => {
     expect(html).not.toContain('Choose another model');
   });
 
+  test('explains an unknown submission without collapsing it into the generic fallback', () => {
+    const html = renderToStaticMarkup(
+      createElement(RetryableOperationNoticeView, { failureCode: 'submitted_unknown' }),
+    );
+
+    expect(html).toContain('Tagma could not confirm request admission');
+    expect(html).toContain('did not submit a duplicate request automatically');
+    expect(html).toContain('send again with the same model');
+    expect(html).toContain('Reason: Submission status unknown');
+    expect(html).not.toContain('Chat request did not complete');
+  });
+
   test('explains legacy generic model errors and still permits same-model retry', () => {
     const html = renderToStaticMarkup(
       createElement(RetryableOperationNoticeView, { failureCode: 'model_error' }),

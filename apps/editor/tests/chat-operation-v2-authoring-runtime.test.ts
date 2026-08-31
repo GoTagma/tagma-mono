@@ -11,6 +11,7 @@ import {
   buildManagedChatOperationV2ExecutionPrompt,
   createManagedChatOperationV2AuthoringRuntime,
   isOpenCodeSessionStatusActive,
+  reconcileManagedChatOperationV2AdmissionSource,
   type ManagedChatOperationV2AuthoringAuthorityRecord,
   type ManagedChatOperationV2AuthoringExecutionResult,
   type ManagedChatOperationV2AuthoringOpenCodeAdapter,
@@ -430,6 +431,114 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(isOpenCodeSessionStatusActive({ type: 'retry', attempt: 1 })).toBe(true);
     expect(isOpenCodeSessionStatusActive(null)).toBe(true);
     expect(isOpenCodeSessionStatusActive({})).toBe(true);
+  });
+
+  test('reconciles delayed exact admission source history without resubmitting provider work', async () => {
+    const canonicalRequestBytes = Buffer.from('{"prompt":{"text":"delayed source"}}', 'utf8');
+    const requestDigest = sha256(canonicalRequestBytes);
+    let historyCalls = 0;
+
+    const result = await reconcileManagedChatOperationV2AdmissionSource({
+      sessionId: 'session-delayed-source',
+      inputId: 'input-delayed-source',
+      admittedAggregateSeq: 41,
+      canonicalRequestBytes,
+      historyReconcileAttempts: 3,
+      historyReconcileDelayMs: 0,
+      async listHistory({ after, limit }) {
+        historyCalls += 1;
+        expect(after).toBe(40);
+        expect(limit).toBe(100);
+        if (historyCalls < 3) return { records: [], hasMore: false };
+        return {
+          records: [
+            {
+              eventId: 'event-delayed-source',
+              type: 'session.next.prompt.admitted',
+              sessionId: 'session-delayed-source',
+              inputId: 'input-delayed-source',
+              requestDigest,
+              aggregateSeq: 41,
+            },
+          ],
+          hasMore: false,
+        };
+      },
+    });
+
+    expect(result).toEqual({
+      kind: 'found',
+      source: { aggregateSeq: 41, eventId: 'event-delayed-source' },
+    });
+    expect(historyCalls).toBe(3);
+  });
+
+  test('distinguishes missing, unreadable, and incomplete admission source history', async () => {
+    const base = {
+      sessionId: 'session-source-reason',
+      inputId: 'input-source-reason',
+      admittedAggregateSeq: 42,
+      canonicalRequestBytes: Buffer.from('{"prompt":{"text":"source reason"}}', 'utf8'),
+      historyReconcileAttempts: 1,
+      historyReconcileDelayMs: 0,
+    } as const;
+
+    await expect(
+      reconcileManagedChatOperationV2AdmissionSource({
+        ...base,
+        async listHistory() {
+          return { records: [], hasMore: false };
+        },
+      }),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reasonCode: 'admission_source_history_missing',
+    });
+    await expect(
+      reconcileManagedChatOperationV2AdmissionSource({
+        ...base,
+        async listHistory() {
+          throw new Error('private source history outage');
+        },
+      }),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reasonCode: 'admission_source_history_request_failed',
+    });
+    await expect(
+      reconcileManagedChatOperationV2AdmissionSource({
+        ...base,
+        async listHistory() {
+          return { records: [], hasMore: true };
+        },
+      }),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reasonCode: 'admission_source_history_scan_incomplete',
+    });
+    await expect(
+      reconcileManagedChatOperationV2AdmissionSource({
+        ...base,
+        async listHistory() {
+          return {
+            records: [
+              {
+                eventId: 'event-source-conflict',
+                type: 'session.next.prompt.admitted',
+                sessionId: base.sessionId,
+                inputId: base.inputId,
+                requestDigest: 'f'.repeat(64),
+                aggregateSeq: base.admittedAggregateSeq,
+              },
+            ],
+            hasMore: false,
+          };
+        },
+      }),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reasonCode: 'admission_source_history_conflict',
+    });
   });
 
   test('selects the dedicated Trial Plan agent with exact Host-issued planning authority', () => {

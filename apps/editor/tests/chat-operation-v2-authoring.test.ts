@@ -39,6 +39,7 @@ import {
 } from '../server/chat-operations/store.js';
 import { createInitialChatOperationV2State } from '../server/chat-operations/types.js';
 import { appendChatOperationV2ResultMessage } from '../server/chat-operations/results.js';
+import type { ChatOperationV2SubmissionUnknownReason } from '../server/chat-operations/submission-diagnostics.js';
 
 setDefaultTimeout(30_000);
 
@@ -68,6 +69,7 @@ interface RuntimeOptions {
   readonly providerUnavailablePurpose?: 'authoring' | 'repair' | 'trial_plan';
   readonly providerFailureCode?: string;
   readonly providerSubmissionUnknown?: boolean;
+  readonly providerSubmissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
   readonly relocationUnavailableOnce?: boolean;
 }
 
@@ -293,7 +295,12 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       } as const;
       return this.options.providerSubmissionUnknown === false
         ? unavailable
-        : { ...unavailable, submissionUnknown: true };
+        : {
+            ...unavailable,
+            submissionUnknown: true,
+            submissionUnknownReason:
+              this.options.providerSubmissionUnknownReason ?? 'legacy_unknown',
+          };
     }
     return {
       kind: 'completed',
@@ -1100,6 +1107,29 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(runtime.invocationRequests).toHaveLength(2);
     expect(runtime.invocationRequests[1]!.inputId).not.toBe(runtime.invocationRequests[0]!.inputId);
     expect(runtime.invocationRequests[1]!.sessionId).toBe(runtime.invocationRequests[0]!.sessionId);
+  });
+
+  test('persists the exact submission-unknown reason and purpose for Trial Plan diagnostics', async () => {
+    const { engine, store } = createHarness({
+      verification: ['trial_plan'],
+      providerUnavailableOnce: true,
+      providerUnavailablePurpose: 'trial_plan',
+      providerFailureCode: 'submitted_unknown',
+      providerSubmissionUnknownReason: 'admission_preflight_history_request_failed',
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('provider_unavailable');
+    const page = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (page.kind !== 'events') throw new Error('Expected retained Host event evidence.');
+    expect(page.events.find(({ type }) => type === 'invocation_submission_unknown')).toMatchObject({
+      payload: {
+        errorCode: 'submitted_unknown',
+        purpose: 'trial_plan',
+        reasonCode: 'admission_preflight_history_request_failed',
+      },
+    });
   });
 
   test('seals a relocation outage as retryable staging and resumes the same durable relocation', async () => {

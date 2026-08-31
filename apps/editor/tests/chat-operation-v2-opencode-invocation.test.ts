@@ -189,6 +189,145 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
     });
   });
 
+  test('distinguishes a preflight history failure before any native submission attempt', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"preflight history"}}', 'utf8');
+    const calls: string[] = [];
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        calls.push('history');
+        throw new Error('private preflight history failure');
+      },
+      async createSession() {
+        calls.push('create');
+        throw new Error('create must not run');
+      },
+      async prompt() {
+        calls.push('prompt');
+        throw new Error('prompt must not run');
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-preflight-history',
+      purpose: 'trial_plan',
+      sessionId: 'session-preflight-history',
+      inputId: 'input-preflight-history',
+      submissionMode: 'recover',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(calls).toEqual(['history']);
+    expect(outcome).toEqual({
+      kind: 'submitted_unknown',
+      invocationId: 'invocation-preflight-history',
+      sessionId: 'session-preflight-history',
+      inputId: 'input-preflight-history',
+      reasonCode: 'admission_preflight_history_request_failed',
+    });
+    expect(JSON.stringify(outcome)).not.toContain('private preflight');
+  });
+
+  test('distinguishes a session-create transport failure whose history remains missing', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"create transport"}}', 'utf8');
+    const calls: string[] = [];
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        calls.push('history');
+        return { records: [], hasMore: false };
+      },
+      async createSession() {
+        calls.push('create');
+        throw new Error('private create transport failure');
+      },
+      async prompt() {
+        calls.push('prompt');
+        throw new Error('prompt must not run');
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-create-transport',
+      purpose: 'repair',
+      sessionId: 'session-create-transport',
+      inputId: 'input-create-transport',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(calls).toEqual(['history', 'create', 'history']);
+    expect(outcome).toEqual({
+      kind: 'submitted_unknown',
+      invocationId: 'invocation-create-transport',
+      sessionId: 'session-create-transport',
+      inputId: 'input-create-transport',
+      reasonCode: 'session_create_transport_history_missing',
+    });
+  });
+
+  test('a fresh invocation continues after a preflight history outage without blind recovery semantics', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"fresh preflight"}}', 'utf8');
+    const requestDigest = sha256CanonicalOpenCodeRequest(requestBytes);
+    const calls: string[] = [];
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        calls.push('history');
+        throw new Error('transient history outage before fresh submission');
+      },
+      async createSession(input) {
+        calls.push('create');
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt(input) {
+        calls.push('prompt');
+        return {
+          kind: 'admitted',
+          admission: {
+            sessionId: input.sessionId,
+            inputId: input.inputId,
+            requestDigest,
+            aggregateSeq: 27,
+          },
+        };
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-fresh-preflight',
+      purpose: 'trial_plan',
+      sessionId: 'session-fresh-preflight',
+      inputId: 'input-fresh-preflight',
+      submissionMode: 'fresh',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(calls).toEqual(['history', 'create', 'prompt']);
+    expect(outcome).toMatchObject({
+      kind: 'admitted',
+      invocationId: 'invocation-fresh-preflight',
+      admittedAggregateSeq: 27,
+    });
+  });
+
   test('recovers a committed prompt whose response was lost from finite durable history', async () => {
     const { store } = openStore();
     const requestBytes = Buffer.from('{"prompt":{"text":"response loss"}}', 'utf8');
@@ -226,7 +365,11 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
         throw new Error('simulated committed response loss containing private prompt bytes');
       },
     };
-    const controller = new OpenCodeInvocationController({ store, client });
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
 
     const outcome = await controller.invoke({
       operationId: 'operation-1',
@@ -294,7 +437,11 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
         return { kind: 'conflict' };
       },
     };
-    const controller = new OpenCodeInvocationController({ store, client });
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
 
     const outcome = await controller.invoke({
       operationId: 'operation-1',
@@ -398,7 +545,11 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
         throw new Error('transport failed with a sensitive provider response');
       },
     };
-    const controller = new OpenCodeInvocationController({ store, client });
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
 
     const outcome = await controller.invoke({
       operationId: 'operation-1',
@@ -420,6 +571,7 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
       invocationId: 'invocation-unknown',
       sessionId: 'session-unknown',
       inputId: 'input-unknown',
+      reasonCode: 'admission_prompt_transport_history_missing',
     });
     expect(store.getInvocationOutbox('invocation-unknown')).toMatchObject({
       status: 'submitted_unknown',
@@ -430,6 +582,170 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
       failureCode: null,
     });
     expect(JSON.stringify(outcome)).not.toContain('sensitive');
+  });
+
+  test('reconciles delayed durable admission evidence before declaring a prompt response unknown', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"delayed admission"}}', 'utf8');
+    const requestDigest = sha256CanonicalOpenCodeRequest(requestBytes);
+    let historyCalls = 0;
+    let promptAttempted = false;
+    const calls: string[] = [];
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        historyCalls += 1;
+        calls.push(`history:${historyCalls}`);
+        if (!promptAttempted || historyCalls < 3) return { records: [], hasMore: false };
+        return {
+          records: [
+            {
+              eventId: 'evt-delayed-admission',
+              type: 'session.next.prompt.admitted',
+              sessionId: 'session-delayed-admission',
+              inputId: 'input-delayed-admission',
+              requestDigest,
+              aggregateSeq: 31,
+            },
+          ],
+          hasMore: false,
+        };
+      },
+      async createSession(input) {
+        calls.push('create');
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt() {
+        calls.push('prompt');
+        promptAttempted = true;
+        throw new Error('response lost while admission becomes durable');
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 3,
+      historyReconcileDelayMs: 0,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-delayed-admission',
+      purpose: 'trial_plan',
+      sessionId: 'session-delayed-admission',
+      inputId: 'input-delayed-admission',
+      submissionMode: 'fresh',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(calls).toEqual(['history:1', 'create', 'prompt', 'history:2', 'history:3']);
+    expect(outcome).toMatchObject({
+      kind: 'admitted',
+      invocationId: 'invocation-delayed-admission',
+      admittedAggregateSeq: 31,
+      recoveredFromHistory: true,
+    });
+  });
+
+  test('distinguishes a prompt conflict whose reconciliation history request fails', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"conflict history"}}', 'utf8');
+    let historyCalls = 0;
+    const calls: string[] = [];
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        historyCalls += 1;
+        calls.push(`history:${historyCalls}`);
+        if (historyCalls === 1) return { records: [], hasMore: false };
+        throw new Error('private conflict reconciliation failure');
+      },
+      async createSession(input) {
+        calls.push('create');
+        return { kind: 'created', sessionId: input.sessionId };
+      },
+      async prompt() {
+        calls.push('prompt:conflict');
+        return { kind: 'conflict' };
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-conflict-history',
+      purpose: 'trial_plan',
+      sessionId: 'session-conflict-history',
+      inputId: 'input-conflict-history',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(calls).toEqual(['history:1', 'create', 'prompt:conflict', 'history:2']);
+    expect(outcome).toEqual({
+      kind: 'submitted_unknown',
+      invocationId: 'invocation-conflict-history',
+      sessionId: 'session-conflict-history',
+      inputId: 'input-conflict-history',
+      reasonCode: 'admission_prompt_conflict_history_request_failed',
+    });
+  });
+
+  test('distinguishes restart reconciliation when submitted history is still missing', async () => {
+    const { store } = openStore();
+    const requestBytes = Buffer.from('{"prompt":{"text":"restart unknown"}}', 'utf8');
+    store.prepareInvocationOutbox({
+      operationId: 'operation-1',
+      invocationId: 'invocation-reconcile-missing',
+      purpose: 'trial_plan',
+      sessionId: 'session-reconcile-missing',
+      inputId: 'input-reconcile-missing',
+      requestDigest: sha256CanonicalOpenCodeRequest(requestBytes),
+    });
+    store.updateInvocationOutbox({
+      invocationId: 'invocation-reconcile-missing',
+      expectedStatus: 'prepared',
+      status: 'submitted_unknown',
+    });
+    const calls: string[] = [];
+    const client: OpenCodeInvocationNativeClient = {
+      async listHistory() {
+        calls.push('history');
+        return { records: [], hasMore: false };
+      },
+      async createSession() {
+        calls.push('create');
+        throw new Error('create must not run');
+      },
+      async prompt() {
+        calls.push('prompt');
+        throw new Error('prompt must not run');
+      },
+    };
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
+
+    const outcome = await controller.invoke({
+      operationId: 'operation-1',
+      invocationId: 'invocation-reconcile-missing',
+      purpose: 'trial_plan',
+      sessionId: 'session-reconcile-missing',
+      inputId: 'input-reconcile-missing',
+      canonicalRequestBytes: requestBytes,
+    });
+
+    expect(calls).toEqual(['history']);
+    expect(outcome).toEqual({
+      kind: 'submitted_unknown',
+      invocationId: 'invocation-reconcile-missing',
+      sessionId: 'session-reconcile-missing',
+      inputId: 'input-reconcile-missing',
+      reasonCode: 'admission_reconcile_history_missing',
+    });
   });
 
   test('restart reconciliation queries prepared history before resubmitting the same Host ids', async () => {
@@ -574,7 +890,11 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
         };
       },
     };
-    const controller = new OpenCodeInvocationController({ store, client });
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
 
     const outcomes = await controller.reconcileUnresolved({
       workspaceScopeId,
@@ -619,6 +939,7 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
         invocationId: 'invocation-z',
         sessionId: 'session-z',
         inputId: 'input-z',
+        reasonCode: 'admission_reconcile_history_missing',
       },
     ]);
   });
@@ -949,7 +1270,11 @@ describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
         return { kind: 'conflict' };
       },
     };
-    const controller = new OpenCodeInvocationController({ store, client });
+    const controller = new OpenCodeInvocationController({
+      store,
+      client,
+      historyReconcileAttempts: 1,
+    });
 
     const outcome = await controller.invoke({
       operationId: 'operation-1',

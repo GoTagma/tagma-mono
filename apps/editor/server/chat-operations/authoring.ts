@@ -47,6 +47,11 @@ import {
   sealChatOperationV2Result,
   type ChatOperationV2ResultMessage,
 } from './results.js';
+import {
+  isChatOperationV2SubmissionUnknownReason,
+  normalizeChatOperationV2SubmissionUnknownReason,
+  type ChatOperationV2SubmissionUnknownReason,
+} from './submission-diagnostics.js';
 
 export const CHAT_OPERATION_V2_AUTHORING_SCHEMA_VERSION = 1 as const;
 export const CHAT_OPERATION_V2_SESSION_RELOCATION_SCHEMA_VERSION = 1 as const;
@@ -483,6 +488,7 @@ export type ChatOperationV2AuthoringInvocationResult =
       readonly kind: 'provider_unavailable';
       readonly code: string;
       readonly submissionUnknown?: boolean;
+      readonly submissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
     }
   | { readonly kind: 'cancelled'; readonly code: string };
 
@@ -1724,6 +1730,9 @@ export class ChatOperationV2AuthoringEngine {
             : 'failed_terminal',
       result.kind === 'completed' ? null : result.code,
       result.kind === 'completed' ? result : null,
+      result.kind === 'provider_unavailable' && result.submissionUnknown === true
+        ? normalizeChatOperationV2SubmissionUnknownReason(result.submissionUnknownReason)
+        : null,
     );
     if (result.kind === 'completed') {
       const persistenceInput: PersistChatOperationV2AuthoringInvocationResultInput = {
@@ -1890,7 +1899,7 @@ export class ChatOperationV2AuthoringEngine {
     } else {
       const allowedKeys =
         result.kind === 'provider_unavailable'
-          ? new Set(['kind', 'code', 'submissionUnknown'])
+          ? new Set(['kind', 'code', 'submissionUnknown', 'submissionUnknownReason'])
           : new Set(['kind', 'code']);
       if (Object.keys(result).some((key) => !allowedKeys.has(key))) {
         throw new ChatOperationV2AuthoringProtocolError(
@@ -1899,6 +1908,16 @@ export class ChatOperationV2AuthoringEngine {
         );
       }
       assertRuntimeCode(result.code, 'Invocation result code');
+      if (
+        'submissionUnknownReason' in result &&
+        (result.submissionUnknown !== true ||
+          !isChatOperationV2SubmissionUnknownReason(result.submissionUnknownReason))
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Invocation submission-unknown reason is invalid.',
+        );
+      }
     }
   }
 
@@ -2189,6 +2208,7 @@ export class ChatOperationV2AuthoringEngine {
     outboxStatus: 'settled' | 'interrupted' | 'submitted_unknown' | 'failed_terminal',
     unavailableCode: string | null,
     completed?: Extract<ChatOperationV2AuthoringInvocationResult, { kind: 'completed' }> | null,
+    submissionUnknownReason: ChatOperationV2SubmissionUnknownReason | null = null,
   ): void {
     let outbox =
       this.persistence.getInvocationOutbox(originalOutbox.invocationId) ?? originalOutbox;
@@ -2252,6 +2272,8 @@ export class ChatOperationV2AuthoringEngine {
         this.appendEvent(outbox.operationId, 'invocation_submission_unknown', {
           invocationId: outbox.invocationId,
           errorCode: safeUnavailableCode ?? 'provider_unavailable',
+          purpose: outbox.purpose,
+          reasonCode: normalizeChatOperationV2SubmissionUnknownReason(submissionUnknownReason),
         });
       } else if (nextStatus === 'interrupted') {
         this.appendEvent(outbox.operationId, 'invocation_interrupted', {

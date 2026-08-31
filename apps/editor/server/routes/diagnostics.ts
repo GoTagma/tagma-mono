@@ -393,7 +393,7 @@ export function registerDiagnosticsRoutes(
         'workspace-scoped OpenCode session list and bounded message history',
         'renderer console/errors and transient OpenCode chat state',
         'current editor pipeline state and active run events',
-        'bounded content-minimized Chat Operation V2 Host operation event chronology with safe diagnostic codes',
+        'bounded content-minimized Chat Operation V2 Host operation chronology with invocation purpose/status and exact safe submission-uncertainty reasons',
         'bounded content-minimized structured renderer timeline for chat, pipeline, run, page, and feature transitions',
       ],
       privacy:

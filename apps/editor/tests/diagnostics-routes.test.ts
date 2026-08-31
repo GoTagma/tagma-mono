@@ -147,7 +147,7 @@ describe('diagnostics routes', () => {
       },
       coverage: expect.arrayContaining([
         expect.stringContaining('content-minimized'),
-        expect.stringContaining('Host operation event chronology'),
+        expect.stringContaining('submission-uncertainty reasons'),
       ]),
       privacy: expect.stringMatching(/local paths.*workspace inventory.*sensitive/i),
       sessionPagination: {

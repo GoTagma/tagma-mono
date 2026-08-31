@@ -38,6 +38,7 @@ import {
   type ChatOperationV2ReadonlyTextPurpose,
 } from './readonly-text.js';
 import type { ChatReadSnapshot } from './snapshots.js';
+import type { ChatOperationV2SubmissionUnknownReason } from './submission-diagnostics.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -1034,6 +1035,7 @@ type OpenCodeClassifierUnavailableResult = {
   readonly kind: 'provider_unavailable';
   readonly code: OpenCodePromptProviderFailureCode;
   readonly submissionUnknown?: true;
+  readonly submissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
 };
 
 type OpenCodeClassifierCancelledResult = { readonly kind: 'cancelled'; readonly code: 'aborted' };
@@ -1339,6 +1341,7 @@ export class OpenCodeReadonlyInvocationRunner {
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
       submissionUnknown: true,
+      submissionUnknownReason: 'readonly_dispatch_exception',
     }));
     this.ownedReadonlyRuns.set(input.invocationId, {
       operationId: input.operationId,
@@ -1457,6 +1460,7 @@ export class OpenCodeReadonlyInvocationRunner {
         kind: 'provider_unavailable',
         code: 'submitted_unknown',
         submissionUnknown: true,
+        submissionUnknownReason: 'admission_source_unavailable',
       };
     }
     if (!this.markTextRunning(replayAuthority, source.aggregateSeq)) {
@@ -1481,6 +1485,7 @@ export class OpenCodeReadonlyInvocationRunner {
             kind: 'provider_unavailable',
             code: 'submitted_unknown',
             submissionUnknown: true,
+            submissionUnknownReason: 'text_execution_cancelled_after_admission',
           }
         : result;
     } finally {
@@ -1536,6 +1541,7 @@ export class OpenCodeReadonlyInvocationRunner {
         kind: 'provider_unavailable',
         code: 'submitted_unknown',
         submissionUnknown: true,
+        submissionUnknownReason: 'admission_source_unavailable',
       };
     }
     if (!this.markTextRunning(frozen, source.aggregateSeq)) {
@@ -1554,6 +1560,7 @@ export class OpenCodeReadonlyInvocationRunner {
             kind: 'provider_unavailable',
             code: 'submitted_unknown',
             submissionUnknown: true,
+            submissionUnknownReason: 'text_execution_cancelled_after_admission',
           }
         : result;
     } finally {
@@ -1615,17 +1622,22 @@ export class OpenCodeReadonlyInvocationRunner {
         purpose: 'classifier',
         sessionId: input.sessionId,
         inputId: input.inputId,
+        submissionMode: 'fresh',
         canonicalRequestBytes: input.requestBytes,
       });
       if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
       if (admission.kind === 'conflict') {
         return { kind: 'provider_unavailable', code: admission.code };
       }
-      if (admission.kind !== 'admitted') {
+      if (admission.kind === 'request_required') {
+        return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
+      }
+      if (admission.kind === 'submitted_unknown') {
         return {
           kind: 'provider_unavailable',
           code: 'submitted_unknown',
           submissionUnknown: true,
+          submissionUnknownReason: admission.reasonCode,
         };
       }
       let source: { readonly aggregateSeq: number; readonly eventId: string } | null;
@@ -1714,6 +1726,7 @@ export class OpenCodeReadonlyInvocationRunner {
           kind: 'provider_unavailable',
           code: 'submitted_unknown',
           submissionUnknown: true,
+          submissionUnknownReason: 'text_execution_response_unknown',
         };
       }
       if (response.messageId !== executionMessageId) {
@@ -1745,6 +1758,7 @@ export class OpenCodeReadonlyInvocationRunner {
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
       submissionUnknown: true,
+      submissionUnknownReason: 'text_execution_response_unknown',
     };
   }
 
@@ -1832,6 +1846,7 @@ export class OpenCodeReadonlyInvocationRunner {
           kind: 'provider_unavailable',
           code: 'submitted_unknown',
           submissionUnknown: true,
+          submissionUnknownReason: 'text_execution_response_unknown',
         };
       }
       if (response.messageId !== executionMessageId) {
@@ -1857,6 +1872,7 @@ export class OpenCodeReadonlyInvocationRunner {
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
       submissionUnknown: true,
+      submissionUnknownReason: 'text_execution_response_unknown',
     };
   }
 
@@ -1873,17 +1889,22 @@ export class OpenCodeReadonlyInvocationRunner {
         purpose: input.purpose,
         sessionId: input.sessionId,
         inputId: input.inputId,
+        submissionMode: 'fresh',
         canonicalRequestBytes: input.requestBytes,
       });
       if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
       if (admission.kind === 'conflict') {
         return { kind: 'provider_unavailable', code: admission.code };
       }
-      if (admission.kind !== 'admitted') {
+      if (admission.kind === 'request_required') {
+        return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
+      }
+      if (admission.kind === 'submitted_unknown') {
         return {
           kind: 'provider_unavailable',
           code: 'submitted_unknown',
           submissionUnknown: true,
+          submissionUnknownReason: admission.reasonCode,
         };
       }
       let source: { readonly aggregateSeq: number; readonly eventId: string } | null;

@@ -1043,7 +1043,10 @@ function failureProjection(
       .filter(
         (entry) =>
           entry.operationId === operation.operationId &&
-          (!postReservation || entry.purpose === 'authoring' || entry.purpose === 'repair'),
+          (!postReservation ||
+            entry.purpose === 'authoring' ||
+            entry.purpose === 'repair' ||
+            entry.purpose === 'trial_plan'),
       )
       .sort(
         (left, right) =>

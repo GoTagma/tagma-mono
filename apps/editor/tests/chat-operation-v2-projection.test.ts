@@ -401,6 +401,64 @@ describe('ChatTurn Operation V2 renderer projection', () => {
     expect(JSON.stringify(detail.failure)).not.toContain(HASH_A);
   });
 
+  test('projects a failed Trial Plan invocation instead of the earlier settled authoring turn', () => {
+    const retryable = operation('operation-trial-plan-failure', {
+      ...state({ phase: 'repairing', waitReason: 'provider_unavailable' }),
+      updatedAt: 170,
+    });
+    const value = harness({
+      operations: [retryable],
+      outboxes: [
+        {
+          invocationId: 'authoring-invocation-settled',
+          workspaceScopeId: 'scope-01',
+          operationId: retryable.operationId,
+          purpose: 'authoring',
+          sessionId: 'private-authoring-session',
+          inputId: 'private-authoring-input',
+          requestDigest: HASH_A,
+          status: 'settled',
+          preparedAt: 110,
+          updatedAt: 140,
+          admittedAggregateSeq: 1,
+          settledAt: 140,
+          failureCode: null,
+        },
+        {
+          invocationId: 'trial-plan-invocation-unknown',
+          workspaceScopeId: 'scope-01',
+          operationId: retryable.operationId,
+          purpose: 'trial_plan',
+          sessionId: 'private-trial-plan-session',
+          inputId: 'private-trial-plan-input',
+          requestDigest: HASH_B,
+          status: 'submitted_unknown',
+          preparedAt: 150,
+          updatedAt: 160,
+          admittedAggregateSeq: null,
+          settledAt: null,
+          failureCode: null,
+        },
+      ],
+    });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      retryable.operationId,
+    );
+
+    expect(detail.failure).toEqual({
+      stage: 'verification',
+      code: 'submitted_unknown',
+      invocationId: 'trial-plan-invocation-unknown',
+      outboxStatus: 'submitted_unknown',
+      recordedAt: 170,
+    });
+    expect(JSON.stringify(detail.failure)).not.toContain('private-trial-plan-session');
+  });
+
   test('projects a pre-invocation staging outage as retryable without inventing provider evidence', () => {
     const retryable = operation('operation-staging-failure', {
       ...state({ phase: 'staging', waitReason: 'provider_unavailable' }),

@@ -7,6 +7,10 @@ import {
   type ChatOperationV2WaitReason,
 } from './types.js';
 import type { HostEventSourceEvidence, HostOperationEventInput } from './store.js';
+import {
+  isChatOperationV2SubmissionUnknownReason,
+  type ChatOperationV2SubmissionUnknownReason,
+} from './submission-diagnostics.js';
 
 export const CHAT_OPERATION_V2_HOST_EVENT_SCHEMA_VERSION = 1;
 
@@ -204,6 +208,8 @@ export interface ChatOperationV2HostEventPayloads {
   readonly invocation_submission_unknown: {
     readonly invocationId: string;
     readonly errorCode: string;
+    readonly purpose?: InvocationPurpose;
+    readonly reasonCode?: ChatOperationV2SubmissionUnknownReason;
   };
   readonly invocation_admitted: {
     readonly invocationId: string;
@@ -590,9 +596,13 @@ const payloadValidators = {
     isHash(value.requestHash),
   invocation_submission_unknown: (value) =>
     isPlainRecord(value) &&
-    hasExactKeys(value, ['invocationId', 'errorCode']) &&
+    (hasExactKeys(value, ['invocationId', 'errorCode']) ||
+      hasExactKeys(value, ['invocationId', 'errorCode', 'purpose', 'reasonCode'])) &&
     isHostId(value.invocationId) &&
-    isSafeCode(value.errorCode),
+    isSafeCode(value.errorCode) &&
+    (value.purpose === undefined ||
+      (includesValue(CHAT_OPERATION_V2_INVOCATION_PURPOSES, value.purpose) &&
+        isChatOperationV2SubmissionUnknownReason(value.reasonCode))),
   invocation_admitted: (value) =>
     isPlainRecord(value) &&
     hasExactKeys(value, ['invocationId', 'admittedAggregateSeq']) &&

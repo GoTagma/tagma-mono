@@ -815,6 +815,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
       submissionUnknown: true,
+      submissionUnknownReason: 'text_execution_response_unknown',
     });
     expect(first.harness.richRequests).toHaveLength(2);
     expect(first.harness.textProviderCallCount()).toBe(1);
@@ -1042,6 +1043,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
       submissionUnknown: true,
+      submissionUnknownReason: 'text_execution_response_unknown',
     });
 
     const restartedAdapter = new OpenCodeSdkAdapter({
@@ -1077,6 +1079,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
       kind: 'provider_unavailable',
       code: 'submitted_unknown',
       submissionUnknown: true,
+      submissionUnknownReason: 'text_execution_response_unknown',
     });
 
     const restartedAdapter = new OpenCodeSdkAdapter({

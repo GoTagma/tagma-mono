@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { createOpencodeClient as createOpencodeV2Client } from '@opencode-ai/sdk/v2/client';
 
@@ -65,9 +66,10 @@ import type { ChatOperationV2InteractiveForwardingCommand } from './interactive-
 import {
   OpenCodeInvocationController,
   sha256CanonicalOpenCodeRequest,
-  type OpenCodeInvocationOutcome,
+  type OpenCodeInvocationNativeClient,
   type OpenCodeInvocationStore,
 } from './opencode-invocation.js';
+import type { ChatOperationV2SubmissionUnknownReason } from './submission-diagnostics.js';
 import {
   OpenCodeSdkAdapter,
   openCodeProviderFailureCode,
@@ -80,6 +82,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const HASH_RE = /^[a-f0-9]{64}$/;
 const SAFE_CODE_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const MAX_DIAGNOSTIC_CODES = 16;
+const ADMISSION_SOURCE_HISTORY_PAGE_LIMIT = 100;
+const ADMISSION_SOURCE_HISTORY_MAX_PAGES = 64;
+const ADMISSION_SOURCE_RECONCILE_ATTEMPTS = 20;
+const ADMISSION_SOURCE_RECONCILE_DELAY_MS = 50;
 const encoder = new TextEncoder();
 
 function canonicalJson(value: unknown): string {
@@ -124,6 +130,93 @@ export function isOpenCodeSessionStatusActive(status: unknown): boolean {
     !Array.isArray(status) &&
     (status as { readonly type?: unknown }).type === 'idle'
   );
+}
+
+type ManagedChatOperationV2AdmissionSourceReason = Extract<
+  ChatOperationV2SubmissionUnknownReason,
+  | 'admission_source_history_missing'
+  | 'admission_source_history_request_failed'
+  | 'admission_source_history_scan_incomplete'
+  | 'admission_source_history_conflict'
+>;
+
+export async function reconcileManagedChatOperationV2AdmissionSource(input: {
+  readonly sessionId: string;
+  readonly inputId: string;
+  readonly admittedAggregateSeq: number;
+  readonly canonicalRequestBytes: Uint8Array;
+  readonly listHistory: OpenCodeInvocationNativeClient['listHistory'];
+  readonly historyReconcileAttempts?: number;
+  readonly historyReconcileDelayMs?: number;
+}): Promise<
+  | {
+      readonly kind: 'found';
+      readonly source: { readonly aggregateSeq: number; readonly eventId: string };
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reasonCode: ManagedChatOperationV2AdmissionSourceReason;
+    }
+> {
+  const attempts = input.historyReconcileAttempts ?? ADMISSION_SOURCE_RECONCILE_ATTEMPTS;
+  const delayMs = input.historyReconcileDelayMs ?? ADMISSION_SOURCE_RECONCILE_DELAY_MS;
+  if (
+    !Number.isSafeInteger(attempts) ||
+    attempts < 1 ||
+    attempts > ADMISSION_SOURCE_RECONCILE_ATTEMPTS ||
+    !Number.isSafeInteger(delayMs) ||
+    delayMs < 0 ||
+    delayMs > 5_000
+  ) {
+    throw new TypeError('OpenCode admission source reconciliation policy is invalid.');
+  }
+
+  const requestDigest = sha256CanonicalOpenCodeRequest(input.canonicalRequestBytes);
+  let reasonCode: ManagedChatOperationV2AdmissionSourceReason = 'admission_source_history_missing';
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    let after = Math.max(0, input.admittedAggregateSeq - 1);
+    let historyComplete = false;
+    reasonCode = 'admission_source_history_missing';
+    try {
+      for (let pageIndex = 0; pageIndex < ADMISSION_SOURCE_HISTORY_MAX_PAGES; pageIndex += 1) {
+        const page = await input.listHistory({
+          sessionId: input.sessionId,
+          after,
+          limit: ADMISSION_SOURCE_HISTORY_PAGE_LIMIT,
+        });
+        let nextAfter = after;
+        for (const record of page.records) {
+          nextAfter = Math.max(nextAfter, record.aggregateSeq);
+          if (record.aggregateSeq !== input.admittedAggregateSeq) continue;
+          if (
+            record.type !== 'session.next.prompt.admitted' ||
+            record.sessionId !== input.sessionId ||
+            record.inputId !== input.inputId ||
+            record.requestDigest !== requestDigest
+          ) {
+            return { kind: 'unavailable', reasonCode: 'admission_source_history_conflict' };
+          }
+          return {
+            kind: 'found',
+            source: { aggregateSeq: record.aggregateSeq, eventId: record.eventId },
+          };
+        }
+        if (!page.hasMore) {
+          historyComplete = true;
+          break;
+        }
+        if (nextAfter <= after) break;
+        after = nextAfter;
+      }
+      reasonCode = historyComplete
+        ? 'admission_source_history_missing'
+        : 'admission_source_history_scan_incomplete';
+    } catch {
+      reasonCode = 'admission_source_history_request_failed';
+    }
+    if (attempt + 1 < attempts && delayMs > 0) await delay(delayMs);
+  }
+  return { kind: 'unavailable', reasonCode };
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -449,7 +542,11 @@ export type ManagedChatOperationV2AdmissionResult =
       readonly admittedAggregateSeq: number;
       readonly source: { readonly aggregateSeq: number; readonly eventId: string };
     }
-  | { readonly kind: 'submitted_unknown'; readonly code: string }
+  | {
+      readonly kind: 'submitted_unknown';
+      readonly code: string;
+      readonly reasonCode: ChatOperationV2SubmissionUnknownReason;
+    }
   | { readonly kind: 'conflict'; readonly code: string };
 
 export type ManagedChatOperationV2AuthoringExecutionResult =
@@ -463,6 +560,7 @@ export type ManagedChatOperationV2AuthoringExecutionResult =
       readonly kind: 'provider_unavailable';
       readonly code: string;
       readonly submissionUnknown?: boolean;
+      readonly submissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
     }
   | { readonly kind: 'cancelled'; readonly code: string };
 
@@ -880,6 +978,7 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
 
   private async admission(
     input: Parameters<ManagedChatOperationV2AuthoringOpenCodeAdapter['admit']>[0],
+    submissionMode: 'fresh' | 'recover',
   ): Promise<ManagedChatOperationV2AdmissionResult> {
     // Pinned 1.18.18 conformance proves the controller's delivery=queue/resume=false
     // digest marker is provider-free. `execute()` below is therefore the sole
@@ -900,48 +999,49 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
       purpose: input.purpose,
       sessionId: input.sessionId,
       inputId: input.inputId,
+      submissionMode,
       canonicalRequestBytes: input.canonicalRequestBytes,
     });
     if (outcome.kind === 'conflict') return { kind: 'conflict', code: outcome.code };
-    if (outcome.kind !== 'admitted') {
-      return { kind: 'submitted_unknown', code: 'submitted_unknown' };
+    if (outcome.kind === 'request_required') {
+      return { kind: 'conflict', code: 'request_conflict' };
     }
-    const source = await this.findAdmissionSource(native, outcome, input.canonicalRequestBytes);
-    return { kind: 'admitted', admittedAggregateSeq: outcome.admittedAggregateSeq, source };
+    if (outcome.kind === 'submitted_unknown') {
+      return {
+        kind: 'submitted_unknown',
+        code: 'submitted_unknown',
+        reasonCode: outcome.reasonCode,
+      };
+    }
+    const source = await reconcileManagedChatOperationV2AdmissionSource({
+      sessionId: outcome.sessionId,
+      inputId: outcome.inputId,
+      admittedAggregateSeq: outcome.admittedAggregateSeq,
+      canonicalRequestBytes: input.canonicalRequestBytes,
+      listHistory: (request) => native.listHistory(request),
+    });
+    if (source.kind === 'unavailable') {
+      return {
+        kind: 'submitted_unknown',
+        code: 'submitted_unknown',
+        reasonCode: source.reasonCode,
+      };
+    }
+    return {
+      kind: 'admitted',
+      admittedAggregateSeq: outcome.admittedAggregateSeq,
+      source: source.source,
+    };
   }
 
   async admit(input: Parameters<ManagedChatOperationV2AuthoringOpenCodeAdapter['admit']>[0]) {
-    return this.admission(input);
+    return this.admission(input, 'fresh');
   }
 
   async reconcileAdmission(
     input: Parameters<ManagedChatOperationV2AuthoringOpenCodeAdapter['reconcileAdmission']>[0],
   ) {
-    return this.admission(input);
-  }
-
-  private async findAdmissionSource(
-    native: OpenCodeSdkAdapter,
-    outcome: Extract<OpenCodeInvocationOutcome, { kind: 'admitted' }>,
-    bytes: Uint8Array,
-  ): Promise<{ aggregateSeq: number; eventId: string }> {
-    const digest = sha256CanonicalOpenCodeRequest(bytes);
-    let after = Math.max(0, outcome.admittedAggregateSeq - 1);
-    for (let pageIndex = 0; pageIndex < 64; pageIndex += 1) {
-      const page = await native.listHistory({ sessionId: outcome.sessionId, after, limit: 100 });
-      for (const record of page.records) {
-        if (
-          record.inputId === outcome.inputId &&
-          record.requestDigest === digest &&
-          record.aggregateSeq === outcome.admittedAggregateSeq
-        ) {
-          return { aggregateSeq: record.aggregateSeq, eventId: record.eventId };
-        }
-      }
-      if (!page.hasMore || page.records.length === 0) break;
-      after = page.records.at(-1)!.aggregateSeq;
-    }
-    throw new Error('OpenCode admission source event is unavailable.');
+    return this.admission(input, 'recover');
   }
 
   async execute(
@@ -1009,7 +1109,10 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
         kind: 'provider_unavailable',
         code,
         ...(code === 'provider_invocation_failed' || code === 'provider_unavailable'
-          ? { submissionUnknown: true as const }
+          ? {
+              submissionUnknown: true as const,
+              submissionUnknownReason: 'execution_prompt_transport_unknown' as const,
+            }
           : {}),
       };
     } finally {
@@ -2029,7 +2132,12 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       }
       if (invocation.completed) return invocation.completed;
       if (invocation.executionSubmitted) {
-        return { kind: 'provider_unavailable', code: 'submitted_unknown', submissionUnknown: true };
+        return {
+          kind: 'provider_unavailable',
+          code: 'submitted_unknown',
+          submissionUnknown: true,
+          submissionUnknownReason: 'execution_already_submitted_without_settlement',
+        };
       }
     } else {
       const current = await this.requireCurrentSnapshot(authority);
@@ -2063,6 +2171,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
             kind: 'provider_unavailable',
             code: safeCode(admitted.code, 'submitted_unknown'),
             submissionUnknown: true,
+            submissionUnknownReason: admitted.reasonCode,
           }
         : { kind: 'provider_unavailable', code: safeCode(admitted.code, 'request_conflict') };
     }

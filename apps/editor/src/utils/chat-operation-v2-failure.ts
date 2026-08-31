@@ -118,6 +118,12 @@ const PRESENTATIONS: Readonly<Record<string, ChatOperationV2FailurePresentation>
     reason: 'Provider error',
     requiresModelChange: false,
   },
+  submitted_unknown: {
+    title: 'Tagma could not confirm request admission',
+    detail: `To avoid duplicate provider work, Tagma did not submit a duplicate request automatically. ${RETRY_SAME_MODEL}`,
+    reason: 'Submission status unknown',
+    requiresModelChange: false,
+  },
   session_relocation_unavailable: {
     title: 'Pipeline workspace preparation paused',
     detail:

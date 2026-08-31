@@ -842,9 +842,19 @@
   paths, or credentials.
 - The server Chat V2 diagnostics contributor may expose only a bounded tail of Host operation
   events with explicit retained/returned/omitted counts. Keep event type, Host operation identity,
-  phase, wait reason, timestamp, and allowlisted code-shaped diagnostic fields; never forward the
-  event payload or source evidence, native invocation/session/input ids, request digests, provider
-  text, tool content, paths, or credentials.
+  phase, wait reason, timestamp, allowlisted code-shaped diagnostic fields, and a joined invocation
+  purpose/outbox-status summary without its native ids. Submission-unknown evidence uses only the
+  finite reason taxonomy and derived admission/execution boundary, history outcome, and
+  may-have-submitted booleans. Never forward the event payload or source evidence, native
+  invocation/session/input ids, request digests, provider text, tool content, paths, or credentials.
+- Distinguish a caller-authenticated fresh invocation from recovery before native admission. A
+  fresh invocation may continue after a pre-submission history-read outage; recovery may not infer
+  that nothing was submitted. After create/prompt transport loss or conflict, poll exact durable
+  history through one finite policy before returning `submitted_unknown`; use the same bounded
+  coordination when the exact admission source event lags a successful native response. Never
+  resubmit merely because admission evidence is late. Persist the finite reason code with invocation
+  purpose so diagnostics can distinguish preflight, session-create, admission-prompt,
+  reconciliation, admission-source, and provider-execution uncertainty without exception text.
 - Native V2 SSE replay currently yields a stable `evt_*` id and parsed payload but omits the
   generated client's declared `event` field. Treat SSE as a wake-up signal and correlate that id
   with `session.history`, whose durable record supplies both event type and aggregate sequence.
@@ -911,8 +921,8 @@
   follow that field rather than infer liveness from `phase`. A retryable failure is sealed, stops
   elapsed-time/spinner UI, keeps the operation mutation-locked, and offers only Host CAS actions:
   retry, discard-and-change-provider, or discard. Project non-null wait reasons before phase, and
-  after reservation derive failure evidence only from authoring/repair outboxes; a settled
-  classifier must never be relabeled as the cause of a staging failure.
+  after reservation derive failure evidence from authoring, repair, and Trial Plan outboxes; a
+  settled earlier invocation must never replace the newest failing internal invocation.
 
 - Tagma may reuse OpenCode's user-level data root for provider login state, but it must never share
   the schema-bearing session database with a standalone OpenCode CLI. Every managed Chat and

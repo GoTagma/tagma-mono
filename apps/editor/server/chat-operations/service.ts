@@ -33,6 +33,7 @@ import {
   type ListOperationEventsResult,
   type StoredHostOperationEvent,
   type StoredChatOperationV2,
+  type StoredInvocationOutboxRecord,
   type WorkspaceOperationSnapshot,
 } from './store.js';
 import {
@@ -71,6 +72,10 @@ import type {
   ChatOperationV2RendererResultProjection,
   ChatOperationV2ResultPersistence,
 } from './results.js';
+import {
+  describeChatOperationV2SubmissionUnknown,
+  type ChatOperationV2SubmissionUnknownDiagnostic,
+} from './submission-diagnostics.js';
 
 export const CHAT_OPERATION_V2_SHADOW_ENV = 'TAGMA_CHAT_OPERATION_V2_SHADOW';
 
@@ -173,9 +178,16 @@ export interface ChatOperationV2DiagnosticsEventSummary {
     outcome?: string;
     finishCode?: string;
   }>;
+  readonly invocation?: Readonly<{
+    purpose: StoredInvocationOutboxRecord['purpose'];
+    currentStatus: StoredInvocationOutboxRecord['status'];
+    currentFailureCode: string | null;
+  }>;
+  readonly submissionUnknown?: ChatOperationV2SubmissionUnknownDiagnostic;
 }
 
 export interface ChatOperationV2DiagnosticsEventEvidence {
+  readonly schemaVersion: 2;
   readonly layer: 'chat-operation-v2-host-event-window';
   readonly limit: number;
   readonly retainedFloor: number;
@@ -376,7 +388,10 @@ function diagnosticsForEvent(
   event: StoredHostOperationEvent,
 ): ChatOperationV2DiagnosticsEventSummary['diagnostic'] {
   const errorCode = safeDiagnosticsFailureCode(event.payload.errorCode);
-  const reasonCode = safeDiagnosticsCode(event.payload.reasonCode);
+  const reasonCode =
+    event.type === 'invocation_submission_unknown'
+      ? describeChatOperationV2SubmissionUnknown(event.payload.reasonCode).reasonCode
+      : safeDiagnosticsCode(event.payload.reasonCode);
   const outcome = safeDiagnosticsCode(event.payload.outcome);
   const finishCode = safeDiagnosticsCode(event.payload.finishCode);
   const diagnosticCodes = Array.isArray(event.payload.diagnosticCodes)
@@ -399,7 +414,12 @@ function diagnosticsForEvent(
 
 function diagnosticsEventSummary(
   event: StoredHostOperationEvent,
+  outbox: StoredInvocationOutboxRecord | null,
 ): ChatOperationV2DiagnosticsEventSummary {
+  const submissionUnknown =
+    event.type === 'invocation_submission_unknown'
+      ? describeChatOperationV2SubmissionUnknown(event.payload.reasonCode)
+      : null;
   return Object.freeze({
     workspaceSeq: event.workspaceSeq,
     operationId: event.operationId,
@@ -411,6 +431,16 @@ function diagnosticsEventSummary(
     timestamp: event.timestamp,
     terminal: event.terminal,
     diagnostic: diagnosticsForEvent(event),
+    ...(outbox
+      ? {
+          invocation: Object.freeze({
+            purpose: outbox.purpose,
+            currentStatus: outbox.status,
+            currentFailureCode: safeDiagnosticsFailureCode(outbox.failureCode),
+          }),
+        }
+      : {}),
+    ...(submissionUnknown ? { submissionUnknown } : {}),
   });
 }
 
@@ -1124,12 +1154,35 @@ export class ChatOperationV2Service {
         'Chat Operation diagnostics event window changed while it was being read.',
       );
     }
-    const events = Object.freeze(page.events.map(diagnosticsEventSummary));
+    const outboxes = new Map<string, StoredInvocationOutboxRecord>();
+    for (const event of page.events) {
+      const invocationId = event.payload.invocationId;
+      if (typeof invocationId !== 'string' || outboxes.has(invocationId)) continue;
+      const outbox = authority.store.getInvocationOutbox(invocationId);
+      if (
+        outbox &&
+        outbox.workspaceScopeId === scope.workspaceScopeId &&
+        outbox.operationId === event.operationId
+      ) {
+        outboxes.set(invocationId, outbox);
+      }
+    }
+    const events = Object.freeze(
+      page.events.map((event) =>
+        diagnosticsEventSummary(
+          event,
+          typeof event.payload.invocationId === 'string'
+            ? (outboxes.get(event.payload.invocationId) ?? null)
+            : null,
+        ),
+      ),
+    );
     const retainedEventCount = Math.max(0, page.latestCursor - page.retainedFloor);
     const omittedEventCount = Math.max(0, retainedEventCount - events.length);
     return {
       ...lifecycle,
       eventEvidence: Object.freeze({
+        schemaVersion: 2 as const,
         layer: 'chat-operation-v2-host-event-window' as const,
         limit: CHAT_OPERATION_V2_DIAGNOSTICS_EVENT_LIMIT,
         retainedFloor: page.retainedFloor,

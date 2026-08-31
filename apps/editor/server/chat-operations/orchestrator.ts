@@ -52,6 +52,10 @@ import {
   type ChatOperationV2ResultPersistence,
 } from './results.js';
 import { buildReadonlyTextCanonicalRequestBytes } from './readonly-text.js';
+import {
+  normalizeChatOperationV2SubmissionUnknownReason,
+  type ChatOperationV2SubmissionUnknownReason,
+} from './submission-diagnostics.js';
 
 const encoder = new TextEncoder();
 const MAX_CLASSIFIER_PROTOCOL_ATTEMPTS = 2 as const;
@@ -107,6 +111,7 @@ export type ChatOperationV2DurableInvocationResult =
       readonly kind: 'provider_unavailable';
       readonly code: string;
       readonly submissionUnknown?: boolean;
+      readonly submissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
     }
   | { readonly kind: 'cancelled'; readonly code: string };
 
@@ -2160,6 +2165,9 @@ export class ChatOperationV2ReadonlyOrchestrator {
       result = {
         ...result,
         code: safeChatOperationV2FailureCode(result.code, 'submitted_unknown'),
+        submissionUnknownReason: normalizeChatOperationV2SubmissionUnknownReason(
+          result.submissionUnknownReason,
+        ),
       };
       const observed = this.persistence.getInvocationOutbox(identity.invocationId) ?? outbox;
       if (observed.status === 'prepared') {
@@ -2173,6 +2181,8 @@ export class ChatOperationV2ReadonlyOrchestrator {
           this.appendEvent(context.operationId, 'invocation_submission_unknown', {
             invocationId: identity.invocationId,
             errorCode: result.code,
+            purpose,
+            reasonCode: result.submissionUnknownReason,
           });
         }
       }
