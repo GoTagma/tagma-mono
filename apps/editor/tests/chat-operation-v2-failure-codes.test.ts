@@ -10,6 +10,12 @@ import {
 
 describe('Chat Operation V2 safe provider failure taxonomy', () => {
   test.each([
+    'admission_invalid_request',
+    'admission_session_missing',
+    'admission_authentication_failed',
+    'admission_rate_limited',
+    'admission_service_unavailable',
+    'admission_request_rejected',
     'model_context_overflow',
     'model_output_length',
     'provider_billing_required',
@@ -55,6 +61,12 @@ describe('Chat Operation V2 safe provider failure taxonomy', () => {
   });
 
   test.each([
+    'admission_invalid_request',
+    'admission_session_missing',
+    'admission_authentication_failed',
+    'admission_rate_limited',
+    'admission_service_unavailable',
+    'admission_request_rejected',
     'model_context_overflow',
     'model_output_length',
     'provider_billing_required',

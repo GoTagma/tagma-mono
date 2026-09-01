@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  createDiagnosticsOpencodeMessageReader,
   DiagnosticsReadError,
   readDiagnosticsOpencodeMessages,
   readDiagnosticsOpencodeSessions,
@@ -20,6 +21,7 @@ function harness(
   responses: unknown[],
   options: {
     handleCwd?: string;
+    hostOwnedSessionIds?: readonly string[];
   } = {},
 ) {
   const requestUrls: string[] = [];
@@ -63,11 +65,85 @@ function harness(
       const response = responses.shift();
       return response instanceof Response ? response : Response.json(response);
     },
+    getHostSessionAuthority: () => ({
+      totalCount: options.hostOwnedSessionIds?.length ?? 0,
+      sessionIds: options.hostOwnedSessionIds ?? [],
+    }),
   };
   return { dependencies, requestUrls };
 }
 
 describe('OpenCode diagnostics reader', () => {
+  test('message reader shares Host outbox ownership for a relocated session', async () => {
+    const relocatedDirectory = join(
+      OPENCODE_DIR,
+      '.chat-staging',
+      'stage-message',
+      'agent-workspace',
+      '.tagma',
+    );
+    const { dependencies, requestUrls } = harness([
+      [],
+      [{ id: 'relocated-message-session', directory: relocatedDirectory }],
+      {
+        data: [{ id: 'message-1', type: 'assistant', content: [] }],
+        cursor: { previous: null, next: null },
+      },
+    ]);
+    const reader = createDiagnosticsOpencodeMessageReader(
+      () => null,
+      () => ({ totalCount: 1, sessionIds: ['relocated-message-session'] }),
+      dependencies,
+    );
+
+    const result = await reader(WORKSPACE_DIR, 'relocated-message-session', { limit: 25 });
+
+    expect(requestUrls.at(-1)).toBe(
+      requestUrl('/api/session/relocated-message-session/message', {
+        limit: '25',
+        order: 'desc',
+      }),
+    );
+    expect(result).toMatchObject({
+      sessionDiscovery: {
+        hostAuthority: { totalCount: 1, candidateCount: 1, matchedCount: 1 },
+      },
+      messages: [{ id: 'message-1', type: 'assistant' }],
+    });
+  });
+
+  test('admits a relocated session through authenticated Host outbox ownership', async () => {
+    const relocatedDirectory = join(
+      OPENCODE_DIR,
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const { dependencies } = harness(
+      [
+        [],
+        [
+          { id: 'relocated-authoring', directory: relocatedDirectory },
+          { id: 'foreign-relocated', directory: relocatedDirectory },
+        ],
+      ],
+      { hostOwnedSessionIds: ['relocated-authoring'] },
+    );
+
+    const result = (await readDiagnosticsOpencodeSessions(WORKSPACE_DIR, dependencies)) as {
+      sessions: Array<{ id: string }>;
+      sourceQueries: { hostAuthority: { candidateCount: number; matchedCount: number } };
+    };
+
+    expect(result.sessions.map((session) => session.id)).toEqual(['relocated-authoring']);
+    expect(result.sourceQueries.hostAuthority).toMatchObject({
+      candidateCount: 1,
+      matchedCount: 1,
+      omittedCount: 0,
+    });
+  });
+
   test('lists only the live workspace runtime and sanitizes returned session data', async () => {
     const { dependencies, requestUrls } = harness([
       [

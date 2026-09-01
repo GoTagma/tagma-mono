@@ -78,6 +78,7 @@ import {
 } from './submission-diagnostics.js';
 
 export const CHAT_OPERATION_V2_SHADOW_ENV = 'TAGMA_CHAT_OPERATION_V2_SHADOW';
+const DIAGNOSTICS_HOST_SESSION_AUTHORITY_LIMIT = 10_000;
 
 export type ChatOperationV2ServiceErrorCode =
   | 'service_closed'
@@ -587,6 +588,35 @@ export class ChatOperationV2Service {
       authority.scope.workspaceScopeId,
       operationId,
     );
+  }
+
+  /**
+   * Return bounded native session identities from already-open, authenticated outbox authority.
+   * Diagnostics still requires OpenCode discovery to return each session before exposing it.
+   */
+  getDiagnosticsOpenCodeSessionAuthority(workspacePath: string): {
+    readonly totalCount: number;
+    readonly sessionIds: readonly string[];
+  } {
+    const authority = this.#authority;
+    if (this.#closed || authority === null) return { totalCount: 0, sessionIds: [] };
+    const identity = createWorkspaceIdentity(workspacePath, authority.key, this.#identityOptions);
+    const storedScope = authority.store.findWorkspaceScope(identity);
+    if (!storedScope) return { totalCount: 0, sessionIds: [] };
+    const scope = parseTrustedWorkspaceScopeRecord(storedScope, authority.key, {
+      platform: this.#identityOptions.platform,
+    });
+    const sessionIds = [
+      ...new Set(
+        authority.store
+          .listInvocationOutbox(scope.workspaceScopeId)
+          .map((outbox) => outbox.sessionId),
+      ),
+    ];
+    return Object.freeze({
+      totalCount: sessionIds.length,
+      sessionIds: Object.freeze(sessionIds.slice(0, DIAGNOSTICS_HOST_SESSION_AUTHORITY_LIMIT)),
+    });
   }
 
   /**

@@ -860,6 +860,10 @@
   transport loss and persist a replay-specific finite reason. Diagnostics must distinguish
   preflight, session-create, admission-prompt, exact-replay, reconciliation, admission-source, and
   provider-execution uncertainty without exception text.
+- A native prompt that returned an HTTP response is not transport ambiguity. Reconcile exact
+  durable history once in case the response raced the projection; when no admission exists,
+  preserve the allowlisted admission failure category, fail the outbox terminally, and never use
+  the exact transport-loss replay. Reserve bounded replay for calls with no usable HTTP response.
 - Native V2 SSE replay currently yields a stable `evt_*` id and parsed payload but omits the
   generated client's declared `event` field. Treat SSE as a wake-up signal and correlate that id
   with `session.history`, whose durable record supplies both event type and aggregate sequence.
@@ -1218,6 +1222,10 @@
   orphans, and cycles; Chat history may continue hiding delegated sessions. Read messages with each
   verified root or descendant's stored directory because OpenCode directory matching may be
   case-sensitive on Windows.
+- Join authenticated Chat V2 outbox session ids into diagnostics ownership before metadata/root
+  filtering so relocated operation sessions remain visible. Admit only ids also returned by the
+  bounded OpenCode discovery query, expose total/candidate/matched/omitted Host-authority counts,
+  and never initialize control authority merely to satisfy diagnostics.
 - Read verified session messages through OpenCode's V2 cursor projection. A tool-free compatibility
   session can have an empty first page even after a successful response; diagnostics may then join
   its authenticated outbox session id to the immutable Host-visible discussion/diagnosis result.
@@ -1225,6 +1233,17 @@
   initialize a control store, and never substitute Host results for a caller-supplied history cursor.
 
 ## Focused Editor Tests
+
+- `bun run test:chat-v2-loop` is the agent-owned live Chat V2 feedback loop. Keep its interface
+  deep: one command owns isolated workspace/control state, random ports, sidecar, bundled OpenCode,
+  deterministic provider, management and diagnostics credentials, Chat interactions, final drain,
+  evidence, process-tree cleanup, and exit status. It must never depend on a developer window,
+  copied token, fixed port, manual permission/clarification reply, or visual spinner judgment.
+- The loop treats authenticated Host operation projection and terminal outcome as authority. While
+  create HTTP is in flight it discovers the correlated operation through the workspace snapshot,
+  then may answer only projected live clarification/permission/question requests. Unknown or
+  recovery-required input fails closed. On every success or failure, drain bounded diagnostics
+  before shutdown and retain explicit cursor/truncation evidence without persisting credentials.
 
 - `bun scripts/test-serial.mjs` intentionally runs each test file in a separate serial Bun process
   because editor tests share module mocks, ports, and process globals. Keep that isolation as the

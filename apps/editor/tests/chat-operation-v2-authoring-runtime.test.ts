@@ -228,6 +228,11 @@ class FakeOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCodeAdap
     finishCode: 'stop',
     usage: null,
   };
+  admissionResult: Awaited<ReturnType<ManagedChatOperationV2AuthoringOpenCodeAdapter['admit']>> = {
+    kind: 'admitted',
+    admittedAggregateSeq: 7,
+    source: { aggregateSeq: 7, eventId: 'event-admitted-1' },
+  };
   activity: 'busy' | 'idle' | 'missing' = 'idle';
   settlement: 'settled' | 'unavailable' = 'settled';
   onExecute: (() => void) | null = null;
@@ -289,11 +294,7 @@ class FakeOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCodeAdap
 
   async admit(input: { invocationId: string; sessionId: string; inputId: string }) {
     this.admissions.push(input);
-    return {
-      kind: 'admitted' as const,
-      admittedAggregateSeq: 7,
-      source: { aggregateSeq: 7, eventId: 'event-admitted-1' },
-    };
+    return this.admissionResult;
   }
 
   async reconcileAdmission(input: { invocationId: string }) {
@@ -424,6 +425,28 @@ function invocationRequest(
 }
 
 describe('managed Chat Operation V2 authoring runtime', () => {
+  test('preserves a definitive native admission failure without starting provider execution', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-1',
+      stage: value.stage,
+    });
+    value.openCode.admissionResult = {
+      kind: 'failed',
+      code: 'admission_session_missing',
+    };
+
+    expect(await value.runtime.runInvocation(invocationRequest(value.stage, relocation))).toEqual({
+      kind: 'provider_unavailable',
+      code: 'admission_session_missing',
+    });
+    expect(value.openCode.providerExecutionCount).toBe(0);
+  });
+
   test('treats a missing OpenCode status-map entry as idle while failing closed on explicit activity', () => {
     expect(isOpenCodeSessionStatusActive(undefined)).toBe(false);
     expect(isOpenCodeSessionStatusActive({ type: 'idle' })).toBe(false);

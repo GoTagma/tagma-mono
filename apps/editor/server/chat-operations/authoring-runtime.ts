@@ -547,7 +547,8 @@ export type ManagedChatOperationV2AdmissionResult =
       readonly code: string;
       readonly reasonCode: ChatOperationV2SubmissionUnknownReason;
     }
-  | { readonly kind: 'conflict'; readonly code: string };
+  | { readonly kind: 'conflict'; readonly code: string }
+  | { readonly kind: 'failed'; readonly code: string };
 
 export type ManagedChatOperationV2AuthoringExecutionResult =
   | {
@@ -660,6 +661,18 @@ export interface CreateManagedChatOperationV2AuthoringRuntimeOptions {
     | { readonly sourceRelativePath: string | null }
     | Promise<{ readonly sourceRelativePath: string | null }>;
   readonly now?: () => number;
+}
+
+export function createManagedChatOperationV2AuthoringOpenCodeAdapter(options: {
+  readonly sourceDirectory: string;
+  readonly invocationStore: OpenCodeInvocationStore;
+}): ManagedChatOperationV2AuthoringOpenCodeAdapter {
+  if (!isAbsolute(options.sourceDirectory)) {
+    throw new TypeError(
+      'Managed authoring OpenCode adapter requires an absolute source directory.',
+    );
+  }
+  return new ProductionOpenCodeAdapter(options.sourceDirectory, options.invocationStore);
 }
 
 class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapter {
@@ -1003,6 +1016,7 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
       canonicalRequestBytes: input.canonicalRequestBytes,
     });
     if (outcome.kind === 'conflict') return { kind: 'conflict', code: outcome.code };
+    if (outcome.kind === 'failed') return { kind: 'failed', code: outcome.code };
     if (outcome.kind === 'request_required') {
       return { kind: 'conflict', code: 'request_conflict' };
     }
@@ -2234,7 +2248,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       stageDirectory: authority.stageDirectory,
     });
     if (admitted.kind === 'submitted_unknown') return { kind: 'in_progress' as const };
-    if (admitted.kind === 'conflict') {
+    if (admitted.kind === 'conflict' || admitted.kind === 'failed') {
       return {
         kind: 'provider_unavailable' as const,
         code: safeCode(admitted.code, 'request_conflict'),
@@ -2690,7 +2704,10 @@ export function createManagedChatOperationV2AuthoringRuntime(
   const openCode =
     options.openCode ??
     (sourceDirectory && options.invocationStore
-      ? new ProductionOpenCodeAdapter(sourceDirectory, options.invocationStore)
+      ? createManagedChatOperationV2AuthoringOpenCodeAdapter({
+          sourceDirectory,
+          invocationStore: options.invocationStore,
+        })
       : null);
   if (!openCode) throw new TypeError('Managed authoring runtime requires an OpenCode adapter.');
   return new ManagedAuthoringRuntime(

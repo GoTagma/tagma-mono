@@ -25,6 +25,42 @@ const TEXT_MODEL_INCOMPATIBLE: ChatOperationV2FailurePresentation = Object.freez
 });
 
 const PRESENTATIONS: Readonly<Record<string, ChatOperationV2FailurePresentation>> = Object.freeze({
+  admission_invalid_request: {
+    title: 'Tagma could not submit the OpenCode request',
+    detail: RETRY_SAME_MODEL,
+    reason: 'Invalid OpenCode request',
+    requiresModelChange: false,
+  },
+  admission_session_missing: {
+    title: 'The OpenCode session is no longer available',
+    detail: RETRY_SAME_MODEL,
+    reason: 'OpenCode session missing',
+    requiresModelChange: false,
+  },
+  admission_authentication_failed: {
+    title: 'Tagma could not authenticate with OpenCode',
+    detail: RETRY_SAME_MODEL,
+    reason: 'OpenCode authentication',
+    requiresModelChange: false,
+  },
+  admission_rate_limited: {
+    title: 'OpenCode temporarily throttled the request',
+    detail: RETRY_SAME_MODEL,
+    reason: 'OpenCode admission limit',
+    requiresModelChange: false,
+  },
+  admission_service_unavailable: {
+    title: 'OpenCode is temporarily unavailable',
+    detail: RETRY_SAME_MODEL,
+    reason: 'OpenCode admission service',
+    requiresModelChange: false,
+  },
+  admission_request_rejected: {
+    title: 'OpenCode rejected the request',
+    detail: RETRY_SAME_MODEL,
+    reason: 'OpenCode request rejected',
+    requiresModelChange: false,
+  },
   model_unavailable: {
     title: 'Selected model is unavailable',
     detail:

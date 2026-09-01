@@ -107,6 +107,45 @@ afterEach(() => {
 });
 
 describe('ChatTurn Operation V2 OpenCode invocation outbox', () => {
+  test('distinguishes a definitive prompt rejection whose reconciliation history is unreadable', async () => {
+    const { store } = openStore();
+    let historyReads = 0;
+    const controller = new OpenCodeInvocationController({
+      store,
+      historyReconcileAttempts: 1,
+      historyReconcileDelayMs: 0,
+      client: {
+        async listHistory() {
+          historyReads += 1;
+          if (historyReads === 1) return { records: [], hasMore: false };
+          throw new Error('history unavailable');
+        },
+        async createSession(input) {
+          return { kind: 'created', sessionId: input.sessionId };
+        },
+        async prompt() {
+          return { kind: 'rejected', code: 'admission_session_missing' };
+        },
+      },
+    });
+
+    expect(
+      await controller.invoke({
+        operationId: 'operation-1',
+        invocationId: 'invocation-rejected-history-unavailable',
+        purpose: 'trial_plan',
+        sessionId: 'session-rejected-history-unavailable',
+        inputId: 'input-rejected-history-unavailable',
+        canonicalRequestBytes: new TextEncoder().encode('{"request":"rejected"}'),
+        submissionMode: 'fresh',
+      }),
+    ).toEqual({
+      kind: 'failed',
+      invocationId: 'invocation-rejected-history-unavailable',
+      code: 'admission_session_missing',
+    });
+  });
+
   test('durably prepares the Host ids and request digest before native create and prompt', async () => {
     const { store, workspaceScopeId } = openStore();
     const requestBytes = Buffer.from(

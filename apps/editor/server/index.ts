@@ -56,7 +56,10 @@ import {
 } from './yaml-edit-lock.js';
 import { verifyTrialWitnessWorkerForBuild } from './chat-pipeline-trial-witness.js';
 import { diagnosticsHub, isDiagnosticsAgentPath } from './diagnostics.js';
-import { createDiagnosticsOpencodeMessageReader } from './diagnostics-opencode.js';
+import {
+  createDiagnosticsOpencodeMessageReader,
+  createDiagnosticsOpencodeSessionReader,
+} from './diagnostics-opencode.js';
 import { registerDiagnosticsRoutes } from './routes/diagnostics.js';
 import { registerChatOperationV2Routes } from './routes/chat-operations.js';
 import { createChatOperationV2ShadowService } from './chat-operations/service.js';
@@ -731,10 +734,19 @@ registerChatOperationV2ControlRoutes(
     : { enabled: false },
 );
 registerDiagnosticsRoutes(app, {
+  readOpencodeSessions: createDiagnosticsOpencodeSessionReader((workspaceKey) =>
+    chatOperationV2Service
+      ? chatOperationV2Service.getDiagnosticsOpenCodeSessionAuthority(workspaceKey)
+      : { totalCount: 0, sessionIds: [] },
+  ),
   readOpencodeMessages: createDiagnosticsOpencodeMessageReader(
     (workspaceKey, sessionId) =>
       chatOperationV2Service?.getDiagnosticsReadonlySessionProjection(workspaceKey, sessionId) ??
       null,
+    (workspaceKey) =>
+      chatOperationV2Service
+        ? chatOperationV2Service.getDiagnosticsOpenCodeSessionAuthority(workspaceKey)
+        : { totalCount: 0, sessionIds: [] },
   ),
 });
 

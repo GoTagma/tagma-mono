@@ -226,6 +226,45 @@ request. On each response, inspect `retention` separately from `page`:
 `diagnostics-timeline-buffer` reports events lost before the requested cursor, while
 `diagnostics-timeline-page` reports events merely omitted from the current bounded response.
 
+## Agent-owned Chat V2 closed loop
+
+Use the repository-root command below to reproduce and verify Chat V2 without a developer opening
+the desktop UI, copying a diagnostics token, choosing ports, answering clarification, or deciding
+whether a spinner means the operation is still running:
+
+```powershell
+bun run test:chat-v2-loop
+```
+
+The command owns an isolated lifecycle for every scenario: temporary workspace and control store,
+random sidecar/OpenCode ports, management authentication, bundled OpenCode 1.18.18, deterministic
+provider, production Chat V2 bootstrap, temporary diagnostics session, Host operation driving,
+final diagnostics drain, process-tree shutdown, and runtime cleanup. The default matrix runs:
+
+- `clarification`: create → project pending clarification → automatic reply → terminal result;
+- `discussion`: nearby tool-free counterexample with no interaction.
+- `authoring-permission`: create authoring while its HTTP request remains in flight, discover the
+  correlated operation through the workspace snapshot, approve projected read permissions, and
+  require a safe no-op terminal result.
+
+The process exits `0` only when every scenario reaches an authenticated Host terminal outcome.
+Failures exit non-zero after a final diagnostics drain. Each scenario prints an OS-temp
+`report.json` path and retains bounded `diagnostics.json` plus `sidecar.log`; bearer tokens are never
+written to those artifacts. Useful options:
+
+```powershell
+bun run test:chat-v2-loop -- --scenario clarification
+bun run test:chat-v2-loop -- --scenario discussion --repeat 3
+bun run test:chat-v2-loop -- --timeout-ms 240000 --artifacts D:\Temp\tagma-loop-reports
+bun run test:chat-v2-loop -- --scenario clarification --compiled
+```
+
+The protocol driver also discovers an operation from the workspace snapshot while its create HTTP
+request is still in flight, so it can answer projected clarification, permission, and question
+requests without UI help. Host projection and terminal state are authoritative; elapsed UI time is
+never treated as progress. Explicit restart recovery remains fail-closed until a scenario supplies
+the intended recovery policy.
+
 ## In-app update surfaces
 
 Several features are designed for the desktop wrapper ([tagma-desktop](../electron/README.md)) but also work in dev when the matching env vars are set.

@@ -23,7 +23,9 @@ import {
   sha256CanonicalOpenCodeRequest,
   type OpenCodeHistoryAdmissionRecord,
   type OpenCodeInvocationNativeClient,
+  type OpenCodeInvocationFailureCode,
   type OpenCodeInvocationStore,
+  type OpenCodePromptResult,
 } from './opencode-invocation.js';
 import type { ChatOperationV2AdmissionRequest } from './admission.js';
 import type {
@@ -381,6 +383,36 @@ function promptSdkFailureCode(
   return openCodeProviderFailureCode(result.error, status);
 }
 
+function nativePromptFailureCode(
+  result: OpenCodeAdapterSdkResult,
+): OpenCodeInvocationFailureCode | null {
+  const status = Number.isInteger(result.response?.status) ? result.response.status : null;
+  if (
+    result.error === undefined &&
+    status !== null &&
+    status >= 200 &&
+    status < 300 &&
+    result.data !== undefined
+  ) {
+    return null;
+  }
+  // A missing HTTP status is transport/response ambiguity. Preserve the
+  // controller's bounded history reconciliation and exact replay for that
+  // case; only classify a response the server actually returned.
+  if (status === null) return null;
+  // A successful status with malformed or missing data is response ambiguity,
+  // not an explicit server rejection. Let the controller reconcile history.
+  if (status >= 200 && status < 300) return null;
+  if (status === 400) return 'admission_invalid_request';
+  if (status === 401 || status === 403) return 'admission_authentication_failed';
+  if (status === 404 && sdkErrorSignals(result.error).includes('sessionnotfounderror')) {
+    return 'admission_session_missing';
+  }
+  if (status === 429) return 'admission_rate_limited';
+  if (status === 408 || status >= 500) return 'admission_service_unavailable';
+  return 'admission_request_rejected';
+}
+
 function safeNonNegativeInteger(value: unknown): number | null {
   return Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : null;
 }
@@ -517,18 +549,7 @@ export class OpenCodeSdkAdapter
     readonly sessionId: string;
     readonly inputId: string;
     readonly canonicalRequestBytes: Uint8Array;
-  }): Promise<
-    | {
-        readonly kind: 'admitted';
-        readonly admission: {
-          readonly sessionId: string;
-          readonly inputId: string;
-          readonly requestDigest: string;
-          readonly aggregateSeq: number;
-        };
-      }
-    | { readonly kind: 'conflict' }
-  > {
+  }): Promise<OpenCodePromptResult> {
     const requestDigest = sha256CanonicalOpenCodeRequest(input.canonicalRequestBytes);
     const client = await this.resolveClient();
     const result = await client.v2.session.prompt({
@@ -539,6 +560,8 @@ export class OpenCodeSdkAdapter
       resume: false,
     });
     if (result.response?.status === 409) return { kind: 'conflict' };
+    const rejected = nativePromptFailureCode(result);
+    if (rejected) return { kind: 'rejected', code: rejected };
     const envelope = record(requireSuccessfulSdkData(result));
     const admitted = record(envelope?.data);
     const aggregateSeq = admitted?.admittedSeq;
@@ -996,6 +1019,7 @@ export interface OpenCodeTextClassifierRunRequest {
 }
 
 export type OpenCodePromptProviderFailureCode =
+  | OpenCodeInvocationFailureCode
   | 'submitted_unknown'
   | 'request_digest_conflict'
   | 'session_identity_conflict'
@@ -1629,6 +1653,9 @@ export class OpenCodeReadonlyInvocationRunner {
       if (admission.kind === 'conflict') {
         return { kind: 'provider_unavailable', code: admission.code };
       }
+      if (admission.kind === 'failed') {
+        return { kind: 'provider_unavailable', code: admission.code };
+      }
       if (admission.kind === 'request_required') {
         return { kind: 'provider_unavailable', code: 'request_digest_conflict' };
       }
@@ -1894,6 +1921,9 @@ export class OpenCodeReadonlyInvocationRunner {
       });
       if (input.signal.aborted) return { kind: 'cancelled', code: 'aborted' };
       if (admission.kind === 'conflict') {
+        return { kind: 'provider_unavailable', code: admission.code };
+      }
+      if (admission.kind === 'failed') {
         return { kind: 'provider_unavailable', code: admission.code };
       }
       if (admission.kind === 'request_required') {

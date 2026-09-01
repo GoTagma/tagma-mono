@@ -591,7 +591,7 @@ function clarificationPending(
     thread.generation !== operation.generation ||
     pending.operationId !== operation.operationId ||
     pending.generation !== operation.generation ||
-    pending.version + 1 !== operation.version ||
+    pending.version !== operation.version ||
     pending.round !== operation.clarificationRounds
   ) {
     return fail(

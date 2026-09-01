@@ -2259,7 +2259,16 @@ export class ChatOperationV2ReadonlyOrchestrator {
   ): StoredInvocationOutboxRecord {
     const failureCode = safeChatOperationV2FailureCode(rawFailureCode, 'provider_unavailable');
     const outbox = this.persistence.getInvocationOutbox(original.invocationId) ?? original;
-    if (outbox.status === 'failed_terminal') return outbox;
+    if (outbox.status === 'failed_terminal') {
+      if (original.status !== 'failed_terminal' && outbox.failureCode === failureCode) {
+        this.appendEvent(operationId, 'invocation_failed_terminal', {
+          invocationId: outbox.invocationId,
+          errorCode: failureCode,
+          diagnosticCodes: [failureCode],
+        });
+      }
+      return outbox;
+    }
     if (outbox.status === 'settled' || outbox.status === 'interrupted') return outbox;
     const settledAt = this.now();
     const failed = this.persistence.updateInvocationOutbox({

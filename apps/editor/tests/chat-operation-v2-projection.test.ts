@@ -149,7 +149,7 @@ function clarificationThread(
     clarificationId: 'clarification-01',
     operationId,
     generation: 1,
-    version: 2,
+    version: 3,
     round: 1,
     maxRounds: 3,
     question: 'Which relative pipeline candidate should I explain?',

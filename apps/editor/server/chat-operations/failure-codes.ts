@@ -1,6 +1,12 @@
 export const CHAT_OPERATION_V2_SAFE_FAILURE_CODES = [
   'aborted',
+  'admission_authentication_failed',
   'admission_evidence_conflict',
+  'admission_invalid_request',
+  'admission_rate_limited',
+  'admission_request_rejected',
+  'admission_service_unavailable',
+  'admission_session_missing',
   'cancelled_precommit',
   'execution_failed',
   'execution_history_conflict',

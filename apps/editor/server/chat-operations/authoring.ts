@@ -2287,6 +2287,17 @@ export class ChatOperationV2AuthoringEngine {
           diagnosticCodes: [safeUnavailableCode ?? 'provider_unavailable'],
         });
       }
+    } else if (
+      outboxStatus === 'failed_terminal' &&
+      outbox.status === 'failed_terminal' &&
+      originalOutbox.status !== 'failed_terminal' &&
+      outbox.failureCode === safeUnavailableCode
+    ) {
+      this.appendEvent(outbox.operationId, 'invocation_failed_terminal', {
+        invocationId: outbox.invocationId,
+        errorCode: safeUnavailableCode ?? 'provider_unavailable',
+        diagnosticCodes: [safeUnavailableCode ?? 'provider_unavailable'],
+      });
     }
 
     const usage =

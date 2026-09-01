@@ -49,7 +49,8 @@ export type OpenCodeCreateSessionResult =
 
 export type OpenCodePromptResult =
   | { readonly kind: 'admitted'; readonly admission: OpenCodeAdmissionEvidence }
-  | { readonly kind: 'conflict' };
+  | { readonly kind: 'conflict' }
+  | { readonly kind: 'rejected'; readonly code: OpenCodeInvocationFailureCode };
 
 export interface OpenCodeInvocationNativeClient {
   createSession(input: { readonly sessionId: string }): Promise<OpenCodeCreateSessionResult>;
@@ -111,6 +112,11 @@ export type OpenCodeInvocationOutcome =
       readonly code: OpenCodeInvocationConflictCode;
     }
   | {
+      readonly kind: 'failed';
+      readonly invocationId: string;
+      readonly code: OpenCodeInvocationFailureCode;
+    }
+  | {
       readonly kind: 'request_required';
       readonly invocationId: string;
     };
@@ -120,6 +126,14 @@ export type OpenCodeInvocationConflictCode =
   | 'session_identity_conflict'
   | 'admission_evidence_conflict'
   | 'history_protocol_conflict';
+
+export type OpenCodeInvocationFailureCode =
+  | 'admission_invalid_request'
+  | 'admission_session_missing'
+  | 'admission_authentication_failed'
+  | 'admission_rate_limited'
+  | 'admission_service_unavailable'
+  | 'admission_request_rejected';
 
 export interface OpenCodeInvocationControllerOptions {
   readonly store: OpenCodeInvocationStore;
@@ -140,6 +154,14 @@ const INVOCATION_CONFLICT_CODES = new Set<OpenCodeInvocationConflictCode>([
   'session_identity_conflict',
   'admission_evidence_conflict',
   'history_protocol_conflict',
+]);
+const INVOCATION_FAILURE_CODES = new Set<OpenCodeInvocationFailureCode>([
+  'admission_invalid_request',
+  'admission_session_missing',
+  'admission_authentication_failed',
+  'admission_rate_limited',
+  'admission_service_unavailable',
+  'admission_request_rejected',
 ]);
 
 type HistoryAdmissionResult =
@@ -378,6 +400,16 @@ export class OpenCodeInvocationController {
     outbox: StoredInvocationOutboxRecord,
     prompted: OpenCodePromptResult,
   ): Promise<OpenCodeInvocationOutcome> {
+    if (prompted.kind === 'rejected') {
+      const recovered = await this.reconcileHistory(outbox);
+      if (recovered.kind === 'admitted') {
+        return this.admit(outbox, recovered.aggregateSeq, true);
+      }
+      if (recovered.kind === 'conflict') {
+        return this.conflict(outbox, 'history_protocol_conflict');
+      }
+      return this.fail(outbox, prompted.code);
+    }
     if (prompted.kind === 'conflict') {
       const recovered = await this.reconcileHistory(outbox);
       if (recovered.kind === 'admitted') {
@@ -616,6 +648,16 @@ export class OpenCodeInvocationController {
     outbox: StoredInvocationOutboxRecord,
   ): OpenCodeInvocationOutcome {
     if (outbox.status === 'failed_terminal') {
+      if (
+        outbox.failureCode &&
+        INVOCATION_FAILURE_CODES.has(outbox.failureCode as OpenCodeInvocationFailureCode)
+      ) {
+        return {
+          kind: 'failed',
+          invocationId: outbox.invocationId,
+          code: outbox.failureCode as OpenCodeInvocationFailureCode,
+        };
+      }
       return {
         kind: 'conflict',
         invocationId: outbox.invocationId,
@@ -677,5 +719,20 @@ export class OpenCodeInvocationController {
     });
     if (!terminal.applied) return this.outcomeForObservedStatus(terminal.outbox);
     return { kind: 'conflict', invocationId: terminal.outbox.invocationId, code };
+  }
+
+  private fail(
+    outbox: StoredInvocationOutboxRecord,
+    code: OpenCodeInvocationFailureCode,
+  ): OpenCodeInvocationOutcome {
+    const terminal = this.store.updateInvocationOutbox({
+      invocationId: outbox.invocationId,
+      expectedStatus: outbox.status,
+      status: 'failed_terminal',
+      settledAt: this.now(),
+      failureCode: code,
+    });
+    if (!terminal.applied) return this.outcomeForObservedStatus(terminal.outbox);
+    return { kind: 'failed', invocationId: terminal.outbox.invocationId, code };
   }
 }

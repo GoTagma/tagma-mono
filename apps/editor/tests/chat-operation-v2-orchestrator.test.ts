@@ -12,6 +12,7 @@ import {
   type ChatOperationV2DurableInvocationResult,
   type ChatOperationV2DurableInvocationRunner,
 } from '../server/chat-operations/orchestrator.js';
+import { readChatOperationV2OperationProjection } from '../server/chat-operations/projection.js';
 import { createChatInventorySnapshot } from '../server/chat-operations/snapshots.js';
 import {
   openChatOperationV2Store,
@@ -599,28 +600,29 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
       clarification: 'Which pipeline should I update?',
       candidateIds: ['pipeline-1', 'pipeline-2'],
     };
+    const candidates = [
+      {
+        id: 'pipeline-1',
+        path: 'one/one.yaml',
+        pipelineName: 'one',
+        currentCanvas: true,
+        sessionOwned: false,
+        manualNewDraft: false,
+      },
+      {
+        id: 'pipeline-2',
+        path: 'two/two.yaml',
+        pipelineName: 'two',
+        currentCanvas: false,
+        sessionOwned: false,
+        manualNewDraft: false,
+      },
+    ];
     const { orchestrator, runner, store } = createHarness([completedInvocation(classifier, 20)]);
     const result = await orchestrator.createAndDispatch({
       ...baseCreateInput('operation-clarification'),
       inventory,
-      candidates: [
-        {
-          id: 'pipeline-1',
-          path: 'one/one.yaml',
-          pipelineName: 'one',
-          currentCanvas: true,
-          sessionOwned: false,
-          manualNewDraft: false,
-        },
-        {
-          id: 'pipeline-2',
-          path: 'two/two.yaml',
-          pipelineName: 'two',
-          currentCanvas: false,
-          sessionOwned: false,
-          manualNewDraft: false,
-        },
-      ],
+      candidates,
     });
 
     expect(result.kind).toBe('clarification_pending');
@@ -654,6 +656,36 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     if (events.kind !== 'events') throw new Error('Expected retained operation events.');
     expect(events.events.filter(({ type }) => type === 'clarification_requested')).toHaveLength(1);
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(0);
+
+    const detail = readChatOperationV2OperationProjection(
+      {
+        getWorkspaceSnapshot: (workspaceScopeId) =>
+          store.getWorkspaceOperationSnapshot(workspaceScopeId),
+        getOperation: (operationId) => store.getOperation(operationId),
+        getAdmission: (operationId) => store.getOperationAdmission(operationId),
+        getClarificationThread: (operationId) => store.getOperationClarificationThread(operationId),
+        listPendingInteractiveViews: () => [],
+        listInvocationOutbox: (workspaceScopeId) => store.listInvocationOutbox(workspaceScopeId),
+        getResultProjection: (operationId) => store.getResultProjection(operationId),
+      },
+      {
+        getCurrentInventory: () => ({
+          inventory,
+          candidates,
+          resolveCandidate: () => {
+            throw new Error('Projection-only fixture does not resolve a mutation target.');
+          },
+        }),
+      },
+      'workspace-scope-1',
+      result.operation.operationId,
+    );
+    expect(detail.pendingInput).toMatchObject({
+      kind: 'clarification',
+      operationVersion: result.operation.version,
+      round: 1,
+      question: 'Which pipeline should I update?',
+    });
   });
 
   test('a clarification reply stays in the operation, reruns a fresh classifier, and seals all reply context', async () => {

@@ -109,6 +109,7 @@ interface SdkHistoryEvent {
 
 interface HarnessOptions {
   nativePrompt?: 'admit' | 'conflict-after-admit' | 'throw-after-admit';
+  nativePromptFailure?: { readonly status: number; readonly error: unknown };
   historyVisibilityDelayReads?: number;
   richSdkFailure?: { readonly status: number; readonly error: unknown };
   richPrompt?: (
@@ -222,6 +223,12 @@ function createHarness(options: HarnessOptions = {}) {
           nativePromptRequests.push(input);
           const digest = extractNativeRequestDigest(input.prompt.text);
           if (!digest) throw new Error('native prompt omitted its request-digest marker');
+          if (options.nativePromptFailure) {
+            return Promise.resolve({
+              error: options.nativePromptFailure.error,
+              response: { status: options.nativePromptFailure.status },
+            });
+          }
           const aggregateSeq = history.length + 1;
           const event: SdkHistoryEvent = {
             id: `evt_${aggregateSeq}`,
@@ -481,6 +488,53 @@ function setup(
 }
 
 describe('Chat Operation V2 OpenCode adapter', () => {
+  test('preserves a native session-not-found response instead of reporting transport ambiguity', async () => {
+    const { harness, runner } = setup({
+      nativePromptFailure: {
+        status: 404,
+        error: { _tag: 'SessionNotFoundError', sessionID: 'ses_host_classifier_1' },
+      },
+    });
+
+    expect(await runner.run(request())).toEqual({
+      kind: 'provider_unavailable',
+      code: 'admission_session_missing',
+    });
+    expect(harness.nativePromptRequests).toHaveLength(1);
+  });
+
+  test('keeps a malformed successful native response in bounded history ambiguity', async () => {
+    const { harness, runner } = setup({
+      nativePromptFailure: {
+        status: 200,
+        error: { _tag: 'MalformedSuccessfulResponse' },
+      },
+    });
+
+    expect(await runner.run(request())).toEqual({
+      kind: 'provider_unavailable',
+      code: 'submitted_unknown',
+      submissionUnknown: true,
+      submissionUnknownReason: 'admission_prompt_replay_transport_history_missing',
+    });
+    expect(harness.nativePromptRequests).toHaveLength(2);
+  });
+
+  test('does not label an unrelated native 404 as a missing session', async () => {
+    const { harness, runner } = setup({
+      nativePromptFailure: {
+        status: 404,
+        error: { _tag: 'RouteNotFoundError' },
+      },
+    });
+
+    expect(await runner.run(request())).toEqual({
+      kind: 'provider_unavailable',
+      code: 'admission_request_rejected',
+    });
+    expect(harness.nativePromptRequests).toHaveLength(1);
+  });
+
   test('writes the durable outbox before resolving or calling any SDK client', async () => {
     const { harness, runner } = setup();
 

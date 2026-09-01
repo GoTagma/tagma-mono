@@ -9,6 +9,7 @@ import { workspaceRegistry } from './workspace-registry.js';
 const MAX_OPENCODE_DIAGNOSTICS_BYTES = 4 * 1024 * 1024;
 const OPENCODE_SESSION_DISCOVERY_LIMIT = 10_000;
 const OPENCODE_SCOPED_SESSION_LIMIT = 100;
+const HOST_SESSION_AUTHORITY_LIMIT = 10_000;
 const DEFAULT_DIAGNOSTICS_SESSION_PAGE_LIMIT = 100;
 const MAX_DIAGNOSTICS_SESSION_PAGE_LIMIT = 500;
 
@@ -40,6 +41,10 @@ export interface DiagnosticsOpencodeDependencies {
     workspaceKey: string,
     sessionId: string,
   ) => DiagnosticsHostSessionProjection | null;
+  getHostSessionAuthority?: (workspaceKey: string) => {
+    readonly totalCount: number;
+    readonly sessionIds: readonly string[];
+  };
 }
 
 const DEFAULT_DEPENDENCIES: DiagnosticsOpencodeDependencies = {
@@ -48,18 +53,32 @@ const DEFAULT_DEPENDENCIES: DiagnosticsOpencodeDependencies = {
   fetchOpencode: fetchOpencodeProxy,
 };
 
+export function createDiagnosticsOpencodeSessionReader(
+  getHostSessionAuthority: NonNullable<DiagnosticsOpencodeDependencies['getHostSessionAuthority']>,
+): (workspaceKey: string | null, options: DiagnosticsOpencodeSessionOptions) => Promise<unknown> {
+  const dependencies: DiagnosticsOpencodeDependencies = {
+    ...DEFAULT_DEPENDENCIES,
+    getHostSessionAuthority,
+  };
+  return (workspaceKey, options) =>
+    readDiagnosticsOpencodeSessions(workspaceKey, dependencies, options);
+}
+
 export function createDiagnosticsOpencodeMessageReader(
   getHostSessionProjection: NonNullable<
     DiagnosticsOpencodeDependencies['getHostSessionProjection']
   >,
+  getHostSessionAuthority?: NonNullable<DiagnosticsOpencodeDependencies['getHostSessionAuthority']>,
+  baseDependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
 ): (
   workspaceKey: string | null,
   sessionId: string,
   options: DiagnosticsOpencodeMessageOptions,
 ) => Promise<unknown> {
   const dependencies: DiagnosticsOpencodeDependencies = {
-    ...DEFAULT_DEPENDENCIES,
+    ...baseDependencies,
     getHostSessionProjection,
+    ...(getHostSessionAuthority ? { getHostSessionAuthority } : {}),
   };
   return (workspaceKey, sessionId, options) =>
     readDiagnosticsOpencodeMessages(workspaceKey, sessionId, options, dependencies);
@@ -217,6 +236,14 @@ interface WorkspaceSessionDiscovery {
       boundaryReached: boolean;
       available: boolean;
     };
+    hostAuthority: {
+      limit: number;
+      totalCount: number;
+      candidateCount: number;
+      matchedCount: number;
+      omittedCount: number;
+      boundaryReached: boolean;
+    };
   };
 }
 
@@ -259,6 +286,29 @@ async function listWorkspaceSessions(
   }
 
   const ownedSessionIds = new Set<string>();
+  const rawHostAuthority = dependencies.getHostSessionAuthority?.(workspaceKey) ?? {
+    totalCount: 0,
+    sessionIds: [],
+  };
+  const hostSessionIds = [
+    ...new Set(
+      rawHostAuthority.sessionIds.filter(
+        (id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 512,
+      ),
+    ),
+  ].slice(0, HOST_SESSION_AUTHORITY_LIMIT);
+  const hostAuthorityTotalCount = Math.max(
+    hostSessionIds.length,
+    Number.isSafeInteger(rawHostAuthority.totalCount) && rawHostAuthority.totalCount >= 0
+      ? rawHostAuthority.totalCount
+      : hostSessionIds.length,
+  );
+  let hostAuthorityMatchedCount = 0;
+  for (const id of hostSessionIds) {
+    if (!sessionsById.has(id)) continue;
+    ownedSessionIds.add(id);
+    hostAuthorityMatchedCount += 1;
+  }
   for (const [id, session] of sessionsById) {
     if (isWorkspaceRootOpencodeSession(session, handle.cwd, workspaceKey)) {
       ownedSessionIds.add(id);
@@ -294,6 +344,14 @@ async function listWorkspaceSessions(
         returnedCount: discovered.length,
         boundaryReached: discovered.length >= OPENCODE_SESSION_DISCOVERY_LIMIT,
         available: compatibilityDiscoveryAvailable,
+      },
+      hostAuthority: {
+        limit: HOST_SESSION_AUTHORITY_LIMIT,
+        totalCount: hostAuthorityTotalCount,
+        candidateCount: hostSessionIds.length,
+        matchedCount: hostAuthorityMatchedCount,
+        omittedCount: Math.max(0, hostAuthorityTotalCount - hostSessionIds.length),
+        boundaryReached: hostAuthorityTotalCount > hostSessionIds.length,
       },
     },
   };

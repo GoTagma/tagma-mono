@@ -5,6 +5,9 @@ export const OPENCODE_CLASSIFIER_CONFORMANCE_SYSTEM =
 export const OPENCODE_CLASSIFIER_CONFORMANCE_MARKER = 'Tagma classifier conformance request';
 export const OPENCODE_STRUCTURED_OUTPUT_TOOL_ID = 'StructuredOutput';
 export const OPENCODE_CLASSIFIER_CONFORMANCE_RESULT = { kind: 'discussion' } as const;
+export type OpencodeV2FakeClassifierResult = Readonly<Record<string, unknown>> & {
+  readonly kind: 'discussion' | 'diagnosis' | 'clarify' | 'create' | 'edit';
+};
 
 export const OPENCODE_QUESTION_CONFORMANCE_QUESTIONS = [
   {
@@ -19,7 +22,7 @@ export const OPENCODE_QUESTION_CONFORMANCE_QUESTIONS = [
 ];
 
 type ProviderTransport = 'chat-completions' | 'responses' | 'models' | 'unknown';
-type ProviderBehavior = 'question' | 'tool-result' | 'classifier';
+type ProviderBehavior = 'question' | 'read' | 'tool-result' | 'classifier' | 'readonly';
 
 export interface FakeProviderDiagnostic {
   method: string;
@@ -34,7 +37,7 @@ export interface FakeProviderDiagnostic {
   formatShape?: 'json-schema' | 'json-object' | 'text' | 'none' | 'other';
   classifierMarkerObserved?: boolean;
   structuredOutputToolOffered?: boolean;
-  classifierResultKind?: 'discussion';
+  classifierResultKind?: OpencodeV2FakeClassifierResult['kind'];
   expectedAnswerObserved?: boolean;
   toolResultDisposition?:
     'answer' | 'permission-denied' | 'invalid-input' | 'interrupted' | 'other';
@@ -44,6 +47,11 @@ export interface OpencodeV2FakeProvider {
   baseUrl: string;
   diagnostics(): readonly FakeProviderDiagnostic[];
   stop(): Promise<void>;
+}
+
+export interface OpencodeV2FakeProviderOptions {
+  readonly readRounds?: number;
+  readonly classifierResults?: readonly OpencodeV2FakeClassifierResult[];
 }
 
 type JsonObject = Record<string, unknown>;
@@ -73,20 +81,27 @@ function sseResponse(events: readonly unknown[]): Response {
   });
 }
 
-function requestToolName(body: JsonObject, transport: ProviderTransport): string | null {
+function requestToolName(
+  body: JsonObject,
+  transport: ProviderTransport,
+): 'question' | 'read' | null {
   if (!Array.isArray(body.tools)) return null;
+  let readOffered = false;
   for (const value of body.tools) {
     if (!isObject(value)) continue;
     if (transport === 'chat-completions') {
       const fn = value.function;
       if (isObject(fn) && fn.name === 'question') return 'question';
+      if (isObject(fn) && fn.name === 'read') readOffered = true;
       continue;
     }
     if (value.name === 'question') return 'question';
+    if (value.name === 'read') readOffered = true;
     const fn = value.function;
     if (isObject(fn) && fn.name === 'question') return 'question';
+    if (isObject(fn) && fn.name === 'read') readOffered = true;
   }
-  return null;
+  return readOffered ? 'read' : null;
 }
 
 function hasStructuredOutputTool(body: JsonObject, transport: ProviderTransport): boolean {
@@ -104,16 +119,18 @@ function hasStructuredOutputTool(body: JsonObject, transport: ProviderTransport)
 }
 
 function isToolResultTurn(body: JsonObject, transport: ProviderTransport): boolean {
+  return toolResultTurnCount(body, transport) > 0;
+}
+
+function toolResultTurnCount(body: JsonObject, transport: ProviderTransport): number {
   if (transport === 'chat-completions') {
-    return (
-      Array.isArray(body.messages) &&
-      body.messages.some((message) => isObject(message) && message.role === 'tool')
-    );
+    return Array.isArray(body.messages)
+      ? body.messages.filter((message) => isObject(message) && message.role === 'tool').length
+      : 0;
   }
-  return (
-    Array.isArray(body.input) &&
-    body.input.some((item) => isObject(item) && item.type === 'function_call_output')
-  );
+  return Array.isArray(body.input)
+    ? body.input.filter((item) => isObject(item) && item.type === 'function_call_output').length
+    : 0;
 }
 
 function structuredFormatShape(
@@ -140,8 +157,22 @@ function hasClassifierMarker(body: JsonObject): boolean {
     input: body.input,
   });
   return (
-    modelInput.includes(OPENCODE_CLASSIFIER_CONFORMANCE_SYSTEM) &&
-    modelInput.includes(OPENCODE_CLASSIFIER_CONFORMANCE_MARKER)
+    (modelInput.includes(OPENCODE_CLASSIFIER_CONFORMANCE_SYSTEM) &&
+      modelInput.includes(OPENCODE_CLASSIFIER_CONFORMANCE_MARKER)) ||
+    (modelInput.includes('Classify exactly one Tagma Chat request') &&
+      modelInput.includes('four Host-declared fields'))
+  );
+}
+
+function hasReadonlyAgentMarker(body: JsonObject): boolean {
+  const modelInput = JSON.stringify({
+    instructions: body.instructions,
+    messages: body.messages,
+    input: body.input,
+  }).toLowerCase();
+  return (
+    modelInput.includes('tagma general discussion agent') ||
+    modelInput.includes('tagma pipeline diagnosis agent')
   );
 }
 
@@ -183,6 +214,7 @@ function chatCompletionResponse(
   body: JsonObject,
   sequence: number,
   behavior: ProviderBehavior,
+  classifierResult: OpencodeV2FakeClassifierResult,
 ): Response {
   const id = `chatcmpl-tagma-${sequence}`;
   const model =
@@ -196,7 +228,7 @@ function chatCompletionResponse(
 
   if (behavior === 'classifier' && hasStructuredOutputTool(body, 'chat-completions')) {
     const callID = `call_tagma_classifier_${sequence}`;
-    const argumentsJson = JSON.stringify(OPENCODE_CLASSIFIER_CONFORMANCE_RESULT);
+    const argumentsJson = JSON.stringify(classifierResult);
     if (body.stream === true) {
       return sseResponse([
         {
@@ -272,8 +304,8 @@ function chatCompletionResponse(
     });
   }
 
-  if (behavior !== 'question') {
-    const content = behavior === 'classifier' ? '{"kind":"discussion"}' : 'Recorded.';
+  if (behavior !== 'question' && behavior !== 'read') {
+    const content = behavior === 'classifier' ? JSON.stringify(classifierResult) : 'Recorded.';
     if (body.stream === true) {
       return sseResponse([
         {
@@ -317,8 +349,13 @@ function chatCompletionResponse(
     });
   }
 
-  const callID = `call_tagma_question_${sequence}`;
-  const argumentsJson = JSON.stringify({ questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS });
+  const toolName = behavior === 'read' ? 'read' : 'question';
+  const callID = `call_tagma_${toolName}_${sequence}`;
+  const argumentsJson = JSON.stringify(
+    behavior === 'read'
+      ? { filePath: '.' }
+      : { questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS },
+  );
   if (body.stream === true) {
     return sseResponse([
       {
@@ -336,7 +373,7 @@ function chatCompletionResponse(
                   index: 0,
                   id: callID,
                   type: 'function',
-                  function: { name: 'question', arguments: argumentsJson },
+                  function: { name: toolName, arguments: argumentsJson },
                 },
               ],
             },
@@ -377,7 +414,7 @@ function chatCompletionResponse(
             {
               id: callID,
               type: 'function',
-              function: { name: 'question', arguments: argumentsJson },
+              function: { name: toolName, arguments: argumentsJson },
             },
           ],
         },
@@ -392,6 +429,7 @@ function responsesApiResponse(
   body: JsonObject,
   sequence: number,
   behavior: ProviderBehavior,
+  classifierResult: OpencodeV2FakeClassifierResult,
 ): Response {
   const responseID = `resp_tagma_${sequence}`;
   const model =
@@ -408,7 +446,7 @@ function responsesApiResponse(
   if (behavior === 'classifier' && hasStructuredOutputTool(body, 'responses')) {
     const callID = `call_tagma_classifier_${sequence}`;
     const itemID = `fc_tagma_classifier_${sequence}`;
-    const argumentsJson = JSON.stringify(OPENCODE_CLASSIFIER_CONFORMANCE_RESULT);
+    const argumentsJson = JSON.stringify(classifierResult);
     const item = {
       id: itemID,
       type: 'function_call',
@@ -475,8 +513,8 @@ function responsesApiResponse(
     ]);
   }
 
-  if (behavior !== 'question') {
-    const content = behavior === 'classifier' ? '{"kind":"discussion"}' : 'Recorded.';
+  if (behavior !== 'question' && behavior !== 'read') {
+    const content = behavior === 'classifier' ? JSON.stringify(classifierResult) : 'Recorded.';
     const item = {
       id: `msg_tagma_${sequence}`,
       type: 'message',
@@ -560,16 +598,21 @@ function responsesApiResponse(
     ]);
   }
 
-  const callID = `call_tagma_question_${sequence}`;
+  const toolName = behavior === 'read' ? 'read' : 'question';
+  const callID = `call_tagma_${toolName}_${sequence}`;
   const itemID = `fc_tagma_${sequence}`;
-  const argumentsJson = JSON.stringify({ questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS });
+  const argumentsJson = JSON.stringify(
+    behavior === 'read'
+      ? { filePath: '.' }
+      : { questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS },
+  );
   const item = {
     id: itemID,
     type: 'function_call',
     status: 'completed',
     arguments: argumentsJson,
     call_id: callID,
-    name: 'question',
+    name: toolName,
   };
   const completed = {
     id: responseID,
@@ -629,9 +672,17 @@ function responsesApiResponse(
   ]);
 }
 
-export function startOpencodeV2FakeProvider(): OpencodeV2FakeProvider {
+export function startOpencodeV2FakeProvider(
+  options: OpencodeV2FakeProviderOptions = {},
+): OpencodeV2FakeProvider {
+  const readRounds = Math.max(1, Math.min(8, options.readRounds ?? 1));
+  const classifierResults =
+    options.classifierResults && options.classifierResults.length > 0
+      ? [...options.classifierResults]
+      : [OPENCODE_CLASSIFIER_CONFORMANCE_RESULT];
   const diagnostics: FakeProviderDiagnostic[] = [];
   let sequence = 0;
+  let classifierResultIndex = 0;
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -712,21 +763,29 @@ export function startOpencodeV2FakeProvider(): OpencodeV2FakeProvider {
       const structuredOutputTool = hasStructuredOutputTool(body, transport);
       const classifier =
         classifierMarker || formatShape === 'json-schema' || formatShape === 'json-object';
+      const readonlyAgent = hasReadonlyAgentMarker(body);
       const toolCount = Array.isArray(body.tools) ? body.tools.length : 0;
       const inputShape = Array.isArray(body.messages)
         ? 'messages'
         : Array.isArray(body.input)
           ? 'input'
           : 'none';
-      const hasQuestionTool = requestToolName(body, transport) === 'question';
-      const status = toolResult || classifier || hasQuestionTool ? 200 : 422;
-      const behavior: ProviderBehavior | null = toolResult
-        ? 'tool-result'
-        : classifier
-          ? 'classifier'
-          : hasQuestionTool
-            ? 'question'
-            : null;
+      const interactiveTool = requestToolName(body, transport);
+      const continueRead =
+        interactiveTool === 'read' && toolResultTurnCount(body, transport) < readRounds;
+      const status = toolResult || classifier || readonlyAgent || interactiveTool ? 200 : 422;
+      const behavior: ProviderBehavior | null = continueRead
+        ? 'read'
+        : toolResult
+          ? 'tool-result'
+          : classifier
+            ? 'classifier'
+            : readonlyAgent
+              ? 'readonly'
+              : interactiveTool;
+      const classifierResult =
+        classifierResults[Math.min(classifierResultIndex, classifierResults.length - 1)]!;
+      if (behavior === 'classifier') classifierResultIndex += 1;
       diagnostics.push({
         method,
         path: url.pathname,
@@ -740,19 +799,22 @@ export function startOpencodeV2FakeProvider(): OpencodeV2FakeProvider {
         formatShape,
         classifierMarkerObserved: classifierMarker,
         structuredOutputToolOffered: structuredOutputTool,
-        ...(behavior === 'classifier' ? { classifierResultKind: 'discussion' as const } : {}),
+        ...(behavior === 'classifier' ? { classifierResultKind: classifierResult.kind } : {}),
         ...(toolResult ? toolResultSummary(body, transport) : {}),
       });
       diagnostics.splice(0, Math.max(0, diagnostics.length - MAX_DIAGNOSTICS));
 
       if (!behavior) {
-        return jsonResponse({ error: { message: 'question tool was not offered' } }, 422);
+        return jsonResponse(
+          { error: { message: 'supported interaction tool was not offered' } },
+          422,
+        );
       }
 
       sequence += 1;
       return transport === 'chat-completions'
-        ? chatCompletionResponse(body, sequence, behavior)
-        : responsesApiResponse(body, sequence, behavior);
+        ? chatCompletionResponse(body, sequence, behavior, classifierResult)
+        : responsesApiResponse(body, sequence, behavior, classifierResult);
     },
   });
 

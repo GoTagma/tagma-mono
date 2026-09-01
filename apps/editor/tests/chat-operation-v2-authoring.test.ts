@@ -68,6 +68,7 @@ interface RuntimeOptions {
   readonly providerUnavailableOnce?: boolean;
   readonly providerUnavailablePurpose?: 'authoring' | 'repair' | 'trial_plan';
   readonly providerFailureCode?: string;
+  readonly terminalizeOutboxBeforeFailure?: boolean;
   readonly providerSubmissionUnknown?: boolean;
   readonly providerSubmissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
   readonly relocationUnavailableOnce?: boolean;
@@ -173,6 +174,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     private readonly fallbackBindingId: string,
     private readonly now: () => number,
     private readonly options: RuntimeOptions = {},
+    private readonly store?: ChatOperationV2Store,
   ) {}
 
   async ensureStage(input: Parameters<ChatOperationV2AuthoringRuntime['ensureStage']>[0]) {
@@ -289,9 +291,22 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         this.options.providerUnavailablePurpose === request.purpose)
     ) {
       this.providerFailed = true;
+      const failureCode = this.options.providerFailureCode ?? 'provider_unavailable';
+      if (this.options.terminalizeOutboxBeforeFailure) {
+        const outbox = this.store?.getInvocationOutbox(request.invocationId);
+        if (!outbox) throw new Error('Expected prepared invocation outbox.');
+        this.store!.updateInvocationOutbox({
+          invocationId: outbox.invocationId,
+          expectedStatus: outbox.status,
+          status: 'failed_terminal',
+          settledAt: this.now(),
+          failureCode,
+          updatedAt: this.now(),
+        });
+      }
       const unavailable = {
         kind: 'provider_unavailable',
-        code: this.options.providerFailureCode ?? 'provider_unavailable',
+        code: failureCode,
       } as const;
       return this.options.providerSubmissionUnknown === false
         ? unavailable
@@ -512,7 +527,7 @@ function createHarness(options: RuntimeOptions = {}) {
   let idSequence = 0;
   const nextHostId = (kind: string) => `${kind}-${++idSequence}`;
   const fallbackBindingId = 'fallback-binding';
-  const runtime = new FakeAuthoringRuntime(fallbackBindingId, now, options);
+  const runtime = new FakeAuthoringRuntime(fallbackBindingId, now, options, store);
   const resultPersistence = new FakeAuthoringResultPersistence(
     options.failResultPersistence ?? false,
     store,
@@ -1107,6 +1122,29 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(runtime.invocationRequests).toHaveLength(2);
     expect(runtime.invocationRequests[1]!.inputId).not.toBe(runtime.invocationRequests[0]!.inputId);
     expect(runtime.invocationRequests[1]!.sessionId).toBe(runtime.invocationRequests[0]!.sessionId);
+  });
+
+  test('emits one Host failure event when native admission already terminalized the outbox', async () => {
+    const { engine, store } = createHarness({
+      providerUnavailableOnce: true,
+      providerSubmissionUnknown: false,
+      providerFailureCode: 'admission_session_missing',
+      terminalizeOutboxBeforeFailure: true,
+    });
+
+    expect(await engine.dispatch(dispatchInput(store.getOperation('operation-1')!))).toMatchObject({
+      kind: 'provider_unavailable',
+    });
+    const eventPage = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (eventPage.kind !== 'events') throw new Error('Expected retained Host events.');
+    const failureEvents = eventPage.events.filter(
+      (event) => event.type === 'invocation_failed_terminal',
+    );
+    expect(failureEvents).toHaveLength(1);
+    expect(failureEvents[0]?.payload).toMatchObject({
+      errorCode: 'admission_session_missing',
+      diagnosticCodes: ['admission_session_missing'],
+    });
   });
 
   test('persists the exact submission-unknown reason and purpose for Trial Plan diagnostics', async () => {

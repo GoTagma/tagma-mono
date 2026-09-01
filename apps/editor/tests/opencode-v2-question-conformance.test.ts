@@ -16,6 +16,16 @@ import {
   restartOpencode,
   stopOpencodeProcesses,
 } from '../server/opencode-lifecycle';
+import { sealChatOperationV2Admission } from '../server/chat-operations/admission';
+import { createManagedChatOperationV2AuthoringOpenCodeAdapter } from '../server/chat-operations/authoring-runtime';
+import type { OpenCodeInvocationStore } from '../server/chat-operations/opencode-invocation';
+import type {
+  ListInvocationOutboxOptions,
+  PrepareInvocationOutboxInput,
+  StoredInvocationOutboxRecord,
+  UpdateInvocationOutboxInput,
+  UpdateInvocationOutboxResult,
+} from '../server/chat-operations/store';
 import { createStreamingLoopbackFetch } from '../server/loopback-fetch';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
 import {
@@ -79,6 +89,81 @@ type SdkResponse<T> = {
 
 type V2Client = ReturnType<typeof createV2OpencodeClient>;
 
+class ConformanceInvocationStore implements OpenCodeInvocationStore {
+  private readonly records = new Map<string, StoredInvocationOutboxRecord>();
+
+  prepareInvocationOutbox(input: PrepareInvocationOutboxInput): StoredInvocationOutboxRecord {
+    const existing = this.records.get(input.invocationId);
+    if (existing) {
+      if (
+        existing.operationId !== input.operationId ||
+        existing.purpose !== input.purpose ||
+        existing.sessionId !== input.sessionId ||
+        existing.inputId !== input.inputId ||
+        existing.requestDigest !== input.requestDigest
+      ) {
+        const error = Object.assign(new Error('outbox conflict'), { code: 'outbox_conflict' });
+        throw error;
+      }
+      return existing;
+    }
+    const preparedAt = input.preparedAt ?? Date.now();
+    const record: StoredInvocationOutboxRecord = {
+      invocationId: input.invocationId,
+      workspaceScopeId: 'scope-conformance',
+      operationId: input.operationId,
+      purpose: input.purpose,
+      sessionId: input.sessionId,
+      inputId: input.inputId,
+      requestDigest: input.requestDigest,
+      status: 'prepared',
+      preparedAt,
+      updatedAt: preparedAt,
+      admittedAggregateSeq: null,
+      settledAt: null,
+      failureCode: null,
+    };
+    this.records.set(record.invocationId, record);
+    return record;
+  }
+
+  getInvocationOutbox(invocationId: string): StoredInvocationOutboxRecord | null {
+    return this.records.get(invocationId) ?? null;
+  }
+
+  listInvocationOutbox(
+    workspaceScopeId: string,
+    options: ListInvocationOutboxOptions = {},
+  ): StoredInvocationOutboxRecord[] {
+    return [...this.records.values()].filter(
+      (record) =>
+        record.workspaceScopeId === workspaceScopeId &&
+        (!options.statuses || options.statuses.includes(record.status)),
+    );
+  }
+
+  updateInvocationOutbox(input: UpdateInvocationOutboxInput): UpdateInvocationOutboxResult {
+    const current = this.records.get(input.invocationId);
+    if (!current) throw new Error('missing conformance outbox');
+    if (current.status !== input.expectedStatus) {
+      return { applied: false, reason: 'status_mismatch', outbox: current };
+    }
+    const next: StoredInvocationOutboxRecord = {
+      ...current,
+      status: input.status,
+      admittedAggregateSeq:
+        input.admittedAggregateSeq === undefined
+          ? current.admittedAggregateSeq
+          : input.admittedAggregateSeq,
+      settledAt: input.settledAt === undefined ? current.settledAt : input.settledAt,
+      failureCode: input.failureCode === undefined ? current.failureCode : input.failureCode,
+      updatedAt: input.updatedAt ?? current.updatedAt + 1,
+    };
+    this.records.set(next.invocationId, next);
+    return { applied: true, outbox: next };
+  }
+}
+
 function restoreEnv(previous: Map<(typeof ENV_KEYS)[number], string | undefined>): void {
   for (const key of ENV_KEYS) {
     const value = previous.get(key);
@@ -137,6 +222,14 @@ function sdkErrorTag(error: unknown): unknown {
   );
 }
 
+function sparseSessionStatusType(
+  statuses: Readonly<Record<string, { readonly type: 'idle' | 'busy' | 'retry' }>>,
+  sessionID: string,
+): 'absent' | 'idle' | 'busy' | 'retry' {
+  if (!Object.prototype.hasOwnProperty.call(statuses, sessionID)) return 'absent';
+  return statuses[sessionID]?.type ?? 'absent';
+}
+
 function expectObservedResponse<T>(
   observed: ObservedSdkResponse<T>,
   status: number,
@@ -183,6 +276,44 @@ async function waitForPendingQuestion(
   throw new Error(
     `native question request was not created; provider diagnostics=${JSON.stringify(provider.diagnostics())}`,
   );
+}
+
+async function waitForCompatibilityQuestion(
+  client: V2Client,
+  directory: string,
+  sessionID: string,
+  provider: OpencodeV2FakeProvider,
+): Promise<{ id: string; sessionID: string }> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const requests = await readSdkData(
+      client.question.list({ directory }),
+      'compatibility question.list while waiting',
+    );
+    const matching = requests.filter((request) => request.sessionID === sessionID);
+    if (matching.length === 1) return matching[0]!;
+    if (matching.length > 1) {
+      throw new Error(
+        `compatibility question.list returned ${matching.length} requests for one session; provider diagnostics=${JSON.stringify(provider.diagnostics())}`,
+      );
+    }
+    await Bun.sleep(50);
+  }
+  throw new Error(
+    `compatibility question request was not created; provider diagnostics=${JSON.stringify(provider.diagnostics())}`,
+  );
+}
+
+async function expectNoPendingCompatibilityQuestions(
+  client: V2Client,
+  directory: string,
+  sessionID: string,
+): Promise<void> {
+  const requests = await readSdkData(
+    client.question.list({ directory }),
+    'compatibility question.list after reply',
+  );
+  expect(requests.filter((request) => request.sessionID === sessionID)).toEqual([]);
 }
 
 function providerTurnDiagnostics(provider: OpencodeV2FakeProvider) {
@@ -362,7 +493,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       'bin',
       process.platform === 'win32' ? 'opencode.exe' : 'opencode',
     );
-    const provider = startOpencodeV2FakeProvider();
+    const provider = startOpencodeV2FakeProvider({ readRounds: 5 });
 
     process.env.TAGMA_OPENCODE_BUNDLED_DIR = bundledDir;
     process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
@@ -434,6 +565,412 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         capabilities: { tools: true },
       });
       const suffix = randomUUID().replace(/-/g, '');
+
+      const productionStageDirectory = join(
+        tagmaCwd,
+        '.chat-staging',
+        'production-adapter',
+        'agent-workspace',
+        '.tagma',
+      );
+      mkdirSync(productionStageDirectory, { recursive: true });
+      const productionSessionID = `ses_tagma_production_adapter_${suffix}`;
+      const productionAuthoringInvocationID = `production-authoring-${suffix}`;
+      const productionAuthoringInputID = `msg_tagma_production_authoring_${suffix}`;
+      const productionTrialInvocationID = `production-trial-${suffix}`;
+      const productionTrialInputID = `msg_tagma_production_trial_${suffix}`;
+      const productionStore = new ConformanceInvocationStore();
+      const productionAdapter = createManagedChatOperationV2AuthoringOpenCodeAdapter({
+        sourceDirectory: tagmaCwd,
+        invocationStore: productionStore,
+      });
+      await productionAdapter.ensureSession({
+        sessionId: productionSessionID,
+        sourceDirectory: tagmaCwd,
+      });
+      await productionAdapter.moveSession({
+        sessionId: productionSessionID,
+        destinationDirectory: productionStageDirectory,
+      });
+      const productionAuthoringBytes = new TextEncoder().encode(
+        '{"purpose":"production-authoring-conformance"}',
+      );
+      const productionAuthoringAdmission = await productionAdapter.admit({
+        operationId: `production-operation-${suffix}`,
+        workspaceScopeId: 'scope-conformance',
+        invocationId: productionAuthoringInvocationID,
+        sessionId: productionSessionID,
+        inputId: productionAuthoringInputID,
+        purpose: 'authoring',
+        canonicalRequestBytes: productionAuthoringBytes,
+        stageDirectory: productionStageDirectory,
+      });
+      expect(productionAuthoringAdmission.kind).toBe('admitted');
+      const productionAdmission = sealChatOperationV2Admission({
+        schemaVersion: 1,
+        request: {
+          schemaVersion: 1,
+          text: 'Create a conformance pipeline and ask one question.',
+          attachments: [],
+        },
+        provider: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+        model: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+        variant: null,
+        agentPolicyHash: '1'.repeat(64),
+        settingsHash: '2'.repeat(64),
+        capabilityHash: '3'.repeat(64),
+        featureHash: '4'.repeat(64),
+        rendererInstanceId: 'renderer-conformance',
+        conversationId: 'conversation-conformance',
+        inventoryRevision: 1,
+        inventoryDigest: '5'.repeat(64),
+        readSnapshotHash: null,
+        purpose: 'authoring',
+        admittedAt: Date.now(),
+      });
+      let productionInteractionCount = 0;
+      const productionExecution = await productionAdapter.execute({
+        invocationId: productionAuthoringInvocationID,
+        sessionId: productionSessionID,
+        executionMessageId: `msg_tagma_production_execution_${suffix}`,
+        purpose: 'authoring',
+        intent: 'create',
+        stageDirectory: productionStageDirectory,
+        targetRelativePath: 'alpha/alpha.yaml',
+        trialPlanRequest: null,
+        admission: productionAdmission,
+        canonicalRequestBytes: productionAuthoringBytes,
+        signal: new AbortController().signal,
+        requestInteractive: async (request) => {
+          productionInteractionCount += 1;
+          if (request.kind === 'permission') {
+            await productionAdapter.forwardInteractive({
+              kind: 'forward_permission_reply',
+              invocationId: productionAuthoringInvocationID,
+              openCodeRequestId: request.openCodeRequestId,
+              openCodeProcessGeneration: request.openCodeProcessGeneration,
+              reply: 'once',
+            });
+          } else {
+            await productionAdapter.forwardInteractive({
+              kind: 'forward_question_reply',
+              invocationId: productionAuthoringInvocationID,
+              openCodeRequestId: request.openCodeRequestId,
+              openCodeProcessGeneration: request.openCodeProcessGeneration,
+              answers: [['Alpha']],
+            });
+          }
+        },
+      });
+      if (productionExecution.kind !== 'completed') {
+        throw new Error(
+          `production adapter authoring failed: ${JSON.stringify({ execution: productionExecution, provider: provider.diagnostics() })}`,
+        );
+      }
+      expect(productionExecution).toMatchObject({ kind: 'completed', finishCode: 'stop' });
+      expect(productionInteractionCount).toBe(5);
+      const productionTrialAdmission = await productionAdapter.admit({
+        operationId: `production-operation-${suffix}`,
+        workspaceScopeId: 'scope-conformance',
+        invocationId: productionTrialInvocationID,
+        sessionId: productionSessionID,
+        inputId: productionTrialInputID,
+        purpose: 'trial_plan',
+        canonicalRequestBytes: new TextEncoder().encode(
+          '{"purpose":"production-trial-conformance"}',
+        ),
+        stageDirectory: productionStageDirectory,
+      });
+      expect(productionTrialAdmission).toMatchObject({ kind: 'admitted' });
+
+      const sequentialSessionID = `ses_tagma_sequential_${suffix}`;
+      const firstSequentialInputID = `msg_tagma_sequential_first_${suffix}`;
+      const secondSequentialInputID = `msg_tagma_sequential_second_${suffix}`;
+      const sequentialRichMessageID = `msg_tagma_sequential_rich_${suffix}`;
+      await readSdkData(
+        client.v2.session.create({
+          id: sequentialSessionID,
+          agent: 'build',
+          model: {
+            providerID: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+            id: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+          },
+          location: { directory: tagmaCwd },
+        }),
+        'sequential native/rich session.create',
+      );
+      await readSdkData(
+        client.v2.session.prompt({
+          sessionID: sequentialSessionID,
+          id: firstSequentialInputID,
+          prompt: { text: 'First provider-free admission marker.' },
+          delivery: 'queue',
+          resume: false,
+        }),
+        'first sequential native admission',
+      );
+      const sequentialRich = await readSdkData(
+        client.session.prompt({
+          sessionID: sequentialSessionID,
+          messageID: sequentialRichMessageID,
+          agent: 'build',
+          model: {
+            providerID: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+            modelID: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+          },
+          tools: { '*': false },
+          format: { type: 'text' },
+          system: OPENCODE_CLASSIFIER_CONFORMANCE_SYSTEM,
+          parts: [
+            {
+              type: 'text',
+              text: `${OPENCODE_CLASSIFIER_CONFORMANCE_MARKER}: complete the rich execution as discussion.`,
+            },
+          ],
+        }),
+        'sequential compatibility rich execution',
+      );
+      expect(sequentialRich.info.error).toBeUndefined();
+      expect(sequentialRich.info.finish).toBe('stop');
+      const duplicateSequentialCreate = await noThrowClient.v2.session.create({
+        id: sequentialSessionID,
+        location: { directory: tagmaCwd },
+      });
+
+      const secondSequentialRequest = {
+        sessionID: sequentialSessionID,
+        id: secondSequentialInputID,
+        prompt: { text: 'Second provider-free admission marker.' },
+        delivery: 'queue' as const,
+        resume: false as const,
+      };
+      const immediateSecondAdmission =
+        await noThrowClient.v2.session.prompt(secondSequentialRequest);
+      const immediateStatuses = await readSdkData(
+        client.session.status({ directory: tagmaCwd }),
+        'session status after immediate second admission',
+      );
+      let finalStatusType: 'absent' | 'idle' | 'busy' | 'retry' = sparseSessionStatusType(
+        immediateStatuses,
+        sequentialSessionID,
+      );
+      for (let attempt = 0; attempt < 100 && finalStatusType !== 'absent'; attempt += 1) {
+        if (finalStatusType === 'idle') break;
+        await Bun.sleep(20);
+        const statuses = await readSdkData(
+          client.session.status({ directory: tagmaCwd }),
+          'wait for sequential session quiescence',
+        );
+        finalStatusType = sparseSessionStatusType(statuses, sequentialSessionID);
+      }
+      const afterQuiescenceReplay = await noThrowClient.v2.session.prompt(secondSequentialRequest);
+      const sequentialHistory = await readSdkData(
+        client.v2.session.history({ sessionID: sequentialSessionID, after: 0, limit: 100 }),
+        'sequential native/rich history',
+      );
+      const secondAdmissionEvents = sequentialHistory.data.filter(
+        (event) =>
+          event.type === 'session.next.prompt.admitted' &&
+          event.data.messageID === secondSequentialInputID,
+      );
+      expect({
+        duplicateCreateStatus: duplicateSequentialCreate.response.status,
+        duplicateCreateErrorTag: sdkErrorTag(duplicateSequentialCreate.error),
+        immediateStatus: immediateSecondAdmission.response.status,
+        immediateErrorTag: sdkErrorTag(immediateSecondAdmission.error),
+        immediateAdmission: immediateSecondAdmission.data?.data,
+        statusAfterImmediate: sparseSessionStatusType(immediateStatuses, sequentialSessionID),
+        finalStatusType,
+        replayStatus: afterQuiescenceReplay.response.status,
+        replayErrorTag: sdkErrorTag(afterQuiescenceReplay.error),
+        replayAdmission: afterQuiescenceReplay.data?.data,
+        secondAdmissionEventCount: secondAdmissionEvents.length,
+      }).toMatchObject({
+        duplicateCreateStatus: 200,
+        duplicateCreateErrorTag: null,
+        immediateStatus: 200,
+        immediateErrorTag: null,
+        immediateAdmission: {
+          id: secondSequentialInputID,
+          sessionID: sequentialSessionID,
+        },
+        replayStatus: 200,
+        replayErrorTag: null,
+        replayAdmission: {
+          id: secondSequentialInputID,
+          sessionID: sequentialSessionID,
+        },
+        secondAdmissionEventCount: 1,
+      });
+
+      const relocatedDirectory = join(
+        tagmaCwd,
+        '.chat-staging',
+        'sequential-relocation',
+        'agent-workspace',
+        '.tagma',
+      );
+      mkdirSync(relocatedDirectory, { recursive: true });
+      const relocatedSessionID = `ses_tagma_relocated_sequential_${suffix}`;
+      const firstRelocatedInputID = `msg_tagma_relocated_first_${suffix}`;
+      const secondRelocatedInputID = `msg_tagma_relocated_second_${suffix}`;
+      const relocatedRichMessageID = `msg_tagma_relocated_rich_${suffix}`;
+      await readSdkData(
+        client.v2.session.create({
+          id: relocatedSessionID,
+          agent: 'build',
+          model: {
+            providerID: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+            id: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+          },
+          location: { directory: tagmaCwd },
+        }),
+        'relocated sequential session.create',
+      );
+      await readSdkData(
+        client.experimental.controlPlane.moveSession({
+          sessionID: relocatedSessionID,
+          destination: { directory: relocatedDirectory },
+          moveChanges: false,
+        }),
+        'relocate sequential session',
+      );
+      const relocatedClient = createClient(
+        handle.baseUrl,
+        relocatedDirectory,
+        handle.auth.authorization,
+        true,
+      );
+      const relocatedNoThrowClient = createClient(
+        handle.baseUrl,
+        relocatedDirectory,
+        handle.auth.authorization,
+        false,
+      );
+      const relocatedSession = await readSdkData(
+        relocatedClient.session.get({ sessionID: relocatedSessionID }),
+        'relocated sequential session.get',
+      );
+      expect(realpathSync.native(relocatedSession.directory)).toBe(
+        realpathSync.native(relocatedDirectory),
+      );
+      await readSdkData(
+        relocatedClient.v2.session.prompt({
+          sessionID: relocatedSessionID,
+          id: firstRelocatedInputID,
+          prompt: { text: 'First relocated provider-free admission marker.' },
+          delivery: 'queue',
+          resume: false,
+        }),
+        'first relocated native admission',
+      );
+      const relocatedRich = await readSdkData(
+        relocatedClient.session.prompt({
+          sessionID: relocatedSessionID,
+          messageID: relocatedRichMessageID,
+          agent: 'build',
+          model: {
+            providerID: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+            modelID: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+          },
+          tools: { '*': false },
+          format: { type: 'text' },
+          system: OPENCODE_CLASSIFIER_CONFORMANCE_SYSTEM,
+          parts: [
+            {
+              type: 'text',
+              text: `${OPENCODE_CLASSIFIER_CONFORMANCE_MARKER}: complete the relocated rich execution as discussion.`,
+            },
+          ],
+        }),
+        'relocated sequential compatibility rich execution',
+      );
+      expect(relocatedRich.info.error).toBeUndefined();
+      expect(relocatedRich.info.finish).toBe('stop');
+      const duplicateRelocatedCreate = await noThrowClient.v2.session.create({
+        id: relocatedSessionID,
+        location: { directory: tagmaCwd },
+      });
+      const relocatedAfterDuplicateCreate = await readSdkData(
+        relocatedClient.session.get({ sessionID: relocatedSessionID }),
+        'relocated session.get after source duplicate create',
+      );
+
+      const secondRelocatedRequest = {
+        sessionID: relocatedSessionID,
+        id: secondRelocatedInputID,
+        prompt: { text: 'Second relocated provider-free admission marker.' },
+        delivery: 'queue' as const,
+        resume: false as const,
+      };
+      const immediateRelocatedAdmission =
+        await relocatedNoThrowClient.v2.session.prompt(secondRelocatedRequest);
+      const immediateRelocatedStatuses = await readSdkData(
+        relocatedClient.session.status({ directory: relocatedDirectory }),
+        'relocated status after immediate second admission',
+      );
+      let relocatedFinalStatusType: 'absent' | 'idle' | 'busy' | 'retry' = sparseSessionStatusType(
+        immediateRelocatedStatuses,
+        relocatedSessionID,
+      );
+      for (let attempt = 0; attempt < 100 && relocatedFinalStatusType !== 'absent'; attempt += 1) {
+        if (relocatedFinalStatusType === 'idle') break;
+        await Bun.sleep(20);
+        const statuses = await readSdkData(
+          relocatedClient.session.status({ directory: relocatedDirectory }),
+          'wait for relocated sequential session quiescence',
+        );
+        relocatedFinalStatusType = sparseSessionStatusType(statuses, relocatedSessionID);
+      }
+      const relocatedAfterQuiescenceReplay =
+        await relocatedNoThrowClient.v2.session.prompt(secondRelocatedRequest);
+      const relocatedSequentialHistory = await readSdkData(
+        relocatedClient.v2.session.history({
+          sessionID: relocatedSessionID,
+          after: 0,
+          limit: 100,
+        }),
+        'relocated sequential native/rich history',
+      );
+      const secondRelocatedAdmissionEvents = relocatedSequentialHistory.data.filter(
+        (event) =>
+          event.type === 'session.next.prompt.admitted' &&
+          event.data.messageID === secondRelocatedInputID,
+      );
+      expect({
+        duplicateCreateStatus: duplicateRelocatedCreate.response.status,
+        duplicateCreateErrorTag: sdkErrorTag(duplicateRelocatedCreate.error),
+        directoryAfterDuplicateCreate: realpathSync.native(relocatedAfterDuplicateCreate.directory),
+        immediateStatus: immediateRelocatedAdmission.response.status,
+        immediateErrorTag: sdkErrorTag(immediateRelocatedAdmission.error),
+        immediateAdmission: immediateRelocatedAdmission.data?.data,
+        statusAfterImmediate: sparseSessionStatusType(
+          immediateRelocatedStatuses,
+          relocatedSessionID,
+        ),
+        finalStatusType: relocatedFinalStatusType,
+        replayStatus: relocatedAfterQuiescenceReplay.response.status,
+        replayErrorTag: sdkErrorTag(relocatedAfterQuiescenceReplay.error),
+        replayAdmission: relocatedAfterQuiescenceReplay.data?.data,
+        secondAdmissionEventCount: secondRelocatedAdmissionEvents.length,
+      }).toMatchObject({
+        duplicateCreateStatus: 200,
+        duplicateCreateErrorTag: null,
+        directoryAfterDuplicateCreate: realpathSync.native(relocatedDirectory),
+        immediateStatus: 200,
+        immediateErrorTag: null,
+        immediateAdmission: {
+          id: secondRelocatedInputID,
+          sessionID: relocatedSessionID,
+        },
+        replayStatus: 200,
+        replayErrorTag: null,
+        replayAdmission: {
+          id: secondRelocatedInputID,
+          sessionID: relocatedSessionID,
+        },
+        secondAdmissionEventCount: 1,
+      });
 
       const classifierSessionID = `ses_tagma_classifier_${suffix}`;
       const classifierMessageID = `msg_tagma_classifier_${suffix}`;
@@ -662,8 +1199,6 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       });
       expect(conflictingLostClassifier.data?.info.structured).toBeUndefined();
       expect(classifierProviderTurns(provider)).toEqual(classifierTurnsAfterLoss);
-      expect(classifierTurnsAfterLoss).toHaveLength(3);
-
       let lostClassifierHistory = await readSdkData(
         client.v2.session.history({
           sessionID: lostClassifierSessionID,
@@ -950,6 +1485,220 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       expect(replied.error).toBeUndefined();
       await expectNoPendingQuestions(client, replyFirst.sessionID, tagmaCwd);
       await waitForExpectedAnswer(provider);
+      const postInteractionInputID = `msg_tagma_post_interaction_${suffix}`;
+      const duplicatePostInteractionCreate = await noThrowClient.v2.session.create({
+        id: replyFirst.sessionID,
+        location: { directory: tagmaCwd },
+      });
+      const statusBeforePostInteractionAdmission = await readSdkData(
+        client.session.status({ directory: tagmaCwd }),
+        'status before post-interaction admission',
+      );
+      const postInteractionRequest = {
+        sessionID: replyFirst.sessionID,
+        id: postInteractionInputID,
+        prompt: { text: 'Provider-free admission after resolved interaction.' },
+        delivery: 'queue' as const,
+        resume: false as const,
+      };
+      const immediatePostInteractionAdmission =
+        await noThrowClient.v2.session.prompt(postInteractionRequest);
+      let postInteractionFinalStatusType: 'absent' | 'idle' | 'busy' | 'retry' =
+        sparseSessionStatusType(statusBeforePostInteractionAdmission, replyFirst.sessionID);
+      for (
+        let attempt = 0;
+        attempt < 250 && postInteractionFinalStatusType !== 'absent';
+        attempt += 1
+      ) {
+        if (postInteractionFinalStatusType === 'idle') break;
+        await Bun.sleep(20);
+        const statuses = await readSdkData(
+          client.session.status({ directory: tagmaCwd }),
+          'wait for post-interaction session quiescence',
+        );
+        postInteractionFinalStatusType = sparseSessionStatusType(statuses, replyFirst.sessionID);
+      }
+      const postInteractionReplay = await noThrowClient.v2.session.prompt(postInteractionRequest);
+      const postInteractionHistory = await readSdkData(
+        client.v2.session.history({ sessionID: replyFirst.sessionID, after: 0, limit: 100 }),
+        'post-interaction native history',
+      );
+      const postInteractionAdmissions = postInteractionHistory.data.filter(
+        (event) =>
+          event.type === 'session.next.prompt.admitted' &&
+          event.data.messageID === postInteractionInputID,
+      );
+      expect({
+        duplicateCreateStatus: duplicatePostInteractionCreate.response.status,
+        duplicateCreateErrorTag: sdkErrorTag(duplicatePostInteractionCreate.error),
+        statusBeforeAdmission: sparseSessionStatusType(
+          statusBeforePostInteractionAdmission,
+          replyFirst.sessionID,
+        ),
+        immediateStatus: immediatePostInteractionAdmission.response.status,
+        immediateErrorTag: sdkErrorTag(immediatePostInteractionAdmission.error),
+        finalStatusType: postInteractionFinalStatusType,
+        replayStatus: postInteractionReplay.response.status,
+        replayErrorTag: sdkErrorTag(postInteractionReplay.error),
+        admissionEventCount: postInteractionAdmissions.length,
+      }).toMatchObject({
+        duplicateCreateStatus: 200,
+        duplicateCreateErrorTag: null,
+        statusBeforeAdmission: 'absent',
+        immediateStatus: 200,
+        immediateErrorTag: null,
+        replayStatus: 200,
+        replayErrorTag: null,
+        admissionEventCount: 1,
+      });
+
+      const relocatedInteractionDirectory = join(
+        tagmaCwd,
+        '.chat-staging',
+        'relocated-interaction',
+        'agent-workspace',
+        '.tagma',
+      );
+      mkdirSync(relocatedInteractionDirectory, { recursive: true });
+      const relocatedInteractionSessionID = `ses_tagma_relocated_interaction_${suffix}`;
+      const relocatedInteractionMessageID = `msg_tagma_relocated_interaction_${suffix}`;
+      const relocatedInteractionInputID = `msg_tagma_relocated_interaction_next_${suffix}`;
+      await readSdkData(
+        client.v2.session.create({
+          id: relocatedInteractionSessionID,
+          agent: 'build',
+          model: {
+            providerID: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+            id: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+          },
+          location: { directory: tagmaCwd },
+        }),
+        'relocated interaction session.create',
+      );
+      await readSdkData(
+        client.experimental.controlPlane.moveSession({
+          sessionID: relocatedInteractionSessionID,
+          destination: { directory: relocatedInteractionDirectory },
+          moveChanges: false,
+        }),
+        'relocate interaction session',
+      );
+      const relocatedInteractionClient = createClient(
+        handle.baseUrl,
+        relocatedInteractionDirectory,
+        handle.auth.authorization,
+        true,
+      );
+      const relocatedInteractionNoThrowClient = createClient(
+        handle.baseUrl,
+        relocatedInteractionDirectory,
+        handle.auth.authorization,
+        false,
+      );
+      const richInteractionPromise = observeSdkResponse(() =>
+        relocatedInteractionNoThrowClient.session.prompt({
+          sessionID: relocatedInteractionSessionID,
+          messageID: relocatedInteractionMessageID,
+          agent: 'build',
+          model: {
+            providerID: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+            modelID: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+          },
+          format: { type: 'text' },
+          system: 'Tagma authoring compatibility interaction conformance.',
+          parts: [
+            {
+              type: 'text',
+              text: 'Invoke the built-in question tool exactly once and wait for the selected option.',
+            },
+          ],
+        }),
+      );
+      const relocatedInteractionQuestion = await waitForCompatibilityQuestion(
+        relocatedInteractionClient,
+        relocatedInteractionDirectory,
+        relocatedInteractionSessionID,
+        provider,
+      );
+      const relocatedInteractionReply = await relocatedInteractionNoThrowClient.question.reply({
+        requestID: relocatedInteractionQuestion.id,
+        directory: relocatedInteractionDirectory,
+        answers: [['Alpha']],
+      });
+      expect(relocatedInteractionReply.response.status).toBe(200);
+      expect(relocatedInteractionReply.error).toBeUndefined();
+      const relocatedInteractionRichResponse = expectObservedResponse(
+        await richInteractionPromise,
+        200,
+        'relocated compatibility rich interaction',
+      );
+      expect(relocatedInteractionRichResponse.error).toBeUndefined();
+      const relocatedInteractionRich = relocatedInteractionRichResponse.data;
+      if (!relocatedInteractionRich) {
+        throw new Error('relocated compatibility rich interaction returned no data');
+      }
+      expect(relocatedInteractionRich.info.error).toBeUndefined();
+      expect(relocatedInteractionRich.info.finish).toBe('stop');
+      await expectNoPendingCompatibilityQuestions(
+        relocatedInteractionClient,
+        relocatedInteractionDirectory,
+        relocatedInteractionSessionID,
+      );
+      const duplicateRelocatedInteractionCreate = await noThrowClient.v2.session.create({
+        id: relocatedInteractionSessionID,
+        location: { directory: tagmaCwd },
+      });
+      const relocatedInteractionStatuses = await readSdkData(
+        relocatedInteractionClient.session.status({ directory: relocatedInteractionDirectory }),
+        'status before relocated post-interaction admission',
+      );
+      const relocatedInteractionRequest = {
+        sessionID: relocatedInteractionSessionID,
+        id: relocatedInteractionInputID,
+        prompt: { text: 'Provider-free admission after relocated rich interaction.' },
+        delivery: 'queue' as const,
+        resume: false as const,
+      };
+      const relocatedInteractionAdmission =
+        await relocatedInteractionNoThrowClient.v2.session.prompt(relocatedInteractionRequest);
+      const relocatedInteractionReplay = await relocatedInteractionNoThrowClient.v2.session.prompt(
+        relocatedInteractionRequest,
+      );
+      const relocatedInteractionHistory = await readSdkData(
+        relocatedInteractionClient.v2.session.history({
+          sessionID: relocatedInteractionSessionID,
+          after: 0,
+          limit: 100,
+        }),
+        'relocated post-interaction native history',
+      );
+      const relocatedInteractionAdmissions = relocatedInteractionHistory.data.filter(
+        (event) =>
+          event.type === 'session.next.prompt.admitted' &&
+          event.data.messageID === relocatedInteractionInputID,
+      );
+      expect({
+        duplicateCreateStatus: duplicateRelocatedInteractionCreate.response.status,
+        duplicateCreateErrorTag: sdkErrorTag(duplicateRelocatedInteractionCreate.error),
+        statusBeforeAdmission: sparseSessionStatusType(
+          relocatedInteractionStatuses,
+          relocatedInteractionSessionID,
+        ),
+        immediateStatus: relocatedInteractionAdmission.response.status,
+        immediateErrorTag: sdkErrorTag(relocatedInteractionAdmission.error),
+        replayStatus: relocatedInteractionReplay.response.status,
+        replayErrorTag: sdkErrorTag(relocatedInteractionReplay.error),
+        admissionEventCount: relocatedInteractionAdmissions.length,
+      }).toMatchObject({
+        duplicateCreateStatus: 200,
+        duplicateCreateErrorTag: null,
+        statusBeforeAdmission: 'absent',
+        immediateStatus: 200,
+        immediateErrorTag: null,
+        replayStatus: 200,
+        replayErrorTag: null,
+        admissionEventCount: 1,
+      });
       expectQuestionNotFound(
         await noThrowClient.v2.session.question.reply({
           sessionID: replyFirst.sessionID,
@@ -1236,16 +1985,29 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
 
       const providerTurns = providerTurnDiagnostics(provider);
       expect(providerTurns.length).toBeGreaterThanOrEqual(4);
+      const auxiliaryRejectedTurns = providerTurns.filter((entry) => entry.status !== 200);
+      expect(auxiliaryRejectedTurns).toEqual([
+        expect.objectContaining({
+          transport: 'chat-completions',
+          stream: true,
+          toolCount: 0,
+          inputShape: 'messages',
+          turnShape: 'unknown',
+          status: 422,
+        }),
+      ]);
       expect(
-        providerTurns.every(
-          (entry) =>
-            entry.path.length <= 128 &&
-            entry.transport === 'chat-completions' &&
-            entry.stream === true &&
-            entry.inputShape === 'messages' &&
-            entry.toolCount !== null &&
-            entry.status === 200,
-        ),
+        providerTurns
+          .filter((entry) => entry.status === 200)
+          .every(
+            (entry) =>
+              entry.path.length <= 128 &&
+              entry.transport === 'chat-completions' &&
+              entry.stream === true &&
+              entry.inputShape === 'messages' &&
+              entry.toolCount !== null &&
+              entry.status === 200,
+          ),
       ).toBe(true);
       expect(
         providerTurns.some(

@@ -1087,6 +1087,10 @@ describe('ChatTurn Operation V2 service activation', () => {
       storeOpen: false,
       schemaVersion: CHAT_OPERATION_V2_SCHEMA_VERSION,
     });
+    expect(service.getDiagnosticsOpenCodeSessionAuthority(workspace)).toEqual({
+      totalCount: 0,
+      sessionIds: [],
+    });
     expect(existsSync(controlDir)).toBe(false);
 
     service.getWorkspaceSnapshot(workspace);
@@ -1187,6 +1191,10 @@ describe('ChatTurn Operation V2 service activation', () => {
     service.getWorkspaceSnapshot(workspace);
 
     const diagnostics = service.getDiagnosticsSnapshot(workspace);
+    expect(service.getDiagnosticsOpenCodeSessionAuthority(workspace)).toEqual({
+      totalCount: 1,
+      sessionIds: ['sensitive-trial-plan-session'],
+    });
     expect(diagnostics.eventEvidence).toMatchObject({
       schemaVersion: 2,
       layer: 'chat-operation-v2-host-event-window',
