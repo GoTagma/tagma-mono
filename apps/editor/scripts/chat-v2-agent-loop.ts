@@ -514,7 +514,7 @@ async function fetchJson(
   return { status: response.status, body };
 }
 
-function forceStopProcessTree(child: ReturnType<typeof Bun.spawn>): void {
+export function forceStopProcessTree(child: ReturnType<typeof Bun.spawn>): void {
   if (!child.pid) return;
   if (process.platform === 'win32') {
     Bun.spawnSync(['taskkill', '/F', '/T', '/PID', String(child.pid)], {

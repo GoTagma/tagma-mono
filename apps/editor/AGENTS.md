@@ -1235,15 +1235,23 @@
 ## Focused Editor Tests
 
 - `bun run test:chat-v2-loop` is the agent-owned live Chat V2 feedback loop. Keep its interface
-  deep: one command owns isolated workspace/control state, random ports, sidecar, bundled OpenCode,
-  deterministic provider, management and diagnostics credentials, Chat interactions, final drain,
-  evidence, process-tree cleanup, and exit status. It must never depend on a developer window,
-  copied token, fixed port, manual permission/clarification reply, or visual spinner judgment.
+  deep: one command owns pinned conformance, two fresh source-sidecar matrix rounds, a new compiled
+  sidecar build from current source, two fresh compiled-binary matrix rounds, isolated
+  workspace/control state, random ports, bundled OpenCode, deterministic provider, management and
+  diagnostics credentials, Chat interactions, final drain, evidence, process-tree/build cleanup,
+  and exit status. It must never depend on a developer window, copied token, fixed port, stale
+  compiled binary, manual permission/clarification reply, or visual spinner judgment. Narrow
+  harness debugging must use the explicitly named `test:chat-v2-loop:scenario` command.
 - The loop treats authenticated Host operation projection and terminal outcome as authority. While
   create HTTP is in flight it discovers the correlated operation through the workspace snapshot,
   then may answer only projected live clarification/permission/question requests. Unknown or
   recovery-required input fails closed. On every success or failure, drain bounded diagnostics
   before shutdown and retain explicit cursor/truncation evidence without persisting credentials.
+- Do not classify one isolated scenario failure as repairable product evidence. Re-run that exact
+  mode/scenario once in fresh isolation: only the same bounded mechanism fingerprint twice is
+  `repair_required`; a pass or different fingerprint is `investigate_instability`. A successful
+  cycle is `verified` only after both source and freshly compiled matrices pass their authored
+  stability count and all temporary runtimes are removed.
 
 - `bun scripts/test-serial.mjs` intentionally runs each test file in a separate serial Bun process
   because editor tests share module mocks, ports, and process globals. Keep that isolation as the

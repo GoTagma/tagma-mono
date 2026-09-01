@@ -236,10 +236,13 @@ whether a spinner means the operation is still running:
 bun run test:chat-v2-loop
 ```
 
-The command owns an isolated lifecycle for every scenario: temporary workspace and control store,
-random sidecar/OpenCode ports, management authentication, bundled OpenCode 1.18.18, deterministic
-provider, production Chat V2 bootstrap, temporary diagnostics session, Host operation driving,
-final diagnostics drain, process-tree shutdown, and runtime cleanup. The default matrix runs:
+The command is the convergence gate, not only a scenario runner. It first runs the pinned OpenCode
+conformance suite, then executes every source-sidecar scenario twice in fresh isolation, rebuilds a
+new compiled sidecar from the current source into a temporary directory, and executes the same
+matrix twice against that exact binary. Every scenario owns a temporary workspace and control
+store, random sidecar/OpenCode ports, management authentication, bundled OpenCode 1.18.18,
+deterministic provider, production Chat V2 bootstrap, temporary diagnostics session, Host operation
+driving, final diagnostics drain, process-tree shutdown, and runtime cleanup. The matrix includes:
 
 - `clarification`: create → project pending clarification → automatic reply → terminal result;
 - `discussion`: nearby tool-free counterexample with no interaction.
@@ -247,16 +250,28 @@ final diagnostics drain, process-tree shutdown, and runtime cleanup. The default
   correlated operation through the workspace snapshot, approve projected read permissions, and
   require a safe no-op terminal result.
 
-The process exits `0` only when every scenario reaches an authenticated Host terminal outcome.
-Failures exit non-zero after a final diagnostics drain. Each scenario prints an OS-temp
-`report.json` path and retains bounded `diagnostics.json` plus `sidecar.log`; bearer tokens are never
-written to those artifacts. Useful options:
+The process exits `0` only after conformance, both source rounds, a fresh compiled build, both
+compiled rounds, and cleanup succeed. A scenario failure is automatically repeated once in a new
+isolated environment. The same bounded failure fingerprint twice yields `repair_required`; a pass
+or a different fingerprint yields `investigate_instability`, so an agent does not patch product
+code from a single transient. Success yields `verified`.
+
+The final stdout line is one bounded JSON object containing `verdict`, `nextAction`,
+`failureFingerprint`, and `reportPath`. `cycle-report.json` links every scenario `report.json`,
+bounded `diagnostics.json`, `sidecar.log`, conformance log, compiled-build log, and compiled binary
+hash. Bearer tokens are never written to those artifacts. Useful gate options:
 
 ```powershell
 bun run test:chat-v2-loop -- --scenario clarification
-bun run test:chat-v2-loop -- --scenario discussion --repeat 3
+bun run test:chat-v2-loop -- --stability-runs 3
 bun run test:chat-v2-loop -- --timeout-ms 240000 --artifacts D:\Temp\tagma-loop-reports
-bun run test:chat-v2-loop -- --scenario clarification --compiled
+```
+
+For narrow harness development only, bypass the convergence gate explicitly:
+
+```powershell
+bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario discussion --repeat 1
+bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario clarification --compiled
 ```
 
 The protocol driver also discovers an operation from the workspace snapshot while its create HTTP

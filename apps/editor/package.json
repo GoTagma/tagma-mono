@@ -18,7 +18,8 @@
     "start": "bun server/index.ts",
     "preview": "vite preview",
     "test": "bun scripts/test-serial.mjs",
-    "test:chat-v2-loop": "bun scripts/chat-v2-agent-loop.ts",
+    "test:chat-v2-loop": "bun scripts/chat-v2-agent-cycle.ts",
+    "test:chat-v2-loop:scenario": "bun scripts/chat-v2-agent-loop.ts",
     "check:server": "tsc -p tsconfig.server.json --noEmit",
     "install:clean": "rimraf node_modules bun.lock && bun pm cache rm && bun install"
   },

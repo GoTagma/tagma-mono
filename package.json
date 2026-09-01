@@ -52,7 +52,7 @@
     "verify:full": "node scripts/verify-project.mjs --full",
     "test:public": "bun run --filter \"@tagma/*\" test",
     "test:scripts": "node scripts/run-node-tests.mjs && bun test ./scripts/**/*.test.ts",
-    "test:chat-v2-loop": "bun run --filter tagma-editor test:chat-v2-loop",
+    "test:chat-v2-loop": "bun apps/editor/scripts/chat-v2-agent-cycle.ts",
     "dev:editor": "cd apps/editor && bun run dev",
     "dev:editor:rebuild": "bun install && bun run build && bun run dev:editor",
     "dev:server": "bun run --filter tagma-editor dev:server",
