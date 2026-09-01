@@ -79,6 +79,20 @@ import {
 
 export const CHAT_OPERATION_V2_SHADOW_ENV = 'TAGMA_CHAT_OPERATION_V2_SHADOW';
 const DIAGNOSTICS_HOST_SESSION_AUTHORITY_LIMIT = 10_000;
+const RAW_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function createChatOperationV2HostId(kind: string, uuid: string): string {
+  const nativeIdentity = /^(?<purpose>[A-Za-z0-9][A-Za-z0-9_-]*)-(?<identity>session|input)$/.exec(
+    kind,
+  );
+  if (!nativeIdentity?.groups) return `${kind}-${uuid}`;
+  if (!RAW_UUID_RE.test(uuid)) {
+    throw new TypeError('The Host OpenCode identity generator did not return a raw UUID.');
+  }
+  const prefix = nativeIdentity.groups.identity === 'session' ? 'ses' : 'msg';
+  const purpose = nativeIdentity.groups.purpose.replace(/-/g, '_').toLowerCase();
+  return `${prefix}_tagma_${purpose}_${uuid.replace(/-/g, '').toLowerCase()}`;
+}
 
 export type ChatOperationV2ServiceErrorCode =
   | 'service_closed'
@@ -1342,20 +1356,12 @@ export class ChatOperationV2Service {
   }
 
   #nextHostId(kind: string): string {
-    const uuid = this.#randomUUID();
-    const nativeIdentity = /^(?<purpose>[A-Za-z0-9-]+)-(?<identity>session|input)$/.exec(kind);
-    if (!nativeIdentity?.groups) return `${kind}-${uuid}`;
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)) {
-      throw new TypeError('The Host OpenCode identity generator did not return a raw UUID.');
-    }
-    const prefix = nativeIdentity.groups.identity === 'session' ? 'ses' : 'msg';
-    const purpose = nativeIdentity.groups.purpose.replace(/-/g, '_').toLowerCase();
-    return `${prefix}_tagma_${purpose}_${uuid.replace(/-/g, '').toLowerCase()}`;
+    return createChatOperationV2HostId(kind, this.#randomUUID());
   }
 
   #nextRawStageId(): string {
     const value = this.#randomUUID();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    if (!RAW_UUID_RE.test(value)) {
       throw new ChatOperationV2ServiceError(
         'authoring_runtime_unavailable',
         'The Host stage identity generator did not return a raw UUID.',

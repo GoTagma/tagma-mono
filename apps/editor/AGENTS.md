@@ -812,7 +812,8 @@
   `ses_tagma_<purpose>_<uuidhex>` and native admission input ids are
   `msg_tagma_<purpose>_<uuidhex>`. Internal operation, invocation, usage, request, and event ids
   remain separate Host identities; never pass their `<kind>-<uuid>` form to native session or
-  prompt endpoints.
+  prompt endpoints. Native-id purpose parsing must accept the underscore in `trial_plan`; a generic
+  Host-id fallback for that purpose causes OpenCode to reject admission before provider execution.
 - ChatTurn Operation V2 consumes OpenCode 1.18.18 through a durable Host outbox. The native
   conformance contract is: duplicate session create is idempotent; the same input id plus identical
   payload returns the original 200 admission before and after process restart; the same id plus
@@ -1234,14 +1235,23 @@
 
 ## Focused Editor Tests
 
-- `bun run test:chat-v2-loop` is the agent-owned live Chat V2 feedback loop. Keep its interface
-  deep: one command owns pinned conformance, two fresh source-sidecar matrix rounds, a new compiled
-  sidecar build from current source, two fresh compiled-binary matrix rounds, isolated
-  workspace/control state, random ports, bundled OpenCode, deterministic provider, management and
-  diagnostics credentials, Chat interactions, final drain, evidence, process-tree/build cleanup,
-  and exit status. It must never depend on a developer window, copied token, fixed port, stale
-  compiled binary, manual permission/clarification reply, or visual spinner judgment. Narrow
-  harness debugging must use the explicitly named `test:chat-v2-loop:scenario` command.
+- `bun run test:chat-v2-loop` is the agent-owned real-provider Chat V2 feedback loop. Keep its
+  interface deep: one command owns two fresh real-provider source-sidecar matrix rounds, a new
+  compiled sidecar build from current source, two fresh real-provider compiled-binary matrix
+  rounds, isolated workspace/control/session-database state, random ports, bundled OpenCode,
+  management and diagnostics credentials, Chat interactions, final drain, evidence,
+  process-tree/build cleanup, and exit status. It must not start deterministic conformance or any
+  fake provider. Keep fake-provider protocol conformance as a separately invoked focused test.
+  Prefer a connected tool-capable OpenCode free agent model from the vetted loop allowlist, then
+  connected DeepSeek. Never install or silently substitute a fake provider. A fake provider remains
+  valid for focused conformance and narrow harness development, but its report must never produce
+  the cycle's `verified` verdict. The real matrix must cover clarification, tool-free discussion,
+  and authoring with projected permission arbitration. The live authoring scenario must publish a
+  changed pipeline and prove a real `trial_plan` invocation plus Host Trial execution; no-op,
+  failure-fork, compile-only, and Host fixed-plan paths are not closed-loop success. The command
+  must never depend on a developer window, copied token, fixed port, stale compiled binary, manual
+  permission/clarification reply, or visual spinner judgment. Narrow harness debugging must use
+  the explicitly named `test:chat-v2-loop:scenario` command.
 - The loop treats authenticated Host operation projection and terminal outcome as authority. While
   create HTTP is in flight it discovers the correlated operation through the workspace snapshot,
   then may answer only projected live clarification/permission/question requests. Unknown or

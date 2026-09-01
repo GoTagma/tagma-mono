@@ -14,16 +14,20 @@ import {
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const editorRoot = resolve(scriptDirectory, '..');
-const repoRoot = resolve(editorRoot, '../..');
 const DEFAULT_SCENARIOS = Object.freeze([
   'clarification',
   'discussion',
-  'authoring-permission',
+  'authoring-trial',
 ] as const satisfies readonly ChatV2AgentLoopScenario[]);
+const SUPPORTED_SCENARIOS = new Set<ChatV2AgentLoopScenario>([
+  'clarification',
+  'discussion',
+  'authoring-trial',
+]);
 const MAX_LOG_BYTES = 512 * 1024;
 
 export type ChatV2AgentCyclePhase =
-  'conformance' | 'source_matrix' | 'compiled_build' | 'compiled_matrix' | 'cleanup';
+  'source_matrix' | 'compiled_build' | 'compiled_matrix' | 'cleanup';
 
 export interface ChatV2AgentCycleOptions {
   readonly artifactsParentDirectory?: string;
@@ -45,10 +49,6 @@ export interface ChatV2AgentCycleBuildResult {
 }
 
 export interface ChatV2AgentCycleDependencies {
-  readonly runConformance: (input: {
-    readonly artifactsDirectory: string;
-    readonly timeoutMs: number;
-  }) => Promise<ChatV2AgentCycleCommandResult>;
   readonly buildCompiledSidecar: (input: {
     readonly buildDirectory: string;
     readonly artifactsDirectory: string;
@@ -82,11 +82,6 @@ export interface ChatV2AgentCycleReport {
   readonly completedAt: number;
   readonly stabilityRuns: number;
   readonly scenarios: readonly ChatV2AgentLoopScenario[];
-  readonly conformance: {
-    readonly verdict: 'passed' | 'failed';
-    readonly exitCode: number;
-    readonly logPath: string;
-  } | null;
   readonly build: {
     readonly verdict: 'passed' | 'failed';
     readonly sha256: string | null;
@@ -227,13 +222,12 @@ function validateOptions(options: ChatV2AgentCycleOptions): {
     throw new TypeError('timeoutMs must be an integer from 30000 to 900000.');
   }
   const scenarios = options.scenarios ?? DEFAULT_SCENARIOS;
-  if (scenarios.length === 0 || scenarios.length > DEFAULT_SCENARIOS.length) {
+  if (scenarios.length === 0 || scenarios.length > SUPPORTED_SCENARIOS.size) {
     throw new TypeError('Agent cycle scenarios must be a non-empty bounded set.');
   }
-  const allowed = new Set<ChatV2AgentLoopScenario>(DEFAULT_SCENARIOS);
   const unique = new Set<ChatV2AgentLoopScenario>();
   for (const scenario of scenarios) {
-    if (!allowed.has(scenario) || unique.has(scenario)) {
+    if (!SUPPORTED_SCENARIOS.has(scenario) || unique.has(scenario)) {
       throw new TypeError('Agent cycle scenarios must be unique supported scenario ids.');
     }
     unique.add(scenario);
@@ -285,16 +279,6 @@ async function runCommand(input: {
 }
 
 const productionDependencies: ChatV2AgentCycleDependencies = {
-  runConformance: async ({ timeoutMs }) =>
-    runCommand({
-      command: [
-        process.execPath,
-        'test',
-        join(editorRoot, 'tests', 'opencode-v2-question-conformance.test.ts'),
-      ],
-      cwd: repoRoot,
-      timeoutMs,
-    }),
   buildCompiledSidecar: async ({ buildDirectory, timeoutMs }) => {
     const result = await runCommand({
       command: [process.execPath, 'run', 'build:sidecar'],
@@ -360,6 +344,37 @@ function scenarioFailure(input: {
   };
 }
 
+function realProviderRequiredFailure(input: {
+  phase: 'source_matrix' | 'compiled_matrix';
+  mode: 'source' | 'compiled';
+  stabilityRun: number;
+  report: IsolatedChatV2AgentLoopReport;
+}): ChatV2AgentCycleFailure | null {
+  if (input.report.provider.mode === 'real') return null;
+  const name = 'RealProviderRequired';
+  const message = 'Chat V2 convergence cannot be verified by a fake provider scenario.';
+  return {
+    phase: input.phase,
+    mode: input.mode,
+    scenario: input.report.scenario,
+    stabilityRun: input.stabilityRun,
+    name,
+    message,
+    fingerprint: failureFingerprint({
+      phase: input.phase,
+      mode: input.mode,
+      scenario: input.report.scenario,
+      name,
+      lastPhase: input.report.lastOperation?.phase,
+      waitReason: input.report.lastOperation?.waitReason,
+      terminalOutcome:
+        input.report.lastOperation?.terminalOutcome ?? input.report.operation?.terminalOutcome,
+      detail: message,
+    }),
+    reportPath: input.report.reportPath,
+  };
+}
+
 export async function runChatV2AgentCycle(
   options: ChatV2AgentCycleOptions = {},
   dependencies: ChatV2AgentCycleDependencies = productionDependencies,
@@ -373,16 +388,14 @@ export async function runChatV2AgentCycle(
     join(artifactsParentDirectory, 'tagma-chat-v2-agent-cycle-'),
   );
   const reportPath = join(artifactsDirectory, 'cycle-report.json');
-  const conformanceLogPath = join(artifactsDirectory, 'conformance.log');
   const buildLogPath = join(artifactsDirectory, 'compiled-build.log');
   const buildDirectory = mkdtempSync(join(tmpdir(), 'tagma-chat-v2-cycle-build-'));
   const runs: ChatV2AgentCycleReport['runs'][number][] = [];
-  let conformance: ChatV2AgentCycleReport['conformance'] = null;
   let build: ChatV2AgentCycleReport['build'] = null;
   let failure: ChatV2AgentCycleFailure | null = null;
   let confirmation: ChatV2AgentCycleReport['confirmation'] = null;
   let cleanup: ChatV2AgentCycleReport['cleanup'] = { verdict: 'passed', message: null };
-  let currentPhase: ChatV2AgentCyclePhase = 'conformance';
+  let currentPhase: ChatV2AgentCyclePhase = 'source_matrix';
 
   const writeReport = (): ChatV2AgentCycleReport => {
     const nextAction: ChatV2AgentCycleReport['nextAction'] = !failure
@@ -401,7 +414,6 @@ export async function runChatV2AgentCycle(
       completedAt: Date.now(),
       stabilityRuns: validated.stabilityRuns,
       scenarios: validated.scenarios,
-      conformance,
       build,
       runs: Object.freeze([...runs]),
       confirmation,
@@ -424,6 +436,7 @@ export async function runChatV2AgentCycle(
         try {
           report = await dependencies.runScenario({
             scenario,
+            providerMode: 'real',
             timeoutMs: validated.timeoutMs,
             artifactsParentDirectory: artifactsDirectory,
             keepRuntime: options.keepRuntime,
@@ -457,15 +470,23 @@ export async function runChatV2AgentCycle(
             reportPath: null,
           };
         }
+        const phase = mode === 'source' ? 'source_matrix' : 'compiled_matrix';
+        const providerFailure = realProviderRequiredFailure({
+          phase,
+          mode,
+          stabilityRun,
+          report,
+        });
         runs.push({
           mode,
           stabilityRun,
           purpose: 'stability',
           scenario,
-          verdict: report.verdict,
+          verdict: providerFailure ? 'failed' : report.verdict,
           terminalOutcome: report.operation?.terminalOutcome ?? null,
           reportPath: report.reportPath,
         });
+        if (providerFailure) return providerFailure;
         if (report.verdict === 'failed') {
           return scenarioFailure({
             phase: mode === 'source' ? 'source_matrix' : 'compiled_matrix',
@@ -489,21 +510,31 @@ export async function runChatV2AgentCycle(
     try {
       report = await dependencies.runScenario({
         scenario: initial.scenario,
+        providerMode: 'real',
         timeoutMs: validated.timeoutMs,
         artifactsParentDirectory: artifactsDirectory,
         keepRuntime: options.keepRuntime,
         ...(sidecarExecutable ? { sidecarExecutable } : {}),
+      });
+      const phase = initial.mode === 'source' ? 'source_matrix' : 'compiled_matrix';
+      const providerFailure = realProviderRequiredFailure({
+        phase,
+        mode: initial.mode,
+        stabilityRun: initial.stabilityRun,
+        report,
       });
       runs.push({
         mode: initial.mode,
         stabilityRun: initial.stabilityRun,
         purpose: 'confirmation',
         scenario: initial.scenario,
-        verdict: report.verdict,
+        verdict: providerFailure ? 'failed' : report.verdict,
         terminalOutcome: report.operation?.terminalOutcome ?? null,
         reportPath: report.reportPath,
       });
-      if (report.verdict === 'passed') {
+      if (providerFailure) {
+        confirmedFailure = providerFailure;
+      } else if (report.verdict === 'passed') {
         return {
           verdict: 'not_reproduced',
           mode: initial.mode,
@@ -512,13 +543,14 @@ export async function runChatV2AgentCycle(
           confirmationFingerprint: null,
           reportPath: report.reportPath,
         };
+      } else {
+        confirmedFailure = scenarioFailure({
+          phase,
+          mode: initial.mode,
+          stabilityRun: initial.stabilityRun,
+          report,
+        });
       }
-      confirmedFailure = scenarioFailure({
-        phase: initial.mode === 'source' ? 'source_matrix' : 'compiled_matrix',
-        mode: initial.mode,
-        stabilityRun: initial.stabilityRun,
-        report,
-      });
     } catch (error) {
       const value = safeError(error);
       const phase = initial.mode === 'source' ? 'source_matrix' : 'compiled_matrix';
@@ -558,42 +590,9 @@ export async function runChatV2AgentCycle(
   };
 
   try {
-    currentPhase = 'conformance';
-    const conformanceResult = await dependencies.runConformance({
-      artifactsDirectory,
-      timeoutMs: validated.timeoutMs,
-    });
-    writeFileSync(conformanceLogPath, boundedLog(conformanceResult.output), 'utf8');
-    conformance = {
-      verdict: conformanceResult.exitCode === 0 ? 'passed' : 'failed',
-      exitCode: conformanceResult.exitCode,
-      logPath: conformanceLogPath,
-    };
-    if (conformanceResult.exitCode !== 0) {
-      const name = 'ConformanceFailure';
-      failure = {
-        phase: 'conformance',
-        mode: null,
-        scenario: null,
-        stabilityRun: null,
-        name,
-        message: `Pinned OpenCode conformance exited ${conformanceResult.exitCode}.`,
-        fingerprint: failureFingerprint({
-          phase: 'conformance',
-          mode: null,
-          scenario: null,
-          name,
-          detail: `exit ${conformanceResult.exitCode}`,
-        }),
-        reportPath: null,
-      };
-    }
-
-    if (!failure) {
-      currentPhase = 'source_matrix';
-      failure = await runMatrix('source', undefined);
-      if (failure) confirmation = await confirmScenarioFailure(failure, undefined);
-    }
+    currentPhase = 'source_matrix';
+    failure = await runMatrix('source', undefined);
+    if (failure) confirmation = await confirmScenarioFailure(failure, undefined);
 
     let executablePath: string | null = null;
     if (!failure) {
@@ -693,7 +692,7 @@ async function runCli(): Promise<void> {
   const timeoutMs = Number(cliValue('--timeout-ms') ?? '180000');
   const artifactsParentDirectory = cliValue('--artifacts') ?? undefined;
   const scenarioValue = cliValue('--scenario');
-  if (scenarioValue && !DEFAULT_SCENARIOS.includes(scenarioValue as ChatV2AgentLoopScenario)) {
+  if (scenarioValue && !SUPPORTED_SCENARIOS.has(scenarioValue as ChatV2AgentLoopScenario)) {
     throw new TypeError(`Unsupported agent-cycle scenario: ${scenarioValue}`);
   }
   const report = await runChatV2AgentCycle({
@@ -724,8 +723,8 @@ if (import.meta.main) {
         verdict: 'failed',
         nextAction: 'repair_required',
         failureFingerprint: failureFingerprint({
-          phase: 'conformance',
-          mode: null,
+          phase: 'source_matrix',
+          mode: 'source',
           scenario: null,
           name: failure.name,
           detail: failure.message,

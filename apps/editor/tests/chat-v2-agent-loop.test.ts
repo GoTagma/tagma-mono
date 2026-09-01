@@ -1,6 +1,174 @@
 import { expect, test } from 'bun:test';
 
-import { driveChatV2Operation } from '../scripts/chat-v2-agent-loop.js';
+import {
+  driveChatV2Operation,
+  selectChatV2AgentLoopRealModel,
+  validateChatV2AgentLoopScenarioOutcome,
+} from '../scripts/chat-v2-agent-loop.js';
+
+test('real agent loop selects a connected tool-capable OpenCode free model before DeepSeek', () => {
+  expect(
+    selectChatV2AgentLoopRealModel({
+      configured: {
+        providers: [
+          {
+            id: 'deepseek',
+            models: {
+              'deepseek-v4-flash': {
+                id: 'deepseek-v4-flash',
+                status: 'active',
+                capabilities: { toolcall: true },
+              },
+            },
+          },
+          {
+            id: 'opencode',
+            models: {
+              'deepseek-v4-flash-free': {
+                id: 'deepseek-v4-flash-free',
+                status: 'active',
+                capabilities: { toolcall: true },
+              },
+            },
+          },
+        ],
+      },
+      catalog: { connected: ['deepseek', 'opencode'] },
+    }),
+  ).toEqual({
+    provider: 'opencode',
+    model: 'deepseek-v4-flash-free',
+    selection: 'opencode-free',
+  });
+});
+
+test('real agent loop falls back to connected DeepSeek when no usable OpenCode free model exists', () => {
+  expect(
+    selectChatV2AgentLoopRealModel({
+      configured: {
+        providers: [
+          {
+            id: 'opencode',
+            models: {
+              'ling-3.0-tiny-free': {
+                id: 'ling-3.0-tiny-free',
+                status: 'active',
+                capabilities: { toolcall: true },
+              },
+            },
+          },
+          {
+            id: 'deepseek',
+            models: {
+              'deepseek-v4-pro': {
+                id: 'deepseek-v4-pro',
+                status: 'active',
+                capabilities: { toolcall: true },
+              },
+              'deepseek-v4-flash': {
+                id: 'deepseek-v4-flash',
+                status: 'active',
+                capabilities: { toolcall: true },
+              },
+            },
+          },
+        ],
+      },
+      catalog: { connected: ['opencode', 'deepseek'] },
+    }),
+  ).toEqual({
+    provider: 'deepseek',
+    model: 'deepseek-v4-flash',
+    selection: 'deepseek',
+  });
+});
+
+test('real agent loop fails closed instead of substituting a fake provider', () => {
+  expect(() =>
+    selectChatV2AgentLoopRealModel({
+      configured: { providers: [] },
+      catalog: { connected: [] },
+    }),
+  ).toThrow('No connected tool-capable OpenCode free or DeepSeek model is configured');
+});
+
+test('authoring Trial scenario requires publication plus Trial Plan and Trial execution evidence', () => {
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'authoring-trial',
+      {
+        operationId: 'operation-noop',
+        terminalOutcome: 'completed_noop',
+        actionKinds: ['create', 'projection'],
+      },
+      {},
+    ),
+  ).toThrow('must publish a verified changed pipeline');
+
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'authoring-trial',
+      {
+        operationId: 'operation-forked',
+        terminalOutcome: 'completed_forked',
+        actionKinds: ['create', 'projection'],
+      },
+      {},
+    ),
+  ).toThrow('without a failure fork');
+
+  const operation = {
+    operationId: 'operation-published',
+    terminalOutcome: 'completed_published',
+    actionKinds: ['create', 'projection'] as const,
+  };
+  expect(() => validateChatV2AgentLoopScenarioOutcome('authoring-trial', operation, {})).toThrow(
+    'did not execute a Trial Plan invocation',
+  );
+
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome('authoring-trial', operation, {
+      context: {
+        features: {
+          chatOperationV2: {
+            eventEvidence: {
+              events: [
+                { type: 'invocation_prepared', invocation: { purpose: 'trial_plan' } },
+                { type: 'trial_status_changed' },
+              ],
+            },
+          },
+        },
+      },
+    }),
+  ).not.toThrow();
+});
+
+test('real discussion and clarification scenarios prove their distinct terminal paths', () => {
+  const readonly = {
+    operationId: 'operation-readonly',
+    terminalOutcome: 'completed_readonly',
+    actionKinds: ['create', 'projection'] as const,
+  };
+  expect(() => validateChatV2AgentLoopScenarioOutcome('discussion', readonly, {})).not.toThrow();
+  expect(() => validateChatV2AgentLoopScenarioOutcome('clarification', readonly, {})).toThrow(
+    'did not project and answer a clarification',
+  );
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'clarification',
+      { ...readonly, actionKinds: ['create', 'projection', 'clarification_reply'] },
+      {},
+    ),
+  ).not.toThrow();
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'discussion',
+      { ...readonly, terminalOutcome: 'completed_published' },
+      {},
+    ),
+  ).toThrow('must finish as a read-only operation');
+});
 
 test('agent loop drives create through clarification to a terminal projection', async () => {
   const requests: Array<{ method: string; path: string; body: unknown }> = [];

@@ -236,33 +236,45 @@ whether a spinner means the operation is still running:
 bun run test:chat-v2-loop
 ```
 
-The command is the convergence gate, not only a scenario runner. It first runs the pinned OpenCode
-conformance suite, then executes every source-sidecar scenario twice in fresh isolation, rebuilds a
-new compiled sidecar from the current source into a temporary directory, and executes the same
-matrix twice against that exact binary. Every scenario owns a temporary workspace and control
-store, random sidecar/OpenCode ports, management authentication, bundled OpenCode 1.18.18,
-deterministic provider, production Chat V2 bootstrap, temporary diagnostics session, Host operation
-driving, final diagnostics drain, process-tree shutdown, and runtime cleanup. The matrix includes:
+The command is the real-provider convergence gate, not a protocol simulator. It executes every
+live source-sidecar scenario twice in fresh isolation, rebuilds a new compiled sidecar from the
+current source into a temporary directory, and executes the same live matrix twice against that
+exact binary. It never starts the deterministic fake provider. The pinned fake-provider protocol
+conformance suite remains a separate focused test and is not part of this closed-loop command.
 
-- `clarification`: create → project pending clarification → automatic reply → terminal result;
-- `discussion`: nearby tool-free counterexample with no interaction.
-- `authoring-permission`: create authoring while its HTTP request remains in flight, discover the
-  correlated operation through the workspace snapshot, approve projected read permissions, and
-  require a safe no-op terminal result.
+Every live scenario owns a temporary workspace and control store, random sidecar/OpenCode ports,
+management authentication, bundled OpenCode 1.18.18, production Chat V2 bootstrap, a temporary
+diagnostics session, Host operation driving, final diagnostics drain, process-tree shutdown, and
+runtime cleanup. It reuses the normal user-level OpenCode login state while keeping workspace
+configuration, the OpenCode session database, and Chat control authority isolated. Model selection
+prefers a connected, tool-capable OpenCode free agent model (`deepseek-v4-flash-free`, then
+`north-mini-code-free`) and falls back to the connected DeepSeek `deepseek-v4-flash` model. If none
+is configured, the gate fails closed instead of installing or substituting a fake provider.
 
-The process exits `0` only after conformance, both source rounds, a fresh compiled build, both
-compiled rounds, and cleanup succeed. A scenario failure is automatically repeated once in a new
-isolated environment. The same bounded failure fingerprint twice yields `repair_required`; a pass
-or a different fingerprint yields `investigate_instability`, so an agent does not patch product
-code from a single transient. Success yields `verified`.
+The default live matrix includes:
+
+- `clarification`: a real model must project one clarification; the harness answers it with an
+  explicit read-only choice and requires a read-only terminal result;
+- `discussion`: a real tool-free counterexample that must finish read-only;
+- `authoring-trial`: a real-model edit of a precompiled two-command pipeline. It must publish a
+  verified change and diagnostics must prove a `trial_plan` invocation plus Host Trial execution.
+  `completed_noop`, a failure fork, a compile-only result, or a Host fixed-plan fast lane fails the
+  scenario.
+
+The process exits `0` only after both source rounds, a fresh compiled build, both compiled rounds,
+and cleanup succeed. A scenario failure is automatically repeated once in a new isolated
+environment. The same bounded failure fingerprint twice yields `repair_required`; a pass or a
+different fingerprint yields `investigate_instability`, so an agent does not patch product code
+from a single transient. Success yields `verified`.
 
 The final stdout line is one bounded JSON object containing `verdict`, `nextAction`,
 `failureFingerprint`, and `reportPath`. `cycle-report.json` links every scenario `report.json`,
-bounded `diagnostics.json`, `sidecar.log`, conformance log, compiled-build log, and compiled binary
-hash. Bearer tokens are never written to those artifacts. Useful gate options:
+bounded `diagnostics.json`, `sidecar.log`, the selected real provider/model, compiled-build log, and
+compiled binary hash. Bearer tokens and provider credentials are never written to those artifacts.
+Useful gate options:
 
 ```powershell
-bun run test:chat-v2-loop -- --scenario clarification
+bun run test:chat-v2-loop -- --scenario authoring-trial
 bun run test:chat-v2-loop -- --stability-runs 3
 bun run test:chat-v2-loop -- --timeout-ms 240000 --artifacts D:\Temp\tagma-loop-reports
 ```
@@ -271,7 +283,19 @@ For narrow harness development only, bypass the convergence gate explicitly:
 
 ```powershell
 bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario discussion --repeat 1
-bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario clarification --compiled
+bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario authoring-trial --compiled
+bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario clarification --fake-provider
+```
+
+`--fake-provider` is only a narrow harness-development option. The convergence cycle always passes
+`providerMode: real` and rejects a returned fake-provider report even when that report otherwise
+claims success.
+
+Run deterministic OpenCode protocol conformance separately when changing the pinned SDK/runtime
+contract; its fake provider never counts as live Chat verification:
+
+```powershell
+bun test apps/editor/tests/opencode-v2-question-conformance.test.ts
 ```
 
 The protocol driver also discovers an operation from the workspace snapshot while its create HTTP

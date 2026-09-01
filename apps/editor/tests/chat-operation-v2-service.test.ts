@@ -15,6 +15,7 @@ import { join } from 'node:path';
 
 import {
   ChatOperationV2Service,
+  createChatOperationV2HostId,
   createChatOperationV2ShadowService,
   isChatOperationV2ShadowEnabled,
   type ChatOperationV2AuthoringCommitCoordinator,
@@ -785,6 +786,20 @@ afterEach(async () => {
 });
 
 describe('ChatTurn Operation V2 service activation', () => {
+  test('keeps every OpenCode session and input purpose in the native identity namespace', () => {
+    const uuid = '12345678-1234-4123-8123-123456789abc';
+
+    expect(createChatOperationV2HostId('authoring-session', uuid)).toBe(
+      'ses_tagma_authoring_12345678123441238123123456789abc',
+    );
+    expect(createChatOperationV2HostId('authoring-input', uuid)).toBe(
+      'msg_tagma_authoring_12345678123441238123123456789abc',
+    );
+    expect(createChatOperationV2HostId('trial_plan-input', uuid)).toBe(
+      'msg_tagma_trial_plan_12345678123441238123123456789abc',
+    );
+  });
+
   test('the internal shadow flag is exact and service construction has no control-store effects', () => {
     for (const value of [undefined, '', '0', 'true', '01', ' 1', '1 ']) {
       expect(isChatOperationV2ShadowEnabled({ TAGMA_CHAT_OPERATION_V2_SHADOW: value })).toBe(false);

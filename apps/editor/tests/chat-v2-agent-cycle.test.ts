@@ -47,6 +47,7 @@ function artifactsRoot(): string {
 function scenarioReport(input: {
   scenario: ChatV2AgentLoopScenario;
   sidecarMode: 'source' | 'compiled';
+  providerMode?: 'real' | 'fake';
   verdict?: 'passed' | 'failed';
   failureName?: string;
   failureMessage?: string;
@@ -87,6 +88,12 @@ function scenarioReport(input: {
             message: input.failureMessage ?? 'volatile detail 12345',
           }
         : null,
+    provider: {
+      mode: input.providerMode ?? 'real',
+      provider: input.providerMode === 'fake' ? 'tagma-loop-provider' : 'opencode',
+      model: input.providerMode === 'fake' ? 'loop-model' : 'deepseek-v4-flash-free',
+      selection: input.providerMode === 'fake' ? 'deterministic-fake' : 'opencode-free',
+    },
     diagnostics: {
       protocolVersion: 1,
       timelineCursor: 3,
@@ -108,6 +115,7 @@ function dependencies(input?: {
   failureMessages?: readonly string[];
   throwScenario?: boolean;
   cleanupFailure?: boolean;
+  reportProviderMode?: 'real' | 'fake';
 }): { dependencies: ChatV2AgentCycleDependencies; calls: string[] } {
   const calls: string[] = [];
   let failedOnce = false;
@@ -115,10 +123,6 @@ function dependencies(input?: {
   return {
     calls,
     dependencies: {
-      runConformance: async () => {
-        calls.push('conformance');
-        return { exitCode: 0, output: '179 assertions passed' };
-      },
       buildCompiledSidecar: async () => {
         calls.push('build');
         return {
@@ -127,7 +131,8 @@ function dependencies(input?: {
           output: 'built',
         };
       },
-      runScenario: async ({ scenario, sidecarExecutable }) => {
+      runScenario: async ({ scenario, sidecarExecutable, providerMode }) => {
+        expect(providerMode).toBe('real');
         const mode = sidecarExecutable ? 'compiled' : 'source';
         calls.push(`${mode}:${scenario}`);
         if (input?.throwScenario) throw new Error('scenario transport crashed');
@@ -139,6 +144,7 @@ function dependencies(input?: {
         return scenarioReport({
           scenario,
           sidecarMode: mode,
+          providerMode: input?.reportProviderMode,
           verdict: failed ? 'failed' : 'passed',
           ...(failureMessage ? { failureMessage } : {}),
         });
@@ -150,12 +156,11 @@ function dependencies(input?: {
   };
 }
 
-test('agent cycle owns conformance, stable source runs, fresh build, and stable compiled runs', async () => {
+test('agent cycle owns stable real-provider source runs, a fresh build, and stable compiled runs', async () => {
   const harness = dependencies();
   const report = await runChatV2AgentCycle(
     {
       artifactsParentDirectory: artifactsRoot(),
-      scenarios: ['clarification', 'discussion'],
       stabilityRuns: 2,
     },
     harness.dependencies,
@@ -165,19 +170,43 @@ test('agent cycle owns conformance, stable source runs, fresh build, and stable 
   expect(report.nextAction).toBe('verified');
   expect(report.failure).toBeNull();
   expect(harness.calls).toEqual([
-    'conformance',
     'source:clarification',
     'source:discussion',
+    'source:authoring-trial',
     'source:clarification',
     'source:discussion',
+    'source:authoring-trial',
     'build',
     'compiled:clarification',
     'compiled:discussion',
+    'compiled:authoring-trial',
     'compiled:clarification',
     'compiled:discussion',
+    'compiled:authoring-trial',
   ]);
-  expect(report.runs).toHaveLength(8);
+  expect(report.runs).toHaveLength(12);
   expect(report.build).toMatchObject({ verdict: 'passed', sha256: 'a'.repeat(64) });
+});
+
+test('agent cycle cannot report verified from a fake provider scenario', async () => {
+  const harness = dependencies({ reportProviderMode: 'fake' });
+  const report = await runChatV2AgentCycle(
+    {
+      artifactsParentDirectory: artifactsRoot(),
+      scenarios: ['discussion'],
+      stabilityRuns: 2,
+    },
+    harness.dependencies,
+  );
+
+  expect(report.verdict).toBe('failed');
+  expect(report.nextAction).toBe('repair_required');
+  expect(report.failure).toMatchObject({
+    phase: 'source_matrix',
+    mode: 'source',
+    scenario: 'discussion',
+    name: 'RealProviderRequired',
+  });
 });
 
 test('agent cycle stops before build and emits a stable source failure fingerprint', async () => {
@@ -206,12 +235,7 @@ test('agent cycle stops before build and emits a stable source failure fingerpri
   expect(firstReport.failure?.fingerprint).toBe(secondReport.failure?.fingerprint);
   expect(first).toBeDefined();
   expect(firstReport.build).toBeNull();
-  expect(first.calls).toEqual([
-    'conformance',
-    'source:clarification',
-    'source:discussion',
-    'source:discussion',
-  ]);
+  expect(first.calls).toEqual(['source:clarification', 'source:discussion', 'source:discussion']);
 });
 
 test('agent cycle reports a compiled-only regression after rebuilding current source', async () => {
@@ -235,7 +259,6 @@ test('agent cycle reports a compiled-only regression after rebuilding current so
   expect(report.build?.verdict).toBe('passed');
   expect(report.confirmation).toMatchObject({ verdict: 'confirmed' });
   expect(harness.calls).toEqual([
-    'conformance',
     'source:clarification',
     'source:clarification',
     'build',
@@ -347,5 +370,20 @@ test('agent cycle rejects a stability count that cannot prove repetition', async
       harness.dependencies,
     ),
   ).rejects.toThrow('stabilityRuns must be an integer from 2 to 5');
+  expect(harness.calls).toEqual([]);
+});
+
+test('agent cycle excludes the protocol-only authoring-permission harness scenario', async () => {
+  const harness = dependencies();
+  await expect(
+    runChatV2AgentCycle(
+      {
+        artifactsParentDirectory: artifactsRoot(),
+        scenarios: ['authoring-permission'],
+        stabilityRuns: 2,
+      },
+      harness.dependencies,
+    ),
+  ).rejects.toThrow('Agent cycle scenarios must be unique supported scenario ids');
   expect(harness.calls).toEqual([]);
 });

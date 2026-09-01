@@ -17,7 +17,9 @@ import {
 } from '../tests/helpers/opencode-v2-fake-provider.js';
 
 type JsonRecord = Record<string, unknown>;
-export type ChatV2AgentLoopScenario = 'clarification' | 'discussion' | 'authoring-permission';
+export type ChatV2AgentLoopScenario =
+  'clarification' | 'discussion' | 'authoring-permission' | 'authoring-trial';
+export type ChatV2AgentLoopProviderMode = 'real' | 'fake';
 
 export interface DriveChatV2OperationOptions {
   readonly origin: string;
@@ -69,6 +71,12 @@ export interface IsolatedChatV2AgentLoopReport {
   readonly operation: DriveChatV2OperationResult | null;
   readonly lastOperation: DriveChatV2OperationProgress | null;
   readonly failure: { readonly name: string; readonly message: string } | null;
+  readonly provider: {
+    readonly mode: ChatV2AgentLoopProviderMode;
+    readonly provider: string | null;
+    readonly model: string | null;
+    readonly selection: 'opencode-free' | 'deepseek' | 'deterministic-fake' | null;
+  };
   readonly diagnostics: {
     readonly protocolVersion: number | null;
     readonly timelineCursor: number | null;
@@ -89,6 +97,7 @@ export interface RunIsolatedChatV2AgentLoopOptions {
   readonly keepRuntime?: boolean;
   readonly scenario?: ChatV2AgentLoopScenario;
   readonly sidecarExecutable?: string;
+  readonly providerMode?: ChatV2AgentLoopProviderMode;
 }
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -113,6 +122,161 @@ function positiveInteger(value: unknown, label: string): number {
     throw new Error(`${label} is invalid.`);
   }
   return value as number;
+}
+
+export interface ChatV2AgentLoopRealModelSelection {
+  readonly provider: string;
+  readonly model: string;
+  readonly selection: 'opencode-free' | 'deepseek';
+}
+
+export function selectChatV2AgentLoopRealModel(value: unknown): ChatV2AgentLoopRealModelSelection {
+  const state = record(value, 'OpenCode provider state');
+  const configured = record(state.configured, 'Configured provider state');
+  const catalog = record(state.catalog, 'OpenCode provider catalog');
+  const providers = Array.isArray(configured.providers) ? configured.providers : [];
+  const connected = new Set(
+    Array.isArray(catalog.connected)
+      ? catalog.connected.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [],
+  );
+
+  const modelsFor = (providerId: string): Array<{ id: string; name: string }> => {
+    if (!connected.has(providerId)) return [];
+    const providerValue = providers.find((provider) => {
+      return record(provider, 'Configured provider').id === providerId;
+    });
+    if (!providerValue) return [];
+    const provider = record(providerValue, 'Configured provider');
+    const rawModels =
+      provider.models && typeof provider.models === 'object' && !Array.isArray(provider.models)
+        ? (provider.models as Record<string, unknown>)
+        : {};
+    return Object.entries(rawModels).flatMap(([key, rawModel]) => {
+      const model = record(rawModel, 'Configured model');
+      const id = typeof model.id === 'string' && model.id.length > 0 ? model.id : key;
+      const name = typeof model.name === 'string' && model.name.length > 0 ? model.name : id;
+      const capabilities =
+        model.capabilities &&
+        typeof model.capabilities === 'object' &&
+        !Array.isArray(model.capabilities)
+          ? (model.capabilities as Record<string, unknown>)
+          : {};
+      if (model.status !== 'active' || capabilities.toolcall !== true) return [];
+      return [{ id, name }];
+    });
+  };
+
+  const freeAgentModelPriority = new Map([
+    ['deepseek-v4-flash-free', 0],
+    ['north-mini-code-free', 1],
+  ]);
+  const freeModels = modelsFor('opencode')
+    .filter(({ id, name }) => {
+      const localId = id.split('/').at(-1) ?? id;
+      return freeAgentModelPriority.has(localId) && (/free/iu.test(id) || /free/iu.test(name));
+    })
+    .sort((left, right) => {
+      const localId = (id: string): string => id.split('/').at(-1) ?? id;
+      return (
+        (freeAgentModelPriority.get(localId(left.id)) ?? Number.MAX_SAFE_INTEGER) -
+          (freeAgentModelPriority.get(localId(right.id)) ?? Number.MAX_SAFE_INTEGER) ||
+        left.id.localeCompare(right.id)
+      );
+    });
+  if (freeModels[0]) {
+    return {
+      provider: 'opencode',
+      model: freeModels[0].id,
+      selection: 'opencode-free',
+    };
+  }
+
+  const deepseekModels = modelsFor('deepseek').sort((left, right) => {
+    const priority = (id: string): number => (id === 'deepseek-v4-flash' ? 0 : 1);
+    return priority(left.id) - priority(right.id) || left.id.localeCompare(right.id);
+  });
+  if (deepseekModels[0]) {
+    return {
+      provider: 'deepseek',
+      model: deepseekModels[0].id,
+      selection: 'deepseek',
+    };
+  }
+
+  throw new Error(
+    'No connected tool-capable OpenCode free or DeepSeek model is configured for the real Chat V2 agent loop.',
+  );
+}
+
+export function validateChatV2AgentLoopScenarioOutcome(
+  scenario: ChatV2AgentLoopScenario,
+  operation: DriveChatV2OperationResult,
+  rawDiagnostics: Record<string, unknown>,
+): void {
+  if (scenario === 'discussion' || scenario === 'clarification') {
+    if (operation.terminalOutcome !== 'completed_readonly') {
+      throw new Error(`The real ${scenario} scenario must finish as a read-only operation.`);
+    }
+    if (scenario === 'clarification' && !operation.actionKinds.includes('clarification_reply')) {
+      throw new Error(
+        'The real clarification scenario did not project and answer a clarification.',
+      );
+    }
+    if (
+      scenario === 'discussion' &&
+      operation.actionKinds.some((action) =>
+        ['clarification_reply', 'permission_reply', 'question_reply'].includes(action),
+      )
+    ) {
+      throw new Error('The real discussion scenario unexpectedly required interactive input.');
+    }
+    return;
+  }
+  if (scenario !== 'authoring-trial') return;
+  if (operation.terminalOutcome !== 'completed_published') {
+    throw new Error(
+      'The real authoring Trial scenario must publish a verified changed pipeline without a failure fork.',
+    );
+  }
+  const context = rawDiagnostics.context;
+  const features =
+    context && typeof context === 'object' && !Array.isArray(context)
+      ? (context as Record<string, unknown>).features
+      : null;
+  const chatOperationV2 =
+    features && typeof features === 'object' && !Array.isArray(features)
+      ? (features as Record<string, unknown>).chatOperationV2
+      : null;
+  const eventEvidence =
+    chatOperationV2 && typeof chatOperationV2 === 'object' && !Array.isArray(chatOperationV2)
+      ? (chatOperationV2 as Record<string, unknown>).eventEvidence
+      : null;
+  const events =
+    eventEvidence && typeof eventEvidence === 'object' && !Array.isArray(eventEvidence)
+      ? (eventEvidence as Record<string, unknown>).events
+      : null;
+  const eventRecords = Array.isArray(events)
+    ? events.filter(
+        (event): event is Record<string, unknown> =>
+          event !== null && typeof event === 'object' && !Array.isArray(event),
+      )
+    : [];
+  const trialPlanInvoked = eventRecords.some((event) => {
+    const invocation = event.invocation;
+    return (
+      invocation !== null &&
+      typeof invocation === 'object' &&
+      !Array.isArray(invocation) &&
+      (invocation as Record<string, unknown>).purpose === 'trial_plan'
+    );
+  });
+  if (!trialPlanInvoked) {
+    throw new Error('The real authoring Trial scenario did not execute a Trial Plan invocation.');
+  }
+  if (!eventRecords.some((event) => event.type === 'trial_status_changed')) {
+    throw new Error('The real authoring Trial scenario did not execute Host Trial verification.');
+  }
 }
 
 function operationFromMutation(value: unknown): JsonRecord {
@@ -612,19 +776,22 @@ function diagnosticsSummary(input: {
   };
 }
 
-function summarizeProviderState(value: unknown): Record<string, unknown> {
+function summarizeProviderState(
+  value: unknown,
+  selectedModel: { readonly provider: string; readonly model: string } | null,
+): Record<string, unknown> {
   const state = record(value, 'OpenCode provider state');
   const configured = record(state.configured, 'Configured provider state');
   const providers = Array.isArray(configured.providers) ? configured.providers : [];
   const selected = providers.find((provider) => {
-    return record(provider, 'Configured provider').id === OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID;
+    return record(provider, 'Configured provider').id === selectedModel?.provider;
   });
   const selectedProvider = selected ? record(selected, 'Selected configured provider') : null;
   const selectedModels =
     selectedProvider && selectedProvider.models && typeof selectedProvider.models === 'object'
       ? (selectedProvider.models as Record<string, unknown>)
       : {};
-  const selectedModel = selectedModels[OPENCODE_QUESTION_CONFORMANCE_MODEL_ID];
+  const selectedModelState = selectedModel ? selectedModels[selectedModel.model] : undefined;
   return {
     schemaVersion: state.schemaVersion ?? null,
     availability: state.availability ?? null,
@@ -637,7 +804,7 @@ function summarizeProviderState(value: unknown): Record<string, unknown> {
       ? {
           id: selectedProvider.id,
           name: selectedProvider.name,
-          model: selectedModel ?? null,
+          model: selectedModelState ?? null,
         }
       : null,
   };
@@ -695,6 +862,7 @@ export async function runIsolatedChatV2AgentLoop(
 ): Promise<IsolatedChatV2AgentLoopReport> {
   const runId = randomUUID();
   const scenario = options.scenario ?? 'clarification';
+  const providerMode = options.providerMode ?? 'real';
   const startedAt = Date.now();
   const timeoutMs = options.timeoutMs ?? 180_000;
   const runRoot = mkdtempSync(join(tmpdir(), 'tagma-chat-v2-agent-loop-runtime-'));
@@ -710,6 +878,12 @@ export async function runIsolatedChatV2AgentLoop(
   const baselinePipelinePath = join(baselinePipelineDirectory, 'baseline.yaml');
   const globalSettingsDirectory = join(runRoot, 'global-settings');
   const controlDirectory = join(runRoot, 'server-control');
+  let selectedModel: IsolatedChatV2AgentLoopReport['provider'] = {
+    mode: providerMode,
+    provider: null,
+    model: null,
+    selection: null,
+  };
   mkdirSync(tagmaDirectory, { recursive: true });
   mkdirSync(baselinePipelineDirectory, { recursive: true });
   mkdirSync(globalSettingsDirectory, { recursive: true });
@@ -722,9 +896,14 @@ export async function runIsolatedChatV2AgentLoop(
       '    - id: main',
       '      name: Main',
       '      tasks:',
-      '        - id: baseline',
-      '          name: Baseline',
-      '          prompt: Return a deterministic baseline.',
+      '        - id: draft',
+      '          name: Draft greeting',
+      '          command: node -e "console.log(\'baseline\')"',
+      '        - id: review',
+      '          name: Review greeting',
+      '          command: node -e "console.log(\'review\')"',
+      '          depends_on:',
+      '            - draft',
       '',
     ].join('\n'),
     'utf8',
@@ -764,7 +943,7 @@ export async function runIsolatedChatV2AgentLoop(
           },
           discussionResult,
         ]
-      : scenario === 'authoring-permission'
+      : scenario === 'authoring-permission' || scenario === 'authoring-trial'
         ? [
             {
               kind: 'create' as const,
@@ -774,37 +953,42 @@ export async function runIsolatedChatV2AgentLoop(
             },
           ]
         : [discussionResult];
-  const provider = startOpencodeV2FakeProvider({
-    classifierResults,
-    readRounds: scenario === 'authoring-permission' ? 2 : 1,
-  });
-  const providerDefinition = validateCustomProvider(
-    OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
-    {
-      name: 'Tagma Chat V2 agent loop',
-      npm: '@ai-sdk/openai-compatible',
-      options: {
-        baseURL: provider.baseUrl,
-        apiKey: NO_AUTH_REQUIRED_SENTINEL,
-        chunkTimeout: 30_000,
-      },
-      models: {
-        [OPENCODE_QUESTION_CONFORMANCE_MODEL_ID]: {
-          name: 'Chat V2 agent-loop model',
-          limit: { context: 8_192, output: 512 },
-          tool_call: true,
-          modalities: { input: ['text'], output: ['text'] },
+  const provider =
+    providerMode === 'fake'
+      ? startOpencodeV2FakeProvider({
+          classifierResults,
+          readRounds: scenario === 'authoring-permission' || scenario === 'authoring-trial' ? 2 : 1,
+        })
+      : null;
+  if (provider) {
+    const providerDefinition = validateCustomProvider(
+      OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+      {
+        name: 'Tagma Chat V2 agent loop',
+        npm: '@ai-sdk/openai-compatible',
+        options: {
+          baseURL: provider.baseUrl,
+          apiKey: NO_AUTH_REQUIRED_SENTINEL,
+          chunkTimeout: 30_000,
+        },
+        models: {
+          [OPENCODE_QUESTION_CONFORMANCE_MODEL_ID]: {
+            name: 'Chat V2 agent-loop model',
+            limit: { context: 8_192, output: 512 },
+            tool_call: true,
+            modalities: { input: ['text'], output: ['text'] },
+          },
         },
       },
-    },
-    { scope: 'workspace' },
-  );
-  upsertCustomProvider(
-    'workspace',
-    workspace,
-    OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
-    providerDefinition,
-  );
+      { scope: 'workspace' },
+    );
+    upsertCustomProvider(
+      'workspace',
+      workspace,
+      OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+      providerDefinition,
+    );
+  }
 
   const managementToken = randomBytes(32).toString('base64url');
   const output: string[] = [];
@@ -830,8 +1014,12 @@ export async function runIsolatedChatV2AgentLoop(
       TAGMA_OPENCODE_DB_SCHEMA_VERSION: String(databaseSchemaVersion),
       XDG_CACHE_HOME: join(runRoot, 'xdg-cache'),
       XDG_CONFIG_HOME: join(runRoot, 'xdg-config'),
-      XDG_DATA_HOME: join(runRoot, 'xdg-data'),
-      XDG_STATE_HOME: join(runRoot, 'xdg-state'),
+      ...(providerMode === 'fake'
+        ? {
+            XDG_DATA_HOME: join(runRoot, 'xdg-data'),
+            XDG_STATE_HOME: join(runRoot, 'xdg-state'),
+          }
+        : {}),
     },
     stdin: 'ignore',
     stdout: 'pipe',
@@ -897,20 +1085,45 @@ export async function runIsolatedChatV2AgentLoop(
     if (providerState.status !== 200) {
       throw new Error(`OpenCode provider-state returned HTTP ${providerState.status}.`);
     }
+    const model = provider
+      ? {
+          provider: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
+          model: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
+          selection: 'deterministic-fake' as const,
+        }
+      : selectChatV2AgentLoopRealModel(providerState.body);
+    selectedModel = {
+      mode: providerMode,
+      provider: model.provider,
+      model: model.model,
+      selection: model.selection,
+    };
     preflightEvidence = {
       open: opened.body,
       ensure: ensured.body,
-      providerState: summarizeProviderState(providerState.body),
+      providerState: summarizeProviderState(providerState.body, model),
     };
+
+    const prompt =
+      scenario === 'authoring-trial'
+        ? 'Edit the current Agent Loop Baseline pipeline. In the existing draft command, change only the printed string from baseline to hello. Preserve both existing Node command tasks and their dependency exactly; do not convert either task to a prompt and do not add files or tasks. Complete Host compilation, an LLM-authored Trial Plan, Sandbox Trial, and verified publication.'
+        : scenario === 'authoring-permission'
+          ? 'Create a minimal Tagma pipeline that reads the staged workspace before finishing.'
+          : scenario === 'discussion'
+            ? 'Explain in one sentence what a Tagma pipeline is. Do not create or edit a pipeline.'
+            : 'Help choose between creating a new greeting pipeline and editing the current baseline; ask one clarification before proceeding.';
 
     operation = await driveChatV2Operation({
       origin,
       managementToken,
       workspacePath: workspace,
-      provider: OPENCODE_QUESTION_CONFORMANCE_PROVIDER_ID,
-      model: OPENCODE_QUESTION_CONFORMANCE_MODEL_ID,
-      prompt: 'Exercise the deterministic Chat V2 clarification loop.',
-      clarificationReply: 'Continue with the deterministic default.',
+      provider: model.provider,
+      model: model.model,
+      prompt,
+      clarificationReply:
+        scenario === 'clarification'
+          ? 'Do not create or edit anything. Explain the choice as a read-only discussion.'
+          : 'Continue with the deterministic default.',
       onProgress: (progress) => {
         lastOperation = progress;
       },
@@ -928,11 +1141,14 @@ export async function runIsolatedChatV2AgentLoop(
         const collected = await collectDiagnosticsEvidence({
           diagnosticsToken,
           diagnosticsBaseUrl,
-          providerDiagnostics: provider.diagnostics(),
+          providerDiagnostics: provider?.diagnostics() ?? [],
           preflightEvidence,
         });
         diagnostics = collected.diagnostics;
         rawDiagnostics = collected.rawDiagnostics;
+        if (!failure && operation) {
+          validateChatV2AgentLoopScenarioOutcome(scenario, operation, rawDiagnostics);
+        }
       } catch (diagnosticsError) {
         if (!failure) {
           failure = {
@@ -949,9 +1165,11 @@ export async function runIsolatedChatV2AgentLoop(
     await stopSidecar(sidecar, origin, managementToken).catch((error) => {
       cleanupErrors.push(error instanceof Error ? error.message : String(error));
     });
-    await provider.stop().catch((error) => {
-      cleanupErrors.push(error instanceof Error ? error.message : String(error));
-    });
+    if (provider) {
+      await provider.stop().catch((error) => {
+        cleanupErrors.push(error instanceof Error ? error.message : String(error));
+      });
+    }
     const redactCredentials = (value: string): string => {
       let redacted = value.split(managementToken).join('[REDACTED]');
       if (diagnosticsToken) redacted = redacted.split(diagnosticsToken).join('[REDACTED]');
@@ -1007,6 +1225,7 @@ export async function runIsolatedChatV2AgentLoop(
     operation,
     lastOperation,
     failure,
+    provider: selectedModel,
     diagnostics,
     artifactsDirectory,
     reportPath,
@@ -1023,9 +1242,13 @@ function cliValue(name: string): string | null {
 
 if (import.meta.main) {
   const scenarioValue = cliValue('--scenario') ?? 'matrix';
-  if (!['matrix', 'clarification', 'discussion', 'authoring-permission'].includes(scenarioValue)) {
+  if (
+    !['matrix', 'clarification', 'discussion', 'authoring-permission', 'authoring-trial'].includes(
+      scenarioValue,
+    )
+  ) {
     throw new Error(
-      '--scenario must be matrix, clarification, discussion, or authoring-permission.',
+      '--scenario must be matrix, clarification, discussion, authoring-permission, or authoring-trial.',
     );
   }
   const repeatValue = Number(cliValue('--repeat') ?? '1');
@@ -1039,7 +1262,7 @@ if (import.meta.main) {
   const artifactsParentDirectory = cliValue('--artifacts') ?? undefined;
   const scenarios: ChatV2AgentLoopScenario[] =
     scenarioValue === 'matrix'
-      ? ['clarification', 'discussion', 'authoring-permission']
+      ? ['discussion', 'authoring-trial']
       : [scenarioValue as ChatV2AgentLoopScenario];
   const reports: IsolatedChatV2AgentLoopReport[] = [];
   for (let repeatIndex = 0; repeatIndex < repeatValue; repeatIndex += 1) {
@@ -1048,6 +1271,7 @@ if (import.meta.main) {
         await runIsolatedChatV2AgentLoop({
           scenario,
           timeoutMs: timeoutValue,
+          providerMode: process.argv.includes('--fake-provider') ? 'fake' : 'real',
           ...(artifactsParentDirectory ? { artifactsParentDirectory } : {}),
           keepRuntime: process.argv.includes('--keep-runtime'),
           ...(process.argv.includes('--compiled')
