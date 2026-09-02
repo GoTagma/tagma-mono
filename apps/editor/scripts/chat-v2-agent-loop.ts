@@ -18,7 +18,11 @@ import {
 
 type JsonRecord = Record<string, unknown>;
 export type ChatV2AgentLoopScenario =
-  'clarification' | 'discussion' | 'authoring-permission' | 'authoring-trial';
+  | 'clarification'
+  | 'discussion'
+  | 'authoring-permission'
+  | 'authoring-trial'
+  | 'authoring-create-trial';
 export type ChatV2AgentLoopProviderMode = 'real' | 'fake';
 
 export interface DriveChatV2OperationOptions {
@@ -40,6 +44,15 @@ export interface DriveChatV2OperationResult {
   readonly operationId: string;
   readonly terminalOutcome: string;
   readonly actionKinds: readonly ChatV2AgentLoopActionKind[];
+  readonly rendererEvidence: DriveChatV2RendererEvidence;
+}
+
+export interface DriveChatV2RendererEvidence {
+  readonly terminalDetailFetched: true;
+  readonly hasResult: boolean;
+  readonly assistantMessageCount: number;
+  readonly visibleContentBytes: number;
+  readonly phaseHistory: readonly string[];
 }
 
 export type ChatV2AgentLoopActionKind =
@@ -214,6 +227,19 @@ export function validateChatV2AgentLoopScenarioOutcome(
   operation: DriveChatV2OperationResult,
   rawDiagnostics: Record<string, unknown>,
 ): void {
+  const validateRendererEvidence = (): void => {
+    const rendererEvidence = operation.rendererEvidence;
+    if (
+      !rendererEvidence?.terminalDetailFetched ||
+      !rendererEvidence.hasResult ||
+      rendererEvidence.assistantMessageCount < 1 ||
+      rendererEvidence.visibleContentBytes < 1
+    ) {
+      throw new Error(
+        `The real ${scenario} scenario did not project a non-empty assistant result to the Renderer boundary.`,
+      );
+    }
+  };
   if (scenario === 'discussion' || scenario === 'clarification') {
     if (operation.terminalOutcome !== 'completed_readonly') {
       throw new Error(`The real ${scenario} scenario must finish as a read-only operation.`);
@@ -231,9 +257,10 @@ export function validateChatV2AgentLoopScenarioOutcome(
     ) {
       throw new Error('The real discussion scenario unexpectedly required interactive input.');
     }
+    validateRendererEvidence();
     return;
   }
-  if (scenario !== 'authoring-trial') return;
+  if (scenario !== 'authoring-trial' && scenario !== 'authoring-create-trial') return;
   if (operation.terminalOutcome !== 'completed_published') {
     throw new Error(
       'The real authoring Trial scenario must publish a verified changed pipeline without a failure fork.',
@@ -277,6 +304,7 @@ export function validateChatV2AgentLoopScenarioOutcome(
   if (!eventRecords.some((event) => event.type === 'trial_status_changed')) {
     throw new Error('The real authoring Trial scenario did not execute Host Trial verification.');
   }
+  validateRendererEvidence();
 }
 
 function operationFromMutation(value: unknown): JsonRecord {
@@ -288,6 +316,45 @@ function operationFromMutation(value: unknown): JsonRecord {
 function terminalOutcome(operation: JsonRecord): string | null {
   if (operation.phase !== 'terminal') return null;
   return nonEmptyString(operation.terminalOutcome, 'Terminal outcome');
+}
+
+function rendererEvidenceFromDetail(
+  detail: JsonRecord,
+  phaseHistory: readonly string[],
+): DriveChatV2RendererEvidence {
+  const operation = record(detail.operation, 'Terminal projected Chat operation');
+  const resultValue = detail.result;
+  const result =
+    resultValue && typeof resultValue === 'object' && !Array.isArray(resultValue)
+      ? (resultValue as JsonRecord)
+      : null;
+  const messages = Array.isArray(result?.messages)
+    ? result.messages.filter(
+        (message): message is JsonRecord =>
+          message !== null && typeof message === 'object' && !Array.isArray(message),
+      )
+    : [];
+  const visibleContentBytes = messages.reduce((total, message) => {
+    const textBytes = typeof message.text === 'string' ? Buffer.byteLength(message.text) : 0;
+    const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+    const attachmentBytes = attachments.reduce((sum, attachment) => {
+      if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment)) return sum;
+      const value = attachment as JsonRecord;
+      return (
+        sum +
+        (typeof value.label === 'string' ? Buffer.byteLength(value.label) : 0) +
+        (typeof value.content === 'string' ? Buffer.byteLength(value.content) : 0)
+      );
+    }, 0);
+    return total + textBytes + attachmentBytes;
+  }, 0);
+  return Object.freeze({
+    terminalDetailFetched: true as const,
+    hasResult: operation.hasResult === true && result !== null,
+    assistantMessageCount: messages.length,
+    visibleContentBytes,
+    phaseHistory: Object.freeze([...phaseHistory]),
+  });
 }
 
 function emitProgress(
@@ -372,6 +439,12 @@ export async function driveChatV2Operation(
   const rendererInstanceId = `renderer-agent-loop-${randomUUID()}`;
   const conversationId = `conversation-agent-loop-${randomUUID()}`;
   const actions: ChatV2AgentLoopActionKind[] = [];
+  const phaseHistory: string[] = [];
+  const observeOperation = (candidate: JsonRecord): void => {
+    const phase = nonEmptyString(candidate.phase, 'Operation phase');
+    if (phaseHistory.at(-1) !== phase) phaseHistory.push(phase);
+    emitProgress(options, candidate, actions);
+  };
   type CreateOutcome =
     | { readonly kind: 'completed'; readonly value: unknown }
     | { readonly kind: 'failed'; readonly error: unknown };
@@ -421,6 +494,37 @@ export async function driveChatV2Operation(
       throw new Error('Chat create response does not match correlated operation authority.');
     }
   };
+  const completeFromTerminal = async (
+    authorityOperationId: string,
+    expectedTerminalOutcome: string,
+  ): Promise<DriveChatV2OperationResult> => {
+    await requireSuccessfulCreate(authorityOperationId);
+    const projectionEnvelope = record(
+      await requestJson(
+        options,
+        `/api/chat/operations/${encodeURIComponent(authorityOperationId)}`,
+        deadline,
+      ),
+      'Terminal Chat projection response',
+    );
+    if (projectionEnvelope.protocolVersion !== 2) {
+      throw new Error('Terminal Chat projection protocol mismatch.');
+    }
+    const detail = record(projectionEnvelope.detail, 'Terminal Chat operation detail');
+    const terminalOperation = record(detail.operation, 'Terminal projected Chat operation');
+    const projectedTerminalOutcome = terminalOutcome(terminalOperation);
+    if (projectedTerminalOutcome !== expectedTerminalOutcome) {
+      throw new Error('Terminal Chat detail does not match the observed terminal operation.');
+    }
+    pushAction(actions, 'projection');
+    observeOperation(terminalOperation);
+    return {
+      operationId: authorityOperationId,
+      terminalOutcome: projectedTerminalOutcome,
+      actionKinds: Object.freeze([...actions]),
+      rendererEvidence: rendererEvidenceFromDetail(detail, phaseHistory),
+    };
+  };
   pushAction(actions, 'create');
   let operation: JsonRecord | null = null;
   let operationId: string | null = null;
@@ -435,7 +539,7 @@ export async function driveChatV2Operation(
     if (observedCreate?.kind === 'completed') {
       operation = operationFromMutation(observedCreate.value);
       operationId = nonEmptyString(operation.operationId, 'Operation id');
-      emitProgress(options, operation, actions);
+      observeOperation(operation);
       break;
     }
     const snapshotEnvelope = record(
@@ -454,7 +558,7 @@ export async function driveChatV2Operation(
       operation = record(correlated, 'Correlated Chat operation');
       operationId = nonEmptyString(operation.operationId, 'Operation id');
       pushAction(actions, 'snapshot');
-      emitProgress(options, operation, actions);
+      observeOperation(operation);
     }
   }
 
@@ -463,8 +567,7 @@ export async function driveChatV2Operation(
     if (!operation || !operationId) throw new Error('Chat operation authority disappeared.');
     const completed = terminalOutcome(operation);
     if (completed) {
-      await requireSuccessfulCreate(operationId);
-      return { operationId, terminalOutcome: completed, actionKinds: Object.freeze([...actions]) };
+      return completeFromTerminal(operationId, completed);
     }
 
     const projectionEnvelope = record(
@@ -481,15 +584,10 @@ export async function driveChatV2Operation(
     const detail = record(projectionEnvelope.detail, 'Chat operation detail');
     operation = record(detail.operation, 'Projected Chat operation');
     pushAction(actions, 'projection');
-    emitProgress(options, operation, actions);
+    observeOperation(operation);
     const projectedTerminal = terminalOutcome(operation);
     if (projectedTerminal) {
-      await requireSuccessfulCreate(operationId);
-      return {
-        operationId,
-        terminalOutcome: projectedTerminal,
-        actionKinds: Object.freeze([...actions]),
-      };
+      return completeFromTerminal(operationId, projectedTerminal);
     }
 
     if (operation.waitReason === 'provider_unavailable') {
@@ -581,7 +679,7 @@ export async function driveChatV2Operation(
       });
       operation = operationFromMutation(replied);
       pushAction(actions, replyAction);
-      emitProgress(options, operation, actions);
+      observeOperation(operation);
       continue;
     }
     if (
@@ -943,7 +1041,9 @@ export async function runIsolatedChatV2AgentLoop(
           },
           discussionResult,
         ]
-      : scenario === 'authoring-permission' || scenario === 'authoring-trial'
+      : scenario === 'authoring-permission' ||
+          scenario === 'authoring-trial' ||
+          scenario === 'authoring-create-trial'
         ? [
             {
               kind: 'create' as const,
@@ -957,7 +1057,12 @@ export async function runIsolatedChatV2AgentLoop(
     providerMode === 'fake'
       ? startOpencodeV2FakeProvider({
           classifierResults,
-          readRounds: scenario === 'authoring-permission' || scenario === 'authoring-trial' ? 2 : 1,
+          readRounds:
+            scenario === 'authoring-permission' ||
+            scenario === 'authoring-trial' ||
+            scenario === 'authoring-create-trial'
+              ? 2
+              : 1,
         })
       : null;
   if (provider) {
@@ -1107,11 +1212,13 @@ export async function runIsolatedChatV2AgentLoop(
     const prompt =
       scenario === 'authoring-trial'
         ? 'Edit the current Agent Loop Baseline pipeline. In the existing draft command, change only the printed string from baseline to hello. Preserve both existing Node command tasks and their dependency exactly; do not convert either task to a prompt and do not add files or tasks. Complete Host compilation, an LLM-authored Trial Plan, Sandbox Trial, and verified publication.'
-        : scenario === 'authoring-permission'
-          ? 'Create a minimal Tagma pipeline that reads the staged workspace before finishing.'
-          : scenario === 'discussion'
-            ? 'Explain in one sentence what a Tagma pipeline is. Do not create or edit a pipeline.'
-            : 'Help choose between creating a new greeting pipeline and editing the current baseline; ask one clarification before proceeding.';
+        : scenario === 'authoring-create-trial'
+          ? 'Build a simple new Tagma pipeline to say hi. Create exactly one deterministic command task that prints hi and has no downstream consumer. Keep its interface minimal: do not add unused inputs, outputs, files, or prompt tasks. Complete Host compilation, an LLM-authored Trial Plan, Sandbox Trial, and verified publication.'
+          : scenario === 'authoring-permission'
+            ? 'Create a minimal Tagma pipeline that reads the staged workspace before finishing.'
+            : scenario === 'discussion'
+              ? 'Explain in one sentence what a Tagma pipeline is. Do not create or edit a pipeline.'
+              : 'Help choose between creating a new greeting pipeline and editing the current baseline; ask one clarification before proceeding.';
 
     operation = await driveChatV2Operation({
       origin,
@@ -1243,12 +1350,17 @@ function cliValue(name: string): string | null {
 if (import.meta.main) {
   const scenarioValue = cliValue('--scenario') ?? 'matrix';
   if (
-    !['matrix', 'clarification', 'discussion', 'authoring-permission', 'authoring-trial'].includes(
-      scenarioValue,
-    )
+    ![
+      'matrix',
+      'clarification',
+      'discussion',
+      'authoring-permission',
+      'authoring-trial',
+      'authoring-create-trial',
+    ].includes(scenarioValue)
   ) {
     throw new Error(
-      '--scenario must be matrix, clarification, discussion, authoring-permission, or authoring-trial.',
+      '--scenario must be matrix, clarification, discussion, authoring-permission, authoring-trial, or authoring-create-trial.',
     );
   }
   const repeatValue = Number(cliValue('--repeat') ?? '1');
@@ -1262,7 +1374,7 @@ if (import.meta.main) {
   const artifactsParentDirectory = cliValue('--artifacts') ?? undefined;
   const scenarios: ChatV2AgentLoopScenario[] =
     scenarioValue === 'matrix'
-      ? ['discussion', 'authoring-trial']
+      ? ['discussion', 'authoring-trial', 'authoring-create-trial']
       : [scenarioValue as ChatV2AgentLoopScenario];
   const reports: IsolatedChatV2AgentLoopReport[] = [];
   for (let repeatIndex = 0; repeatIndex < repeatValue; repeatIndex += 1) {

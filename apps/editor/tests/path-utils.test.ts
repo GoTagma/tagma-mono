@@ -4,6 +4,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -14,6 +16,34 @@ import { join } from 'node:path';
 import { atomicWriteFileSync, readContainedTextFileSync } from '../server/path-utils';
 
 describe('path-utils', () => {
+  test('atomicWriteFileSync retries transient Windows replacement failures without exposing partial bytes', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tagma-path-utils-'));
+    try {
+      const target = join(dir, 'requirements.md');
+      writeFileSync(target, 'previous', 'utf-8');
+      const delays: number[] = [];
+      let attempts = 0;
+
+      atomicWriteFileSync(target, 'replacement', {
+        renameSync: (source, destination) => {
+          attempts += 1;
+          if (attempts < 3) {
+            throw Object.assign(new Error('temporarily locked'), { code: 'EPERM' });
+          }
+          renameSync(source, destination);
+        },
+        sleepSync: (milliseconds) => delays.push(milliseconds),
+      });
+
+      expect(attempts).toBe(3);
+      expect(delays).toEqual([5, 10]);
+      expect(readFileSync(target, 'utf-8')).toBe('replacement');
+      expect(readdirSync(dir).filter((name) => name.includes('.tmp-'))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('atomicWriteFileSync refuses to overwrite a symlink target', () => {
     const dir = mkdtempSync(join(tmpdir(), 'tagma-path-utils-'));
     try {

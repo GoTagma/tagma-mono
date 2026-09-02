@@ -812,22 +812,15 @@ export function runRequirementsSync(yamlPath: string): void {
   const yamlBasename = basename(yamlPath);
 
   let existing: ParsedRequirements | null = null;
+  let existingContent: string | null = null;
   if (existsSync(targetPath)) {
     try {
-      existing = parseRequirementsMd(readFileSync(targetPath, 'utf-8'));
+      existingContent = readFileSync(targetPath, 'utf-8');
+      existing = parseRequirementsMd(existingContent);
     } catch (err) {
       console.warn(`[requirements-sync] failed to read existing ${targetPath}:`, err);
     }
   }
-
-  const nextFrontmatter: RequirementsFrontmatter = {
-    schemaVersion: 1,
-    generatedFor: yamlBasename,
-    generatedAt: new Date().toISOString(),
-    binaries,
-    env: existing?.frontmatter?.env ?? [],
-    services: existing?.frontmatter?.services ?? [],
-  };
 
   const body =
     existing?.body === undefined
@@ -835,12 +828,27 @@ export function runRequirementsSync(yamlPath: string): void {
       : existing.frontmatter?.generatedFor !== yamlBasename && isUntouchedGeneratedBody(existing)
         ? buildInitialBody(yamlBasename, binaries)
         : ensureBinaryBodySections(existing.body, binaries);
+  const generatedRequirementsUnchanged =
+    existing?.frontmatter?.schemaVersion === 1 &&
+    existing.frontmatter.generatedFor === yamlBasename &&
+    JSON.stringify(existing.frontmatter.binaries) === JSON.stringify(binaries) &&
+    existing.body === body;
+  const nextFrontmatter: RequirementsFrontmatter = {
+    schemaVersion: 1,
+    generatedFor: yamlBasename,
+    generatedAt:
+      generatedRequirementsUnchanged && existing?.frontmatter
+        ? existing.frontmatter.generatedAt
+        : new Date().toISOString(),
+    binaries,
+    env: existing?.frontmatter?.env ?? [],
+    services: existing?.frontmatter?.services ?? [],
+  };
+  const nextContent = serializeRequirementsMd({ frontmatter: nextFrontmatter, body });
+  if (existingContent === nextContent) return;
 
   try {
-    atomicWriteFileSync(
-      targetPath,
-      serializeRequirementsMd({ frontmatter: nextFrontmatter, body }),
-    );
+    atomicWriteFileSync(targetPath, nextContent);
   } catch (err) {
     console.warn(`[requirements-sync] failed to write ${targetPath}:`, err);
   }

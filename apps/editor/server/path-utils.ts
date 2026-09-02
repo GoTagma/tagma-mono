@@ -17,9 +17,31 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
-  renameSync,
+  renameSync as renameFileSync,
   unlinkSync,
 } from 'node:fs';
+
+const ATOMIC_WRITE_RETRY_DELAYS_MS = Object.freeze([5, 10, 20, 40, 80, 160]);
+const atomicWriteSleepCell = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+
+export interface AtomicWriteFileSyncOptions {
+  readonly renameSync?: (source: string, destination: string) => void;
+  readonly sleepSync?: (milliseconds: number) => void;
+  readonly retryDelaysMs?: readonly number[];
+}
+
+function errorCode(err: unknown): string | null {
+  if (!err || typeof err !== 'object' || !('code' in err)) return null;
+  return typeof err.code === 'string' ? err.code : null;
+}
+
+function isTransientAtomicReplaceError(err: unknown): boolean {
+  return ['EPERM', 'EACCES', 'EBUSY'].includes(errorCode(err) ?? '');
+}
+
+function sleepSync(milliseconds: number): void {
+  Atomics.wait(atomicWriteSleepCell, 0, 0, milliseconds);
+}
 
 export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -36,15 +58,33 @@ export function errorMessage(err: unknown): string {
  * truncated YAML and blow away the user's in-memory edits. `renameSync` is
  * atomic on POSIX (rename(2)) and on Win32 (MoveFileEx w/ REPLACE_EXISTING).
  */
-export function atomicWriteFileSync(target: string, content: string | Uint8Array): void {
+export function atomicWriteFileSync(
+  target: string,
+  content: string | Uint8Array,
+  options: AtomicWriteFileSyncOptions = {},
+): void {
   if (existsSync(target) && lstatSync(target).isSymbolicLink()) {
     throw new Error(`Refusing to overwrite symbolic link: ${target}`);
   }
   const tmp = `${target}.tmp-${process.pid}-${randomUUID()}`;
   if (typeof content === 'string') writeFileSync(tmp, content, 'utf-8');
   else writeFileSync(tmp, content);
+  const rename = options.renameSync ?? renameFileSync;
+  const wait = options.sleepSync ?? sleepSync;
+  const retryDelays = options.retryDelaysMs ?? ATOMIC_WRITE_RETRY_DELAYS_MS;
+  let retryIndex = 0;
   try {
-    renameSync(tmp, target);
+    for (;;) {
+      try {
+        rename(tmp, target);
+        break;
+      } catch (err) {
+        const delay = retryDelays[retryIndex];
+        if (delay === undefined || !isTransientAtomicReplaceError(err)) throw err;
+        retryIndex += 1;
+        wait(delay);
+      }
+    }
   } catch (err) {
     try {
       unlinkSync(tmp);

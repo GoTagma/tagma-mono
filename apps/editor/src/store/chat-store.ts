@@ -448,17 +448,40 @@ function chatOperationV2ConversationId(workspaceKey: string, rotate = false): st
 
 let chatOperationV2Controller: ChatOperationV2Controller | null = null;
 
-function chatOperationV2Activity(operation: ChatOperationV2Projection | null): ActivityEvent[] {
-  if (!operation || operation.executionState === 'terminal') return [];
+export function chatOperationV2Activity(
+  operation: ChatOperationV2Projection | null,
+): ActivityEvent[] {
+  if (!operation) return [];
+  if (operation.executionState === 'terminal') {
+    if (
+      operation.terminalOutcome !== 'discarded' &&
+      operation.terminalOutcome !== 'failed_terminal'
+    ) {
+      return [];
+    }
+    return [
+      {
+        kind: 'operation-failed',
+        startedAt: operation.updatedAt,
+        endedAt: operation.updatedAt,
+        count: 1,
+        detail:
+          operation.terminalOutcome === 'discarded'
+            ? 'Pipeline update was discarded before publication'
+            : 'Chat operation ended before producing a result',
+        key: `chat-operation-v2:${operation.operationId}:${operation.terminalOutcome}`,
+      },
+    ];
+  }
   if (operation.executionState === 'retryable_failure') return [];
   if (operation.executionState === 'waiting_for_user') {
     return [
       {
         kind: 'operation-waiting',
-        startedAt: operation.createdAt,
+        startedAt: operation.updatedAt,
         endedAt: null,
         count: 1,
-        detail: `Host phase: ${operation.phase.replace(/_/g, ' ')}`,
+        detail: chatOperationV2PhaseDetail(operation.phase),
         key: `chat-operation-v2:${operation.operationId}:${operation.waitReason}`,
       },
     ];
@@ -466,7 +489,9 @@ function chatOperationV2Activity(operation: ChatOperationV2Projection | null): A
   const kind: ActivityKind =
     operation.phase === 'created' || operation.phase === 'classifying'
       ? 'request-sent'
-      : operation.phase === 'verifying' || operation.phase.startsWith('commit_')
+      : operation.phase === 'verifying' ||
+          operation.phase === 'repairing' ||
+          operation.phase.startsWith('commit_')
         ? 'tool-running'
         : operation.waitReason === 'retry_backoff'
           ? 'retry'
@@ -474,13 +499,41 @@ function chatOperationV2Activity(operation: ChatOperationV2Projection | null): A
   return [
     {
       kind,
-      startedAt: operation.createdAt,
+      startedAt: operation.updatedAt,
       endedAt: null,
       count: 1,
-      detail: `Host phase: ${operation.phase.replace(/_/g, ' ')}`,
+      detail: chatOperationV2PhaseDetail(operation.phase),
       key: `chat-operation-v2:${operation.operationId}:${operation.phase}`,
     },
   ];
+}
+
+function chatOperationV2PhaseDetail(phase: ChatOperationV2Projection['phase']): string {
+  switch (phase) {
+    case 'created':
+    case 'classifying':
+      return 'Understanding the request';
+    case 'awaiting_input':
+      return 'Waiting for your decision';
+    case 'reserving':
+    case 'staging':
+      return 'Preparing an isolated pipeline draft';
+    case 'authoring':
+      return 'Writing the pipeline draft';
+    case 'verifying':
+      return 'Running compilation and Trial verification';
+    case 'repairing':
+      return 'Repairing the draft from Trial evidence';
+    case 'commit_preparing':
+    case 'commit_decided':
+    case 'commit_applying':
+    case 'commit_recovering':
+      return 'Publishing the verified pipeline';
+    case 'executing_readonly':
+      return 'Preparing the response';
+    case 'terminal':
+      return 'Operation finished';
+  }
 }
 
 function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnapshot): void {

@@ -649,6 +649,11 @@ test('pipeline authoring uses native prompt outputs without inventing duplicate 
   expect(nativePrimitives).toContain(
     'Do not duplicate or contradict that contract in the prompt or invent a companion file',
   );
+  expect(pipeline).toContain('An output binding name never selects raw stdout implicitly');
+  expect(nativePrimitives).toContain('Omitting `from` means `json.<outputName>`');
+  expect(nativePrimitives).toContain(
+    'If no downstream task consumes command output, omit `outputs` entirely',
+  );
   expect(nativePrimitives).toContain(
     'A prompt task that must create or edit files needs write permission',
   );

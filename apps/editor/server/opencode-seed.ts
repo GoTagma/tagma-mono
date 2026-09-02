@@ -866,7 +866,7 @@ For each new prompt task:
 
 ## Design-Before-Generation Gate
 
-For every new-pipeline request, complete this gate in the current worker before writing. Establish the goal and observable success evidence, task graph and typed dataflow, permissions, verification, and requirements. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write YAML until the design is coherent. Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient. Do not turn “capture”, “return”, or “make observable” into a file-write requirement. A prompt task that truly must create or edit a file needs explicit write permission.
+For every new-pipeline request, complete this gate in the current worker before writing. Establish the goal and observable success evidence, task graph and typed dataflow, permissions, verification, and requirements. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write YAML until the design is coherent. Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient. An output binding name never selects raw stdout implicitly: omit unused command outputs, or set \`from: stdout\` explicitly when raw stdout is the intended value. Do not turn “capture”, “return”, or “make observable” into a file-write requirement. A prompt task that truly must create or edit a file needs explicit write permission.
 
 ## Debuggable Task Granularity
 
@@ -1116,6 +1116,7 @@ Use Tagma YAML fields before helper scripts or custom tool creation:
   could be ambiguous.
 - Use \`inputs\` / \`outputs\` maps for dataflow. There is no \`ports:\` key and no
   task-level \`env:\` field.
+- An output binding name does not select a stream. Omitting \`from\` means \`json.<outputName>\` and therefore requires a final-line JSON object. Use \`from: stdout\` explicitly to capture raw command stdout. If no downstream task consumes command output, omit \`outputs\` entirely.
 - Quote \`{{inputs.name}}\` placeholders inside command strings; Tagma does not
   shell-escape substituted values.
 - After every YAML write, read the same-folder \`.compile.log\`; the validator is

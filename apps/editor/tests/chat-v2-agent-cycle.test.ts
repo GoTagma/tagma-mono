@@ -67,6 +67,13 @@ function scenarioReport(input: {
             operationId: `operation-${input.scenario}`,
             terminalOutcome: 'completed_readonly',
             actionKinds: ['create', 'projection'],
+            rendererEvidence: {
+              terminalDetailFetched: true,
+              hasResult: true,
+              assistantMessageCount: 1,
+              visibleContentBytes: 24,
+              phaseHistory: ['classifying', 'executing_readonly', 'terminal'],
+            },
           }
         : null,
     lastOperation:
@@ -173,18 +180,22 @@ test('agent cycle owns stable real-provider source runs, a fresh build, and stab
     'source:clarification',
     'source:discussion',
     'source:authoring-trial',
+    'source:authoring-create-trial',
     'source:clarification',
     'source:discussion',
     'source:authoring-trial',
+    'source:authoring-create-trial',
     'build',
     'compiled:clarification',
     'compiled:discussion',
     'compiled:authoring-trial',
+    'compiled:authoring-create-trial',
     'compiled:clarification',
     'compiled:discussion',
     'compiled:authoring-trial',
+    'compiled:authoring-create-trial',
   ]);
-  expect(report.runs).toHaveLength(12);
+  expect(report.runs).toHaveLength(16);
   expect(report.build).toMatchObject({ verdict: 'passed', sha256: 'a'.repeat(64) });
 });
 

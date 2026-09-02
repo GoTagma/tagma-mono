@@ -260,6 +260,14 @@ The default live matrix includes:
   verified change and diagnostics must prove a `trial_plan` invocation plus Host Trial execution.
   `completed_noop`, a failure fork, a compile-only result, or a Host fixed-plan fast lane fails the
   scenario.
+- `authoring-create-trial`: the same real-model path starting from the ordinary “build a simple
+  pipeline to say hi” create intent. The generated one-task command pipeline must avoid unused
+  dataflow contracts, complete Trial, and publish successfully.
+
+Every successful scenario performs one final authoritative operation-detail read after the terminal
+mutation or wake-up. The gate requires a Host-authenticated result with at least one non-empty
+assistant message at the Renderer projection boundary; reaching a terminal outcome alone is not a
+passing user journey.
 
 The process exits `0` only after both source rounds, a fresh compiled build, both compiled rounds,
 and cleanup succeed. A scenario failure is automatically repeated once in a new isolated
@@ -275,6 +283,7 @@ Useful gate options:
 
 ```powershell
 bun run test:chat-v2-loop -- --scenario authoring-trial
+bun run test:chat-v2-loop -- --scenario authoring-create-trial
 bun run test:chat-v2-loop -- --stability-runs 3
 bun run test:chat-v2-loop -- --timeout-ms 240000 --artifacts D:\Temp\tagma-loop-reports
 ```
@@ -284,6 +293,7 @@ For narrow harness development only, bypass the convergence gate explicitly:
 ```powershell
 bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario discussion --repeat 1
 bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario authoring-trial --compiled
+bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario authoring-create-trial --compiled
 bun run --filter tagma-editor test:chat-v2-loop:scenario -- --scenario clarification --fake-provider
 ```
 

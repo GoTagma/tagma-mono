@@ -18,11 +18,13 @@ const DEFAULT_SCENARIOS = Object.freeze([
   'clarification',
   'discussion',
   'authoring-trial',
+  'authoring-create-trial',
 ] as const satisfies readonly ChatV2AgentLoopScenario[]);
 const SUPPORTED_SCENARIOS = new Set<ChatV2AgentLoopScenario>([
   'clarification',
   'discussion',
   'authoring-trial',
+  'authoring-create-trial',
 ]);
 const MAX_LOG_BYTES = 512 * 1024;
 

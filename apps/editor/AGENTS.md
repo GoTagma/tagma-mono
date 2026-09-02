@@ -165,6 +165,14 @@
 
 ## Chat Message Layout
 
+- A terminal Chat V2 authoring discard must never collapse to a user-only blank transcript. Keep
+  the durable terminal operation visible as an explicit not-published notice, retain a failed
+  activity state after `sending` clears, and state that the current pipeline was unchanged. Do not
+  expose internal repair/Trial model text merely to fill the gap.
+- Permission cards are informed-consent boundaries. Show the requested action, workspace, available
+  working directory, and explain each decision's duration: current request, future matching
+  requests in this chat, or rejection. Never relabel chat-scoped `allow_always` as workspace-wide.
+
 - Keep optimistic and queued user-message bodies behind the same `min-w-0 max-w-full` flex shrink
   layer as persisted message parts. `break-words` alone does not constrain a flex item's intrinsic
   minimum width, so a long unbroken token can widen a transient bubble until its state changes.
@@ -1295,6 +1303,20 @@
   Reuse `useModalBackdropDismiss` for these provider modals.
 
 ## Chat Trial Plan Semantics
+
+- The real-provider Chat V2 convergence gate must fetch the final operation detail and require a
+  non-empty Host-authenticated assistant result at the Renderer projection boundary. A terminal
+  operation, successful compile, or Trial event alone cannot prove a visible user journey. Keep a
+  create-from-scratch scenario matching the ordinary simple-pipeline request in the default source
+  and compiled matrices; the edit-only baseline is not representative of create/dataflow mistakes.
+- An output binding name never implies its source. Omitted `from` selects `json.<outputName>` and
+  needs final-line JSON; raw command output requires explicit `from: stdout`. Omit outputs entirely
+  when no downstream consumer needs them.
+- Requirements synchronization must be byte-idempotent when generated requirements semantics are
+  unchanged. Preserve `generatedAt` and skip the atomic write in that case, or a YAML-triggered
+  watcher can manufacture a companion hash conflict against Chat commit CAS and force a needless
+  fork. Atomic same-directory replacement may retry only bounded transient `EPERM`/`EACCES`/`EBUSY`
+  failures; keep symlink rejection, failure cleanup, and non-transient fail-closed behavior.
 
 - Blocked coverage is a diagnostic-only observation limit, never a pipeline defect: it must not fail the trial plan, only surface as a non-fatal `passed-with-warnings` warning. Only `blocking` findings block the plan.
 - A self-contained pipeline may generate deterministic files that downstream tasks consume. Express

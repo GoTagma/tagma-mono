@@ -884,6 +884,7 @@ function ChatMessages() {
             );
           })}
           <ChatOperationV2PipelineResult />
+          <ChatOperationV2TerminalNotice />
           {showPending && <PendingUserBubble text={pendingUserText!} />}
           {sending && !currentTurnAssistantId && (
             <PlaceholderAssistantBubble
@@ -912,6 +913,44 @@ function ChatMessages() {
       )}
     </>
   );
+}
+
+export function ChatOperationV2TerminalNoticeView({
+  terminalOutcome,
+}: {
+  terminalOutcome: 'discarded' | 'failed_terminal';
+}) {
+  const discarded = terminalOutcome === 'discarded';
+  return (
+    <section
+      aria-label="Chat operation did not complete"
+      className="max-w-[90%] self-start border border-tagma-error/35 bg-tagma-surface px-3 py-2"
+    >
+      <div className="flex items-center gap-2 text-label font-sans text-tagma-text">
+        <AlertTriangle size={12} className="shrink-0 text-tagma-error" />
+        <span>{discarded ? 'Pipeline update was not published' : 'Chat operation stopped'}</span>
+      </div>
+      <p className="mt-1 text-caption font-sans text-tagma-muted break-words">
+        {discarded
+          ? 'Tagma discarded the staged draft before publication. If you did not discard it, verification or repair did not produce a publishable result. Your current pipeline was left unchanged.'
+          : 'Tagma could not produce a safe result for this request. Your current pipeline was left unchanged.'}
+      </p>
+      <p className="mt-1 text-caption font-sans text-tagma-muted/80">
+        Review the activity status and send the request again after correcting the reported issue.
+      </p>
+    </section>
+  );
+}
+
+function ChatOperationV2TerminalNotice() {
+  const operation = useChatStore((state) => state.activeChatOperationV2);
+  if (
+    operation?.executionState !== 'terminal' ||
+    (operation.terminalOutcome !== 'discarded' && operation.terminalOutcome !== 'failed_terminal')
+  ) {
+    return null;
+  }
+  return <ChatOperationV2TerminalNoticeView terminalOutcome={operation.terminalOutcome} />;
 }
 
 function normalizedPath(value: string): { value: string; caseInsensitive: boolean } | null {

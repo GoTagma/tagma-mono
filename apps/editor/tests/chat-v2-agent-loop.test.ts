@@ -93,6 +93,13 @@ test('real agent loop fails closed instead of substituting a fake provider', () 
 });
 
 test('authoring Trial scenario requires publication plus Trial Plan and Trial execution evidence', () => {
+  const visibleRendererEvidence = {
+    terminalDetailFetched: true as const,
+    hasResult: true,
+    assistantMessageCount: 1,
+    visibleContentBytes: 42,
+    phaseHistory: ['classifying', 'authoring', 'verifying', 'terminal'],
+  };
   expect(() =>
     validateChatV2AgentLoopScenarioOutcome(
       'authoring-trial',
@@ -100,6 +107,7 @@ test('authoring Trial scenario requires publication plus Trial Plan and Trial ex
         operationId: 'operation-noop',
         terminalOutcome: 'completed_noop',
         actionKinds: ['create', 'projection'],
+        rendererEvidence: visibleRendererEvidence,
       },
       {},
     ),
@@ -112,6 +120,7 @@ test('authoring Trial scenario requires publication plus Trial Plan and Trial ex
         operationId: 'operation-forked',
         terminalOutcome: 'completed_forked',
         actionKinds: ['create', 'projection'],
+        rendererEvidence: visibleRendererEvidence,
       },
       {},
     ),
@@ -121,27 +130,72 @@ test('authoring Trial scenario requires publication plus Trial Plan and Trial ex
     operationId: 'operation-published',
     terminalOutcome: 'completed_published',
     actionKinds: ['create', 'projection'] as const,
+    rendererEvidence: visibleRendererEvidence,
   };
   expect(() => validateChatV2AgentLoopScenarioOutcome('authoring-trial', operation, {})).toThrow(
     'did not execute a Trial Plan invocation',
   );
 
-  expect(() =>
-    validateChatV2AgentLoopScenarioOutcome('authoring-trial', operation, {
-      context: {
-        features: {
-          chatOperationV2: {
-            eventEvidence: {
-              events: [
-                { type: 'invocation_prepared', invocation: { purpose: 'trial_plan' } },
-                { type: 'trial_status_changed' },
-              ],
-            },
+  const hostTrialEvidence = {
+    context: {
+      features: {
+        chatOperationV2: {
+          eventEvidence: {
+            events: [
+              { type: 'invocation_prepared', invocation: { purpose: 'trial_plan' } },
+              { type: 'trial_status_changed' },
+            ],
           },
         },
       },
-    }),
+    },
+  };
+
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'authoring-trial',
+      { ...operation, rendererEvidence: undefined } as never,
+      hostTrialEvidence,
+    ),
+  ).toThrow('did not project a non-empty assistant result');
+
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'authoring-trial',
+      {
+        ...operation,
+        rendererEvidence: visibleRendererEvidence,
+      } as never,
+      hostTrialEvidence,
+    ),
   ).not.toThrow();
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'authoring-create-trial' as never,
+      {
+        ...operation,
+        operationId: 'operation-created-pipeline',
+        rendererEvidence: {
+          terminalDetailFetched: true,
+          hasResult: true,
+          assistantMessageCount: 1,
+          visibleContentBytes: 42,
+          phaseHistory: ['classifying', 'staging', 'authoring', 'verifying', 'terminal'],
+        },
+      } as never,
+      hostTrialEvidence,
+    ),
+  ).not.toThrow();
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'authoring-create-trial' as never,
+      {
+        ...operation,
+        terminalOutcome: 'completed_noop',
+      } as never,
+      hostTrialEvidence,
+    ),
+  ).toThrow('must publish a verified changed pipeline');
 });
 
 test('real discussion and clarification scenarios prove their distinct terminal paths', () => {
@@ -149,6 +203,13 @@ test('real discussion and clarification scenarios prove their distinct terminal 
     operationId: 'operation-readonly',
     terminalOutcome: 'completed_readonly',
     actionKinds: ['create', 'projection'] as const,
+    rendererEvidence: {
+      terminalDetailFetched: true as const,
+      hasResult: true,
+      assistantMessageCount: 1,
+      visibleContentBytes: 24,
+      phaseHistory: ['classifying', 'executing_readonly', 'terminal'],
+    },
   };
   expect(() => validateChatV2AgentLoopScenarioOutcome('discussion', readonly, {})).not.toThrow();
   expect(() => validateChatV2AgentLoopScenarioOutcome('clarification', readonly, {})).toThrow(
@@ -172,6 +233,7 @@ test('real discussion and clarification scenarios prove their distinct terminal 
 
 test('agent loop drives create through clarification to a terminal projection', async () => {
   const requests: Array<{ method: string; path: string; body: unknown }> = [];
+  let replied = false;
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -200,6 +262,24 @@ test('agent loop drives create through clarification to a terminal projection', 
         });
       }
       if (request.method === 'GET' && url.pathname === '/api/chat/operations/operation-loop-1') {
+        if (replied) {
+          return Response.json({
+            protocolVersion: 2,
+            detail: {
+              operation: {
+                operationId: 'operation-loop-1',
+                generation: 1,
+                version: 5,
+                phase: 'terminal',
+                waitReason: null,
+                terminalOutcome: 'completed_readonly',
+                hasResult: true,
+              },
+              pendingInput: null,
+              result: { messages: [{ text: 'Safe projected answer.', attachments: [] }] },
+            },
+          });
+        }
         return Response.json({
           protocolVersion: 2,
           detail: {
@@ -227,6 +307,7 @@ test('agent loop drives create through clarification to a terminal projection', 
         request.method === 'POST' &&
         url.pathname === '/api/chat/operations/operation-loop-1/clarification'
       ) {
+        replied = true;
         return Response.json({
           protocolVersion: 2,
           result: {
@@ -262,12 +343,18 @@ test('agent loop drives create through clarification to a terminal projection', 
     expect(result).toMatchObject({
       operationId: 'operation-loop-1',
       terminalOutcome: 'completed_readonly',
-      actionKinds: ['create', 'projection', 'clarification_reply'],
+      actionKinds: ['create', 'projection', 'clarification_reply', 'projection'],
+      rendererEvidence: {
+        terminalDetailFetched: true,
+        hasResult: true,
+        assistantMessageCount: 1,
+      },
     });
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'POST /api/chat/operations',
       'GET /api/chat/operations/operation-loop-1',
       'POST /api/chat/operations/operation-loop-1/clarification',
+      'GET /api/chat/operations/operation-loop-1',
     ]);
     expect(requests[2]?.body).toMatchObject({
       protocolVersion: 2,
@@ -298,6 +385,7 @@ test('agent loop discovers an in-flight create and resolves a permission without
     waitReason: null,
     terminalOutcome: 'completed_published',
   };
+  let permissionReplied = false;
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -337,6 +425,16 @@ test('agent loop discovers an in-flight create and resolves a permission without
         request.method === 'GET' &&
         url.pathname === '/api/chat/operations/operation-loop-permission'
       ) {
+        if (permissionReplied) {
+          return Response.json({
+            protocolVersion: 2,
+            detail: {
+              operation: { ...terminalOperation, hasResult: true },
+              pendingInput: null,
+              result: { messages: [{ text: 'Pipeline published.', attachments: [] }] },
+            },
+          });
+        }
         return Response.json({
           protocolVersion: 2,
           detail: {
@@ -361,6 +459,7 @@ test('agent loop discovers an in-flight create and resolves a permission without
         url.pathname ===
           '/api/chat/operations/operation-loop-permission/permissions/permission-loop-1/reply'
       ) {
+        permissionReplied = true;
         releaseCreate();
         return Response.json({
           protocolVersion: 2,
@@ -387,9 +486,19 @@ test('agent loop discovers an in-flight create and resolves a permission without
     expect(result).toMatchObject({
       operationId: 'operation-loop-permission',
       terminalOutcome: 'completed_published',
-      actionKinds: ['create', 'snapshot', 'projection', 'permission_reply'],
+      actionKinds: ['create', 'snapshot', 'projection', 'permission_reply', 'projection'],
+      rendererEvidence: {
+        terminalDetailFetched: true,
+        hasResult: true,
+        assistantMessageCount: 1,
+      },
     });
-    expect(requests.at(-1)?.body).toMatchObject({
+    expect(
+      requests.find(
+        ({ path, method }) =>
+          method === 'POST' && path.endsWith('/permissions/permission-loop-1/reply'),
+      )?.body,
+    ).toMatchObject({
       operationId: 'operation-loop-permission',
       expectedGeneration: 1,
       expectedVersion: 2,

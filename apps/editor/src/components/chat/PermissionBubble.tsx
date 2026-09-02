@@ -41,6 +41,8 @@ export function PermissionBubble({ permission }: PermissionBubbleProps) {
   };
 
   const disabled = pending !== null;
+  const workspaceLabel =
+    permission.workspaceKey.split(/[\\/]/).filter(Boolean).at(-1) ?? permission.workspaceKey;
 
   return (
     <div className="max-w-[90%] self-start px-3 py-2 chat-permission-card">
@@ -50,35 +52,68 @@ export function PermissionBubble({ permission }: PermissionBubbleProps) {
         <span className="text-caption font-mono text-tagma-muted truncate">{permission.tool}</span>
       </div>
 
-      <div className="text-label text-tagma-text mb-2 break-words">{permission.title}</div>
+      <dl className="mb-2 grid grid-cols-[auto,minmax(0,1fr)] gap-x-2 gap-y-1 text-caption">
+        <dt className="text-tagma-muted">Requested action</dt>
+        <dd className="min-w-0 break-words text-tagma-text">{permission.title}</dd>
+        <dt className="text-tagma-muted">Workspace</dt>
+        <dd className="min-w-0 truncate font-mono text-tagma-text" title={permission.workspaceKey}>
+          {workspaceLabel}
+        </dd>
+        {permission.directory && (
+          <>
+            <dt className="text-tagma-muted">Working directory</dt>
+            <dd
+              className="min-w-0 break-all font-mono text-tagma-text"
+              title={permission.directory}
+            >
+              {permission.directory}
+            </dd>
+          </>
+        )}
+      </dl>
+
+      <p className="mb-2 text-caption text-tagma-muted/85">
+        Allow only if this action and target match what you asked Tagma to do.
+      </p>
 
       <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
           disabled={disabled}
           onClick={() => onClick('once')}
-          className="flex items-center gap-1 px-2 py-1 text-body text-tagma-success border border-tagma-success/30 hover:bg-tagma-success/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-start gap-1 px-2 py-1 text-left text-body text-tagma-success border border-tagma-success/30 hover:bg-tagma-success/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <Check size={11} />
-          <span>{pending === 'once' ? 'Replying…' : 'Allow once'}</span>
+          <Check size={11} className="mt-0.5 shrink-0" />
+          <span className="flex flex-col">
+            <span>{pending === 'once' ? 'Replying…' : 'Allow once'}</span>
+            <span className="text-caption text-tagma-muted">Only this request</span>
+          </span>
         </button>
         <button
           type="button"
           disabled={disabled}
           onClick={() => onClick('always')}
-          className="flex items-center gap-1 px-2 py-1 text-body text-tagma-accent border border-tagma-accent/30 hover:bg-tagma-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-start gap-1 px-2 py-1 text-left text-body text-tagma-accent border border-tagma-accent/30 hover:bg-tagma-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <InfinityIcon size={11} />
-          <span>{pending === 'always' ? 'Replying…' : 'Always for this chat'}</span>
+          <InfinityIcon size={11} className="mt-0.5 shrink-0" />
+          <span className="flex flex-col">
+            <span>{pending === 'always' ? 'Replying…' : 'Always for this chat'}</span>
+            <span className="text-caption text-tagma-muted">
+              Future matching requests in this chat
+            </span>
+          </span>
         </button>
         <button
           type="button"
           disabled={disabled}
           onClick={() => onClick('reject')}
-          className="flex items-center gap-1 px-2 py-1 text-body text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-start gap-1 px-2 py-1 text-left text-body text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <X size={11} />
-          <span>{pending === 'reject' ? 'Replying…' : 'Reject'}</span>
+          <X size={11} className="mt-0.5 shrink-0" />
+          <span className="flex flex-col">
+            <span>{pending === 'reject' ? 'Replying…' : 'Reject'}</span>
+            <span className="text-caption text-tagma-muted">Do not run this request</span>
+          </span>
         </button>
       </div>
     </div>

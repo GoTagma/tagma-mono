@@ -3,7 +3,12 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ActivityEvent } from '../src/api/opencode-chat';
 import { advanceLiveActivityNow, TurnActivityPanel } from '../src/components/chat/ActivityPanel';
-import { RetryableOperationNoticeView } from '../src/components/chat/ChatPanel';
+import {
+  ChatOperationV2TerminalNoticeView,
+  RetryableOperationNoticeView,
+} from '../src/components/chat/ChatPanel';
+import { PermissionBubble } from '../src/components/chat/PermissionBubble';
+import { chatOperationV2Activity } from '../src/store/chat-store';
 
 const activity = [
   { kind: 'request-sent', startedAt: 0, endedAt: 100, count: 1 },
@@ -18,6 +23,66 @@ const activity = [
 ] satisfies ActivityEvent[];
 
 describe('Chat Operation V2 activity panel', () => {
+  test('keeps an automatic discarded terminal visible instead of ending with a blank transcript', () => {
+    const html = renderToStaticMarkup(
+      createElement(ChatOperationV2TerminalNoticeView, { terminalOutcome: 'discarded' }),
+    );
+
+    expect(html).toContain('Pipeline update was not published');
+    expect(html).toContain('verification or repair did not produce a publishable result');
+    expect(html).toContain('Your current pipeline was left unchanged');
+  });
+
+  test('retains a failed terminal activity after generation stops', () => {
+    expect(
+      chatOperationV2Activity({
+        operationId: 'operation-discarded',
+        generation: 1,
+        version: 4,
+        phase: 'terminal',
+        waitReason: null,
+        executionState: 'terminal',
+        terminalOutcome: 'discarded',
+        createdAt: 100,
+        updatedAt: 400,
+      } as never),
+    ).toEqual([
+      expect.objectContaining({
+        kind: 'operation-failed',
+        endedAt: 400,
+        detail: 'Pipeline update was discarded before publication',
+      }),
+    ]);
+  });
+
+  test('explains the permission target and the scope of every decision', () => {
+    const html = renderToStaticMarkup(
+      createElement(PermissionBubble, {
+        permission: {
+          workspaceKey: String.raw`E:\tagma-ws-22`,
+          directory: String.raw`E:\tagma-ws-22\.tagma`,
+          id: 'permission-1',
+          sessionID: 'operation-1',
+          title: 'write: pipeline_file',
+          tool: 'write',
+          protocol: 'current',
+          metadata: { chatOperationProtocol: 'v2' },
+          createdAt: 100,
+        },
+      }),
+    );
+
+    expect(html).toContain('Requested action');
+    expect(html).toContain('write: pipeline_file');
+    expect(html).toContain('Workspace');
+    expect(html).toContain('tagma-ws-22');
+    expect(html).toContain('Working directory');
+    expect(html).toContain('.tagma');
+    expect(html).toContain('Only this request');
+    expect(html).toContain('Future matching requests in this chat');
+    expect(html).toContain('Do not run this request');
+  });
+
   test('returns a failed request to the normal composer without technical recovery controls', () => {
     const html = renderToStaticMarkup(createElement(RetryableOperationNoticeView));
 

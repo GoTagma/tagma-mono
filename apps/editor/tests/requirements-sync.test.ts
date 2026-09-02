@@ -632,6 +632,41 @@ test('runRequirementsSync seeds a new file when none exists', () => {
   expect(parsed.body).toContain('TODO');
 });
 
+test('runRequirementsSync is byte-idempotent when generated requirements semantics are unchanged', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'stable.yaml',
+    [
+      'pipeline:',
+      '  name: stable',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: hello',
+      '          command: "Write-Output hi"',
+      '',
+    ].join('\n'),
+  );
+
+  runRequirementsSync(yamlPath);
+  const reqPath = requirementsPath(yamlPath);
+  const first = parseRequirementsMd(readFileSync(reqPath, 'utf-8'));
+  const fixed = serializeRequirementsMd({
+    frontmatter: {
+      ...(first.frontmatter as RequirementsFrontmatter),
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    body: first.body,
+  });
+  writeFileSync(reqPath, fixed, 'utf-8');
+
+  runRequirementsSync(yamlPath);
+
+  expect(readFileSync(reqPath, 'utf-8')).toBe(fixed);
+});
+
 test('runRequirementsSync preserves body + agent-owned env when YAML changes', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(
