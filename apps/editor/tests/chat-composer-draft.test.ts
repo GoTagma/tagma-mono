@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { setClientWorkspace } from '../src/api/client';
 import {
+  acceptsChatComposerReply,
   getChatComposerAvailability,
   restoreComposerDraftAfterSendFailure,
 } from '../src/components/chat/ChatComposer';
@@ -26,8 +27,57 @@ describe('chat composer draft', () => {
         ready: true,
         sending: false,
         operationActive: true,
+        acceptsActiveOperationReply: false,
       }),
     ).toEqual({ blockedByAnotherChatUpdate: true, canSend: false });
+  });
+
+  test('allows a reply while the active operation waits for composer input', () => {
+    expect(
+      getChatComposerAvailability({
+        hasContent: true,
+        hasModel: true,
+        ready: true,
+        sending: true,
+        operationActive: true,
+        acceptsActiveOperationReply: true,
+      }),
+    ).toEqual({ blockedByAnotherChatUpdate: false, canSend: true });
+  });
+
+  test('accepts only live composer-owned pending input', () => {
+    expect(
+      acceptsChatComposerReply({
+        executionState: 'waiting_for_user',
+        pendingInputKind: 'clarification',
+        clarificationRequestReady: true,
+        questionRequestState: null,
+      }),
+    ).toBe(true);
+    expect(
+      acceptsChatComposerReply({
+        executionState: 'waiting_for_user',
+        pendingInputKind: 'question',
+        clarificationRequestReady: false,
+        questionRequestState: 'live_pending',
+      }),
+    ).toBe(true);
+    expect(
+      acceptsChatComposerReply({
+        executionState: 'waiting_for_user',
+        pendingInputKind: 'stale_inventory',
+        clarificationRequestReady: true,
+        questionRequestState: null,
+      }),
+    ).toBe(false);
+    expect(
+      acceptsChatComposerReply({
+        executionState: 'waiting_for_user',
+        pendingInputKind: 'question',
+        clarificationRequestReady: false,
+        questionRequestState: 'recovery_required',
+      }),
+    ).toBe(false);
   });
 
   test('stores unsent text outside the mounted ChatPanel component', () => {

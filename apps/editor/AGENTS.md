@@ -941,6 +941,11 @@
   retry, discard-and-change-provider, or discard. Project non-null wait reasons before phase, and
   after reservation derive failure evidence from authoring, repair, and Trial Plan outboxes; a
   settled earlier invocation must never replace the newest failing internal invocation.
+- A `waiting_for_user` operation remains active, but the Composer must allow the pending reply when
+  Host detail projects a matching clarification request or a `live_pending` question. Do not let
+  the generic `sending`/active-operation lock make `replyClarification` or `replyQuestion`
+  unreachable. Stale-inventory, permission, recovery-required, and request-id-missing waits remain
+  blocked from the Composer.
 
 - Tagma may reuse OpenCode's user-level data root for provider login state, but it must never share
   the schema-bearing session database with a standalone OpenCode CLI. Every managed Chat and

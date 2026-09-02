@@ -1,6 +1,10 @@
 import { useLayoutEffect, useRef } from 'react';
 import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
+import type {
+  ChatOperationV2Projection,
+  ChatOperationV2QuestionPending,
+} from '../../api/chat-operations';
 import { useChatStore } from '../../store/chat-store';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import {
@@ -148,14 +152,27 @@ export function restoreComposerDraftAfterSendFailure(
   if (!state.composerDraft) state.setComposerDraft(submittedText);
 }
 
+export function acceptsChatComposerReply(input: {
+  executionState: ChatOperationV2Projection['executionState'] | null;
+  pendingInputKind: ChatOperationV2Projection['pendingInputKind'];
+  clarificationRequestReady: boolean;
+  questionRequestState: ChatOperationV2QuestionPending['state'] | null;
+}): boolean {
+  if (input.executionState !== 'waiting_for_user') return false;
+  if (input.pendingInputKind === 'clarification') return input.clarificationRequestReady;
+  return input.pendingInputKind === 'question' && input.questionRequestState === 'live_pending';
+}
+
 export function getChatComposerAvailability(input: {
   hasContent: boolean;
   hasModel: boolean;
   ready: boolean;
   sending: boolean;
   operationActive: boolean;
+  acceptsActiveOperationReply: boolean;
 }): { blockedByAnotherChatUpdate: boolean; canSend: boolean } {
-  const blockedByAnotherChatUpdate = input.sending || input.operationActive;
+  const blockedByAnotherChatUpdate =
+    (input.sending || input.operationActive) && !input.acceptsActiveOperationReply;
   return {
     blockedByAnotherChatUpdate,
     canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,
@@ -176,6 +193,17 @@ export function ChatComposer() {
       s.activeChatOperationV2.executionState !== 'terminal' &&
       s.activeChatOperationV2.executionState !== 'retryable_failure',
   );
+  const acceptsActiveOperationReply = useChatStore((s) => {
+    const operation = s.activeChatOperationV2;
+    if (!operation) return false;
+    return acceptsChatComposerReply({
+      executionState: operation.executionState,
+      pendingInputKind: operation.pendingInputKind,
+      clarificationRequestReady:
+        typeof s.chatOperationV2ClarificationRequests[operation.operationId] === 'string',
+      questionRequestState: s.chatOperationV2QuestionRequests[operation.operationId]?.state ?? null,
+    });
+  });
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const text = useChatStore((s) => s.composerDraft);
@@ -202,6 +230,7 @@ export function ChatComposer() {
     ready,
     sending,
     operationActive,
+    acceptsActiveOperationReply,
   });
   const stopMode = getChatComposerStopMode({ sending });
   const stopLabel = 'Stop generating';
