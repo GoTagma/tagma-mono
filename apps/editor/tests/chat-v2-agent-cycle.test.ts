@@ -123,12 +123,14 @@ function dependencies(input?: {
   throwScenario?: boolean;
   cleanupFailure?: boolean;
   reportProviderMode?: 'real' | 'fake';
-}): { dependencies: ChatV2AgentCycleDependencies; calls: string[] } {
+}): { dependencies: ChatV2AgentCycleDependencies; calls: string[]; timeouts: number[] } {
   const calls: string[] = [];
+  const timeouts: number[] = [];
   let failedOnce = false;
   let failureCount = 0;
   return {
     calls,
+    timeouts,
     dependencies: {
       buildCompiledSidecar: async () => {
         calls.push('build');
@@ -138,8 +140,9 @@ function dependencies(input?: {
           output: 'built',
         };
       },
-      runScenario: async ({ scenario, sidecarExecutable, providerMode }) => {
+      runScenario: async ({ scenario, sidecarExecutable, providerMode, timeoutMs }) => {
         expect(providerMode).toBe('real');
+        timeouts.push(timeoutMs ?? -1);
         const mode = sidecarExecutable ? 'compiled' : 'source';
         calls.push(`${mode}:${scenario}`);
         if (input?.throwScenario) throw new Error('scenario transport crashed');
@@ -197,6 +200,7 @@ test('agent cycle owns stable real-provider source runs, a fresh build, and stab
   ]);
   expect(report.runs).toHaveLength(16);
   expect(report.build).toMatchObject({ verdict: 'passed', sha256: 'a'.repeat(64) });
+  expect(new Set(harness.timeouts)).toEqual(new Set([300_000]));
 });
 
 test('agent cycle cannot report verified from a fake provider scenario', async () => {

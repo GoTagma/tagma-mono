@@ -219,7 +219,7 @@ function validateOptions(options: ChatV2AgentCycleOptions): {
   if (!Number.isSafeInteger(stabilityRuns) || stabilityRuns < 2 || stabilityRuns > 5) {
     throw new TypeError('stabilityRuns must be an integer from 2 to 5.');
   }
-  const timeoutMs = options.timeoutMs ?? 180_000;
+  const timeoutMs = options.timeoutMs ?? 300_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 900_000) {
     throw new TypeError('timeoutMs must be an integer from 30000 to 900000.');
   }
@@ -691,7 +691,7 @@ function cliValue(name: string): string | null {
 
 async function runCli(): Promise<void> {
   const stabilityRuns = Number(cliValue('--stability-runs') ?? '2');
-  const timeoutMs = Number(cliValue('--timeout-ms') ?? '180000');
+  const timeoutMs = Number(cliValue('--timeout-ms') ?? '300000');
   const artifactsParentDirectory = cliValue('--artifacts') ?? undefined;
   const scenarioValue = cliValue('--scenario');
   if (scenarioValue && !SUPPORTED_SCENARIOS.has(scenarioValue as ChatV2AgentLoopScenario)) {

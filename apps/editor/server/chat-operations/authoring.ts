@@ -8,6 +8,7 @@ import {
   type ChatOperationV2BindingTerminalTransaction,
   type ChatOperationV2TargetCoordinate,
 } from './binding.js';
+import type { ChatOperationV2ClarificationThread } from './clarification.js';
 import {
   deriveChatCommitCoordinateId,
   parseChatCommitPrepareRecord,
@@ -464,6 +465,7 @@ export interface ChatOperationV2AuthoringInvocationRequest {
   /** Present only for the dedicated Host-authorized Trial Plan invocation. */
   readonly trialPlanRequest: ChatOperationV2TrialPlanRequest | null;
   readonly admission: ChatOperationV2Admission;
+  readonly clarificationThread: ChatOperationV2ClarificationThread | null;
   readonly canonicalRequestBytes: Uint8Array;
   readonly stage: ChatOperationV2AuthoringStage;
   readonly relocation: ChatOperationV2SessionRelocation;
@@ -699,6 +701,7 @@ export type ChatOperationV2AuthoringPersistence = Pick<
   | 'getOperation'
   | 'getWorkspaceOperationSnapshot'
   | 'getOperationAdmission'
+  | 'getOperationClarificationThread'
   | 'getInteractiveRequest'
   | 'listPendingInteractiveRequests'
   | 'getPendingResultMessage'
@@ -1579,6 +1582,9 @@ export class ChatOperationV2AuthoringEngine {
         'Sealed operation admission is unavailable.',
       );
     }
+    const clarificationThread = this.persistence.getOperationClarificationThread(
+      context.operationId,
+    );
     const identity = this.invocationIdentity(purpose, context.sessionId);
     const requestBytes = canonicalBytes({
       schemaVersion: CHAT_OPERATION_V2_AUTHORING_SCHEMA_VERSION,
@@ -1593,6 +1599,7 @@ export class ChatOperationV2AuthoringEngine {
       targetIdentity: context.binding.target.identity,
       originHash: context.originHash,
       admission,
+      clarificationThread,
       repairEvidence,
       trialPlanRequest,
     });
@@ -1679,6 +1686,7 @@ export class ChatOperationV2AuthoringEngine {
         repairAttempt,
         trialPlanRequest,
         admission,
+        clarificationThread,
         canonicalRequestBytes: Uint8Array.from(requestBytes),
         stage: context.stage,
         relocation: context.relocation,

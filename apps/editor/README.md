@@ -261,8 +261,10 @@ The default live matrix includes:
   `completed_noop`, a failure fork, a compile-only result, or a Host fixed-plan fast lane fails the
   scenario.
 - `authoring-create-trial`: the same real-model path starting from the ordinary “build a simple
-  pipeline to say hi” create intent. The generated one-task command pipeline must avoid unused
-  dataflow contracts, complete Trial, and publish successfully.
+  pipeline to say hi” request. The model must first project a create-versus-edit clarification,
+  the harness chooses a brand-new pipeline, and the accepted reply must carry through authoring.
+  The generated one-task command pipeline must avoid unused dataflow contracts, complete Trial,
+  and publish successfully.
 
 Every successful scenario performs one final authoritative operation-detail read after the terminal
 mutation or wake-up. The gate requires a Host-authenticated result with at least one non-empty
@@ -285,7 +287,7 @@ Useful gate options:
 bun run test:chat-v2-loop -- --scenario authoring-trial
 bun run test:chat-v2-loop -- --scenario authoring-create-trial
 bun run test:chat-v2-loop -- --stability-runs 3
-bun run test:chat-v2-loop -- --timeout-ms 240000 --artifacts D:\Temp\tagma-loop-reports
+bun run test:chat-v2-loop -- --timeout-ms 300000 --artifacts D:\Temp\tagma-loop-reports
 ```
 
 For narrow harness development only, bypass the convergence gate explicitly:

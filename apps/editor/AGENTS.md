@@ -1270,6 +1270,15 @@
   then may answer only projected live clarification/permission/question requests. Unknown or
   recovery-required input fails closed. On every success or failure, drain bounded diagnostics
   before shutdown and retain explicit cursor/truncation evidence without persisting credentials.
+- The create-from-scratch live scenario must force and answer one create-versus-edit clarification
+  before authoring, then require verified publication. After the Host accepts a clarification,
+  carry its authenticated append-only thread into the authoring canonical request and prompt. Start
+  the authoring dispatch in Host background ownership and release the clarification mutation lock
+  before later permission/question CAS replies; keep the lifecycle tracked through shutdown.
+- Give each real-model cycle scenario a finite five-minute operation budget by default. A compiled
+  authoring/Trial run that is still producing Host interaction evidence near three minutes is a
+  long-tail execution, not a confirmed hang; explicit callers may still choose another bounded
+  timeout.
 - Do not classify one isolated scenario failure as repairable product evidence. Re-run that exact
   mode/scenario once in fresh isolation: only the same bounded mechanism fingerprint twice is
   `repair_required`; a pass or different fingerprint is `investigate_instability`. A successful

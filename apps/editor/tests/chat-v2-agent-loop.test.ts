@@ -185,6 +185,32 @@ test('authoring Trial scenario requires publication plus Trial Plan and Trial ex
       } as never,
       hostTrialEvidence,
     ),
+  ).toThrow('did not project and answer a clarification before authoring');
+  expect(() =>
+    validateChatV2AgentLoopScenarioOutcome(
+      'authoring-create-trial' as never,
+      {
+        ...operation,
+        operationId: 'operation-created-pipeline-after-clarification',
+        actionKinds: [...operation.actionKinds, 'clarification_reply'],
+        rendererEvidence: {
+          terminalDetailFetched: true,
+          hasResult: true,
+          assistantMessageCount: 1,
+          visibleContentBytes: 42,
+          phaseHistory: [
+            'classifying',
+            'awaiting_input',
+            'classifying',
+            'staging',
+            'authoring',
+            'verifying',
+            'terminal',
+          ],
+        },
+      } as never,
+      hostTrialEvidence,
+    ),
   ).not.toThrow();
   expect(() =>
     validateChatV2AgentLoopScenarioOutcome(
@@ -192,6 +218,7 @@ test('authoring Trial scenario requires publication plus Trial Plan and Trial ex
       {
         ...operation,
         terminalOutcome: 'completed_noop',
+        actionKinds: [...operation.actionKinds, 'clarification_reply'],
       } as never,
       hostTrialEvidence,
     ),

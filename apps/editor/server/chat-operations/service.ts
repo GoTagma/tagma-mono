@@ -866,7 +866,9 @@ export class ChatOperationV2Service {
     const authority = this.#readonlyAuthorityForWorkspace(workspacePath);
     this.#assertOperationInWorkspace(authority, input.operationId);
     return this.#trackReadonlyCall(
-      this.#orchestratorForWorkspace(authority).replyToClarification(input),
+      this.#orchestratorForWorkspace(authority)
+        .replyToClarification(input)
+        .then((result) => this.#dispatchAuthoringDeferred(authority, result, true)),
     );
   }
 
@@ -1604,6 +1606,7 @@ export class ChatOperationV2Service {
   async #dispatchAuthoringDeferred(
     runtime: ChatOperationV2ReadonlyWorkspaceAuthority,
     classified: ChatOperationV2ReadonlyDispatchResult,
+    background = false,
   ): Promise<ChatOperationV2ReadonlyDispatchResult> {
     if (classified.kind !== 'authoring_deferred' || !this.#mutationsEnabled) return classified;
     const authoring = this.#authoringRuntimeForWorkspace(runtime);
@@ -1625,7 +1628,7 @@ export class ChatOperationV2Service {
       sessionId = this.#nextHostId('authoring-session');
       authoring.sessionsByOperation.set(classified.operation.operationId, sessionId);
     }
-    return authoring.engine.dispatch({
+    const dispatched = authoring.engine.dispatch({
       operationId: classified.operation.operationId,
       workspaceScopeId: classified.operation.workspaceScopeId,
       expectedGeneration: classified.operation.generation,
@@ -1636,6 +1639,14 @@ export class ChatOperationV2Service {
       target: resolution.target,
       originHash: resolution.originHash,
     });
+    if (!background) return dispatched;
+    const tracked = this.#trackReadonlyCall(dispatched);
+    void tracked.catch(() => {
+      // The Host engine owns durable failure state after dispatch. The reply
+      // mutation must release its operation lock so projected interaction CAS
+      // requests can continue the same lifecycle.
+    });
+    return classified;
   }
 
   #assertTargetResolution(

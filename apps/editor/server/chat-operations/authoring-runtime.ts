@@ -47,6 +47,10 @@ import {
 import { WorkspaceState } from '../workspace-state.js';
 import type { ChatOperationV2Admission } from './admission.js';
 import {
+  buildChatOperationV2ClarifiedRequestText,
+  type ChatOperationV2ClarificationThread,
+} from './clarification.js';
+import {
   ChatOperationV2AuthoringProtocolError,
   parseChatOperationV2SessionRelocation,
   sealChatOperationV2SessionRelocation,
@@ -619,6 +623,7 @@ export interface ManagedChatOperationV2AuthoringOpenCodeAdapter {
     readonly targetRelativePath: string;
     readonly trialPlanRequest: ChatOperationV2TrialPlanRequest | null;
     readonly admission: ChatOperationV2Admission;
+    readonly clarificationThread: ChatOperationV2ClarificationThread | null;
     readonly canonicalRequestBytes: Uint8Array;
     readonly signal: AbortSignal;
     readonly requestInteractive: (
@@ -1427,6 +1432,10 @@ export function buildManagedChatOperationV2ExecutionPrompt(
     input.intent === 'create'
       ? `<opencode-chat-model provider-id="${escapeXml(input.admission.provider)}" model-id="${escapeXml(input.admission.model)}" />`
       : '';
+  const requestText = buildChatOperationV2ClarifiedRequestText(
+    input.admission.request.text,
+    input.clarificationThread,
+  );
   return {
     agent: TAGMA_PIPELINE_AGENT,
     system: [
@@ -1440,7 +1449,7 @@ export function buildManagedChatOperationV2ExecutionPrompt(
       `<purpose>${input.purpose}</purpose>`,
       `<target>${escapeXml(input.targetRelativePath)}</target>`,
       opencodeChatModel,
-      `<request>${escapeXml(input.admission.request.text)}</request>`,
+      `<request>${escapeXml(requestText)}</request>`,
       attachments,
       `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
       '</tagma-chat-operation-v2-authoring>',
@@ -2201,6 +2210,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       targetRelativePath: authority.workingRelativePath,
       trialPlanRequest: request.trialPlanRequest,
       admission: request.admission,
+      clarificationThread: request.clarificationThread,
       canonicalRequestBytes: Uint8Array.from(request.canonicalRequestBytes),
       signal: request.signal,
       requestInteractive: request.requestInteractive,

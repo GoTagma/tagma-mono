@@ -416,6 +416,7 @@ function invocationRequest(
     repairAttempt: 0,
     trialPlanRequest: null,
     admission: admission(),
+    clarificationThread: null,
     canonicalRequestBytes: new TextEncoder().encode('{"request":"one"}'),
     stage,
     relocation,
@@ -583,6 +584,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
         attemptId: 'trial-plan-attempt-1',
       },
       admission: admission(),
+      clarificationThread: null,
       canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
       signal: new AbortController().signal,
       requestInteractive: async () => undefined,
@@ -608,6 +610,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       targetRelativePath: 'origin/origin.yaml',
       trialPlanRequest: null,
       admission: admission(),
+      clarificationThread: null,
       canonicalRequestBytes: new TextEncoder().encode('{"purpose":"authoring"}'),
       signal: new AbortController().signal,
       requestInteractive: async () => undefined,
@@ -618,6 +621,39 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(prompt.system).toContain('compile log is not a published artifact');
     expect(prompt.system).toContain('Do not claim a published path');
     expect(prompt.text).toContain('<opencode-chat-model provider-id="openai" model-id="gpt-5" />');
+  });
+
+  test('carries accepted clarification replies into the authoring request', () => {
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'authoring-invocation-after-clarification',
+      sessionId: 'session-root',
+      executionMessageId: 'execution-message-after-clarification',
+      purpose: 'authoring',
+      intent: 'create',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'created/created.yaml',
+      trialPlanRequest: null,
+      admission: admission(),
+      clarificationThread: {
+        entries: [
+          {
+            pending: { round: 1, question: 'Create a new pipeline or edit the current one?' },
+            reply: {
+              text: 'Create a brand-new pipeline.',
+              candidateIds: [],
+              attachments: [],
+            },
+            disposition: { code: 'continue_same_operation' },
+          },
+        ],
+      } as never,
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"authoring"}'),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.text).toContain('tagma-clarification-context');
+    expect(prompt.text).toContain('Create a brand-new pipeline.');
   });
 
   test('keeps the snapped Chat model out of existing-pipeline edits', () => {
@@ -631,6 +667,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       targetRelativePath: 'origin/origin.yaml',
       trialPlanRequest: null,
       admission: admission(),
+      clarificationThread: null,
       canonicalRequestBytes: new TextEncoder().encode('{"purpose":"authoring"}'),
       signal: new AbortController().signal,
       requestInteractive: async () => undefined,

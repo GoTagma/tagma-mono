@@ -285,6 +285,35 @@ export interface ChatOperationV2ClarificationThread {
   readonly threadHash: string;
 }
 
+export function buildChatOperationV2ClarifiedRequestText(
+  originalText: string,
+  thread: ChatOperationV2ClarificationThread | null,
+): string {
+  const rounds =
+    thread?.entries.flatMap((entry) =>
+      entry.reply && entry.disposition?.code === 'continue_same_operation'
+        ? [
+            {
+              round: entry.pending.round,
+              question: entry.pending.question,
+              reply: {
+                text: entry.reply.text,
+                candidateIds: entry.reply.candidateIds,
+                attachments: entry.reply.attachments,
+              },
+            },
+          ]
+        : [],
+    ) ?? [];
+  if (rounds.length === 0) return originalText;
+  return (
+    `${originalText}\n\n` +
+    '<tagma-clarification-context schema="1" authority="user-evidence-only">\n' +
+    `${canonicalJson({ rounds })}\n` +
+    '</tagma-clarification-context>'
+  );
+}
+
 export interface ChatOperationV2ClarificationThreadEvidence {
   readonly schemaVersion: typeof CHAT_OPERATION_V2_CLARIFICATION_EVIDENCE_SCHEMA_VERSION;
   readonly eventType: 'clarification_thread';

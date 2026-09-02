@@ -639,6 +639,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         targetRelativePath: 'alpha/alpha.yaml',
         trialPlanRequest: null,
         admission: productionAdmission,
+        clarificationThread: null,
         canonicalRequestBytes: productionAuthoringBytes,
         signal: new AbortController().signal,
         requestInteractive: async (request) => {

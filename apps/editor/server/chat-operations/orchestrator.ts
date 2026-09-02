@@ -10,6 +10,7 @@ import {
   applyChatOperationV2ClarificationDisposition,
   appendChatOperationV2ClarificationPending,
   appendChatOperationV2ClarificationReply,
+  buildChatOperationV2ClarifiedRequestText,
   resolveChatOperationV2Clarification,
   sealChatOperationV2ClarificationReply,
   sealChatOperationV2ClarificationThread,
@@ -496,35 +497,6 @@ function validateRecoveryInventory(
     throw new Error('Classifier candidates must exactly match the sealed Host inventory.');
   }
   return inspected;
-}
-
-function clarificationClassificationText(
-  originalText: string,
-  thread: ChatOperationV2ClarificationThread | null,
-): string {
-  const rounds =
-    thread?.entries.flatMap((entry) =>
-      entry.reply && entry.disposition?.code === 'continue_same_operation'
-        ? [
-            {
-              round: entry.pending.round,
-              question: entry.pending.question,
-              reply: {
-                text: entry.reply.text,
-                candidateIds: entry.reply.candidateIds,
-                attachments: entry.reply.attachments,
-              },
-            },
-          ]
-        : [],
-    ) ?? [];
-  if (rounds.length === 0) return originalText;
-  return (
-    `${originalText}\n\n` +
-    '<tagma-clarification-context schema="1" authority="user-evidence-only">\n' +
-    `${canonicalJson({ rounds })}\n` +
-    '</tagma-clarification-context>'
-  );
 }
 
 function assertHostId(value: string, label: string): void {
@@ -1870,7 +1842,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
     return canonicalBytes({
       purpose: 'classifier',
       prompt: buildChatPipelineIntentClassificationPrompt(
-        clarificationClassificationText(originalText, thread),
+        buildChatOperationV2ClarifiedRequestText(originalText, thread),
         candidates,
         attempt,
       ),

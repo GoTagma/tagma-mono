@@ -1676,6 +1676,61 @@ describe('ChatTurn Operation V2 service activation', () => {
     ]);
   });
 
+  test('a clarification create reply enters authoring without an explicit retry', async () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(
+        {
+          kind: 'clarify',
+          targetCandidateId: null,
+          clarification: 'Create a new pipeline or edit the current one?',
+          candidateIds: [],
+        },
+        37,
+      ),
+      completedReadonlyInvocation(
+        { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+        38,
+      ),
+    ]);
+    const runtime = new FakeServiceAuthoringRuntime();
+    const targets = new FakeServiceAuthoringTargets();
+    const { service } = createMutationService({ controlDir, runner, runtime, targets });
+    const input = readonlyCreateInput('request-clarification-create-authoring');
+    const pending = await service.createAndDispatchReadonly(workspace, input);
+    if (pending.kind !== 'clarification_pending') {
+      throw new Error('Expected pending create clarification fixture.');
+    }
+
+    const accepted = await service.replyToReadonlyClarification(workspace, {
+      operationId: pending.operation.operationId,
+      clarificationId: pending.clarificationId,
+      expectedGeneration: pending.operation.generation,
+      expectedVersion: pending.operation.version,
+      clientRequestId: 'service-clarification-create-reply',
+      rendererInstanceId: input.rendererInstanceId,
+      text: 'Create a brand-new pipeline.',
+      candidateIds: [],
+      attachments: [],
+      inventory: input.inventory,
+      candidates: input.candidates,
+    });
+
+    expect(accepted.kind).toBe('authoring_deferred');
+    let projected = service.getOperationProjection(workspace, pending.operation.operationId);
+    for (let attempt = 0; attempt < 100 && projected.operation.phase !== 'terminal'; attempt += 1) {
+      await Bun.sleep(1);
+      projected = service.getOperationProjection(workspace, pending.operation.operationId);
+    }
+    expect(projected.operation.terminalOutcome).toBe('completed_noop');
+    expect(runner.calls.map(({ purpose }) => purpose)).toEqual(['classifier', 'classifier']);
+    expect(targets.calls).toHaveLength(1);
+    expect(runtime.invocations).toHaveLength(1);
+  });
+
   test('stop cancels the active read-only invocation through its workspace orchestrator', async () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');

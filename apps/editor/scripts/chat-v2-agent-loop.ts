@@ -261,6 +261,14 @@ export function validateChatV2AgentLoopScenarioOutcome(
     return;
   }
   if (scenario !== 'authoring-trial' && scenario !== 'authoring-create-trial') return;
+  if (
+    scenario === 'authoring-create-trial' &&
+    !operation.actionKinds.includes('clarification_reply')
+  ) {
+    throw new Error(
+      'The real authoring create Trial scenario did not project and answer a clarification before authoring.',
+    );
+  }
   if (operation.terminalOutcome !== 'completed_published') {
     throw new Error(
       'The real authoring Trial scenario must publish a verified changed pipeline without a failure fork.',
@@ -1030,6 +1038,12 @@ export async function runIsolatedChatV2AgentLoop(
     clarification: null,
     candidateIds: [],
   };
+  const createResult = {
+    kind: 'create' as const,
+    targetCandidateId: null,
+    clarification: null,
+    candidateIds: [],
+  };
   const classifierResults =
     scenario === 'clarification'
       ? [
@@ -1041,18 +1055,19 @@ export async function runIsolatedChatV2AgentLoop(
           },
           discussionResult,
         ]
-      : scenario === 'authoring-permission' ||
-          scenario === 'authoring-trial' ||
-          scenario === 'authoring-create-trial'
+      : scenario === 'authoring-create-trial'
         ? [
             {
-              kind: 'create' as const,
+              kind: 'clarify' as const,
               targetCandidateId: null,
-              clarification: null,
+              clarification: 'Create a new pipeline or edit the current baseline?',
               candidateIds: [],
             },
+            createResult,
           ]
-        : [discussionResult];
+        : scenario === 'authoring-permission' || scenario === 'authoring-trial'
+          ? [createResult]
+          : [discussionResult];
   const provider =
     providerMode === 'fake'
       ? startOpencodeV2FakeProvider({
@@ -1213,7 +1228,7 @@ export async function runIsolatedChatV2AgentLoop(
       scenario === 'authoring-trial'
         ? 'Edit the current Agent Loop Baseline pipeline. In the existing draft command, change only the printed string from baseline to hello. Preserve both existing Node command tasks and their dependency exactly; do not convert either task to a prompt and do not add files or tasks. Complete Host compilation, an LLM-authored Trial Plan, Sandbox Trial, and verified publication.'
         : scenario === 'authoring-create-trial'
-          ? 'Build a simple new Tagma pipeline to say hi. Create exactly one deterministic command task that prints hi and has no downstream consumer. Keep its interface minimal: do not add unused inputs, outputs, files, or prompt tasks. Complete Host compilation, an LLM-authored Trial Plan, Sandbox Trial, and verified publication.'
+          ? 'Build a Tagma pipeline to say hi. Before changing anything, ask whether to create a brand-new pipeline or edit the current Agent Loop Baseline. After the user chooses a new pipeline, create exactly one deterministic command task that prints hi and has no downstream consumer. Keep its interface minimal: do not add unused inputs, outputs, files, or prompt tasks. Complete Host compilation, an LLM-authored Trial Plan, Sandbox Trial, and verified publication.'
           : scenario === 'authoring-permission'
             ? 'Create a minimal Tagma pipeline that reads the staged workspace before finishing.'
             : scenario === 'discussion'
@@ -1230,7 +1245,9 @@ export async function runIsolatedChatV2AgentLoop(
       clarificationReply:
         scenario === 'clarification'
           ? 'Do not create or edit anything. Explain the choice as a read-only discussion.'
-          : 'Continue with the deterministic default.',
+          : scenario === 'authoring-create-trial'
+            ? 'Create a brand-new pipeline. Do not edit the current Agent Loop Baseline.'
+            : 'Continue with the deterministic default.',
       onProgress: (progress) => {
         lastOperation = progress;
       },
