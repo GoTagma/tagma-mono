@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
 
+import {
+  parseChatVerificationOutcome,
+  serializeChatVerificationOutcome,
+  type ChatVerificationOutcome,
+} from '../../shared/chat-verification-outcome.js';
 import type { ChatPipelineTrialRunResult } from '../chat-pipeline-trial-run.js';
 import type { ChatOperationV2Admission } from './admission.js';
 import {
@@ -510,12 +515,14 @@ interface VerificationArtifactAuthority {
   readonly stagedSnapshotHash: string;
   readonly artifactSetHash: string;
   readonly artifactCount: number;
+  readonly outcome: ChatVerificationOutcome;
 }
 
 export interface ChatOperationV2AuthoringVerificationNotice {
-  readonly status: 'unverified';
+  readonly status: 'verified' | 'unverified';
   readonly code: string;
   readonly summary: string;
+  readonly outcome: ChatVerificationOutcome;
 }
 
 export type ChatOperationV2AuthoringVerificationResult =
@@ -550,6 +557,26 @@ export type ChatOperationV2AuthoringPublishableVerification = Extract<
   ChatOperationV2AuthoringVerificationResult,
   { readonly kind: 'passed' | 'unverified' }
 >;
+
+export interface ChatOperationV2TrialProgressUpdate {
+  readonly stageId: string;
+  readonly trialId: string;
+  readonly phase:
+    | 'preparing'
+    | 'capturing-host-witness'
+    | 'running-baseline'
+    | 'sealing-baseline'
+    | 'running-case'
+    | 'verifying-workspace'
+    | 'capturing-post-witness';
+  readonly startedAt: number;
+  readonly semanticUpdatedAt: number;
+  readonly heartbeatAt: number;
+  readonly caseIndex: number | null;
+  readonly caseCount: number | null;
+  readonly runNumber: number | null;
+  readonly runCount: number | null;
+}
 
 export interface ChatOperationV2AuthoringRuntime {
   ensureStage(input: {
@@ -636,6 +663,7 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly stage: ChatOperationV2AuthoringStage;
     readonly repairAttempts: number;
     readonly signal: AbortSignal;
+    readonly onTrialProgress?: (progress: ChatOperationV2TrialProgressUpdate) => void;
   }): Promise<ChatOperationV2AuthoringVerificationResult>;
   /**
    * Trusted filesystem/WAL preparation boundary. It may create/fsync backups and reserve the
@@ -936,7 +964,7 @@ interface InvocationIdentity {
 
 interface InteractiveWait {
   request: ChatOperationV2InteractiveRequest;
-  readonly operationPhase: 'authoring' | 'repairing';
+  readonly operationPhase: 'authoring' | 'trial-running' | 'repairing';
   readonly resolve: () => void;
   readonly reject: (error: unknown) => void;
 }
@@ -1160,10 +1188,22 @@ function validateVerification(
     assertHash(result.stagedSnapshotHash, 'Verified staged snapshot hash');
     assertHash(result.artifactSetHash, 'Verified artifact set hash');
     assertCounter(result.artifactCount, 'Verified artifact count');
+    if (!parseChatVerificationOutcome(result.outcome)) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_runtime_result',
+        'Verified Trial outcome is invalid.',
+      );
+    }
   } else if (result.kind === 'unverified') {
     assertHash(result.stagedSnapshotHash, 'Unverified staged snapshot hash');
     assertHash(result.artifactSetHash, 'Unverified artifact set hash');
     assertCounter(result.artifactCount, 'Unverified artifact count');
+    if (!parseChatVerificationOutcome(result.outcome)) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_runtime_result',
+        'Unverified Trial outcome is invalid.',
+      );
+    }
     if (result.trialStatus !== 'blocked' && result.trialStatus !== 'failed') {
       throw new ChatOperationV2AuthoringProtocolError(
         'invalid_runtime_result',
@@ -1635,7 +1675,12 @@ export class ChatOperationV2AuthoringEngine {
     this.appendUsageEvent(context.operationId, usage, 'pending', null);
 
     const current = this.requireOperation(context.operationId);
-    const nextPhase = purpose === 'authoring' ? 'authoring' : 'repairing';
+    const nextPhase =
+      purpose === 'authoring'
+        ? 'authoring'
+        : purpose === 'trial_plan'
+          ? 'trial-running'
+          : 'repairing';
     const active = this.transition(
       current,
       {
@@ -1673,6 +1718,37 @@ export class ChatOperationV2AuthoringEngine {
       invocationId: identity.invocationId,
       controller,
     });
+    const trialPlanHeartbeatStartedAt = this.now();
+    const emitTrialPlanHeartbeat = () => {
+      if (purpose !== 'trial_plan' || !trialPlanRequest) return;
+      const heartbeatOperation = this.persistence.getOperation(context.operationId);
+      if (
+        heartbeatOperation?.phase !== 'trial-running' ||
+        heartbeatOperation.activeInvocationId !== identity.invocationId
+      ) {
+        return;
+      }
+      try {
+        this.appendEvent(context.operationId, 'trial_progressed', {
+          stageId: context.stage!.stageId,
+          trialId: trialPlanRequest.attemptId,
+          phase: 'preparing',
+          startedAt: trialPlanHeartbeatStartedAt,
+          semanticUpdatedAt: trialPlanHeartbeatStartedAt,
+          heartbeatAt: Math.max(trialPlanHeartbeatStartedAt, this.now()),
+          caseIndex: null,
+          caseCount: null,
+          runNumber: null,
+          runCount: null,
+        });
+      } catch {
+        console.warn('[chat-operation-v2] Trial Plan heartbeat persistence failed.');
+      }
+    };
+    if (purpose === 'trial_plan') emitTrialPlanHeartbeat();
+    const trialPlanHeartbeat =
+      purpose === 'trial_plan' ? setInterval(emitTrialPlanHeartbeat, 30_000) : null;
+    trialPlanHeartbeat?.unref?.();
     let result: ChatOperationV2AuthoringInvocationResult;
     try {
       result = await this.runtime.runInvocation({
@@ -1711,6 +1787,7 @@ export class ChatOperationV2AuthoringEngine {
                 : chatOperationV2ProviderFailureCode(error),
           };
     } finally {
+      if (trialPlanHeartbeat) clearInterval(trialPlanHeartbeat);
       const observed = this.activeControllers.get(context.operationId);
       if (observed?.controller === controller) this.activeControllers.delete(context.operationId);
       const currentRequestId = this.currentInteractiveByOperation.get(context.operationId);
@@ -2010,10 +2087,10 @@ export class ChatOperationV2AuthoringEngine {
         ? message.attachments.length !== 0
         : message.attachments.length !== 1 ||
           message.attachments[0]?.kind !== 'notice' ||
-          message.attachments[0]?.mediaType !== 'text/plain' ||
-          message.attachments[0]?.label !==
-            'Pipeline published without completed Trial verification' ||
-          message.attachments[0]?.content !== input.verificationNotice.summary)
+          message.attachments[0]?.mediaType !== 'application/json' ||
+          message.attachments[0]?.label !== 'Pipeline verification outcome' ||
+          message.attachments[0]?.content !==
+            serializeChatVerificationOutcome(input.verificationNotice.outcome))
     ) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
@@ -2033,7 +2110,7 @@ export class ChatOperationV2AuthoringEngine {
   private async beginInteractiveWait(
     context: OperationContext,
     identity: InvocationIdentity,
-    operationPhase: 'authoring' | 'repairing',
+    operationPhase: 'authoring' | 'trial-running' | 'repairing',
     input: ChatOperationV2RuntimeInteractiveRequest,
   ): Promise<void> {
     if (this.currentInteractiveByOperation.has(context.operationId)) {
@@ -2342,6 +2419,22 @@ export class ChatOperationV2AuthoringEngine {
         'Verification stage is unavailable.',
       );
     }
+    let trialOperation = operation;
+    if (operation.phase !== 'trial-running') {
+      const transitioned = this.transition(operation, {
+        ...stateOf(operation),
+        phase: 'trial-running',
+        waitReason: null,
+        activeInvocationId: null,
+        pendingPermissionRequestId: null,
+      });
+      if (!transitioned.applied) {
+        return transitioned.reason !== 'terminal'
+          ? { kind: 'stale', operation: transitioned.operation }
+          : terminalResult(transitioned.operation);
+      }
+      trialOperation = transitioned.operation;
+    }
     const controller = new AbortController();
     this.activeControllers.set(context.operationId, {
       invocationId: `trial:${context.stage.stageId}`,
@@ -2353,12 +2446,25 @@ export class ChatOperationV2AuthoringEngine {
         await this.runtime.verifyStage({
           operationId: context.operationId,
           workspaceScopeId: context.workspaceScopeId,
-          operationGeneration: operation.generation,
+          operationGeneration: trialOperation.generation,
           bindingId: context.binding.bindingId,
           targetId: context.targetId,
           stage: context.stage,
           repairAttempts: operation.repairAttempts,
           signal: controller.signal,
+          onTrialProgress: (progress) =>
+            this.appendEvent(context.operationId, 'trial_progressed', {
+              stageId: progress.stageId,
+              trialId: progress.trialId,
+              phase: progress.phase,
+              startedAt: progress.startedAt,
+              semanticUpdatedAt: progress.semanticUpdatedAt,
+              heartbeatAt: progress.heartbeatAt,
+              caseIndex: progress.caseIndex,
+              caseCount: progress.caseCount,
+              runNumber: progress.runNumber,
+              runCount: progress.runCount,
+            }),
         }),
       );
     } catch (error) {
@@ -2415,24 +2521,31 @@ export class ChatOperationV2AuthoringEngine {
       return this.runControlledInvocation(context, 'trial_plan', current.repairAttempts, null);
     }
     context.pendingTrialPlanRequest = null;
-    if (verification.kind === 'unverified') {
-      const pendingCompletion = context.pendingVisibleCompletion;
-      if (!pendingCompletion && !context.visibleResult) {
-        throw new ChatOperationV2AuthoringProtocolError(
-          'authority_mismatch',
-          'Unverified authoring completion lost its pending visible result authority.',
-        );
-      }
-      if (pendingCompletion) {
-        pendingCompletion.persistenceInput = {
-          ...pendingCompletion.persistenceInput,
-          verificationNotice: {
-            status: 'unverified',
-            code: verification.errorCode,
-            summary: verification.redactedSummary,
-          },
-        };
-      }
+    const pendingCompletion = context.pendingVisibleCompletion;
+    if (!pendingCompletion && !context.visibleResult) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Verified authoring completion lost its pending visible result authority.',
+      );
+    }
+    if (pendingCompletion) {
+      pendingCompletion.persistenceInput = {
+        ...pendingCompletion.persistenceInput,
+        verificationNotice: {
+          status: verification.kind === 'passed' ? 'verified' : 'unverified',
+          code:
+            verification.kind === 'passed'
+              ? verification.warningCount > 0
+                ? 'trial_passed_with_warnings'
+                : 'trial_passed'
+              : verification.errorCode,
+          summary:
+            verification.kind === 'passed'
+              ? verification.outcome.details
+              : verification.redactedSummary,
+          outcome: verification.outcome,
+        },
+      };
     }
     await this.persistVisibleCompletion(context);
     const operationAfterResultPersistence = this.requireOperation(context.operationId);
@@ -3639,7 +3752,9 @@ export class ChatOperationV2AuthoringEngine {
       return { action: 'resume_authoring', reasonCode: 'stage_ready' };
     }
     if (
-      (operation.phase === 'authoring' || operation.phase === 'repairing') &&
+      (operation.phase === 'authoring' ||
+        operation.phase === 'trial-running' ||
+        operation.phase === 'repairing') &&
       operation.activeInvocationId
     ) {
       return {
@@ -3647,7 +3762,7 @@ export class ChatOperationV2AuthoringEngine {
         reasonCode: outbox ? `outbox_${outbox.status}` : 'outbox_missing',
       };
     }
-    if (operation.phase === 'verifying') {
+    if (operation.phase === 'verifying' || operation.phase === 'trial-running') {
       return { action: 'resume_verifying', reasonCode: 'verification_incomplete' };
     }
     return { action: 'manual_recovery_required', reasonCode: 'unsupported_recovery_state' };

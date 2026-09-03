@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { createChatVerificationOutcome } from '../shared/chat-verification-outcome';
 import type { ActivityEvent } from '../src/api/opencode-chat';
 import { advanceLiveActivityNow, TurnActivityPanel } from '../src/components/chat/ActivityPanel';
+import { CompletionWarningBannerView } from '../src/components/chat/ChatComposer';
 import {
   ChatOperationV2TerminalNoticeView,
   RetryableOperationNoticeView,
 } from '../src/components/chat/ChatPanel';
 import { PermissionBubble } from '../src/components/chat/PermissionBubble';
+import { ChatVerificationOutcomeView } from '../src/components/chat/VerificationOutcome';
+import { MessageBubble } from '../src/components/chat/MessageBubble';
 import { chatOperationV2Activity } from '../src/store/chat-store';
 
 const activity = [
@@ -53,6 +57,80 @@ describe('Chat Operation V2 activity panel', () => {
         detail: 'Pipeline update was discarded before publication',
       }),
     ]);
+  });
+
+  test('labels the dedicated long-running Trial phase without calling it repair', () => {
+    expect(
+      chatOperationV2Activity({
+        operationId: 'operation-trial-running',
+        generation: 1,
+        version: 4,
+        phase: 'trial-running',
+        waitReason: null,
+        executionState: 'running',
+        terminalOutcome: null,
+        createdAt: 100,
+        updatedAt: 400,
+      } as never),
+    ).toEqual([
+      expect.objectContaining({
+        kind: 'tool-running',
+        startedAt: 400,
+        endedAt: null,
+        detail: 'Running Sandbox Trial verification',
+      }),
+    ]);
+  });
+
+  test('keeps Trial elapsed time anchored while surfacing the latest Host heartbeat', () => {
+    const [event] = chatOperationV2Activity(
+      {
+        operationId: 'operation-trial-heartbeat',
+        generation: 1,
+        version: 4,
+        phase: 'trial-running',
+        waitReason: null,
+        executionState: 'running',
+        terminalOutcome: null,
+        createdAt: 100,
+        updatedAt: 400,
+      } as never,
+      {
+        stageId: 'stage-01',
+        trialId: 'trial-01',
+        phase: 'running-case',
+        startedAt: 1_000,
+        semanticUpdatedAt: 5_000,
+        heartbeatAt: 10_000,
+        caseIndex: 1,
+        caseCount: 2,
+        runNumber: 2,
+        runCount: 3,
+      },
+    );
+    expect(event).toMatchObject({
+      startedAt: 1_000,
+      heartbeatAt: 10_000,
+      detail: 'Running Sandbox case · case 1/2 · run 2/3',
+    });
+
+    const realNow = Date.now;
+    Date.now = () => 12_250;
+    try {
+      const html = renderToStaticMarkup(
+        createElement(TurnActivityPanel, {
+          activity: [event!],
+          isCurrentTurn: true,
+          surfaceSummary: true,
+          expanded: false,
+          onToggle: () => {},
+        }),
+      );
+      expect(html).toContain('Host active 2s ago');
+      expect(html).toContain('11s');
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   test('explains the permission target and the scope of every decision', () => {
@@ -164,6 +242,18 @@ describe('Chat Operation V2 activity panel', () => {
     expect(html).not.toContain('animate-spin');
   });
 
+  test('keeps genuine non-result composer warnings visible and dismissible', () => {
+    const html = renderToStaticMarkup(
+      createElement(CompletionWarningBannerView, {
+        warning: 'Choose mode: Which safe mode should be used?',
+        dismiss: () => {},
+      }),
+    );
+
+    expect(html).toContain('Choose mode: Which safe mode should be used?');
+    expect(html).toContain('aria-label="Dismiss completion warning"');
+  });
+
   test('renders Host-projected activity in a stable summary slot', () => {
     const realNow = Date.now;
     Date.now = () => 11_250;
@@ -205,6 +295,107 @@ describe('Chat Operation V2 activity panel', () => {
     } finally {
       Date.now = realNow;
     }
+  });
+
+  test('renders the open event once when expanded and keeps its active indicator in the row', () => {
+    const realNow = Date.now;
+    Date.now = () => 11_250;
+    try {
+      const html = renderToStaticMarkup(
+        createElement(TurnActivityPanel, {
+          activity: [
+            {
+              kind: 'assistant-started',
+              startedAt: 10_000,
+              endedAt: null,
+              count: 1,
+              detail: 'Writing the pipeline draft',
+            },
+          ],
+          isCurrentTurn: true,
+          surfaceSummary: true,
+          expanded: true,
+          onToggle: () => {},
+        }),
+      );
+
+      expect(html.match(/Host processing/g)).toHaveLength(1);
+      expect(html.match(/Writing the pipeline draft/g)).toHaveLength(1);
+      expect(html).toContain('aria-label="Activity in progress"');
+      expect(html.match(/animate-spin/g)).toHaveLength(1);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('renders Trial and publication outcomes compactly with full diagnostics collapsed', () => {
+    const details = 'Long diagnostic detail '.repeat(200);
+    const outcome = createChatVerificationOutcome({
+      trialKind: 'blocked',
+      ran: true,
+      plannedCaseCount: 2,
+      caseResultCount: 1,
+      passedCaseCount: 1,
+      failedCaseCount: 0,
+      notRunCaseCount: 1,
+      taskStatusCounts: { success: 2, skipped: 14 },
+      liveSmokeStatus: 'skipped',
+      reasonCode: 'trial_blocked',
+      details,
+    });
+    const html = renderToStaticMarkup(
+      createElement(ChatVerificationOutcomeView, { outcome, publication: 'published' }),
+    );
+
+    expect(html).toContain('Pipeline published');
+    expect(html).toContain('Sandbox Trial');
+    expect(html).toContain('Partial');
+    expect(html).toContain('1/2 cases passed');
+    expect(html).toContain('Live Smoke');
+    expect(html).toContain('Skipped');
+    expect(html).toContain('success=2');
+    expect(html).toContain('skipped=14');
+    expect(html).toContain('aria-label="Pipeline verification outcome"');
+    expect(html).toContain('<details');
+    expect(html).not.toContain('<details open=""');
+    expect(html).toContain(details);
+  });
+
+  test('renders a structured verification transcript part instead of its sealed JSON bytes', () => {
+    const outcome = createChatVerificationOutcome({
+      trialKind: 'passed',
+      ran: true,
+      plannedCaseCount: 1,
+      caseResultCount: 1,
+      passedCaseCount: 1,
+      failedCaseCount: 0,
+      notRunCaseCount: 0,
+      taskStatusCounts: { success: 2 },
+      liveSmokeStatus: 'not_enabled',
+      reasonCode: null,
+      details: 'The complete verification detail remains selectable and copyable.',
+    });
+    const html = renderToStaticMarkup(
+      createElement(MessageBubble, {
+        entry: {
+          info: { id: 'assistant-1', role: 'assistant' },
+          parts: [
+            {
+              id: 'verification-1',
+              type: 'text',
+              text: 'export-safe verification text',
+              chatVerificationOutcome: outcome,
+              chatPublicationStatus: 'published',
+            },
+          ],
+        } as never,
+      }),
+    );
+
+    expect(html).toContain('aria-label="Pipeline verification outcome"');
+    expect(html).toContain('Pipeline published');
+    expect(html).not.toContain('&quot;schemaVersion&quot;');
+    expect(html).not.toContain('export-safe verification text');
   });
 
   test('advances the cosmetic live clock by one visible second', () => {

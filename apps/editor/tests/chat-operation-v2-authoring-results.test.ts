@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
+import {
+  createChatVerificationOutcome,
+  parseChatVerificationOutcome,
+} from '../shared/chat-verification-outcome.js';
 import { createChatOperationV2AuthoringResultPersistence } from '../server/chat-operations/authoring-results.js';
 import type {
   ChatOperationV2Store,
@@ -93,12 +97,26 @@ describe('Chat Operation V2 authoring result persistence adapter', () => {
 
   test('seals a Host-authored unverified Trial notice into the visible authoring result', async () => {
     const fixture = harness();
+    const outcome = createChatVerificationOutcome({
+      trialKind: 'blocked',
+      ran: true,
+      plannedCaseCount: 2,
+      caseResultCount: 1,
+      passedCaseCount: 1,
+      failedCaseCount: 0,
+      notRunCaseCount: 1,
+      taskStatusCounts: { success: 2, skipped: 14 },
+      liveSmokeStatus: 'skipped',
+      reasonCode: 'trial_blocked',
+      details: 'Trial requires an explicitly authorized Live Smoke Test.',
+    });
     const result = await fixture.persistence.persistCompletedInvocationResult({
       ...input(),
       verificationNotice: {
         status: 'unverified',
         code: 'trial_blocked',
         summary: 'Trial requires an explicitly authorized Live Smoke Test.',
+        outcome,
       },
     });
 
@@ -106,11 +124,44 @@ describe('Chat Operation V2 authoring result persistence adapter', () => {
       expect.objectContaining({
         attachmentId: expect.stringMatching(/^notice_[a-f0-9]{48}$/),
         kind: 'notice',
-        mediaType: 'text/plain',
-        label: 'Pipeline published without completed Trial verification',
-        content: 'Trial requires an explicitly authorized Live Smoke Test.',
+        mediaType: 'application/json',
+        label: 'Pipeline verification outcome',
       }),
     ]);
+    expect(parseChatVerificationOutcome(result.message?.attachments[0]?.content)).toEqual(outcome);
+  });
+
+  test('seals a successful Sandbox and Live Smoke outcome with the same typed authority', async () => {
+    const fixture = harness();
+    const outcome = createChatVerificationOutcome({
+      trialKind: 'passed',
+      ran: true,
+      plannedCaseCount: 2,
+      caseResultCount: 2,
+      passedCaseCount: 2,
+      failedCaseCount: 0,
+      notRunCaseCount: 0,
+      taskStatusCounts: { success: 6 },
+      liveSmokeStatus: 'passed',
+      reasonCode: null,
+      details: 'Sandbox Trial and Live Smoke passed.',
+    });
+    const result = await fixture.persistence.persistCompletedInvocationResult({
+      ...input(),
+      verificationNotice: {
+        status: 'verified',
+        code: 'trial_passed',
+        summary: 'Sandbox Trial and Live Smoke passed.',
+        outcome,
+      },
+    });
+
+    expect(result.message?.attachments[0]).toMatchObject({
+      kind: 'notice',
+      mediaType: 'application/json',
+      label: 'Pipeline verification outcome',
+    });
+    expect(parseChatVerificationOutcome(result.message?.attachments[0]?.content)).toEqual(outcome);
   });
 
   test('drops repair text and relies on settled outbox evidence', async () => {

@@ -261,6 +261,11 @@ function harness(input: {
   interactive?: Readonly<Record<string, readonly ChatOperationV2InteractiveRendererView[]>>;
   results?: Readonly<Record<string, ReturnType<typeof resultProjection> | null>>;
   outboxes?: readonly StoredInvocationOutboxRecord[];
+  events?: readonly {
+    operationId: string;
+    type: string;
+    payload: Readonly<Record<string, unknown>>;
+  }[];
   onListInvocationOutbox?: () => void;
 }) {
   const inventory = input.inventory ?? hostInventory();
@@ -289,6 +294,27 @@ function harness(input: {
       return input.outboxes ?? [];
     },
     getResultProjection: (operationId) => input.results?.[operationId] ?? null,
+    listOperationEvents: ({ after }) =>
+      ({
+        kind: 'events',
+        requestedAfter: after,
+        retainedFloor: 12,
+        latestCursor: 31,
+        nextCursor: 31,
+        events: (input.events ?? []).map((event, index) => ({
+          workspaceSeq: 20 + index,
+          workspaceScopeId: 'scope-01',
+          eventId: `event-progress-${index}`,
+          operationVersion: 4,
+          generation: 1,
+          phase: 'trial-running',
+          waitReason: null,
+          timestamp: Number(event.payload.heartbeatAt ?? 150),
+          source: null,
+          terminal: false,
+          ...event,
+        })),
+      }) as never,
   };
   const resolver: ChatOperationV2ProjectionInventoryResolver = {
     getCurrentInventory: () => inventory,
@@ -311,6 +337,57 @@ function allKeys(value: unknown): string[] {
 }
 
 describe('ChatTurn Operation V2 renderer projection', () => {
+  test('projects the latest content-minimized Trial heartbeat separately from semantic phase time', () => {
+    const running = operation('operation-trial-progress', {
+      ...state({ phase: 'trial-running', stageId: 'stage-01' }),
+      updatedAt: 110,
+    });
+    const value = harness({
+      operations: [running],
+      events: [
+        {
+          operationId: running.operationId,
+          type: 'trial_progressed',
+          payload: {
+            schemaVersion: 1,
+            stageId: 'stage-01',
+            trialId: 'trial-01',
+            phase: 'running-case',
+            startedAt: 120,
+            semanticUpdatedAt: 140,
+            heartbeatAt: 160,
+            caseIndex: 1,
+            caseCount: 2,
+            runNumber: 2,
+            runCount: 3,
+          },
+        },
+      ],
+    });
+
+    const projected = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      running.operationId,
+    );
+
+    expect(projected.trialProgress).toEqual({
+      stageId: 'stage-01',
+      trialId: 'trial-01',
+      phase: 'running-case',
+      startedAt: 120,
+      semanticUpdatedAt: 140,
+      heartbeatAt: 160,
+      caseIndex: 1,
+      caseCount: 2,
+      runNumber: 2,
+      runCount: 3,
+    });
+    expect(JSON.stringify(projected.trialProgress)).not.toContain('taskId');
+    expect(JSON.stringify(projected.trialProgress)).not.toContain('detail');
+  });
+
   test('projects an explicit renderer execution state instead of making the client infer activity from phase', () => {
     const inventory = hostInventory();
     const running = operation('operation-running');

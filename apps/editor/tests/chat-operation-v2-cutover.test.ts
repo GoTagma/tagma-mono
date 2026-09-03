@@ -1,10 +1,15 @@
 import { afterEach, expect, test } from 'bun:test';
+import {
+  createChatVerificationOutcome,
+  serializeChatVerificationOutcome,
+} from '../shared/chat-verification-outcome';
 import { setClientWorkspace } from '../src/api/client';
 import type { ChatOperationV2Projection } from '../src/api/chat-operations';
 import { resetOpencodeClient } from '../src/api/opencode-chat';
 import { collectRendererDiagnosticsContributors } from '../src/diagnostics/renderer-diagnostics-contributors';
 import { activateChatOperationExecutionForWorkspace, useChatStore } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
+import { buildConversationExport } from '../src/utils/chat-export';
 
 const originalFetch = globalThis.fetch;
 const originalEventSource = globalThis.EventSource;
@@ -515,10 +520,23 @@ test('surfaces a pre-admission model configuration failure without calling it a 
   expect(useChatStore.getState().sendError).not.toMatch(/capability|tool|structured/i);
 });
 
-test('projects strict Host result notices into the transcript and completion warning', async () => {
+test('projects a terminal Host result notice once in transcript and export without a composer warning', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
   let completed = operation();
+  const verificationOutcome = createChatVerificationOutcome({
+    trialKind: 'blocked',
+    ran: true,
+    plannedCaseCount: 2,
+    caseResultCount: 1,
+    passedCaseCount: 1,
+    failedCaseCount: 0,
+    notRunCaseCount: 1,
+    taskStatusCounts: { success: 2, skipped: 14 },
+    liveSmokeStatus: 'skipped',
+    reasonCode: 'trial_blocked',
+    details: 'Trial requires an explicitly authorized Live Smoke Test.',
+  });
   const projectedResult = () => ({
     schemaVersion: 2,
     resultId: 'result-01',
@@ -542,9 +560,9 @@ test('projects strict Host result notices into the transcript and completion war
           {
             attachmentId: 'notice-01',
             kind: 'notice',
-            mediaType: 'text/plain',
-            label: 'Pipeline published without completed Trial verification',
-            content: 'Trial requires an explicitly authorized Live Smoke Test.',
+            mediaType: 'application/json',
+            label: 'Pipeline verification outcome',
+            content: serializeChatVerificationOutcome(verificationOutcome),
           },
         ],
       },
@@ -587,13 +605,28 @@ test('projects strict Host result notices into the transcript and completion war
   await useChatStore.getState().send('Show the result.');
 
   expect(useChatStore.getState().sending).toBe(false);
-  expect(useChatStore.getState().messages).toHaveLength(2);
-  expect((useChatStore.getState().messages[1]!.parts[0] as { text: string }).text).toBe(
-    'Projected Host answer.',
-  );
-  expect(useChatStore.getState().completionWarning).toBe(
-    'Pipeline published without completed Trial verification: Trial requires an explicitly authorized Live Smoke Test.',
-  );
+  const projected = useChatStore.getState();
+  expect(projected.messages).toHaveLength(2);
+  expect((projected.messages[1]!.parts[0] as { text: string }).text).toBe('Projected Host answer.');
+  const noticePart = projected.messages[1]!.parts[1] as {
+    text: string;
+    chatVerificationOutcome?: unknown;
+    chatPublicationStatus?: unknown;
+  };
+  expect(noticePart.text).toContain('Sandbox Trial: partial (1/2 cases passed; 1 not run)');
+  expect(noticePart.text).toContain('Live Smoke: skipped');
+  expect(noticePart.chatVerificationOutcome).toEqual(verificationOutcome);
+  expect(noticePart.chatPublicationStatus).toBe('not_published');
+  expect(projected.completionWarning).toBeNull();
+
+  const exported = buildConversationExport({
+    format: 'txt',
+    messages: projected.messages,
+    exportedAt: new Date('2026-09-02T00:00:00.000Z'),
+  });
+  expect(
+    exported.content.match(/Trial requires an explicitly authorized Live Smoke Test\./g),
+  ).toHaveLength(1);
 });
 
 test('projects published pipeline authority for the Open Pipeline action', async () => {
@@ -839,6 +872,9 @@ test('routes a projected live question reply through the qualified V2 endpoint',
     chatOperationMode: 'production',
   });
 
+  expect(useChatStore.getState().completionWarning).toBe(
+    'Choose mode: Which safe mode should be used?',
+  );
   await useChatStore.getState().send('Use safe mode.');
 
   expect(

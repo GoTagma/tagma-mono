@@ -4,6 +4,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  createChatVerificationOutcome,
+  serializeChatVerificationOutcome,
+} from '../shared/chat-verification-outcome.js';
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
 import { normalizeChatOperationV2TargetCoordinate } from '../server/chat-operations/binding.js';
 import {
@@ -72,6 +76,7 @@ interface RuntimeOptions {
   readonly providerSubmissionUnknown?: boolean;
   readonly providerSubmissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
   readonly relocationUnavailableOnce?: boolean;
+  readonly emitTrialProgress?: boolean;
 }
 
 class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPersistence {
@@ -108,9 +113,9 @@ class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPe
                   {
                     attachmentId: `notice-${input.invocationId}`,
                     kind: 'notice',
-                    mediaType: 'text/plain',
-                    label: 'Pipeline published without completed Trial verification',
-                    content: input.verificationNotice.summary,
+                    mediaType: 'application/json',
+                    label: 'Pipeline verification outcome',
+                    content: serializeChatVerificationOutcome(input.verificationNotice.outcome),
                   },
                 ],
           evidence: {
@@ -365,6 +370,20 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     input: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0],
   ): Promise<ChatOperationV2AuthoringVerificationResult> {
     this.verifyCalls.push(input.stage.stageId);
+    if (this.options.emitTrialProgress) {
+      input.onTrialProgress?.({
+        stageId: input.stage.stageId,
+        trialId: 'trial-progress-1',
+        phase: 'running-case',
+        startedAt: 100,
+        semanticUpdatedAt: 120,
+        heartbeatAt: 140,
+        caseIndex: 1,
+        caseCount: 2,
+        runNumber: 1,
+        runCount: 1,
+      });
+    }
     const disposition = this.options.verification?.[this.verificationIndex++] ?? 'passed';
     if (disposition === 'repair') {
       return {
@@ -447,6 +466,19 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       preparedAt: this.now(),
     });
     if (disposition === 'unverified') {
+      const outcome = createChatVerificationOutcome({
+        trialKind: 'blocked',
+        ran: false,
+        plannedCaseCount: 0,
+        caseResultCount: 0,
+        passedCaseCount: 0,
+        failedCaseCount: 0,
+        notRunCaseCount: 0,
+        taskStatusCounts: {},
+        liveSmokeStatus: 'not_enabled',
+        reasonCode: 'trial_blocked',
+        details: 'Trial requires an explicitly authorized Live Smoke Test.',
+      });
       return {
         kind: 'unverified',
         trialId: `trial-${this.verificationIndex}`,
@@ -459,11 +491,25 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         errorCode: 'trial_blocked',
         diagnosticCodes: ['trial_blocked'],
         redactedSummary: 'Trial requires an explicitly authorized Live Smoke Test.',
+        outcome,
         stagedSnapshotHash: input.stage.snapshotHash,
         artifactSetHash: this.prepare.artifactSetHash,
         artifactCount: this.prepare.artifacts.length,
       };
     }
+    const outcome = createChatVerificationOutcome({
+      trialKind: 'passed',
+      ran: true,
+      plannedCaseCount: 2,
+      caseResultCount: 2,
+      passedCaseCount: 2,
+      failedCaseCount: 0,
+      notRunCaseCount: 0,
+      taskStatusCounts: { success: 2 },
+      liveSmokeStatus: 'not_enabled',
+      reasonCode: null,
+      details: 'Sandbox Trial passed.',
+    });
     return {
       kind: 'passed',
       trialId: `trial-${this.verificationIndex}`,
@@ -472,6 +518,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       passedCount: 2,
       failedCount: 0,
       warningCount: 0,
+      outcome,
       stagedSnapshotHash: input.stage.snapshotHash,
       artifactSetHash: this.prepare.artifactSetHash,
       artifactCount: this.prepare.artifacts.length,
@@ -690,6 +737,60 @@ function dispatchInput(operation: StoredChatOperationV2) {
 }
 
 describe('ChatTurn Operation V2 authoring lifecycle', () => {
+  test('durably records content-minimized Trial heartbeat evidence', async () => {
+    const { engine, store } = createHarness({ emitTrialProgress: true });
+
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    const page = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (page.kind !== 'events') throw new Error('Expected retained Host events.');
+    const progress = page.events.filter(({ type }) => type === 'trial_progressed');
+    expect(progress).toHaveLength(1);
+    expect(progress[0]?.payload).toMatchObject({
+      phase: 'running-case',
+      startedAt: 100,
+      semanticUpdatedAt: 120,
+      heartbeatAt: 140,
+      caseIndex: 1,
+      caseCount: 2,
+    });
+    expect(JSON.stringify(progress)).not.toContain('taskId');
+    expect(JSON.stringify(progress)).not.toContain('detail');
+    expect(store.getLatestOperationEvent('operation-1', 'trial_progressed')?.payload).toMatchObject(
+      { heartbeatAt: 140 },
+    );
+  });
+
+  test('enters the dedicated Trial phase before awaiting Host verification', async () => {
+    const { engine, store, runtime } = createHarness();
+    const verify = runtime.verifyStage.bind(runtime);
+    let announceStarted!: () => void;
+    let releaseVerification!: () => void;
+    const started = new Promise<void>((resolve) => {
+      announceStarted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      releaseVerification = resolve;
+    });
+    runtime.verifyStage = async (input) => {
+      announceStarted();
+      await released;
+      return verify(input);
+    };
+
+    const dispatch = engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    await started;
+
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'trial-running',
+      waitReason: null,
+      activeInvocationId: null,
+    });
+
+    releaseVerification();
+    await expect(dispatch).resolves.toMatchObject({ kind: 'commit_preparing' });
+  });
+
   test('runs reserve, stage, relocation, authoring, verification, usage settlement, and commit handoff', async () => {
     const { engine, store, runtime, resultPersistence } = createHarness();
     const operation = store.getOperation('operation-1')!;
@@ -737,6 +838,14 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
         text: 'Authoring complete; Host verification pending.',
         executionMessageId: 'execution-message-1',
         rendererProjectable: true,
+        verificationNotice: expect.objectContaining({
+          status: 'verified',
+          code: 'trial_passed',
+          outcome: expect.objectContaining({
+            sandbox: expect.objectContaining({ status: 'passed' }),
+            liveSmoke: { status: 'not_enabled' },
+          }),
+        }),
       }),
     ]);
     expect(resultPersistence.calls[0]!.executionMessageId).not.toBe(
@@ -793,15 +902,19 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
           status: 'unverified',
           code: 'trial_blocked',
           summary: 'Trial requires an explicitly authorized Live Smoke Test.',
+          outcome: expect.objectContaining({
+            sandbox: expect.objectContaining({ status: 'skipped' }),
+            liveSmoke: { status: 'not_enabled' },
+            reasonCode: 'trial_blocked',
+          }),
         },
       }),
     ]);
     expect(store.getPendingResultMessage('operation-1')?.message.attachments).toEqual([
       expect.objectContaining({
         kind: 'notice',
-        mediaType: 'text/plain',
-        label: 'Pipeline published without completed Trial verification',
-        content: 'Trial requires an explicitly authorized Live Smoke Test.',
+        mediaType: 'application/json',
+        label: 'Pipeline verification outcome',
       }),
     ]);
     const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
@@ -930,6 +1043,16 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       phase: 'commit_preparing',
       repairAttempts: 0,
     });
+    const eventPage = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (eventPage.kind !== 'events') throw new Error('Expected retained Host events.');
+    expect(eventPage.events.find(({ type }) => type === 'trial_progressed')?.payload).toMatchObject(
+      {
+        trialId: 'trial-plan-attempt-1',
+        phase: 'preparing',
+        caseIndex: null,
+        runNumber: null,
+      },
+    );
     expect(
       resultPersistence.calls.map(({ purpose, rendererProjectable }) => ({
         purpose,
@@ -953,7 +1076,7 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(first.kind).toBe('provider_unavailable');
     const waiting = store.getOperation('operation-1')!;
     expect(waiting).toMatchObject({
-      phase: 'repairing',
+      phase: 'trial-running',
       waitReason: 'provider_unavailable',
       repairAttempts: 0,
     });
@@ -1075,7 +1198,7 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       engine.dispatch(dispatchInput(store.getOperation('operation-1')!)),
     ).rejects.toThrow(/result persistence failure/i);
     expect(store.getOperation('operation-1')).toMatchObject({
-      phase: 'verifying',
+      phase: 'trial-running',
       activeInvocationId: null,
       terminalOutcome: null,
     });

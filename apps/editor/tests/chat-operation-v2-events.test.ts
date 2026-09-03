@@ -121,6 +121,18 @@ const payloads = {
     errorCode: null,
     diagnosticCodes: [],
   },
+  trial_progressed: {
+    stageId: 'stage-01',
+    trialId: 'trial-01',
+    phase: 'running-case',
+    startedAt: 100,
+    semanticUpdatedAt: 120,
+    heartbeatAt: 125,
+    caseIndex: 1,
+    caseCount: 4,
+    runNumber: 1,
+    runCount: 2,
+  },
   trial_status_changed: {
     stageId: 'stage-01',
     trialId: 'trial-01',

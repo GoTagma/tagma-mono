@@ -178,6 +178,76 @@ test('extractBinariesFromYaml ignores Tagma input placeholder filters', () => {
   expect(binaries!.map((binary) => binary.name)).toEqual(['powershell']);
 });
 
+test('extractBinariesFromYaml treats grouped input conditions as expressions and still scans their branch', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'grouped-input-condition.yaml',
+    [
+      'pipeline:',
+      '  name: grouped input condition',
+      '  tracks:',
+      '    - id: verify',
+      '      name: Verify',
+      '      tasks:',
+      '        - id: merge_results',
+      "          command: 'if ((\"{{inputs.ok}}\" -eq ''true'')) { git status }'",
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['git']);
+  expect(binaries![0]!.usedBy).toEqual(['verify.merge_results']);
+});
+
+test('extractBinariesFromYaml ignores multiple grouped placeholders including shellquoted inputs', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'multiple-grouped-inputs.yaml',
+    [
+      'pipeline:',
+      '  name: multiple grouped inputs',
+      '  tracks:',
+      '    - id: verify',
+      '      name: Verify',
+      '      tasks:',
+      '        - id: guarded_commands',
+      "          command: 'if ((((\"{{inputs.alpha}}\" -eq ''true'') -and (\"{{inputs.beta | shellquote}}\" -ne '''')))) { bun test; git status }'",
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['bun', 'git']);
+});
+
+test('extractBinariesFromYaml treats casted input placeholders as PowerShell expressions', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'casted-input-condition.yaml',
+    [
+      'pipeline:',
+      '  name: casted input condition',
+      '  tracks:',
+      '    - id: verify',
+      '      name: Verify',
+      '      tasks:',
+      '        - id: positive_count',
+      '          command: \'if ([int]"{{inputs.count}}" -gt 0) { git status }\'',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['git']);
+});
+
 test('extractBinariesFromYaml maps prompt-task drivers via DRIVER_BINARIES', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(

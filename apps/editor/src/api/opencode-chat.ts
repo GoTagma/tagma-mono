@@ -149,6 +149,8 @@ export interface ActivityEvent {
    * column in the timeline.
    */
   detail?: string;
+  /** Host-owned liveness timestamp for a long controlled operation. */
+  heartbeatAt?: number;
   /**
    * Latest known size of the underlying text/reasoning part. Each
    * message.part.updated carries the full accumulated text (not a delta),

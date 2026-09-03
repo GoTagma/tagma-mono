@@ -165,6 +165,12 @@
 
 ## Chat Message Layout
 
+- Seal terminal authoring verification as the fixed-schema JSON `Pipeline verification outcome`
+  result attachment. The Renderer may parse only that typed attachment, renders its compact
+  publication/Sandbox/Live Smoke summary with collapsed copyable detail, and formats the same
+  evidence once for export. Never infer outcome from English prose or also promote a result notice
+  into `completionWarning`; that composer channel remains for live clarification, question,
+  permission/recovery, and send-error warnings.
 - A terminal Chat V2 authoring discard must never collapse to a user-only blank transcript. Keep
   the durable terminal operation visible as an explicit not-published notice, retain a failed
   activity state after `sending` clears, and state that the current pipeline was unchanged. Do not
@@ -299,6 +305,9 @@
   must still recover from the signed host record; a lost HTTP response must never delete a local
   journal after the corresponding host mutation may have committed. Keep the finished-turn queue
   and stage intact on any unverified restore or cleanup failure.
+- Concurrent server-record writers may race while creating the workspace `.tagma` boundary.
+  Accept only the mkdir `EEXIST` race, then run the same no-symlink and regular-directory checks;
+  every other creation error remains fail-closed before key or record publication.
 - OpenCode 1.18.18 `/session/status` is a sparse activity map: an omitted session is idle, exactly
   like an explicit `idle` entry. Explicit `busy`/`retry` entries and matching permission/question
   requests are active; malformed explicit entries fail closed. Never synthesize activity merely
@@ -633,7 +642,9 @@
   labels must follow that current phase instead of inferring it from a stale plan or failure result.
   Keep a separate Host heartbeat timestamp during silent long-running tasks while preserving the
   last semantic progress timestamp, and show bounded elapsed time without manufacturing task
-  activity. Snapshot execution budgets from workspace Settings when Trial starts. Recommended defaults are
+  activity. Persist `trial_progressed` with only Host stage/trial ids, an allowlisted phase,
+  timestamps, and case/run counts; never include task ids, authored case labels, free-form detail,
+  paths, provider text, or raw OpenCode state. Snapshot execution budgets from workspace Settings when Trial starts. Recommended defaults are
   120 minutes per task, 480 minutes per production pipeline, and 1440 minutes per Trial; supported
   ranges are 30m-24h, 1h-7d, and 2h-7d respectively. Normalize each outer lifecycle to at least 30
   minutes above the default task budget. Explicit YAML task/pipeline timeouts remain authoritative;

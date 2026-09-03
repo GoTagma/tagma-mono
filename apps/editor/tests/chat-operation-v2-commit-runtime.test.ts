@@ -5,6 +5,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { createChatVerificationOutcome } from '../shared/chat-verification-outcome.js';
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
 import {
   createManagedChatOperationV2AuthoringRuntime,
@@ -161,6 +162,19 @@ function verification(material: CommitMaterial) {
     stagedSnapshotHash: material.stagedSnapshotHash,
     artifactSetHash: material.artifactSetHash,
     artifactCount: material.artifacts.length,
+    outcome: createChatVerificationOutcome({
+      trialKind: 'passed',
+      ran: true,
+      plannedCaseCount: 0,
+      caseResultCount: 0,
+      passedCaseCount: 0,
+      failedCaseCount: 0,
+      notRunCaseCount: 0,
+      taskStatusCounts: {},
+      liveSmokeStatus: 'not_enabled',
+      reasonCode: null,
+      details: 'Sandbox Trial passed.',
+    }),
   };
 }
 

@@ -70,13 +70,18 @@ export function TurnActivityPanel({
   const firstStartedAt = activity[0]?.startedAt ?? now;
   const summary = computeActivitySummary(activity, isCurrentTurn, surfaceSummary, now);
   if (!summary && !expanded) return null;
-  const visibleSummary =
-    summary ??
-    ({
-      line: 'Activity',
-      tone: 'text-tagma-muted',
-      icon: <ChevronRight size={10} className="shrink-0 text-tagma-muted/60" />,
-    } satisfies ActivitySummary);
+  const visibleSummary = expanded
+    ? ({
+        line: 'Activity',
+        tone: summary?.tone ?? 'text-tagma-muted',
+        icon: null,
+      } satisfies ActivitySummary)
+    : (summary ??
+      ({
+        line: 'Activity',
+        tone: 'text-tagma-muted',
+        icon: <ChevronRight size={10} className="shrink-0 text-tagma-muted/60" />,
+      } satisfies ActivitySummary));
 
   return (
     <details
@@ -136,8 +141,10 @@ function computeActivitySummary(
     last.kind === 'tool-error' ||
     last.kind === 'operation-failed' ||
     last.kind === 'operation-waiting';
+  const heartbeat =
+    last.heartbeatAt === undefined ? '' : ` · ${formatHeartbeatAge(now, last.heartbeatAt)}`;
   return {
-    line: `${meta.label}${detail} · ${elapsed}`,
+    line: `${meta.label}${detail} · ${elapsed}${heartbeat}`,
     tone: needsAttention ? 'text-tagma-warning' : 'text-tagma-text',
     icon: needsAttention ? (
       <AlertTriangle size={11} className="shrink-0 text-tagma-warning" />
@@ -157,12 +164,27 @@ function ActivityRow({
   firstStartedAt: number;
 }) {
   const meta = describeActivity(event);
+  const showsProgress =
+    event.endedAt === null &&
+    event.kind !== 'operation-waiting' &&
+    event.kind !== 'operation-failed' &&
+    event.kind !== 'tool-error';
   return (
     <div className="flex min-w-0 items-baseline gap-2">
       <span className="w-10 shrink-0 tabular-nums text-tagma-muted/50">
         {formatTimelineOffset(event.startedAt - firstStartedAt)}
       </span>
-      <span className="shrink-0">{meta.icon}</span>
+      <span className="shrink-0">
+        {showsProgress ? (
+          <Loader2
+            size={9}
+            className="animate-spin text-tagma-muted/70"
+            aria-label="Activity in progress"
+          />
+        ) : (
+          meta.icon
+        )}
+      </span>
       <span className="min-w-0 flex-1 break-words">
         {meta.label}
         {event.detail && <span className="text-tagma-muted/70"> · {event.detail}</span>}
@@ -170,6 +192,12 @@ function ActivityRow({
           <span className="text-tagma-muted/70"> · {formatBytes(event.bytes)}</span>
         )}
         {event.count > 1 && <span className="text-tagma-muted/50"> · ×{event.count}</span>}
+        {event.heartbeatAt !== undefined && (
+          <span className="text-tagma-muted/50">
+            {' '}
+            · {formatHeartbeatAge(now, event.heartbeatAt)}
+          </span>
+        )}
       </span>
       <span className="w-14 shrink-0 text-right tabular-nums text-tagma-muted/50">
         {formatDurationShort((event.endedAt ?? now) - event.startedAt)}
@@ -243,6 +271,11 @@ function formatDurationShort(milliseconds: number): string {
   const seconds = Math.floor(milliseconds / 1000);
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, '0')}s`;
+}
+
+function formatHeartbeatAge(now: number, heartbeatAt: number): string {
+  const age = Math.max(0, now - heartbeatAt);
+  return age < 1_500 ? 'Host active now' : `Host active ${formatDurationShort(age)} ago`;
 }
 
 function formatBytes(value: number): string {

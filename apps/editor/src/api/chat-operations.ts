@@ -72,6 +72,7 @@ export const CHAT_OPERATION_V2_PHASES = [
   'staging',
   'authoring',
   'verifying',
+  'trial-running',
   'repairing',
   'commit_preparing',
   'commit_decided',
@@ -79,6 +80,18 @@ export const CHAT_OPERATION_V2_PHASES = [
   'commit_recovering',
   'terminal',
 ] as const;
+
+export const CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES = [
+  'preparing',
+  'capturing-host-witness',
+  'running-baseline',
+  'sealing-baseline',
+  'running-case',
+  'verifying-workspace',
+  'capturing-post-witness',
+] as const;
+export type ChatOperationV2TrialProgressPhase =
+  (typeof CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES)[number];
 
 export type ChatOperationV2Phase = (typeof CHAT_OPERATION_V2_PHASES)[number];
 
@@ -165,6 +178,7 @@ export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
   'binding_released',
   'stage_created',
   'stage_status_changed',
+  'trial_progressed',
   'trial_status_changed',
   'commit_wal_prepared',
   'commit_decided',
@@ -291,6 +305,18 @@ export interface ChatOperationV2HostEventPayloads {
     readonly status: 'creating' | 'ready' | 'failed' | 'discarded';
     readonly errorCode: string | null;
     readonly diagnosticCodes: readonly string[];
+  };
+  readonly trial_progressed: {
+    readonly stageId: string;
+    readonly trialId: string;
+    readonly phase: ChatOperationV2TrialProgressPhase;
+    readonly startedAt: number;
+    readonly semanticUpdatedAt: number;
+    readonly heartbeatAt: number;
+    readonly caseIndex: number | null;
+    readonly caseCount: number | null;
+    readonly runNumber: number | null;
+    readonly runCount: number | null;
   };
   readonly trial_status_changed: {
     readonly stageId: string;
@@ -568,6 +594,19 @@ export interface ChatOperationV2ResultProjection {
   readonly messages: readonly ChatOperationV2ResultMessage[];
 }
 
+export interface ChatOperationV2TrialProgress {
+  readonly stageId: string;
+  readonly trialId: string;
+  readonly phase: ChatOperationV2TrialProgressPhase;
+  readonly startedAt: number;
+  readonly semanticUpdatedAt: number;
+  readonly heartbeatAt: number;
+  readonly caseIndex: number | null;
+  readonly caseCount: number | null;
+  readonly runNumber: number | null;
+  readonly runCount: number | null;
+}
+
 export interface ChatOperationV2OperationDetail {
   readonly schemaVersion: typeof CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION;
   readonly workspaceScopeId: string;
@@ -577,6 +616,8 @@ export interface ChatOperationV2OperationDetail {
   readonly pendingInput: ChatOperationV2PendingInput | null;
   readonly failure: ChatOperationV2FailureProjection | null;
   readonly result: ChatOperationV2ResultProjection | null;
+  /** Optional only for wire compatibility with an older V2 Host projection. */
+  readonly trialProgress?: ChatOperationV2TrialProgress | null;
 }
 
 export interface ChatOperationV2RendererAttachment {
@@ -1131,6 +1172,41 @@ function isHostEventPayload(type: ChatOperationV2HostEventType, value: unknown):
         includesValue(['creating', 'ready', 'failed', 'discarded'] as const, value.status) &&
         isNullableSafeCode(value.errorCode) &&
         isDiagnosticCodes(value.diagnosticCodes)
+      );
+    case 'trial_progressed':
+      return (
+        hasEventPayloadKeys(value, [
+          'stageId',
+          'trialId',
+          'phase',
+          'startedAt',
+          'semanticUpdatedAt',
+          'heartbeatAt',
+          'caseIndex',
+          'caseCount',
+          'runNumber',
+          'runCount',
+        ]) &&
+        isHostId(value.stageId) &&
+        isHostId(value.trialId) &&
+        includesValue(CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES, value.phase) &&
+        isNonNegativeInteger(value.startedAt) &&
+        isNonNegativeInteger(value.semanticUpdatedAt) &&
+        isNonNegativeInteger(value.heartbeatAt) &&
+        value.startedAt <= value.semanticUpdatedAt &&
+        value.semanticUpdatedAt <= value.heartbeatAt &&
+        (value.caseIndex === null || isEventCount(value.caseIndex, 1)) &&
+        (value.caseCount === null || isEventCount(value.caseCount, 1)) &&
+        (value.runNumber === null || isEventCount(value.runNumber, 1)) &&
+        (value.runCount === null || isEventCount(value.runCount, 1)) &&
+        ((value.caseIndex === null && value.caseCount === null) ||
+          (typeof value.caseIndex === 'number' &&
+            typeof value.caseCount === 'number' &&
+            value.caseIndex <= value.caseCount)) &&
+        ((value.runNumber === null && value.runCount === null) ||
+          (typeof value.runNumber === 'number' &&
+            typeof value.runCount === 'number' &&
+            value.runNumber <= value.runCount))
       );
     case 'trial_status_changed':
       return (
@@ -1897,19 +1973,73 @@ function parseFailureProjection(value: unknown): ChatOperationV2FailureProjectio
   };
 }
 
-function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
+function parseTrialProgress(value: unknown): ChatOperationV2TrialProgress | null {
+  if (value === null || value === undefined) return null;
   if (
     !isPlainRecord(value) ||
     !hasExactKeys(value, [
-      'schemaVersion',
-      'workspaceScopeId',
-      'operation',
-      'userMessage',
-      'inventory',
-      'pendingInput',
-      'failure',
-      'result',
+      'stageId',
+      'trialId',
+      'phase',
+      'startedAt',
+      'semanticUpdatedAt',
+      'heartbeatAt',
+      'caseIndex',
+      'caseCount',
+      'runNumber',
+      'runCount',
     ]) ||
+    !projectionHostId(value.stageId) ||
+    !projectionHostId(value.trialId) ||
+    !includesValue(CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES, value.phase) ||
+    !isNonNegativeInteger(value.startedAt) ||
+    !isNonNegativeInteger(value.semanticUpdatedAt) ||
+    !isNonNegativeInteger(value.heartbeatAt) ||
+    value.startedAt > value.semanticUpdatedAt ||
+    value.semanticUpdatedAt > value.heartbeatAt ||
+    (value.caseIndex !== null && !isPositiveInteger(value.caseIndex)) ||
+    (value.caseCount !== null && !isPositiveInteger(value.caseCount)) ||
+    (value.runNumber !== null && !isPositiveInteger(value.runNumber)) ||
+    (value.runCount !== null && !isPositiveInteger(value.runCount)) ||
+    (value.caseIndex === null) !== (value.caseCount === null) ||
+    (value.runNumber === null) !== (value.runCount === null) ||
+    (typeof value.caseIndex === 'number' &&
+      typeof value.caseCount === 'number' &&
+      value.caseIndex > value.caseCount) ||
+    (typeof value.runNumber === 'number' &&
+      typeof value.runCount === 'number' &&
+      value.runNumber > value.runCount)
+  ) {
+    invalid('Trial progress projection is invalid');
+  }
+  return {
+    stageId: value.stageId,
+    trialId: value.trialId,
+    phase: value.phase,
+    startedAt: value.startedAt,
+    semanticUpdatedAt: value.semanticUpdatedAt,
+    heartbeatAt: value.heartbeatAt,
+    caseIndex: value.caseIndex,
+    caseCount: value.caseCount,
+    runNumber: value.runNumber,
+    runCount: value.runCount,
+  };
+}
+
+function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
+  const detailKeys = [
+    'schemaVersion',
+    'workspaceScopeId',
+    'operation',
+    'userMessage',
+    'inventory',
+    'pendingInput',
+    'failure',
+    'result',
+  ] as const;
+  if (
+    !isPlainRecord(value) ||
+    (!hasExactKeys(value, detailKeys) && !hasExactKeys(value, [...detailKeys, 'trialProgress'])) ||
     value.schemaVersion !== CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION ||
     !projectionHostId(value.workspaceScopeId)
   ) {
@@ -1921,6 +2051,7 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
   const pendingInput = parsePendingInput(value.pendingInput);
   const failure = parseFailureProjection(value.failure);
   const result = parseResultProjection(value.result);
+  const trialProgress = parseTrialProgress(value.trialProgress);
   if (
     userMessage.operationId !== operation.operationId ||
     (pendingInput !== null &&
@@ -1950,6 +2081,7 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
     pendingInput,
     failure,
     result,
+    ...(value.trialProgress !== undefined ? { trialProgress } : {}),
   };
 }
 

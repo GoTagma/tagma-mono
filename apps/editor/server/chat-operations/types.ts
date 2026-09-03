@@ -7,6 +7,7 @@ export const CHAT_OPERATION_V2_PHASES = [
   'staging',
   'authoring',
   'verifying',
+  'trial-running',
   'repairing',
   'commit_preparing',
   'commit_decided',

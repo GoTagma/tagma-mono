@@ -31,6 +31,7 @@ import {
 } from './results.js';
 import { createChatInventorySnapshot } from './snapshots.js';
 import type {
+  ChatOperationV2Store,
   ChatOperationV2InvocationStatus,
   StoredChatOperationV2,
   StoredInvocationOutboxRecord,
@@ -198,6 +199,27 @@ export interface ChatOperationV2RendererOperationDetail {
   readonly pendingInput: ChatOperationV2RendererPendingInput | null;
   readonly failure: ChatOperationV2RendererFailureProjection | null;
   readonly result: ChatOperationV2RendererResultProjection | null;
+  readonly trialProgress?: ChatOperationV2RendererTrialProgress | null;
+}
+
+export interface ChatOperationV2RendererTrialProgress {
+  readonly stageId: string;
+  readonly trialId: string;
+  readonly phase:
+    | 'preparing'
+    | 'capturing-host-witness'
+    | 'running-baseline'
+    | 'sealing-baseline'
+    | 'running-case'
+    | 'verifying-workspace'
+    | 'capturing-post-witness';
+  readonly startedAt: number;
+  readonly semanticUpdatedAt: number;
+  readonly heartbeatAt: number;
+  readonly caseIndex: number | null;
+  readonly caseCount: number | null;
+  readonly runNumber: number | null;
+  readonly runCount: number | null;
 }
 
 export interface ChatOperationV2RendererWorkspaceSnapshot {
@@ -221,6 +243,8 @@ export interface ChatOperationV2ProjectionReadPersistence {
   ): readonly ChatOperationV2InteractiveRendererView[];
   listInvocationOutbox(workspaceScopeId: string): readonly StoredInvocationOutboxRecord[];
   getResultProjection(operationId: string): ChatOperationV2RendererResultProjection | null;
+  readonly getLatestOperationEvent?: ChatOperationV2Store['getLatestOperationEvent'];
+  readonly listOperationEvents?: ChatOperationV2Store['listOperationEvents'];
 }
 
 export interface ChatOperationV2ProjectionAdmission extends ChatOperationV2Admission {
@@ -260,6 +284,7 @@ export interface ChatOperationV2OperationProjectionParts {
   readonly outboxes: readonly StoredInvocationOutboxRecord[];
   readonly result: ChatOperationV2RendererResultProjection | null;
   readonly inventory: ChatOperationV2RendererInventory;
+  readonly trialProgress?: ChatOperationV2RendererTrialProgress | null;
 }
 
 const HOST_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,255})$/;
@@ -1093,6 +1118,82 @@ export function projectChatOperationV2OperationDetail(
     pendingInput: pending,
     failure,
     result,
+    trialProgress: parts.trialProgress ?? null,
+  });
+}
+
+const TRIAL_PROGRESS_PHASES = new Set([
+  'preparing',
+  'capturing-host-witness',
+  'running-baseline',
+  'sealing-baseline',
+  'running-case',
+  'verifying-workspace',
+  'capturing-post-witness',
+]);
+
+function latestTrialProgress(
+  persistence: ChatOperationV2ProjectionReadPersistence,
+  operation: StoredChatOperationV2,
+): ChatOperationV2RendererTrialProgress | null {
+  if (operation.phase !== 'trial-running') return null;
+  let event =
+    persistence.getLatestOperationEvent?.(operation.operationId, 'trial_progressed') ?? null;
+  if (!event && persistence.listOperationEvents) {
+    const snapshot = persistence.getWorkspaceSnapshot(operation.workspaceScopeId);
+    const page = persistence.listOperationEvents({
+      workspaceScopeId: operation.workspaceScopeId,
+      after: snapshot.retainedFloor,
+      limit: 1_000,
+    });
+    if (page.kind === 'events') {
+      event =
+        [...page.events]
+          .reverse()
+          .find(
+            (candidate) =>
+              candidate.operationId === operation.operationId &&
+              candidate.type === 'trial_progressed',
+          ) ?? null;
+    }
+  }
+  if (!event) return null;
+  const value = event.payload;
+  const countOrNull = (candidate: unknown): candidate is number | null =>
+    candidate === null || (Number.isSafeInteger(candidate) && (candidate as number) >= 1);
+  if (
+    event.generation !== operation.generation ||
+    event.phase !== 'trial-running' ||
+    value.stageId !== operation.stageId ||
+    !TRIAL_PROGRESS_PHASES.has(String(value.phase)) ||
+    !Number.isSafeInteger(value.startedAt) ||
+    !Number.isSafeInteger(value.semanticUpdatedAt) ||
+    !Number.isSafeInteger(value.heartbeatAt) ||
+    (value.startedAt as number) < 0 ||
+    (value.startedAt as number) < operation.createdAt ||
+    (value.startedAt as number) > (value.semanticUpdatedAt as number) ||
+    (value.semanticUpdatedAt as number) > (value.heartbeatAt as number) ||
+    (value.heartbeatAt as number) > event.timestamp ||
+    !countOrNull(value.caseIndex) ||
+    !countOrNull(value.caseCount) ||
+    !countOrNull(value.runNumber) ||
+    !countOrNull(value.runCount) ||
+    (value.caseIndex === null) !== (value.caseCount === null) ||
+    (value.runNumber === null) !== (value.runCount === null)
+  ) {
+    return fail('invalid_record', 'Durable Trial progress evidence is invalid.');
+  }
+  return Object.freeze({
+    stageId: hostId(value.stageId, 'Trial progress stage id'),
+    trialId: hostId(value.trialId, 'Trial progress id'),
+    phase: value.phase as ChatOperationV2RendererTrialProgress['phase'],
+    startedAt: value.startedAt as number,
+    semanticUpdatedAt: value.semanticUpdatedAt as number,
+    heartbeatAt: value.heartbeatAt as number,
+    caseIndex: value.caseIndex as number | null,
+    caseCount: value.caseCount as number | null,
+    runNumber: value.runNumber as number | null,
+    runCount: value.runCount as number | null,
   });
 }
 
@@ -1103,6 +1204,7 @@ function operationParts(
   outboxes: readonly StoredInvocationOutboxRecord[] = persistence.listInvocationOutbox(
     operation.workspaceScopeId,
   ),
+  includeTrialProgress = true,
 ): ChatOperationV2OperationProjectionParts {
   const admission = persistence.getAdmission(operation.operationId);
   if (admission === null) {
@@ -1119,6 +1221,7 @@ function operationParts(
     outboxes,
     result: persistence.getResultProjection(operation.operationId),
     inventory,
+    trialProgress: includeTrialProgress ? latestTrialProgress(persistence, operation) : null,
   };
 }
 
@@ -1162,7 +1265,7 @@ export function readChatOperationV2WorkspaceProjection(
     operationIds.add(operation.operationId);
     // Workspace summaries do not project failure evidence. Avoid one complete
     // outbox scan per operation; the detail endpoint reads it only on demand.
-    const parts = operationParts(persistence, operation, inventory, []);
+    const parts = operationParts(persistence, operation, inventory, [], false);
     const result = validateResultProjection(parts.result, operation);
     const pending = pendingInput({ ...parts, result });
     return operationSummary(operation, parts.admission, result, pending);

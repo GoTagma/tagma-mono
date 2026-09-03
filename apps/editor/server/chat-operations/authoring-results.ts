@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { serializeChatVerificationOutcome } from '../../shared/chat-verification-outcome.js';
 import type {
   ChatOperationV2AuthoringResultPersistence,
   PersistChatOperationV2AuthoringInvocationResultInput,
@@ -98,9 +99,9 @@ class StoreAuthoringResultPersistence implements ChatOperationV2AuthoringResultP
                   input.verificationNotice.code,
                 ),
                 kind: 'notice' as const,
-                mediaType: 'text/plain' as const,
-                label: 'Pipeline published without completed Trial verification',
-                content: input.verificationNotice.summary,
+                mediaType: 'application/json' as const,
+                label: 'Pipeline verification outcome',
+                content: serializeChatVerificationOutcome(input.verificationNotice.outcome),
               },
             ],
       evidence: {

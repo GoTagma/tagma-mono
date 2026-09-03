@@ -345,9 +345,21 @@ function isPowerShellBuiltinToken(tok: string): boolean {
   return POWERSHELL_BUILTINS.has(candidate.toLowerCase());
 }
 
+function withoutLeadingGrouping(tok: string): string {
+  return tok.replace(/^[({]+/, '');
+}
+
 function isPowerShellExpressionStartToken(tok: string): boolean {
-  const candidate = tok.replace(/^[({]+/, '');
-  return candidate.startsWith('$') || candidate.startsWith('@(') || candidate.startsWith('@{');
+  const candidate = withoutLeadingGrouping(tok);
+  return (
+    candidate.startsWith('$') ||
+    candidate.startsWith('@(') ||
+    candidate.startsWith('@{') ||
+    // PowerShell casts and type literals may be immediately followed by an
+    // expression after quote removal, e.g. `[int]"{{inputs.count}}"` becomes
+    // `[int]__tagma_input__`. Neither the type nor its operand is a command.
+    /^\[[^\]\r\n]+\]/.test(candidate)
+  );
 }
 
 function shellCommandTokens(s: string): string[] {
@@ -363,16 +375,20 @@ function shellCommandTokens(s: string): string[] {
       expectingCommand = true;
       continue;
     }
+    if (GROUP_STRUCTURAL_TOKENS.has(tok)) {
+      if (tok === '{' || tok === '}') expectingCommand = true;
+      continue;
+    }
     if (!expectingCommand) continue;
 
     const lower = tok.toLowerCase();
-    if (GROUP_STRUCTURAL_TOKENS.has(tok) || CONTROL_WORDS.has(lower) || isRedirectionToken(tok)) {
+    if (CONTROL_WORDS.has(lower) || isRedirectionToken(tok)) {
       continue;
     }
     // A dash-prefixed token in command position is a stranded flag (e.g. a
     // PowerShell `-not` / `-ErrorAction`), never a PATH-resolvable binary —
     // even when grouping openers precede it, as in `if (-not (Test-Path …))`.
-    if (tok.replace(/^[({]+/, '').startsWith('-')) {
+    if (withoutLeadingGrouping(tok).startsWith('-')) {
       continue;
     }
     if (isEnvAssignmentToken(tok)) {
@@ -397,7 +413,7 @@ function shellCommandTokens(s: string): string[] {
       expectingCommand = false;
       continue;
     }
-    if (tok === TAGMA_INPUT_SENTINEL) {
+    if (withoutLeadingGrouping(tok) === TAGMA_INPUT_SENTINEL) {
       expectingCommand = false;
       continue;
     }
@@ -825,8 +841,11 @@ export function runRequirementsSync(yamlPath: string): void {
   const body =
     existing?.body === undefined
       ? buildInitialBody(yamlBasename, binaries)
-      : existing.frontmatter?.generatedFor !== yamlBasename && isUntouchedGeneratedBody(existing)
-        ? buildInitialBody(yamlBasename, binaries)
+      : isUntouchedGeneratedBody(existing)
+        ? existing.frontmatter?.generatedFor === yamlBasename &&
+          JSON.stringify(existing.frontmatter.binaries) === JSON.stringify(binaries)
+          ? existing.body
+          : buildInitialBody(yamlBasename, binaries)
         : ensureBinaryBodySections(existing.body, binaries);
   const generatedRequirementsUnchanged =
     existing?.frontmatter?.schemaVersion === 1 &&

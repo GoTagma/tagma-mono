@@ -255,7 +255,14 @@ function ensureWorkspaceTagmaDirectory(workspaceTagmaDir: string, forWrite: bool
   }
   if (!existsSync(workspaceTagmaDir)) {
     if (!forWrite) throw new Error('Server record workspace .tagma directory was not found.');
-    mkdirSync(workspaceTagmaDir);
+    try {
+      mkdirSync(workspaceTagmaDir);
+    } catch (error) {
+      // Another authenticated writer may create the same workspace boundary
+      // after the existence check. Continue only for that no-replace race;
+      // the symlink and regular-directory checks below still fail closed.
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
   }
   const tagmaStat = lstatSync(workspaceTagmaDir);
   if (tagmaStat.isSymbolicLink()) {

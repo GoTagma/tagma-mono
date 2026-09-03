@@ -6,12 +6,19 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { createOpencodeClient as createOpencodeV2Client } from '@opencode-ai/sdk/v2/client';
 
+import {
+  createChatVerificationOutcome,
+  type ChatLiveSmokeStatus,
+  type ChatVerificationOutcome,
+} from '../../shared/chat-verification-outcome.js';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
 import { CREATE_NEW_PIPELINE_ACTION_KIND } from '../../shared/requested-action.js';
 import { pipelineTrialPlanPath } from '../chat-pipeline-trial-plan.js';
 import {
   cancelChatPipelineTrial,
+  getChatPipelineTrialProgress,
   trialRunChatYamlStage,
+  type ChatPipelineTrialProgress,
   type ChatPipelineTrialRunResult,
 } from '../chat-pipeline-trial-run.js';
 import {
@@ -90,6 +97,7 @@ const ADMISSION_SOURCE_HISTORY_PAGE_LIMIT = 100;
 const ADMISSION_SOURCE_HISTORY_MAX_PAGES = 64;
 const ADMISSION_SOURCE_RECONCILE_ATTEMPTS = 20;
 const ADMISSION_SOURCE_RECONCILE_DELAY_MS = 50;
+const TRIAL_PROGRESS_DURABLE_HEARTBEAT_MS = 30_000;
 const encoder = new TextEncoder();
 
 function canonicalJson(value: unknown): string {
@@ -119,6 +127,58 @@ function safeCode(value: string, fallback: string): string {
     .replace(/^_+|_+$/g, '')
     .slice(0, 64);
   return SAFE_CODE_RE.test(normalized) ? normalized : fallback;
+}
+
+function verificationOutcomeFromTrial(
+  trial: ChatPipelineTrialRunResult,
+  input: {
+    caseCount: number;
+    passedCount: number;
+    failedCount: number;
+    reasonCode: string | null;
+  },
+): ChatVerificationOutcome {
+  const resultCaseCount = Number.isSafeInteger(trial.caseResultCount)
+    ? Math.min(input.caseCount, Math.max(0, trial.caseResultCount ?? 0))
+    : Math.min(input.caseCount, Array.isArray(trial.cases) ? trial.cases.length : 0);
+  const notRunCaseCount = Number.isSafeInteger(trial.notRunCaseCount)
+    ? Math.min(
+        Math.max(0, input.caseCount - resultCaseCount),
+        Math.max(0, trial.notRunCaseCount ?? 0),
+      )
+    : Math.max(0, input.caseCount - resultCaseCount);
+  const declaredLiveSmokeStatus = trial.liveSmokeStatus;
+  const liveSmokeStatus: ChatLiveSmokeStatus = [
+    'passed',
+    'failed',
+    'skipped',
+    'not_enabled',
+  ].includes(String(declaredLiveSmokeStatus))
+    ? (declaredLiveSmokeStatus as ChatLiveSmokeStatus)
+    : trial.trialMode === 'sandbox'
+      ? 'not_enabled'
+      : trial.executionCoverage?.liveSmoke?.executed === true
+        ? trial.success
+          ? 'passed'
+          : 'failed'
+        : 'skipped';
+  return createChatVerificationOutcome({
+    trialKind: trial.kind,
+    ran: trial.ran === true,
+    plannedCaseCount: input.caseCount,
+    caseResultCount: resultCaseCount,
+    passedCaseCount: input.passedCount,
+    failedCaseCount: input.failedCount,
+    notRunCaseCount,
+    taskStatusCounts: trial.taskStatusCounts ?? {},
+    liveSmokeStatus,
+    reasonCode: input.reasonCode,
+    details: boundedInteractiveText(
+      trial.summary,
+      trial.success ? 'Trial verification completed.' : 'Trial verification could not complete.',
+      4_096,
+    ),
+  });
 }
 
 /**
@@ -529,6 +589,7 @@ export interface ManagedChatOperationV2AuthoringStagingAdapter {
     readonly targetRelativePath: string;
     readonly trialId: string;
     readonly signal: AbortSignal;
+    readonly onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult>;
 }
 
@@ -862,10 +923,37 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     targetRelativePath: string;
     trialId: string;
     signal: AbortSignal;
+    onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult> {
     const abort = () =>
       cancelChatPipelineTrial(this.workspace, { stageId: input.stageId, trialId: input.trialId });
     input.signal.addEventListener('abort', abort, { once: true });
+    let lastHeartbeatAt = -1;
+    let lastSemanticKey = '';
+    const emitProgress = () => {
+      const progress = getChatPipelineTrialProgress(this.workspace, {
+        stageId: input.stageId,
+        trialId: input.trialId,
+      });
+      if (!progress || progress.heartbeatAt <= lastHeartbeatAt) return;
+      const semanticKey = `${progress.phase}:${progress.updatedAt}:${progress.caseIndex ?? ''}:${progress.runNumber ?? ''}`;
+      if (
+        semanticKey === lastSemanticKey &&
+        lastHeartbeatAt >= 0 &&
+        progress.heartbeatAt - lastHeartbeatAt < TRIAL_PROGRESS_DURABLE_HEARTBEAT_MS
+      ) {
+        return;
+      }
+      lastHeartbeatAt = progress.heartbeatAt;
+      lastSemanticKey = semanticKey;
+      try {
+        input.onProgress?.(progress);
+      } catch {
+        console.warn('[chat-operation-v2] Trial progress heartbeat projection failed.');
+      }
+    };
+    const progressTimer = setInterval(emitProgress, 1_000);
+    progressTimer.unref?.();
     try {
       return await trialRunChatYamlStage(this.workspace, {
         stageId: input.stageId,
@@ -874,6 +962,8 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
         trustedOperationV2: true,
       });
     } finally {
+      emitProgress();
+      clearInterval(progressTimer);
       input.signal.removeEventListener('abort', abort);
     }
   }
@@ -2424,6 +2514,19 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         targetRelativePath: authority.workingRelativePath,
         trialId: id,
         signal: input.signal,
+        onProgress: (progress) =>
+          input.onTrialProgress?.({
+            stageId: progress.stageId,
+            trialId: progress.trialId,
+            phase: progress.phase,
+            startedAt: progress.startedAt,
+            semanticUpdatedAt: progress.updatedAt,
+            heartbeatAt: progress.heartbeatAt,
+            caseIndex: progress.caseIndex,
+            caseCount: progress.caseCount,
+            runNumber: progress.runNumber,
+            runCount: progress.runCount,
+          }),
       });
     } catch {
       return input.signal.aborted
@@ -2463,6 +2566,12 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         passedCount,
         failedCount,
         warningCount,
+        outcome: verificationOutcomeFromTrial(trial, {
+          caseCount,
+          passedCount,
+          failedCount,
+          reasonCode: warningCount > 0 ? 'trial_passed_with_warnings' : null,
+        }),
         stagedSnapshotHash: current.snapshotHash,
         artifactSetHash: current.artifactSetHash,
         artifactCount: current.artifactCount,
@@ -2501,6 +2610,12 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         passedCount,
         failedCount,
         warningCount,
+        outcome: verificationOutcomeFromTrial(trial, {
+          caseCount,
+          passedCount,
+          failedCount,
+          reasonCode: diagnostic,
+        }),
         trialStatus:
           trial.kind === 'blocked' ||
           trial.kind === 'preflight-failed' ||

@@ -56,6 +56,7 @@ describe('ChatTurn Operation V2 state vocabulary', () => {
       'staging',
       'authoring',
       'verifying',
+      'trial-running',
       'repairing',
       'commit_preparing',
       'commit_decided',

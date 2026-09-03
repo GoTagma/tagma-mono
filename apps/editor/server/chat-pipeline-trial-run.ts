@@ -310,6 +310,8 @@ export interface ChatPipelineTrialRunResult {
   trialPlanRepairAttemptId?: string;
   prerequisiteState?: ChatPipelineTrialRecordedPrerequisiteState;
   trialMode?: ChatPipelineTrialMode;
+  /** Host-observed real-workspace baseline outcome; never inferred from warning prose. */
+  liveSmokeStatus?: 'passed' | 'failed' | 'skipped' | 'not_enabled';
   trialabilityReport?: ChatPipelineTrialabilityReport;
   verificationMode?: 'sandbox-cases-only' | 'sandbox-cases-with-live-smoke';
   executionCoverage?: ChatPipelineTrialExecutionCoverage;
@@ -3658,6 +3660,14 @@ async function executeTrial(
           ? { prerequisiteState: dataReadiness }
           : {}),
       trialMode,
+      liveSmokeStatus:
+        trialMode === 'sandbox'
+          ? 'not_enabled'
+          : baselineSkipped
+            ? 'skipped'
+            : baselineSuccess
+              ? 'passed'
+              : 'failed',
       trialabilityReport,
       verificationMode: baselineSkipped ? 'sandbox-cases-only' : 'sandbox-cases-with-live-smoke',
       executionCoverage,
@@ -3707,6 +3717,7 @@ async function executeTrial(
       ran: true,
       runId,
       trialMode,
+      liveSmokeStatus: trialMode === 'sandbox' ? 'not_enabled' : 'failed',
       trialabilityReport,
       summary: boundedTrialText(
         abortState.timedOut

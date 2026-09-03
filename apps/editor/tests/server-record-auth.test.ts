@@ -163,7 +163,19 @@ describe('server-authenticated control records', () => {
       ),
     );
 
-    expect(await Promise.all(children.map(({ exited }) => exited))).toEqual([0, 0]);
+    const settlements = await Promise.all(
+      children.map(async (child) => {
+        const [exitCode, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stderr).text(),
+        ]);
+        return { exitCode, stderr };
+      }),
+    );
+    expect(settlements).toEqual([
+      { exitCode: 0, stderr: '' },
+      { exitCode: 0, stderr: '' },
+    ]);
     expect(readFileSync(keyPath)).toHaveLength(32);
     expect(existsSync(orphan)).toBe(true);
     process.env.TAGMA_STAGE_RECORD_KEY_FILE = keyPath;

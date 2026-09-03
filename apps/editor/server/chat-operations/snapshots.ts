@@ -619,6 +619,7 @@ const MUTATION_BASES_IMMUTABLE_PHASES = new Set([
   'staging',
   'authoring',
   'verifying',
+  'trial-running',
   'repairing',
   'commit_preparing',
   'commit_decided',

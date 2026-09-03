@@ -52,10 +52,15 @@ import { TurnActivityPanel } from './ActivityPanel';
 import { useChatStore } from '../../store/chat-store';
 import { parseChatContextWindowMarker } from '../../../shared/chat-context-window.js';
 import {
+  parseChatVerificationOutcome,
+  type ChatPublicationStatus,
+} from '../../../shared/chat-verification-outcome';
+import {
   extractAskAiContextReferences,
   stripAskAiContext,
   type AskAiContextReference,
 } from '../../utils/ask-ai-context';
+import { ChatVerificationOutcomeView } from './VerificationOutcome';
 
 // Memoized so streaming chunks (which produce a new `messages` array but
 // keep entry object identity for untouched messages) only re-render the one
@@ -387,6 +392,25 @@ function PartRenderer({
         return (
           <div className="select-text px-3 py-2 text-label font-sans whitespace-pre-wrap break-words chat-user-bubble text-tagma-text">
             {text}
+          </div>
+        );
+      }
+      const verificationOutcome = parseChatVerificationOutcome(
+        (part as Part & { chatVerificationOutcome?: unknown }).chatVerificationOutcome,
+      );
+      const publication = (part as Part & { chatPublicationStatus?: unknown })
+        .chatPublicationStatus;
+      if (
+        verificationOutcome &&
+        (publication === 'published' || publication === 'forked' || publication === 'not_published')
+      ) {
+        return (
+          <div className="chat-assistant-bubble text-tagma-text">
+            <ChatVerificationOutcomeView
+              outcome={verificationOutcome}
+              publication={publication as ChatPublicationStatus}
+            />
+            {cardFooter}
           </div>
         );
       }

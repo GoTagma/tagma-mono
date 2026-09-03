@@ -223,6 +223,7 @@ test('mutating baselines are immutable from reserving onward', () => {
     'staging',
     'authoring',
     'verifying',
+    'trial-running',
     'repairing',
     'commit_preparing',
     'commit_decided',

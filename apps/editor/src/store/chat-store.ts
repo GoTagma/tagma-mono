@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import {
+  formatChatVerificationOutcomeForExport,
+  parseChatVerificationOutcome,
+  type ChatPublicationStatus,
+} from '../../shared/chat-verification-outcome';
+import {
   getOpencodeV2Client,
   getOpencodeWorkspaceKey,
   getClientBootstrap,
@@ -20,6 +25,7 @@ import type {
   ChatOperationV2OperationDetail,
   ChatOperationV2Projection,
   ChatOperationV2ResultProjection,
+  ChatOperationV2TrialProgress,
 } from '../api/chat-operations';
 import type { Message, Part } from '@opencode-ai/sdk/client';
 import {
@@ -450,6 +456,7 @@ let chatOperationV2Controller: ChatOperationV2Controller | null = null;
 
 export function chatOperationV2Activity(
   operation: ChatOperationV2Projection | null,
+  trialProgress: ChatOperationV2TrialProgress | null = null,
 ): ActivityEvent[] {
   if (!operation) return [];
   if (operation.executionState === 'terminal') {
@@ -490,6 +497,7 @@ export function chatOperationV2Activity(
     operation.phase === 'created' || operation.phase === 'classifying'
       ? 'request-sent'
       : operation.phase === 'verifying' ||
+          operation.phase === 'trial-running' ||
           operation.phase === 'repairing' ||
           operation.phase.startsWith('commit_')
         ? 'tool-running'
@@ -499,13 +507,49 @@ export function chatOperationV2Activity(
   return [
     {
       kind,
-      startedAt: operation.updatedAt,
+      startedAt:
+        operation.phase === 'trial-running' && trialProgress
+          ? trialProgress.startedAt
+          : operation.updatedAt,
       endedAt: null,
       count: 1,
-      detail: chatOperationV2PhaseDetail(operation.phase),
-      key: `chat-operation-v2:${operation.operationId}:${operation.phase}`,
+      detail:
+        operation.phase === 'trial-running' && trialProgress
+          ? chatOperationV2TrialProgressDetail(trialProgress)
+          : chatOperationV2PhaseDetail(operation.phase),
+      ...(operation.phase === 'trial-running' && trialProgress
+        ? { heartbeatAt: trialProgress.heartbeatAt }
+        : {}),
+      key:
+        operation.phase === 'trial-running' && trialProgress
+          ? `chat-operation-v2:${operation.operationId}:${operation.phase}:${trialProgress.phase}:${trialProgress.caseIndex ?? ''}:${trialProgress.runNumber ?? ''}`
+          : `chat-operation-v2:${operation.operationId}:${operation.phase}`,
     },
   ];
+}
+
+function chatOperationV2TrialProgressDetail(progress: ChatOperationV2TrialProgress): string {
+  const phase =
+    progress.phase === 'running-baseline'
+      ? 'Running Live Smoke'
+      : progress.phase === 'running-case'
+        ? 'Running Sandbox case'
+        : progress.phase === 'capturing-host-witness' ||
+            progress.phase === 'capturing-post-witness' ||
+            progress.phase === 'verifying-workspace'
+          ? 'Verifying workspace safety'
+          : progress.phase === 'sealing-baseline'
+            ? 'Sealing Live Smoke evidence'
+            : 'Preparing Sandbox Trial';
+  const caseCount =
+    progress.caseIndex !== null && progress.caseCount !== null
+      ? ` · case ${progress.caseIndex}/${progress.caseCount}`
+      : '';
+  const runCount =
+    progress.runNumber !== null && progress.runCount !== null
+      ? ` · run ${progress.runNumber}/${progress.runCount}`
+      : '';
+  return `${phase}${caseCount}${runCount}`;
 }
 
 function chatOperationV2PhaseDetail(phase: ChatOperationV2Projection['phase']): string {
@@ -522,6 +566,8 @@ function chatOperationV2PhaseDetail(phase: ChatOperationV2Projection['phase']): 
       return 'Writing the pipeline draft';
     case 'verifying':
       return 'Running compilation and Trial verification';
+    case 'trial-running':
+      return 'Running Sandbox Trial verification';
     case 'repairing':
       return 'Repairing the draft from Trial evidence';
     case 'commit_preparing':
@@ -631,6 +677,9 @@ function chatOperationV2ThreadEntries(
       } as unknown as Part,
     ],
   };
+  const publication: ChatPublicationStatus = detail.result?.pipeline
+    ? detail.result.pipeline.disposition
+    : 'not_published';
   const assistants =
     detail.result?.messages.map((message) => ({
       info: {
@@ -648,16 +697,29 @@ function chatOperationV2ThreadEntries(
           type: 'text',
           text: message.text,
         } as unknown as Part,
-        ...message.attachments.map(
-          (attachment) =>
-            ({
-              id: `${message.messageId}-attachment-${attachment.attachmentId}`,
-              sessionID: syntheticSessionId,
-              messageID: message.messageId,
-              type: 'text',
-              text: `${attachment.label}\n\n${attachment.content}`,
-            }) as unknown as Part,
-        ),
+        ...message.attachments.map((attachment) => {
+          const verificationOutcome =
+            attachment.kind === 'notice' &&
+            attachment.mediaType === 'application/json' &&
+            attachment.label === 'Pipeline verification outcome'
+              ? parseChatVerificationOutcome(attachment.content)
+              : null;
+          return {
+            id: `${message.messageId}-attachment-${attachment.attachmentId}`,
+            sessionID: syntheticSessionId,
+            messageID: message.messageId,
+            type: 'text',
+            text: verificationOutcome
+              ? formatChatVerificationOutcomeForExport(verificationOutcome, publication)
+              : `${attachment.label}\n\n${attachment.content}`,
+            ...(verificationOutcome
+              ? {
+                  chatVerificationOutcome: verificationOutcome,
+                  chatPublicationStatus: publication,
+                }
+              : {}),
+          } as unknown as Part;
+        }),
       ],
     })) ?? [];
   return [user, ...assistants];
@@ -684,15 +746,10 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
       detail.operation.executionState === 'retryable_failure' &&
       detail.failure !== null &&
       previous.activeChatOperationV2Failure?.recordedAt !== detail.failure.recordedAt;
-    const resultNotice = detail.result?.messages
-      .flatMap((message) => message.attachments)
-      .filter((attachment) => attachment.kind === 'notice')
-      .at(-1);
-    let completionWarning = detail.result
-      ? resultNotice
-        ? `${resultNotice.label}: ${resultNotice.content}`.slice(0, 4_096)
-        : null
-      : previous.completionWarning;
+    // Result notices are durable transcript attachments. Promoting the same
+    // typed attachment into the composer warning would render one Host result
+    // twice and make dismissing the duplicate look like evidence was removed.
+    let completionWarning = detail.result ? null : previous.completionWarning;
 
     if (
       detail.pendingInput?.kind === 'clarification' ||
@@ -773,6 +830,7 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
             : previous.activeChatOperationV2FailureModel,
       pendingUserText: null,
       completionWarning,
+      pendingActivity: chatOperationV2Activity(detail.operation, detail.trialProgress ?? null),
       ...(newlyRetryable && previous.composerDraft.trim().length === 0
         ? { composerDraft: detail.userMessage.text }
         : {}),

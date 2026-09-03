@@ -37,6 +37,7 @@ export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
   'binding_released',
   'stage_created',
   'stage_status_changed',
+  'trial_progressed',
   'trial_status_changed',
   'commit_wal_prepared',
   'commit_decided',
@@ -153,6 +154,15 @@ type CommitDecision = (typeof CHAT_OPERATION_V2_COMMIT_DECISIONS)[number];
 type CommitApplyStatus = (typeof CHAT_OPERATION_V2_COMMIT_APPLY_STATUSES)[number];
 type CommitRecoveryStatus = (typeof CHAT_OPERATION_V2_COMMIT_RECOVERY_STATUSES)[number];
 type UsageStatus = (typeof CHAT_OPERATION_V2_USAGE_STATUSES)[number];
+const CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES = [
+  'preparing',
+  'capturing-host-witness',
+  'running-baseline',
+  'sealing-baseline',
+  'running-case',
+  'verifying-workspace',
+  'capturing-post-witness',
+] as const;
 
 export interface ChatOperationV2HostEventPayloads {
   readonly operation_created: {
@@ -272,6 +282,18 @@ export interface ChatOperationV2HostEventPayloads {
     readonly status: StageStatus;
     readonly errorCode: string | null;
     readonly diagnosticCodes: readonly string[];
+  };
+  readonly trial_progressed: {
+    readonly stageId: string;
+    readonly trialId: string;
+    readonly phase: (typeof CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES)[number];
+    readonly startedAt: number;
+    readonly semanticUpdatedAt: number;
+    readonly heartbeatAt: number;
+    readonly caseIndex: number | null;
+    readonly caseCount: number | null;
+    readonly runNumber: number | null;
+    readonly runCount: number | null;
   };
   readonly trial_status_changed: {
     readonly stageId: string;
@@ -497,6 +519,10 @@ function isCount(value: unknown, minimum = 0): value is number {
   );
 }
 
+function isTimestamp(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
 function isDiagnosticCodes(value: unknown): value is readonly string[] {
   return (
     Array.isArray(value) &&
@@ -677,6 +703,40 @@ const payloadValidators = {
     includesValue(CHAT_OPERATION_V2_STAGE_STATUSES, value.status) &&
     isNullableSafeCode(value.errorCode) &&
     isDiagnosticCodes(value.diagnosticCodes),
+  trial_progressed: (value) =>
+    isPlainRecord(value) &&
+    hasExactKeys(value, [
+      'stageId',
+      'trialId',
+      'phase',
+      'startedAt',
+      'semanticUpdatedAt',
+      'heartbeatAt',
+      'caseIndex',
+      'caseCount',
+      'runNumber',
+      'runCount',
+    ]) &&
+    isHostId(value.stageId) &&
+    isHostId(value.trialId) &&
+    includesValue(CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES, value.phase) &&
+    isTimestamp(value.startedAt) &&
+    isTimestamp(value.semanticUpdatedAt) &&
+    isTimestamp(value.heartbeatAt) &&
+    (value.startedAt as number) <= (value.semanticUpdatedAt as number) &&
+    (value.semanticUpdatedAt as number) <= (value.heartbeatAt as number) &&
+    (value.caseIndex === null || isCount(value.caseIndex, 1)) &&
+    (value.caseCount === null || isCount(value.caseCount, 1)) &&
+    (value.runNumber === null || isCount(value.runNumber, 1)) &&
+    (value.runCount === null || isCount(value.runCount, 1)) &&
+    ((value.caseIndex === null && value.caseCount === null) ||
+      (typeof value.caseIndex === 'number' &&
+        typeof value.caseCount === 'number' &&
+        value.caseIndex <= value.caseCount)) &&
+    ((value.runNumber === null && value.runCount === null) ||
+      (typeof value.runNumber === 'number' &&
+        typeof value.runCount === 'number' &&
+        value.runNumber <= value.runCount)),
   trial_status_changed: (value) =>
     isPlainRecord(value) &&
     hasExactKeys(value, [

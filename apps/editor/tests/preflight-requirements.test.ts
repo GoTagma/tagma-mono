@@ -209,6 +209,57 @@ test('runPreflight refreshes existing stale binaries before probing', () => {
   expect(parsed.frontmatter?.binaries.map((b) => b.name)).toEqual([knownBinary]);
 });
 
+test('runPreflight removes stale generated binary guidance after requirements inference changes', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = join(tagmaDir, 'placeholder-condition.yaml');
+  const obsoleteBinary = 'obsolete-cli-for-generated-requirements-test';
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: placeholder condition',
+      '  tracks:',
+      '    - id: verify',
+      '      name: Verify',
+      '      tasks:',
+      '        - id: merge_results',
+      `          command: "${obsoleteBinary} --version"`,
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  runPreflight(yamlPath);
+  const requirementsFile = requirementsPath(yamlPath);
+  expect(readFileSync(requirementsFile, 'utf-8')).toContain(`### \`${obsoleteBinary}\``);
+
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: placeholder condition',
+      '  tracks:',
+      '    - id: verify',
+      '      name: Verify',
+      '      tasks:',
+      '        - id: merge_results',
+      "          command: 'if ((\"{{inputs.ok}}\" -eq ''true'')) { Write-Output ok }'",
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  const result = runPreflight(yamlPath);
+  expect(result.skipped).toBe(false);
+  expect(result.missing.binaries).toEqual([]);
+  expect(result.missingBinaryRequirements).toEqual([]);
+
+  const refreshed = parseRequirementsMd(readFileSync(requirementsFile, 'utf-8'));
+  expect(refreshed.frontmatter?.binaries).toEqual([]);
+  expect(refreshed.body).not.toContain(`### \`${obsoleteBinary}\``);
+  expect(refreshed.body).toContain('<!-- No CLI tools required yet. -->');
+});
+
 test('runPreflight resolves the built-in opencode driver through the managed runtime outside PATH', () => {
   const { root, tagmaDir } = makeWorkspace();
   const yamlPath = join(tagmaDir, 'managed-opencode.yaml');

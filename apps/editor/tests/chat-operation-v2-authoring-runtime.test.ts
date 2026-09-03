@@ -24,7 +24,10 @@ import type {
   ChatOperationV2RuntimeInteractiveRequest,
 } from '../server/chat-operations/authoring.js';
 import type { ChatOperationV2InteractiveForwardingCommand } from '../server/chat-operations/interactive-requests.js';
-import type { ChatPipelineTrialRunResult } from '../server/chat-pipeline-trial-run.js';
+import type {
+  ChatPipelineTrialProgress,
+  ChatPipelineTrialRunResult,
+} from '../server/chat-pipeline-trial-run.js';
 import {
   discardChatYamlStageWithDisposition,
   finalizeChatYamlStage,
@@ -114,6 +117,7 @@ class FakeStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapte
     plannedCaseCount: 1,
     plan: { summary: 'plan' },
   } as unknown as ChatPipelineTrialRunResult;
+  trialProgress: ChatPipelineTrialProgress | null = null;
 
   constructor(
     readonly sourceDirectory: string,
@@ -196,7 +200,8 @@ class FakeStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapte
     return this.compileResult;
   }
 
-  async runTrial() {
+  async runTrial(input: Parameters<ManagedChatOperationV2AuthoringStagingAdapter['runTrial']>[0]) {
+    if (this.trialProgress) input.onProgress?.(this.trialProgress);
     return this.trialResult;
   }
 
@@ -1222,7 +1227,42 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       summary: 'Valid',
       validation: { errors: [], warnings: [] },
     };
+    value.staging.trialResult = {
+      success: true,
+      kind: 'passed',
+      ran: true,
+      cases: [
+        { id: 'case-1', success: true },
+        { id: 'case-2', success: true },
+      ],
+      plannedCaseCount: 2,
+      caseResultCount: 2,
+      notRunCaseCount: 0,
+      taskStatusCounts: { success: 4 },
+      trialMode: 'sandbox-with-live-smoke',
+      liveSmokeStatus: 'passed',
+      summary: 'All Trial evidence passed.',
+      plan: { summary: 'plan' },
+    } as unknown as ChatPipelineTrialRunResult;
+    value.staging.trialProgress = {
+      stageId: value.stage.stageId,
+      trialId: 'trial-progress-1',
+      phase: 'running-case',
+      detail: 'private task detail must not cross the Host boundary',
+      startedAt: 100,
+      updatedAt: 120,
+      heartbeatAt: 140,
+      caseId: 'private-case-id',
+      caseTitle: 'private case title',
+      caseIndex: 1,
+      caseCount: 2,
+      runNumber: 1,
+      runCount: 1,
+      taskId: 'private.task',
+      taskStatus: 'running',
+    };
     value.staging.mutate(sha256('verified-stage'), 3);
+    const progress: unknown[] = [];
     const passed = await value.runtime.verifyStage({
       operationId: 'operation-1',
       workspaceScopeId: 'scope-1',
@@ -1232,15 +1272,42 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       stage: value.stage,
       repairAttempts: 1,
       signal: new AbortController().signal,
+      onTrialProgress: (update) => progress.push(update),
     });
     expect(passed).toMatchObject({
       kind: 'passed',
-      caseCount: 1,
-      passedCount: 1,
+      caseCount: 2,
+      passedCount: 2,
       failedCount: 0,
+      outcome: {
+        sandbox: {
+          status: 'passed',
+          plannedCaseCount: 2,
+          passedCaseCount: 2,
+          taskStatusCounts: { success: 4 },
+        },
+        liveSmoke: { status: 'passed' },
+        reasonCode: null,
+        details: 'All Trial evidence passed.',
+      },
       stagedSnapshotHash: sha256('verified-stage'),
       artifactCount: 3,
     });
+    expect(progress).toEqual([
+      {
+        stageId: value.stage.stageId,
+        trialId: 'trial-progress-1',
+        phase: 'running-case',
+        startedAt: 100,
+        semanticUpdatedAt: 120,
+        heartbeatAt: 140,
+        caseIndex: 1,
+        caseCount: 2,
+        runNumber: 1,
+        runCount: 1,
+      },
+    ]);
+    expect(JSON.stringify(progress)).not.toContain('private');
   });
 
   test('keeps a Host Trial Plan request separate from pipeline repair authority', async () => {
@@ -1290,12 +1357,17 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     value.staging.trialResult = {
       success: false,
       kind: 'blocked',
-      ran: false,
+      ran: true,
       repairAuthorization: 'diagnostic-only',
       summary:
         'Trial Interaction Protocol preflight blocked execution because Live Smoke was not authorized.',
-      cases: [],
-      plannedCaseCount: 0,
+      cases: [{ id: 'case-1', success: true }],
+      plannedCaseCount: 2,
+      caseResultCount: 1,
+      notRunCaseCount: 1,
+      taskStatusCounts: { success: 2, skipped: 14 },
+      trialMode: 'sandbox-with-live-smoke',
+      liveSmokeStatus: 'skipped',
     } as unknown as ChatPipelineTrialRunResult;
 
     const blocked = await value.runtime.verifyStage({
@@ -1314,8 +1386,21 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       trialStatus: 'blocked',
       errorCode: 'trial_blocked',
       diagnosticCodes: ['trial_blocked'],
+      caseCount: 2,
+      passedCount: 1,
       redactedSummary:
         'Trial Interaction Protocol preflight blocked execution because Live Smoke was not authorized.',
+      outcome: {
+        sandbox: {
+          status: 'partial',
+          plannedCaseCount: 2,
+          passedCaseCount: 1,
+          notRunCaseCount: 1,
+          taskStatusCounts: { skipped: 14, success: 2 },
+        },
+        liveSmoke: { status: 'skipped' },
+        reasonCode: 'trial_blocked',
+      },
       stagedSnapshotHash: value.stage.snapshotHash,
       artifactCount: value.stage.artifactCount,
     });

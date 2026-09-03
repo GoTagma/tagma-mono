@@ -5822,6 +5822,23 @@ export class ChatOperationV2Store {
     };
   }
 
+  getLatestOperationEvent(operationId: string, type: string): StoredHostOperationEvent | null {
+    this.assertOpen();
+    assertIdentifier(operationId, 'operationId');
+    assertIdentifier(type, 'event type');
+    const statement = this.database.prepare<EventRow, [string, string]>(
+      `SELECT * FROM operation_events
+       WHERE operation_id = ? AND event_type = ?
+       ORDER BY workspace_seq DESC LIMIT 1`,
+    );
+    try {
+      const row = statement.get(operationId, type);
+      return row ? eventFromRow(row) : null;
+    } finally {
+      statement.finalize();
+    }
+  }
+
   appendOperationAnnotation(input: AppendOperationAnnotationInput): StoredOperationAnnotation {
     this.assertOpen();
     assertIdentifier(input.operationId, 'operationId');
