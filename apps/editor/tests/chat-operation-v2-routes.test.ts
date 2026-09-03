@@ -752,11 +752,43 @@ describe('Chat Operation V2 JSON reads', () => {
   });
 
   test('maps expected service and store failures to typed path-free responses', () => {
-    for (const [code, status, kind] of [
-      ['service_closed', 503, 'chat_operation_service_unavailable'],
-      ['store_closed', 503, 'chat_operation_service_unavailable'],
-      ['invalid_cursor', 400, 'invalid_cursor'],
-      ['corrupt_store', 500, 'chat_operation_read_failed'],
+    for (const [code, status, kind, error] of [
+      [
+        'service_closed',
+        503,
+        'chat_operation_service_unavailable',
+        'Chat operation state is temporarily unavailable.',
+      ],
+      [
+        'store_closed',
+        503,
+        'chat_operation_service_unavailable',
+        'Chat operation state is temporarily unavailable.',
+      ],
+      [
+        'invalid_cursor',
+        400,
+        'invalid_cursor',
+        'The event cursor must be a non-negative safe integer.',
+      ],
+      [
+        'schema_mismatch',
+        409,
+        'chat_operation_control_reset_required',
+        'Chat data is incompatible with this Tagma build. Archive and reset Chat data to continue.',
+      ],
+      [
+        'corrupt_store',
+        409,
+        'chat_operation_control_reset_required',
+        'Chat data is incompatible with this Tagma build. Archive and reset Chat data to continue.',
+      ],
+      [
+        'unsupported_schema_version',
+        409,
+        'chat_operation_control_version_unsupported',
+        'Chat data was created by a newer Tagma build. Update Tagma to continue without losing Chat history.',
+      ],
     ] as const) {
       const fake = service({
         getWorkspaceProjection() {
@@ -769,7 +801,7 @@ describe('Chat Operation V2 JSON reads', () => {
         res,
       );
       expect(res.statusCode).toBe(status);
-      expect(res.body).toMatchObject({ protocolVersion: 2, kind });
+      expect(res.body).toEqual({ protocolVersion: 2, kind, error });
       expect(JSON.stringify(res.body)).not.toContain('private');
     }
   });

@@ -113,6 +113,22 @@ read-only origin, but they never share a writable target; a session reuses only 
 branch on later edits. Finished branches reconcile independently, so one preserved failure does not
 block other sessions. Host Trial remains a workspace-wide safety barrier while it is running.
 
+### Chat control database compatibility
+
+Chat Operation V2 authority is shared across workspaces in the stable user-data
+`server-control/chat-operation-v2.sqlite` database. Compatibility follows its append-only SQLite
+schema version, independently of the Tagma editor/sidecar semantic version: a patch release may need
+a migration, while a minor release may reuse the same schema unchanged.
+
+Opening an older supported Store applies every missing migration transactionally and preserves Chat
+operations and bindings. A Store created by a newer schema fails closed so an older Tagma build
+cannot downgrade it. Historical migration SQL, names, and checksums are immutable; schema changes
+append a new migration instead of rewriting an existing one. If the live schema or migration
+identity cannot be migrated safely, Chat shows an explicit recovery action that first archives the
+old database and key, then creates a new control lineage. Tagma never silently replaces Chat data
+because an application minor or major version changed, and control reset does not modify pipeline
+files.
+
 When Chat preserves an unverified fork instead of overwriting another pipeline, the pipeline picker
 keeps that unchanged branch under a collapsed **Failed Chat drafts** section. The branch remains
 openable and explicitly removable; editing it or replacing it with a newer successful result returns

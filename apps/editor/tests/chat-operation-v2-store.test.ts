@@ -15,11 +15,16 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import {
+  CHAT_OPERATION_V2_MIGRATION_LEDGER,
   CHAT_OPERATION_V2_SCHEMA_VERSION,
   CHAT_OPERATION_V2_TABLES,
   ChatOperationV2Store,
   deriveInitialChatOperationV2ControlLineageId,
 } from '../server/chat-operations/store.js';
+import {
+  inspectOfflineChatOperationV2ControlLineage,
+  openOfflineChatOperationV2ResetOnlyStore,
+} from '../server/chat-operations/migration-runtime.js';
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
 import {
   createChatInventorySnapshot,
@@ -238,6 +243,52 @@ function downgradePendingResultAuthorityToV5(database: Database): void {
     DROP TABLE pending_result_messages;
     ALTER TABLE commit_wal DROP COLUMN pending_message_id;
   `);
+}
+
+function downgradeTrialRunningPhaseAuthorityToV6(database: Database): void {
+  const legacySchemas = new Map<string, string>();
+  for (const table of ['operations', 'operation_events']) {
+    const row = database
+      .query<{ sql: string }, [string]>(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+      )
+      .get(table);
+    if (!row?.sql.includes("'trial-running'")) {
+      throw new Error(`Current ${table} schema does not contain trial-running.`);
+    }
+    const legacyName = `${table}_v6`;
+    const legacySql = row.sql
+      .replace(new RegExp(`^CREATE TABLE "?${table}"?`, 'u'), `CREATE TABLE ${legacyName}`)
+      .replace(/,\s*'trial-running'/u, '');
+    if (legacySql === row.sql || !legacySql.startsWith(`CREATE TABLE ${legacyName}`)) {
+      throw new Error(`Could not derive the schema-v6 ${table} constraint.`);
+    }
+    legacySchemas.set(table, legacySql);
+  }
+
+  database.exec('PRAGMA foreign_keys = OFF');
+  try {
+    database.transaction(() => {
+      database.exec(legacySchemas.get('operations')!);
+      database.exec('INSERT INTO operations_v6 SELECT * FROM operations');
+      database.exec(legacySchemas.get('operation_events')!);
+      database.exec('INSERT INTO operation_events_v6 SELECT * FROM operation_events');
+      database.exec('DROP TABLE operation_events');
+      database.exec('DROP TABLE operations');
+      database.exec('ALTER TABLE operations_v6 RENAME TO operations');
+      database.exec('ALTER TABLE operation_events_v6 RENAME TO operation_events');
+      database.exec(`
+        CREATE UNIQUE INDEX operation_events_one_terminal
+        ON operation_events(operation_id) WHERE terminal = 1;
+        CREATE INDEX operation_events_operation
+        ON operation_events(operation_id, workspace_seq);
+        DELETE FROM migration_records WHERE schema_version = 7;
+      `);
+    })();
+  } finally {
+    database.exec('PRAGMA foreign_keys = ON');
+  }
+  expect(database.query('PRAGMA foreign_key_check').all()).toEqual([]);
 }
 
 function downgradeBindingAuthorityToV4(database: Database): void {
@@ -1608,6 +1659,47 @@ afterEach(() => {
 });
 
 describe('ChatTurn Operation V2 trusted store schema', () => {
+  test('freezes the exact append-only migration identity independently of app semver', () => {
+    expect(CHAT_OPERATION_V2_MIGRATION_LEDGER).toEqual([
+      {
+        version: 1,
+        name: 'initial_chat_operation_v2',
+        checksum: '55649da4cd03b6f2fdadb5ec44c7f204fff7de846f6c09cc749b0277da81492c',
+      },
+      {
+        version: 2,
+        name: 'interactive_request_authority',
+        checksum: '64e2901aa3f8a8b8ee613c3c812f54ee0436330a28897b45def251cf864369ca',
+      },
+      {
+        version: 3,
+        name: 'migration_runtime_authority',
+        checksum: '744fb8d6fe4f4502ffc9a1d2b76261132da31942572b475bddc56e1874dcb27d',
+      },
+      {
+        version: 4,
+        name: 'operation_result_authority',
+        checksum: '9dbcd1e42dcc9ad702b4016377cc2f4897cc83d097cacab147f1c9d00d36e01d',
+      },
+      {
+        version: 5,
+        name: 'binding_fallback_authority',
+        checksum: '8c1e8a23a20eb16a108f529fe4aacc150d1ff408d8382c7e8cc422ca8563cf0a',
+      },
+      {
+        version: 6,
+        name: 'pending_result_authority',
+        checksum: '1d891e4bb33dacfc1f84ac135350a08362d85b284bb30c72a271d8a0cb51db8d',
+      },
+      {
+        version: 7,
+        name: 'trial_running_phase_authority',
+        checksum: '20e66658c80bd4a87abe031641d901a4dafddc7c847487e5c85ec9ff5eec8fda',
+      },
+    ]);
+    expect(Object.isFrozen(CHAT_OPERATION_V2_MIGRATION_LEDGER)).toBe(true);
+  });
+
   test('rejects a non-control filename, insecure parent, and existing non-file or symlink DB', () => {
     const keyId = `sha256:${'c'.repeat(64)}`;
     const expectedPath = makeDatabasePath();
@@ -1744,7 +1836,7 @@ describe('ChatTurn Operation V2 trusted store schema', () => {
       'usage_ledger',
       'workspace_scopes',
     ]);
-    expect(CHAT_OPERATION_V2_SCHEMA_VERSION).toBe(6);
+    expect(CHAT_OPERATION_V2_SCHEMA_VERSION).toBe(7);
     expect(store.inspectMigrations()).toEqual([
       expect.objectContaining({
         schemaVersion: 1,
@@ -1774,6 +1866,11 @@ describe('ChatTurn Operation V2 trusted store schema', () => {
       expect.objectContaining({
         schemaVersion: 6,
         migrationName: 'pending_result_authority',
+        controlKeyId: `sha256:${'c'.repeat(64)}`,
+      }),
+      expect.objectContaining({
+        schemaVersion: 7,
+        migrationName: 'trial_running_phase_authority',
         controlKeyId: `sha256:${'c'.repeat(64)}`,
       }),
     ]);
@@ -2404,8 +2501,53 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
   });
 
   migrationStoreTest(
-    'migrates exact schema versions 1–5 and fails closed on migration checksum or index drift',
+    'migrates exact schema versions 1-6 and fails closed on migration checksum or index drift',
     () => {
+      const v6Path = makeDatabasePath();
+      const v6Initial = openStore(v6Path);
+      const preservedV6 = seedOperation(v6Initial, 'operation-preserved-from-v6').operation;
+      v6Initial.close();
+      const v6 = new Database(v6Path, { strict: true });
+      downgradeTrialRunningPhaseAuthorityToV6(v6);
+      v6.close();
+
+      const migratedV6 = openStore(v6Path);
+      expect(migratedV6.getOperation(preservedV6.operationId)).toEqual(preservedV6);
+      expect(migratedV6.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
+        1, 2, 3, 4, 5, 6, 7,
+      ]);
+      migratedV6.close();
+      const v7Inspection = new Database(v6Path, { readonly: true, strict: true });
+      const phaseSchemas = v7Inspection
+        .query<{ sql: string }, []>(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name IN ('operations', 'operation_events') ORDER BY name",
+        )
+        .all();
+      expect(phaseSchemas).toHaveLength(2);
+      expect(phaseSchemas.every(({ sql }) => sql.includes("'trial-running'"))).toBe(true);
+      v7Inspection.close();
+
+      const incompatibleV6Path = makeDatabasePath();
+      const incompatibleV6 = openStore(incompatibleV6Path);
+      incompatibleV6.close();
+      const incompatibleV6Database = new Database(incompatibleV6Path, { strict: true });
+      downgradeTrialRunningPhaseAuthorityToV6(incompatibleV6Database);
+      incompatibleV6Database
+        .query('UPDATE migration_records SET checksum = ? WHERE schema_version = 1')
+        .run('0'.repeat(64));
+      incompatibleV6Database.close();
+      const incompatibleV6Paths = {
+        controlDir: dirname(incompatibleV6Path),
+        databasePath: incompatibleV6Path,
+        keyPath: join(dirname(incompatibleV6Path), 'control-hmac-v2.key'),
+      };
+      const resetInspection = inspectOfflineChatOperationV2ControlLineage(incompatibleV6Paths);
+      const resetOnly = openOfflineChatOperationV2ResetOnlyStore(
+        incompatibleV6Paths,
+        resetInspection,
+      );
+      resetOnly.close();
+
       const databasePath = makeDatabasePath();
       const initial = openStore(databasePath);
       const { operation } = seedOperation(initial, 'operation-preserved-through-v6');
@@ -2413,7 +2555,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
 
       const v5 = new Database(databasePath, { strict: true });
       downgradePendingResultAuthorityToV5(v5);
-      v5.query('DELETE FROM migration_records WHERE schema_version = 6').run();
+      v5.query('DELETE FROM migration_records WHERE schema_version IN (6, 7)').run();
       v5.close();
 
       const migrated = openStore(databasePath);
@@ -2422,7 +2564,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migrated.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6,
+        1, 2, 3, 4, 5, 6, 7,
       ]);
       migrated.close();
 
@@ -2446,7 +2588,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       const v4 = new Database(v4Path, { strict: true });
       downgradePendingResultAuthorityToV5(v4);
       downgradeBindingAuthorityToV4(v4);
-      v4.query('DELETE FROM migration_records WHERE schema_version IN (5, 6)').run();
+      v4.query('DELETE FROM migration_records WHERE schema_version IN (5, 6, 7)').run();
       v4.close();
       const migratedV4 = openStore(v4Path);
       expect(migratedV4.getOperation(preservedV4.operationId)).toEqual(preservedV4);
@@ -2454,7 +2596,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV4.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6,
+        1, 2, 3, 4, 5, 6, 7,
       ]);
       migratedV4.close();
 
@@ -2468,7 +2610,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       v3.exec('DROP TABLE operation_results');
       v3.exec('DROP TABLE operation_result_messages');
       v3.exec('DROP TABLE operation_result_chains');
-      v3.query('DELETE FROM migration_records WHERE schema_version IN (4, 5, 6)').run();
+      v3.query('DELETE FROM migration_records WHERE schema_version IN (4, 5, 6, 7)').run();
       v3.close();
       const migratedV3 = openStore(v3Path);
       expect(migratedV3.getOperation(preservedV3.operationId)).toEqual(preservedV3);
@@ -2476,7 +2618,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV3.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6,
+        1, 2, 3, 4, 5, 6, 7,
       ]);
       migratedV3.close();
 
@@ -2494,7 +2636,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       v2.exec('DROP TABLE control_lineages');
       v2.exec('DROP TABLE migration_inventory_projection');
       v2.exec('DROP TABLE migration_executions');
-      v2.query('DELETE FROM migration_records WHERE schema_version IN (3, 4, 5, 6)').run();
+      v2.query('DELETE FROM migration_records WHERE schema_version IN (3, 4, 5, 6, 7)').run();
       v2.close();
       const migratedV2 = openStore(v2Path);
       expect(migratedV2.getOperation(preservedV2.operationId)).toEqual(preservedV2);
@@ -2502,7 +2644,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV2.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6,
+        1, 2, 3, 4, 5, 6, 7,
       ]);
       migratedV2.close();
 
@@ -2521,7 +2663,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       v1.exec('DROP TABLE migration_inventory_projection');
       v1.exec('DROP TABLE migration_executions');
       v1.exec('DROP TABLE interactive_requests');
-      v1.query('DELETE FROM migration_records WHERE schema_version IN (2, 3, 4, 5, 6)').run();
+      v1.query('DELETE FROM migration_records WHERE schema_version IN (2, 3, 4, 5, 6, 7)').run();
       v1.close();
       const migratedV1 = openStore(v1Path);
       expect(migratedV1.getOperation(preservedV1.operationId)).toEqual(preservedV1);
@@ -2529,7 +2671,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV1.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6,
+        1, 2, 3, 4, 5, 6, 7,
       ]);
       migratedV1.close();
 

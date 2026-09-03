@@ -148,6 +148,7 @@ export function openOfflineChatOperationV2ResetOnlyStore(
     databasePath: controlPaths.databasePath,
     keyId: inspection.keyId,
     now: options.now,
+    resetOnlyValidatedSchema: true,
   }) as ChatOperationV2StoreWithMigration;
   const store = createChatOperationV2StoreMigrationAdapter(concrete);
   return Object.freeze({

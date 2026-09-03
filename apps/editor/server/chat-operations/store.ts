@@ -150,7 +150,7 @@ import type {
   TrustedWorkspaceScopeRecord,
 } from './workspace-identity.js';
 
-export const CHAT_OPERATION_V2_SCHEMA_VERSION = 6;
+export const CHAT_OPERATION_V2_SCHEMA_VERSION = 7;
 export const CHAT_OPERATION_V2_MAX_CLIENT_REQUEST_ID_BYTES = 128;
 
 export function deriveInitialChatOperationV2ControlLineageId(keyId: string): string {
@@ -303,6 +303,8 @@ export interface ChatOperationV2StoreOptions extends Pick<
   platform?: NodeJS.Platform;
   /** Injectable only for filesystem-boundary tests; SQLite still opens databasePath directly. */
   fileSystem?: ChatOperationV2StoreFileSystem;
+  /** @internal Closed, explicitly confirmed reset authority after offline lineage inspection. */
+  resetOnlyValidatedSchema?: true;
 }
 
 export interface ChatOperationV2StoreFileStat {
@@ -1246,9 +1248,81 @@ function sqlStringList(values: readonly string[]): string {
   return values.map((value) => `'${value.split("'").join("''")}'`).join(', ');
 }
 
-const WAIT_REASON_VALUES = CHAT_OPERATION_V2_WAIT_REASONS.filter(
-  (value): value is Exclude<ChatOperationV2WaitReason, null> => value !== null,
-);
+// Schema v1 is already persisted in user data. Keep every interpolated value
+// frozen at its original identity; live enums may evolve only through a new
+// migration that updates the affected SQLite constraints.
+const SCHEMA_V1_MAX_CLIENT_REQUEST_ID_BYTES = 128;
+const SCHEMA_V1_MAX_ADMISSION_BYTES = 4_210_688;
+const SCHEMA_V1_MAX_READ_SNAPSHOT_BYTES = 20_971_520;
+const SCHEMA_V1_MAX_CLARIFICATION_THREAD_ENVELOPE_BYTES = 16_793_600;
+const SCHEMA_V1_PHASES = [
+  'created',
+  'classifying',
+  'awaiting_input',
+  'executing_readonly',
+  'reserving',
+  'staging',
+  'authoring',
+  'verifying',
+  'repairing',
+  'commit_preparing',
+  'commit_decided',
+  'commit_applying',
+  'commit_recovering',
+  'terminal',
+] as const;
+const SCHEMA_V1_WAIT_REASONS = [
+  'clarification',
+  'permission',
+  'renderer_snapshot',
+  'retry_backoff',
+  'user_retry',
+  'user_recovery_choice',
+  'provider_unavailable',
+] as const;
+const SCHEMA_V1_TERMINAL_OUTCOMES = [
+  'completed_readonly',
+  'completed_noop',
+  'completed_published',
+  'completed_forked',
+  'cancelled_precommit',
+  'discarded',
+  'expired',
+  'superseded',
+  'failed_terminal',
+] as const;
+const SCHEMA_V1_ANNOTATION_TYPES = [
+  'usage_settlement',
+  'usage_correction',
+  'cancel_requested_after_commit',
+  'relation_link',
+  'content_minimized_diagnostic',
+  'cleanup_result',
+] as const;
+const SCHEMA_V1_INVOCATION_STATUSES = [
+  'prepared',
+  'submitted_unknown',
+  'admitted',
+  'running',
+  'settled',
+  'interrupted',
+  'failed_terminal',
+] as const;
+const SCHEMA_V1_USAGE_PURPOSES = [
+  'classifier',
+  'discussion',
+  'diagnosis',
+  'authoring',
+  'repair',
+  'trial_plan',
+] as const;
+const SCHEMA_V1_USAGE_OUTCOMES = [
+  'completed',
+  'failed',
+  'aborted',
+  'zero_token',
+  'unavailable',
+] as const;
 
 const SCHEMA_V1_SQL = `
 CREATE TABLE IF NOT EXISTS migration_records (
@@ -1285,7 +1359,7 @@ CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,
   workspace_scope_id TEXT NOT NULL REFERENCES workspace_scopes(workspace_scope_id),
   client_request_id TEXT NOT NULL CHECK (
-    length(client_request_id) BETWEEN 1 AND ${CHAT_OPERATION_V2_MAX_CLIENT_REQUEST_ID_BYTES} AND
+    length(client_request_id) BETWEEN 1 AND ${SCHEMA_V1_MAX_CLIENT_REQUEST_ID_BYTES} AND
     substr(client_request_id, 1, 1) GLOB '[A-Za-z0-9]' AND
     client_request_id NOT GLOB '*[^A-Za-z0-9._:-]*'
   ),
@@ -1297,7 +1371,7 @@ CREATE TABLE IF NOT EXISTS operations (
     length(admission_digest) = 64 AND admission_digest NOT GLOB '*[^0-9a-f]*'
   ),
   admission_canonical BLOB NOT NULL CHECK (
-    typeof(admission_canonical) = 'blob' AND length(admission_canonical) BETWEEN 1 AND ${CHAT_OPERATION_V2_MAX_ADMISSION_BYTES}
+    typeof(admission_canonical) = 'blob' AND length(admission_canonical) BETWEEN 1 AND ${SCHEMA_V1_MAX_ADMISSION_BYTES}
   ),
   read_snapshot_hash TEXT,
   read_snapshot_canonical BLOB,
@@ -1306,10 +1380,10 @@ CREATE TABLE IF NOT EXISTS operations (
   protocol TEXT NOT NULL CHECK (protocol = 'v2'),
   generation INTEGER NOT NULL CHECK (generation >= 1),
   version INTEGER NOT NULL CHECK (version >= 0),
-  phase TEXT NOT NULL CHECK (phase IN (${sqlStringList(CHAT_OPERATION_V2_PHASES)})),
-  wait_reason TEXT CHECK (wait_reason IS NULL OR wait_reason IN (${sqlStringList(WAIT_REASON_VALUES)})),
+  phase TEXT NOT NULL CHECK (phase IN (${sqlStringList(SCHEMA_V1_PHASES)})),
+  wait_reason TEXT CHECK (wait_reason IS NULL OR wait_reason IN (${sqlStringList(SCHEMA_V1_WAIT_REASONS)})),
   terminal_outcome TEXT CHECK (
-    terminal_outcome IS NULL OR terminal_outcome IN (${sqlStringList(CHAT_OPERATION_V2_TERMINAL_OUTCOMES)})
+    terminal_outcome IS NULL OR terminal_outcome IN (${sqlStringList(SCHEMA_V1_TERMINAL_OUTCOMES)})
   ),
   active_invocation_id TEXT,
   binding_id TEXT,
@@ -1328,7 +1402,7 @@ CREATE TABLE IF NOT EXISTS operations (
       read_snapshot_hash IS NOT NULL AND read_snapshot_canonical IS NOT NULL AND
       length(read_snapshot_hash) = 64 AND read_snapshot_hash NOT GLOB '*[^0-9a-f]*' AND
       typeof(read_snapshot_canonical) = 'blob' AND
-      length(read_snapshot_canonical) BETWEEN 1 AND ${CHAT_OPERATION_V2_MAX_READ_SNAPSHOT_BYTES}
+      length(read_snapshot_canonical) BETWEEN 1 AND ${SCHEMA_V1_MAX_READ_SNAPSHOT_BYTES}
     )
   ),
   CHECK (
@@ -1337,7 +1411,7 @@ CREATE TABLE IF NOT EXISTS operations (
       length(clarification_thread_hash) = 64 AND
       clarification_thread_hash NOT GLOB '*[^0-9a-f]*' AND
       typeof(clarification_thread_canonical) = 'blob' AND
-      length(clarification_thread_canonical) BETWEEN 1 AND ${CHAT_OPERATION_V2_CLARIFICATION_MAX_THREAD_ENVELOPE_BYTES}
+      length(clarification_thread_canonical) BETWEEN 1 AND ${SCHEMA_V1_MAX_CLARIFICATION_THREAD_ENVELOPE_BYTES}
     )
   ),
   CHECK (repair_attempts <= repair_max_attempts),
@@ -1370,8 +1444,8 @@ CREATE TABLE IF NOT EXISTS operation_events (
   operation_version INTEGER NOT NULL CHECK (operation_version >= 0),
   generation INTEGER NOT NULL CHECK (generation >= 1),
   event_type TEXT NOT NULL,
-  phase TEXT NOT NULL CHECK (phase IN (${sqlStringList(CHAT_OPERATION_V2_PHASES)})),
-  wait_reason TEXT CHECK (wait_reason IS NULL OR wait_reason IN (${sqlStringList(WAIT_REASON_VALUES)})),
+  phase TEXT NOT NULL CHECK (phase IN (${sqlStringList(SCHEMA_V1_PHASES)})),
+  wait_reason TEXT CHECK (wait_reason IS NULL OR wait_reason IN (${sqlStringList(SCHEMA_V1_WAIT_REASONS)})),
   event_timestamp INTEGER NOT NULL CHECK (event_timestamp >= 0),
   payload_json TEXT NOT NULL,
   source_session_id TEXT,
@@ -1400,7 +1474,7 @@ CREATE TABLE IF NOT EXISTS operation_annotations (
   operation_id TEXT NOT NULL REFERENCES operations(operation_id),
   annotation_seq INTEGER NOT NULL CHECK (annotation_seq >= 1),
   annotation_type TEXT NOT NULL CHECK (
-    annotation_type IN (${sqlStringList(CHAT_OPERATION_V2_ANNOTATION_TYPES)})
+    annotation_type IN (${sqlStringList(SCHEMA_V1_ANNOTATION_TYPES)})
   ),
   schema_version INTEGER NOT NULL CHECK (schema_version = 1),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
@@ -1418,7 +1492,7 @@ CREATE TABLE IF NOT EXISTS invocation_outbox (
   request_digest TEXT NOT NULL CHECK (
     length(request_digest) = 64 AND request_digest NOT GLOB '*[^0-9a-f]*'
   ),
-  status TEXT NOT NULL CHECK (status IN (${sqlStringList(CHAT_OPERATION_V2_INVOCATION_STATUSES)})),
+  status TEXT NOT NULL CHECK (status IN (${sqlStringList(SCHEMA_V1_INVOCATION_STATUSES)})),
   prepared_at INTEGER NOT NULL CHECK (prepared_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= prepared_at),
   admitted_aggregate_seq INTEGER CHECK (admitted_aggregate_seq IS NULL OR admitted_aggregate_seq >= 0),
@@ -1611,7 +1685,7 @@ CREATE TABLE IF NOT EXISTS usage_ledger (
   operation_id TEXT NOT NULL REFERENCES operations(operation_id),
   invocation_id TEXT NOT NULL UNIQUE REFERENCES invocation_outbox(invocation_id),
   version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-  purpose TEXT NOT NULL CHECK (purpose IN (${sqlStringList(CHAT_OPERATION_V2_USAGE_PURPOSES)})),
+  purpose TEXT NOT NULL CHECK (purpose IN (${sqlStringList(SCHEMA_V1_USAGE_PURPOSES)})),
   provider_id TEXT,
   model_id TEXT,
   variant_id TEXT,
@@ -1627,7 +1701,7 @@ CREATE TABLE IF NOT EXISTS usage_ledger (
   admitted_at INTEGER CHECK (admitted_at IS NULL OR admitted_at >= 0),
   started_at INTEGER CHECK (started_at IS NULL OR started_at >= 0),
   settled_at INTEGER CHECK (settled_at IS NULL OR settled_at >= 0),
-  outcome TEXT CHECK (outcome IS NULL OR outcome IN (${sqlStringList(CHAT_OPERATION_V2_USAGE_OUTCOMES)})),
+  outcome TEXT CHECK (outcome IS NULL OR outcome IN (${sqlStringList(SCHEMA_V1_USAGE_OUTCOMES)})),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
   FOREIGN KEY (workspace_scope_id, operation_id)
@@ -2085,6 +2159,190 @@ ON commit_wal(pending_message_id) WHERE pending_message_id IS NOT NULL;
 
 const SCHEMA_V6_CHECKSUM = createHash('sha256').update(SCHEMA_V6_SQL, 'utf8').digest('hex');
 
+const SCHEMA_V7_PHASES = [
+  'created',
+  'classifying',
+  'awaiting_input',
+  'executing_readonly',
+  'reserving',
+  'staging',
+  'authoring',
+  'verifying',
+  'trial-running',
+  'repairing',
+  'commit_preparing',
+  'commit_decided',
+  'commit_applying',
+  'commit_recovering',
+  'terminal',
+] as const;
+
+const SCHEMA_V7_SQL = `
+CREATE TABLE operations_v7 (
+  operation_id TEXT PRIMARY KEY,
+  workspace_scope_id TEXT NOT NULL REFERENCES workspace_scopes(workspace_scope_id),
+  client_request_id TEXT NOT NULL CHECK (
+    length(client_request_id) BETWEEN 1 AND 128 AND
+    substr(client_request_id, 1, 1) GLOB '[A-Za-z0-9]' AND
+    client_request_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+  ),
+  creation_authority_digest TEXT NOT NULL CHECK (
+    length(creation_authority_digest) = 64 AND
+    creation_authority_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  admission_digest TEXT NOT NULL CHECK (
+    length(admission_digest) = 64 AND admission_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  admission_canonical BLOB NOT NULL CHECK (
+    typeof(admission_canonical) = 'blob' AND
+    length(admission_canonical) BETWEEN 1 AND 4210688
+  ),
+  read_snapshot_hash TEXT,
+  read_snapshot_canonical BLOB,
+  clarification_thread_hash TEXT,
+  clarification_thread_canonical BLOB,
+  protocol TEXT NOT NULL CHECK (protocol = 'v2'),
+  generation INTEGER NOT NULL CHECK (generation >= 1),
+  version INTEGER NOT NULL CHECK (version >= 0),
+  phase TEXT NOT NULL CHECK (phase IN (${sqlStringList(SCHEMA_V7_PHASES)})),
+  wait_reason TEXT CHECK (
+    wait_reason IS NULL OR wait_reason IN (
+      'clarification', 'permission', 'renderer_snapshot', 'retry_backoff',
+      'user_retry', 'user_recovery_choice', 'provider_unavailable'
+    )
+  ),
+  terminal_outcome TEXT CHECK (
+    terminal_outcome IS NULL OR terminal_outcome IN (
+      'completed_readonly', 'completed_noop', 'completed_published', 'completed_forked',
+      'cancelled_precommit', 'discarded', 'expired', 'superseded', 'failed_terminal'
+    )
+  ),
+  active_invocation_id TEXT,
+  binding_id TEXT,
+  stage_id TEXT,
+  pending_permission_request_id TEXT,
+  repair_attempts INTEGER NOT NULL CHECK (repair_attempts >= 0),
+  repair_max_attempts INTEGER NOT NULL CHECK (repair_max_attempts >= 0),
+  clarification_rounds INTEGER NOT NULL CHECK (clarification_rounds >= 0),
+  clarification_max_rounds INTEGER NOT NULL CHECK (clarification_max_rounds >= 0),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+  UNIQUE (workspace_scope_id, operation_id),
+  UNIQUE (workspace_scope_id, client_request_id),
+  CHECK (
+    (read_snapshot_hash IS NULL AND read_snapshot_canonical IS NULL) OR (
+      read_snapshot_hash IS NOT NULL AND read_snapshot_canonical IS NOT NULL AND
+      length(read_snapshot_hash) = 64 AND read_snapshot_hash NOT GLOB '*[^0-9a-f]*' AND
+      typeof(read_snapshot_canonical) = 'blob' AND
+      length(read_snapshot_canonical) BETWEEN 1 AND 20971520
+    )
+  ),
+  CHECK (
+    (clarification_thread_hash IS NULL AND clarification_thread_canonical IS NULL) OR (
+      clarification_thread_hash IS NOT NULL AND clarification_thread_canonical IS NOT NULL AND
+      length(clarification_thread_hash) = 64 AND
+      clarification_thread_hash NOT GLOB '*[^0-9a-f]*' AND
+      typeof(clarification_thread_canonical) = 'blob' AND
+      length(clarification_thread_canonical) BETWEEN 1 AND 16793600
+    )
+  ),
+  CHECK (repair_attempts <= repair_max_attempts),
+  CHECK (clarification_rounds <= clarification_max_rounds),
+  CHECK (
+    wait_reason <> 'permission' OR (
+      active_invocation_id IS NOT NULL AND pending_permission_request_id IS NOT NULL
+    )
+  ),
+  CHECK (
+    wait_reason <> 'clarification' OR (
+      phase = 'awaiting_input' AND active_invocation_id IS NULL AND binding_id IS NULL AND
+      stage_id IS NULL AND pending_permission_request_id IS NULL
+    )
+  ),
+  CHECK (
+    (
+      phase = 'terminal' AND terminal_outcome IS NOT NULL AND wait_reason IS NULL AND
+      active_invocation_id IS NULL AND pending_permission_request_id IS NULL
+    )
+    OR (phase <> 'terminal' AND terminal_outcome IS NULL)
+  )
+) STRICT;
+
+INSERT INTO operations_v7 (
+  operation_id, workspace_scope_id, client_request_id, creation_authority_digest,
+  admission_digest, admission_canonical, read_snapshot_hash, read_snapshot_canonical,
+  clarification_thread_hash, clarification_thread_canonical, protocol, generation, version,
+  phase, wait_reason, terminal_outcome, active_invocation_id, binding_id, stage_id,
+  pending_permission_request_id, repair_attempts, repair_max_attempts, clarification_rounds,
+  clarification_max_rounds, created_at, updated_at
+)
+SELECT
+  operation_id, workspace_scope_id, client_request_id, creation_authority_digest,
+  admission_digest, admission_canonical, read_snapshot_hash, read_snapshot_canonical,
+  clarification_thread_hash, clarification_thread_canonical, protocol, generation, version,
+  phase, wait_reason, terminal_outcome, active_invocation_id, binding_id, stage_id,
+  pending_permission_request_id, repair_attempts, repair_max_attempts, clarification_rounds,
+  clarification_max_rounds, created_at, updated_at
+FROM operations;
+
+CREATE TABLE operation_events_v7 (
+  workspace_scope_id TEXT NOT NULL,
+  workspace_seq INTEGER NOT NULL CHECK (workspace_seq >= 1),
+  event_id TEXT NOT NULL UNIQUE,
+  operation_id TEXT NOT NULL,
+  operation_version INTEGER NOT NULL CHECK (operation_version >= 0),
+  generation INTEGER NOT NULL CHECK (generation >= 1),
+  event_type TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK (phase IN (${sqlStringList(SCHEMA_V7_PHASES)})),
+  wait_reason TEXT CHECK (
+    wait_reason IS NULL OR wait_reason IN (
+      'clarification', 'permission', 'renderer_snapshot', 'retry_backoff',
+      'user_retry', 'user_recovery_choice', 'provider_unavailable'
+    )
+  ),
+  event_timestamp INTEGER NOT NULL CHECK (event_timestamp >= 0),
+  payload_json TEXT NOT NULL,
+  source_session_id TEXT,
+  source_aggregate_seq INTEGER,
+  source_event_id TEXT,
+  terminal INTEGER NOT NULL DEFAULT 0 CHECK (terminal IN (0, 1)),
+  PRIMARY KEY (workspace_scope_id, workspace_seq),
+  FOREIGN KEY (workspace_scope_id, operation_id)
+    REFERENCES operations(workspace_scope_id, operation_id),
+  CHECK (
+    (source_session_id IS NULL AND source_aggregate_seq IS NULL AND source_event_id IS NULL)
+    OR (
+      source_session_id IS NOT NULL AND source_aggregate_seq >= 0 AND source_event_id IS NOT NULL
+    )
+  ),
+  UNIQUE (source_session_id, source_aggregate_seq, source_event_id)
+) STRICT;
+
+INSERT INTO operation_events_v7 (
+  workspace_scope_id, workspace_seq, event_id, operation_id, operation_version, generation,
+  event_type, phase, wait_reason, event_timestamp, payload_json, source_session_id,
+  source_aggregate_seq, source_event_id, terminal
+)
+SELECT
+  workspace_scope_id, workspace_seq, event_id, operation_id, operation_version, generation,
+  event_type, phase, wait_reason, event_timestamp, payload_json, source_session_id,
+  source_aggregate_seq, source_event_id, terminal
+FROM operation_events;
+
+DROP TABLE operation_events;
+DROP TABLE operations;
+ALTER TABLE operations_v7 RENAME TO operations;
+ALTER TABLE operation_events_v7 RENAME TO operation_events;
+
+CREATE UNIQUE INDEX operation_events_one_terminal
+ON operation_events(operation_id) WHERE terminal = 1;
+
+CREATE INDEX operation_events_operation
+ON operation_events(operation_id, workspace_seq);
+`;
+
+const SCHEMA_V7_CHECKSUM = createHash('sha256').update(SCHEMA_V7_SQL, 'utf8').digest('hex');
+
 const CHAT_OPERATION_V2_MIGRATIONS = [
   {
     version: 1,
@@ -2122,7 +2380,116 @@ const CHAT_OPERATION_V2_MIGRATIONS = [
     sql: SCHEMA_V6_SQL,
     checksum: SCHEMA_V6_CHECKSUM,
   },
+  {
+    version: 7,
+    name: 'trial_running_phase_authority',
+    sql: SCHEMA_V7_SQL,
+    checksum: SCHEMA_V7_CHECKSUM,
+  },
 ] as const;
+
+/**
+ * Append-only identity of every persisted Chat control-store migration.
+ *
+ * Application semver is deliberately not part of this contract: patch builds
+ * may add a migration and minor builds may leave the Store unchanged. Once a
+ * migration can have reached a durable user-data Store, never edit its SQL,
+ * name, or checksum. Add the next schema version instead.
+ */
+export const CHAT_OPERATION_V2_MIGRATION_LEDGER = Object.freeze([
+  Object.freeze({
+    version: 1,
+    name: 'initial_chat_operation_v2',
+    checksum: '55649da4cd03b6f2fdadb5ec44c7f204fff7de846f6c09cc749b0277da81492c',
+  }),
+  Object.freeze({
+    version: 2,
+    name: 'interactive_request_authority',
+    checksum: '64e2901aa3f8a8b8ee613c3c812f54ee0436330a28897b45def251cf864369ca',
+  }),
+  Object.freeze({
+    version: 3,
+    name: 'migration_runtime_authority',
+    checksum: '744fb8d6fe4f4502ffc9a1d2b76261132da31942572b475bddc56e1874dcb27d',
+  }),
+  Object.freeze({
+    version: 4,
+    name: 'operation_result_authority',
+    checksum: '9dbcd1e42dcc9ad702b4016377cc2f4897cc83d097cacab147f1c9d00d36e01d',
+  }),
+  Object.freeze({
+    version: 5,
+    name: 'binding_fallback_authority',
+    checksum: '8c1e8a23a20eb16a108f529fe4aacc150d1ff408d8382c7e8cc422ca8563cf0a',
+  }),
+  Object.freeze({
+    version: 6,
+    name: 'pending_result_authority',
+    checksum: '1d891e4bb33dacfc1f84ac135350a08362d85b284bb30c72a271d8a0cb51db8d',
+  }),
+  Object.freeze({
+    version: 7,
+    name: 'trial_running_phase_authority',
+    checksum: '20e66658c80bd4a87abe031641d901a4dafddc7c847487e5c85ec9ff5eec8fda',
+  }),
+] as const);
+
+function assertCompiledMigrationLedger(): void {
+  if (
+    CHAT_OPERATION_V2_MIGRATIONS.length !== CHAT_OPERATION_V2_MIGRATION_LEDGER.length ||
+    CHAT_OPERATION_V2_SCHEMA_VERSION !== CHAT_OPERATION_V2_MIGRATION_LEDGER.length
+  ) {
+    throw new Error(
+      'Chat Operation V2 migrations and the append-only migration ledger must advance together.',
+    );
+  }
+  for (const [index, migration] of CHAT_OPERATION_V2_MIGRATIONS.entries()) {
+    const frozen = CHAT_OPERATION_V2_MIGRATION_LEDGER[index];
+    if (
+      !frozen ||
+      migration.version !== frozen.version ||
+      migration.name !== frozen.name ||
+      migration.checksum !== frozen.checksum
+    ) {
+      throw new Error(
+        `Chat Operation V2 migration ${migration.version} changed after its identity was frozen; append a new migration instead.`,
+      );
+    }
+  }
+}
+
+assertCompiledMigrationLedger();
+
+function sameSchemaValues(live: readonly (string | null)[], persisted: readonly string[]): boolean {
+  const normalizedLive = live.filter((value): value is string => value !== null);
+  return (
+    normalizedLive.length === persisted.length &&
+    normalizedLive.every((value, index) => value === persisted[index])
+  );
+}
+
+function assertLiveSchemaContractIsMigrated(): void {
+  if (
+    !sameSchemaValues(CHAT_OPERATION_V2_PHASES, SCHEMA_V7_PHASES) ||
+    !sameSchemaValues(CHAT_OPERATION_V2_WAIT_REASONS, SCHEMA_V1_WAIT_REASONS) ||
+    !sameSchemaValues(CHAT_OPERATION_V2_TERMINAL_OUTCOMES, SCHEMA_V1_TERMINAL_OUTCOMES) ||
+    !sameSchemaValues(CHAT_OPERATION_V2_ANNOTATION_TYPES, SCHEMA_V1_ANNOTATION_TYPES) ||
+    !sameSchemaValues(CHAT_OPERATION_V2_INVOCATION_STATUSES, SCHEMA_V1_INVOCATION_STATUSES) ||
+    !sameSchemaValues(CHAT_OPERATION_V2_USAGE_PURPOSES, SCHEMA_V1_USAGE_PURPOSES) ||
+    !sameSchemaValues(CHAT_OPERATION_V2_USAGE_OUTCOMES, SCHEMA_V1_USAGE_OUTCOMES) ||
+    CHAT_OPERATION_V2_MAX_CLIENT_REQUEST_ID_BYTES !== SCHEMA_V1_MAX_CLIENT_REQUEST_ID_BYTES ||
+    CHAT_OPERATION_V2_MAX_ADMISSION_BYTES !== SCHEMA_V1_MAX_ADMISSION_BYTES ||
+    CHAT_OPERATION_V2_MAX_READ_SNAPSHOT_BYTES !== SCHEMA_V1_MAX_READ_SNAPSHOT_BYTES ||
+    CHAT_OPERATION_V2_CLARIFICATION_MAX_THREAD_ENVELOPE_BYTES !==
+      SCHEMA_V1_MAX_CLARIFICATION_THREAD_ENVELOPE_BYTES
+  ) {
+    throw new Error(
+      'Chat Operation V2 runtime values exceed the latest frozen SQLite schema; append a migration before changing the live contract.',
+    );
+  }
+}
+
+assertLiveSchemaContractIsMigrated();
 
 interface SchemaObjectRow {
   type: string;
@@ -2131,13 +2498,22 @@ interface SchemaObjectRow {
   sql: string;
 }
 
-let expectedSchemaFingerprintCache: string | null = null;
+const expectedSchemaFingerprintCache = new Map<number, string>();
+let expectedResetAuthoritySchemaFingerprintCache: string | null = null;
+const RESET_AUTHORITY_SCHEMA_OBJECTS = new Set([
+  'migration_records',
+  'migration_executions',
+  'migration_inventory_projection',
+  'migration_inventory_projection_target',
+  'control_lineages',
+  'migration_control_reset_sessions',
+]);
 
 function normalizeSchemaSql(sql: string): string {
   return sql.trim().replace(/\s+/g, ' ');
 }
 
-function liveSchemaFingerprint(database: Database): string {
+function schemaFingerprint(database: Database, includedNames?: ReadonlySet<string>): string {
   const objects = database
     .query<SchemaObjectRow, []>(
       `SELECT type, name, tbl_name AS table_name, sql
@@ -2146,6 +2522,7 @@ function liveSchemaFingerprint(database: Database): string {
        ORDER BY type, name`,
     )
     .all()
+    .filter((row) => !includedNames || includedNames.has(row.name))
     .map((row) => ({
       type: row.type,
       name: row.name,
@@ -2155,18 +2532,49 @@ function liveSchemaFingerprint(database: Database): string {
   return createHash('sha256').update(JSON.stringify(objects), 'utf8').digest('hex');
 }
 
-function expectedSchemaFingerprint(): string {
-  if (expectedSchemaFingerprintCache) return expectedSchemaFingerprintCache;
+function liveSchemaFingerprint(database: Database): string {
+  return schemaFingerprint(database);
+}
+
+function resetAuthoritySchemaFingerprint(database: Database): string {
+  return schemaFingerprint(database, RESET_AUTHORITY_SCHEMA_OBJECTS);
+}
+
+function expectedResetAuthoritySchemaFingerprint(): string {
+  if (expectedResetAuthoritySchemaFingerprintCache) {
+    return expectedResetAuthoritySchemaFingerprintCache;
+  }
   const reference = new Database(':memory:', { strict: true });
   try {
     reference.exec(SCHEMA_V1_SQL);
     reference.exec(SCHEMA_V2_SQL);
     reference.exec(SCHEMA_V3_SQL);
-    reference.exec(SCHEMA_V4_SQL);
-    reference.exec(SCHEMA_V5_SQL);
-    reference.exec(SCHEMA_V6_SQL);
-    expectedSchemaFingerprintCache = liveSchemaFingerprint(reference);
-    return expectedSchemaFingerprintCache;
+    expectedResetAuthoritySchemaFingerprintCache = resetAuthoritySchemaFingerprint(reference);
+    return expectedResetAuthoritySchemaFingerprintCache;
+  } finally {
+    reference.close();
+  }
+}
+
+function expectedSchemaFingerprint(schemaVersion = CHAT_OPERATION_V2_SCHEMA_VERSION): string {
+  const cached = expectedSchemaFingerprintCache.get(schemaVersion);
+  if (cached) return cached;
+  if (
+    !Number.isSafeInteger(schemaVersion) ||
+    schemaVersion < 1 ||
+    schemaVersion > CHAT_OPERATION_V2_SCHEMA_VERSION
+  ) {
+    throw new Error('Expected Chat Operation V2 schema version is unsupported.');
+  }
+  const reference = new Database(':memory:', { strict: true });
+  try {
+    for (const migration of CHAT_OPERATION_V2_MIGRATIONS) {
+      if (migration.version > schemaVersion) break;
+      reference.exec(migration.sql);
+    }
+    const fingerprint = liveSchemaFingerprint(reference);
+    expectedSchemaFingerprintCache.set(schemaVersion, fingerprint);
+    return fingerprint;
   } finally {
     reference.close();
   }
@@ -3987,14 +4395,25 @@ export class ChatOperationV2Store {
     this.busyTimeoutMs = validCount(options.busyTimeoutMs, DEFAULT_BUSY_TIMEOUT_MS, 60_000);
     this.now = options.now ?? Date.now;
 
-    this.database = new Database(this.databasePath, { create: true, strict: true });
+    this.database = options.resetOnlyValidatedSchema
+      ? new Database(this.databasePath, { readwrite: true, create: false, strict: true })
+      : new Database(this.databasePath, { create: true, strict: true });
     try {
       enforcePrivateDatabaseFile(fileSystem, this.databasePath, platform);
       this.database.exec(`PRAGMA busy_timeout = ${this.busyTimeoutMs}`);
       this.database.exec('PRAGMA journal_mode = WAL');
       this.database.exec('PRAGMA synchronous = FULL');
       this.database.exec('PRAGMA foreign_keys = ON');
-      this.applyMigrations(options.keyId, false);
+      if (options.resetOnlyValidatedSchema) {
+        // The caller has already authenticated the closed file hash and
+        // control-lineage record. Require one exact reset-capable historical
+        // schema, but deliberately bypass migration-record checksum validation
+        // so this capability can archive an otherwise-unopenable Store. The
+        // concrete Store never escapes the reset-only adapter.
+        this.assertResetCapableSchema();
+      } else {
+        this.applyMigrations(options.keyId, false);
+      }
     } catch (error) {
       this.database.close();
       throw error;
@@ -6891,31 +7310,34 @@ export class ChatOperationV2Store {
       }
     }
 
-    this.immediateTransaction(() => {
-      for (const migration of CHAT_OPERATION_V2_MIGRATIONS) {
-        if (migration.version <= latestVersion) continue;
-        if (migration.version === 2) {
-          const unrecordedObjects = this.database
-            .query<{ name: string }, []>(
-              `SELECT name FROM sqlite_master
+    const rebuildsForeignKeyParents = latestVersion < 7;
+    if (rebuildsForeignKeyParents) this.database.exec('PRAGMA foreign_keys = OFF');
+    try {
+      this.immediateTransaction(() => {
+        for (const migration of CHAT_OPERATION_V2_MIGRATIONS) {
+          if (migration.version <= latestVersion) continue;
+          if (migration.version === 2) {
+            const unrecordedObjects = this.database
+              .query<{ name: string }, []>(
+                `SELECT name FROM sqlite_master
                WHERE name IN (
                  'interactive_requests',
                  'interactive_requests_pending_operation',
                  'interactive_requests_one_pending_operation',
                  'interactive_requests_invocation'
                )`,
-            )
-            .all();
-          if (unrecordedObjects.length > 0) {
-            throw new ChatOperationV2StoreError(
-              'schema_mismatch',
-              'Unrecorded interactive request schema authority already exists.',
-            );
-          }
-        } else if (migration.version === 3) {
-          const unrecordedObjects = this.database
-            .query<{ name: string }, []>(
-              `SELECT name FROM sqlite_master
+              )
+              .all();
+            if (unrecordedObjects.length > 0) {
+              throw new ChatOperationV2StoreError(
+                'schema_mismatch',
+                'Unrecorded interactive request schema authority already exists.',
+              );
+            }
+          } else if (migration.version === 3) {
+            const unrecordedObjects = this.database
+              .query<{ name: string }, []>(
+                `SELECT name FROM sqlite_master
                WHERE name IN (
                  'migration_executions',
                  'migration_inventory_projection',
@@ -6923,18 +7345,18 @@ export class ChatOperationV2Store {
                  'control_lineages',
                  'migration_control_reset_sessions'
                )`,
-            )
-            .all();
-          if (unrecordedObjects.length > 0) {
-            throw new ChatOperationV2StoreError(
-              'schema_mismatch',
-              'Unrecorded migration runtime schema authority already exists.',
-            );
-          }
-        } else if (migration.version === 4) {
-          const unrecordedObjects = this.database
-            .query<{ name: string }, []>(
-              `SELECT name FROM sqlite_master
+              )
+              .all();
+            if (unrecordedObjects.length > 0) {
+              throw new ChatOperationV2StoreError(
+                'schema_mismatch',
+                'Unrecorded migration runtime schema authority already exists.',
+              );
+            }
+          } else if (migration.version === 4) {
+            const unrecordedObjects = this.database
+              .query<{ name: string }, []>(
+                `SELECT name FROM sqlite_master
                WHERE name IN (
                  'operation_result_messages',
                  'operation_result_messages_operation',
@@ -6942,50 +7364,64 @@ export class ChatOperationV2Store {
                  'operation_results',
                  'operation_results_workspace'
                )`,
+              )
+              .all();
+            if (unrecordedObjects.length > 0) {
+              throw new ChatOperationV2StoreError(
+                'schema_mismatch',
+                'Unrecorded operation result schema authority already exists.',
+              );
+            }
+          }
+          this.database.exec(migration.sql);
+          const appliedAt = this.now();
+          assertTimestamp(appliedAt, 'migration appliedAt');
+          this.database
+            .query(
+              `INSERT INTO migration_records (
+              schema_version, migration_name, checksum, control_key_id, applied_at
+            ) VALUES (?, ?, ?, ?, ?)`,
             )
-            .all();
-          if (unrecordedObjects.length > 0) {
+            .run(migration.version, migration.name, migration.checksum, keyId, appliedAt);
+          const written = this.database
+            .query<{ migration_name: string; checksum: string; control_key_id: string }, [number]>(
+              `SELECT migration_name, checksum, control_key_id FROM migration_records
+             WHERE schema_version = ?`,
+            )
+            .get(migration.version);
+          if (!written) {
             throw new ChatOperationV2StoreError(
               'schema_mismatch',
-              'Unrecorded operation result schema authority already exists.',
+              `ChatTurn Operation V2 migration ${migration.version} was not written.`,
+            );
+          }
+          this.assertMigrationRecord(written, keyId, migration);
+          if (migration.version === 3 && !deferControlLineage) {
+            this.writeControlLineage({
+              lineageId: deriveInitialChatOperationV2ControlLineageId(keyId),
+              controlGeneration: 1,
+              keyId,
+              ownershipImport: 'none',
+              activatedAtMs: appliedAt,
+            });
+          }
+        }
+        if (rebuildsForeignKeyParents) {
+          const violations = this.database
+            .query<Record<string, unknown>, []>('PRAGMA foreign_key_check')
+            .all();
+          if (violations.length > 0) {
+            throw new ChatOperationV2StoreError(
+              'schema_mismatch',
+              'ChatTurn Operation V2 migration produced invalid foreign-key authority.',
             );
           }
         }
-        this.database.exec(migration.sql);
-        const appliedAt = this.now();
-        assertTimestamp(appliedAt, 'migration appliedAt');
-        this.database
-          .query(
-            `INSERT INTO migration_records (
-              schema_version, migration_name, checksum, control_key_id, applied_at
-            ) VALUES (?, ?, ?, ?, ?)`,
-          )
-          .run(migration.version, migration.name, migration.checksum, keyId, appliedAt);
-        const written = this.database
-          .query<{ migration_name: string; checksum: string; control_key_id: string }, [number]>(
-            `SELECT migration_name, checksum, control_key_id FROM migration_records
-             WHERE schema_version = ?`,
-          )
-          .get(migration.version);
-        if (!written) {
-          throw new ChatOperationV2StoreError(
-            'schema_mismatch',
-            `ChatTurn Operation V2 migration ${migration.version} was not written.`,
-          );
-        }
-        this.assertMigrationRecord(written, keyId, migration);
-        if (migration.version === 3 && !deferControlLineage) {
-          this.writeControlLineage({
-            lineageId: deriveInitialChatOperationV2ControlLineageId(keyId),
-            controlGeneration: 1,
-            keyId,
-            ownershipImport: 'none',
-            activatedAtMs: appliedAt,
-          });
-        }
-      }
-      this.assertLiveSchema();
-    });
+        this.assertLiveSchema();
+      });
+    } finally {
+      if (rebuildsForeignKeyParents) this.database.exec('PRAGMA foreign_keys = ON');
+    }
   }
 
   private assertMigrationRecord(
@@ -7012,6 +7448,27 @@ export class ChatOperationV2Store {
       throw new ChatOperationV2StoreError(
         'schema_mismatch',
         'Live ChatTurn Operation V2 tables or indexes differ from the approved schema.',
+      );
+    }
+  }
+
+  private assertResetCapableSchema(): void {
+    const latest = this.database
+      .query<{ version: number | null }, []>(
+        'SELECT MAX(schema_version) AS version FROM migration_records',
+      )
+      .get()?.version;
+    if (
+      !Number.isSafeInteger(latest) ||
+      latest! < 3 ||
+      latest! > CHAT_OPERATION_V2_SCHEMA_VERSION ||
+      resetAuthoritySchemaFingerprint(this.database) !==
+        expectedResetAuthoritySchemaFingerprint() ||
+      !this.controlLineageRecord()
+    ) {
+      throw new ChatOperationV2StoreError(
+        'schema_mismatch',
+        'ChatTurn Operation V2 Store is not safe for explicit archived reset.',
       );
     }
   }

@@ -44,6 +44,7 @@ import {
   replyChatOperationV2Permission,
   replyChatOperationV2Question,
   recoverChatOperationV2Interaction,
+  resetChatOperationV2ControlData,
   retryChatOperationV2,
   subscribeChatOperationV2Events,
 } from '../src/api/chat-operations';
@@ -411,6 +412,65 @@ test('preserves ordinary read failures as typed API errors', async () => {
   const result = fetchChatOperationV2Operation('operation-1');
   await expect(result).rejects.toBeInstanceOf(ChatOperationV2ApiError);
   await expect(result).rejects.toMatchObject({ status: 404, kind: 'operation_not_found' });
+});
+
+test('preserves control compatibility failures as typed recovery errors', async () => {
+  globalThis.fetch = (async () =>
+    Response.json(
+      {
+        protocolVersion: 2,
+        kind: 'chat_operation_control_reset_required',
+        error:
+          'Chat data is incompatible with this Tagma build. Archive and reset Chat data to continue.',
+      },
+      { status: 409 },
+    )) as unknown as typeof fetch;
+
+  const result = fetchChatOperationV2Snapshot();
+  await expect(result).rejects.toBeInstanceOf(ChatOperationV2ApiError);
+  await expect(result).rejects.toMatchObject({
+    status: 409,
+    kind: 'chat_operation_control_reset_required',
+  });
+});
+
+test('submits the exact explicit control reset contract and returns bounded diagnostics', async () => {
+  setClientWorkspace('D:\\repo with spaces');
+  setClientAuthToken('management-token');
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    expect(String(input)).toBe('/api/chat/control/reset');
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('X-Tagma-Workspace')).toBe('D:\\repo with spaces');
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer management-token');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      protocolVersion: 2,
+      clientRequestId: 'renderer-control-reset:request-1',
+      confirmation: 'RESET CHAT CONTROL DATA',
+    });
+    return Response.json({
+      protocolVersion: 2,
+      result: {
+        receipt: {},
+        diagnostics: {
+          kind: 'control_reset',
+          trigger: 'user_requested',
+          oldKeyDisposition: 'archived',
+          controlGeneration: 2,
+          archiveSetHash: 'a'.repeat(64),
+        },
+      },
+    });
+  }) as unknown as typeof fetch;
+
+  await expect(
+    resetChatOperationV2ControlData('renderer-control-reset:request-1'),
+  ).resolves.toEqual({
+    kind: 'control_reset',
+    trigger: 'user_requested',
+    oldKeyDisposition: 'archived',
+    controlGeneration: 2,
+    archiveSetHash: 'a'.repeat(64),
+  });
 });
 
 test('preserves a pre-admission model configuration failure as a typed API error', async () => {

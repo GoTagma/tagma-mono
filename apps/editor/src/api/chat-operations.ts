@@ -5,6 +5,7 @@ import {
   isChatOperationV2ApiErrorKind,
   type ChatOperationV2ApiErrorKind,
 } from '../../shared/chat-operation-v2-api-errors.js';
+import { CHAT_OPERATION_V2_CONTROL_RESET_CONFIRMATION } from '../../shared/chat-operation-v2-control.js';
 import {
   CHAT_OPERATION_V2_EXECUTION_STATES as SHARED_CHAT_OPERATION_V2_EXECUTION_STATES,
   deriveChatOperationV2ExecutionState,
@@ -803,6 +804,14 @@ export interface ChatOperationV2ReadOptions {
 }
 
 export type ChatOperationV2MutationOptions = ChatOperationV2ReadOptions;
+
+export interface ChatOperationV2ControlResetDiagnostics {
+  readonly kind: 'control_reset';
+  readonly trigger: 'missing_key' | 'corrupt_key' | 'user_requested';
+  readonly oldKeyDisposition: 'missing' | 'archived';
+  readonly controlGeneration: number;
+  readonly archiveSetHash: string;
+}
 
 export interface ChatOperationV2EventReadOptions extends ChatOperationV2ReadOptions {
   readonly limit?: number;
@@ -2479,6 +2488,60 @@ async function mutateJson(
     invalid('mutation result kind is invalid for this action');
   }
   return result;
+}
+
+export async function resetChatOperationV2ControlData(
+  clientRequestId: string,
+  options: ChatOperationV2MutationOptions = {},
+): Promise<ChatOperationV2ControlResetDiagnostics> {
+  if (!isHostId(clientRequestId)) {
+    throw new TypeError('Chat control reset client request id must be one Renderer-issued id.');
+  }
+  const workspaceKey = captureWorkspaceKey(options.workspaceKey);
+  const response = await fetch('/api/chat/control/reset', {
+    method: 'POST',
+    headers: mutationHeaders(workspaceKey),
+    body: JSON.stringify({
+      protocolVersion: CHAT_OPERATION_V2_CLIENT_PROTOCOL_VERSION,
+      clientRequestId,
+      confirmation: CHAT_OPERATION_V2_CONTROL_RESET_CONFIRMATION,
+    }),
+    signal: options.signal,
+  });
+  const value = await response.json().catch(() => invalid('response body is not JSON'));
+  if (!response.ok) throwApiError(response.status, value);
+  if (
+    !isPlainRecord(value) ||
+    !hasExactKeys(value, ['protocolVersion', 'result']) ||
+    !isPlainRecord(value.result) ||
+    !hasExactKeys(value.result, ['receipt', 'diagnostics']) ||
+    !isPlainRecord(value.result.receipt) ||
+    !isPlainRecord(value.result.diagnostics)
+  ) {
+    invalid('control reset envelope has missing or unknown fields');
+  }
+  assertProtocolVersion(value);
+  const diagnostics = value.result.diagnostics;
+  if (
+    !hasExactKeys(diagnostics, [
+      'kind',
+      'trigger',
+      'oldKeyDisposition',
+      'controlGeneration',
+      'archiveSetHash',
+    ]) ||
+    diagnostics.kind !== 'control_reset' ||
+    !includesValue(
+      ['missing_key', 'corrupt_key', 'user_requested'] as const,
+      diagnostics.trigger,
+    ) ||
+    !includesValue(['missing', 'archived'] as const, diagnostics.oldKeyDisposition) ||
+    !isPositiveInteger(diagnostics.controlGeneration) ||
+    !isHash(diagnostics.archiveSetHash)
+  ) {
+    invalid('control reset diagnostics are invalid');
+  }
+  return diagnostics as unknown as ChatOperationV2ControlResetDiagnostics;
 }
 
 export async function createChatOperationV2(

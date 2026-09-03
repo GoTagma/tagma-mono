@@ -19,6 +19,7 @@ import { chatOperationV2FailurePresentation } from '../../utils/chat-operation-v
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
+import type { ChatOperationV2ApiErrorKind } from '../../api/chat-operations';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { TurnActivityPanel } from './ActivityPanel';
@@ -415,36 +416,116 @@ function conversationFlowTerminalStatus(
  * to a broken install, which users interpret as "nothing loaded, close and
  * reopen" — the very workaround that masks the real startup wait.
  */
+export function BootstrapErrorContent({
+  error,
+  errorKind,
+  resetting,
+  onRetry,
+  onReset,
+}: {
+  error: string | null;
+  errorKind: ChatOperationV2ApiErrorKind | null;
+  resetting: boolean;
+  onRetry: () => Promise<void>;
+  onReset: () => Promise<void>;
+}) {
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const resetRequired = errorKind === 'chat_operation_control_reset_required';
+  const versionUnsupported = errorKind === 'chat_operation_control_version_unsupported';
+
+  useEffect(() => setConfirmingReset(false), [errorKind]);
+
+  return (
+    <>
+      <AlertTriangle size={18} className="text-tagma-error" />
+      <div className="text-body font-mono text-tagma-text">
+        {resetRequired
+          ? 'Chat data needs recovery.'
+          : versionUnsupported
+            ? 'A newer Tagma version is required.'
+            : "Couldn't start OpenCode."}
+      </div>
+      {error && (
+        <div className="text-caption font-mono text-tagma-muted/90 break-words max-w-full">
+          {error}
+        </div>
+      )}
+      {resetRequired ? (
+        confirmingReset ? (
+          <div className="mt-2 flex max-w-sm flex-col items-center gap-2 border border-tagma-error/40 bg-tagma-error/5 p-2">
+            <div className="text-caption font-mono text-tagma-muted/90">
+              Tagma will archive Chat history and bindings from all workspaces before creating a new
+              control database. Pipeline files are not changed.
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                disabled={resetting}
+                onClick={() => setConfirmingReset(false)}
+                className="px-2 py-1 border border-tagma-border text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={resetting}
+                onClick={() => {
+                  onReset().catch(() => {
+                    // The Store keeps the typed reset failure in bootstrap state.
+                  });
+                }}
+                className="px-2 py-1 border border-tagma-error/60 text-caption font-mono text-tagma-error hover:border-tagma-error disabled:opacity-50 transition-colors"
+              >
+                {resetting ? 'Archiving and resetting…' : 'Archive and reset'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmingReset(true)}
+            className="mt-1 px-2 py-1 border border-tagma-error/50 text-caption font-mono text-tagma-error hover:border-tagma-error transition-colors"
+          >
+            Reset Chat data…
+          </button>
+        )
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            onRetry().catch(() => {
+              // The Store keeps the typed bootstrap failure for display.
+            });
+          }}
+          className="mt-1 px-2 py-1 border border-tagma-border text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+        >
+          Retry
+        </button>
+      )}
+    </>
+  );
+}
+
 export function BootstrapOverlay() {
   const status = useChatStore((s) => s.bootstrapStatus);
   const error = useChatStore((s) => s.bootstrapError);
+  const errorKind = useChatStore((s) => s.bootstrapErrorKind);
   const retry = useChatStore((s) => s.retryBootstrap);
+  const resetting = useChatStore((s) => s.resettingChatControlData);
+  const reset = useChatStore((s) => s.resetChatControlData);
 
   const isError = status === 'error';
   return (
     <div className="absolute inset-0 z-10 overflow-y-auto bg-tagma-bg/95">
       <div className="min-h-full flex flex-col items-center justify-center gap-2 px-6 py-4 text-center">
         {isError ? (
-          <>
-            <AlertTriangle size={18} className="text-tagma-error" />
-            <div className="text-body font-mono text-tagma-text">Couldn't start OpenCode.</div>
-            {error && (
-              <div className="text-caption font-mono text-tagma-muted/90 break-words max-w-full">
-                {error}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                retry().catch(() => {
-                  /* error already surfaced via bootstrapError */
-                });
-              }}
-              className="mt-1 px-2 py-1 border border-tagma-border text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
-            >
-              Retry
-            </button>
-          </>
+          <BootstrapErrorContent
+            error={error}
+            errorKind={errorKind}
+            resetting={resetting}
+            onRetry={retry}
+            onReset={reset}
+          />
         ) : (
           <>
             <Loader2 size={16} className="text-tagma-muted animate-spin" />

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
+import { CHAT_OPERATION_V2_CONTROL_RESET_CONFIRMATION } from '../../shared/chat-operation-v2-control.js';
 import type { WorkspaceState } from '../workspace-state.js';
 import type { ChatOperationV2ControlPaths } from './control-root.js';
 import {
@@ -20,7 +21,7 @@ import {
 } from './migration-runtime.js';
 import { planWorkspacePathChange, type PlanWorkspacePathChangeInput } from './migration.js';
 
-export const CHAT_OPERATION_V2_RESET_CONFIRMATION = 'RESET CHAT CONTROL DATA' as const;
+export const CHAT_OPERATION_V2_RESET_CONFIRMATION = CHAT_OPERATION_V2_CONTROL_RESET_CONFIRMATION;
 const HOST_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,199})$/;
 
 export type ChatOperationV2MigrationServiceErrorCode =
@@ -100,6 +101,21 @@ export type ChatOperationV2MigrationServiceOptions =
   EnabledMigrationServiceOptions | DisabledMigrationServiceOptions;
 
 let processMigrationOwner: symbol | null = null;
+
+const RESETTABLE_TRUSTED_STORE_OPEN_FAILURES = new Set([
+  'schema_mismatch',
+  'unsupported_schema_version',
+  'corrupt_store',
+]);
+
+function canResetWithoutTrustedReplay(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    RESETTABLE_TRUSTED_STORE_OPEN_FAILURES.has(String(error.code))
+  );
+}
 
 function withProcessMigrationLock<T>(run: () => T): T {
   if (processMigrationOwner !== null) {
@@ -321,7 +337,16 @@ class MigrationService implements ChatOperationV2MigrationService {
       let activated = false;
       let resetStarted = false;
       try {
-        const replay = this.#readResetReplay(input);
+        let replay: ChatOperationV2MigrationServiceResult | null = null;
+        try {
+          replay = this.#readResetReplay(input);
+        } catch (error) {
+          // An explicitly confirmed reset is also the recovery path when the
+          // normal Store cannot authenticate its schema far enough to read a
+          // prior reset receipt. The offline reset boundary re-validates the
+          // closed DB hash, lineage metadata, archive targets, and new key.
+          if (!canResetWithoutTrustedReplay(error)) throw error;
+        }
         if (replay) return replay;
         resetStarted = true;
         this.#options.closeTrustedStoreForReset();

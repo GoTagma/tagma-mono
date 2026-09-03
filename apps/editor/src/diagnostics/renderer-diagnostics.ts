@@ -357,6 +357,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
       chat: {
         bootstrapStatus: chat.bootstrapStatus ?? null,
         bootstrapError: chat.bootstrapError ?? null,
+        bootstrapErrorKind: chat.bootstrapErrorKind ?? null,
         model: chat.model ?? null,
         reasoningEffort: chat.reasoningEffort ?? null,
         executionMode: chat.chatExecutionMode ?? null,

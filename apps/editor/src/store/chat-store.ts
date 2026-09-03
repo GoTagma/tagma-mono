@@ -18,14 +18,17 @@ import {
   type ProviderAuthAuthorization,
   type OpencodeThreadEntry,
 } from '../api/opencode-chat';
-import type {
-  ChatOperationV2CreatePayload,
-  ChatOperationV2FailureProjection,
-  ChatOperationV2Inventory,
-  ChatOperationV2OperationDetail,
-  ChatOperationV2Projection,
-  ChatOperationV2ResultProjection,
-  ChatOperationV2TrialProgress,
+import {
+  ChatOperationV2ApiError,
+  resetChatOperationV2ControlData as apiResetChatOperationV2ControlData,
+  type ChatOperationV2ApiErrorKind,
+  type ChatOperationV2CreatePayload,
+  type ChatOperationV2FailureProjection,
+  type ChatOperationV2Inventory,
+  type ChatOperationV2OperationDetail,
+  type ChatOperationV2Projection,
+  type ChatOperationV2ResultProjection,
+  type ChatOperationV2TrialProgress,
 } from '../api/chat-operations';
 import type { Message, Part } from '@opencode-ai/sdk/client';
 import {
@@ -116,7 +119,10 @@ interface ChatStore {
 
   bootstrapStatus: ChatBootstrapStatus;
   bootstrapError: string | null;
+  bootstrapErrorKind: ChatOperationV2ApiErrorKind | null;
   retryBootstrap: () => Promise<void>;
+  resettingChatControlData: boolean;
+  resetChatControlData: () => Promise<void>;
 
   /** Authenticated executor selected by the sidecar ensure handshake. */
   chatExecutionMode: ChatOperationExecutionMode;
@@ -1051,13 +1057,49 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   bootstrapStatus: 'idle',
   bootstrapError: null,
+  bootstrapErrorKind: null,
   retryBootstrap: async () => {
     // Drop the cached (rejected) bootstrap for this workspace so the next
     // getOpencodeClient() call actually re-attempts /api/opencode/chat/ensure.
     // Without this, the rejected promise stays cached and retry is a no-op.
     resetOpencodeClient();
-    set({ bootstrapStatus: 'idle', bootstrapError: null });
+    set({ bootstrapStatus: 'idle', bootstrapError: null, bootstrapErrorKind: null });
     await get().bootstrap();
+  },
+  resettingChatControlData: false,
+  resetChatControlData: async () => {
+    const before = get();
+    if (before.bootstrapErrorKind !== 'chat_operation_control_reset_required') {
+      throw new Error('Chat control reset is available only for incompatible control data.');
+    }
+    if (before.resettingChatControlData) return;
+    const workspaceKeyAtStart = getOpencodeWorkspaceKey();
+    const randomUUID = globalThis.crypto?.randomUUID?.();
+    if (!randomUUID) throw new Error('Secure Chat control reset request ids are unavailable.');
+    set({ resettingChatControlData: true });
+    try {
+      await apiResetChatOperationV2ControlData(`renderer-control-reset:${randomUUID}`, {
+        workspaceKey: workspaceKeyAtStart,
+      });
+      if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) return;
+      resetOpencodeClient(workspaceKeyAtStart);
+      set({ bootstrapStatus: 'idle', bootstrapError: null, bootstrapErrorKind: null });
+      await get().bootstrap();
+    } catch (error) {
+      if (getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
+        set({
+          bootstrapStatus: 'error',
+          bootstrapError: error instanceof Error ? error.message : String(error),
+          bootstrapErrorKind:
+            error instanceof ChatOperationV2ApiError ? error.kind : before.bootstrapErrorKind,
+        });
+      }
+      throw error;
+    } finally {
+      if (getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
+        set({ resettingChatControlData: false });
+      }
+    }
   },
 
   chatExecutionMode: 'unavailable',
@@ -1309,6 +1351,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         bootstrapStatus: 'booting',
         bootstrapError: null,
+        bootstrapErrorKind: null,
         ...(workspaceChanged ? { completionWarning: null } : {}),
         ...(workspaceChanged
           ? {
@@ -1328,6 +1371,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               chatOperationV2ClarificationRequests: {},
               chatOperationV2QuestionRequests: {},
               chatOperationV2InteractiveRecoveryRequests: {},
+              resettingChatControlData: false,
               currentSessionId: null,
               selectingSessionId: null,
               messages: [],
@@ -1394,6 +1438,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         set({
           bootstrapStatus: 'error',
           bootstrapError: err instanceof Error ? err.message : String(err),
+          bootstrapErrorKind: err instanceof ChatOperationV2ApiError ? err.kind : null,
         });
       }
       if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
@@ -1502,6 +1547,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       chatOperationV2ConversationId: chatOperationV2ConversationId(workspaceKey),
       bootstrapStatus: 'ready',
       bootstrapError: null,
+      bootstrapErrorKind: null,
     });
   },
 

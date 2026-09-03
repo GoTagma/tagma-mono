@@ -129,7 +129,7 @@ Do not amend the same commit to include these files after naming them with the c
 - Packaged V2 cutover is declared in `apps/electron/package.json` with
   `tagma.chatOperationProtocolVersion: 2`; `runtime-paths.ts` only emits
   `TAGMA_CHAT_OPERATION_V2_SHADOW=1` and `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2` when that
-  gate passes. The control store schema version is 6, and schema mismatches fail closed.
+  gate passes. The control store schema version is 7, and schema mismatches fail closed.
 - Tool-free text compatibility prompts have no public message read on a Host-created native session,
   but replaying the exact same Host message id returns cached text before and after restart without
   another provider call. Permit that one digest-authenticated same-id replay for classifier,

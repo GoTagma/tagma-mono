@@ -914,6 +914,13 @@
   non-symlink, and private (`0700`/`0600` on POSIX). Keep the canonical-path HMAC as the stable lookup
   key and separately MAC the full workspace scope tuple (id, path, created time, generation); the
   service must verify that full record after every keyless SQLite read before trusting it.
+- Version the Chat control Store by its append-only SQLite schema lineage, never by editor/sidecar
+  semver. Every persisted migration freezes its SQL interpolation values, name, and checksum; extend
+  the schema only by appending the next migration and ledger entry. Schema v7 adds the
+  `trial-running` phase by rebuilding `operations` and `operation_events` transactionally with
+  foreign keys disabled only for that bounded rebuild and an in-transaction `foreign_key_check`.
+  Older supported stores migrate without data loss, newer stores and checksum/schema drift fail
+  closed, and an incompatible Store may recover only through the explicit archived control reset.
 - Explicit control reset uses migration plan v2 and never destroys the prior control lineage. Seal
   the stored old `keyId`, exact closed-DB hash, and deterministic plan-id-bound sibling DB/key
   archives; a missing old key has an explicit no-key-archive disposition. Inspect only offline

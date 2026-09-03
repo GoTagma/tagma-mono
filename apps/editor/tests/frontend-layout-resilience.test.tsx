@@ -18,7 +18,7 @@ import { VERSION_STATUS_POPOVER_CLASSES } from '../src/components/VersionStatusB
 import { buildCompactToolbarItems, Toolbar } from '../src/components/board/Toolbar';
 import { CONTEXT_MENU_VIEWPORT_CLASSES } from '../src/components/board/ContextMenu';
 import { PipelineSummaryBar } from '../src/components/board/PipelineSummaryBar';
-import { BootstrapOverlay } from '../src/components/chat/ChatPanel';
+import { BootstrapErrorContent, BootstrapOverlay } from '../src/components/chat/ChatPanel';
 import { ChatComposer } from '../src/components/chat/ChatComposer';
 import { computeFloatingPanelPlacement } from '../src/components/chat/FloatingPanel';
 import { ConfirmModal } from '../src/components/ConfirmModal';
@@ -394,5 +394,20 @@ describe('frontend layout resilience', () => {
     const bootstrap = renderToStaticMarkup(<BootstrapOverlay />);
     expect(bootstrap).toContain('overflow-y-auto');
     expect(bootstrap).toContain('min-h-full');
+  });
+
+  test('offers an explicit archive-and-reset recovery only for incompatible Chat control data', () => {
+    const markup = renderToStaticMarkup(
+      <BootstrapErrorContent
+        error="Chat data is incompatible with this Tagma build. Archive and reset Chat data to continue."
+        errorKind="chat_operation_control_reset_required"
+        resetting={false}
+        onRetry={async () => {}}
+        onReset={async () => {}}
+      />,
+    );
+    expect(markup).toContain('Chat data needs recovery.');
+    expect(markup).toContain('Reset Chat data');
+    expect(markup).not.toContain("Couldn't start OpenCode.");
   });
 });

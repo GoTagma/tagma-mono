@@ -232,6 +232,21 @@ function mapReadError(error: unknown): PublicRouteError {
         kind: 'invalid_cursor',
         error: 'The event cursor must be a non-negative safe integer.',
       };
+    case 'schema_mismatch':
+    case 'corrupt_store':
+      return {
+        status: 409,
+        kind: 'chat_operation_control_reset_required',
+        error:
+          'Chat data is incompatible with this Tagma build. Archive and reset Chat data to continue.',
+      };
+    case 'unsupported_schema_version':
+      return {
+        status: 409,
+        kind: 'chat_operation_control_version_unsupported',
+        error:
+          'Chat data was created by a newer Tagma build. Update Tagma to continue without losing Chat history.',
+      };
     default:
       return {
         status: 500,

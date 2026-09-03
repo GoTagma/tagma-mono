@@ -12,6 +12,8 @@ export const CHAT_OPERATION_V2_API_ERROR_KINDS = [
   'cursor_conflict',
   'chat_operation_service_unavailable',
   'chat_operation_read_failed',
+  'chat_operation_control_reset_required',
+  'chat_operation_control_version_unsupported',
   'chat_operation_protocol_mismatch',
   'chat_operation_invalid_request',
   'chat_operation_action_unavailable',
@@ -29,6 +31,8 @@ export const CHAT_OPERATION_V2_API_ERROR_HTTP_STATUS = Object.freeze({
   cursor_conflict: 400,
   chat_operation_service_unavailable: 503,
   chat_operation_read_failed: 500,
+  chat_operation_control_reset_required: 409,
+  chat_operation_control_version_unsupported: 409,
   chat_operation_protocol_mismatch: 426,
   chat_operation_invalid_request: 400,
   chat_operation_action_unavailable: 503,
@@ -59,9 +63,14 @@ export function hasExpectedChatOperationV2ApiErrorStatus(
   kind: ChatOperationV2ApiErrorKind,
 ): boolean {
   // Status 0 is a Renderer-local transport sentinel and never appears on the
-  // HTTP wire. It is intentionally restricted to the two read-side failures.
+  // HTTP wire. It is intentionally restricted to read-side failures.
   if (status === 0) {
-    return kind === 'chat_operation_service_unavailable' || kind === 'chat_operation_read_failed';
+    return (
+      kind === 'chat_operation_service_unavailable' ||
+      kind === 'chat_operation_read_failed' ||
+      kind === 'chat_operation_control_reset_required' ||
+      kind === 'chat_operation_control_version_unsupported'
+    );
   }
   return status === CHAT_OPERATION_V2_API_ERROR_HTTP_STATUS[kind];
 }

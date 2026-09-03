@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -259,6 +260,70 @@ describe('Chat Operation V2 migration service facade', () => {
       expect(JSON.stringify(result)).not.toContain(fixture.root);
       expect(readFileSync(fixture.pipelinePath)).toEqual(pipelineBefore);
       expect(readFileSync(fixture.controlPaths.keyPath)).toEqual(Buffer.alloc(32, 31));
+    } finally {
+      stop(fixture);
+    }
+  });
+
+  test('explicit facade reset recovers an unopened schema-mismatched control store', () => {
+    const fixture = setup('schema-mismatch-reset');
+    fixture.store.close();
+    const drifted = new Database(fixture.controlPaths.databasePath, { strict: true });
+    drifted
+      .query('UPDATE migration_records SET checksum = ? WHERE schema_version = 1')
+      .run('0'.repeat(64));
+    drifted.close();
+
+    const generated = Buffer.alloc(32, 37);
+    const generatedKeyId = `sha256:${sha256(generated)}`;
+    let activated = 0;
+    const service = createChatOperationV2MigrationService({
+      enabled: true,
+      controlPaths: fixture.controlPaths,
+      getTrustedStore: () =>
+        new ChatOperationV2Store({
+          databasePath: fixture.controlPaths.databasePath,
+          keyId: fixture.keyId,
+        }),
+      closeTrustedStoreForReset() {
+        // The failed normal open never acquired live Store authority.
+      },
+      onResetActivated() {
+        activated += 1;
+      },
+      now: () => 250,
+      randomBytes: () => generated,
+    })!;
+    const clientRequestId = 'facade-schema-mismatch-reset';
+    const resetIdentity = deriveChatOperationV2ResetRequestIdentity(clientRequestId);
+
+    try {
+      const result = service.resetControlData({
+        workspace: fixture.ws,
+        ...resetIdentity,
+        clientRequestId,
+        confirmation: CHAT_OPERATION_V2_RESET_CONFIRMATION,
+      });
+      expect(result).toMatchObject({
+        receipt: { disposition: 'control_reset', replayed: false },
+        diagnostics: {
+          kind: 'control_reset',
+          trigger: 'user_requested',
+          oldKeyDisposition: 'archived',
+          controlGeneration: 2,
+        },
+      });
+      expect(activated).toBe(1);
+      expect(generated.every((byte) => byte === 0)).toBe(true);
+
+      const reopened = new ChatOperationV2Store({
+        databasePath: fixture.controlPaths.databasePath,
+        keyId: generatedKeyId,
+      });
+      expect(reopened.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
+        1, 2, 3, 4, 5, 6, 7,
+      ]);
+      reopened.close();
     } finally {
       stop(fixture);
     }
