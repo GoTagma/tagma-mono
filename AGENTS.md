@@ -25,6 +25,9 @@ Do not amend the same commit to include these files after naming them with the c
   workspace metadata is current.
 - Repository version commands must refresh the root `bun.lock` after changing workspace package
   versions. Dry runs must remain non-mutating, and CI dependency checks must remain read-only.
+- Public package publishing must use Bun to pack the workspace (so `workspace:*` dependencies are
+  rewritten from the current `bun.lock`) and the npm CLI to publish that tarball. Do not publish a
+  workspace directory directly with npm, and do not restore Bun 1.3.11's registry client path.
 - Desktop release finalization must refresh the root `bun.lock` after applying the released
   `apps/electron/package.json`, run `bun run check:deps`, and commit both files atomically.
 

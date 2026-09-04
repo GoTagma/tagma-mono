@@ -84,7 +84,7 @@
     },
     "packages/core": {
       "name": "@tagma/core",
-      "version": "0.1.102",
+      "version": "0.1.103",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -129,7 +129,7 @@
     },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.7.108",
+      "version": "0.7.109",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "@tagma/runtime-bun": "workspace:*",

@@ -12,6 +12,10 @@ const releaseDesktopWorkflow = readFileSync(
   'utf8',
 );
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const publishPackageScript = readFileSync(
+  new URL('./publish-package.mjs', import.meta.url),
+  'utf8',
+);
 
 function stepIndex(text, name) {
   const needle = `- name: ${name}`;
@@ -59,17 +63,40 @@ test('publish-npm validates only public npm packages before npm auth', () => {
   );
 });
 
-test('publish-npm passes Bun its token without writing npm auth files', () => {
+test('publish-npm passes npm its token without writing the secret to auth files', () => {
   const auth = stepIndex(workflow, 'Configure npm auth');
   const publish = stepIndex(workflow, 'Publish packages in dependency order');
   const authBlock = workflow.slice(auth, publish);
   const publishBlock = workflow.slice(publish);
 
-  assert.match(authBlock, /NPM_CONFIG_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
-  assert.match(authBlock, /if \[ -z "\$NPM_CONFIG_TOKEN" \]/);
+  assert.match(workflow, /uses: actions\/setup-node@v7/);
+  assert.match(workflow, /registry-url: 'https:\/\/registry\.npmjs\.org\/'/);
+  assert.match(authBlock, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+  assert.match(authBlock, /if \[ -z "\$NODE_AUTH_TOKEN" \]/);
   assert.match(authBlock, /NPM_TOKEN is required/);
-  assert.match(publishBlock, /NPM_CONFIG_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+  assert.match(publishBlock, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
   assert.doesNotMatch(workflow, /_authToken|tee \.npmrc|Cleanup npm auth/);
+});
+
+test('public publish scripts pack workspace dependencies with Bun and publish the tarball with npm', () => {
+  const scripts = Object.entries(packageJson.scripts).filter(
+    ([name]) => name.startsWith('publish:') && name !== 'publish:all' && name !== 'publish:dry',
+  );
+
+  for (const [name, command] of scripts) {
+    assert.match(
+      command,
+      /node \.\.\/\.\.\/scripts\/publish-package\.mjs$/,
+      `${name} must use the shared publisher`,
+    );
+    assert.doesNotMatch(command, /\bbun publish\b/, `${name} must not call Bun's registry client`);
+  }
+  assert.match(publishPackageScript, /'bun',\s*\[\s*'pm',\s*'pack'/);
+  assert.match(publishPackageScript, /'publish',\s*tarballPath/);
+  assert(
+    publishPackageScript.indexOf("'pm', 'pack'") < publishPackageScript.indexOf("'publish',"),
+    'Bun must pack before npm publishes the tarball',
+  );
 });
 
 test('publish-npm retries transient failures without overwriting an existing version', () => {
@@ -85,7 +112,10 @@ test('publish-npm retries transient failures without overwriting an existing ver
   assert.notEqual(publishAttempt, -1, 'publish attempt is missing');
   assert.notEqual(postFailureCheck, -1, 'publish must reconcile an ambiguous failed response');
   assert(precheck < publishAttempt, 'registry precheck must run before publish');
-  assert(publishAttempt < postFailureCheck, 'ambiguous-response reconciliation must follow publish');
+  assert(
+    publishAttempt < postFailureCheck,
+    'ambiguous-response reconciliation must follow publish',
+  );
 });
 
 test('ci full-check runs repository hygiene gates before type/test/lint', () => {
