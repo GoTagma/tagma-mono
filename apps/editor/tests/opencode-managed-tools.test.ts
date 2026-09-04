@@ -48,7 +48,9 @@ test('managed OpenCode tools load from the isolated runtime and migrate legacy w
       expect(packageMetadata.dependencies['@opencode-ai/plugin']).toBe('1.18.18');
       expect(packageLock.packages[''].dependencies).toEqual(packageMetadata.dependencies);
       expect(
-        existsSync(join(extensionRoot, 'node_modules', '@opencode-ai', 'plugin', 'dist', 'index.js')),
+        existsSync(
+          join(extensionRoot, 'node_modules', '@opencode-ai', 'plugin', 'dist', 'index.js'),
+        ),
       ).toBe(true);
       expect(existsSync(join(extensionRoot, 'node_modules', 'zod', 'index.js'))).toBe(true);
     }
