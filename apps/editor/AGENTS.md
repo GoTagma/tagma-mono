@@ -649,6 +649,10 @@
   ranges are 30m-24h, 1h-7d, and 2h-7d respectively. Normalize each outer lifecycle to at least 30
   minutes above the default task budget. Explicit YAML task/pipeline timeouts remain authoritative;
   never reintroduce a hidden Trial-specific task cap.
+- Keep persisted Trial progress coordinates internally valid: `caseIndex`/`caseCount` and
+  `runNumber`/`runCount` are paired fields, so each pair is either both positive integers or both
+  null. Between cases/runs, clear the whole pair; otherwise the Host event validator rejects the
+  heartbeat and the UI loses progress even though Trial continues.
 - Model Trial prerequisite readiness in one host-owned discriminated state:
   `runnable | fixture-backed | blocked`. Missing workspace-contained built-in file/directory
   inputs are fixture-backed data, not pipeline failures, whether the trigger task is a DAG root or
@@ -867,6 +871,10 @@
   finite reason taxonomy and derived admission/execution boundary, history outcome, and
   may-have-submitted booleans. Never forward the event payload or source evidence, native
   invocation/session/input ids, request digests, provider text, tool content, paths, or credentials.
+  The separate diagnostics Host-event endpoint may page the same content-minimized summaries from
+  its own `nextCursor`; it must not expose raw event payloads or initialize an otherwise-unused
+  control store. Include only the fixed commit-recovery disposition as `recoveryCode` so ordinary
+  `apply_all` is distinguishable from user recovery without exposing hashes, paths, or conflicts.
 - Distinguish a caller-authenticated fresh invocation from recovery before native admission. A
   fresh invocation may continue after a pre-submission history-read outage; recovery may not infer
   that nothing was submitted. After create/prompt transport loss or conflict, poll exact durable
@@ -1289,8 +1297,10 @@
 - Read verified session messages through OpenCode's V2 cursor projection. A tool-free compatibility
   session can have an empty first page even after a successful response; diagnostics may then join
   its authenticated outbox session id to the immutable Host-visible discussion/diagnosis result.
-  Keep this fallback read-only and already-open-authority-only, never expose classifier text, never
-  initialize a control store, and never substitute Host results for a caller-supplied history cursor.
+  An authoring root reused by repair and Trial Plan may similarly project only its Host-visible user
+  request and sealed authoring result; never expose internal classifier, repair, or Trial Plan text.
+  Keep this fallback read-only and already-open-authority-only, never initialize a control store,
+  and never substitute Host results for a caller-supplied history cursor.
 
 ## Focused Editor Tests
 

@@ -458,6 +458,16 @@ describe('chat YAML staging async witness ordering', () => {
     );
     expect(
       progressUpdates.every(
+        (progress) => (progress.caseIndex === null) === (progress.caseCount === null),
+      ),
+    ).toBe(true);
+    expect(
+      progressUpdates.every(
+        (progress) => (progress.runNumber === null) === (progress.runCount === null),
+      ),
+    ).toBe(true);
+    expect(
+      progressUpdates.every(
         (progress) =>
           progress.updatedAt >= progress.startedAt &&
           progress.startedAt === progressUpdates[0]?.startedAt,

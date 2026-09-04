@@ -119,6 +119,9 @@ test('real sidecar exposes only the temporary read-only diagnostics protocol', a
     expect(await manifestResponse.json()).toMatchObject({
       readOnly: true,
       sessionScoped: true,
+      endpoints: {
+        chatOperationEvents: '/api/diagnostics/v1/chat/operations/events',
+      },
       extensibility: { contextNamespace: 'features' },
     });
 
@@ -145,6 +148,21 @@ test('real sidecar exposes only the temporary read-only diagnostics protocol', a
       returnedEventCount: 0,
       retention: { layer: 'diagnostics-timeline-buffer' },
       page: { layer: 'diagnostics-timeline-page', limit: 10 },
+      events: [],
+    });
+
+    const hostEventsResponse = await fetch(
+      `${enabled.connection.baseUrl}/chat/operations/events?after=0&limit=10`,
+      { headers: diagnosticsHeaders },
+    );
+    expect(hostEventsResponse.status).toBe(200);
+    expect(await hostEventsResponse.json()).toMatchObject({
+      schemaVersion: 2,
+      kind: 'events',
+      latestCursor: 0,
+      nextCursor: 0,
+      returnedEventCount: 0,
+      page: { layer: 'chat-operation-v2-host-event-page', limit: 10 },
       events: [],
     });
 

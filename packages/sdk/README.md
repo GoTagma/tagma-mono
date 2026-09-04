@@ -176,7 +176,10 @@ Each hook value can be a single command string or an array of commands.
 | `pipeline_complete` | `string \| string[]` | Runs when the pipeline finishes successfully |
 | `pipeline_error`    | `string \| string[]` | Runs when the pipeline finishes with errors  |
 
-`pipeline_start` and `task_start` are gates: any non-zero exit code blocks the run/task. Hook stdout and stderr are written into the unified run log.
+`pipeline_start` and `task_start` are gates: any non-zero exit code blocks the run/task. Hook output
+is written into the unified run log with outcome-aware severity: successful stdout is informational,
+successful real stderr is a warning, and failed-hook stderr is an error. Pure PowerShell progress
+CLIXML is omitted; mixed output and CLIXML error records remain visible.
 
 ### Track Fields
 

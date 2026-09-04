@@ -75,6 +75,7 @@ import {
 import type {
   ChatOperationV2RendererResultProjection,
   ChatOperationV2ResultPersistence,
+  ChatOperationV2VisibleResultPurpose,
 } from './results.js';
 import {
   describeChatOperationV2SubmissionUnknown,
@@ -249,6 +250,7 @@ export interface ChatOperationV2DiagnosticsEventSummary {
   readonly diagnostic: Readonly<{
     errorCode?: string;
     reasonCode?: string;
+    recoveryCode?: string;
     diagnosticCodes?: readonly string[];
     outcome?: string;
     finishCode?: string;
@@ -274,11 +276,45 @@ export interface ChatOperationV2DiagnosticsEventEvidence {
   readonly events: readonly ChatOperationV2DiagnosticsEventSummary[];
 }
 
-export interface ChatOperationV2DiagnosticsReadonlySessionProjection {
+interface ChatOperationV2DiagnosticsEventPageBase {
+  readonly schemaVersion: 2;
+  readonly requestedAfter: number;
+  readonly retainedFloor: number;
+  readonly latestCursor: number;
+  readonly nextCursor: number;
+  readonly retainedEventCount: number;
+  readonly availableEventCount: number;
+  readonly returnedEventCount: number;
+  readonly omittedEventCount: number;
+  readonly hasMore: boolean;
+  readonly retention: Readonly<{
+    layer: 'chat-operation-v2-host-event-store';
+    requestedEventLossCount: number;
+    truncated: boolean;
+  }>;
+  readonly page: Readonly<{
+    layer: 'chat-operation-v2-host-event-page';
+    limit: number;
+    omittedEventCount: number;
+    truncated: boolean;
+  }>;
+}
+
+export type ChatOperationV2DiagnosticsEventPage =
+  | (ChatOperationV2DiagnosticsEventPageBase & {
+      readonly kind: 'events';
+      readonly events: readonly ChatOperationV2DiagnosticsEventSummary[];
+    })
+  | (ChatOperationV2DiagnosticsEventPageBase & {
+      readonly kind: 'cursor_reset_required';
+      readonly events: readonly [];
+    });
+
+export interface ChatOperationV2DiagnosticsSessionProjection {
   readonly source: 'chat-operation-v2-result';
   readonly operationId: string;
   readonly invocationId: string;
-  readonly purpose: 'discussion' | 'diagnosis';
+  readonly purpose: ChatOperationV2VisibleResultPurpose;
   readonly terminalOutcome: ChatOperationV2RendererOperationSummary['terminalOutcome'];
   readonly resultId: string | null;
   readonly messages: readonly unknown[];
@@ -450,6 +486,13 @@ export function isChatOperationV2ShadowEnabled(
 const CHAT_OPERATION_V2_DIAGNOSTICS_EVENT_LIMIT = 100;
 const SAFE_DIAGNOSTIC_CODE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_DIAGNOSTIC_FAILURE_CODES = new Set<string>(CHAT_OPERATION_V2_SAFE_FAILURE_CODES);
+const SAFE_DIAGNOSTIC_RECOVERY_CODES = new Set([
+  'apply_all',
+  'repair_authority',
+  'roll_forward',
+  'fork_to_fallback',
+  'await_user_recovery',
+]);
 
 function safeDiagnosticsCode(value: unknown): string | null {
   return typeof value === 'string' && SAFE_DIAGNOSTIC_CODE.test(value) ? value : null;
@@ -459,7 +502,12 @@ function safeDiagnosticsFailureCode(value: unknown): string | null {
   return typeof value === 'string' && SAFE_DIAGNOSTIC_FAILURE_CODES.has(value) ? value : null;
 }
 
-function diagnosticsForEvent(
+function safeDiagnosticsRecoveryCode(value: unknown): string | null {
+  return typeof value === 'string' && SAFE_DIAGNOSTIC_RECOVERY_CODES.has(value) ? value : null;
+}
+
+/** @internal Pure safe-field projection used by diagnostics contract tests. */
+export function diagnosticsForEvent(
   event: StoredHostOperationEvent,
 ): ChatOperationV2DiagnosticsEventSummary['diagnostic'] {
   const errorCode = safeDiagnosticsFailureCode(event.payload.errorCode);
@@ -469,6 +517,10 @@ function diagnosticsForEvent(
       : safeDiagnosticsCode(event.payload.reasonCode);
   const outcome = safeDiagnosticsCode(event.payload.outcome);
   const finishCode = safeDiagnosticsCode(event.payload.finishCode);
+  const recoveryCode =
+    event.type === 'commit_recovery_required'
+      ? safeDiagnosticsRecoveryCode(event.payload.recoveryCode)
+      : null;
   const diagnosticCodes = Array.isArray(event.payload.diagnosticCodes)
     ? [
         ...new Set(
@@ -481,6 +533,7 @@ function diagnosticsForEvent(
   return Object.freeze({
     ...(errorCode ? { errorCode } : {}),
     ...(reasonCode ? { reasonCode } : {}),
+    ...(recoveryCode ? { recoveryCode } : {}),
     ...(diagnosticCodes.length > 0 ? { diagnosticCodes: Object.freeze(diagnosticCodes) } : {}),
     ...(outcome ? { outcome } : {}),
     ...(finishCode ? { finishCode } : {}),
@@ -517,6 +570,32 @@ function diagnosticsEventSummary(
       : {}),
     ...(submissionUnknown ? { submissionUnknown } : {}),
   });
+}
+
+function diagnosticsEventSummaries(
+  store: ChatOperationV2Store,
+  workspaceScopeId: string,
+  sourceEvents: readonly StoredHostOperationEvent[],
+): readonly ChatOperationV2DiagnosticsEventSummary[] {
+  const outboxes = new Map<string, StoredInvocationOutboxRecord>();
+  for (const event of sourceEvents) {
+    const invocationId = event.payload.invocationId;
+    if (typeof invocationId !== 'string' || outboxes.has(invocationId)) continue;
+    const outbox = store.getInvocationOutbox(invocationId);
+    if (outbox?.workspaceScopeId === workspaceScopeId && outbox.operationId === event.operationId) {
+      outboxes.set(invocationId, outbox);
+    }
+  }
+  return Object.freeze(
+    sourceEvents.map((event) =>
+      diagnosticsEventSummary(
+        event,
+        typeof event.payload.invocationId === 'string'
+          ? (outboxes.get(event.payload.invocationId) ?? null)
+          : null,
+      ),
+    ),
+  );
 }
 
 export class ChatOperationV2Service {
@@ -694,14 +773,14 @@ export class ChatOperationV2Service {
   }
 
   /**
-   * Compatibility text calls intentionally have no public OpenCode message projection. Join the
-   * Host-authenticated session identity back to the immutable visible Chat result instead of
-   * scraping OpenCode's private compatibility storage. Internal classifier text is never exposed.
+   * Host-created sessions can lack a public OpenCode message projection. Join the authenticated
+   * session identity back to the immutable visible Chat result instead of scraping OpenCode's
+   * private storage. Internal classifier, repair, and Trial Plan text is never exposed.
    */
-  getDiagnosticsReadonlySessionProjection(
+  getDiagnosticsSessionProjection(
     workspacePath: string,
     sessionId: string,
-  ): ChatOperationV2DiagnosticsReadonlySessionProjection | null {
+  ): ChatOperationV2DiagnosticsSessionProjection | null {
     const authority = this.#authority;
     if (this.#closed || authority === null) return null;
     const identity = createWorkspaceIdentity(workspacePath, authority.key, this.#identityOptions);
@@ -713,17 +792,36 @@ export class ChatOperationV2Service {
     const matches = authority.store
       .listInvocationOutbox(scope.workspaceScopeId)
       .filter((outbox) => outbox.sessionId === sessionId);
-    if (matches.length !== 1) return null;
-    const outbox = matches[0]!;
-    if (outbox.purpose !== 'discussion' && outbox.purpose !== 'diagnosis') return null;
-    const operation = authority.store.getOperation(outbox.operationId);
-    const admission = authority.store.getOperationAdmission(outbox.operationId);
-    const result = authority.store.getResultProjection(outbox.operationId);
+    const operationIds = new Set(matches.map((outbox) => outbox.operationId));
+    if (operationIds.size !== 1) return null;
+    const operationId = operationIds.values().next().value;
+    if (typeof operationId !== 'string') return null;
+    const operation = authority.store.getOperation(operationId);
+    const admission = authority.store.getOperationAdmission(operationId);
+    const result = authority.store.getResultProjection(operationId);
+    const sealedResult = result ? authority.store.getResult(result.resultId) : null;
+    const visibleMatches = matches.filter(
+      (
+        outbox,
+      ): outbox is StoredInvocationOutboxRecord & {
+        readonly purpose: ChatOperationV2VisibleResultPurpose;
+      } =>
+        outbox.purpose === 'discussion' ||
+        outbox.purpose === 'diagnosis' ||
+        outbox.purpose === 'authoring',
+    );
+    const outbox = sealedResult
+      ? (visibleMatches.find((candidate) => candidate.invocationId === sealedResult.invocationId) ??
+        null)
+      : visibleMatches.length === 1
+        ? visibleMatches[0]!
+        : null;
     if (
+      !outbox ||
       !operation ||
       operation.workspaceScopeId !== scope.workspaceScopeId ||
       !admission ||
-      (result && result.purpose !== outbox.purpose)
+      (result && (result.purpose !== outbox.purpose || sealedResult === null))
     ) {
       return null;
     }
@@ -810,6 +908,122 @@ export class ChatOperationV2Service {
       after: input.after,
       limit: input.limit,
     });
+  }
+
+  listDiagnosticsEvents(
+    workspacePath: string | null,
+    input: ChatOperationV2ListEventsInput,
+  ): ChatOperationV2DiagnosticsEventPage {
+    const limit = input.limit ?? 100;
+    if (!Number.isSafeInteger(input.after) || input.after < 0) {
+      throw new RangeError('Diagnostics event cursor must be a non-negative integer.');
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new RangeError('Diagnostics event limit must be an integer from 1 to 1000.');
+    }
+
+    const emptyPage = (): ChatOperationV2DiagnosticsEventPage => ({
+      schemaVersion: 2,
+      kind: 'events',
+      requestedAfter: input.after,
+      retainedFloor: 0,
+      latestCursor: 0,
+      nextCursor: input.after,
+      retainedEventCount: 0,
+      availableEventCount: 0,
+      returnedEventCount: 0,
+      omittedEventCount: 0,
+      hasMore: false,
+      retention: Object.freeze({
+        layer: 'chat-operation-v2-host-event-store',
+        requestedEventLossCount: 0,
+        truncated: false,
+      }),
+      page: Object.freeze({
+        layer: 'chat-operation-v2-host-event-page',
+        limit,
+        omittedEventCount: 0,
+        truncated: false,
+      }),
+      events: Object.freeze([]),
+    });
+    const authority = this.#authority;
+    if (!workspacePath || this.#closed || authority === null) return emptyPage();
+    const identity = createWorkspaceIdentity(workspacePath, authority.key, this.#identityOptions);
+    const storedScope = authority.store.findWorkspaceScope(identity);
+    if (!storedScope) return emptyPage();
+    const scope = parseTrustedWorkspaceScopeRecord(storedScope, authority.key, {
+      platform: this.#identityOptions.platform,
+    });
+    const result = authority.store.listOperationEvents({
+      workspaceScopeId: scope.workspaceScopeId,
+      after: input.after,
+      limit,
+    });
+    const retainedEventCount = Math.max(0, result.latestCursor - result.retainedFloor);
+    if (result.kind === 'cursor_reset_required') {
+      const availableEventCount = retainedEventCount;
+      return {
+        schemaVersion: 2,
+        kind: result.kind,
+        requestedAfter: result.requestedAfter,
+        retainedFloor: result.retainedFloor,
+        latestCursor: result.latestCursor,
+        nextCursor: result.retainedFloor,
+        retainedEventCount,
+        availableEventCount,
+        returnedEventCount: 0,
+        omittedEventCount: availableEventCount,
+        hasMore: availableEventCount > 0,
+        retention: Object.freeze({
+          layer: 'chat-operation-v2-host-event-store',
+          requestedEventLossCount: result.retainedFloor - result.requestedAfter,
+          truncated: true,
+        }),
+        page: Object.freeze({
+          layer: 'chat-operation-v2-host-event-page',
+          limit,
+          omittedEventCount: availableEventCount,
+          truncated: availableEventCount > 0,
+        }),
+        events: Object.freeze([]),
+      };
+    }
+    const availableEventCount = Math.max(
+      0,
+      result.latestCursor - Math.max(result.requestedAfter, result.retainedFloor),
+    );
+    const events = diagnosticsEventSummaries(
+      authority.store,
+      scope.workspaceScopeId,
+      result.events,
+    );
+    const omittedEventCount = Math.max(0, availableEventCount - events.length);
+    return {
+      schemaVersion: 2,
+      kind: result.kind,
+      requestedAfter: result.requestedAfter,
+      retainedFloor: result.retainedFloor,
+      latestCursor: result.latestCursor,
+      nextCursor: result.nextCursor,
+      retainedEventCount,
+      availableEventCount,
+      returnedEventCount: events.length,
+      omittedEventCount,
+      hasMore: result.nextCursor < result.latestCursor,
+      retention: Object.freeze({
+        layer: 'chat-operation-v2-host-event-store',
+        requestedEventLossCount: 0,
+        truncated: false,
+      }),
+      page: Object.freeze({
+        layer: 'chat-operation-v2-host-event-page',
+        limit,
+        omittedEventCount,
+        truncated: omittedEventCount > 0,
+      }),
+      events,
+    };
   }
 
   /**
@@ -1291,29 +1505,7 @@ export class ChatOperationV2Service {
         'Chat Operation diagnostics event window changed while it was being read.',
       );
     }
-    const outboxes = new Map<string, StoredInvocationOutboxRecord>();
-    for (const event of page.events) {
-      const invocationId = event.payload.invocationId;
-      if (typeof invocationId !== 'string' || outboxes.has(invocationId)) continue;
-      const outbox = authority.store.getInvocationOutbox(invocationId);
-      if (
-        outbox &&
-        outbox.workspaceScopeId === scope.workspaceScopeId &&
-        outbox.operationId === event.operationId
-      ) {
-        outboxes.set(invocationId, outbox);
-      }
-    }
-    const events = Object.freeze(
-      page.events.map((event) =>
-        diagnosticsEventSummary(
-          event,
-          typeof event.payload.invocationId === 'string'
-            ? (outboxes.get(event.payload.invocationId) ?? null)
-            : null,
-        ),
-      ),
-    );
+    const events = diagnosticsEventSummaries(authority.store, scope.workspaceScopeId, page.events);
     const retainedEventCount = Math.max(0, page.latestCursor - page.retainedFloor);
     const omittedEventCount = Math.max(0, retainedEventCount - events.length);
     return {

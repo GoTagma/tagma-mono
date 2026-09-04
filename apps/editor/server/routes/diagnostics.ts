@@ -36,6 +36,15 @@ export interface DiagnosticsRouteDependencies {
     sessionId: string,
     options: DiagnosticsOpencodeMessageOptions,
   ) => unknown | Promise<unknown>;
+  readChatOperationEvents?: (
+    workspaceKey: string | null,
+    options: DiagnosticsChatOperationEventOptions,
+  ) => unknown | Promise<unknown>;
+}
+
+export interface DiagnosticsChatOperationEventOptions {
+  after: number;
+  limit: number;
 }
 
 export interface DiagnosticsOpencodeMessageOptions {
@@ -68,6 +77,16 @@ function boundedSessionLimit(value: unknown): number {
 function boundedSessionOffset(value: unknown): number {
   const parsed = typeof value === 'string' ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) ? Math.min(10_000, Math.max(0, Math.trunc(parsed))) : 0;
+}
+
+function boundedEventCursor(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function boundedEventLimit(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isSafeInteger(parsed) ? Math.min(1_000, Math.max(1, parsed)) : 500;
 }
 
 function sendDiagnosticsReadError(res: express.Response, error: unknown): void {
@@ -299,6 +318,33 @@ export function registerDiagnosticsRoutes(
     dependencies.readOpencodeSessions ??
     ((workspaceKey, options) => readDiagnosticsOpencodeSessions(workspaceKey, undefined, options));
   const readOpencodeMessages = dependencies.readOpencodeMessages ?? readDiagnosticsOpencodeMessages;
+  const readChatOperationEvents =
+    dependencies.readChatOperationEvents ??
+    ((_, options: DiagnosticsChatOperationEventOptions) => ({
+      schemaVersion: 2,
+      kind: 'events',
+      requestedAfter: options.after,
+      retainedFloor: 0,
+      latestCursor: 0,
+      nextCursor: options.after,
+      retainedEventCount: 0,
+      availableEventCount: 0,
+      returnedEventCount: 0,
+      omittedEventCount: 0,
+      hasMore: false,
+      retention: {
+        layer: 'chat-operation-v2-host-event-store',
+        requestedEventLossCount: 0,
+        truncated: false,
+      },
+      page: {
+        layer: 'chat-operation-v2-host-event-page',
+        limit: options.limit,
+        omittedEventCount: 0,
+        truncated: false,
+      },
+      events: [],
+    }));
 
   app.get('/api/diagnostics/session', (req, res) => {
     res.json(hub.getStatus(requestOrigin(req)));
@@ -360,6 +406,7 @@ export function registerDiagnosticsRoutes(
         context: `${DIAGNOSTICS_AGENT_BASE_PATH}/context`,
         logs: `${DIAGNOSTICS_AGENT_BASE_PATH}/logs`,
         timeline: `${DIAGNOSTICS_AGENT_BASE_PATH}/timeline`,
+        chatOperationEvents: `${DIAGNOSTICS_AGENT_BASE_PATH}/chat/operations/events`,
         opencodeSessions: `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`,
         opencodeMessages: `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/{sessionId}/messages`,
       },
@@ -374,6 +421,12 @@ export function registerDiagnosticsRoutes(
         next: 'Use timeline nextCursor as the next timeline after value.',
         bounds:
           'Inspect timeline retention and page separately; buffer loss is not the same as response pagination.',
+      },
+      chatOperationEventPolling: {
+        query: { after: 'cursor from the previous Chat operation event response', limit: '1-1000' },
+        next: 'Use the Chat operation event nextCursor as the next after value.',
+        bounds:
+          'Inspect Host event retention separately from response pagination; context eventEvidence remains a newest-100 summary.',
       },
       sessionPagination: {
         query: { offset: 'zero-based owned-session offset', limit: '1-500' },
@@ -393,7 +446,7 @@ export function registerDiagnosticsRoutes(
         'workspace-scoped OpenCode session list and bounded message history',
         'renderer console/errors and transient OpenCode chat state',
         'current editor pipeline state and active run events',
-        'bounded content-minimized Chat Operation V2 Host operation chronology with invocation purpose/status and exact safe submission-uncertainty reasons',
+        'bounded-summary and cursor-paged content-minimized Chat Operation V2 Host chronology with invocation purpose/status, recovery classification, and exact safe submission-uncertainty reasons',
         'bounded content-minimized structured renderer timeline for chat, pipeline, run, page, and feature transitions',
       ],
       privacy:
@@ -421,6 +474,19 @@ export function registerDiagnosticsRoutes(
     const after = Number(req.query.after ?? 0);
     const limit = Number(req.query.limit ?? 500);
     res.json(hub.readTimeline(after, limit));
+  });
+
+  app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/chat/operations/events`, async (req, res) => {
+    try {
+      res.json(
+        await readChatOperationEvents(hub.activeWorkspaceKey(), {
+          after: boundedEventCursor(req.query.after),
+          limit: boundedEventLimit(req.query.limit),
+        }),
+      );
+    } catch (error) {
+      sendDiagnosticsReadError(res, error);
+    }
   });
 
   app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`, async (_req, res) => {

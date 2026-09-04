@@ -734,6 +734,12 @@ registerChatOperationV2ControlRoutes(
     : { enabled: false },
 );
 registerDiagnosticsRoutes(app, {
+  ...(chatOperationV2Service
+    ? {
+        readChatOperationEvents: (workspaceKey, options) =>
+          chatOperationV2Service.listDiagnosticsEvents(workspaceKey, options),
+      }
+    : {}),
   readOpencodeSessions: createDiagnosticsOpencodeSessionReader((workspaceKey) =>
     chatOperationV2Service
       ? chatOperationV2Service.getDiagnosticsOpenCodeSessionAuthority(workspaceKey)
@@ -741,8 +747,7 @@ registerDiagnosticsRoutes(app, {
   ),
   readOpencodeMessages: createDiagnosticsOpencodeMessageReader(
     (workspaceKey, sessionId) =>
-      chatOperationV2Service?.getDiagnosticsReadonlySessionProjection(workspaceKey, sessionId) ??
-      null,
+      chatOperationV2Service?.getDiagnosticsSessionProjection(workspaceKey, sessionId) ?? null,
     (workspaceKey) =>
       chatOperationV2Service
         ? chatOperationV2Service.getDiagnosticsOpenCodeSessionAuthority(workspaceKey)

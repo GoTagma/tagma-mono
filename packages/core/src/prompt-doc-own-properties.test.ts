@@ -32,4 +32,16 @@ describe('prompt document data records', () => {
 
     expect(block?.content).toContain('Example final line: {"__proto__":null}');
   });
+
+  test('makes the final-line JSON contract explicit and fence-free', () => {
+    const block = renderOutputSchemaBlock([
+      { name: 'summary', type: 'string' },
+      { name: 'open_questions', type: 'json' },
+    ]);
+
+    expect(block?.content).toContain('final non-empty line');
+    expect(block?.content).toContain('containing every listed key');
+    expect(block?.content).toContain('Do not wrap the JSON in a Markdown code fence');
+    expect(block?.content).toContain('Do not write anything after the JSON object');
+  });
 });

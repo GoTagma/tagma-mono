@@ -48,6 +48,10 @@ Do not amend the same commit to include these files after naming them with the c
 - Derive the terminal summary status and terminal pipeline log verb from the same run result:
   natural task failure is `failed`, explicit cancellation is `aborted`, and only a successful
   run is `completed`. Never emit a completed terminal line for a result whose `success` is false.
+- Classify hook output from the hook result, not from stream presence alone: successful stdout is
+  informational, successful real stderr is a warning, and stderr is an error only for a failed
+  hook. Suppress only a complete PowerShell CLIXML document whose every stream record is
+  `progress`; mixed/plain text and CLIXML error records must remain visible.
 
 ## Pipeline Output Capture Integrity
 

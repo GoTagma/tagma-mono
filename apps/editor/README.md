@@ -153,32 +153,36 @@ requests the agent should run itself, and instructions to diagnose the root caus
 changes. The agent is told not to modify files, settings, processes, or editor state unless the user
 explicitly asks after the diagnosis. Put the token in
 `Authorization: Bearer <temporary-diagnostics-token>`, never in a URL.
-It starts with one context snapshot plus the structured timeline and log cursors, then polls the
-timeline and logs independently with each response's own `nextCursor`.
+It starts with one context snapshot plus the structured timeline, log, and Chat-operation event
+cursors, then polls all three independently with each response's own `nextCursor`.
 
-| Read-only endpoint                                                      | Contents                                                                     |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `GET /api/diagnostics/v1/manifest`                                      | Protocol, coverage, privacy notes, and endpoint discovery                    |
-| `GET /api/diagnostics/v1/context`                                       | Editor/workspace/run state, renderer snapshot, and OpenCode runtime info     |
-| `GET /api/diagnostics/v1/timeline?after=<cursor>&limit=<1-1000>`        | Content-minimized structured renderer transitions with an independent cursor |
-| `GET /api/diagnostics/v1/logs?after=<cursor>&limit=<1-1000>`            | Cursor logs plus the Electron `sidecar.log` tail                             |
-| `GET /api/diagnostics/v1/opencode/sessions`                             | Sessions scoped to the workspace's existing OpenCode process                 |
-| `GET /api/diagnostics/v1/opencode/sessions/<id>/messages?limit=<1-200>` | Bounded history after verifying session ownership                            |
+| Read-only endpoint                                                             | Contents                                                                     |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `GET /api/diagnostics/v1/manifest`                                             | Protocol, coverage, privacy notes, and endpoint discovery                    |
+| `GET /api/diagnostics/v1/context`                                              | Editor/workspace/run state, renderer snapshot, and OpenCode runtime info     |
+| `GET /api/diagnostics/v1/timeline?after=<cursor>&limit=<1-1000>`               | Content-minimized structured renderer transitions with an independent cursor |
+| `GET /api/diagnostics/v1/logs?after=<cursor>&limit=<1-1000>`                   | Cursor logs plus the Electron `sidecar.log` tail                             |
+| `GET /api/diagnostics/v1/chat/operations/events?after=<cursor>&limit=<1-1000>` | Paged content-minimized Host operation events with an independent cursor     |
+| `GET /api/diagnostics/v1/opencode/sessions`                                    | Sessions scoped to the workspace's existing OpenCode process                 |
+| `GET /api/diagnostics/v1/opencode/sessions/<id>/messages?limit=<1-200>`        | Bounded history after verifying session ownership                            |
 
 The diagnostics token is independent from the sidecar management token, rotates on every enable,
 authorizes only `GET` below `/api/diagnostics/v1`, and is revoked on disable or shutdown. OpenCode
 history reads never start, restart, prompt, or mutate OpenCode; they return `409` when it is not
-running. OpenCode's compatibility-text sessions may have no public message projection; for an empty
-first page, the message endpoint can return the authenticated immutable Host-visible
-discussion/diagnosis result and labels that source explicitly. It never exposes internal classifier
-text or uses this fallback for cursor pagination. Captured logs, renderer reports, timeline
+running. OpenCode's Host-created sessions may have no public message projection; for an empty first
+page, the message endpoint can return the authenticated immutable Host-visible
+discussion/diagnosis result or the visible request and sealed result for an authoring root reused by
+repair and Trial Plan. It labels that source explicitly, never exposes internal classifier,
+repair, or Trial Plan text, and never uses this fallback for cursor pagination. Captured logs,
+renderer reports, timeline
 comparison state, timeline events, and all
 cursors are cleared whenever a session rotates or ends, so a later workspace cannot inherit them.
 Renderer console/error capture exists only during the matching diagnostics session and is restored
 without overwriting a console wrapper installed later by another feature. Normal Chat health probes
 (`checking`/`ok`) do not create timeline events; degraded health and its recovery remain observable.
-Release process output
-comes from Electron's existing `sidecar.log`, so normal process streams are not wrapped.
+Release process output comes from Electron's existing `sidecar.log`, so normal process streams are
+not wrapped. A non-Electron development launch has no launcher-maintained log and reports
+`desktopLogTailRead.status = not-configured` explicitly.
 
 The protocol is extensible without changing the connection flow. Renderer features register lazy
 state under `features` with `registerRendererDiagnosticsContributor`; sidecar features use
@@ -197,10 +201,14 @@ timestamp, terminal flag, event type, and bounded code-shaped diagnostic fields.
 its retained, returned, and omitted counts. It never includes provider messages, arbitrary event
 payloads, source evidence, native invocation/session/input ids, request digests, tool content,
 paths, or credentials, and diagnostics never opens an otherwise-unused Chat control store.
+For longer investigations, `/chat/operations/events` pages the same safe summaries from its own
+cursor while this context field remains a cheap newest-100 snapshot.
 
 The event window is `schemaVersion: 2`. Invocation events also include a safe `invocation` summary
 (`purpose`, durable outbox `currentStatus`, and allowlisted `currentFailureCode` at diagnostics
-read time). An `invocation_submission_unknown` event adds a finite
+read time). Commit recovery events expose only their fixed `recoveryCode`, allowing the normal
+`apply_all` application path to remain distinguishable from real recovery. An
+`invocation_submission_unknown` event adds a finite
 `submissionUnknown` explanation: exact `reasonCode`, the admission/execution `boundary`, history
 outcome, whether a native submission may have occurred, and whether provider execution may have
 started. Reasons distinguish preflight history request/scan failure, session-create transport

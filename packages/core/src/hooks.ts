@@ -19,6 +19,9 @@ type HookEvent =
 
 const GATE_HOOKS: ReadonlySet<HookEvent> = new Set(['pipeline_start', 'task_start']);
 
+const POWERSHELL_CLIXML_PREFIX = '#< CLIXML';
+const POWERSHELL_CLIXML_STREAM_RE = /<(?:Obj|S)\b[^>]*\bS=(?:"([^"]+)"|'([^']+)')/g;
+
 export interface HookResult {
   readonly allowed: boolean; // for gate hooks: true = proceed, false = block
   readonly exitCode: number;
@@ -36,6 +39,14 @@ function normalizeCommands(cmd: HookCommand | undefined): readonly CommandConfig
 
 export const DEFAULT_HOOK_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 
+function logInfo(log: Logger | undefined, prefix: string, message: string): void {
+  if (log) log.info(prefix, message);
+  else {
+    // eslint-disable-next-line no-console
+    console.log(`${prefix} ${message}`);
+  }
+}
+
 function logWarn(log: Logger | undefined, prefix: string, message: string): void {
   if (log) log.warn(prefix, message);
   else console.warn(`${prefix} WARN: ${message}`);
@@ -44,6 +55,21 @@ function logWarn(log: Logger | undefined, prefix: string, message: string): void
 function logError(log: Logger | undefined, prefix: string, message: string): void {
   if (log) log.error(prefix, message);
   else console.error(`${prefix} ERROR: ${message}`);
+}
+
+function isPurePowerShellProgressClixml(value: string): boolean {
+  const trimmed = value.trim().replace(/^\uFEFF/, '');
+  if (!trimmed.startsWith(POWERSHELL_CLIXML_PREFIX)) return false;
+  const xml = trimmed.slice(POWERSHELL_CLIXML_PREFIX.length).trim();
+  if (!/^<Objs\b[\s\S]*<\/Objs>$/.test(xml)) return false;
+
+  let foundProgressStream = false;
+  for (const match of xml.matchAll(POWERSHELL_CLIXML_STREAM_RE)) {
+    const stream = (match[1] ?? match[2] ?? '').toLowerCase();
+    if (stream !== 'progress') return false;
+    foundProgressStream = true;
+  }
+  return foundProgressStream;
 }
 
 async function runSingleHook(
@@ -78,11 +104,16 @@ async function runSingleHook(
 
     if (result.stdout.trim()) {
       const message = `"${label}" stdout:\n${result.stdout.trim()}`;
-      logWarn(log, `[hook:${event}]`, message);
+      if (result.exitCode === 0) logInfo(log, `[hook:${event}]`, message);
+      else logWarn(log, `[hook:${event}]`, message);
     }
-    if (result.stderr.trim()) {
+    if (
+      result.stderr.trim() &&
+      !(result.exitCode === 0 && isPurePowerShellProgressClixml(result.stderr))
+    ) {
       const message = `"${label}" stderr:\n${result.stderr.trim()}`;
-      logError(log, `[hook:${event}]`, message);
+      if (result.exitCode === 0) logWarn(log, `[hook:${event}]`, message);
+      else logError(log, `[hook:${event}]`, message);
     }
 
     return result.exitCode;

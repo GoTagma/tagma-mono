@@ -27,7 +27,7 @@ export interface DiagnosticsHostSessionProjection {
   readonly source: 'chat-operation-v2-result';
   readonly operationId: string;
   readonly invocationId: string;
-  readonly purpose: 'discussion' | 'diagnosis';
+  readonly purpose: 'discussion' | 'diagnosis' | 'authoring';
   readonly terminalOutcome: string | null;
   readonly resultId: string | null;
   readonly messages: readonly unknown[];

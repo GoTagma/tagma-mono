@@ -17,6 +17,7 @@ import {
   ChatOperationV2Service,
   createChatOperationV2HostId,
   createChatOperationV2ShadowService,
+  diagnosticsForEvent,
   isChatOperationV2ShadowEnabled,
   type ChatOperationV2AuthoringCommitCoordinator,
   type ChatOperationV2AuthoringRuntimeCore,
@@ -38,6 +39,7 @@ import {
   CHAT_OPERATION_V2_SCHEMA_VERSION,
   ChatOperationV2Store,
   openChatOperationV2Store,
+  type StoredHostOperationEvent,
 } from '../server/chat-operations/store.js';
 import { createInitialChatOperationV2State } from '../server/chat-operations/types.js';
 import { createChatInventorySnapshot } from '../server/chat-operations/snapshots.js';
@@ -1081,6 +1083,89 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(workspaceBEvents.events.map(({ operationId }) => operationId)).toEqual(['operation-b']);
   });
 
+  test('diagnostics event paging distinguishes retention loss from page omission', () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    seedWorkspaceOperation(controlDir, workspace, 'scope-retention', 'operation-retention');
+    const service = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+      eventRetentionLimit: 3,
+    });
+    services.push(service);
+    service.getWorkspaceSnapshot(workspace);
+    const store = service.getTrustedMigrationStore();
+    for (let index = 0; index < 5; index += 1) {
+      store.appendOperationEvent({
+        operationId: 'operation-retention',
+        eventId: `operation-retention-event-${index}`,
+        type: 'operation_state_changed',
+        timestamp: 1_777_777_778_000 + index,
+        payload: { sequence: index },
+      });
+    }
+
+    expect(service.listDiagnosticsEvents(workspace, { after: 0, limit: 2 })).toMatchObject({
+      kind: 'cursor_reset_required',
+      requestedAfter: 0,
+      retainedFloor: 3,
+      latestCursor: 6,
+      nextCursor: 3,
+      retainedEventCount: 3,
+      availableEventCount: 3,
+      returnedEventCount: 0,
+      omittedEventCount: 3,
+      hasMore: true,
+      retention: {
+        requestedEventLossCount: 3,
+        truncated: true,
+      },
+      page: {
+        limit: 2,
+        omittedEventCount: 3,
+        truncated: true,
+      },
+      events: [],
+    });
+    expect(service.listDiagnosticsEvents(workspace, { after: 3, limit: 2 })).toMatchObject({
+      kind: 'events',
+      requestedAfter: 3,
+      retainedFloor: 3,
+      latestCursor: 6,
+      nextCursor: 5,
+      returnedEventCount: 2,
+      omittedEventCount: 1,
+      hasMore: true,
+      retention: { requestedEventLossCount: 0, truncated: false },
+      page: { limit: 2, omittedEventCount: 1, truncated: true },
+    });
+  });
+
+  test('diagnostics expose only fixed recovery dispositions from commit recovery events', () => {
+    const event: StoredHostOperationEvent = {
+      workspaceSeq: 1,
+      workspaceScopeId: 'scope-diagnostics',
+      eventId: 'event-diagnostics',
+      operationId: 'operation-diagnostics',
+      operationVersion: 1,
+      generation: 1,
+      type: 'commit_recovery_required',
+      phase: 'commit_applying',
+      waitReason: null,
+      timestamp: 1,
+      payload: { recoveryCode: 'apply_all' },
+      source: null,
+      terminal: false,
+    };
+
+    expect(diagnosticsForEvent(event)).toEqual({ recoveryCode: 'apply_all' });
+    expect(diagnosticsForEvent({ ...event, type: 'operation_state_changed' })).toEqual({});
+    expect(
+      diagnosticsForEvent({ ...event, payload: { recoveryCode: 'unsafe recovery text' } }),
+    ).toEqual({});
+  });
+
   test('diagnostics report only bounded lifecycle state without initializing authority', () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');
@@ -1105,6 +1190,13 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(service.getDiagnosticsOpenCodeSessionAuthority(workspace)).toEqual({
       totalCount: 0,
       sessionIds: [],
+    });
+    expect(service.listDiagnosticsEvents(workspace, { after: 0, limit: 50 })).toMatchObject({
+      kind: 'events',
+      latestCursor: 0,
+      returnedEventCount: 0,
+      hasMore: false,
+      events: [],
     });
     expect(existsSync(controlDir)).toBe(false);
 
@@ -1222,7 +1314,11 @@ describe('ChatTurn Operation V2 service activation', () => {
       truncated: true,
     });
     expect(diagnostics.eventEvidence?.events).toHaveLength(100);
-    expect(diagnostics.eventEvidence?.events.at(-1)).toMatchObject({
+    expect(
+      diagnostics.eventEvidence?.events.find(
+        ({ type }) => type === 'invocation_submission_unknown',
+      ),
+    ).toMatchObject({
       workspaceSeq: 107,
       operationId: 'operation-diagnostics',
       type: 'invocation_submission_unknown',
@@ -1254,6 +1350,47 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(serialized).not.toContain('f'.repeat(64));
     expect(serialized).not.toContain('unknown_but_code_shaped');
     expect(serialized).not.toContain('unsafe code with spaces');
+
+    const firstPage = service.listDiagnosticsEvents(workspace, { after: 0, limit: 50 });
+    expect(firstPage).toMatchObject({
+      schemaVersion: 2,
+      kind: 'events',
+      requestedAfter: 0,
+      retainedFloor: 0,
+      latestCursor: 107,
+      nextCursor: 50,
+      retainedEventCount: 107,
+      availableEventCount: 107,
+      returnedEventCount: 50,
+      omittedEventCount: 57,
+      hasMore: true,
+      retention: {
+        layer: 'chat-operation-v2-host-event-store',
+        requestedEventLossCount: 0,
+        truncated: false,
+      },
+      page: {
+        layer: 'chat-operation-v2-host-event-page',
+        limit: 50,
+        omittedEventCount: 57,
+        truncated: true,
+      },
+    });
+    if (firstPage.kind !== 'events') throw new Error('Expected diagnostics event page.');
+    expect(firstPage.events).toHaveLength(50);
+    expect(firstPage.events[0]).toMatchObject({ workspaceSeq: 1 });
+    expect(JSON.stringify(firstPage)).not.toContain('sensitive-invocation');
+    expect(JSON.stringify(firstPage)).not.toContain('sensitive-provider-message');
+
+    const finalPage = service.listDiagnosticsEvents(workspace, { after: 100, limit: 50 });
+    expect(finalPage).toMatchObject({
+      kind: 'events',
+      requestedAfter: 100,
+      nextCursor: 107,
+      returnedEventCount: 7,
+      omittedEventCount: 0,
+      hasMore: false,
+    });
   });
 
   test('close is idempotent, does not initialize an unused service, and prevents reopening', () => {
@@ -1415,7 +1552,7 @@ describe('ChatTurn Operation V2 service activation', () => {
       }),
     ).rejects.toEqual(expect.objectContaining({ code: 'readonly_runner_unavailable' }));
     expect(
-      service.getDiagnosticsReadonlySessionProjection(
+      service.getDiagnosticsSessionProjection(
         workspace,
         'ses_tagma_discussion_00000000000000000000000000000000',
       ),
@@ -1488,7 +1625,7 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(runner.calls[1]?.inputId).toMatch(/^msg_tagma_discussion_[0-9a-f]{32}$/);
     expect(service.getWorkspaceSnapshot(workspace).operations).toHaveLength(1);
     expect(
-      service.getDiagnosticsReadonlySessionProjection(workspace, runner.calls[1]!.sessionId),
+      service.getDiagnosticsSessionProjection(workspace, runner.calls[1]!.sessionId),
     ).toMatchObject({
       source: 'chat-operation-v2-result',
       operationId: runner.calls[1]!.operationId,
@@ -1500,7 +1637,7 @@ describe('ChatTurn Operation V2 service activation', () => {
       ],
     });
     expect(
-      service.getDiagnosticsReadonlySessionProjection(workspace, runner.calls[0]!.sessionId),
+      service.getDiagnosticsSessionProjection(workspace, runner.calls[0]!.sessionId),
     ).toBeNull();
   });
 
@@ -2296,6 +2433,18 @@ describe('ChatTurn Operation V2 authoring service integration', () => {
         /^msg_tagma_authoring_[0-9a-f]{32}$/.test(inputId),
       ),
     ).toBe(true);
+    expect(
+      service.getDiagnosticsSessionProjection(workspace, runtime.invocations[0]!.sessionId),
+    ).toMatchObject({
+      source: 'chat-operation-v2-result',
+      operationId: created.operation.operationId,
+      invocationId: runtime.invocations[0]!.invocationId,
+      purpose: 'authoring',
+      messages: [
+        { role: 'user', text: createInput.request.text },
+        { role: 'assistant', text: 'Authoring complete.' },
+      ],
+    });
     expect(runtime.stageIds).toHaveLength(2);
     expect(runtime.stageIds.every((id) => /^[a-f0-9-]{36}$/i.test(id))).toBe(true);
     expect(targets.calls).toEqual([

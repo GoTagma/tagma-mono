@@ -84,6 +84,34 @@ function harness(hub: DiagnosticsHub) {
       options,
       messages: [{ id: 'message-1' }],
     }),
+    readChatOperationEvents: (workspaceKey, options) => ({
+      schemaVersion: 2,
+      kind: 'events',
+      workspaceKey,
+      after: options.after,
+      limit: options.limit,
+      requestedAfter: options.after,
+      retainedFloor: 0,
+      latestCursor: 43,
+      nextCursor: 43,
+      retainedEventCount: 43,
+      availableEventCount: 1,
+      returnedEventCount: 1,
+      omittedEventCount: 0,
+      hasMore: false,
+      retention: {
+        layer: 'chat-operation-v2-host-event-store',
+        requestedEventLossCount: 0,
+        truncated: false,
+      },
+      page: {
+        layer: 'chat-operation-v2-host-event-page',
+        limit: options.limit,
+        omittedEventCount: 0,
+        truncated: false,
+      },
+      events: [{ workspaceSeq: 43, operationId: 'operation-1' }],
+    }),
   });
   return {
     route(method: string, path: string) {
@@ -140,8 +168,13 @@ describe('diagnostics routes', () => {
         context: `${DIAGNOSTICS_AGENT_BASE_PATH}/context`,
         logs: `${DIAGNOSTICS_AGENT_BASE_PATH}/logs`,
         timeline: `${DIAGNOSTICS_AGENT_BASE_PATH}/timeline`,
+        chatOperationEvents: `${DIAGNOSTICS_AGENT_BASE_PATH}/chat/operations/events`,
       },
       timelinePolling: {
+        query: { after: expect.any(String), limit: '1-1000' },
+        next: expect.stringContaining('nextCursor'),
+      },
+      chatOperationEventPolling: {
         query: { after: expect.any(String), limit: '1-1000' },
         next: expect.stringContaining('nextCursor'),
       },
@@ -376,6 +409,32 @@ describe('diagnostics routes', () => {
       sessionId: 'chat-1',
       options: { limit: 200, before: 'message-9' },
       messages: [{ id: 'message-1' }],
+    });
+  });
+
+  test('exposes independently paged content-minimized Chat operation events', async () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    const routes = harness(hub);
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+    const response = new FakeResponse();
+
+    await routes.route('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/chat/operations/events`)(
+      request('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/chat/operations/events`, {
+        query: { after: '42', limit: '9999' },
+      }),
+      response,
+      () => {},
+    );
+
+    expect(response.body).toMatchObject({
+      schemaVersion: 2,
+      kind: 'events',
+      workspaceKey: 'D:\\repo',
+      after: 42,
+      limit: 1000,
+      requestedAfter: 42,
+      nextCursor: 43,
+      events: [{ workspaceSeq: 43, operationId: 'operation-1' }],
     });
   });
 

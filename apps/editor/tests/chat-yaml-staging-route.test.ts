@@ -4728,9 +4728,23 @@ describe('chat YAML staging routes', () => {
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePlan();
-    const progress: Array<{ caseId: string | null; taskStatus: string | null }> = [];
+    const progress: Array<{
+      caseId: string | null;
+      caseIndex: number | null;
+      caseCount: number | null;
+      runNumber: number | null;
+      runCount: number | null;
+      taskStatus: string | null;
+    }> = [];
     __chatPipelineTrialRunTestHooks.onProgress = (update) => {
-      progress.push({ caseId: update.caseId, taskStatus: update.taskStatus });
+      progress.push({
+        caseId: update.caseId,
+        caseIndex: update.caseIndex,
+        caseCount: update.caseCount,
+        runNumber: update.runNumber,
+        runCount: update.runCount,
+        taskStatus: update.taskStatus,
+      });
     };
     const second = await runTrial();
 
@@ -4744,8 +4758,17 @@ describe('chat YAML staging routes', () => {
         expect.objectContaining({ id: 'changed-case', executionSource: 'current-trial' }),
       ]),
     );
-    expect(progress).toContainEqual({ caseId: 'stable-case', taskStatus: 'reused' });
-    expect(progress).toContainEqual({ caseId: 'changed-case', taskStatus: 'running' });
+    expect(progress).toContainEqual({
+      caseId: 'stable-case',
+      caseIndex: 1,
+      caseCount: 2,
+      runNumber: null,
+      runCount: null,
+      taskStatus: 'reused',
+    });
+    expect(progress).toContainEqual(
+      expect.objectContaining({ caseId: 'changed-case', taskStatus: 'running' }),
+    );
 
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();

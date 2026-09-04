@@ -113,7 +113,11 @@ export function renderOutputSchemaBlock(
 ): PromptContextBlock | null {
   if (!outputsDecl || outputsDecl.length === 0) return null;
   const lines: string[] = [];
-  lines.push('After your response, emit a single JSON object on the FINAL line with these keys:');
+  lines.push(
+    'Your response is incomplete unless its final non-empty line is exactly one valid JSON object containing every listed key below:',
+  );
+  lines.push('Do not wrap the JSON in a Markdown code fence.');
+  lines.push('Do not write anything after the JSON object.');
   for (const port of outputsDecl) {
     const descr = port.description?.trim();
     const enumHint =

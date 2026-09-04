@@ -473,6 +473,9 @@ describe('coding-agent handoff', () => {
       'GET http://127.0.0.1:43123/api/diagnostics/v1/timeline?after=0&limit=500',
     );
     expect(instructions).toContain(
+      'GET http://127.0.0.1:43123/api/diagnostics/v1/chat/operations/events?after=0&limit=500',
+    );
+    expect(instructions).toContain(
       'GET http://127.0.0.1:43123/api/diagnostics/v1/opencode/sessions',
     );
     expect(instructions).toContain(
@@ -483,7 +486,7 @@ describe('coding-agent handoff', () => {
     );
     expect(instructions).toContain('Diagnose and explain the root cause before proposing changes.');
     expect(instructions).toContain(
-      'Poll timeline and logs independently using nextCursor from each response',
+      'Poll timeline, logs, and Chat operation events independently using nextCursor from each response',
     );
     expect(instructions).toContain(
       'Do not modify files, code, settings, processes, or editor state unless the user explicitly asks you to after the diagnosis.',

@@ -2506,7 +2506,7 @@ async function executeTargetedTrialCase(
     caseIndex: input.caseIndex,
     caseCount: input.caseCount,
     runNumber: null,
-    runCount: input.testCase.runs,
+    runCount: null,
     taskId: null,
     taskStatus: null,
   });
@@ -3308,7 +3308,7 @@ async function executeTrial(
           caseIndex: caseOffset + 1,
           caseCount: plan.cases.length,
           runNumber: null,
-          runCount: testCase.runs,
+          runCount: null,
           taskId: null,
           taskStatus: 'reused',
         });
@@ -3352,7 +3352,7 @@ async function executeTrial(
         caseIndex: caseOffset + 1,
         caseCount: plan.cases.length,
         runNumber: null,
-        runCount: testCase.runs,
+        runCount: null,
         taskId: null,
         taskStatus: null,
       });
@@ -3418,7 +3418,7 @@ async function executeTrial(
         caseId: null,
         caseTitle: null,
         caseIndex: null,
-        caseCount: plan.cases.length,
+        caseCount: null,
         runNumber: null,
         runCount: null,
         taskId: null,
