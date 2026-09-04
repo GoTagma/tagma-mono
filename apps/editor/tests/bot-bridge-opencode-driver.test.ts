@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Message, Part } from '@opencode-ai/sdk/client';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -215,6 +215,36 @@ describe('opencode-driver bot prompt body', () => {
       expect(existsSync(join(workDir, '.tagma', 'build', 'build.manifest.json'))).toBe(true);
       expect(existsSync(join(workDir, '.tagma', 'deploy', 'deploy.manifest.json'))).toBe(true);
       expect(existsSync(join(workDir, '.tagma', 'pipeline-9giapbf6.manifest.json'))).toBe(true);
+    } finally {
+      workspaceRegistry.drop(workDir);
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not synchronize workspace manifests for bot context while a workspace-wide Chat lock is active', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-bot-yamls-locked-'));
+    try {
+      const ws = workspaceRegistry.getOrCreate(workDir);
+      const buildDir = join(workDir, '.tagma', 'build');
+      const buildYaml = join(buildDir, 'build.yaml');
+      const manifestPath = join(buildDir, 'build.manifest.json');
+      mkdirSync(buildDir, { recursive: true });
+      writeFileSync(buildYaml, 'pipeline:\n  name: Build\n  tracks: []\n', 'utf-8');
+      writeFileSync(manifestPath, 'sentinel manifest bytes\n', 'utf-8');
+      ws.yamlPath = buildYaml;
+      ws.yamlEditLock = {
+        id: 'workspace-wide-trial-lock',
+        owner: 'chat',
+        reason: 'Chat Trial is running',
+        yamlPath: null,
+        acquiredAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      };
+
+      const body = buildBotPromptAsyncBody(workDir, 'inspect build');
+
+      expect(body.parts[0]?.text).toContain('<yaml>.tagma/build/build.yaml</yaml>');
+      expect(readFileSync(manifestPath, 'utf-8')).toBe('sentinel manifest bytes\n');
     } finally {
       workspaceRegistry.drop(workDir);
       rmSync(workDir, { recursive: true, force: true });

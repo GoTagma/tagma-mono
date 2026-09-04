@@ -711,6 +711,12 @@
   unrelated pipelines from becoming `writer-unknown` Trial failures or invalidating a just-completed
   witness without weakening containment: direct external filesystem writes during Trial must still
   fail closed.
+- Treat read/inventory paths that regenerate pipeline companions as writers at this boundary.
+  While any Chat YAML lease is active, `GET /api/workspace/yamls` and bot-context inventory must
+  enumerate without creating or repairing manifests. Manifest synchronization itself must preserve
+  an equivalent generated companion without replacing it, so an idempotent refresh cannot perturb
+  a Trial witness. Never solve this by excluding manifests or atomic-write temp files from the
+  witness; genuine external writes must still fail closed.
 - Pin Trial YAML and requirements to one immutable execution snapshot, and hold the shared
   per-workspace run reservation for the entire host Trial. A completed response retry is keyed by
   stage, trial id, path, and input hash even if the host later drifts; finalize must still verify

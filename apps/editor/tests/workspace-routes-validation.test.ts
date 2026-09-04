@@ -1102,6 +1102,60 @@ describe('workspace route validation', () => {
     expect(existsSync(manifestPath)).toBe(true);
   });
 
+  test('GET /api/workspace/yamls does not synchronize manifests while a workspace-wide Chat lock is active', () => {
+    S.workDir = makeTempDir();
+    const existingDir = join(S.workDir, '.tagma', 'existing-manifest');
+    const existingYamlPath = join(existingDir, 'existing-manifest.yaml');
+    const existingManifestPath = join(existingDir, 'existing-manifest.manifest.json');
+    const missingDir = join(S.workDir, '.tagma', 'missing-manifest');
+    const missingYamlPath = join(missingDir, 'missing-manifest.yaml');
+    const missingManifestPath = join(missingDir, 'missing-manifest.manifest.json');
+    const yaml =
+      'pipeline:\n  name: Listed\n  tracks:\n    - id: main\n      name: Main\n      tasks:\n        - id: task\n          prompt: Hello\n';
+    mkdirSync(existingDir, { recursive: true });
+    mkdirSync(missingDir, { recursive: true });
+    writeFileSync(existingYamlPath, yaml, 'utf-8');
+    writeFileSync(missingYamlPath, yaml, 'utf-8');
+    writeFileSync(existingManifestPath, 'sentinel manifest bytes\n', 'utf-8');
+    const stableTime = new Date('2001-01-01T00:00:00.000Z');
+    utimesSync(existingManifestPath, stableTime, stableTime);
+    const existingMtimeBefore = statSync(existingManifestPath).mtimeMs;
+    S.yamlEditLock = {
+      id: 'workspace-wide-trial-lock',
+      owner: 'chat',
+      reason: 'Chat Trial is running',
+      yamlPath: null,
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    };
+
+    const lockedRes = makeRes();
+    createRouteHarness().get('/api/workspace/yamls')({ workspace: S }, lockedRes);
+
+    expect(lockedRes.statusCode).toBe(200);
+    const lockedEntries = (lockedRes.body as { entries: Array<{ path: string }> }).entries;
+    expect(lockedEntries.map(({ path }) => path).sort()).toEqual(
+      [existingYamlPath, missingYamlPath].sort(),
+    );
+    expect(readFileSync(existingManifestPath, 'utf-8')).toBe('sentinel manifest bytes\n');
+    expect(statSync(existingManifestPath).mtimeMs).toBe(existingMtimeBefore);
+    expect(existsSync(missingManifestPath)).toBe(false);
+    expect(readdirSync(existingDir).some((name) => name.includes('.tmp-'))).toBe(false);
+    expect(readdirSync(missingDir).some((name) => name.includes('.tmp-'))).toBe(false);
+
+    S.yamlEditLock = null;
+    const unlockedRes = makeRes();
+    createRouteHarness().get('/api/workspace/yamls')({ workspace: S }, unlockedRes);
+
+    expect(unlockedRes.statusCode).toBe(200);
+    expect(JSON.parse(readFileSync(existingManifestPath, 'utf-8')).kind).toBe(
+      'tagma-pipeline-manifest',
+    );
+    expect(JSON.parse(readFileSync(missingManifestPath, 'utf-8')).kind).toBe(
+      'tagma-pipeline-manifest',
+    );
+  });
+
   test('POST /api/create-from-manifest reports a fresh stem for create-intent name collisions', () => {
     S.workDir = makeTempDir();
     mkdirSync(join(S.workDir, '.tagma', 'deploy'), { recursive: true });

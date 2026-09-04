@@ -38,6 +38,7 @@ import { readEditorSettings } from '../plugins/loader.js';
 import { enumerateFlatPipelineYamls, enumeratePipelineYamls } from '../pipeline-paths.js';
 import { sameFilesystemPath } from '../state.js';
 import { runPipelineManifestSync } from '../pipeline-manifest.js';
+import { getActiveYamlEditLock } from '../yaml-edit-lock.js';
 import { toOpencodeError } from '../../shared/opencode-errors.js';
 import { buildTagmaSessionMetadata } from '../../shared/opencode-session-metadata.js';
 import {
@@ -314,7 +315,10 @@ function manifestPathForYamlEntry(yaml: string): string {
   return yaml.replace(/\.ya?ml$/i, '.manifest.json');
 }
 
-function workspaceYamlFolders(workDir: string): WorkspaceYamlFolderEntry[] {
+function workspaceYamlFolders(
+  workDir: string,
+  manifestSyncAllowed: boolean,
+): WorkspaceYamlFolderEntry[] {
   try {
     const seen = new Set<string>();
     const out: WorkspaceYamlFolderEntry[] = [];
@@ -329,14 +333,14 @@ function workspaceYamlFolders(workDir: string): WorkspaceYamlFolderEntry[] {
       const folder = workspaceRelativePath(workDir, entry.folderPath);
       const yaml = workspaceRelativePath(workDir, entry.yamlPath);
       if (!folder || !yaml) continue;
-      runPipelineManifestSync(entry.yamlPath);
+      if (manifestSyncAllowed) runPipelineManifestSync(entry.yamlPath);
       push({ folder, yaml, manifest: manifestPathForYamlEntry(yaml) });
     }
     for (const entry of enumerateFlatPipelineYamls(workDir)) {
       const folder = workspaceRelativePath(workDir, dirname(entry.yamlPath));
       const yaml = workspaceRelativePath(workDir, entry.yamlPath);
       if (!folder || !yaml) continue;
-      runPipelineManifestSync(entry.yamlPath);
+      if (manifestSyncAllowed) runPipelineManifestSync(entry.yamlPath);
       push({ folder, yaml, manifest: manifestPathForYamlEntry(yaml), legacyFlat: true });
     }
     return out;
@@ -360,7 +364,9 @@ function buildBotEditorContext(workspaceKey: string): string {
   if (requestedAction) lines.push(...requestedActionLines(requestedAction));
   const currentFile = workspaceRelativePath(workDir, ws?.yamlPath);
   if (currentFile) lines.push(`  <current-file>${currentFile}</current-file>`);
-  const yamlFolders = workspaceYamlFolders(workDir);
+  // Bot context is a read path. A workspace-wide Trial lease must fence
+  // companion regeneration here just as it does for HTTP list/navigation.
+  const yamlFolders = workspaceYamlFolders(workDir, !ws || !getActiveYamlEditLock(ws));
   if (yamlFolders.length) {
     lines.push(
       '  <workspace-yaml-folders>',

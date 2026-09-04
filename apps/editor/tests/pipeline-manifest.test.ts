@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
@@ -95,6 +105,70 @@ describe('pipeline manifest sidecar', () => {
         'track:main',
         'task:main.lint',
       ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('does not replace an unchanged manifest companion', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-pipeline-manifest-idempotent-'));
+    try {
+      const yamlPath = join(root, '.tagma', 'build', 'build.yaml');
+      const manifestPath = pipelineManifestPath(yamlPath);
+      mkdirSync(join(root, '.tagma', 'build'), { recursive: true });
+      writeFileSync(
+        yamlPath,
+        'pipeline:\n  name: Build\n  tracks:\n    - id: main\n      name: Main\n      tasks:\n        - id: lint\n          command: bun test\n',
+        'utf-8',
+      );
+
+      expect(runPipelineManifestSync(yamlPath)).not.toBeNull();
+      const stableTime = new Date('2001-01-01T00:00:00.000Z');
+      utimesSync(manifestPath, stableTime, stableTime);
+      const mtimeBefore = statSync(manifestPath).mtimeMs;
+
+      expect(runPipelineManifestSync(yamlPath)).not.toBeNull();
+
+      expect(statSync(manifestPath).mtimeMs).toBe(mtimeBefore);
+
+      writeFileSync(
+        yamlPath,
+        'pipeline:\n  name: Updated Build\n  tracks:\n    - id: main\n      name: Main\n      tasks:\n        - id: lint\n          command: bun test\n',
+        'utf-8',
+      );
+      expect(runPipelineManifestSync(yamlPath)).not.toBeNull();
+      expect(statSync(manifestPath).mtimeMs).not.toBe(mtimeBefore);
+      expect(JSON.parse(readFileSync(manifestPath, 'utf-8')).pipeline.name).toBe('Updated Build');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('does not accept a symlinked manifest companion as an idempotent match', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-pipeline-manifest-symlink-'));
+    try {
+      const yamlDir = join(root, '.tagma', 'build');
+      const yamlPath = join(yamlDir, 'build.yaml');
+      const manifestPath = pipelineManifestPath(yamlPath);
+      const outsidePath = join(root, 'outside-manifest.json');
+      mkdirSync(yamlDir, { recursive: true });
+      writeFileSync(
+        yamlPath,
+        'pipeline:\n  name: Build\n  tracks:\n    - id: main\n      name: Main\n      tasks:\n        - id: lint\n          command: bun test\n',
+        'utf-8',
+      );
+      expect(runPipelineManifestSync(yamlPath)).not.toBeNull();
+      const generated = readFileSync(manifestPath, 'utf-8');
+      writeFileSync(outsidePath, generated, 'utf-8');
+      rmSync(manifestPath);
+      try {
+        symlinkSync(outsidePath, manifestPath, 'file');
+      } catch {
+        return;
+      }
+
+      expect(runPipelineManifestSync(yamlPath)).toBeNull();
+      expect(readFileSync(outsidePath, 'utf-8')).toBe(generated);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

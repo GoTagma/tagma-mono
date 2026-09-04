@@ -21,10 +21,12 @@ import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness
 import { bypassesRevisionCheck } from '../server/revision-routes';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
 import { beginRunSessionStart, endRunSessionStart, registerRunRoutes } from '../server/routes/run';
+import { registerWorkspaceRoutes } from '../server/routes/workspace';
 import {
   readAuthenticatedServerRecordSync,
   writeAuthenticatedServerRecordSync,
 } from '../server/server-record-auth';
+import { pipelineManifestPath } from '../server/pipeline-manifest';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { shouldBlockYamlEditLockMutation } from '../server/yaml-edit-lock';
 import { WorkspaceState } from '../server/workspace-state';
@@ -252,6 +254,34 @@ function createRunHarness() {
   return (path: string) => {
     const handler = routes.get(`POST ${path}`);
     if (!handler) throw new Error(`Missing route ${path}`);
+    return handler;
+  };
+}
+
+function createWorkspaceReadHarness() {
+  const routes = new Map<string, RouteHandler>();
+  const app = {
+    get(path: string, handler: RouteHandler) {
+      routes.set(`GET ${path}`, handler);
+      return app;
+    },
+    post(path: string, handler: RouteHandler) {
+      routes.set(`POST ${path}`, handler);
+      return app;
+    },
+    patch(path: string, handler: RouteHandler) {
+      routes.set(`PATCH ${path}`, handler);
+      return app;
+    },
+    delete(path: string, handler: RouteHandler) {
+      routes.set(`DELETE ${path}`, handler);
+      return app;
+    },
+  };
+  registerWorkspaceRoutes(app as never);
+  return (path: string) => {
+    const handler = routes.get(`GET ${path}`);
+    if (!handler) throw new Error(`Missing GET route ${path}`);
     return handler;
   };
 }
@@ -2950,11 +2980,21 @@ describe('chat YAML staging routes', () => {
       currentYamlPath: otherPath,
       workDir: ws.workDir,
     });
+    const listRes = makeRes();
+    createWorkspaceReadHarness()('/api/workspace/yamls')(request(ws, {}, 'chat-lock'), listRes);
+    expect(listRes.statusCode).toBe(200);
+    expect(
+      (listRes.body as { entries: Array<{ path: string }> }).entries.some(
+        ({ path }) => path === otherPath,
+      ),
+    ).toBe(true);
+    const manifestCreatedWhileLocked = existsSync(pipelineManifestPath(otherPath));
 
     await trialPromise;
     expect(trialLockPath).toBeNull();
     expect(unrelatedMutationBlocked).toBe(true);
     expect(trialRes.body).toMatchObject({ success: true, kind: 'passed-with-warnings' });
+    expect(manifestCreatedWhileLocked).toBe(false);
     expect(ws.yamlEditLock?.yamlPath).toBe(sourcePath);
 
     discardStage(getRoute, ws, stage.id);

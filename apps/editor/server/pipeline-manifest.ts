@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import yaml from 'js-yaml';
 import { atomicWriteFileSync } from './path-utils.js';
@@ -184,6 +184,8 @@ export function runPipelineManifestSync(yamlPath: string): PipelineManifest | nu
 
   const targetPath = pipelineManifestPath(yamlPath);
   try {
+    const existing = readEquivalentPipelineManifest(targetPath, manifest);
+    if (existing) return existing;
     mkdirSync(dirname(targetPath), { recursive: true });
     atomicWriteFileSync(targetPath, JSON.stringify(manifest, null, 2) + '\n');
     return manifest;
@@ -191,6 +193,26 @@ export function runPipelineManifestSync(yamlPath: string): PipelineManifest | nu
     console.warn(`[pipeline-manifest] failed to write ${targetPath}:`, err);
     return null;
   }
+}
+
+function readEquivalentPipelineManifest(
+  targetPath: string,
+  next: PipelineManifest,
+): PipelineManifest | null {
+  let value: unknown;
+  try {
+    const stat = lstatSync(targetPath);
+    if (!stat.isFile() || stat.isSymbolicLink()) return null;
+    value = JSON.parse(readFileSync(targetPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { generatedAt, ...existingContent } = value as Record<string, unknown>;
+  if (typeof generatedAt !== 'string' || !Number.isFinite(Date.parse(generatedAt))) return null;
+  const { generatedAt: _nextGeneratedAt, ...nextContent } = next;
+  if (JSON.stringify(existingContent) !== JSON.stringify(nextContent)) return null;
+  return value as PipelineManifest;
 }
 
 /**

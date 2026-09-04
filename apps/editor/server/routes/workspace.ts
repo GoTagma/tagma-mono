@@ -1240,8 +1240,14 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     if (!existsSync(tagmaDir)) return res.json({ entries: [] });
     try {
       // Foldered pipelines (the new layout) — one entry per `.tagma/<stem>/<stem>.yaml`.
+      // This GET is used by visibility recovery and pipeline pickers. While
+      // Chat owns a YAML lease, especially the workspace-wide Trial lease,
+      // listing must not create or repair generated companion files.
+      const manifestSyncAllowed = !getActiveYamlEditLock(ws);
       const folderedEntries = enumeratePipelineYamls(ws.workDir);
-      for (const entry of folderedEntries) runPipelineManifestSync(entry.yamlPath);
+      if (manifestSyncAllowed) {
+        for (const entry of folderedEntries) runPipelineManifestSync(entry.yamlPath);
+      }
       const foldered = folderedEntries.map((entry) =>
         describeYamlEntry(entry.yamlPath, entry.yamlBasename, entry.layoutPath, false),
       );
@@ -1252,7 +1258,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // was the failure mode the review called out.
       const flat = enumerateFlatPipelineYamls(ws.workDir);
       const unmigratableEntries = flat.filter((entry) => isUnmigratableFlatYaml(ws.workDir, entry));
-      for (const entry of unmigratableEntries) runPipelineManifestSync(entry.yamlPath);
+      if (manifestSyncAllowed) {
+        for (const entry of unmigratableEntries) runPipelineManifestSync(entry.yamlPath);
+      }
       const unmigratable = unmigratableEntries.map((entry) =>
         describeYamlEntry(entry.yamlPath, entry.yamlBasename, entry.layoutPath, true),
       );
