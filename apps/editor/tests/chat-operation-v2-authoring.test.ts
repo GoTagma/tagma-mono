@@ -61,7 +61,9 @@ afterEach(async () => {
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 interface RuntimeOptions {
-  readonly verification?: readonly ('repair' | 'trial_plan' | 'unverified' | 'passed')[];
+  readonly verification?: readonly (
+    'repair' | 'trial_plan' | 'unverified' | 'passed' | 'discard'
+  )[];
   readonly authoringDisposition?: 'changed' | 'no_change';
   readonly repairDisposition?: 'changed' | 'no_change';
   readonly interactive?: readonly ChatOperationV2RuntimeInteractiveRequest[];
@@ -69,6 +71,7 @@ interface RuntimeOptions {
   readonly corruptRelocation?: boolean;
   readonly failForwardOnce?: boolean;
   readonly failResultPersistence?: boolean;
+  readonly failStage?: boolean;
   readonly providerUnavailableOnce?: boolean;
   readonly providerUnavailablePurpose?: 'authoring' | 'repair' | 'trial_plan';
   readonly providerFailureCode?: string;
@@ -184,6 +187,13 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
 
   async ensureStage(input: Parameters<ChatOperationV2AuthoringRuntime['ensureStage']>[0]) {
     this.ensureStageCalls.push(input.stageId);
+    if (this.options.failStage) {
+      return {
+        kind: 'failed' as const,
+        errorCode: 'stage_create_failed',
+        diagnosticCodes: ['stage_create_failed'],
+      };
+    }
     this.stageSessionId ??= input.sessionId;
     this.stage ??= Object.freeze({
       schemaVersion: 1 as const,
@@ -385,6 +395,19 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       });
     }
     const disposition = this.options.verification?.[this.verificationIndex++] ?? 'passed';
+    if (disposition === 'discard') {
+      return {
+        kind: 'discard',
+        trialId: `trial-${this.verificationIndex}`,
+        planHash: null,
+        caseCount: 0,
+        passedCount: 0,
+        failedCount: 0,
+        warningCount: 0,
+        errorCode: 'trial_unavailable',
+        diagnosticCodes: ['trial_unavailable'],
+      };
+    }
     if (disposition === 'repair') {
       return {
         kind: 'repair_required',
@@ -1118,6 +1141,111 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(store.getOperation('operation-1')).toMatchObject({
       terminalOutcome: 'discarded',
       repairAttempts: 0,
+    });
+  });
+
+  test('records trial_plan_no_change as the discard reason when the planner leaves the snapshot unchanged', async () => {
+    const { engine, store } = createHarness({
+      verification: ['trial_plan', 'trial_plan'],
+      repairDisposition: 'no_change',
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('discarded');
+    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(event?.payload).toMatchObject({
+      status: 'discarded',
+      errorCode: 'trial_plan_no_change',
+      diagnosticCodes: [],
+    });
+  });
+
+  test('records repair_no_change as the discard reason when a repair leaves the snapshot unchanged', async () => {
+    const { engine, store } = createHarness({
+      verification: ['repair', 'repair', 'repair'],
+      repairDisposition: 'no_change',
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('discarded');
+    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(event?.payload).toMatchObject({
+      status: 'discarded',
+      errorCode: 'repair_no_change',
+      diagnosticCodes: [],
+    });
+  });
+
+  test('records repair_attempts_exhausted with the verification diagnostics at the frozen maximum', async () => {
+    const { engine, store } = createHarness({
+      verification: ['repair', 'repair', 'repair', 'repair'],
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('discarded');
+    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(event?.payload).toMatchObject({
+      status: 'discarded',
+      errorCode: 'repair_attempts_exhausted',
+      diagnosticCodes: ['compile_failed'],
+    });
+  });
+
+  test('records the verification discard code as the discard reason', async () => {
+    const { engine, store } = createHarness({ verification: ['discard'] });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('discarded');
+    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(event?.payload).toMatchObject({
+      status: 'discarded',
+      errorCode: 'trial_unavailable',
+      diagnosticCodes: ['trial_unavailable'],
+    });
+  });
+
+  test('records stage_creation_failed as the discard reason after a stage failure', async () => {
+    const { engine, store, runtime } = createHarness({ failStage: true });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('discarded');
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'terminal',
+      terminalOutcome: 'discarded',
+    });
+    expect(runtime.discardedStageIds).toHaveLength(1);
+    const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (events.kind !== 'events') throw new Error('Expected retained Host events.');
+    const stageEvents = events.events.filter(({ type }) => type === 'stage_status_changed');
+    expect(stageEvents.map(({ payload }) => payload.status)).toEqual(['failed', 'discarded']);
+    expect(stageEvents[0]!.payload).toMatchObject({
+      errorCode: 'stage_create_failed',
+      diagnosticCodes: ['stage_create_failed'],
+    });
+    const latest = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(latest?.payload).toMatchObject({
+      status: 'discarded',
+      errorCode: 'stage_creation_failed',
+      diagnosticCodes: ['stage_create_failed'],
+    });
+  });
+
+  test('keeps the completed no-op stage discard free of any failure reason', async () => {
+    const { engine, store } = createHarness({ authoringDisposition: 'no_change' });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('completed_noop');
+    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(event?.payload).toMatchObject({
+      status: 'discarded',
+      errorCode: null,
+      diagnosticCodes: [],
     });
   });
 

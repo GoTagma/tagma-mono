@@ -37,6 +37,34 @@ describe('Chat Operation V2 activity panel', () => {
     expect(html).toContain('Your current pipeline was left unchanged');
   });
 
+  test('renders the specific Host discard reason copy when one is projected', () => {
+    const html = renderToStaticMarkup(
+      createElement(ChatOperationV2TerminalNoticeView, {
+        terminalOutcome: 'discarded',
+        terminalReasonCode: 'trial_plan_no_change',
+      }),
+    );
+
+    expect(html).toContain('Trial planning produced no usable verification plan');
+    expect(html).toContain('Your current pipeline was left unchanged');
+    expect(html).toContain('Send the request again');
+    expect(html).toContain('Reason: trial_plan_no_change');
+    expect(html).not.toContain('verification or repair did not produce a publishable result');
+  });
+
+  test('keeps the generic discard copy for an unknown reason while still showing the code', () => {
+    const html = renderToStaticMarkup(
+      createElement(ChatOperationV2TerminalNoticeView, {
+        terminalOutcome: 'discarded',
+        terminalReasonCode: 'trial_unavailable',
+      }),
+    );
+
+    expect(html).toContain('Pipeline update was not published');
+    expect(html).toContain('verification or repair did not produce a publishable result');
+    expect(html).toContain('Reason: trial_unavailable');
+  });
+
   test('retains a failed terminal activity after generation stops', () => {
     expect(
       chatOperationV2Activity({

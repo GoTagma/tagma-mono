@@ -5,6 +5,7 @@ import {
   BarChart3,
   RefreshCw,
   Activity,
+  Coins,
   Gauge,
   Layers,
   MessageSquare,
@@ -19,7 +20,10 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts';
-import { api, type UsageRecord } from '../../api/client';
+import {
+  fetchChatOperationV2Usage,
+  type ChatOperationV2UsageRecord,
+} from '../../api/chat-operations';
 import { DesktopWindowControls } from '../DesktopWindowControls';
 import { hasDesktopBridge, toggleMaximizeDesktopWindow } from '../../desktop';
 
@@ -32,7 +36,7 @@ type GroupKey = 'hour' | 'day';
 /**
  * One bucket on the chart's X axis. Each model gets its own numeric column on
  * top of the shared `bucket` key so recharts can stack the areas without us
- * pivoting per-render. Keys are model IDs as written in usage.jsonl.
+ * pivoting per-render. Keys are model IDs as written in the usage ledger.
  */
 interface ChartPoint {
   bucket: number;
@@ -57,6 +61,11 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+function formatCost(cost: number): string {
+  if (cost > 0 && cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
 function formatTs(ts: number): string {
   const d = new Date(ts);
   const yyyy = d.getFullYear();
@@ -67,8 +76,20 @@ function formatTs(ts: number): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
-function totalTokens(r: UsageRecord): number {
-  return r.tokensIn + r.tokensOut + r.tokensReasoning + r.cacheRead + r.cacheWrite;
+/** Only settled/corrected ledger rows carry measured tokens and cost. */
+function carriesMetrics(r: ChatOperationV2UsageRecord): boolean {
+  return r.status === 'settled' || r.status === 'corrected';
+}
+
+function totalTokens(r: ChatOperationV2UsageRecord): number {
+  if (!carriesMetrics(r)) return 0;
+  return (
+    (r.tokensIn ?? 0) +
+    (r.tokensOut ?? 0) +
+    (r.tokensReasoning ?? 0) +
+    (r.cacheRead ?? 0) +
+    (r.cacheWrite ?? 0)
+  );
 }
 
 /**
@@ -101,7 +122,7 @@ function bucketLabel(ts: number, mode: GroupKey): string {
 }
 
 export function UsagePage({ onBack }: UsagePageProps) {
-  const [records, setRecords] = useState<UsageRecord[] | null>(null);
+  const [records, setRecords] = useState<ChatOperationV2UsageRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [groupBy, setGroupBy] = useState<GroupKey>('hour');
@@ -111,8 +132,8 @@ export function UsagePage({ onBack }: UsagePageProps) {
     setLoading(true);
     setError(null);
     try {
-      const { records } = await api.listUsage();
-      setRecords(records);
+      const { records } = await fetchChatOperationV2Usage();
+      setRecords([...records]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load usage stats');
       setRecords([]);
@@ -132,7 +153,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
 
   const visibleRecords = useMemo(() => {
     if (modelFilter === 'all') return sortedRecords;
-    return sortedRecords.filter((r) => r.modelID === modelFilter);
+    return sortedRecords.filter((r) => (r.modelID || '(unknown)') === modelFilter);
   }, [sortedRecords, modelFilter]);
 
   // Distinct models present in the data — sorted by total tokens so the
@@ -154,13 +175,18 @@ export function UsagePage({ onBack }: UsagePageProps) {
     let tokens = 0;
     let inputTokens = 0;
     let outputTokens = 0;
+    let cost = 0;
+    let measured = 0;
     for (const r of list) {
+      if (!carriesMetrics(r)) continue;
+      measured += 1;
       tokens += totalTokens(r);
-      inputTokens += r.tokensIn + r.cacheRead;
-      outputTokens += r.tokensOut + r.tokensReasoning;
+      inputTokens += (r.tokensIn ?? 0) + (r.cacheRead ?? 0);
+      outputTokens += (r.tokensOut ?? 0) + (r.tokensReasoning ?? 0);
+      cost += r.cost ?? 0;
     }
-    const avgPerTurn = turns > 0 ? Math.round(tokens / turns) : 0;
-    return { turns, tokens, inputTokens, outputTokens, avgPerTurn };
+    const avgPerTurn = measured > 0 ? Math.round(tokens / measured) : 0;
+    return { turns, tokens, inputTokens, outputTokens, cost, avgPerTurn };
   }, [visibleRecords]);
 
   // Per-model rollup powering the right-hand "By model" panel. Sorted by
@@ -168,12 +194,15 @@ export function UsagePage({ onBack }: UsagePageProps) {
   // order. Color index aligns with the chart by intersecting with `models`
   // below at render time.
   const modelBreakdown = useMemo(() => {
-    const tally = new Map<string, { turns: number; tokens: number }>();
+    const tally = new Map<string, { turns: number; tokens: number; cost: number }>();
     for (const r of visibleRecords) {
       const key = r.modelID || '(unknown)';
-      const cur = tally.get(key) ?? { turns: 0, tokens: 0 };
+      const cur = tally.get(key) ?? { turns: 0, tokens: 0, cost: 0 };
       cur.turns += 1;
-      cur.tokens += totalTokens(r);
+      if (carriesMetrics(r)) {
+        cur.tokens += totalTokens(r);
+        cur.cost += r.cost ?? 0;
+      }
       tally.set(key, cur);
     }
     return [...tally.entries()]
@@ -285,7 +314,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
         )}
 
         {/* ── Summary cards: full-width strip ─────────────────────────────── */}
-        <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-5">
           <SummaryCard
             icon={<MessageSquare size={13} />}
             label="Turns"
@@ -301,6 +330,11 @@ export function UsagePage({ onBack }: UsagePageProps) {
             icon={<Gauge size={13} />}
             label="Avg / turn"
             value={summary.avgPerTurn > 0 ? formatTokens(summary.avgPerTurn) : '—'}
+          />
+          <SummaryCard
+            icon={<Coins size={13} />}
+            label="Total cost"
+            value={formatCost(summary.cost)}
           />
           <SummaryCard
             icon={<Activity size={13} />}
@@ -422,7 +456,9 @@ export function UsagePage({ onBack }: UsagePageProps) {
                           <span>
                             {row.turns} turn{row.turns === 1 ? '' : 's'}
                           </span>
-                          <span>{formatTokens(row.tokens)}</span>
+                          <span>
+                            {formatTokens(row.tokens)} · {formatCost(row.cost)}
+                          </span>
                         </div>
                         <div className="ml-4 mt-1 h-0.5 bg-tagma-border/40 overflow-hidden">
                           <div
@@ -483,12 +519,13 @@ export function UsagePage({ onBack }: UsagePageProps) {
                     <Th align="right">Reasoning</Th>
                     <Th align="right">Cache R/W</Th>
                     <Th align="right">Total</Th>
-                    <Th>Finish</Th>
+                    <Th align="right">Cost</Th>
+                    <Th>Outcome</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleRecords.map((r) => (
-                    <tr key={r.messageID} className="border-b border-tagma-border/30">
+                    <tr key={r.usageId} className="border-b border-tagma-border/30">
                       <Td>{formatTs(r.ts)}</Td>
                       <Td>
                         <span className="text-tagma-text">{r.modelID || '—'}</span>
@@ -496,28 +533,35 @@ export function UsagePage({ onBack }: UsagePageProps) {
                       <Td>
                         <span className="text-tagma-muted">{r.providerID || '—'}</span>
                       </Td>
-                      <Td align="right">{formatTokens(r.tokensIn)}</Td>
-                      <Td align="right">{formatTokens(r.tokensOut)}</Td>
+                      <Td align="right">{r.tokensIn === null ? '—' : formatTokens(r.tokensIn)}</Td>
                       <Td align="right">
-                        {r.tokensReasoning > 0 ? formatTokens(r.tokensReasoning) : '—'}
+                        {r.tokensOut === null ? '—' : formatTokens(r.tokensOut)}
                       </Td>
                       <Td align="right">
-                        {r.cacheRead + r.cacheWrite > 0
-                          ? `${formatTokens(r.cacheRead)} / ${formatTokens(r.cacheWrite)}`
+                        {r.tokensReasoning !== null && r.tokensReasoning > 0
+                          ? formatTokens(r.tokensReasoning)
                           : '—'}
                       </Td>
                       <Td align="right">
-                        <span className="text-tagma-text">{formatTokens(totalTokens(r))}</span>
+                        {(r.cacheRead ?? 0) + (r.cacheWrite ?? 0) > 0
+                          ? `${formatTokens(r.cacheRead ?? 0)} / ${formatTokens(r.cacheWrite ?? 0)}`
+                          : '—'}
                       </Td>
+                      <Td align="right">
+                        <span className="text-tagma-text">
+                          {carriesMetrics(r) ? formatTokens(totalTokens(r)) : '—'}
+                        </span>
+                      </Td>
+                      <Td align="right">{r.cost !== null ? formatCost(r.cost) : '—'}</Td>
                       <Td>
                         <span
                           className={
-                            r.finish && r.finish !== 'stop'
-                              ? 'text-tagma-accent'
+                            r.outcome === 'failed' || r.outcome === 'aborted'
+                              ? 'text-tagma-error'
                               : 'text-tagma-muted'
                           }
                         >
-                          {r.finish || '—'}
+                          {r.outcome || r.status}
                         </span>
                       </Td>
                     </tr>

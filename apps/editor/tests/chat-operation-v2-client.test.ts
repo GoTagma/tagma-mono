@@ -15,6 +15,7 @@ import {
 import {
   CHAT_OPERATION_V2_PHASES as SERVER_CHAT_OPERATION_V2_PHASES,
   CHAT_OPERATION_V2_PROTOCOL_VERSION as SERVER_CHAT_OPERATION_V2_PROTOCOL_VERSION,
+  CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES as SERVER_CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES,
   CHAT_OPERATION_V2_TERMINAL_OUTCOMES as SERVER_CHAT_OPERATION_V2_TERMINAL_OUTCOMES,
   CHAT_OPERATION_V2_WAIT_REASONS as SERVER_CHAT_OPERATION_V2_WAIT_REASONS,
 } from '../server/chat-operations/types';
@@ -29,6 +30,7 @@ import {
   CHAT_OPERATION_V2_QUESTION_REPLY_CHOICES,
   CHAT_OPERATION_V2_RECOVERY_CHOICES,
   CHAT_OPERATION_V2_EXECUTION_STATES,
+  CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES,
   CHAT_OPERATION_V2_TERMINAL_OUTCOMES,
   CHAT_OPERATION_V2_WAIT_REASONS,
   ChatOperationV2ApiError,
@@ -179,6 +181,9 @@ test('keeps the browser-only protocol constant in parity with the sidecar author
     SERVER_CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES,
   );
   expect(CHAT_OPERATION_V2_TERMINAL_OUTCOMES).toEqual(SERVER_CHAT_OPERATION_V2_TERMINAL_OUTCOMES);
+  expect(CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES).toEqual(
+    SERVER_CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES,
+  );
   expect(CHAT_OPERATION_V2_HOST_EVENT_TYPES).toEqual(SERVER_CHAT_OPERATION_V2_HOST_EVENT_TYPES);
   expect(CHAT_OPERATION_V2_API_REQUEST_TYPES).toEqual(SERVER_CHAT_OPERATION_V2_API_REQUEST_TYPES);
   expect(CHAT_OPERATION_V2_PERMISSION_REPLY_CHOICES).toEqual(
@@ -219,6 +224,76 @@ test('accepts Host execution states derived from non-null wait reasons before ph
     })) as unknown as typeof fetch;
 
   await expect(fetchChatOperationV2Snapshot()).resolves.toEqual(snapshot);
+});
+
+test('parses optional terminal discard reason fields and tolerates their absence', async () => {
+  const discardedWithReason = {
+    ...operation(),
+    phase: 'terminal' as const,
+    executionState: 'terminal' as const,
+    terminalOutcome: 'discarded' as const,
+    terminalReasonCode: 'trial_plan_no_change',
+    terminalDiagnosticCodes: ['trial_plan_missing'],
+  };
+  const legacyTerminal = {
+    ...operation(),
+    operationId: 'operation-2',
+    phase: 'terminal' as const,
+    executionState: 'terminal' as const,
+    terminalOutcome: 'cancelled_precommit' as const,
+  };
+  const snapshot = {
+    ...workspaceSnapshot(),
+    operations: [discardedWithReason, legacyTerminal],
+  };
+  globalThis.fetch = (async () =>
+    Response.json({
+      protocolVersion: CHAT_OPERATION_V2_CLIENT_PROTOCOL_VERSION,
+      snapshot,
+    })) as unknown as typeof fetch;
+
+  const parsed = await fetchChatOperationV2Snapshot();
+  expect(parsed.operations[0]).toEqual(discardedWithReason);
+  expect(parsed.operations[1]).toEqual(legacyTerminal);
+});
+
+test('rejects malformed terminal discard reason fields', async () => {
+  const malformed = [
+    { ...operation(), terminalReasonCode: 'Not A Safe Code', terminalDiagnosticCodes: [] },
+    { ...operation(), terminalReasonCode: 42, terminalDiagnosticCodes: [] },
+    { ...operation(), terminalDiagnosticCodes: [] },
+    { ...operation(), terminalReasonCode: 'trial_plan_no_change' },
+    {
+      ...operation(),
+      terminalReasonCode: 'trial_plan_no_change',
+      terminalDiagnosticCodes: 'trial_plan_missing',
+    },
+    {
+      ...operation(),
+      terminalReasonCode: 'trial_plan_no_change',
+      terminalDiagnosticCodes: ['trial plan missing'],
+    },
+    {
+      ...operation(),
+      terminalReasonCode: 'trial_plan_no_change',
+      terminalDiagnosticCodes: ['ok', 'ok'],
+    },
+    {
+      ...operation(),
+      terminalReasonCode: null,
+      terminalDiagnosticCodes: Array.from({ length: 17 }, (_, index) => `code_${index}`),
+    },
+  ];
+  for (const entry of malformed) {
+    globalThis.fetch = (async () =>
+      Response.json({
+        protocolVersion: CHAT_OPERATION_V2_CLIENT_PROTOCOL_VERSION,
+        snapshot: { ...workspaceSnapshot(), operations: [entry] },
+      })) as unknown as typeof fetch;
+    await expect(fetchChatOperationV2Snapshot()).rejects.toBeInstanceOf(
+      ChatOperationV2ProtocolError,
+    );
+  }
 });
 
 test('reads a strict V2 workspace snapshot with the active workspace and auth identity', async () => {

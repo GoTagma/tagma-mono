@@ -747,6 +747,18 @@ export interface CorrectUsageLedgerInput extends UsageLedgerMetricsInput {
   readonly updatedAt?: number;
 }
 
+export interface ListUsageLedgerForWorkspaceInput {
+  readonly workspaceScopeId: string;
+  readonly before?: number | null;
+  readonly limit?: number;
+}
+
+export interface ListUsageLedgerForWorkspaceResult {
+  readonly records: StoredUsageLedgerRecord[];
+  readonly totalCount: number;
+  readonly hasMore: boolean;
+}
+
 export interface ChatOperationV2MigrationRecord {
   readonly schemaVersion: number;
   readonly migrationName: string;
@@ -1125,6 +1137,8 @@ type JsonValue = JsonPrimitive | readonly JsonValue[] | { readonly [key: string]
 const DEFAULT_EVENT_RETENTION_LIMIT = 10_000;
 const DEFAULT_EVENT_PAGE_LIMIT = 100;
 const MAX_EVENT_PAGE_LIMIT = 1_000;
+const DEFAULT_USAGE_LEDGER_PAGE_LIMIT = 1_000;
+const MAX_USAGE_LEDGER_PAGE_LIMIT = 5_000;
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 const MAX_ID_BYTES = 512;
 const MAX_EVENT_TYPE_BYTES = 128;
@@ -6700,6 +6714,57 @@ export class ChatOperationV2Store {
         )
         .all(operationId)
         .map(usageLedgerFromRow);
+    });
+  }
+
+  /**
+   * Newest-first workspace usage page for the Usage Stats read boundary.
+   * `before` is an exclusive created-at cursor; `totalCount` ignores it so the
+   * renderer can distinguish "no usage yet" from "no older page". One extra
+   * row is fetched so `hasMore` is exact instead of a length heuristic.
+   */
+  listUsageLedgerForWorkspace(
+    input: ListUsageLedgerForWorkspaceInput,
+  ): ListUsageLedgerForWorkspaceResult {
+    this.assertOpen();
+    assertIdentifier(input.workspaceScopeId, 'workspaceScopeId', 128);
+    const before = input.before ?? null;
+    if (before !== null && (!Number.isSafeInteger(before) || before < 0)) {
+      throw new ChatOperationV2StoreError(
+        'invalid_cursor',
+        'Usage ledger cursor must be a non-negative integer.',
+      );
+    }
+    const limit = validCount(
+      input.limit,
+      DEFAULT_USAGE_LEDGER_PAGE_LIMIT,
+      MAX_USAGE_LEDGER_PAGE_LIMIT,
+    );
+    return this.readTransaction(() => {
+      if (!this.workspaceScopeRowById(input.workspaceScopeId)) {
+        throw new ChatOperationV2StoreError(
+          'workspace_scope_not_found',
+          'Usage ledger workspace scope does not exist.',
+        );
+      }
+      const totalRow = this.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) AS count FROM usage_ledger WHERE workspace_scope_id = ?',
+        )
+        .get(input.workspaceScopeId);
+      const rows = this.database
+        .query<UsageLedgerRow, [string, number | null, number | null, number]>(
+          `SELECT * FROM usage_ledger
+           WHERE workspace_scope_id = ? AND (? IS NULL OR created_at < ?)
+           ORDER BY created_at DESC, usage_id DESC
+           LIMIT ?`,
+        )
+        .all(input.workspaceScopeId, before, before, limit + 1);
+      return {
+        records: rows.slice(0, limit).map(usageLedgerFromRow),
+        totalCount: totalRow?.count ?? 0,
+        hasMore: rows.length > limit,
+      };
     });
   }
 

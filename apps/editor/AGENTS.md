@@ -1180,6 +1180,34 @@
   and surface one user-visible error; button event handlers must never leak it as an unhandled
   Promise rejection.
 
+## Chat Usage Stats And Terminal Discard Reasons
+
+- The Usage Stats page reads `GET /api/chat/operations/usage`, served from the control-store
+  `usage_ledger` (newest-first, exclusive `created_at` `before` cursor, exact `hasMore` via a
+  `LIMIT + 1` read). The legacy `/api/workspace/usage` jsonl routes and the renderer
+  `api.listUsage`/`api.appendUsage` methods are retained but have no remaining caller; never
+  re-point the page at the orphaned file. `ChatOperationV2Service.listUsage` resolves the scope
+  with `findWorkspaceScope` (no allocation) instead of `#resolveWorkspaceScope` (which creates a
+  scope row): read endpoints that must not mutate a fresh workspace follow the same pattern — a
+  missing scope is an empty page. Ledger paging orders by `created_at` while the renderer displays
+  `ts = settledAt ?? createdAt`; the two orderings can differ when settle order differs from
+  creation order. Renderer-local copies of the usage taxonomies in `src/api/chat-operations.ts`
+  are deliberate (importing server modules pulls Node/Bun-only code into Vite); a dedicated parity
+  test keeps both sides synchronized.
+- An automatic pre-commit discard explains itself through the discard `stage_status_changed`
+  event's `errorCode`/`diagnosticCodes` (previously force-nulled). User-initiated Stop/Discard,
+  `cancelled_precommit`, and `completed_noop` paths must keep both fields null; only
+  `finishPrecommit(..., 'discarded', ...)` with an explicit terminal reason fills them. The
+  Host-authored reason vocabulary lives in `CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES`
+  (server `types.ts`, parity-tested client copy in `src/api/chat-operations.ts`); verification
+  pass-through codes are valid non-members, and the renderer falls back to the generic notice copy
+  for absent or unknown codes while still rendering the raw `Reason:` line. The projection derives
+  `terminalReasonCode`/`terminalDiagnosticCodes` only for terminal `discarded`/`failed_terminal`
+  operations from the latest discard stage event via `getLatestOperationEvent`; every other case
+  projects null/empty. `stage_status_changed` diagnostic codes must be unique and at most 16
+  (`isDiagnosticCodes`), so any code list built by concatenation must be deduped before
+  `appendEvent` or the terminal cleanup path throws mid-discard.
+
 ## Production Diagnostics
 
 - Use the bounded structured diagnostics timeline for lifecycle evidence. Timeline events must

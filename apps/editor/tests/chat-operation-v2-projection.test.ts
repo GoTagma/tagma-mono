@@ -266,6 +266,11 @@ function harness(input: {
     type: string;
     payload: Readonly<Record<string, unknown>>;
   }[];
+  latestEvents?: readonly {
+    operationId: string;
+    type: string;
+    payload: Readonly<Record<string, unknown>>;
+  }[];
   onListInvocationOutbox?: () => void;
 }) {
   const inventory = input.inventory ?? hostInventory();
@@ -294,6 +299,32 @@ function harness(input: {
       return input.outboxes ?? [];
     },
     getResultProjection: (operationId) => input.results?.[operationId] ?? null,
+    ...(input.latestEvents
+      ? {
+          getLatestOperationEvent: ((operationId: string, type: string) => {
+            const event = [...input.latestEvents!]
+              .reverse()
+              .find(
+                (candidate) => candidate.operationId === operationId && candidate.type === type,
+              );
+            return event
+              ? ({
+                  workspaceSeq: 30,
+                  workspaceScopeId: 'scope-01',
+                  eventId: `event-${type}-latest`,
+                  operationVersion: 4,
+                  generation: 1,
+                  phase: 'terminal',
+                  waitReason: null,
+                  timestamp: 150,
+                  source: null,
+                  terminal: true,
+                  ...event,
+                } as never)
+              : null;
+          }) as NonNullable<ChatOperationV2ProjectionReadPersistence['getLatestOperationEvent']>,
+        }
+      : {}),
     listOperationEvents: ({ after }) =>
       ({
         kind: 'events',
@@ -700,6 +731,8 @@ describe('ChatTurn Operation V2 renderer projection', () => {
         updatedAt: 120,
         hasResult: true,
         pendingInputKind: null,
+        terminalReasonCode: null,
+        terminalDiagnosticCodes: [],
       },
     ]);
 
@@ -965,5 +998,171 @@ describe('ChatTurn Operation V2 renderer projection', () => {
         operationId,
       ),
     ).toThrow('unknown');
+  });
+});
+
+describe('ChatTurn Operation V2 terminal discard reason projection', () => {
+  test('projects the Host discard reason onto detail and workspace summaries', () => {
+    const terminal = operation('operation-discarded', {
+      ...state({ phase: 'terminal', terminalOutcome: 'discarded' }),
+    });
+    const value = harness({
+      operations: [terminal],
+      latestEvents: [
+        {
+          operationId: terminal.operationId,
+          type: 'stage_status_changed',
+          payload: {
+            stageId: 'stage-01',
+            status: 'ready',
+            errorCode: null,
+            diagnosticCodes: [],
+          },
+        },
+        {
+          operationId: terminal.operationId,
+          type: 'stage_status_changed',
+          payload: {
+            stageId: 'stage-01',
+            status: 'discarded',
+            errorCode: 'trial_plan_no_change',
+            diagnosticCodes: ['trial_plan_missing'],
+          },
+        },
+      ],
+    });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      terminal.operationId,
+    );
+    expect(detail.operation.terminalReasonCode).toBe('trial_plan_no_change');
+    expect(detail.operation.terminalDiagnosticCodes).toEqual(['trial_plan_missing']);
+
+    const workspace = readChatOperationV2WorkspaceProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+    );
+    expect(workspace.operations[0]!.terminalReasonCode).toBe('trial_plan_no_change');
+    expect(workspace.operations[0]!.terminalDiagnosticCodes).toEqual(['trial_plan_missing']);
+  });
+
+  test('projects a terminal reason for failed_terminal when the discard event carries one', () => {
+    const terminal = operation('operation-failed-terminal', {
+      ...state({ phase: 'terminal', terminalOutcome: 'failed_terminal' }),
+    });
+    const value = harness({
+      operations: [terminal],
+      latestEvents: [
+        {
+          operationId: terminal.operationId,
+          type: 'stage_status_changed',
+          payload: {
+            stageId: 'stage-01',
+            status: 'discarded',
+            errorCode: 'stage_creation_failed',
+            diagnosticCodes: ['stage_create_failed'],
+          },
+        },
+      ],
+    });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      terminal.operationId,
+    );
+    expect(detail.operation.terminalReasonCode).toBe('stage_creation_failed');
+    expect(detail.operation.terminalDiagnosticCodes).toEqual(['stage_create_failed']);
+  });
+
+  test('never projects a reason for cancellation, non-terminal, or reason-less discard states', () => {
+    const cancelled = operation('operation-cancelled', {
+      ...state({ phase: 'terminal', terminalOutcome: 'cancelled_precommit' }),
+    });
+    const reasonlessDiscard = operation('operation-reasonless-discard', {
+      ...state({ phase: 'terminal', terminalOutcome: 'discarded' }),
+    });
+    const notADiscardEvent = operation('operation-stale-stage-event', {
+      ...state({ phase: 'terminal', terminalOutcome: 'discarded' }),
+    });
+    const running = operation('operation-running', {
+      ...state({ phase: 'authoring' }),
+    });
+    const value = harness({
+      operations: [cancelled, reasonlessDiscard, notADiscardEvent, running],
+      latestEvents: [
+        {
+          operationId: cancelled.operationId,
+          type: 'stage_status_changed',
+          payload: {
+            stageId: 'stage-01',
+            status: 'discarded',
+            errorCode: 'trial_plan_no_change',
+            diagnosticCodes: [],
+          },
+        },
+        {
+          operationId: reasonlessDiscard.operationId,
+          type: 'stage_status_changed',
+          payload: {
+            stageId: 'stage-01',
+            status: 'discarded',
+            errorCode: null,
+            diagnosticCodes: [],
+          },
+        },
+        {
+          operationId: notADiscardEvent.operationId,
+          type: 'stage_status_changed',
+          payload: {
+            stageId: 'stage-01',
+            status: 'failed',
+            errorCode: 'stage_create_failed',
+            diagnosticCodes: ['stage_create_failed'],
+          },
+        },
+        {
+          operationId: running.operationId,
+          type: 'stage_status_changed',
+          payload: {
+            stageId: 'stage-01',
+            status: 'discarded',
+            errorCode: 'repair_no_change',
+            diagnosticCodes: [],
+          },
+        },
+      ],
+    });
+
+    const workspace = readChatOperationV2WorkspaceProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+    );
+    for (const summary of workspace.operations) {
+      expect(summary.terminalReasonCode).toBeNull();
+      expect(summary.terminalDiagnosticCodes).toEqual([]);
+    }
+  });
+
+  test('projects no terminal reason when the latest-event accessor is absent', () => {
+    const terminal = operation('operation-no-accessor', {
+      ...state({ phase: 'terminal', terminalOutcome: 'discarded' }),
+    });
+    const value = harness({ operations: [terminal] });
+
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      terminal.operationId,
+    );
+    expect(detail.operation.terminalReasonCode).toBeNull();
+    expect(detail.operation.terminalDiagnosticCodes).toEqual([]);
   });
 });

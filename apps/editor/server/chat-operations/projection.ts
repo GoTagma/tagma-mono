@@ -188,6 +188,14 @@ export interface ChatOperationV2RendererOperationSummary {
   readonly updatedAt: number;
   readonly hasResult: boolean;
   readonly pendingInputKind: ChatOperationV2RendererPendingInputKind | null;
+  /**
+   * Host-authenticated cause of an automatic terminal discard, read from the
+   * latest discard `stage_status_changed` event. Null for every other outcome,
+   * for user-initiated discards, and for evidence written before reason codes
+   * existed.
+   */
+  readonly terminalReasonCode: string | null;
+  readonly terminalDiagnosticCodes: readonly string[];
 }
 
 export interface ChatOperationV2RendererOperationDetail {
@@ -968,12 +976,14 @@ function pendingInput(
 }
 
 function operationSummary(
+  persistence: ChatOperationV2ProjectionReadPersistence,
   operation: StoredChatOperationV2,
   admission: ChatOperationV2ProjectionAdmission,
   result: ChatOperationV2RendererResultProjection | null,
   pending: ChatOperationV2RendererPendingInput | null,
 ): ChatOperationV2RendererOperationSummary {
   const correlation = parseProjectionAdmission(admission);
+  const terminalReason = terminalReasonProjection(persistence, operation);
   return Object.freeze({
     operationId: operation.operationId,
     conversationId: correlation.conversationId,
@@ -988,7 +998,55 @@ function operationSummary(
     updatedAt: operation.updatedAt,
     hasResult: result !== null,
     pendingInputKind: pending?.kind ?? null,
+    terminalReasonCode: terminalReason.code,
+    terminalDiagnosticCodes: terminalReason.diagnosticCodes,
   });
+}
+
+interface ChatOperationV2TerminalReasonProjection {
+  readonly code: string | null;
+  readonly diagnosticCodes: readonly string[];
+}
+
+const NO_TERMINAL_REASON: ChatOperationV2TerminalReasonProjection = Object.freeze({
+  code: null,
+  diagnosticCodes: Object.freeze([]) as readonly string[],
+});
+
+/**
+ * The discard `stage_status_changed` event is the sole channel for an automatic
+ * terminal-discard cause. Cancellation and completed no-op terminal paths write
+ * that same event with null reason fields, so only a non-null code projects.
+ */
+function terminalReasonProjection(
+  persistence: ChatOperationV2ProjectionReadPersistence,
+  operation: StoredChatOperationV2,
+): ChatOperationV2TerminalReasonProjection {
+  if (
+    operation.phase !== 'terminal' ||
+    (operation.terminalOutcome !== 'discarded' && operation.terminalOutcome !== 'failed_terminal')
+  ) {
+    return NO_TERMINAL_REASON;
+  }
+  const event =
+    persistence.getLatestOperationEvent?.(operation.operationId, 'stage_status_changed') ?? null;
+  if (!event) return NO_TERMINAL_REASON;
+  const payload = event.payload;
+  if (payload.status !== 'discarded') return NO_TERMINAL_REASON;
+  if (payload.errorCode === null || payload.errorCode === undefined) return NO_TERMINAL_REASON;
+  if (
+    typeof payload.errorCode !== 'string' ||
+    !SAFE_CODE.test(payload.errorCode) ||
+    !Array.isArray(payload.diagnosticCodes) ||
+    payload.diagnosticCodes.length > 16 ||
+    payload.diagnosticCodes.some((code) => typeof code !== 'string' || !SAFE_CODE.test(code))
+  ) {
+    return fail('invalid_record', 'Durable stage discard evidence is invalid.');
+  }
+  return {
+    code: payload.errorCode,
+    diagnosticCodes: Object.freeze([...payload.diagnosticCodes]),
+  };
 }
 
 function rendererExecutionState(
@@ -1104,6 +1162,7 @@ function failureProjection(
 
 export function projectChatOperationV2OperationDetail(
   parts: ChatOperationV2OperationProjectionParts,
+  persistence: ChatOperationV2ProjectionReadPersistence,
 ): ChatOperationV2RendererOperationDetail {
   const operation = validateStoredOperation(parts.operation, parts.operation.workspaceScopeId);
   const result = validateResultProjection(parts.result, operation);
@@ -1112,7 +1171,7 @@ export function projectChatOperationV2OperationDetail(
   return Object.freeze({
     schemaVersion: CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
     workspaceScopeId: operation.workspaceScopeId,
-    operation: operationSummary(operation, parts.admission, result, pending),
+    operation: operationSummary(persistence, operation, parts.admission, result, pending),
     userMessage: projectUserMessage(operation, parts.admission),
     inventory: parts.inventory,
     pendingInput: pending,
@@ -1237,7 +1296,10 @@ export function readChatOperationV2OperationProjection(
   if (operation === null) return fail('operation_mismatch', 'Operation does not exist.');
   validateStoredOperation(operation, workspaceScopeId);
   const inventory = projectInventory(resolver.getCurrentInventory(workspaceScopeId));
-  return projectChatOperationV2OperationDetail(operationParts(persistence, operation, inventory));
+  return projectChatOperationV2OperationDetail(
+    operationParts(persistence, operation, inventory),
+    persistence,
+  );
 }
 
 export function readChatOperationV2WorkspaceProjection(
@@ -1268,7 +1330,7 @@ export function readChatOperationV2WorkspaceProjection(
     const parts = operationParts(persistence, operation, inventory, [], false);
     const result = validateResultProjection(parts.result, operation);
     const pending = pendingInput({ ...parts, result });
-    return operationSummary(operation, parts.admission, result, pending);
+    return operationSummary(persistence, operation, parts.admission, result, pending);
   });
   return Object.freeze({
     schemaVersion: CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,

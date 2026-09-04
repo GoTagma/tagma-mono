@@ -184,6 +184,8 @@ function operationSummary(operationId = 'operation-1') {
     updatedAt: 10,
     hasResult: false,
     pendingInputKind: null,
+    terminalReasonCode: null,
+    terminalDiagnosticCodes: [] as readonly string[],
   };
 }
 
@@ -253,6 +255,7 @@ function service(overrides: Partial<ChatOperationV2MutationService> = {}) {
     snapshots: [] as string[],
     operations: [] as Array<{ workDir: string; operationId: string }>,
     events: [] as Array<{ workDir: string; after: number; limit?: number }>,
+    usages: [] as Array<{ workDir: string; before?: number | null; limit?: number }>,
     creates: [] as Array<{ workDir: string; input: unknown }>,
     cancels: [] as Array<{ workDir: string; input: unknown }>,
     retries: [] as Array<{ workDir: string; input: unknown }>,
@@ -289,6 +292,10 @@ function service(overrides: Partial<ChatOperationV2MutationService> = {}) {
         nextCursor: input.after,
         events: [],
       };
+    },
+    listUsage(workDir, input) {
+      calls.usages.push({ workDir, ...input });
+      return { records: [], totalRecords: 0, hasMore: false };
     },
     projectMutationResult(workDir, input) {
       calls.projections.push({ workDir, value: input });
@@ -475,6 +482,7 @@ describe('Chat Operation V2 route registration', () => {
     expect(app.routes.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'GET /api/chat/operations/snapshot',
       'GET /api/chat/operations/events',
+      'GET /api/chat/operations/usage',
       'POST /api/chat/operations',
       'POST /api/chat/operations/:id/clarification',
       'POST /api/chat/operations/:id/cancel',
@@ -512,6 +520,7 @@ describe('Chat Operation V2 route registration', () => {
     expect(app.routes.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'GET /api/chat/operations/snapshot',
       'GET /api/chat/operations/events',
+      'GET /api/chat/operations/usage',
       'GET /api/chat/operations/:id',
     ]);
     expect(createResolverRead).toBe(false);

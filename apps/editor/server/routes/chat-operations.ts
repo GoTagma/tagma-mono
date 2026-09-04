@@ -23,6 +23,7 @@ import {
   type ChatOperationV2RecoveryChoiceRequest,
 } from '../chat-operations/api-requests.js';
 import type {
+  ChatOperationV2UsagePage,
   CreateAndDispatchReadonlyInput,
   ReplyToReadonlyClarificationInput,
 } from '../chat-operations/service.js';
@@ -42,6 +43,7 @@ import { requireWorkspace } from '../require-workspace.js';
 export const CHAT_OPERATION_V2_DEFAULT_EVENT_LIMIT = 100;
 export const CHAT_OPERATION_V2_MAX_EVENT_LIMIT = 1_000;
 export const CHAT_OPERATION_V2_DEFAULT_POLL_INTERVAL_MS = 250;
+export const CHAT_OPERATION_V2_MAX_USAGE_LIMIT = 5_000;
 
 export interface ChatOperationV2JournalEventRead {
   readonly workspaceSeq: number;
@@ -87,6 +89,10 @@ export interface ChatOperationV2ReadService {
     workDir: string,
     input: { readonly after: number; readonly limit?: number },
   ): ChatOperationV2EventsReadResult;
+  listUsage(
+    workDir: string,
+    input: { readonly before?: number | null; readonly limit?: number },
+  ): ChatOperationV2UsagePage;
 }
 
 type MaybePromise<T> = T | Promise<T>;
@@ -652,6 +658,35 @@ export function registerChatOperationV2Routes(
         res,
         service.listEvents(workspace.workDir, { after: cursor.after, limit: cursor.limit }),
       );
+    } catch (error) {
+      sendPublicError(res, mapReadError(error));
+    }
+  });
+
+  app.get('/api/chat/operations/usage', (req, res) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    if (!workspace.workDir) {
+      sendPublicError(res, {
+        status: 500,
+        kind: 'chat_operation_read_failed',
+        error: 'Chat operation state could not be read.',
+      });
+      return;
+    }
+    // Same clamping idiom as the legacy /api/workspace/usage route: an absent
+    // or invalid limit falls back to the bounded maximum page, and `before`
+    // is an exclusive created-at cursor for "load older" paging.
+    const rawLimit = Number(req.query.limit);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(Math.floor(rawLimit), CHAT_OPERATION_V2_MAX_USAGE_LIMIT)
+        : CHAT_OPERATION_V2_MAX_USAGE_LIMIT;
+    const rawBefore = Number(req.query.before);
+    const before = Number.isFinite(rawBefore) ? rawBefore : null;
+    try {
+      const page = service.listUsage(workspace.workDir, { before, limit });
+      res.json({ protocolVersion: CHAT_OPERATION_V2_PROTOCOL_VERSION, ...page });
     } catch (error) {
       sendPublicError(res, mapReadError(error));
     }

@@ -15,7 +15,10 @@ import {
 import { useChatStore } from '../../store/chat-store';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { api, type WorkspaceYamlEntry } from '../../api/client';
-import { chatOperationV2FailurePresentation } from '../../utils/chat-operation-v2-failure';
+import {
+  chatOperationV2FailurePresentation,
+  chatOperationV2TerminalDiscardPresentation,
+} from '../../utils/chat-operation-v2-failure';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
@@ -998,10 +1001,13 @@ function ChatMessages() {
 
 export function ChatOperationV2TerminalNoticeView({
   terminalOutcome,
+  terminalReasonCode = null,
 }: {
   terminalOutcome: 'discarded' | 'failed_terminal';
+  terminalReasonCode?: string | null;
 }) {
   const discarded = terminalOutcome === 'discarded';
+  const reason = discarded ? chatOperationV2TerminalDiscardPresentation(terminalReasonCode) : null;
   return (
     <section
       aria-label="Chat operation did not complete"
@@ -1009,16 +1015,25 @@ export function ChatOperationV2TerminalNoticeView({
     >
       <div className="flex items-center gap-2 text-label font-sans text-tagma-text">
         <AlertTriangle size={12} className="shrink-0 text-tagma-error" />
-        <span>{discarded ? 'Pipeline update was not published' : 'Chat operation stopped'}</span>
+        <span>
+          {reason?.title ??
+            (discarded ? 'Pipeline update was not published' : 'Chat operation stopped')}
+        </span>
       </div>
       <p className="mt-1 text-caption font-sans text-tagma-muted break-words">
-        {discarded
-          ? 'Tagma discarded the staged draft before publication. If you did not discard it, verification or repair did not produce a publishable result. Your current pipeline was left unchanged.'
-          : 'Tagma could not produce a safe result for this request. Your current pipeline was left unchanged.'}
+        {reason?.detail ??
+          (discarded
+            ? 'Tagma discarded the staged draft before publication. If you did not discard it, verification or repair did not produce a publishable result. Your current pipeline was left unchanged.'
+            : 'Tagma could not produce a safe result for this request. Your current pipeline was left unchanged.')}
       </p>
       <p className="mt-1 text-caption font-sans text-tagma-muted/80">
         Review the activity status and send the request again after correcting the reported issue.
       </p>
+      {terminalReasonCode ? (
+        <p className="mt-1 text-caption font-mono text-tagma-muted-dim">
+          {`Reason: ${terminalReasonCode}`}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -1031,7 +1046,12 @@ function ChatOperationV2TerminalNotice() {
   ) {
     return null;
   }
-  return <ChatOperationV2TerminalNoticeView terminalOutcome={operation.terminalOutcome} />;
+  return (
+    <ChatOperationV2TerminalNoticeView
+      terminalOutcome={operation.terminalOutcome}
+      terminalReasonCode={operation.terminalReasonCode ?? null}
+    />
+  );
 }
 
 function normalizedPath(value: string): { value: string; caseInsensitive: boolean } | null {

@@ -3,9 +3,11 @@ import {
   CHAT_OPERATION_V2_SAFE_FAILURE_CODES,
   safeChatOperationV2FailureCode,
 } from '../server/chat-operations/failure-codes';
+import { CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES } from '../server/chat-operations/types';
 import {
   chatOperationV2FailurePresentation,
   chatOperationV2FailureRequiresModelChange,
+  chatOperationV2TerminalDiscardPresentation,
 } from '../src/utils/chat-operation-v2-failure';
 
 describe('Chat Operation V2 safe provider failure taxonomy', () => {
@@ -89,5 +91,25 @@ describe('Chat Operation V2 safe provider failure taxonomy', () => {
     });
     expect(presentation.detail).toContain('Retry');
     expect(presentation.detail).not.toContain('model');
+  });
+});
+
+describe('Chat Operation V2 terminal discard presentation', () => {
+  test.each([...CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES])(
+    'maps the Host discard reason %s to specific retry copy',
+    (code) => {
+      const presentation = chatOperationV2TerminalDiscardPresentation(code);
+      expect(presentation).not.toBeNull();
+      expect(presentation!.title.length).toBeGreaterThan(0);
+      expect(presentation!.detail).toContain('pipeline was left unchanged');
+      expect(presentation!.detail).toContain('Send the request again');
+      expect(presentation!.detail).not.toContain(code);
+    },
+  );
+
+  test('returns null for absent or unknown discard reasons so callers keep the generic copy', () => {
+    expect(chatOperationV2TerminalDiscardPresentation(null)).toBeNull();
+    expect(chatOperationV2TerminalDiscardPresentation(undefined)).toBeNull();
+    expect(chatOperationV2TerminalDiscardPresentation('trial_unavailable')).toBeNull();
   });
 });

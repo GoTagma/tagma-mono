@@ -6,6 +6,7 @@ import {
   CHAT_OPERATION_V2_PHASES,
   CHAT_OPERATION_V2_PROTOCOL_VERSION,
   CHAT_OPERATION_V2_RELATION_LINK_TYPES,
+  CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES,
   CHAT_OPERATION_V2_TERMINAL_OUTCOMES,
   CHAT_OPERATION_V2_WAIT_REASONS,
   ChatOperationV2InvariantError,
@@ -84,6 +85,13 @@ describe('ChatTurn Operation V2 state vocabulary', () => {
       'expired',
       'superseded',
       'failed_terminal',
+    ]);
+    expect(CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES).toEqual([
+      'stage_creation_failed',
+      'trial_plan_no_change',
+      'repair_no_change',
+      'repair_attempts_exhausted',
+      'trial_verification_failed',
     ]);
   });
 

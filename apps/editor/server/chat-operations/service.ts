@@ -30,10 +30,14 @@ import {
   openChatOperationV2Store,
   type ChatOperationV2Store,
   type ChatOperationV2StoreOptions,
+  type ChatOperationV2UsageOutcome,
+  type ChatOperationV2UsagePurpose,
+  type ChatOperationV2UsageStatus,
   type ListOperationEventsResult,
   type StoredHostOperationEvent,
   type StoredChatOperationV2,
   type StoredInvocationOutboxRecord,
+  type StoredUsageLedgerRecord,
   type WorkspaceOperationSnapshot,
 } from './store.js';
 import {
@@ -165,6 +169,62 @@ interface ChatOperationV2ProjectionWorkspaceRuntime {
 export interface ChatOperationV2ListEventsInput {
   readonly after: number;
   readonly limit?: number;
+}
+
+export interface ChatOperationV2ListUsageInput {
+  readonly before?: number | null;
+  readonly limit?: number;
+}
+
+/** Renderer-safe Usage Stats row. Cost is projected to dollars; internal authority stays in the store. */
+export interface ChatOperationV2UsageRecord {
+  readonly usageId: string;
+  readonly operationId: string;
+  readonly invocationId: string;
+  readonly purpose: ChatOperationV2UsagePurpose;
+  readonly providerID: string | null;
+  readonly modelID: string | null;
+  readonly variantId: string | null;
+  readonly tokensIn: number | null;
+  readonly tokensOut: number | null;
+  readonly tokensReasoning: number | null;
+  readonly cacheRead: number | null;
+  readonly cacheWrite: number | null;
+  readonly cost: number | null;
+  readonly status: ChatOperationV2UsageStatus;
+  readonly outcome: ChatOperationV2UsageOutcome | null;
+  readonly ts: number;
+  readonly createdAt: number;
+  readonly settledAt: number | null;
+}
+
+export interface ChatOperationV2UsagePage {
+  readonly records: ChatOperationV2UsageRecord[];
+  readonly totalRecords: number;
+  readonly hasMore: boolean;
+}
+
+function usageRecordFromLedger(record: StoredUsageLedgerRecord): ChatOperationV2UsageRecord {
+  return {
+    usageId: record.usageId,
+    operationId: record.operationId,
+    invocationId: record.invocationId,
+    purpose: record.purpose,
+    providerID: record.providerId,
+    modelID: record.modelId,
+    variantId: record.variantId,
+    tokensIn: record.inputTokens,
+    tokensOut: record.outputTokens,
+    tokensReasoning: record.reasoningTokens,
+    cacheRead: record.cacheReadTokens,
+    cacheWrite: record.cacheWriteTokens,
+    cost: record.costMicrounits === null ? null : record.costMicrounits / 1_000_000,
+    status: record.status,
+    outcome: record.outcome,
+    ts: record.settledAt ?? record.createdAt,
+    createdAt: record.createdAt,
+    settledAt: record.settledAt,
+  };
 }
 
 export interface ChatOperationV2DiagnosticsSnapshot {
@@ -750,6 +810,37 @@ export class ChatOperationV2Service {
       after: input.after,
       limit: input.limit,
     });
+  }
+
+  /**
+   * Usage Stats page read. Unlike the projection reads this must not allocate
+   * a scope for a workspace that has no Chat history yet: a missing scope is
+   * an empty page, while an existing persisted store is still opened on
+   * demand so history survives a sidecar restart.
+   */
+  listUsage(
+    workspacePath: string,
+    input: ChatOperationV2ListUsageInput = {},
+  ): ChatOperationV2UsagePage {
+    const authority = this.#authorityForUse();
+    const identity = createWorkspaceIdentity(workspacePath, authority.key, this.#identityOptions);
+    const storedScope = authority.store.findWorkspaceScope(identity);
+    if (!storedScope) {
+      return { records: [], totalRecords: 0, hasMore: false };
+    }
+    const scope = parseTrustedWorkspaceScopeRecord(storedScope, authority.key, {
+      platform: this.#identityOptions.platform,
+    });
+    const page = authority.store.listUsageLedgerForWorkspace({
+      workspaceScopeId: scope.workspaceScopeId,
+      before: input.before ?? null,
+      limit: input.limit,
+    });
+    return {
+      records: page.records.map(usageRecordFromLedger),
+      totalRecords: page.totalCount,
+      hasMore: page.hasMore,
+    };
   }
 
   async createAndDispatchReadonly(
@@ -1561,6 +1652,8 @@ export class ChatOperationV2Service {
         listInvocationOutbox: (workspaceScopeId) =>
           authority.store.listInvocationOutbox(workspaceScopeId),
         getResultProjection: (operationId) => resultResolver.getResultProjection(operationId),
+        getLatestOperationEvent: (operationId, type) =>
+          authority.store.getLatestOperationEvent(operationId, type),
       },
     };
     this.#projectionRuntimes.set(authority.scope.canonicalPathHmac, runtime);

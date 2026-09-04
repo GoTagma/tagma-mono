@@ -150,6 +150,13 @@ Do not amend the same commit to include these files after naming them with the c
   published or forked result without overwriting third-party bytes. Terminal outcome, commit
   decision, binding/result identity, artifact hashes, generation, and the exactly-once terminal
   event are immutable; only the typed post-terminal annotation allowlist may append.
+- An automatic pre-commit discard carries its Host-authenticated cause in the discard
+  `stage_status_changed` event's `errorCode`/`diagnosticCodes` (`trial_plan_no_change`,
+  `repair_no_change`, `repair_attempts_exhausted`, `stage_creation_failed`, or a verification
+  pass-through code). User-initiated Stop/Discard, `cancelled_precommit`, and `completed_noop`
+  keep both fields null. The Usage Stats page reads the control-store `usage_ledger` through
+  `GET /api/chat/operations/usage`; the legacy workspace `usage.jsonl` routes have no remaining
+  caller.
 - New V2 clients mutate Chat only through the versioned operation API with generation/version CAS.
   Raw OpenCode prompt, interrupt, permission, move, update, and delete routes are never a renderer
   compatibility path; version-skewed mutation attempts must fail explicitly with HTTP 426.

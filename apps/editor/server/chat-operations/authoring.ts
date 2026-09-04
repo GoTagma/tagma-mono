@@ -1014,6 +1014,32 @@ function assertRuntimeCode(value: unknown, label: string): asserts value is stri
   }
 }
 
+/**
+ * Host-authenticated cause of an automatic pre-commit discard. It rides the
+ * existing discard `stage_status_changed` payload; user-initiated Stop/Discard
+ * and completed no-op terminal paths never carry one.
+ */
+export interface ChatOperationV2TerminalReason {
+  readonly reasonCode: string;
+  readonly diagnosticCodes?: readonly string[];
+}
+
+function normalizeTerminalReason(reason: ChatOperationV2TerminalReason): {
+  readonly reasonCode: string;
+  readonly diagnosticCodes: readonly string[];
+} {
+  assertRuntimeCode(reason.reasonCode, 'Terminal discard reason code');
+  for (const code of reason.diagnosticCodes ?? []) {
+    assertRuntimeCode(code, 'Terminal discard diagnostic code');
+  }
+  return {
+    reasonCode: reason.reasonCode,
+    // The discard stage event requires bounded unique diagnostic codes; a stage
+    // failure code is legitimately repeated in its own diagnostic list.
+    diagnosticCodes: [...new Set(reason.diagnosticCodes ?? [])].slice(0, 16),
+  };
+}
+
 function assertBoundedRuntimeText(
   value: unknown,
   label: string,
@@ -1432,7 +1458,10 @@ export class ChatOperationV2AuthoringEngine {
         errorCode: stageResult.errorCode,
         diagnosticCodes: [...stageResult.diagnosticCodes],
       });
-      return this.finishPrecommit(context, 'discarded');
+      return this.finishPrecommit(context, 'discarded', undefined, undefined, {
+        reasonCode: 'stage_creation_failed',
+        diagnosticCodes: [stageResult.errorCode, ...stageResult.diagnosticCodes],
+      });
     }
     const stage = parseStage(stageResult.stage);
     this.assertStageMatches(context, stagingOperation, stage);
@@ -1882,7 +1911,9 @@ export class ChatOperationV2AuthoringEngine {
       return this.finishPrecommit(context, 'completed_noop');
     }
     if (purpose !== 'authoring' && result.disposition === 'no_change') {
-      return this.finishPrecommit(context, 'discarded');
+      return this.finishPrecommit(context, 'discarded', undefined, undefined, {
+        reasonCode: purpose === 'trial_plan' ? 'trial_plan_no_change' : 'repair_no_change',
+      });
     }
     const verifying = this.transition(operationAfterInvocation, {
       ...stateOf(operationAfterInvocation),
@@ -2506,10 +2537,20 @@ export class ChatOperationV2AuthoringEngine {
     });
     const current = this.requireOperation(context.operationId);
     if (current.phase === 'terminal') return terminalResult(current);
-    if (verification.kind === 'discard') return this.finishPrecommit(context, 'discarded');
+    if (verification.kind === 'discard') {
+      return this.finishPrecommit(context, 'discarded', undefined, undefined, {
+        reasonCode: SAFE_CODE_RE.test(verification.errorCode)
+          ? verification.errorCode
+          : 'trial_verification_failed',
+        diagnosticCodes: verification.diagnosticCodes,
+      });
+    }
     if (verification.kind === 'repair_required') {
       if (current.repairAttempts >= current.repairMaxAttempts) {
-        return this.finishPrecommit(context, 'discarded');
+        return this.finishPrecommit(context, 'discarded', undefined, undefined, {
+          reasonCode: 'repair_attempts_exhausted',
+          diagnosticCodes: verification.diagnosticCodes,
+        });
       }
       return this.runControlledInvocation(context, 'repair', current.repairAttempts + 1, {
         evidenceHash: verification.evidenceHash,
@@ -2701,6 +2742,7 @@ export class ChatOperationV2AuthoringEngine {
     outcome: 'completed_noop' | 'cancelled_precommit' | 'discarded' | 'failed_terminal',
     interactiveCancellationRequestId?: string,
     interactiveRecoveryInput?: ResolveChatOperationV2InteractiveRecoveryInput,
+    terminalReason?: ChatOperationV2TerminalReason,
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
     if (outcome !== 'failed_terminal') {
       this.terminationIntents.set(
@@ -2746,11 +2788,17 @@ export class ChatOperationV2AuthoringEngine {
         operationGeneration: current.generation,
         stageId: current.stageId,
       });
+      // Only an automatic discard explains itself: cancellations, completed
+      // no-ops, and user-chosen recovery outcomes keep the null reason fields.
+      const reason =
+        effectiveOutcome === 'discarded' && terminalReason
+          ? normalizeTerminalReason(terminalReason)
+          : null;
       this.appendEvent(current.operationId, 'stage_status_changed', {
         stageId: current.stageId,
         status: 'discarded',
-        errorCode: null,
-        diagnosticCodes: [],
+        errorCode: reason?.reasonCode ?? null,
+        diagnosticCodes: reason ? [...reason.diagnosticCodes] : [],
       });
     }
     this.assertAllUsageComplete(context.operationId);

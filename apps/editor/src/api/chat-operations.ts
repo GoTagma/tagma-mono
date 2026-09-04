@@ -134,6 +134,64 @@ export type ChatOperationV2FailureStage = (typeof CHAT_OPERATION_V2_FAILURE_STAG
 export type ChatOperationV2InvocationStatus =
   (typeof CHAT_OPERATION_V2_INVOCATION_STATUSES)[number];
 
+/**
+ * Renderer-local usage ledger taxonomies. Keep the parity test in
+ * `tests/chat-operation-v2-usage-query.test.ts` aligned with the store
+ * authority; importing server modules here would pull Node/Bun-only code
+ * into Vite.
+ */
+export const CHAT_OPERATION_V2_USAGE_PURPOSES = [
+  'classifier',
+  'discussion',
+  'diagnosis',
+  'authoring',
+  'repair',
+  'trial_plan',
+] as const;
+export const CHAT_OPERATION_V2_USAGE_OUTCOMES = [
+  'completed',
+  'failed',
+  'aborted',
+  'zero_token',
+  'unavailable',
+] as const;
+export const CHAT_OPERATION_V2_USAGE_STATUSES = [
+  'pending',
+  'settled',
+  'unavailable',
+  'corrected',
+] as const;
+export type ChatOperationV2UsagePurpose = (typeof CHAT_OPERATION_V2_USAGE_PURPOSES)[number];
+export type ChatOperationV2UsageOutcome = (typeof CHAT_OPERATION_V2_USAGE_OUTCOMES)[number];
+export type ChatOperationV2UsageStatus = (typeof CHAT_OPERATION_V2_USAGE_STATUSES)[number];
+
+export interface ChatOperationV2UsageRecord {
+  readonly usageId: string;
+  readonly operationId: string;
+  readonly invocationId: string;
+  readonly purpose: ChatOperationV2UsagePurpose;
+  readonly providerID: string | null;
+  readonly modelID: string | null;
+  readonly variantId: string | null;
+  readonly tokensIn: number | null;
+  readonly tokensOut: number | null;
+  readonly tokensReasoning: number | null;
+  readonly cacheRead: number | null;
+  readonly cacheWrite: number | null;
+  readonly cost: number | null;
+  readonly status: ChatOperationV2UsageStatus;
+  readonly outcome: ChatOperationV2UsageOutcome | null;
+  readonly ts: number;
+  readonly createdAt: number;
+  readonly settledAt: number | null;
+}
+
+export interface ChatOperationV2UsagePage {
+  readonly records: readonly ChatOperationV2UsageRecord[];
+  readonly totalRecords: number;
+  readonly hasMore: boolean;
+}
+
 export interface ChatOperationV2FailureProjection {
   readonly stage: ChatOperationV2FailureStage;
   readonly code: string;
@@ -155,6 +213,24 @@ export const CHAT_OPERATION_V2_TERMINAL_OUTCOMES = [
 ] as const;
 
 export type ChatOperationV2TerminalOutcome = (typeof CHAT_OPERATION_V2_TERMINAL_OUTCOMES)[number];
+
+/**
+ * Renderer-local copy of the sidecar authority in
+ * `server/chat-operations/types.ts`; the parity test in
+ * `tests/chat-operation-v2-client.test.ts` keeps them identical. An unknown
+ * projected reason code is still safe to render: the UI falls back to the
+ * generic terminal notice and shows the raw code.
+ */
+export const CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES = [
+  'stage_creation_failed',
+  'trial_plan_no_change',
+  'repair_no_change',
+  'repair_attempts_exhausted',
+  'trial_verification_failed',
+] as const;
+
+export type ChatOperationV2TerminalDiscardReasonCode =
+  (typeof CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES)[number];
 
 export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
   'operation_created',
@@ -464,6 +540,13 @@ export interface ChatOperationV2Projection {
   readonly updatedAt: number;
   readonly hasResult: boolean;
   readonly pendingInputKind: 'clarification' | 'stale_inventory' | 'permission' | 'question' | null;
+  /**
+   * Additive terminal-discard cause. Absent entirely when the sidecar predates
+   * terminal reasons; otherwise null for any operation without an automatic
+   * discard reason.
+   */
+  readonly terminalReasonCode?: string | null;
+  readonly terminalDiagnosticCodes?: readonly string[];
 }
 
 export interface ChatOperationV2InventoryCandidate {
@@ -817,6 +900,11 @@ export interface ChatOperationV2EventReadOptions extends ChatOperationV2ReadOpti
   readonly limit?: number;
 }
 
+export interface ChatOperationV2UsageReadOptions extends ChatOperationV2ReadOptions {
+  readonly before?: number | null;
+  readonly limit?: number;
+}
+
 export class ChatOperationV2ProtocolError extends Error {
   constructor(readonly problem: string) {
     super(`Invalid Chat Operation V2 response: ${problem}`);
@@ -877,6 +965,9 @@ const OPERATION_KEYS = [
   'hasResult',
   'pendingInputKind',
 ] as const;
+
+/** Additive summary fields a pre-reason sidecar never sends; all-or-nothing. */
+const OPERATION_TERMINAL_REASON_KEYS = ['terminalReasonCode', 'terminalDiagnosticCodes'] as const;
 
 const EVENT_KEYS = [
   'workspaceSeq',
@@ -1426,8 +1517,102 @@ function parseCursorReset(value: unknown, expectedAfter: number): ChatOperationV
   };
 }
 
+const USAGE_RECORD_KEYS = [
+  'usageId',
+  'operationId',
+  'invocationId',
+  'purpose',
+  'providerID',
+  'modelID',
+  'variantId',
+  'tokensIn',
+  'tokensOut',
+  'tokensReasoning',
+  'cacheRead',
+  'cacheWrite',
+  'cost',
+  'status',
+  'outcome',
+  'ts',
+  'createdAt',
+  'settledAt',
+] as const;
+
+function isNullableUsageMetric(value: unknown): value is number | null {
+  return value === null || isNonNegativeInteger(value);
+}
+
+function isNullableUsageCost(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
+}
+
+function isNullableUsageText(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && value.length > 0 && value.length <= 512);
+}
+
+function parseUsageRecord(value: unknown): ChatOperationV2UsageRecord {
+  if (!isPlainRecord(value) || !hasExactKeys(value, USAGE_RECORD_KEYS)) {
+    invalid('usage record has missing or unknown fields');
+  }
+  if (
+    !isHostId(value.usageId) ||
+    !isHostId(value.operationId) ||
+    !isHostId(value.invocationId) ||
+    !includesValue(CHAT_OPERATION_V2_USAGE_PURPOSES, value.purpose) ||
+    !isNullableUsageText(value.providerID) ||
+    !isNullableUsageText(value.modelID) ||
+    !isNullableUsageText(value.variantId) ||
+    !isNullableUsageMetric(value.tokensIn) ||
+    !isNullableUsageMetric(value.tokensOut) ||
+    !isNullableUsageMetric(value.tokensReasoning) ||
+    !isNullableUsageMetric(value.cacheRead) ||
+    !isNullableUsageMetric(value.cacheWrite) ||
+    !isNullableUsageCost(value.cost) ||
+    !includesValue(CHAT_OPERATION_V2_USAGE_STATUSES, value.status) ||
+    (value.outcome !== null && !includesValue(CHAT_OPERATION_V2_USAGE_OUTCOMES, value.outcome)) ||
+    !isNonNegativeInteger(value.ts) ||
+    !isNonNegativeInteger(value.createdAt) ||
+    (value.settledAt !== null && !isNonNegativeInteger(value.settledAt))
+  ) {
+    invalid('usage record projection is invalid');
+  }
+  if (
+    value.ts !== (value.settledAt ?? value.createdAt) ||
+    ((value.status === 'settled' || value.status === 'corrected') && value.settledAt === null)
+  ) {
+    invalid('usage record timestamps are inconsistent');
+  }
+  return {
+    usageId: value.usageId,
+    operationId: value.operationId,
+    invocationId: value.invocationId,
+    purpose: value.purpose,
+    providerID: value.providerID,
+    modelID: value.modelID,
+    variantId: value.variantId,
+    tokensIn: value.tokensIn,
+    tokensOut: value.tokensOut,
+    tokensReasoning: value.tokensReasoning,
+    cacheRead: value.cacheRead,
+    cacheWrite: value.cacheWrite,
+    cost: value.cost,
+    status: value.status,
+    outcome: value.outcome,
+    ts: value.ts,
+    createdAt: value.createdAt,
+    settledAt: value.settledAt,
+  };
+}
+
 function parseOperation(value: unknown): ChatOperationV2Projection {
-  if (!isPlainRecord(value) || !hasExactKeys(value, OPERATION_KEYS)) {
+  // The terminal-discard reason pair is additive: an older sidecar omits both,
+  // a current sidecar always sends both. Partial presence is a protocol error,
+  // the same contract `trialProgress` uses on operation detail projections.
+  if (
+    !isPlainRecord(value) ||
+    (!hasExactKeys(value, OPERATION_KEYS) &&
+      !hasExactKeys(value, [...OPERATION_KEYS, ...OPERATION_TERMINAL_REASON_KEYS]))
+  ) {
     invalid('operation projection has missing or unknown fields');
   }
   if (
@@ -1493,6 +1678,21 @@ function parseOperation(value: unknown): ChatOperationV2Projection {
     value.waitReason !== 'user_recovery_choice'
   ) {
     invalid('operation pending input has no matching wait state');
+  }
+  if (value.terminalReasonCode !== undefined) {
+    if (
+      (value.terminalReasonCode !== null &&
+        (typeof value.terminalReasonCode !== 'string' ||
+          !PROJECTION_SAFE_CODE.test(value.terminalReasonCode))) ||
+      !Array.isArray(value.terminalDiagnosticCodes) ||
+      value.terminalDiagnosticCodes.length > 16 ||
+      value.terminalDiagnosticCodes.some(
+        (code) => typeof code !== 'string' || !PROJECTION_SAFE_CODE.test(code),
+      ) ||
+      new Set(value.terminalDiagnosticCodes).size !== value.terminalDiagnosticCodes.length
+    ) {
+      invalid('operation terminal reason projection is invalid');
+    }
   }
   return value as unknown as ChatOperationV2Projection;
 }
@@ -2796,6 +2996,57 @@ export async function fetchChatOperationV2Events(
     nextCursor: value.nextCursor,
     events,
   };
+}
+
+export const CHAT_OPERATION_V2_MAX_USAGE_PAGE_LIMIT = 5_000;
+
+export async function fetchChatOperationV2Usage(
+  options: ChatOperationV2UsageReadOptions = {},
+): Promise<ChatOperationV2UsagePage> {
+  if (
+    options.limit !== undefined &&
+    (!Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > CHAT_OPERATION_V2_MAX_USAGE_PAGE_LIMIT)
+  ) {
+    throw new RangeError(
+      `Chat Operation V2 usage limit must be an integer from 1 to ${CHAT_OPERATION_V2_MAX_USAGE_PAGE_LIMIT}.`,
+    );
+  }
+  if (
+    options.before !== undefined &&
+    options.before !== null &&
+    !isNonNegativeInteger(options.before)
+  ) {
+    throw new RangeError('Chat Operation V2 usage cursor must be a non-negative safe integer.');
+  }
+  const query = new URLSearchParams();
+  if (options.limit !== undefined) query.set('limit', String(options.limit));
+  if (options.before !== undefined && options.before !== null) {
+    query.set('before', String(options.before));
+  }
+  const suffix = query.toString() ? `?${query}` : '';
+  const value = await readJson(`/usage${suffix}`, options);
+  if (
+    !isPlainRecord(value) ||
+    !hasExactKeys(value, ['protocolVersion', 'records', 'totalRecords', 'hasMore'])
+  ) {
+    invalid('usage page envelope has missing or unknown fields');
+  }
+  assertProtocolVersion(value);
+  if (
+    !Array.isArray(value.records) ||
+    !isNonNegativeInteger(value.totalRecords) ||
+    typeof value.hasMore !== 'boolean' ||
+    value.totalRecords < value.records.length
+  ) {
+    invalid('usage page projection is invalid');
+  }
+  const records = value.records.map(parseUsageRecord);
+  if (new Set(records.map((record) => record.usageId)).size !== records.length) {
+    invalid('usage page contains duplicate records');
+  }
+  return { records, totalRecords: value.totalRecords, hasMore: value.hasMore };
 }
 
 export function subscribeChatOperationV2Events(

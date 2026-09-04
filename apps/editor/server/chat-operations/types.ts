@@ -45,6 +45,24 @@ export const CHAT_OPERATION_V2_TERMINAL_OUTCOMES = [
 
 export type ChatOperationV2TerminalOutcome = (typeof CHAT_OPERATION_V2_TERMINAL_OUTCOMES)[number];
 
+/**
+ * Host-authored reasons for an automatic pre-commit discard. They ride the
+ * existing `stage_status_changed` payload (`errorCode`/`diagnosticCodes`), so
+ * every value must stay a safe code. Verification pass-through codes are not
+ * members of this set; `trial_verification_failed` is the fallback for one
+ * that cannot be represented safely.
+ */
+export const CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES = [
+  'stage_creation_failed',
+  'trial_plan_no_change',
+  'repair_no_change',
+  'repair_attempts_exhausted',
+  'trial_verification_failed',
+] as const;
+
+export type ChatOperationV2TerminalDiscardReasonCode =
+  (typeof CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES)[number];
+
 export const DEFAULT_CHAT_OPERATION_V2_REPAIR_MAX_ATTEMPTS = 3;
 export const DEFAULT_CHAT_OPERATION_V2_CLARIFICATION_MAX_ROUNDS = 3;
 

@@ -207,3 +207,56 @@ export function chatOperationV2FailureRequiresModelChange(
 ): boolean {
   return chatOperationV2FailurePresentation(failure).requiresModelChange;
 }
+
+/**
+ * Reason-specific copy for an automatic terminal discard. A Host discard
+ * reason is terminal evidence, not a retryable failure, so it carries no
+ * model-change guidance; sending the same request again starts a fresh
+ * operation.
+ */
+export interface ChatOperationV2TerminalDiscardPresentation {
+  readonly title: string;
+  readonly detail: string;
+}
+
+const TERMINAL_DISCARD_PRESENTATIONS: Readonly<
+  Record<string, ChatOperationV2TerminalDiscardPresentation>
+> = Object.freeze({
+  trial_plan_no_change: {
+    title: 'Trial planning produced no usable verification plan',
+    detail:
+      'Trial planning ended without a usable verification plan after repair, so Tagma discarded the staged draft before publication. Your current pipeline was left unchanged. Send the request again to retry.',
+  },
+  repair_no_change: {
+    title: 'The repair pass produced no changes',
+    detail:
+      'The repair pass produced no changes to the staged draft, so Tagma discarded it before publication. Your current pipeline was left unchanged. Send the request again to retry.',
+  },
+  repair_attempts_exhausted: {
+    title: 'Repair attempts ran out',
+    detail:
+      'Repeated repairs still failed verification and the repair budget ran out, so Tagma discarded the staged draft before publication. Your current pipeline was left unchanged. Send the request again to retry.',
+  },
+  stage_creation_failed: {
+    title: 'Tagma could not prepare the staging area',
+    detail:
+      'Tagma could not prepare the isolated staging area for this edit, so no draft was staged or published. Your current pipeline was left unchanged. Send the request again to retry.',
+  },
+  trial_verification_failed: {
+    title: 'Trial verification did not pass',
+    detail:
+      'Trial verification did not pass, so Tagma discarded the staged draft before publication. Your current pipeline was left unchanged. Send the request again to retry.',
+  },
+});
+
+/**
+ * Map a projected terminal discard reason to specific copy. Returns null for
+ * an absent or unknown code so callers keep the generic terminal notice; the
+ * raw code is still rendered separately for supportability.
+ */
+export function chatOperationV2TerminalDiscardPresentation(
+  reasonCode: string | null | undefined,
+): ChatOperationV2TerminalDiscardPresentation | null {
+  if (!reasonCode) return null;
+  return TERMINAL_DISCARD_PRESENTATIONS[reasonCode] ?? null;
+}
