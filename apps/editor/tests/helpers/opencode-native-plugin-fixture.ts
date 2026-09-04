@@ -100,6 +100,16 @@ export function stagePinnedOpencodePluginFixture(
   tagmaCwd: string,
   expectedOpencodeVersion: string,
 ): void {
+  const roots = [resolveOpencodeRuntimePaths(tagmaCwd).configDir, join(tagmaCwd, '.opencode')];
+  for (const extensionRoot of roots) {
+    stagePinnedOpencodePluginRuntime(extensionRoot, expectedOpencodeVersion);
+  }
+}
+
+export function stagePinnedOpencodePluginRuntime(
+  extensionRoot: string,
+  expectedOpencodeVersion: string,
+): void {
   const pluginRoot = resolvePackageRoot(
     '@opencode-ai/plugin',
     '@opencode-ai/plugin',
@@ -113,11 +123,7 @@ export function stagePinnedOpencodePluginFixture(
   }
   const zodRoot = resolvePackageRoot('zod', 'zod', pluginRoot);
   const zod = readPackageMetadata(zodRoot);
-  const roots = [resolveOpencodeRuntimePaths(tagmaCwd).configDir, join(tagmaCwd, '.opencode')];
-
-  for (const extensionRoot of roots) {
-    copyPackage(pluginRoot, extensionRoot, plugin.name);
-    copyPackage(zodRoot, extensionRoot, zod.name);
-    writeDependencyMetadata(extensionRoot, plugin.version, zod.version);
-  }
+  copyPackage(pluginRoot, extensionRoot, plugin.name);
+  copyPackage(zodRoot, extensionRoot, zod.name);
+  writeDependencyMetadata(extensionRoot, plugin.version, zod.version);
 }

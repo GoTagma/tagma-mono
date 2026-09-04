@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'bun:test';
+import { afterAll, expect, mock, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -33,6 +33,7 @@ import {
   readChatPipelineTrialPlanToolTelemetry,
 } from '../server/chat-pipeline-trial-plan';
 import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
+import { stagePinnedOpencodePluginRuntime } from './helpers/opencode-native-plugin-fixture';
 
 type GeneratedTrialPlanTool = {
   execute(args: Record<string, unknown>, context: { directory: string }): Promise<string>;
@@ -57,6 +58,20 @@ const fakeTool = Object.assign((definition: unknown) => definition, { schema: fa
 mock.module('@opencode-ai/plugin', () => ({ tool: fakeTool }));
 
 let generatedTrialPlanAttemptSequence = 0;
+let generatedToolRuntimeRoot: string | null = null;
+
+function sharedGeneratedToolRuntimeRoot(): string {
+  if (generatedToolRuntimeRoot) return generatedToolRuntimeRoot;
+  generatedToolRuntimeRoot = mkdtempSync(join(tmpdir(), 'tagma-generated-tools-'));
+  stagePinnedOpencodePluginRuntime(generatedToolRuntimeRoot, '1.18.18');
+  return generatedToolRuntimeRoot;
+}
+
+afterAll(() => {
+  if (!generatedToolRuntimeRoot) return;
+  rmSync(generatedToolRuntimeRoot, { recursive: true, force: true });
+  generatedToolRuntimeRoot = null;
+});
 
 function issueGeneratedTrialPlanAttempt(
   pipelinePath: string,
@@ -93,7 +108,7 @@ function issueGeneratedTrialPlanAttempt(
 async function loadGeneratedYamlSkeletonTool(): Promise<{
   execute(args: Record<string, unknown>): Promise<string>;
 }> {
-  const dir = mkdtempSync(join(tmpdir(), 'tagma-generated-yaml-skeleton-tool-'));
+  const dir = mkdtempSync(join(sharedGeneratedToolRuntimeRoot(), 'yaml-skeleton-'));
   const path = join(dir, 'tagma_yaml_skeleton.ts');
   writeFileSync(path, buildTagmaYamlSkeletonTool(), 'utf8');
   const loaded = (await import(`${pathToFileURL(path).href}?test=${Date.now()}`)) as {
@@ -106,7 +121,7 @@ async function loadGeneratedTrialPlanTool(): Promise<{
   tool: GeneratedTrialPlanTool;
   cleanup: () => void;
 }> {
-  const dir = mkdtempSync(join(tmpdir(), 'tagma-generated-trial-tool-'));
+  const dir = mkdtempSync(join(sharedGeneratedToolRuntimeRoot(), 'trial-plan-'));
   const path = join(dir, 'tagma_trial_plan.ts');
   writeFileSync(path, buildTagmaTrialPlanTool(), 'utf8');
   const loaded = (await import(`${pathToFileURL(path).href}?test=${Date.now()}`)) as {
