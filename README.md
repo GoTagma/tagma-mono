@@ -264,7 +264,10 @@ The version script updates package `version` fields and then refreshes the root 
 1. Detect version diffs against the previous commit. Packages whose version is unchanged are skipped.
 2. Publish each changed package by running the matching `publish:*` script in dependency order.
 
-Auth currently comes from the `NPM_TOKEN` repo secret, written to `.npmrc` only for the publish job and removed in a cleanup step after publishing.
+Auth comes from the `NPM_TOKEN` repo secret, passed to Bun through its supported
+`NPM_CONFIG_TOKEN` environment variable without writing the credential to disk. Each package publish
+is registry-checked before the attempt and after a failure, then retried at most three times. This
+keeps an already-committed immutable version from being published twice when npm loses a response.
 
 To re-trigger publish after bumping a package version manually, dispatch the workflow from the Actions tab and pass a JSON array, for example `["types","sdk"]`. Valid keys: `types`, `core`, `runtime-bun`, `codex`, `claude-code`, `lightrag`, `webhook`, `llm-judge`, `sdk`. npm does not allow overwriting an already-published version.
 

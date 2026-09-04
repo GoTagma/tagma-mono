@@ -39,6 +39,7 @@ import {
   startOpencodeV2FakeProvider,
   type OpencodeV2FakeProvider,
 } from './helpers/opencode-v2-fake-provider';
+import { stagePinnedOpencodePluginFixture } from './helpers/opencode-native-plugin-fixture';
 
 const ENV_KEYS = [
   'TAGMA_OPENCODE_BUNDLED_DIR',
@@ -513,6 +514,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       mkdirSync(tagmaCwdPath, { recursive: true });
       const tagmaCwd = realpathSync.native(tagmaCwdPath);
       expect(seedOpencodeArtifacts(tagmaCwd)).toBe(true);
+      stagePinnedOpencodePluginFixture(tagmaCwd, expectedVersion);
 
       const handle = await ensureOpencode(tagmaCwd);
       let client = createClient(handle.baseUrl, tagmaCwd, handle.auth.authorization, true);

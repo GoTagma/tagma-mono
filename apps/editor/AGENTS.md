@@ -8,6 +8,11 @@
   failure. Native managed-runtime smoke tests must exercise the production default instead of
   imposing a shorter local budget. Let that single database request finish instead of abandoning it
   and issuing overlapping initialization probes.
+- Keep native managed-runtime smokes independent of npm availability without replacing OpenCode's
+  plugin API with a fake. Stage the exact pinned `@opencode-ai/plugin` devDependency and its Zod
+  runtime into both isolated extension roots, with matching package/lock metadata, before starting
+  the pinned binary. The smoke validates OpenCode integration; package installation is covered by
+  the repository dependency gates.
 - Keep the health/database/tool-registry readiness probes abortable and tied to the spawned
   process's `exited` promise. A restart kills the previous process, so without that abort its
   pollers keep probing the dead port until the full readiness budget expires and

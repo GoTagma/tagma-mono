@@ -46,6 +46,7 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@opencode-ai/plugin": "1.18.18",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.2",
     "@types/react": "^19.1.0",

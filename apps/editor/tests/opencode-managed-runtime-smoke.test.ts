@@ -28,6 +28,7 @@ import {
 } from '../server/opencode-managed-tools';
 import { createStreamingLoopbackFetch } from '../server/loopback-fetch';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
+import { stagePinnedOpencodePluginFixture } from './helpers/opencode-native-plugin-fixture';
 
 const ENV_KEYS = [
   'TAGMA_OPENCODE_BUNDLED_DIR',
@@ -200,6 +201,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       mkdirSync(tagmaCwdPath, { recursive: true });
       const tagmaCwd = canonicalFilesystemPath(tagmaCwdPath);
       expect(seedOpencodeArtifacts(tagmaCwd)).toBe(true);
+      stagePinnedOpencodePluginFixture(tagmaCwd, expectedVersion);
 
       const runtime = resolveOpencodeRuntimePaths(tagmaCwd);
       for (const { filename } of TAGMA_MANAGED_OPENCODE_TOOLS) {

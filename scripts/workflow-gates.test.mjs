@@ -59,13 +59,33 @@ test('publish-npm validates only public npm packages before npm auth', () => {
   );
 });
 
-test('publish-npm rejects a missing token before writing npm auth files', () => {
+test('publish-npm passes Bun its token without writing npm auth files', () => {
   const auth = stepIndex(workflow, 'Configure npm auth');
-  const cleanup = stepIndex(workflow, 'Cleanup npm auth');
-  const authBlock = workflow.slice(auth, cleanup);
+  const publish = stepIndex(workflow, 'Publish packages in dependency order');
+  const authBlock = workflow.slice(auth, publish);
+  const publishBlock = workflow.slice(publish);
 
-  assert.match(authBlock, /if \[ -z "\$NPM_TOKEN" \]/);
+  assert.match(authBlock, /NPM_CONFIG_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+  assert.match(authBlock, /if \[ -z "\$NPM_CONFIG_TOKEN" \]/);
   assert.match(authBlock, /NPM_TOKEN is required/);
+  assert.match(publishBlock, /NPM_CONFIG_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+  assert.doesNotMatch(workflow, /_authToken|tee \.npmrc|Cleanup npm auth/);
+});
+
+test('publish-npm retries transient failures without overwriting an existing version', () => {
+  const publish = stepIndex(workflow, 'Publish packages in dependency order');
+  const block = workflow.slice(publish);
+  const precheck = block.indexOf('if registry_has_version "$package_dir"');
+  const publishAttempt = block.indexOf('if bun run "$script"');
+  const postFailureCheck = block.indexOf('if registry_has_version "$package_dir"', precheck + 1);
+
+  assert.match(block, /npm view "\$\{name\}@\$\{version\}" version/);
+  assert.match(block, /for attempt in 1 2 3/);
+  assert.notEqual(precheck, -1, 'publish must skip a version already in the registry');
+  assert.notEqual(publishAttempt, -1, 'publish attempt is missing');
+  assert.notEqual(postFailureCheck, -1, 'publish must reconcile an ambiguous failed response');
+  assert(precheck < publishAttempt, 'registry precheck must run before publish');
+  assert(publishAttempt < postFailureCheck, 'ambiguous-response reconciliation must follow publish');
 });
 
 test('ci full-check runs repository hygiene gates before type/test/lint', () => {

@@ -5,33 +5,7 @@ import { join } from 'node:path';
 
 import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
-
-function seedFakePlugin(configDir: string): void {
-  const pluginDir = join(configDir, 'node_modules', '@opencode-ai', 'plugin');
-  mkdirSync(join(pluginDir, 'dist'), { recursive: true });
-  writeFileSync(
-    join(pluginDir, 'package.json'),
-    JSON.stringify({
-      name: '@opencode-ai/plugin',
-      type: 'module',
-      exports: { '.': { import: './dist/index.js' } },
-    }),
-    'utf8',
-  );
-  writeFileSync(
-    join(pluginDir, 'dist', 'index.js'),
-    [
-      'const schemaNode = new Proxy(function schemaNode() { return schemaNode; }, {',
-      '  get() { return schemaNode; },',
-      '  apply() { return schemaNode; },',
-      '});',
-      'const schema = new Proxy({}, { get() { return () => schemaNode; } });',
-      'const tool = Object.assign((definition) => definition, { schema });',
-      'export { tool };',
-    ].join('\n'),
-    'utf8',
-  );
-}
+import { stagePinnedOpencodePluginFixture } from './helpers/opencode-native-plugin-fixture';
 
 test('managed OpenCode tools load from the isolated runtime and migrate legacy workspaces', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma managed tools 中文-'));
@@ -62,7 +36,22 @@ test('managed OpenCode tools load from the isolated runtime and migrate legacy w
     }
 
     expect(seedOpencodeArtifacts(tagmaCwd)).toBe(true);
-    seedFakePlugin(runtime.configDir);
+    stagePinnedOpencodePluginFixture(tagmaCwd, '1.18.18');
+
+    for (const extensionRoot of [runtime.configDir, join(tagmaCwd, '.opencode')]) {
+      const packageMetadata = JSON.parse(
+        readFileSync(join(extensionRoot, 'package.json'), 'utf8'),
+      ) as { dependencies: Record<string, string> };
+      const packageLock = JSON.parse(
+        readFileSync(join(extensionRoot, 'package-lock.json'), 'utf8'),
+      ) as { packages: { '': { dependencies: Record<string, string> } } };
+      expect(packageMetadata.dependencies['@opencode-ai/plugin']).toBe('1.18.18');
+      expect(packageLock.packages[''].dependencies).toEqual(packageMetadata.dependencies);
+      expect(
+        existsSync(join(extensionRoot, 'node_modules', '@opencode-ai', 'plugin', 'dist', 'index.js')),
+      ).toBe(true);
+      expect(existsSync(join(extensionRoot, 'node_modules', 'zod', 'index.js'))).toBe(true);
+    }
 
     const managedToolPaths = managedToolNames.map((name) => join(runtime.configDir, 'tools', name));
     for (const path of managedToolPaths) expect(existsSync(path)).toBe(true);
@@ -81,6 +70,9 @@ test('managed OpenCode tools load from the isolated runtime and migrate legacy w
         '  const mod = await import(pathToFileURL(path).href);',
         '  if (!mod.default) throw new Error(`missing default export: ${path}`);',
         '  loaded.push(mod.default);',
+        '}',
+        'if (!loaded[0].args.manifest?._zod) {',
+        '  throw new Error("managed tool did not load the pinned OpenCode Zod schema runtime");',
         '}',
         'const output = await loaded[0].execute({',
         '  manifest: {',

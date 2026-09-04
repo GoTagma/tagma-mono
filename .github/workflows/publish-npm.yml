@@ -163,23 +163,20 @@ jobs:
 
       - name: Configure npm auth
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NPM_TOKEN" ]; then
+          if [ -z "$NPM_CONFIG_TOKEN" ]; then
             echo "NPM_TOKEN is required" >&2
             exit 1
           fi
-          # Write to both workspace root and HOME so bun publish finds it
-          # regardless of where it resolves .npmrc from.
-          {
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}"
-            echo "registry=https://registry.npmjs.org/"
-            echo "always-auth=true"
-          } | tee .npmrc > ~/.npmrc
+          # Bun reads this environment variable directly. Avoid the Bun 1.3.11
+          # .npmrc token-path regression and never materialize the secret.
+          echo "npm authentication is configured"
 
       - name: Publish packages in dependency order
         env:
           PACKAGES: ${{ needs.detect.outputs.packages }}
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
           # Publish order must follow the dependency chain:
@@ -201,6 +198,30 @@ jobs:
           PUBLISH_MAP[llm-judge]="publish:completion-llm-judge"
           PUBLISH_MAP[sdk]="publish:sdk"
 
+          declare -A PACKAGE_DIR
+          PACKAGE_DIR[types]="packages/types"
+          PACKAGE_DIR[core]="packages/core"
+          PACKAGE_DIR[runtime-bun]="packages/runtime-bun"
+          PACKAGE_DIR[codex]="packages/driver-codex"
+          PACKAGE_DIR[claude-code]="packages/driver-claude-code"
+          PACKAGE_DIR[lightrag]="packages/middleware-lightrag"
+          PACKAGE_DIR[webhook]="packages/trigger-webhook"
+          PACKAGE_DIR[llm-judge]="packages/completion-llm-judge"
+          PACKAGE_DIR[sdk]="packages/sdk"
+
+          registry_has_version() {
+            local package_dir="$1"
+            local name version published
+            name=$(node -p "require('./${package_dir}/package.json').name")
+            version=$(node -p "require('./${package_dir}/package.json').version")
+            published=$(
+              env -u NPM_CONFIG_TOKEN \
+                npm view "${name}@${version}" version --registry=https://registry.npmjs.org/ \
+                2>/dev/null || true
+            )
+            [ "$published" = "$version" ]
+          }
+
           for key in "${ORDER[@]}"; do
             is_changed=$(node -e "
               const a=JSON.parse(process.env.PACKAGES);
@@ -209,15 +230,42 @@ jobs:
 
             if [ "$is_changed" = "true" ]; then
               script="${PUBLISH_MAP[$key]}"
-              echo "Publishing ${key} (${script})"
-              bun run "$script"
+              package_dir="${PACKAGE_DIR[$key]}"
+              if registry_has_version "$package_dir"; then
+                echo "${key} is already published; skipping the existing version"
+                continue
+              fi
+
+              published=false
+              for attempt in 1 2 3; do
+                echo "Publishing ${key} (${script}), attempt ${attempt}/3"
+                if bun run "$script"; then
+                  published=true
+                  break
+                fi
+
+                # A registry may commit the version and lose the response. Do
+                # not retry that immutable version once it is observable.
+                if registry_has_version "$package_dir"; then
+                  echo "${key} is present after an ambiguous publish failure"
+                  published=true
+                  break
+                fi
+
+                if [ "$attempt" -lt 3 ]; then
+                  delay=$((attempt * 15))
+                  echo "${key} publish failed transiently; retrying in ${delay}s" >&2
+                  sleep "$delay"
+                fi
+              done
+
+              if [ "$published" != "true" ]; then
+                echo "${key} publish failed after 3 attempts" >&2
+                exit 1
+              fi
               echo "${key} published"
             fi
           done
 
           echo ""
           echo "All changed packages published."
-
-      - name: Cleanup npm auth
-        if: always()
-        run: rm -f .npmrc ~/.npmrc

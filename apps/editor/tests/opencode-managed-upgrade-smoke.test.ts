@@ -18,8 +18,8 @@ import { Database } from 'bun:sqlite';
 import { ensureOpencode, stopOpencodeProcesses } from '../server/opencode-lifecycle';
 import type { OpencodeHandle } from '../server/opencode-lifecycle';
 import { createStreamingLoopbackFetch } from '../server/loopback-fetch';
-import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
+import { stagePinnedOpencodePluginFixture } from './helpers/opencode-native-plugin-fixture';
 
 const UPGRADE_FROM_VERSION = '1.17.8';
 const UPGRADE_FROM_SCHEMA_VERSION = 1;
@@ -132,38 +132,6 @@ function configureRuntime(directory: string, version: string, schemaVersion: num
   process.env.TAGMA_OPENCODE_ACTIVE_VERSION = version;
   process.env.TAGMA_OPENCODE_ACTIVE_SOURCE = 'bundled';
   process.env.TAGMA_OPENCODE_BUNDLED_VERSION = version;
-}
-
-function seedDeterministicToolPlugin(tagmaCwd: string): void {
-  const pluginDir = join(
-    resolveOpencodeRuntimePaths(tagmaCwd).configDir,
-    'node_modules',
-    '@opencode-ai',
-    'plugin',
-  );
-  mkdirSync(join(pluginDir, 'dist'), { recursive: true });
-  writeFileSync(
-    join(pluginDir, 'package.json'),
-    JSON.stringify({
-      name: '@opencode-ai/plugin',
-      type: 'module',
-      exports: { '.': { import: './dist/index.js' } },
-    }),
-    'utf8',
-  );
-  writeFileSync(
-    join(pluginDir, 'dist', 'index.js'),
-    [
-      'const schemaNode = new Proxy(function schemaNode() { return schemaNode; }, {',
-      '  get() { return schemaNode; },',
-      '  apply() { return schemaNode; },',
-      '});',
-      'const schema = new Proxy({}, { get() { return () => schemaNode; } });',
-      'const tool = Object.assign((definition) => definition, { schema });',
-      'export { tool };',
-    ].join('\n'),
-    'utf8',
-  );
 }
 
 function sdkClients(handle: OpencodeHandle, directory: string) {
@@ -477,7 +445,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_UPGRADE_SMOKE === '1') {
       const tagmaCwd = canonicalFilesystemPath(tagmaCwdPath);
       const stagedTagmaCwd = canonicalFilesystemPath(stagedTagmaCwdPath);
       seedOpencodeArtifacts(tagmaCwd);
-      seedDeterministicToolPlugin(tagmaCwd);
+      stagePinnedOpencodePluginFixture(tagmaCwd, currentVersion);
 
       let originalDatabasePath = '';
       let originalDatabaseDigest = '';
