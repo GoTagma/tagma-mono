@@ -141,6 +141,15 @@ without replacing the selected transcript or granting their write authority. A h
 keeps the current transcript visible until the requested result loads; later selections and
 workspace changes invalidate older responses.
 
+Review/revision pipelines pass concrete feedback through required inputs or a declared artifact,
+including a valid empty feedback list when approved. Their acceptance checks should exercise a
+non-empty review and inspect the required correction. Self-contained pipelines also need an
+unseeded first-run case: pre-seeding an input in every test verifies reuse only. Source identities,
+counts, relationships, and required content provide stronger evidence than file existence or a
+heading. The Windows changelog regression in `tests/changelog-review-acceptance.test.ts` executes
+real PowerShell commands and Host Sandbox Trial with deterministic model responses to guard these
+boundaries without provider calls.
+
 ### Chat control database compatibility
 
 Chat Operation V2 authority is shared across workspaces in the stable user-data

@@ -1404,6 +1404,9 @@
   default.
 - For fast regressions, pass repeatable unique selectors such as
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
+- Trial settings disclosures are checked by `tests/editor-settings-chat-trial-run.test.ts`.
+  Update those assertions with copy changes while retaining coverage of synthetic Sandbox inputs,
+  closed stdin/TTY, application-level isolation, Live Smoke prerequisites, and ordinary-run approvals.
 - Keep prerequisite assertions independent of unrelated CLI availability. Prompt tasks default to
   the `opencode` driver, so use a command task when a test intends to isolate another blocker. When
   an integration test must execute a prompt through a stubbed `opencode` driver, put a fake
@@ -1431,6 +1434,14 @@
   Reuse `useModalBackdropDismiss` for these provider modals.
 
 ## Chat Trial Plan Semantics
+
+- A review verdict/score does not carry its actionable feedback. Author explicit required feedback
+  inputs (or a declared feedback artifact) for revision, preserving valid empty feedback on approval.
+  Session continuation is not a substitute for an independent reviewer's dataflow contract.
+- Cover self-generated inputs from an unseeded first run as well as reuse. A pre-seeded repeat case
+  cannot prove creation. Derive content assertions from source identities, counts, relationships,
+  and required corrections; headings, task success, and an approve-only example cannot establish
+  feedback application. Preserve the existing negative rejection and repeat checks.
 
 - The real-provider Chat V2 convergence gate must fetch the final operation detail and require a
   non-empty Host-authenticated assistant result at the Renderer projection boundary. A terminal

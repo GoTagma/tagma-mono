@@ -76,7 +76,7 @@
     },
     "packages/completion-llm-judge": {
       "name": "@tagma/completion-llm-judge",
-      "version": "0.2.94",
+      "version": "0.2.95",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -86,14 +86,14 @@
     },
     "packages/core": {
       "name": "@tagma/core",
-      "version": "0.1.103",
+      "version": "0.1.104",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-claude-code": {
       "name": "@tagma/driver-claude-code",
-      "version": "0.3.94",
+      "version": "0.3.95",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -103,7 +103,7 @@
     },
     "packages/driver-codex": {
       "name": "@tagma/driver-codex",
-      "version": "0.2.94",
+      "version": "0.2.95",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -113,7 +113,7 @@
     },
     "packages/middleware-lightrag": {
       "name": "@tagma/middleware-lightrag",
-      "version": "0.2.95",
+      "version": "0.2.96",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -123,7 +123,7 @@
     },
     "packages/runtime-bun": {
       "name": "@tagma/runtime-bun",
-      "version": "0.1.90",
+      "version": "0.1.91",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "chokidar": "^4.0.0",
@@ -131,7 +131,7 @@
     },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.7.109",
+      "version": "0.7.110",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "@tagma/runtime-bun": "workspace:*",
@@ -141,7 +141,7 @@
     },
     "packages/trigger-webhook": {
       "name": "@tagma/trigger-webhook",
-      "version": "0.2.95",
+      "version": "0.2.96",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -151,7 +151,7 @@
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.4.106",
+      "version": "0.4.107",
     },
   },
   "packages": {

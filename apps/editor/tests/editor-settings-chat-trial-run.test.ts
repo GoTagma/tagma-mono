@@ -50,15 +50,22 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
 
     expect(source).toContain('Sandbox Trial');
     expect(source).toContain('fresh temporary copies');
-    expect(source).toContain('no inherited stdin/TTY');
-    expect(source).toContain('synthetic secrets');
+    expect(source).toContain('Stdin/TTY are closed');
+    expect(source).toContain('synthetic environment values');
     expect(source).toContain('application-level rather than OS-enforced');
-    expect(source).toContain('explicitly selected manual-trigger tasks');
+    expect(source).toContain('selected manual-trigger tasks');
+    expect(source).toContain('Missing real environment values do not block Sandbox cases');
+    expect(source).toContain(
+      'Normal runs still require their real environment and manual approvals',
+    );
     expect(source).toContain('Live Smoke Test');
     expect(source).toContain('baseline in the real workspace');
     expect(source).toContain('automatically grants its manual triggers');
     expect(source).toContain('normal host command authority');
     expect(source).toContain('real credentials and network access');
+    expect(source).toContain(
+      'Missing required environment values skip this baseline while Sandbox continues',
+    );
     expect(source).toContain('may mutate external state');
     expect(consentSource).toContain('CHAT_PIPELINE_TRIAL_CONSENT_VERSION = 3');
     expect(consentSource).toContain('CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION = 2');

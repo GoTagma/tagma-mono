@@ -1,0 +1,393 @@
+pipeline:
+  name: Tagma Feature Tour - Changelog Digest
+  driver: opencode
+  model: deepseek/deepseek-v4-flash
+  reasoning_effort: medium
+  hooks:
+    pipeline_complete: Write-Output "[tagma-feature-tour] pipeline completed"
+  tracks:
+    - id: bootstrap-data
+      name: Bootstrap sample data
+      color: '#64748b'
+      cwd: .tagma/chat-7ac28f05c07b16b27a3c2a57
+      tasks:
+        - id: seed-samples
+          name: Seed sample entries
+          command: |-
+            $dirs = @("input", "work")
+            foreach ($d in $dirs) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+            $target = "input/change-entries.json"
+            if (-not (Test-Path $target)) {
+              $entries = @(
+                [pscustomobject]@{ id = "c-104"; area = "api"; severity = "feature"; author = "ada"; summary = "Add cursor pagination to the order list endpoint" },
+                [pscustomobject]@{ id = "c-107"; area = "ui"; severity = "fix"; author = "lin"; summary = "Correct checkout summary alignment on narrow viewports" },
+                [pscustomobject]@{ id = "c-112"; area = "platform"; severity = "perf"; author = "sam"; summary = "Reduce cold-start latency by pre-warming worker connections" },
+                [pscustomobject]@{ id = "c-115"; area = "api"; severity = "breaking"; author = "ada"; summary = "Require an explicit accept-version header on v2 endpoints" }
+              )
+              $json = $entries | ConvertTo-Json -Depth 3
+              [IO.File]::WriteAllText($target, $json)
+              Write-Output "seeded $target"
+            } else {
+              Write-Output "reusing existing $target"
+            }
+            Write-Output '{"entryCount": 4, "samplesPath": "input/change-entries.json"}'
+          completion:
+            type: file_exists
+            path: input/change-entries.json
+            kind: file
+            min_size: 50
+          outputs:
+            entryCount:
+              type: number
+              description: Number of change entries seeded into the fixture
+            samplesPath:
+              type: string
+              description: Fixture path relative to the task cwd
+        - id: validate-samples
+          name: Validate sample entries
+          command: |-
+            $expected = {{inputs.entryCount}}
+            $entries = Get-Content "input/change-entries.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($entries.Count -ne $expected) {
+              Write-Error "expected $expected entries but found $($entries.Count)"
+              exit 1
+            }
+            $fields = @("id", "area", "severity", "summary")
+            foreach ($entry in $entries) {
+              foreach ($field in $fields) {
+                if ([string]::IsNullOrWhiteSpace([string]$entry.$field)) {
+                  Write-Error "entry '$($entry.id)' is missing field '$field'"
+                  exit 1
+                }
+              }
+            }
+            Write-Output "validated $($entries.Count) sample entries against expected count $expected"
+            Write-Output ('{"validCount": ' + $entries.Count + '}')
+          depends_on:
+            - seed-samples
+          inputs:
+            entryCount:
+              type: number
+              required: true
+              description: Number of change entries seeded into the fixture
+              from: bootstrap-data.seed-samples.outputs.entryCount
+            samplesPath:
+              type: string
+              description: Fixture path relative to the task cwd
+              required: true
+              from: bootstrap-data.seed-samples.outputs.samplesPath
+          outputs:
+            validCount:
+              type: number
+              description: Number of entries that passed validation
+    - id: authoring
+      name: Changelog authoring
+      color: '#f59e0b'
+      cwd: .tagma/chat-7ac28f05c07b16b27a3c2a57
+      permissions:
+        read: true
+        write: true
+        execute: false
+      tasks:
+        - id: draft-changelog
+          name: Draft the changelog
+          prompt: >-
+            You are the release writer for a product team. Your working directory contains 'input/change-entries.json',
+            an array of change entries with the fields: id, area, severity (feature|fix|perf|breaking), author, summary.
+            Read that file, then create the file 'work/draft-changelog.md' containing a polished changelog draft that:
+
+            - starts with a top-level '# Changelog' title and a '## [Unreleased]' section;
+
+            - groups the entries under '## ' subheadings named exactly after the source area and lists exactly one
+            Markdown bullet per entry, starting with '- [<id>] ' followed by a faithful paraphrase of its summary;
+
+            - flags severity 'breaking' entries with a '> Breaking change' callout and severity 'perf' entries with a '>
+            Performance' callout immediately below that entry's bullet, before the next bullet or area heading;
+
+            - keeps wording crisp and release-notes style, and does not invent entries beyond the source file.
+
+            Do not wrap anything in code fences. After the file is written, end your reply with exactly one final line
+            containing a plain JSON object (no fences, no trailing prose): {"draftComplete": true}.
+          completion:
+            type: file_exists
+            path: work/draft-changelog.md
+            kind: file
+            min_size: 100
+          depends_on:
+            - bootstrap-data.validate-samples
+          outputs:
+            draftComplete:
+              type: boolean
+              description: True once the draft file has been written
+        - id: revise-changelog
+          name: Revise from review
+          prompt: >-
+            You are still the release writer; this session continues directly from the drafting task. The reviewer
+            produced this verdict on your draft: verdict='{{inputs.verdict}}'. The complete list of concrete reviewer
+            issues is supplied in the native Inputs block as 'issues'; address every listed issue explicitly. When
+            the verdict is 'revise', rework
+            'work/draft-changelog.md' to address every reviewer issue while keeping every bullet grounded in
+            'input/change-entries.json'; when it is 'approve' or empty, only apply light polish. Rewrite the whole file
+            in place at 'work/draft-changelog.md' using the same layout rules as before: '# Changelog', '##
+            [Unreleased]', '## ' groups named exactly after the source area, and exactly one '- [<id>] ' bullet per
+            source entry. Put each required '> Breaking change' or '> Performance' callout immediately below that
+            entry's bullet, before the next bullet or area heading. Never add entries absent from the source.
+
+            Do not wrap anything in code fences. Finish with exactly one final JSON-object line (no fences, no trailing
+            prose): {"revisionComplete": true, "revisedPath": "work/draft-changelog.md"}.
+          completion:
+            type: file_exists
+            path: work/draft-changelog.md
+            kind: file
+            min_size: 100
+          continue_from: authoring.draft-changelog
+          depends_on:
+            - authoring.draft-changelog
+            - quality-review.critique-draft
+          inputs:
+            verdict:
+              type: string
+              required: true
+              default: ''
+              from: critique-draft.outputs.verdict
+              description: Reviewer verdict text (approve or revise)
+            issues:
+              type: json
+              required: true
+              from: quality-review.critique-draft.outputs.issues
+              description: Complete concrete reviewer issues to address during revision
+          outputs:
+            revisionComplete:
+              type: boolean
+              description: True once the revision pass finished
+            revisedPath:
+              type: string
+              description: Path of the revised changelog file
+    - id: quality-review
+      name: Quality review
+      color: '#ef4444'
+      cwd: .tagma/chat-7ac28f05c07b16b27a3c2a57
+      on_failure: stop_all
+      permissions:
+        read: true
+        write: false
+        execute: false
+      tasks:
+        - id: critique-draft
+          name: Critique the draft
+          prompt: >-
+            You are a rigorous, skeptical release reviewer with a read-only role. The draft changelog is injected below
+            in the context block 'Changelog draft under review'. Cross-check every bullet of that draft against the
+            authoritative source file 'input/change-entries.json' (read it yourself).
+
+            Rules:
+
+            - Flag any bullet that paraphrases an entry not present in the source, or that misstates area, severity, or
+            author.
+
+            - Flag missing 'breaking' or 'perf' callouts, structural problems, and grammar issues.
+
+            - Do not edit or create any file.
+
+            Finish with exactly one final JSON-object line (no code fences, no extra prose) using these keys: "verdict"
+            (only the lowercase word "approve" or "revise"), "score" (an integer 0-100), "issues" (an array of short
+            strings; empty array when the draft is clean). Example final line: {"verdict": "revise", "score": 78,
+            "issues": ["breaking change lacks a callout"]}.
+          middlewares:
+            - type: static_context
+              file: work/draft-changelog.md
+              label: Changelog draft under review
+              max_chars: 20000
+          depends_on:
+            - authoring.draft-changelog
+          outputs:
+            verdict:
+              type: string
+              description: Final review verdict (approve or revise)
+            score:
+              type: number
+              description: Review score 0-100
+            issues:
+              type: json
+              description: List of concrete issues found in the draft
+          continue_from: authoring.draft-changelog
+    - id: release
+      name: Verify and publish
+      color: '#10b981'
+      cwd: .tagma/chat-7ac28f05c07b16b27a3c2a57
+      tasks:
+        - id: verify-release
+          name: Verify the release artifact
+          command: |-
+            $ErrorActionPreference = 'Stop'
+            function Stop-ReleaseValidation([string]$message) {
+              Write-Output ("validation-error: " + $message)
+              Write-Error $message
+              exit 1
+            }
+            $path = "{{inputs.revisedPath}}"
+            if (-not (Test-Path $path)) { Stop-ReleaseValidation "missing artifact $path" }
+            $text = Get-Content $path -Raw -Encoding UTF8
+            if ([string]::IsNullOrWhiteSpace($text)) { Stop-ReleaseValidation "artifact is empty: $path" }
+            if ($text -notmatch '(?m)^# Changelog\s*$' -or $text -notmatch '(?m)^## \[Unreleased\]\s*$') {
+              Stop-ReleaseValidation 'required changelog title or Unreleased heading is missing'
+            }
+            $entries = Get-Content 'input/change-entries.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+            $byId = @{}
+            foreach ($entry in $entries) {
+              if ($byId.ContainsKey([string]$entry.id)) { Stop-ReleaseValidation "duplicate source id $($entry.id)" }
+              $byId[[string]$entry.id] = $entry
+            }
+            $seen = @{}
+            $lines = $text -split '\r?\n'
+            $area = ''
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              $line = $lines[$i]
+              if ($line -match '^##\s+(.+?)\s*$') { $area = $Matches[1]; continue }
+              if ($line -notmatch '^\s*[-*]\s+') { continue }
+              if ($line -notmatch '^\s*-\s+\[([^\]]+)\]\s+\S') {
+                Stop-ReleaseValidation "entry bullet has no explicit source id: $line"
+              }
+              $id = $Matches[1]
+              if (-not $byId.ContainsKey($id)) { Stop-ReleaseValidation "unknown source id $id" }
+              if ($seen.ContainsKey($id)) { Stop-ReleaseValidation "duplicate changelog entry $id" }
+              $entry = $byId[$id]
+              if ($area -ne $entry.area) { Stop-ReleaseValidation "wrong area for $id" }
+              $seen[$id] = $true
+              $block = $line
+              for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                if ($lines[$j] -match '^##\s|^\s*[-*]\s+') { break }
+                $block += "`n" + $lines[$j]
+              }
+              if ($entry.severity -eq 'breaking' -and $block -notmatch '(?m)^>\s*Breaking change\b') {
+                Stop-ReleaseValidation "missing breaking-change callout for $id"
+              }
+              if ($entry.severity -eq 'perf' -and $block -notmatch '(?m)^>\s*Performance\b') {
+                Stop-ReleaseValidation "missing performance callout for $id"
+              }
+            }
+            foreach ($id in $byId.Keys) {
+              if (-not $seen.ContainsKey($id)) { Stop-ReleaseValidation "missing source entry $id" }
+            }
+            Write-Output "verified $path against $($entries.Count) source entries and required severity callouts"
+            Write-Output '{"verified": true}'
+          depends_on:
+            - authoring.revise-changelog
+          inputs:
+            revisionComplete:
+              type: boolean
+              description: True once the revision pass finished
+              required: true
+              from: authoring.revise-changelog.outputs.revisionComplete
+            revisedPath:
+              type: string
+              required: true
+              default: work/draft-changelog.md
+              from: revise-changelog.outputs.revisedPath
+              description: Path of the revised changelog file
+          outputs:
+            verified:
+              type: boolean
+              description: True when the artifact passed all checks
+        - id: publish-release
+          name: Publish the final CHANGELOG
+          command: |-
+            New-Item -ItemType Directory -Force -Path "work/final" | Out-Null
+            $source = "{{inputs.revisedPath}}"
+            Copy-Item $source "work/final/CHANGELOG.md" -Force
+            Write-Output "reviewer score received: {{inputs.score}}"
+            Write-Output '{"publishedPath": "work/final/CHANGELOG.md"}'
+          completion:
+            type: file_exists
+            path: work/final/CHANGELOG.md
+            kind: file
+            min_size: 100
+          depends_on:
+            - authoring.revise-changelog
+            - release.verify-release
+            - quality-review.critique-draft
+          inputs:
+            revisionComplete:
+              type: boolean
+              description: True once the revision pass finished
+              required: true
+              from: authoring.revise-changelog.outputs.revisionComplete
+            revisedPath:
+              type: string
+              required: true
+              default: work/draft-changelog.md
+              from: revise-changelog.outputs.revisedPath
+              description: Path of the revised changelog file
+            verified:
+              type: boolean
+              description: True when the artifact passed all checks
+              required: true
+              from: verify-release.verified
+            verdict:
+              type: string
+              description: Final review verdict (approve or revise)
+              required: true
+              from: quality-review.critique-draft.outputs.verdict
+            score:
+              type: number
+              required: false
+              default: 0
+              from: critique-draft.outputs.score
+              description: Review score 0-100
+            issues:
+              description: List of concrete issues found in the draft
+              required: true
+              from: quality-review.critique-draft.outputs.issues
+          outputs:
+            publishedPath:
+              type: string
+              description: Path of the final published CHANGELOG artifact
+    - id: reporting
+      name: Final digest
+      color: '#8b5cf6'
+      cwd: .tagma/chat-7ac28f05c07b16b27a3c2a57
+      reasoning_effort: low
+      permissions:
+        read: true
+        write: false
+        execute: false
+      tasks:
+        - id: final-summary
+          name: Produce the final digest
+          prompt: >-
+            You are a concise product-digest analyst (read-only). The reviewed and published changelog lives at
+            '{{inputs.publishedPath}}' - read that file. Reviewer context for this run: verdict='{{inputs.verdict}}',
+            score={{inputs.score}}.
+
+            Write one short paragraph (2-4 sentences) summarising what ships in this release for a non-technical
+            stakeholder, plus one sentence on the review outcome. Finish with exactly one final JSON-object line (no
+            code fences, no trailing prose): {"digest": "<the paragraph>"}.
+          depends_on:
+            - release.publish-release
+            - quality-review.critique-draft
+          inputs:
+            publishedPath:
+              type: string
+              required: true
+              default: work/final/CHANGELOG.md
+              from: publish-release.outputs.publishedPath
+              description: Path of the final published changelog
+            verdict:
+              type: string
+              required: true
+              default: ''
+              from: critique-draft.outputs.verdict
+              description: Reviewer verdict from the quality gate
+            score:
+              type: number
+              required: false
+              default: 0
+              from: critique-draft.outputs.score
+              description: Reviewer score from the quality gate
+          outputs:
+            digest:
+              type: string
+              description: Final stakeholder digest paragraph
+          continue_from: quality-review.critique-draft
+  requires:
+    sdk: '>=0.7.40'

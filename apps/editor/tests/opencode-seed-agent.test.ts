@@ -703,6 +703,8 @@ test('multi-step planning keeps new-pipeline companions Host-owned', () => {
 });
 
 test('schema-driven YAML generation emits least-authority prompt tasks and rejects ambiguous result contracts', async () => {
+  // This first generated-tool test also stages the pinned plugin runtime on disk.
+  // Windows cold filesystem reads need a separate bounded setup budget.
   const tool = await loadGeneratedYamlSkeletonTool();
   const baseTrack = {
     id: 'track:main',
@@ -769,7 +771,7 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
       },
     }),
   ).rejects.toThrow('must choose one result contract');
-});
+}, 30_000);
 
 test('schema-driven YAML generation rejects task ids outside the runtime grammar', async () => {
   const tool = await loadGeneratedYamlSkeletonTool();
