@@ -62,7 +62,7 @@
     },
     "apps/electron": {
       "name": "tagma-desktop",
-      "version": "0.10.27",
+      "version": "0.11.0",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
