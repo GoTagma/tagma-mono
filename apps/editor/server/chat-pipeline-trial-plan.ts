@@ -12,9 +12,13 @@ import {
   isValidChatPipelineTrialPlanAttempts,
 } from '../shared/chat-pipeline-trial-plan-limit.js';
 import { sameFilesystemPathCoordinate } from '../shared/filesystem-paths.js';
+import {
+  normalizeTrialPrerequisiteCases,
+  type ChatPipelineTrialPrerequisiteControls,
+} from './chat-pipeline-trial-prerequisites.js';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 8,
+  version: 9,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,
@@ -145,7 +149,7 @@ export type ChatPipelineTrialExpectation =
       status: 'success' | 'failed' | 'skipped' | 'timeout' | 'blocked';
     };
 
-export interface ChatPipelineTrialPlanCase {
+export interface ChatPipelineTrialPlanCase extends ChatPipelineTrialPrerequisiteControls {
   id: string;
   title: string;
   objective: string;
@@ -174,7 +178,11 @@ export function findUncoveredChatPipelineTrialTerminalTaskIds(
 ): string[] {
   const dag = buildDag(pipelineConfig);
   const dependedOnTaskIds = new Set([...dag.nodes.values()].flatMap((node) => node.dependsOn));
-  const targetedTaskIds = new Set(plan.cases.flatMap((testCase) => testCase.targetTaskIds));
+  const targetedTaskIds = new Set(
+    plan.cases
+      .filter((testCase) => !testCase.baselineCaseId)
+      .flatMap((testCase) => testCase.targetTaskIds),
+  );
   return [...dag.nodes.keys()].filter(
     (taskId) =>
       !dependedOnTaskIds.has(taskId) &&
@@ -541,7 +549,7 @@ function relativeFilePathsOverlap(left: string, right: string): boolean {
 
 function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
   const label = `cases[${index}]`;
-  const raw = asRecord(value, label);
+  const raw = normalizeTrialPrerequisiteCases([asRecord(value, label)], false)[0]!;
   const id = asString(raw.id, `${label}.id`, 64);
   if (!PLAN_ID_RE.test(id)) throw new Error(`${label}.id has an invalid format.`);
   const fixtures = asArray(raw.fixtures ?? [], `${label}.fixtures`, MAX_FIXTURES_PER_CASE).map(
@@ -642,6 +650,11 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     fixtures,
     generatedInputPaths,
     expectations,
+    ...(raw.baselineCaseId !== undefined ? { baselineCaseId: raw.baselineCaseId } : {}),
+    ...(raw.environment !== undefined ? { environment: raw.environment } : {}),
+    ...(raw.deniedManualTaskIds !== undefined
+      ? { deniedManualTaskIds: raw.deniedManualTaskIds }
+      : {}),
   };
 }
 
@@ -845,7 +858,9 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
     throw new Error('trial plan goals must contain at least one behavior goal.');
   }
 
-  const cases = asArray(raw.cases, 'trial plan cases', MAX_CASES).map(parseCase);
+  const cases = normalizeTrialPrerequisiteCases(
+    asArray(raw.cases, 'trial plan cases', MAX_CASES).map(parseCase),
+  );
   if (cases.length === 0) throw new Error('trial plan cases must contain at least one case.');
   validateJsonArtifactExpectations(cases);
   const caseIds = new Set<string>();

@@ -78,7 +78,7 @@ function writeTrialPlan(
     planPath,
     JSON.stringify(
       {
-        version: 8,
+        version: 9,
         yamlHash,
         summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
         goals: ['Preserve every logical input without silently overwriting output.'],
@@ -1556,7 +1556,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('does not fork when non-virtualizable requirements block Trial before execution', async () => {
+  test('publishes verified Sandbox coverage when real environment requirements skip Live Smoke', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -1621,13 +1621,14 @@ describe('chat YAML staging routes', () => {
       trialRes,
     );
     expect(trialRes.body).toMatchObject({
-      success: false,
-      kind: 'blocked',
-      ran: false,
-      prerequisiteState: {
-        state: 'blocked',
-        blockers: [{ kind: 'environment', name: 'TAGMA_TEST_MISSING_TRIAL_ENV' }],
-      },
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+      liveSmokeStatus: 'skipped',
+      verificationMode: 'sandbox-cases-only',
+      plannedCaseCount: 1,
+      caseResultCount: 1,
+      notRunCaseCount: 0,
     });
 
     const finalizeRes = makeRes();
@@ -1642,7 +1643,7 @@ describe('chat YAML staging routes', () => {
     expect(finalizeRes.body).toMatchObject({
       outcome: 'adopted',
       conflicts: [],
-      trialVerification: 'prerequisite-unavailable',
+      trialVerification: 'verified',
       entry: { path: sourcePath },
     });
     expect(readFileSync(sourcePath, 'utf-8')).toContain('name: Environment Prerequisite');

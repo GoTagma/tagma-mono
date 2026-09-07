@@ -1,4 +1,5 @@
 import { CHAT_PIPELINE_TRIAL_PLAN_CONTRACT } from './chat-pipeline-trial-plan.js';
+import { normalizeTrialPrerequisiteCases } from './chat-pipeline-trial-prerequisites.js';
 
 /**
  * Build the OpenCode custom tool as a self-contained module. The tool runs in
@@ -8,6 +9,7 @@ import { CHAT_PIPELINE_TRIAL_PLAN_CONTRACT } from './chat-pipeline-trial-plan.js
  */
 export function buildTagmaTrialPlanTool(): string {
   const contract = JSON.stringify(CHAT_PIPELINE_TRIAL_PLAN_CONTRACT);
+  const prerequisiteValidator = normalizeTrialPrerequisiteCases.toString();
   return `import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -23,6 +25,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { tool } from "@opencode-ai/plugin";
 
 const CONTRACT = ${contract};
+const normalizeTrialPrerequisiteCases = (${prerequisiteValidator});
 const REQUIRED_COVERAGE = [...CONTRACT.coverageDimensions];
 const COVERAGE_STATUSES = [...CONTRACT.coverageStatuses];
 const FINDING_SEVERITIES = [...CONTRACT.findingSeverities];
@@ -293,7 +296,7 @@ function validateCase(value, index) {
   if (targetTaskIds.length === 0) {
     throw new Error(label + ".targetTaskIds must contain at least one qualified track.task id.");
   }
-  return {
+  return normalizeTrialPrerequisiteCases([{
     ...raw,
     id,
     runs:
@@ -304,7 +307,7 @@ function validateCase(value, index) {
     fixtures,
     generatedInputPaths,
     expectations,
-  };
+  }], false)[0];
 }
 
 function validateCaseEntries(value, requireNonEmpty) {
@@ -332,7 +335,7 @@ function validateCaseEntries(value, requireNonEmpty) {
       "trial plan fixtures exceed " + CONTRACT.limits.totalFixtureBytes + " bytes in total.",
     );
   }
-  return cases;
+  return normalizeTrialPrerequisiteCases(cases, requireNonEmpty);
 }
 
 function inputEvidence(testCase) {
@@ -1190,6 +1193,12 @@ const findingSchema = tool.schema.object({
 
 const caseSchema = tool.schema.object({
   id: tool.schema.string(),
+  baselineCaseId: tool.schema.string().optional().describe("Positive case to run before this one-prerequisite negative probe; retain the same targets and fixtures."),
+  environment: tool.schema.array(tool.schema.object({
+    name: tool.schema.string(),
+    value: tool.schema.string().nullable(),
+  })).max(32).optional().describe("Test-only defaults for declared environment inputs. null removes one input in a negative case; other defaults are inherited from its positive baseline."),
+  deniedManualTaskIds: tool.schema.array(tool.schema.string()).max(1).optional().describe("Deny one manual trigger in a negative Sandbox case; assert blocked for that task and explicit downstream outcomes."),
   title: tool.schema.string().min(1).max(240),
   objective: tool.schema.string().min(1).max(1000),
   runs: tool.schema.number().int().min(1).max(CONTRACT.limits.runs).optional(),

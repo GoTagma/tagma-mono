@@ -904,44 +904,32 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     ).resolves.toMatchObject({ kind: 'commit_handoff_required', operation: result.operation });
   });
 
-  test('publishes compile-valid blocked Trial output with durable unverified notice and no repair turn', async () => {
+  test('does not publish when enabled Sandbox verification never ran', async () => {
     const { engine, store, runtime, resultPersistence } = createHarness({
       verification: ['unverified'],
     });
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('commit_preparing');
+    expect(result.kind).toBe('discarded');
     expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
     expect(store.getOperation('operation-1')).toMatchObject({
-      phase: 'commit_preparing',
+      phase: 'terminal',
+      terminalOutcome: 'discarded',
       repairAttempts: 0,
     });
-    expect(runtime.prepare?.target.coordinateId).not.toBe('primary-target');
-    expect(resultPersistence.calls).toEqual([
-      expect.objectContaining({
-        purpose: 'authoring',
-        verificationNotice: {
-          status: 'unverified',
-          code: 'trial_blocked',
-          summary: 'Trial requires an explicitly authorized Live Smoke Test.',
-          outcome: expect.objectContaining({
-            sandbox: expect.objectContaining({ status: 'skipped' }),
-            liveSmoke: { status: 'not_enabled' },
-            reasonCode: 'trial_blocked',
-          }),
-        },
-      }),
-    ]);
-    expect(store.getPendingResultMessage('operation-1')?.message.attachments).toEqual([
-      expect.objectContaining({
-        kind: 'notice',
-        mediaType: 'application/json',
-        label: 'Pipeline verification outcome',
-      }),
-    ]);
+    expect(resultPersistence.calls).toEqual([]);
+    expect(
+      store.getLatestOperationEvent('operation-1', 'stage_status_changed')?.payload,
+    ).toMatchObject({
+      status: 'discarded',
+      errorCode: 'trial_blocked',
+    });
     const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
     if (events.kind !== 'events') throw new Error('Expected authoring event page.');
+    expect(
+      events.events.some(({ type }) => type === 'commit_wal_prepared' || type === 'commit_decided'),
+    ).toBe(false);
     expect(
       events.events.find(({ type }) => type === 'trial_status_changed')?.payload,
     ).toMatchObject({

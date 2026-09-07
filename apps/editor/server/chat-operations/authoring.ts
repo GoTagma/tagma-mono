@@ -2561,6 +2561,15 @@ export class ChatOperationV2AuthoringEngine {
       context.pendingTrialPlanRequest = verification.planRequest;
       return this.runControlledInvocation(context, 'trial_plan', current.repairAttempts, null);
     }
+    if (verification.kind === 'unverified') {
+      // A Live-only prerequisite warning is a passed Sandbox result with an
+      // explicit skipped Live Smoke outcome. Missing Sandbox evidence or an
+      // executed verification failure cannot become a completed publication.
+      return this.finishPrecommit(context, 'discarded', undefined, undefined, {
+        reasonCode: verification.errorCode,
+        diagnosticCodes: verification.diagnosticCodes,
+      });
+    }
     context.pendingTrialPlanRequest = null;
     const pendingCompletion = context.pendingVisibleCompletion;
     if (!pendingCompletion && !context.visibleResult) {
@@ -2573,17 +2582,9 @@ export class ChatOperationV2AuthoringEngine {
       pendingCompletion.persistenceInput = {
         ...pendingCompletion.persistenceInput,
         verificationNotice: {
-          status: verification.kind === 'passed' ? 'verified' : 'unverified',
-          code:
-            verification.kind === 'passed'
-              ? verification.warningCount > 0
-                ? 'trial_passed_with_warnings'
-                : 'trial_passed'
-              : verification.errorCode,
-          summary:
-            verification.kind === 'passed'
-              ? verification.outcome.details
-              : verification.redactedSummary,
+          status: 'verified',
+          code: verification.warningCount > 0 ? 'trial_passed_with_warnings' : 'trial_passed',
+          summary: verification.outcome.details,
           outcome: verification.outcome,
         },
       };

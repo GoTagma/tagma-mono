@@ -1073,6 +1073,19 @@ test('seed prompts require a scope-aware edge-case review after pipeline creatio
   expect(pipeline).toContain('Trial adds execution evidence only when the host enables it');
 });
 
+test('Trial prompts prioritize a complete positive path and explicit prerequisite probes', () => {
+  const planner = buildTagmaTrialPlannerAgent();
+  expect(planner).toContain('positive end-to-end');
+  expect(planner).toContain('baselineCaseId');
+  expect(planner).toContain('deniedManualTaskIds');
+  expect(planner).toContain('change exactly one prerequisite');
+  expect(planner).toContain('Live Smoke environment unavailability is a warning');
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  expect(pipeline).toContain('configured maximum repair attempts');
+  expect(pipeline).toContain('Do not invent a required credential');
+  expect(pipeline).toContain('Authoring report (before Host verification)');
+});
+
 test('tagma-pipeline agent cooperates with optional host trial-run repair before the logical turn ends', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 

@@ -17,7 +17,7 @@ import {
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 8,
+    version: 9,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],
@@ -80,6 +80,94 @@ function completePlan(): Record<string, unknown> {
     ],
   };
 }
+
+function prerequisitePlan() {
+  return {
+    ...completePlan(),
+    coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) => ({
+      dimension,
+      status: 'not-applicable',
+      caseIds: [],
+      rationale: 'This plan isolates prerequisite behavior.',
+    })),
+    cases: [
+      {
+        id: 'positive',
+        title: 'Positive path',
+        objective: 'Run the complete target closure first.',
+        runs: 1,
+        targetTaskIds: ['main.finish'],
+        fixtures: [],
+        environment: [{ name: 'DEMO_INPUT', value: 'test-input' }],
+        expectations: [{ type: 'task-status', taskId: 'main.finish', status: 'success' }],
+      },
+    ] as Array<Record<string, unknown>>,
+  };
+}
+
+test('prerequisite probes retain their controls and execute after the positive baseline', () => {
+  const plan = prerequisitePlan();
+  plan.cases.unshift({
+    ...plan.cases[0],
+    id: 'missing-input',
+    baselineCaseId: 'positive',
+    environment: [{ name: 'DEMO_INPUT', value: null }],
+    expectations: [{ type: 'task-status', taskId: 'main.finish', status: 'failed' }],
+  });
+  const parsed = parseChatPipelineTrialPlan(plan);
+  expect(parsed.cases.map((testCase) => testCase.id)).toEqual(['positive', 'missing-input']);
+  expect(parsed.cases[1]).toMatchObject({
+    baselineCaseId: 'positive',
+    environment: [{ name: 'DEMO_INPUT', value: null }],
+  });
+});
+
+test('prerequisite probes require one changed condition and explicit target outcomes', () => {
+  const plan = prerequisitePlan();
+  const negative = {
+    ...plan.cases[0],
+    id: 'denied',
+    baselineCaseId: 'positive',
+    environment: [],
+    deniedManualTaskIds: ['main.review'],
+    expectations: [
+      { type: 'task-status', taskId: 'main.review', status: 'blocked' },
+      { type: 'task-status', taskId: 'main.finish', status: 'skipped' },
+    ],
+  };
+  plan.cases.push(negative);
+  expect(parseChatPipelineTrialPlan(plan).cases[1]).toMatchObject({
+    deniedManualTaskIds: ['main.review'],
+  });
+  expect(() => parseChatPipelineTrialPlan({ ...plan, cases: [negative] })).toThrow(/baseline/i);
+  expect(() =>
+    parseChatPipelineTrialPlan({
+      ...plan,
+      cases: [plan.cases[0], { ...negative, environment: [{ name: 'DEMO_INPUT', value: null }] }],
+    }),
+  ).toThrow(/one prerequisite/i);
+  expect(() =>
+    parseChatPipelineTrialPlan({
+      ...plan,
+      cases: [plan.cases[0], { ...negative, expectations: [] }],
+    }),
+  ).toThrow();
+});
+
+test('test environment controls reject host configuration and duplicate portable names', () => {
+  for (const environment of [
+    [{ name: 'PATH', value: 'replacement' }],
+    [{ name: 'OPENCODE_CONFIG_CONTENT', value: '{}' }],
+    [
+      { name: 'DEMO_INPUT', value: 'x' },
+      { name: 'demo_input', value: 'y' },
+    ],
+  ]) {
+    const plan = prerequisitePlan();
+    plan.cases[0] = { ...plan.cases[0], environment };
+    expect(() => parseChatPipelineTrialPlan(plan)).toThrow(/environment/i);
+  }
+});
 
 function taskLocalPipelineConfig(workDir: string): PipelineConfig {
   return {

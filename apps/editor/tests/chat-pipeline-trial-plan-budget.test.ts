@@ -180,6 +180,56 @@ function writeStageAttemptLimit(agentTagmaDir: string, maxAttempts: number): voi
   );
 }
 
+test('generated tool and Host preserve the same positive and negative prerequisite contract', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-prerequisite-tool-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    const yaml = 'pipeline:\n  name: Demo\n  tracks: []\n';
+    writeFileSync(yamlPath, yaml);
+    writeStageAttemptLimit(agentTagmaDir, 2);
+    const tool = await loadGeneratedTool(root);
+    const args = invalidPlanArgs(yamlPath);
+    args.coverage = acceptedRiskCoverage();
+    const positive = (args.cases as Array<Record<string, unknown>>)[0]!;
+    positive.environment = [{ name: 'DEMO_INPUT', value: 'example' }];
+    args.cases = [
+      {
+        ...positive,
+        id: 'missing-input',
+        baselineCaseId: 'command',
+        environment: [{ name: 'DEMO_INPUT', value: null }],
+        expectations: [{ type: 'task-status', taskId: 'main.run', status: 'failed' }],
+      },
+      positive,
+    ];
+    await submitTrialPlan(tool, args, { directory: agentTagmaDir }, 'prerequisite-contract');
+    const result = readChatPipelineTrialPlan(
+      yamlPath,
+      'demo/demo.yaml',
+      createHash('sha1').update(yaml).digest('hex'),
+      2,
+    );
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') throw new Error(JSON.stringify(result));
+    expect(result.plan.cases.map((testCase) => testCase.id)).toEqual(['command', 'missing-input']);
+    expect(result.plan.cases[1]).toMatchObject({
+      baselineCaseId: 'command',
+      environment: [{ name: 'DEMO_INPUT', value: null }],
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('host rejects a directly written trial plan without an authenticated tool commit', () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-unprovenanced-plan-'));
   try {
@@ -201,7 +251,7 @@ test('host rejects a directly written trial plan without an authenticated tool c
     writeFileSync(
       yamlPath.replace(/\.yaml$/u, '.trial-plan.json'),
       JSON.stringify({
-        version: 8,
+        version: 9,
         yamlHash,
         summary: args.summary,
         goals: args.goals,

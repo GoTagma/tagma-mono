@@ -38,6 +38,8 @@ function canonicalValue(value: unknown): unknown {
 export function buildChatPipelineTrialCaseReuseFingerprint(
   input: ChatPipelineTrialCaseReuseFingerprintInput,
 ): string | null {
+  // Negative probes depend on the current positive baseline and its defaults.
+  if (input.testCase.baselineCaseId) return null;
   const dag = buildDag(input.pipelineConfig);
   const pending = [...input.testCase.targetTaskIds];
   const visited = new Set<string>();

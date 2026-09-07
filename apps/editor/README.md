@@ -95,6 +95,29 @@ user-owned support files, runtime mode, capability report, and Host prerequisite
 prompt and triggered closures always run again. The live Trial status includes a Host heartbeat
 and elapsed time during long, otherwise-silent model tasks.
 
+Sandbox Trial validates pipeline logic with synthetic environment values, isolated input fixtures,
+and automatic manual-trigger grants limited to each case's selected dependency closure. Missing real
+environment values skip the optional Live Smoke baseline without preventing Sandbox cases from
+running. Every terminal branch excluded from Live Smoke must be covered by a Sandbox case before
+Trial can pass. Results distinguish Sandbox coverage from real-environment readiness: a Sandbox pass
+with Live Smoke skipped does not satisfy the environment or approval requirements of an ordinary Run.
+Missing executables and actual task, output, or assertion failures remain visible verification failures.
+
+Trial plans run positive end-to-end cases before targeted negative prerequisite probes. A negative
+case names its positive `baselineCaseId`, preserves the same targets and fixtures, and removes one
+declared test environment input (`environment: [{ name, value: null }]`) or rejects one manual trigger
+(`deniedManualTaskIds: ["track.task"]`). Positive cases may supply meaningful non-production defaults
+with `environment: [{ name, value: "example" }]`. A negative case inherits the other defaults and must
+declare the expected target statuses, including the blocked gate and skipped downstream work. A
+rejection that matches those assertions passes its test. No negative probe runs until its positive
+baseline passes, and no override changes ordinary Run behavior or Live Smoke credentials.
+
+The Host repeats test, authorized repair, and verification using **Maximum pipeline repair attempts**
+from Editor Settings. Actual logic failures require another test after repair. Missing real Live Smoke
+conditions are warnings when Sandbox coverage passes; they never become a claimed live pass. An
+enabled Sandbox that remains untested or failing cannot complete as a published Chat result. Trial
+Plan corrections retain their separate bounded planning budget.
+
 Desktop Chat routes pipeline work in two phases. A tool-free text invocation first returns one small
 JSON decision: discussion, read-only diagnosis, create, edit of one Host-issued pipeline candidate,
 or clarification. The Host strictly parses that text and accepts only its fixed fields and candidate

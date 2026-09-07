@@ -538,6 +538,13 @@
   otherwise alter a prompt task's authored business prompt; pass case state through Host execution
   controls and environment only. Prompt-case regression coverage must compare the exact prompt seen
   by the driver with production prompt serialization.
+- Trial Plan v9 prerequisite controls are isolated case inputs. Validate them identically in the
+  Host and generated tool. Positive defaults may target only declared environment requirements or
+  secrets, never Host/runtime configuration. A negative case references one positive baseline,
+  preserves targets/fixtures, changes exactly one missing environment input or manual denial, and
+  asserts the target outcomes. Run positives first; skip probes whose baseline failed. Expected
+  rejections pass only through real runtime evidence and matching assertions. Do not count denied
+  manual tasks as granted or reuse a negative probe independently of its current baseline.
 - At Chat generation compile time, validate built-in trigger claims against runtime semantics: a
   file trigger is one literal existence coordinate and a directory trigger gates only directory
   existence, not child arrival, non-emptiness, or later changes. Also resolve trigger paths from the
@@ -685,8 +692,12 @@
   Smoke or Sandbox target closures that execute that task. Run every independent prerequisite-ready
   closure, retain blocked cases as `prerequisite-unavailable`, and return a blocked diagnostic result
   with real task evidence when partial execution occurred. Hook-owned, malformed/unscoped binary
-  requirements and required environment declarations remain global blockers. Never execute a
-  blocked closure or reinterpret partial coverage as a pass.
+  requirements remain global blockers. Required real environment declarations block only the Live
+  Smoke baseline; Sandbox supplies its deterministic synthetic values and must still run. Before
+  execution, recheck terminal coverage against the runtime-ready Live Smoke targets, not just the
+  data-ready baseline. Request a corrected plan for every newly uncovered sink. Report unavailable
+  real environment separately from Sandbox prerequisites, and derive execution coverage from the
+  actual baseline target set. Never execute a blocked closure or reinterpret partial coverage as a pass.
   Approval exceptions are host-owned and run-ID-scoped: Sandbox grants manual tasks only in an
   explicitly selected case target dependency closure, while a separately consented Live Smoke
   baseline grants manual tasks in its selected real-workspace closure. Neither is human approval and
@@ -741,9 +752,12 @@
   blocked prerequisite state means Trial could not establish executable behavior because a real
   prerequisite was unavailable. It may be discovered before execution (`ran: false`) or after safe
   branches began, such as a manual approval gate (`ran: true`); an independent executable failure
-  must still take precedence over the blocker. Publish the compile-valid pipeline in place with a
-  distinct blocked/amber status and an open-pipeline action, never label it failed and never create
-  a numbered copy solely for that state. The renderer may report only renderer-owned path-move or
+  must still take precedence over the blocker. Desktop Chat V2 must not publish an unverified
+  Sandbox result. A passed Sandbox with unavailable real Live Smoke prerequisites completes with
+  an explicit warning and skipped Live Smoke status, never a claimed live pass. Actionable pipeline
+  failures use the operation's frozen Settings repair limit and must reverify after each repair;
+  diagnostic-only blockers do not authorize fabricated credentials or unrelated YAML changes.
+  The renderer may report only renderer-owned path-move or
   compile facts to finalize; it must not send `forceFork`, author `trial-run-failed`, or interpret
   raw Trial failure as publication authority. The server derives Trial conflicts exclusively from
   the signed current-YAML/current-host cache. Persist that authoritative `trialVerification`
