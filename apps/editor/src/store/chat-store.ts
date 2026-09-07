@@ -21,12 +21,14 @@ import {
 import {
   ChatOperationV2ApiError,
   resetChatOperationV2ControlData as apiResetChatOperationV2ControlData,
+  fetchChatOperationV2Operation,
   type ChatOperationV2ApiErrorKind,
   type ChatOperationV2CreatePayload,
   type ChatOperationV2FailureProjection,
   type ChatOperationV2Inventory,
   type ChatOperationV2OperationDetail,
   type ChatOperationV2Projection,
+  type ChatOperationV2QuestionPending,
   type ChatOperationV2ResultProjection,
   type ChatOperationV2TrialProgress,
 } from '../api/chat-operations';
@@ -69,6 +71,7 @@ import {
   type ProviderCatalogEntry,
 } from './chat-provider-catalog';
 import { chatOperationV2FailureRequiresModelChange } from '../utils/chat-operation-v2-failure';
+import { chatHistoryTopic, type ChatHistoryTopic } from '../utils/chat-history-topic';
 
 export { chatOperationV2FailureRequiresModelChange } from '../utils/chat-operation-v2-failure';
 
@@ -126,7 +129,11 @@ interface ChatStore {
 
   /** Authenticated executor selected by the sidecar ensure handshake. */
   chatExecutionMode: ChatOperationExecutionMode;
+  chatOperationV2WorkspaceKey: string | null;
   chatOperationV2Operations: readonly ChatOperationV2Projection[];
+  chatOperationV2ThreadDetails: Readonly<Record<string, ChatOperationV2OperationDetail>>;
+  chatOperationV2HistoryTopics: Readonly<Record<string, ChatHistoryTopic>>;
+  loadChatHistoryTopics: (operationIds: readonly string[], signal?: AbortSignal) => Promise<void>;
   chatOperationV2Inventory: ChatOperationV2Inventory | null;
   activeChatOperationV2: ChatOperationV2Projection | null;
   activeChatOperationV2Result: ChatOperationV2ResultProjection | null;
@@ -141,7 +148,11 @@ interface ChatStore {
   chatOperationV2QuestionRequests: Readonly<
     Record<
       string,
-      { readonly requestId: string; readonly state: 'live_pending' | 'recovery_required' }
+      {
+        readonly requestId: string;
+        readonly state: 'live_pending' | 'recovery_required';
+        readonly content: ChatOperationV2QuestionPending['content'];
+      }
     >
   >;
   chatOperationV2InteractiveRecoveryRequests: Readonly<
@@ -317,7 +328,7 @@ interface ChatStore {
     requestId: string,
     choice: 'reply' | 'reject',
     answers: readonly string[],
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   chooseActiveChatOperationV2CommitRecovery: (
     operationId: string,
     requestId: string,
@@ -459,6 +470,7 @@ function chatOperationV2ConversationId(workspaceKey: string, rotate = false): st
 }
 
 let chatOperationV2Controller: ChatOperationV2Controller | null = null;
+let chatOperationV2HistorySelectionEpoch = 0;
 
 export function chatOperationV2Activity(
   operation: ChatOperationV2Projection | null,
@@ -590,8 +602,13 @@ function chatOperationV2PhaseDetail(phase: ChatOperationV2Projection['phase']): 
 
 function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnapshot): void {
   useChatStore.setState((previous) => {
+    const workspaceChanged = previous.chatOperationV2WorkspaceKey !== snapshot.workspaceKey;
     const base = {
       chatExecutionMode: snapshot.executionMode,
+      chatOperationV2WorkspaceKey: snapshot.workspaceKey,
+      ...(workspaceChanged
+        ? { messages: [], chatOperationV2ThreadDetails: {}, chatOperationV2HistoryTopics: {} }
+        : {}),
       chatOperationV2Operations: snapshot.operations,
       chatOperationV2Inventory: snapshot.inventory,
       activeChatOperationV2: snapshot.activeOperation,
@@ -605,6 +622,9 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
       if (snapshot.executionMode === 'unavailable') {
         return {
           ...base,
+          messages: [],
+          chatOperationV2ThreadDetails: {},
+          chatOperationV2HistoryTopics: {},
           chatOperationV2ClarificationRequests: {},
           chatOperationV2QuestionRequests: {},
           chatOperationV2InteractiveRecoveryRequests: {},
@@ -634,13 +654,17 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
       operation?.executionState === 'running' || operation?.executionState === 'waiting_for_user';
     const activeOperationChanged =
       previous.activeChatOperationV2?.operationId !== operation?.operationId;
+    const sameConversation =
+      !!operation &&
+      previous.activeChatOperationV2?.conversationId === operation.conversationId &&
+      previous.activeChatOperationV2?.rendererInstanceId === operation.rendererInstanceId;
     return {
       ...base,
       sending: busy,
       pendingActivity: chatOperationV2Activity(operation),
       ...(activeOperationChanged
         ? {
-            messages: [],
+            ...(sameConversation ? {} : { messages: [], chatOperationV2ThreadDetails: {} }),
             pendingPermissions: [],
             activeChatOperationV2Request: null,
             activeChatOperationV2Failure: null,
@@ -667,6 +691,7 @@ function chatOperationV2ThreadEntries(
   const syntheticSessionId = `chat-operation:${detail.operation.operationId}`;
   const userMessageId = `v2-user-${detail.operation.operationId}`;
   const user: OpencodeThreadEntry = {
+    contextReferences: detail.userMessage.attachments.map(({ label }) => ({ label })),
     info: {
       id: userMessageId,
       sessionID: syntheticSessionId,
@@ -731,10 +756,130 @@ function chatOperationV2ThreadEntries(
   return [user, ...assistants];
 }
 
+function conversationThreadEntries(
+  details: Readonly<Record<string, ChatOperationV2OperationDetail>>,
+  previous: Pick<ChatStore, 'messages' | 'chatOperationV2ThreadDetails'>,
+): OpencodeThreadEntry[] {
+  const previousEntries = new Map<string, OpencodeThreadEntry[]>();
+  for (const entry of previous.messages) {
+    const entries = previousEntries.get(entry.info.sessionID) ?? [];
+    entries.push(entry);
+    previousEntries.set(entry.info.sessionID, entries);
+  }
+  return Object.values(details)
+    .sort(
+      (left, right) =>
+        left.operation.createdAt - right.operation.createdAt ||
+        left.operation.operationId.localeCompare(right.operation.operationId),
+    )
+    .flatMap((detail) => {
+      const id = detail.operation.operationId;
+      const retained = previousEntries.get(`chat-operation:${id}`);
+      return retained && previous.chatOperationV2ThreadDetails[id] === detail
+        ? retained
+        : chatOperationV2ThreadEntries(detail);
+    });
+}
+
+function projectChatConversationHistory(details: readonly ChatOperationV2OperationDetail[]): void {
+  useChatStore.setState((previous) => {
+    const active = previous.activeChatOperationV2;
+    if (
+      !active ||
+      details.some(
+        (detail) =>
+          detail.operation.conversationId !== active.conversationId ||
+          detail.operation.rendererInstanceId !== active.rendererInstanceId,
+      )
+    )
+      return {};
+    const threadDetails = { ...previous.chatOperationV2ThreadDetails };
+    for (const detail of details) {
+      const existing = threadDetails[detail.operation.operationId];
+      if (
+        existing &&
+        (existing.operation.generation > detail.operation.generation ||
+          (existing.operation.generation === detail.operation.generation &&
+            existing.operation.version > detail.operation.version))
+      )
+        continue;
+      threadDetails[detail.operation.operationId] = detail;
+    }
+    return {
+      chatOperationV2ThreadDetails: threadDetails,
+      chatOperationV2HistoryTopics: {
+        ...previous.chatOperationV2HistoryTopics,
+        ...Object.fromEntries(
+          details.map((detail) => [detail.operation.operationId, chatHistoryTopic(detail)]),
+        ),
+      },
+      messages: conversationThreadEntries(threadDetails, previous),
+    };
+  });
+}
+
+async function loadChatConversationHistory(): Promise<void> {
+  const state = useChatStore.getState();
+  const active = state.activeChatOperationV2;
+  if (!active) return;
+  const controller = getChatOperationV2Controller();
+  const authority = controller.captureActivationAuthority();
+  const isCurrent = () => {
+    const selected = useChatStore.getState().activeChatOperationV2;
+    return (
+      controller.isActivationAuthorityCurrent(authority) &&
+      selected?.conversationId === active.conversationId &&
+      selected.rendererInstanceId === active.rendererInstanceId
+    );
+  };
+  const missing = state.chatOperationV2Operations.filter((operation) => {
+    if (
+      operation.conversationId !== active.conversationId ||
+      operation.rendererInstanceId !== active.rendererInstanceId ||
+      operation.operationId === active.operationId ||
+      operation.phase !== 'terminal'
+    )
+      return false;
+    const cached = state.chatOperationV2ThreadDetails[operation.operationId]?.operation;
+    return (
+      !cached || cached.generation !== operation.generation || cached.version !== operation.version
+    );
+  });
+  try {
+    // These reads hydrate the transcript only; they never change the operation controller's authority.
+    for (let offset = 0; offset < missing.length; offset += 4) {
+      if (!isCurrent()) return;
+      const details = await Promise.all(
+        missing.slice(offset, offset + 4).map(async (operation) => {
+          const detail = await fetchChatOperationV2Operation(operation.operationId, {
+            workspaceKey: authority.workspaceKey,
+            signal: authority.signal,
+          });
+          if (
+            detail.operation.operationId !== operation.operationId ||
+            detail.operation.conversationId !== active.conversationId ||
+            detail.operation.rendererInstanceId !== active.rendererInstanceId
+          )
+            throw new Error('Chat history identity changed.');
+          return detail;
+        }),
+      );
+      if (!isCurrent()) return;
+      projectChatConversationHistory(details);
+    }
+  } catch {
+    if (isCurrent())
+      useChatStore.setState({
+        sendError: 'Could not load earlier Chat messages. Reopen History to retry.',
+      });
+  }
+}
+
 function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): void {
   useChatStore.setState((previous) => {
     const operationId = detail.operation.operationId;
     if (previous.activeChatOperationV2?.operationId !== operationId) return {};
+    const threadDetails = { ...previous.chatOperationV2ThreadDetails, [operationId]: detail };
     const clarificationRequests = { ...previous.chatOperationV2ClarificationRequests };
     const questionRequests = { ...previous.chatOperationV2QuestionRequests };
     const interactiveRecoveryRequests = {
@@ -755,7 +900,10 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
     // Result notices are durable transcript attachments. Promoting the same
     // typed attachment into the composer warning would render one Host result
     // twice and make dismissing the duplicate look like evidence was removed.
-    let completionWarning = detail.result ? null : previous.completionWarning;
+    let completionWarning =
+      detail.result || previous.chatOperationV2ThreadDetails[operationId]?.pendingInput
+        ? null
+        : previous.completionWarning;
 
     if (
       detail.pendingInput?.kind === 'clarification' ||
@@ -794,6 +942,7 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
       questionRequests[operationId] = {
         requestId: detail.pendingInput.hostRequestId,
         state: detail.pendingInput.state,
+        content: detail.pendingInput.content,
       };
       completionWarning =
         detail.pendingInput.state === 'live_pending'
@@ -820,7 +969,12 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
       chatOperationV2QuestionRequests: questionRequests,
       chatOperationV2InteractiveRecoveryRequests: interactiveRecoveryRequests,
       pendingPermissions,
-      messages: chatOperationV2ThreadEntries(detail),
+      chatOperationV2ThreadDetails: threadDetails,
+      chatOperationV2HistoryTopics: {
+        ...previous.chatOperationV2HistoryTopics,
+        [operationId]: chatHistoryTopic(detail),
+      },
+      messages: conversationThreadEntries(threadDetails, previous),
       activeChatOperationV2Request: {
         operationId,
         text: detail.userMessage.text,
@@ -856,7 +1010,7 @@ function getChatOperationV2Controller(): ChatOperationV2Controller {
   return chatOperationV2Controller;
 }
 
-export function activateChatOperationExecutionForWorkspace(
+export async function activateChatOperationExecutionForWorkspace(
   workspaceKey: string,
   handshake: ChatOperationV2CapabilityHandshake,
   conversationId?: string | null,
@@ -871,11 +1025,13 @@ export function activateChatOperationExecutionForWorkspace(
     chatOperationV2RendererInstanceId: production ? controller.getRendererInstanceId() : null,
     chatOperationV2ConversationId: resolvedConversationId,
   });
-  return controller.activate({
+  const mode = await controller.activate({
     workspaceKey,
     handshake,
     conversationId: resolvedConversationId,
   });
+  if (mode === 'operation-v2') await loadChatConversationHistory();
+  return mode;
 }
 
 async function sendChatOperationV2(
@@ -1012,6 +1168,7 @@ async function sendChatOperationV2(
             dirtySnapshot,
           }));
     if (!activationIsCurrent()) return;
+    await loadChatConversationHistory();
   } catch (error) {
     if (!activationIsCurrent()) return;
     set((previous) => ({
@@ -1103,7 +1260,56 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   chatExecutionMode: 'unavailable',
+  chatOperationV2WorkspaceKey: null,
   chatOperationV2Operations: [],
+  chatOperationV2ThreadDetails: {},
+  chatOperationV2HistoryTopics: {},
+  async loadChatHistoryTopics(operationIds, signal) {
+    const state = get();
+    if (state.chatExecutionMode !== 'operation-v2') return;
+    const controller = getChatOperationV2Controller();
+    const authority = controller.captureActivationAuthority();
+    const readSignal = signal ? AbortSignal.any([signal, authority.signal]) : authority.signal;
+    const isCurrent = () =>
+      !readSignal.aborted && controller.isActivationAuthorityCurrent(authority);
+    const requested = new Set(operationIds);
+    const missing = state.chatOperationV2Operations.filter(
+      (operation) =>
+        requested.has(operation.operationId) &&
+        state.chatOperationV2HistoryTopics[operation.operationId]?.status !== 'ready',
+    );
+    for (let offset = 0; offset < missing.length; offset += 4) {
+      if (!isCurrent()) return;
+      const topics = await Promise.all(
+        missing.slice(offset, offset + 4).map(async (operation) => {
+          let topic: ChatHistoryTopic;
+          try {
+            const detail = await fetchChatOperationV2Operation(operation.operationId, {
+              workspaceKey: authority.workspaceKey,
+              signal: readSignal,
+            });
+            if (
+              detail.operation.operationId !== operation.operationId ||
+              detail.operation.conversationId !== operation.conversationId ||
+              detail.operation.rendererInstanceId !== operation.rendererInstanceId
+            )
+              throw new Error('History identity mismatch');
+            topic = chatHistoryTopic(detail);
+          } catch {
+            topic = { status: 'unavailable' };
+          }
+          return [operation.operationId, topic] as const;
+        }),
+      );
+      if (!isCurrent()) return;
+      set((previous) => ({
+        chatOperationV2HistoryTopics: {
+          ...previous.chatOperationV2HistoryTopics,
+          ...Object.fromEntries(topics),
+        },
+      }));
+    }
+  },
   chatOperationV2Inventory: null,
   activeChatOperationV2: null,
   activeChatOperationV2Result: null,
@@ -1210,7 +1416,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   acknowledgeChatOpenRequest: () => set({ pendingChatOpenRequest: false }),
 
   connectOpen: false,
-  openConnect: () => set({ connectOpen: true }),
+  openConnect: () => {
+    if (get().activeChatOperationV2?.executionState === 'retryable_failure') {
+      void get().changeProviderForActiveChatOperationV2();
+      return;
+    }
+    set({ connectOpen: true });
+  },
   closeConnect: () => set({ connectOpen: false }),
   providerCatalog: [],
   customProviders: [],
@@ -1358,6 +1570,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               providers: [],
               chatExecutionMode: 'unavailable',
               chatOperationV2Operations: [],
+              chatOperationV2ThreadDetails: {},
+              chatOperationV2HistoryTopics: {},
               chatOperationV2Inventory: null,
               activeChatOperationV2: null,
               activeChatOperationV2Result: null,
@@ -1557,9 +1771,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ sendError: 'Chat Operation V2 is unavailable.' });
       return;
     }
+    const controller = getChatOperationV2Controller();
+    const authority = controller.captureActivationAuthority();
+    const selectionEpoch = ++chatOperationV2HistorySelectionEpoch;
+    const isCurrent = () =>
+      selectionEpoch === chatOperationV2HistorySelectionEpoch &&
+      controller.isActivationAuthorityCurrent(authority);
     set({ selectingSessionId: id, sendError: null });
     try {
-      await getChatOperationV2Controller().selectOperation(id);
+      await controller.selectOperation(id);
+      if (!isCurrent() || controller.getSnapshot().activeOperation?.operationId !== id) return;
+      await loadChatConversationHistory();
+      if (!isCurrent() || controller.getSnapshot().activeOperation?.operationId !== id) return;
       const selected = get().chatOperationV2Operations.find(
         (operation) => operation.operationId === id,
       );
@@ -1571,9 +1794,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         completionWarning: null,
       });
     } catch (error) {
+      if (!isCurrent()) return;
       set({ sendError: `Could not open Chat Operation V2 history: ${describeError(error)}` });
     } finally {
-      set((previous) => (previous.selectingSessionId === id ? { selectingSessionId: null } : {}));
+      if (isCurrent()) set({ selectingSessionId: null });
     }
   },
 
@@ -1590,6 +1814,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         set({
           currentSessionId: null,
           messages: [],
+          chatOperationV2ThreadDetails: {},
           activeChatOperationV2Request: null,
           activeChatOperationV2Result: null,
           pendingUserText: null,
@@ -1688,8 +1913,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async replyActiveChatOperationV2Question(operationId, requestId, choice, answers) {
-    if (get().chatExecutionMode !== 'operation-v2') return;
-    await runChatOperationV2UiMutation(
+    const state = get();
+    const request = state.chatOperationV2QuestionRequests[operationId];
+    if (
+      state.chatExecutionMode !== 'operation-v2' ||
+      state.activeChatOperationV2?.operationId !== operationId ||
+      state.activeChatOperationV2.executionState !== 'waiting_for_user' ||
+      request?.requestId !== requestId ||
+      request.state !== 'live_pending'
+    )
+      return false;
+    set({ sendError: null });
+    return runChatOperationV2UiMutation(
       set,
       "Couldn't answer Chat Operation V2 question",
       (controller) => controller.replyQuestion(operationId, requestId, choice, answers),
@@ -1756,6 +1991,12 @@ registerRendererDiagnosticsContributor('chatOperationV2', ({ workspaceKey }) => 
     rendererInstanceCorrelationPresent: state.chatOperationV2RendererInstanceId !== null,
     conversationCorrelationPresent: state.chatOperationV2ConversationId !== null,
     operationCount: matchingWorkspace ? state.chatOperationV2Operations.length : 0,
+    visibleTurnCount: matchingWorkspace
+      ? Object.keys(state.chatOperationV2ThreadDetails).length
+      : 0,
+    historyTopicCount: matchingWorkspace
+      ? Object.keys(state.chatOperationV2HistoryTopics).length
+      : 0,
     returnedOperationCount: retained.length,
     omittedOperationCount: matchingWorkspace
       ? Math.max(0, state.chatOperationV2Operations.length - retained.length)

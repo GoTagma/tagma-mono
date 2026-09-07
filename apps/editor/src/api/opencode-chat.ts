@@ -180,6 +180,8 @@ export interface OpencodeThreadEntry {
   info: Message;
   parts: Part[];
   activity?: ActivityEvent[];
+  /** Host-projected attachment labels; raw attachment content stays out of message rendering. */
+  contextReferences?: readonly { label: string }[];
 }
 
 export type ChatOperationBootstrapHandshake = {

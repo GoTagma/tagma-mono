@@ -22,12 +22,22 @@ import {
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
-import type { ChatOperationV2ApiErrorKind } from '../../api/chat-operations';
+import type {
+  ChatOperationV2ApiErrorKind,
+  ChatOperationV2Projection,
+  ChatOperationV2ResultProjection,
+} from '../../api/chat-operations';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { TurnActivityPanel } from './ActivityPanel';
-import { ChatComposer, CompletionWarningBanner, ErrorBanner } from './ChatComposer';
+import {
+  ChatComposer,
+  ChatInteractionRecoveryNotice,
+  CompletionWarningBanner,
+  ErrorBanner,
+} from './ChatComposer';
 import { HistoryDrawer } from './HistoryDrawer';
+import { QuestionPanel } from './QuestionPanel';
 import { MessageBubble } from './MessageBubble';
 import { BotBridgeStatusBadge } from './BotBridgeStatusBadge';
 import { FloatingPanel } from './FloatingPanel';
@@ -51,7 +61,7 @@ export function ChatPanel() {
   const bootstrapStatus = useChatStore((s) => s.bootstrapStatus);
 
   return (
-    <div className="h-full flex flex-col bg-tagma-bg">
+    <div className="h-full min-h-0 min-w-0 flex flex-col bg-tagma-bg">
       <ChatHeader />
       <ConversationFlowBar />
       <div className="flex-1 min-h-0 relative overflow-hidden">
@@ -64,9 +74,13 @@ export function ChatPanel() {
           bootstrapStatus === 'idle' ||
           bootstrapStatus === 'error') && <BootstrapOverlay />}
       </div>
-      <RetryableOperationNotice />
-      <CompletionWarningBanner />
-      <ErrorBanner />
+      <div className="chat-notices">
+        <RetryableOperationNotice />
+        <ChatInteractionRecoveryNotice />
+        <QuestionPanel />
+        <CompletionWarningBanner />
+        <ErrorBanner />
+      </div>
       <ChatComposer />
       <ProviderConnectDialog />
     </div>
@@ -547,6 +561,7 @@ export function chatHeaderControlLocks(state: {
   ready: boolean;
   sending: boolean;
   operationActive: boolean;
+  retryable?: boolean;
   yamlEditLocked: boolean;
 }): {
   modelSelectionBlocked: boolean;
@@ -554,9 +569,10 @@ export function chatHeaderControlLocks(state: {
   navigationBlocked: boolean;
 } {
   const conversationBlocked = state.sending || state.operationActive;
+  const selectionBlocked = state.sending || (state.operationActive && !state.retryable);
   return {
-    modelSelectionBlocked: !state.ready || conversationBlocked,
-    providerBlocked: !state.ready || conversationBlocked || state.yamlEditLocked,
+    modelSelectionBlocked: !state.ready || selectionBlocked,
+    providerBlocked: !state.ready || selectionBlocked || state.yamlEditLocked,
     navigationBlocked: !state.ready || conversationBlocked,
   };
 }
@@ -574,6 +590,7 @@ function ChatHeader() {
     ready,
     sending,
     operationActive: !!activeOperation && activeOperation.executionState !== 'terminal',
+    retryable: activeOperation?.executionState === 'retryable_failure',
     yamlEditLocked,
   });
   const currentSessionTitle = activeOperation
@@ -751,10 +768,10 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
         disabled={disabled}
         title={`Model variant: ${selected.label}`}
         aria-label="Select model variant"
-        className="shrink-0 flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
+        className="min-w-0 max-w-[120px] shrink flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
       >
         <Brain size={10} className="shrink-0" />
-        <span>{selected.label}</span>
+        <span className="min-w-0 truncate">{selected.label}</span>
         <ChevronDown size={10} className="shrink-0" />
       </button>
       <FloatingPanel
@@ -805,7 +822,20 @@ function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
   const pendingUserText = useChatStore((s) => s.pendingUserText);
-  const sessionId = useChatStore((s) => s.currentSessionId);
+  const sessionId = useChatStore((s) => s.chatOperationV2ConversationId);
+  const activeOperation = useChatStore((s) => s.activeChatOperationV2);
+  const threadDetails = useChatStore((s) => s.chatOperationV2ThreadDetails);
+  const turnEnds = useMemo(
+    () =>
+      new Map(
+        Object.values(threadDetails).map((detail) => [
+          detail.result?.messages.at(-1)?.messageId ?? `v2-user-${detail.operation.operationId}`,
+          detail,
+        ]),
+      ),
+    [threadDetails],
+  );
+  const activeCoordinate = activeOperation ? `chat-operation:${activeOperation.operationId}` : null;
   const pendingPermissions = useChatStore((s) => s.pendingPermissions);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -842,15 +872,22 @@ function ChatMessages() {
       !messages.some(
         (m) =>
           m.info.role === 'user' &&
+          m.info.sessionID === activeCoordinate &&
+          activeOperation?.executionState !== 'terminal' &&
+          activeOperation?.executionState !== 'retryable_failure' &&
           m.parts.some(
             (p) => p.type === 'text' && p.text.trimEnd().endsWith(pendingUserText.trimEnd()),
           ),
       ),
-    [messages, pendingUserText],
+    [messages, pendingUserText, activeCoordinate, activeOperation?.executionState],
   );
 
   const currentTurnAssistantId = sending
-    ? ([...messages].reverse().find((entry) => entry.info.role === 'assistant')?.info.id ?? null)
+    ? ([...messages]
+        .reverse()
+        .find(
+          (entry) => entry.info.role === 'assistant' && entry.info.sessionID === activeCoordinate,
+        )?.info.id ?? null)
     : null;
   useEffect(() => {
     if (!currentTurnAssistantId) return;
@@ -945,6 +982,7 @@ function ChatMessages() {
           )}
           {messages.map((entry) => {
             const isCurrentTurnAssistant = entry.info.id === currentTurnAssistantId;
+            const turnEnd = turnEnds.get(entry.info.id);
             return (
               // content-visibility lets the browser skip layout/paint for
               // offscreen bubbles in long conversations; contain-intrinsic-
@@ -964,11 +1002,11 @@ function ChatMessages() {
                   isCurrentTurn={sending && isCurrentTurnAssistant}
                   surfaceActivitySummary={sending && entry.info.id === currentTurnAssistantId}
                 />
+                {turnEnd && <ChatOperationV2PipelineResult result={turnEnd.result} />}
+                {turnEnd && <ChatOperationV2TerminalNotice operation={turnEnd.operation} />}
               </div>
             );
           })}
-          <ChatOperationV2PipelineResult />
-          <ChatOperationV2TerminalNotice />
           {showPending && <PendingUserBubble text={pendingUserText!} />}
           {sending && !currentTurnAssistantId && (
             <PlaceholderAssistantBubble
@@ -1038,8 +1076,7 @@ export function ChatOperationV2TerminalNoticeView({
   );
 }
 
-function ChatOperationV2TerminalNotice() {
-  const operation = useChatStore((state) => state.activeChatOperationV2);
+function ChatOperationV2TerminalNotice({ operation }: { operation: ChatOperationV2Projection }) {
   if (
     operation?.executionState !== 'terminal' ||
     (operation.terminalOutcome !== 'discarded' && operation.terminalOutcome !== 'failed_terminal')
@@ -1142,8 +1179,11 @@ export function ChatOperationV2PipelineResultView({
   );
 }
 
-function ChatOperationV2PipelineResult() {
-  const result = useChatStore((state) => state.activeChatOperationV2Result);
+function ChatOperationV2PipelineResult({
+  result,
+}: {
+  result: ChatOperationV2ResultProjection | null;
+}) {
   const hasUnsavedChanges = usePipelineStore((state) => state.isDirty || state.layoutDirty);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);

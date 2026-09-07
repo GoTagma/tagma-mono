@@ -245,6 +245,7 @@ class Controller implements ChatOperationV2Controller {
     error: null,
   };
   #activationEpoch = 0;
+  #selectionEpoch = 0;
   #conversationId: string | null = null;
   #activationController: AbortController | null = null;
   #closeSubscription: (() => void) | null = null;
@@ -302,6 +303,7 @@ class Controller implements ChatOperationV2Controller {
     }
 
     const epoch = ++this.#activationEpoch;
+    this.#selectionEpoch += 1;
     this.#activationController?.abort();
     this.#activationController = new AbortController();
     this.#conversationId = conversationId;
@@ -442,6 +444,7 @@ class Controller implements ChatOperationV2Controller {
     if (!CORRELATION_ID.test(conversationId)) {
       throw new Error('Chat Operation V2 conversation id is invalid.');
     }
+    this.#selectionEpoch += 1;
     this.#conversationId = conversationId;
     this.#snapshot = {
       ...this.#snapshot,
@@ -462,10 +465,21 @@ class Controller implements ChatOperationV2Controller {
     if (current && current.phase !== 'terminal' && current.operationId !== operationId) {
       throw new Error('Wait for the live Chat Operation V2 request to finish.');
     }
-    this.#conversationId = operation.conversationId;
-    this.#snapshot = { ...this.#snapshot, activeOperation: operation, error: null };
-    this.#emit();
-    await this.#refreshOperationDetail(authority, operationId);
+    if (operation.phase !== 'terminal' && operation.rendererInstanceId !== this.#rendererId()) {
+      throw new Error('The live Chat Operation belongs to another renderer.');
+    }
+    const selectionEpoch = ++this.#selectionEpoch;
+    const detail = await this.#api.fetchOperation(operationId, {
+      workspaceKey: authority.workspaceKey,
+      signal: authority.signal,
+    });
+    if (!this.#isCurrentAuthority(authority) || selectionEpoch !== this.#selectionEpoch) return;
+    if (detail.operation.operationId !== operationId) {
+      throw new Error('Host returned a different Chat Operation for the selected history.');
+    }
+    this.#conversationId = detail.operation.conversationId;
+    if (!this.#applyOperation(detail.operation, true)) return;
+    this.#onDetail?.(detail);
   }
 
   startNewConversation(): void {
@@ -476,6 +490,7 @@ class Controller implements ChatOperationV2Controller {
     if (activeOperation && activeOperation.phase !== 'terminal') {
       throw new Error('A live Chat Operation must finish or be cancelled before starting another.');
     }
+    this.#selectionEpoch += 1;
     this.#snapshot = { ...this.#snapshot, activeOperation: null };
     this.#emit();
   }
@@ -590,13 +605,20 @@ class Controller implements ChatOperationV2Controller {
     try {
       const next = await this.#api.fetchSnapshot({ workspaceKey, signal: controller.signal });
       if (!this.#isCurrentAuthority(authority)) return;
+      const selected = next.operations.find(
+        (operation) =>
+          operation.operationId === this.#snapshot.activeOperation?.operationId &&
+          operation.conversationId === this.#conversationId,
+      );
       this.#snapshot = {
         ...this.#snapshot,
         operations: [...next.operations],
         inventory: next.inventory,
-        activeOperation: latestOperation(
-          next.operations.filter((operation) => this.#matchesCorrelation(operation)),
-        ),
+        activeOperation:
+          selected ??
+          latestOperation(
+            next.operations.filter((operation) => this.#matchesCorrelation(operation)),
+          ),
         latestCursor: next.latestCursor,
         error: null,
       };
@@ -702,15 +724,21 @@ class Controller implements ChatOperationV2Controller {
     operationId: string,
   ): Promise<ChatOperationV2OperationDetail | null> {
     if (!this.#isCurrentAuthority(authority)) return null;
+    const selectionEpoch = this.#selectionEpoch;
     const detail = await this.#api.fetchOperation(operationId, {
       workspaceKey: authority.workspaceKey,
       signal: authority.signal,
     });
-    if (!this.#isCurrentAuthority(authority) || !this.#matchesCorrelation(detail.operation)) {
-      return null;
-    }
-    const makeActive = shouldActivateOperation(this.#snapshot.activeOperation, detail.operation);
+    if (!this.#isCurrentAuthority(authority)) return null;
+    // Workspace-scoped Host reads include other conversations. Keep their
+    // history summaries current without giving them foreground or write authority.
+    const selected = this.#snapshot.activeOperation?.operationId === detail.operation.operationId;
+    const makeActive =
+      selectionEpoch === this.#selectionEpoch &&
+      (selected || this.#matchesCorrelation(detail.operation)) &&
+      shouldActivateOperation(this.#snapshot.activeOperation, detail.operation);
     if (!this.#applyOperation(detail.operation, makeActive)) return null;
+    if (!makeActive) return null;
     this.#onDetail?.(detail);
     return detail;
   }
@@ -721,6 +749,7 @@ class Controller implements ChatOperationV2Controller {
     error: Error | null,
   ): void {
     this.#activationEpoch += 1;
+    this.#selectionEpoch += 1;
     this.#activationController?.abort();
     this.#activationController = null;
     this.#conversationId = null;

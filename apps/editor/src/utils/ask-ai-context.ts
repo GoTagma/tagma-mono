@@ -12,6 +12,19 @@
  * Render and strip MUST stay in lockstep — that's why they live together.
  */
 import type { RawTaskConfig, RawTrackConfig } from '../api/client';
+import type { OpencodeThreadEntry } from '../api/opencode-chat';
+
+export function getChatContextReferences(
+  entry: OpencodeThreadEntry,
+): readonly AskAiContextReference[] {
+  if (entry.info.role !== 'user') return [];
+  return (
+    entry.contextReferences ??
+    entry.parts.flatMap((part) =>
+      part.type === 'text' ? extractAskAiContextReferences(part.text) : [],
+    )
+  );
+}
 
 export interface ModifyTargetAttachment {
   label: string;

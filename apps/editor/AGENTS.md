@@ -2,6 +2,12 @@
 
 ## Chat Session Concurrency
 
+- Workspace-scoped Host operation reads may contain other renderer identities. Update their
+  history summaries on every wake, but project transcript/interactive detail only for the selected
+  operation. Historical reads must not inherit mutation ownership: keep renderer/conversation CAS
+  checks on writes. Preserve a selected history item on cursor reset, and commit asynchronous
+  history selection only while its workspace and latest selection authority remain current.
+
 - Size OpenCode's default startup readiness budget for a fresh workspace, not a warmed one. The
   first `/session` request may initialize the managed database, so the default full-sequence budget
   is five minutes; tests and specialized callers may pass `readinessTimeoutMs` for a shorter bounded
@@ -170,6 +176,29 @@
 
 ## Chat Message Layout
 
+- Live Host questions retain their option descriptions and multiple-selection contract in a
+  request-keyed form. Keep the ordinary Composer draft intact while that form is active, serialize
+  replies through the qualified operation API, and keep pending clarification visible until resolved.
+- History topics are bounded, redacted previews of the first request in each renderer/conversation
+  group. Fetch only Host-issued operation ids through workspace-scoped reads, with four reads at a
+  time; topic loading must not change selection or mutation ownership. Clear the topic cache on the
+  controller snapshot's workspace boundary and never report a definitive search miss for unloaded topics.
+- Fenced Chat code uses selected lowlight grammars and React text nodes, never injected HTML. Keep
+  original code bytes for copying, plaintext fallback for unknown/large blocks, horizontal scrolling
+  by default, and an explicit wrap toggle.
+
+- Compose a visible V2 conversation from Host operation details sharing both conversation and
+  renderer identities. Restore prior terminal turns through workspace-scoped read-only operation
+  GETs, keep that cache out of mutation authority, clear it on conversation/workspace changes, and
+  keep older results attached to their own turns. Never mark a prior answer as the current stream.
+- Retryable model failures must leave the normal model picker usable; provider configuration
+  recovery discards the retained operation through the Host before opening the connection dialog.
+  Restart-lost permission/question requests use the explicit Host recovery choices, with all
+  choices disabled while a decision is in flight.
+- Keep Chat notices in one height-bounded scrolling region so combined warnings cannot displace
+  the composer. Notice text must shrink and wrap unbroken strings; model-variant labels must
+  shrink independently of the header actions. Markdown lists restore their ordered/unordered markers.
+
 - Seal terminal authoring verification as the fixed-schema JSON `Pipeline verification outcome`
   result attachment. The Renderer may parse only that typed attachment, renders its compact
   publication/Sandbox/Live Smoke summary with collapsed copyable detail, and formats the same
@@ -234,6 +263,10 @@
   result and completion toast presentations aligned.
 
 ## Chat Context Attachments
+
+- V2 user-message `contextReferences` contain Host attachment labels only. Message bubbles and
+  exports read them through `getChatContextReferences`; an explicit empty list is authoritative,
+  while older entries without the field may recover labels from the legacy context wrapper.
 
 - Persist composer attachment display labels on each `<attachment label="...">` inside the
   `<ask-ai-context>` wire block. User-message history must restore those labels as read-only
@@ -1522,6 +1555,10 @@
   assignable to TypeScript's DOM `BodyInit` binary view.
 
 ## Renderer Modal Theme
+
+- Always-mounted dialogs must pass their open flag to `useModalFocusTrap`. Its optional Escape
+  callback handles only the top modal; do not add a second document Escape listener to those dialogs.
+  Return focus to the opener when closing, including nested provider dialogs.
 
 - Every renderer modal surface uses the shared `modal-viewport-backdrop` / `modal-viewport-shell`
   skin from `src/index.css` plus one semantic `modal-tone-*` class. Do not add per-component black

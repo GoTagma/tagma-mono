@@ -1,6 +1,6 @@
 import type { OpencodeThreadEntry, Part } from '../api/opencode-chat';
 import { redactDiagnosticText } from '../../shared/diagnostics.js';
-import { stripAskAiContext } from './ask-ai-context';
+import { getChatContextReferences, stripAskAiContext } from './ask-ai-context';
 
 export type ChatExportFormat = 'md' | 'txt';
 
@@ -71,6 +71,20 @@ function renderEntry(entry: OpencodeThreadEntry, format: ChatExportFormat): stri
   const parts = entry.parts
     .map((part) => renderPart(part, entry.info.role))
     .filter((value) => value.length > 0);
+  const references = getChatContextReferences(entry);
+  if (references.length > 0) {
+    const labels = references.map(({ label }) => {
+      const text = redactDiagnosticText(label).replace(/\s+/g, ' ');
+      return format === 'txt'
+        ? text
+        : Array.from(text)
+            .map((character) =>
+              '\\`*_{}[]()#+.!|<>'.includes(character) ? `\\${character}` : character,
+            )
+            .join('');
+    });
+    parts.push(`Context: ${labels.join('; ')}`);
+  }
   if (parts.length === 0) return null;
   const label = entry.info.role === 'user' ? 'User' : 'Assistant';
   return format === 'md'

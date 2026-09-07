@@ -32,17 +32,18 @@ describe('Chat Operation V2 header controls', () => {
     });
   });
 
-  test('keeps controls blocked while a retryable operation awaits an explicit action', () => {
+  test('allows model recovery while a retryable operation retains navigation ownership', () => {
     expect(
       chatHeaderControlLocks({
         ready: true,
         sending: false,
         operationActive: true,
+        retryable: true,
         yamlEditLocked: false,
       }),
     ).toEqual({
-      modelSelectionBlocked: true,
-      providerBlocked: true,
+      modelSelectionBlocked: false,
+      providerBlocked: false,
       navigationBlocked: true,
     });
   });

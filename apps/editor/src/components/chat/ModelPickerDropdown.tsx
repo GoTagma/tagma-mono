@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Brain, Check, ChevronDown, Plug, Search, X } from 'lucide-react';
 import type { Provider } from '../../api/opencode-chat';
 import { FloatingPanel } from './FloatingPanel';
@@ -120,6 +120,9 @@ export function ModelPickerDropdown({
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const [focusedValue, setFocusedValue] = useState<string | null>(null);
 
   const label = useMemo(
     () => modelPickerLabel(providers, value, placeholder, fallbackLabel),
@@ -134,13 +137,68 @@ export function ModelPickerDropdown({
   const visibleCount = groups.reduce((count, group) => count + group.models.length, 0);
   const showFilter = totalModels > 5;
   const hasNoMatch = query.trim() !== '' && visibleCount === 0;
+  const visibleModels = groups.flatMap((group) =>
+    group.models.map((model) => ({ ...model, providerID: group.provider.id })),
+  );
+  const selectedValue = value ? `${value.providerID}/${value.modelID}` : null;
+  const tabValue =
+    [focusedValue, selectedValue].find(
+      (candidate) => candidate && visibleModels.some((model) => model.value === candidate),
+    ) ?? visibleModels[0]?.value;
+  const chooseModel = (providerID: string, modelID: string) => {
+    onSelect({ providerID, modelID });
+    setOpen(false);
+    anchor?.focus({ preventScroll: true });
+  };
+  const handlePickerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    const options = Array.from(
+      listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? [],
+    );
+    const index = options.findIndex((option) => option === document.activeElement);
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      if (options.length === 0) return;
+      if ((event.key === 'Home' || event.key === 'End') && event.target === searchRef.current)
+        return;
+      event.preventDefault();
+      const next =
+        event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? options.length - 1
+            : event.key === 'ArrowDown'
+              ? (index + 1) % options.length
+              : (index < 0 ? options.length : index) - 1;
+      const option = options[(next + options.length) % options.length];
+      option?.focus({ preventScroll: true });
+      option?.scrollIntoView({ block: 'nearest' });
+    } else if (event.key === 'Enter' && event.target === searchRef.current && visibleModels[0]) {
+      event.preventDefault();
+      const candidate = query.trim()
+        ? visibleModels[0]
+        : (visibleModels.find((model) => model.value === tabValue) ?? visibleModels[0]);
+      chooseModel(candidate.providerID, candidate.id);
+    }
+  };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || disabled) return;
     setQuery('');
-    const t = window.setTimeout(() => searchRef.current?.focus(), 0);
+    setFocusedValue(null);
+    const t = window.setTimeout(() => {
+      const target =
+        searchRef.current ??
+        listRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]') ??
+        listRef.current?.querySelector<HTMLButtonElement>('[role="option"]');
+      target?.focus({ preventScroll: true });
+      if (target !== searchRef.current) target?.scrollIntoView({ block: 'nearest' });
+    }, 0);
     return () => window.clearTimeout(t);
-  }, [open]);
+  }, [open, disabled]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   return (
     <>
@@ -152,13 +210,17 @@ export function ModelPickerDropdown({
         className={`flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-caption font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors min-w-0 ${buttonClassName}`}
         title={label}
         aria-label="Open model picker"
+        aria-haspopup="listbox"
+        aria-expanded={open && !disabled}
+        aria-controls={open && !disabled ? listId : undefined}
       >
         <span className="truncate">{label}</span>
         <ChevronDown size={10} className="shrink-0" />
       </button>
       <FloatingPanel
         anchor={anchor}
-        open={open}
+        open={open && !disabled}
+        onKeyDown={handlePickerKeyDown}
         onClose={() => setOpen(false)}
         width={320}
         maxHeight={420}
@@ -174,8 +236,13 @@ export function ModelPickerDropdown({
                   ref={searchRef}
                   type="text"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setFocusedValue(null);
+                  }}
+                  aria-controls={listId}
                   onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                     if (event.key === 'Escape' && query) {
                       event.preventDefault();
                       event.stopPropagation();
@@ -204,7 +271,13 @@ export function ModelPickerDropdown({
                 )}
               </div>
             )}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div
+              ref={listRef}
+              id={listId}
+              role="listbox"
+              aria-label="Models"
+              className="flex-1 min-h-0 overflow-y-auto"
+            >
               {hasNoMatch && (
                 <div className="px-3 py-4 flex flex-col items-center gap-1.5 text-tagma-muted-dim">
                   <Search size={16} className="opacity-40" />
@@ -230,9 +303,12 @@ export function ModelPickerDropdown({
                       <button
                         key={model.value}
                         type="button"
+                        role="option"
+                        aria-selected={active}
+                        tabIndex={model.value === tabValue ? 0 : -1}
+                        onFocus={() => setFocusedValue(model.value)}
                         onClick={() => {
-                          onSelect({ providerID: group.provider.id, modelID: model.id });
-                          setOpen(false);
+                          chooseModel(group.provider.id, model.id);
                         }}
                         className={`w-full flex items-center gap-1.5 text-left pl-3 pr-2 py-1.5 text-caption font-mono hover:bg-tagma-border/30 transition-colors ${
                           active ? 'text-tagma-text bg-tagma-border/20' : 'text-tagma-muted'

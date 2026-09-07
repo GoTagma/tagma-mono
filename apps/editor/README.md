@@ -136,6 +136,11 @@ read-only origin, but they never share a writable target; a session reuses only 
 branch on later edits. Finished branches reconcile independently, so one preserved failure does not
 block other sessions. Host Trial remains a workspace-wide safety barrier while it is running.
 
+History remains readable from a new editor page. Host events refresh other conversations' status
+without replacing the selected transcript or granting their write authority. A history selection
+keeps the current transcript visible until the requested result loads; later selections and
+workspace changes invalidate older responses.
+
 ### Chat control database compatibility
 
 Chat Operation V2 authority is shared across workspaces in the stable user-data

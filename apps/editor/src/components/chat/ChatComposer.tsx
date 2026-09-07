@@ -1,11 +1,14 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
 import type {
   ChatOperationV2Projection,
   ChatOperationV2QuestionPending,
+  ChatOperationV2InteractiveRecoveryChoice,
 } from '../../api/chat-operations';
 import { useChatStore } from '../../store/chat-store';
+import { shouldSubmitChatComposerKey } from '../../utils/chat-composer-key';
+export { shouldSubmitChatComposerKey } from '../../utils/chat-composer-key';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import {
   describeChatContextWindowIndicator,
@@ -22,15 +25,16 @@ export function ErrorBanner() {
   const dismiss = useChatStore((s) => s.dismissSendError);
   if (!sendError) return null;
   return (
-    <div className="shrink-0 flex items-start gap-2 border-t border-tagma-error/40 bg-tagma-error/8 px-3 py-2">
+    <div
+      role="alert"
+      className="min-w-0 shrink-0 flex items-start gap-2 border-t border-tagma-error/40 bg-tagma-error/8 px-3 py-2"
+    >
       <AlertTriangle size={12} className="text-tagma-error shrink-0 mt-0.5" />
-      <div className="flex-1 text-caption font-mono text-tagma-error/90 break-words">
-        {sendError}
-      </div>
+      <div className="chat-notice-body text-caption font-mono text-tagma-error/90">{sendError}</div>
       <button
         type="button"
         onClick={dismiss}
-        className="p-1 text-tagma-error/70 hover:text-tagma-error transition-colors"
+        className="shrink-0 p-1 text-tagma-error/70 hover:text-tagma-error transition-colors"
         title="Dismiss"
         aria-label="Dismiss error"
       >
@@ -46,24 +50,24 @@ export function CompletionWarningBannerView({
   dismiss,
 }: {
   warning: string | null;
-  dismiss: () => void;
+  dismiss?: () => void;
 }) {
   if (!warning) return null;
   return (
-    <div className="shrink-0 flex items-start gap-2 border-t border-tagma-warning/40 bg-tagma-warning/8 px-3 py-2">
+    <div className="min-w-0 shrink-0 flex items-start gap-2 border-t border-tagma-warning/40 bg-tagma-warning/8 px-3 py-2">
       <AlertTriangle size={12} className="text-tagma-warning shrink-0 mt-0.5" />
-      <div className="flex-1 text-caption font-mono text-tagma-warning/90 break-words">
-        {warning}
-      </div>
-      <button
-        type="button"
-        onClick={dismiss}
-        className="p-1 text-tagma-warning/70 hover:text-tagma-warning transition-colors"
-        title="Dismiss"
-        aria-label="Dismiss completion warning"
-      >
-        <X size={12} />
-      </button>
+      <div className="chat-notice-body text-caption font-mono text-tagma-warning/90">{warning}</div>
+      {dismiss && (
+        <button
+          type="button"
+          onClick={dismiss}
+          className="shrink-0 p-1 text-tagma-warning/70 hover:text-tagma-warning transition-colors"
+          title="Dismiss"
+          aria-label="Dismiss completion warning"
+        >
+          <X size={12} />
+        </button>
+      )}
     </div>
   );
 }
@@ -71,7 +75,131 @@ export function CompletionWarningBannerView({
 export function CompletionWarningBanner() {
   const warning = useChatStore((s) => s.completionWarning);
   const dismiss = useChatStore((s) => s.dismissCompletionWarning);
-  return <CompletionWarningBannerView warning={warning} dismiss={dismiss} />;
+  const hasQuestion = useChatStore((s) => {
+    const operation = s.activeChatOperationV2;
+    return (
+      !!operation &&
+      (!!s.chatOperationV2InteractiveRecoveryRequests[operation.operationId] ||
+        !!s.chatOperationV2QuestionRequests[operation.operationId])
+    );
+  });
+  const awaitingReply = useChatStore(
+    (s) => s.activeChatOperationV2?.executionState === 'waiting_for_user',
+  );
+  if (hasQuestion) return null;
+  return (
+    <CompletionWarningBannerView warning={warning} dismiss={awaitingReply ? undefined : dismiss} />
+  );
+}
+
+const INTERACTION_RECOVERY_ACTIONS: ReadonlyArray<{
+  choice: ChatOperationV2InteractiveRecoveryChoice;
+  label: string;
+  detail: string;
+}> = [
+  {
+    choice: 'retry_new_invocation',
+    label: 'Retry request',
+    detail: 'Start a fresh attempt. A new permission or question may be requested.',
+  },
+  {
+    choice: 'repair_new_invocation',
+    label: 'Repair and continue',
+    detail: 'Start a fresh repair attempt using the preserved task evidence.',
+  },
+  { choice: 'fail_operation', label: 'Mark as failed', detail: 'End this request as failed.' },
+  {
+    choice: 'discard_operation',
+    label: 'Discard draft',
+    detail: 'Discard the unpublished draft and end this request.',
+  },
+];
+
+export function ChatInteractionRecoveryNoticeView({
+  kind,
+  pending,
+  onChoose,
+}: {
+  kind: 'permission' | 'question';
+  pending: ChatOperationV2InteractiveRecoveryChoice | null;
+  onChoose: (choice: ChatOperationV2InteractiveRecoveryChoice) => void;
+}) {
+  return (
+    <section
+      className="min-w-0 border-t border-tagma-warning/40 bg-tagma-warning/8 px-3 py-2"
+      aria-label="Chat interaction recovery"
+    >
+      <div className="text-label text-tagma-text" role="status">
+        {pending ? 'Applying decision…' : 'Chat needs your decision'}
+      </div>
+      <p className="mt-1 text-caption text-tagma-muted break-words">
+        The previous {kind} can no longer receive a reply. Choose how to continue the preserved
+        request.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {INTERACTION_RECOVERY_ACTIONS.map(({ choice, label, detail }) => (
+          <button
+            key={choice}
+            type="button"
+            className="btn-secondary"
+            title={detail}
+            disabled={pending !== null}
+            onClick={() => onChoose(choice)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ChatInteractionRecoveryControls({
+  operationId,
+  requestId,
+  kind,
+}: {
+  operationId: string;
+  requestId: string;
+  kind: 'permission' | 'question';
+}) {
+  const recover = useChatStore((s) => s.recoverActiveChatOperationV2Interaction);
+  const [pending, setPending] = useState<ChatOperationV2InteractiveRecoveryChoice | null>(null);
+  const inFlight = useRef(false);
+  const choose = async (choice: ChatOperationV2InteractiveRecoveryChoice) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPending(choice);
+    try {
+      await recover(operationId, requestId, choice);
+    } finally {
+      inFlight.current = false;
+      setPending(null);
+    }
+  };
+  return (
+    <ChatInteractionRecoveryNoticeView
+      kind={kind}
+      pending={pending}
+      onChoose={(choice) => void choose(choice)}
+    />
+  );
+}
+
+export function ChatInteractionRecoveryNotice() {
+  const operation = useChatStore((s) => s.activeChatOperationV2);
+  const request = useChatStore((s) =>
+    operation ? s.chatOperationV2InteractiveRecoveryRequests[operation.operationId] : undefined,
+  );
+  if (!operation || operation.executionState !== 'waiting_for_user' || !request) return null;
+  return (
+    <ChatInteractionRecoveryControls
+      key={`${operation.operationId}:${request.requestId}`}
+      operationId={operation.operationId}
+      requestId={request.requestId}
+      kind={request.kind}
+    />
+  );
 }
 
 // Composer textarea auto-grows with content up to this cap, then scrolls
@@ -212,6 +340,13 @@ export function ChatComposer() {
   // once context is attached), so the send affordance keys off either signal.
   const hasAttachments = useChatStore((s) => s.composerAttachments.length > 0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const answeringQuestion = useChatStore((s) => {
+    const operation = s.activeChatOperationV2;
+    return (
+      operation?.executionState === 'waiting_for_user' &&
+      s.chatOperationV2QuestionRequests[operation.operationId]?.state === 'live_pending'
+    );
+  });
 
   // Reset to 'auto' first so scrollHeight reflects the content's natural
   // size — otherwise it stays stuck at the previous height and never
@@ -222,7 +357,7 @@ export function ChatComposer() {
     el.style.height = 'auto';
     const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT);
     el.style.height = `${next}px`;
-  }, [text]);
+  }, [text, answeringQuestion]);
 
   const { blockedByAnotherChatUpdate, canSend } = getChatComposerAvailability({
     hasContent: text.trim().length > 0 || hasAttachments,
@@ -260,6 +395,8 @@ export function ChatComposer() {
       : 'Pick a model first';
   const sendLabel = blockedByAnotherChatUpdate ? 'Waiting for current chat update' : 'Send';
 
+  if (answeringQuestion) return null;
+
   return (
     <div className="border-t border-tagma-border px-3 py-2.5 shrink-0 flex flex-col gap-2">
       <AttachmentChips />
@@ -270,7 +407,7 @@ export function ChatComposer() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (shouldSubmitChatComposerKey(e.nativeEvent)) {
               e.preventDefault();
               submit();
             }

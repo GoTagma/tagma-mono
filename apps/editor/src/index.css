@@ -869,6 +869,20 @@ input[type='checkbox'] {
    tailwind.config.js) — mono body text was the main "wireframe" tell in long
    answers. Code spans and fences keep JetBrains Mono below. Tight spacing
    and scoped code styling without @tailwindcss/typography. */
+.chat-notices {
+  min-width: 0;
+  max-height: 35%;
+  flex-shrink: 0;
+  overflow: auto;
+}
+.chat-notice-body {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.chat-notices:has(.chat-question-form) {
+  max-height: 60%;
+}
 .chat-markdown {
   line-height: 1.72;
   -webkit-user-select: text;
@@ -914,6 +928,15 @@ input[type='checkbox'] {
 }
 .chat-markdown li {
   margin: 0.28em 0;
+}
+.chat-markdown ul {
+  list-style-type: disc;
+}
+.chat-markdown ol {
+  list-style-type: decimal;
+}
+.chat-markdown ul.contains-task-list {
+  list-style-type: none;
 }
 .chat-markdown li > p {
   margin: 0;
@@ -981,4 +1004,57 @@ html.light .chat-markdown :not(pre) > code {
   border: 0;
   border-top: 1px solid rgb(var(--tagma-border) / 0.7);
   margin: 0.75em 0;
+}
+
+.chat-code-block {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0.35em 0;
+  border: 1px solid rgb(var(--tagma-border) / 0.6);
+  background: rgb(var(--tagma-surface));
+}
+.chat-markdown .chat-code-block pre,
+.chat-code-block pre {
+  margin: 0;
+  border: 0;
+  padding: 0.5em 0.65em;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+.chat-markdown .chat-code-block pre code,
+.chat-code-block pre code {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+.chat-code-block[data-wrap='true'] pre,
+.chat-code-block[data-wrap='true'] pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-code-block .hljs-comment,
+.chat-code-block .hljs-quote {
+  color: rgb(var(--tagma-muted));
+}
+.chat-code-block .hljs-keyword,
+.chat-code-block .hljs-attr,
+.chat-code-block .hljs-selector-tag,
+.chat-code-block .hljs-name {
+  color: rgb(var(--tagma-accent));
+}
+.chat-code-block .hljs-string,
+.chat-code-block .hljs-addition {
+  color: rgb(var(--tagma-success));
+}
+.chat-code-block .hljs-number,
+.chat-code-block .hljs-literal,
+.chat-code-block .hljs-built_in,
+.chat-code-block .hljs-title {
+  color: rgb(var(--tagma-info));
+}
+.chat-code-block .hljs-deletion {
+  color: rgb(var(--tagma-error));
 }

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { isValidElement, memo, useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import {
   AlertTriangle,
@@ -56,11 +56,12 @@ import {
   type ChatPublicationStatus,
 } from '../../../shared/chat-verification-outcome';
 import {
-  extractAskAiContextReferences,
+  getChatContextReferences,
   stripAskAiContext,
   type AskAiContextReference,
 } from '../../utils/ask-ai-context';
 import { ChatVerificationOutcomeView } from './VerificationOutcome';
+import { ChatCodeBlock } from './ChatCodeBlock';
 
 // Memoized so streaming chunks (which produce a new `messages` array but
 // keep entry object identity for untouched messages) only re-render the one
@@ -84,12 +85,7 @@ export const MessageBubble = memo(function MessageBubble({
   surfaceActivitySummary?: boolean;
 }) {
   const role = entry.info.role;
-  const attachmentReferences =
-    role === 'user'
-      ? entry.parts.flatMap((part) =>
-          part.type === 'text' ? extractAskAiContextReferences(part.text) : [],
-        )
-      : [];
+  const attachmentReferences = getChatContextReferences(entry);
   if (
     role === 'user' &&
     entry.parts.some(
@@ -347,6 +343,19 @@ const EDITOR_CONTEXT_RE = /^<editor-context>[\s\S]*?<\/editor-context>\n+/;
 // internal caching (and this renders once per streaming chunk).
 const REMARK_PLUGINS = [remarkGfm];
 
+const MARKDOWN_COMPONENTS = {
+  pre({ children }: { children?: React.ReactNode }) {
+    if (
+      isValidElement<{ children?: React.ReactNode; className?: string }>(children) &&
+      typeof children.props.children === 'string'
+    ) {
+      const language = /language-([^\s]+)/.exec(children.props.className ?? '')?.[1] ?? '';
+      return <ChatCodeBlock code={children.props.children} language={language} />;
+    }
+    return <pre>{children}</pre>;
+  },
+};
+
 /**
  * A user message whose entire visible content is synthetic context — the
  * `<editor-context>` preamble and/or one or more `<ask-ai-context>` blocks —
@@ -421,7 +430,9 @@ function PartRenderer({
       return (
         <div className="chat-assistant-bubble text-tagma-text">
           <div className="chat-markdown py-1 text-title">
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+              {text}
+            </ReactMarkdown>
             {showStreamingCursor && <span className="chat-stream-cursor" aria-hidden="true" />}
           </div>
           {cardFooter}

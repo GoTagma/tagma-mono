@@ -212,7 +212,11 @@ test('production sends and Stop use only the operation API for one executor', as
       });
     }
     if (url === '/api/chat/operations/operation-cutover-1') {
-      return Response.json(detail(projectedOperation));
+      return Response.json(
+        detail(projectedOperation, null, null, [
+          { referenceId: 'context-1', label: 'failure', content: 'bounded evidence' },
+        ]),
+      );
     }
     throw new Error(`Unexpected request: ${method} ${url}`);
   }) as unknown as typeof fetch;
@@ -263,6 +267,7 @@ test('production sends and Stop use only the operation API for one executor', as
     activeChatOperationV2: { operationId: 'operation-cutover-1' },
   });
   expect(useChatStore.getState().messages).toHaveLength(1);
+  expect(useChatStore.getState().messages[0]?.contextReferences).toEqual([{ label: 'failure' }]);
   const create = requests.find(
     ({ url, method }) => url === '/api/chat/operations' && method === 'POST',
   );
@@ -629,6 +634,76 @@ test('projects a terminal Host result notice once in transcript and export witho
   ).toHaveLength(1);
 });
 
+test('historical result messages survive a slower superseded history selection', async () => {
+  setClientWorkspace(workspace);
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  const archived = ['first', 'second'].map((suffix) =>
+    operation({
+      operationId: `operation-history-${suffix}`,
+      conversationId: `conversation-history-${suffix}`,
+      rendererInstanceId: 'renderer-previous-window',
+      phase: 'terminal',
+      executionState: 'terminal',
+      terminalOutcome: 'completed_readonly',
+      hasResult: true,
+      updatedAt: 140,
+    }),
+  );
+  const pending = new Map<string, (response: Response) => void>();
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/chat/operations/snapshot') return Response.json(snapshot(archived));
+    const selected = archived.find((item) => url === `/api/chat/operations/${item.operationId}`);
+    if (selected)
+      return new Promise<Response>((resolve) => pending.set(selected.operationId, resolve));
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch;
+  await activateChatOperationExecutionForWorkspace(workspace, {
+    chatOperationProtocolVersion: 2,
+    chatOperationMode: 'production',
+  });
+  const response = (selected: ChatOperationV2Projection) =>
+    Response.json(
+      detail(selected, null, {
+        schemaVersion: 2,
+        resultId: `result-${selected.operationId}`,
+        operationId: selected.operationId,
+        generation: selected.generation,
+        purpose: 'discussion',
+        status: 'completed',
+        terminalOutcome: 'completed_readonly',
+        completedAt: 140,
+        contentHash: 'b'.repeat(64),
+        resultHash: 'c'.repeat(64),
+        pipeline: null,
+        messages: [
+          {
+            messageId: `message-${selected.operationId}`,
+            role: 'assistant',
+            createdAt: 130,
+            text: `Saved answer for ${selected.operationId}.`,
+            contentHash: 'd'.repeat(64),
+            attachments: [],
+          },
+        ],
+      }),
+    );
+  const first = archived[0]!;
+  const second = archived[1]!;
+  const selectingFirst = useChatStore.getState().selectSession(first.operationId);
+  const selectingSecond = useChatStore.getState().selectSession(second.operationId);
+  pending.get(second.operationId)!(response(second));
+  await selectingSecond;
+  pending.get(first.operationId)!(response(first));
+  await selectingFirst;
+  const state = useChatStore.getState();
+  expect(state.currentSessionId).toBe(second.operationId);
+  expect(state.chatOperationV2ConversationId).toBe(second.conversationId);
+  expect(state.messages).toHaveLength(2);
+  expect((state.messages[1]!.parts[0] as { text: string }).text).toContain(second.operationId);
+  expect(state.selectingSessionId).toBeNull();
+});
+
 test('projects published pipeline authority for the Open Pipeline action', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
@@ -875,6 +950,13 @@ test('routes a projected live question reply through the qualified V2 endpoint',
   expect(useChatStore.getState().completionWarning).toBe(
     'Choose mode: Which safe mode should be used?',
   );
+  expect(
+    useChatStore.getState().chatOperationV2QuestionRequests[waiting.operationId]?.content,
+  ).toMatchObject({
+    question: 'Which safe mode should be used?',
+    multiple: false,
+    options: [],
+  });
   await useChatStore.getState().send('Use safe mode.');
 
   expect(
@@ -887,6 +969,13 @@ test('routes a projected live question reply through the qualified V2 endpoint',
     payload: { requestId: 'question-01', choice: 'reply', answers: ['Use safe mode.'] },
   });
   expect(requests.some(({ url }) => url.includes('/api/opencode/chat/proxy'))).toBe(false);
+  useChatStore.setState({ sendError: 'Previous question reply failed' });
+  await useChatStore
+    .getState()
+    .replyActiveChatOperationV2Question(waiting.operationId, 'question-01', 'reply', [
+      'Use safe mode.',
+    ]);
+  expect(useChatStore.getState().sendError).toBeNull();
 });
 
 test('routes restart recovery through the distinct qualified interaction endpoint', async () => {
@@ -1178,4 +1267,187 @@ test('diagnostics expose bounded V2 lifecycle metadata without message content',
   });
   expect(JSON.stringify(diagnostics)).not.toContain('private authored message');
   expect(JSON.stringify(diagnostics)).not.toContain('clarification-private');
+});
+
+test('keeps the complete conversation through sends, reload, history selection, and export', async () => {
+  setClientWorkspace(workspace);
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  const operations: ChatOperationV2Projection[] = [];
+  const details = new Map<string, unknown>();
+  const reads: string[] = [];
+  let failHistoryRead = false;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === '/api/chat/operations/snapshot') return Response.json(snapshot(operations));
+    if (url === '/api/chat/operations' && init?.method === 'POST') {
+      const { payload } = JSON.parse(String(init.body));
+      const index = operations.length + 1;
+      const completed = operation({
+        operationId: `conversation-turn-${index}`,
+        conversationId: payload.conversationId,
+        rendererInstanceId: payload.rendererInstanceId,
+        createdAt: index * 100,
+        updatedAt: index * 100 + 20,
+        phase: 'terminal',
+        executionState: 'terminal',
+        terminalOutcome: 'completed_readonly',
+        hasResult: true,
+      });
+      operations.push(completed);
+      const envelope = detail(completed, null, {
+        schemaVersion: 2,
+        resultId: `result-${index}`,
+        operationId: completed.operationId,
+        generation: 1,
+        purpose: 'discussion',
+        status: 'completed',
+        terminalOutcome: 'completed_readonly',
+        completedAt: completed.updatedAt,
+        contentHash: 'b'.repeat(64),
+        resultHash: 'c'.repeat(64),
+        pipeline: null,
+        messages: [
+          {
+            messageId: `answer-${index}`,
+            role: 'assistant',
+            createdAt: completed.createdAt + 10,
+            text: `Answer ${index}`,
+            contentHash: 'd'.repeat(64),
+            attachments: [],
+          },
+        ],
+      });
+      envelope.detail.userMessage.text = payload.request.text;
+      details.set(completed.operationId, envelope);
+      return Response.json({
+        protocolVersion: 2,
+        result: { kind: 'completed_readonly', operation: completed },
+      });
+    }
+    const id = url.slice('/api/chat/operations/'.length);
+    if (details.has(id)) {
+      reads.push(id);
+      if (failHistoryRead && id === 'conversation-turn-1')
+        throw new Error('History temporarily unavailable');
+      return Response.json(details.get(id));
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch;
+  useChatStore.setState({ model: { providerID: 'test', modelID: 'test-model' } });
+  const handshake = { chatOperationProtocolVersion: 2, chatOperationMode: 'production' } as const;
+  await activateChatOperationExecutionForWorkspace(workspace, handshake);
+  const conversationId = useChatStore.getState().chatOperationV2ConversationId!;
+  await useChatStore.getState().send('First request');
+  const firstTurnEntries = useChatStore.getState().messages;
+  await useChatStore.getState().send('Second request');
+  expect(useChatStore.getState().messages[0]).toBe(firstTurnEntries[0]);
+  expect(useChatStore.getState().messages[1]).toBe(firstTurnEntries[1]);
+  const texts = () =>
+    useChatStore
+      .getState()
+      .messages.flatMap((entry) =>
+        entry.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])),
+      );
+  expect(texts()).toEqual(['First request', 'Answer 1', 'Second request', 'Answer 2']);
+  const exported = buildConversationExport({
+    format: 'md',
+    title: 'Conversation',
+    messages: useChatStore.getState().messages,
+  });
+  expect(exported.content).toContain('First request');
+  expect(exported.content).toContain('Answer 2');
+
+  reads.length = 0;
+  await activateChatOperationExecutionForWorkspace(workspace, handshake, conversationId);
+  expect(texts()).toEqual(['First request', 'Answer 1', 'Second request', 'Answer 2']);
+  expect(reads).toContain('conversation-turn-1');
+
+  failHistoryRead = true;
+  await activateChatOperationExecutionForWorkspace(workspace, handshake, conversationId);
+  expect(texts()).toEqual(['Second request', 'Answer 2']);
+  expect(useChatStore.getState().sendError).toContain('Could not load earlier Chat messages');
+  failHistoryRead = false;
+  await useChatStore.getState().selectSession('conversation-turn-2');
+  expect(texts()).toEqual(['First request', 'Answer 1', 'Second request', 'Answer 2']);
+
+  await useChatStore.getState().newSession();
+  expect(texts()).toEqual([]);
+  await useChatStore.getState().selectSession('conversation-turn-1');
+  expect(texts()).toEqual(['First request', 'Answer 1', 'Second request', 'Answer 2']);
+  await activateChatOperationExecutionForWorkspace(workspaceB, handshake, 'other-conversation');
+  expect(texts()).toEqual([]);
+});
+
+test('loads history topics through scoped reads with cache, retry, and no selection changes', async () => {
+  setClientWorkspace(workspace);
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  const readIds: string[] = [];
+  let otherUnavailable = true;
+  let current = operation();
+  let older = operation();
+  let other = operation();
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    expect(init?.method ?? 'GET').toBe('GET');
+    if (url === '/api/chat/operations/snapshot') {
+      const correlation = useChatStore.getState();
+      current = operation({
+        operationId: 'topic-current',
+        conversationId: correlation.chatOperationV2ConversationId!,
+        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
+        phase: 'terminal',
+        executionState: 'terminal',
+        terminalOutcome: 'cancelled_precommit',
+        createdAt: 200,
+        updatedAt: 200,
+      });
+      older = { ...current, operationId: 'topic-older', createdAt: 100, updatedAt: 100 };
+      other = {
+        ...current,
+        operationId: 'topic-other',
+        conversationId: 'another-conversation',
+        rendererInstanceId: 'another-renderer',
+      };
+      return Response.json(snapshot([older, current, other]));
+    }
+    const id = url.slice('/api/chat/operations/'.length);
+    readIds.push(id);
+    const target = [older, current, other].find((entry) => entry.operationId === id);
+    if (!target) throw new Error('Read of an unissued id');
+    if (id === 'topic-other' && otherUnavailable)
+      return Response.json({ error: 'Unavailable' }, { status: 503 });
+    const response = detail(target);
+    response.detail.userMessage.text =
+      id === 'topic-other' ? 'Explain deployment failure' : 'Build the release pipeline';
+    return Response.json(response);
+  }) as unknown as typeof fetch;
+  await activateChatOperationExecutionForWorkspace(workspace, {
+    chatOperationProtocolVersion: 2,
+    chatOperationMode: 'production',
+  });
+  const before = useChatStore.getState().messages;
+  readIds.length = 0;
+  await useChatStore.getState().loadChatHistoryTopics(['topic-older', 'topic-other', 'not-issued']);
+  expect(readIds).toEqual(['topic-other']);
+  expect(useChatStore.getState().chatOperationV2HistoryTopics['topic-other']).toEqual({
+    status: 'unavailable',
+  });
+  otherUnavailable = false;
+  await useChatStore.getState().loadChatHistoryTopics(['topic-other']);
+  expect(useChatStore.getState().chatOperationV2HistoryTopics['topic-other']).toEqual({
+    status: 'ready',
+    text: 'Explain deployment failure',
+  });
+  expect(useChatStore.getState().messages).toBe(before);
+  expect(useChatStore.getState().activeChatOperationV2?.operationId).toBe(current.operationId);
+  const count = readIds.length;
+  await useChatStore.getState().loadChatHistoryTopics(['topic-other']);
+  expect(readIds.length).toBe(count);
+  setClientWorkspace(workspaceB);
+  globalThis.fetch = (async () => Response.json(snapshot())) as unknown as typeof fetch;
+  await activateChatOperationExecutionForWorkspace(workspaceB, {
+    chatOperationProtocolVersion: 2,
+    chatOperationMode: 'production',
+  });
+  expect(useChatStore.getState().chatOperationV2HistoryTopics).toEqual({});
 });

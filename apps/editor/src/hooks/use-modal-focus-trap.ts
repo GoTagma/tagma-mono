@@ -6,33 +6,44 @@ const FOCUSABLE_SELECTOR = [
   'textarea:not([disabled])',
   'input:not([disabled])',
   'select:not([disabled])',
+  'summary',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
 function visibleAndEnabled(element: HTMLElement): boolean {
-  if (element.hasAttribute('disabled')) return false;
-  if (element.getAttribute('aria-hidden') === 'true') return false;
+  if (element.matches(':disabled') || element.getAttribute('aria-hidden') === 'true') return false;
   return Boolean(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
 }
 
-export function useModalFocusTrap<T extends HTMLElement>() {
+const modalStack: HTMLElement[] = [];
+
+export function useModalFocusTrap<T extends HTMLElement>(enabled = true, onEscape?: () => void) {
   const ref = useRef<T>(null);
+  const escapeRef = useRef(onEscape);
+  escapeRef.current = onEscape;
 
   useEffect(() => {
     const root = ref.current;
-    if (!root) return;
-
+    if (!enabled || !root) return;
+    modalStack.push(root);
+    const isTopModal = () => modalStack.at(-1) === root;
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const getFocusable = () =>
       Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(visibleAndEnabled);
-
     const focusInitial = window.setTimeout(() => {
-      const first = getFocusable()[0] ?? root;
-      first.focus({ preventScroll: true });
+      if (!isTopModal() || root.contains(document.activeElement)) return;
+      (getFocusable()[0] ?? root).focus({ preventScroll: true });
     }, 0);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopModal() || event.isComposing || event.keyCode === 229) return;
+      if (event.key === 'Escape' && escapeRef.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        escapeRef.current();
+        return;
+      }
       if (event.key !== 'Tab') return;
       const focusable = getFocusable();
       if (focusable.length === 0) {
@@ -40,30 +51,27 @@ export function useModalFocusTrap<T extends HTMLElement>() {
         root.focus({ preventScroll: true });
         return;
       }
-
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       const active = document.activeElement;
-      if (event.shiftKey) {
-        if (active === first || !root.contains(active)) {
-          event.preventDefault();
-          last.focus({ preventScroll: true });
-        }
-      } else if (active === last) {
+      if (
+        event.shiftKey
+          ? active === first || !root.contains(active)
+          : active === last || !root.contains(active)
+      ) {
         event.preventDefault();
-        first.focus({ preventScroll: true });
+        (event.shiftKey ? last : first).focus({ preventScroll: true });
       }
     };
-
-    root.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', onKeyDown, true);
     return () => {
       window.clearTimeout(focusInitial);
-      root.removeEventListener('keydown', onKeyDown);
-      if (previousFocus && document.contains(previousFocus)) {
+      document.removeEventListener('keydown', onKeyDown, true);
+      const index = modalStack.lastIndexOf(root);
+      if (index !== -1) modalStack.splice(index, 1);
+      if (previousFocus && document.contains(previousFocus))
         previousFocus.focus({ preventScroll: true });
-      }
     };
-  }, []);
-
+  }, [enabled]);
   return ref;
 }

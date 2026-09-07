@@ -73,6 +73,7 @@ export function FloatingPanel({
   width,
   maxHeight = 320,
   children,
+  onKeyDown,
 }: {
   anchor: HTMLElement | null;
   open: boolean;
@@ -80,6 +81,7 @@ export function FloatingPanel({
   width: number;
   maxHeight?: number;
   children: React.ReactNode;
+  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -170,13 +172,23 @@ export function FloatingPanel({
       onCloseRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key === 'Escape' && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault();
+        onCloseRef.current();
+        anchor?.focus({ preventScroll: true });
+      }
+    };
+    const onFocus = (event: FocusEvent) => {
+      const target = event.target as Node;
+      if (!panelRef.current?.contains(target) && !anchor?.contains(target)) onCloseRef.current();
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('focusin', onFocus);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('focusin', onFocus);
     };
   }, [open, anchor]);
 
@@ -184,6 +196,7 @@ export function FloatingPanel({
   return createPortal(
     <div
       ref={panelRef}
+      onKeyDown={onKeyDown}
       style={{
         position: 'fixed',
         left: pos.left,

@@ -60,7 +60,7 @@ export function ProviderConnectDialog() {
 
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
-  const modalRef = useModalFocusTrap<HTMLDivElement>();
+  const modalRef = useModalFocusTrap<HTMLDivElement>(open, close);
   const backdropDismissHandlers = useModalBackdropDismiss(close);
 
   // The "Add custom" / "Edit" modal lives inside this dialog so it tears down
@@ -105,17 +105,6 @@ export function ProviderConnectDialog() {
     const t = window.setTimeout(() => searchRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
   }, [open, refreshCatalog]);
-
-  // Keep Escape working even when focus is outside an <input> — the backdrop
-  // click already closes, but users reach for Escape first.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, close]);
 
   // Partition + filter in one pass. Alphabetical within each group so the
   // order doesn't jitter across refreshes.

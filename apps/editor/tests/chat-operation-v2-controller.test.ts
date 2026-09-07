@@ -728,3 +728,139 @@ test('an inconsistent handshake leaves the controller non-executable', async () 
   ).rejects.toThrow('not the authenticated execution mode');
   expect(fake.calls).toEqual([]);
 });
+
+test('reads terminal history from another renderer without granting mutation authority', async () => {
+  for (const outcome of ['completed_readonly', 'completed_published'] as const) {
+    const fake = fakeApi();
+    const archived = operation({
+      operationId: `operation-${outcome}`,
+      conversationId: `conversation-${outcome}`,
+      rendererInstanceId: 'renderer-previous-window',
+      phase: 'terminal',
+      executionState: 'terminal',
+      terminalOutcome: outcome,
+      hasResult: true,
+      version: 17,
+    });
+    fake.setSnapshot(snapshot([archived], 30));
+    const archivedDetail = detail(archived);
+    fake.setDetail(archivedDetail);
+    const projected: ChatOperationV2OperationDetail[] = [];
+    const controller = createChatOperationV2Controller({
+      api: fake.api,
+      nextId: (purpose) => `${purpose}-01`,
+      onDetail: (value) => projected.push(value),
+    });
+    await controller.activate({
+      workspaceKey: 'D:\\repo',
+      conversationId: 'conversation-01',
+      handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    });
+    expect(controller.getSnapshot().activeOperation).toBeNull();
+    await controller.selectOperation(archived.operationId);
+    expect(projected).toEqual([archivedDetail]);
+    expect(controller.getSnapshot().activeOperation).toEqual(archived);
+    fake.setSnapshot(snapshot([archived], 40));
+    fake.subscriptions[0]!.options.onCursorReset?.({
+      protocolVersion: 2,
+      kind: 'cursor_reset_required',
+      requestedAfter: 30,
+      retainedFloor: 35,
+      latestCursor: 40,
+    });
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(controller.getSnapshot().activeOperation).toEqual(archived);
+    await expect(controller.cancel()).rejects.toThrow('different renderer conversation');
+    expect(fake.calls.some(({ name }) => name === 'cancel')).toBe(false);
+  }
+});
+
+test('foreign and unselected conversation events update history without replacing the transcript', async () => {
+  for (const rendererInstanceId of ['renderer-01', 'renderer-other-window']) {
+    const fake = fakeApi();
+    const active = operation({ phase: 'executing_readonly' });
+    const background = operation({
+      operationId: 'operation-background',
+      conversationId: 'conversation-background',
+      rendererInstanceId,
+      phase: 'trial-running',
+    });
+    fake.setSnapshot(snapshot([active, background], 4));
+    fake.setOperation(active);
+    const projected: ChatOperationV2OperationDetail[] = [];
+    const wakes: ChatOperationV2Wake[] = [];
+    const controller = createChatOperationV2Controller({
+      api: fake.api,
+      nextId: (purpose) => `${purpose}-01`,
+      onDetail: (value) => projected.push(value),
+      onWake: (value) => wakes.push(value),
+    });
+    await controller.activate({
+      workspaceKey: 'D:\\repo',
+      conversationId: 'conversation-01',
+      handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    });
+    projected.length = 0;
+    const finished = {
+      ...background,
+      version: 20,
+      phase: 'terminal' as const,
+      executionState: 'terminal' as const,
+      terminalOutcome: 'completed_published' as const,
+      updatedAt: 200,
+    };
+    fake.setOperation(finished);
+    fake.subscriptions[0]!.options.onWake({ workspaceSeq: 5, operationId: background.operationId });
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(controller.getSnapshot().operations).toContainEqual(finished);
+    expect(controller.getSnapshot().activeOperation).toEqual(active);
+    expect(controller.getSnapshot().latestCursor).toBe(5);
+    expect(projected).toEqual([]);
+    expect(wakes).toEqual([]);
+  }
+});
+
+test('history selection keeps the visible transcript until the latest selected detail is ready', async () => {
+  const fake = fakeApi();
+  const current = operation({ phase: 'terminal', executionState: 'terminal' });
+  const first = operation({
+    ...current,
+    operationId: 'operation-first',
+    conversationId: 'conversation-first',
+  });
+  const second = operation({
+    ...current,
+    operationId: 'operation-second',
+    conversationId: 'conversation-second',
+  });
+  fake.setSnapshot(snapshot([current, first, second]));
+  fake.setOperation(current);
+  const pending = new Map<string, (value: ChatOperationV2OperationDetail) => void>();
+  const projected: ChatOperationV2OperationDetail[] = [];
+  const controller = createChatOperationV2Controller({
+    api: {
+      ...fake.api,
+      fetchOperation: (id, options) =>
+        id === current.operationId
+          ? fake.api.fetchOperation(id, options)
+          : new Promise((resolve) => pending.set(id, resolve)),
+    },
+    nextId: (purpose) => `${purpose}-01`,
+    onDetail: (value) => projected.push(value),
+  });
+  await controller.activate({
+    workspaceKey: 'D:\\repo',
+    conversationId: 'conversation-01',
+    handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+  });
+  projected.length = 0;
+  const selectingFirst = controller.selectOperation(first.operationId);
+  const selectingSecond = controller.selectOperation(second.operationId);
+  expect(controller.getSnapshot().activeOperation).toEqual(current);
+  pending.get(second.operationId)!(detail(second));
+  await selectingSecond;
+  pending.get(first.operationId)!(detail(first));
+  await selectingFirst;
+  expect(controller.getSnapshot().activeOperation).toEqual(second);
+  expect(projected).toEqual([detail(second)]);
+});

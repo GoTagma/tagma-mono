@@ -532,7 +532,7 @@ export function CustomProviderModal({
   const [verifyMsg, setVerifyMsg] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
 
   const idInputRef = useRef<HTMLInputElement>(null);
-  const modalRef = useModalFocusTrap<HTMLDivElement>();
+  const modalRef = useModalFocusTrap<HTMLDivElement>(open, onClose);
   const backdropDismissHandlers = useModalBackdropDismiss(onClose);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const modalRunRef = useRef(0);
@@ -568,17 +568,6 @@ export function CustomProviderModal({
     }, 0);
     return () => window.clearTimeout(t);
   }, [open, initialForm, isEdit]);
-
-  // Escape closes the modal — matches the parent dialog's behavior so
-  // keyboard users don't have to think about which layer they're in.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
 
   if (!open) return null;
 
