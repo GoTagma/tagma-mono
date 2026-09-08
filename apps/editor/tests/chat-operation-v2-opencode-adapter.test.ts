@@ -295,6 +295,10 @@ function createHarness(options: HarnessOptions = {}) {
       },
     },
     session: {
+      abort(input: { sessionID: string; directory: string }) {
+        calls.push(`sdk.rich.abort:${input.sessionID}:${input.directory}`);
+        return Promise.resolve({ data: true, response: { status: 200 } });
+      },
       prompt(input, requestOptions) {
         calls.push('sdk.rich.prompt');
         richCallCount += 1;
@@ -488,6 +492,13 @@ function setup(
 }
 
 describe('Chat Operation V2 OpenCode adapter', () => {
+  test('interrupts both the provider execution and native admission channels for the same session', async () => {
+    const { adapter, harness } = setup();
+    await adapter.interruptSession('ses_owned_execution');
+    expect(harness.calls).toContain('sdk.rich.abort:ses_owned_execution:/workspace');
+    expect(harness.calls).toContain('sdk.native.interrupt');
+  });
+
   test('preserves a native session-not-found response instead of reporting transport ambiguity', async () => {
     const { harness, runner } = setup({
       nativePromptFailure: {
@@ -690,6 +701,8 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(Object.keys(rich?.tools ?? {})).toEqual(['*']);
     expect(rich?.format).toEqual({ type: 'text' });
     expect(rich?.system).toContain('read-only discussion');
+    expect(rich?.system).toContain('Supported Tagma reference');
+    expect(rich?.system).toContain('depends_on');
     expect(rich?.parts[0]?.text).toContain(readonlyAdmissionRequest.text);
     expect(rich?.parts[0]?.text).toContain('Focus on the retry boundary.');
     expect(rich?.parts[0]?.text).not.toContain(sealedReadSnapshot.canonicalYaml);
@@ -778,6 +791,7 @@ describe('Chat Operation V2 OpenCode adapter', () => {
     expect(rich?.tools).toEqual({ '*': false });
     expect(rich?.format).toEqual({ type: 'text' });
     expect(rich?.system).toContain('sealed Host snapshot');
+    expect(rich?.system).toContain('null companion fields mean not supplied');
     expect(rich?.system).toContain('empty `compileDiagnostics` array');
     expect(rich?.system).toContain('static Host compilation evidence only');
     expect(rich?.system).toContain('`fromDriver: opencode`');

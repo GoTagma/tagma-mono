@@ -72,6 +72,32 @@ function request(dirty = true): ChatOperationV2CreateRequest {
 }
 
 describe('Chat Operation V2 Host admission resolver', () => {
+  test('freezes the snapshot candidate as current even when the Host canvas changed before admission', () => {
+    const host = authority();
+    const other = {
+      id: 'pipeline_candidate_2',
+      relativePath: 'other/other.yaml',
+      contentHash: 'b'.repeat(64),
+    };
+    const changedHost = {
+      ...host,
+      inventory: createChatInventorySnapshot(5, [candidate, other]),
+      candidates: [
+        { ...host.candidates[0]!, currentCanvas: false },
+        { ...host.candidates[0]!, id: other.id, path: other.relativePath, currentCanvas: true },
+      ],
+    };
+    const resolved = resolveChatOperationV2CreateAdmission(request(), changedHost);
+    expect(
+      resolved.candidates.filter((entry) => entry.currentCanvas).map((entry) => entry.id),
+    ).toEqual([candidate.id]);
+    expect(resolved.candidates.map((entry) => entry.path)).toEqual([
+      candidate.relativePath,
+      other.relativePath,
+    ]);
+    expect(changedHost.candidates[1]!.currentCanvas).toBe(true);
+  });
+
   test('derives authority hashes and the service request without renderer authority', () => {
     const host = authority();
     const resolved = resolveChatOperationV2CreateAdmission(request(), host);

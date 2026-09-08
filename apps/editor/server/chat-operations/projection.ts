@@ -1,4 +1,8 @@
 import { parseChatOperationV2Admission, type ChatOperationV2Admission } from './admission.js';
+import {
+  isChatPermissionTargetSummary,
+  type ChatPermissionTargetSummary,
+} from '../../shared/chat-permission-targets';
 import type { ChatOperationTiming } from '../../shared/chat-operation-timing.js';
 import {
   isChatOperationFeedback,
@@ -118,6 +122,7 @@ export interface ChatOperationV2RendererStaleInventoryPending {
 export interface ChatOperationV2RendererPermissionContent {
   readonly actionCode: string;
   readonly resourceCode: string;
+  readonly targetSummary?: ChatPermissionTargetSummary;
 }
 
 export interface ChatOperationV2RendererQuestionOption {
@@ -694,12 +699,18 @@ function clarificationPending(
 }
 
 function projectPermissionContent(value: unknown): ChatOperationV2RendererPermissionContent {
-  const content = exactRecord(value, ['actionCode', 'resourceCode'], 'Permission content');
+  const hasTargets = Object.prototype.hasOwnProperty.call(value ?? {}, 'targetSummary');
+  const content = exactRecord(
+    value,
+    ['actionCode', 'resourceCode', ...(hasTargets ? ['targetSummary'] : [])],
+    'Permission content',
+  );
   if (
     typeof content.actionCode !== 'string' ||
     !SAFE_CODE.test(content.actionCode) ||
     typeof content.resourceCode !== 'string' ||
-    !SAFE_CODE.test(content.resourceCode)
+    !SAFE_CODE.test(content.resourceCode) ||
+    (hasTargets && !isChatPermissionTargetSummary(content.targetSummary))
   ) {
     return fail(
       'unsafe_pending_content',
@@ -709,6 +720,7 @@ function projectPermissionContent(value: unknown): ChatOperationV2RendererPermis
   return Object.freeze({
     actionCode: content.actionCode,
     resourceCode: content.resourceCode,
+    ...(hasTargets ? { targetSummary: content.targetSummary as ChatPermissionTargetSummary } : {}),
   });
 }
 

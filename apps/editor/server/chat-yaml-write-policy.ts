@@ -46,7 +46,7 @@ function exactExecutionTarget(value: unknown): string | null {
  * execution target is carried separately in metadata.filepath. apply_patch
  * carries every source/destination in metadata.files instead.
  */
-function executionTargetsFromMetadata(metadata: unknown): ExecutionTargetsResult | null {
+export function executionTargetsFromMetadata(metadata: unknown): ExecutionTargetsResult | null {
   if (metadata === undefined || metadata === null) return null;
   if (!isRecord(metadata)) {
     return { targets: null, reason: INVALID_EXECUTION_METADATA_REASON };
@@ -102,7 +102,7 @@ function executionTargetsFromMetadata(metadata: unknown): ExecutionTargetsResult
   return null;
 }
 
-function targetFromPattern(pattern: string): string | null {
+export function targetFromPattern(pattern: string): string | null {
   let target = pattern.trim();
   if (!target || target.includes('\0')) return null;
   if (
@@ -124,7 +124,11 @@ function targetFromPattern(pattern: string): string | null {
   return resolve(target);
 }
 
-function readTargetFromPattern(pattern: string, workDir: string, agentRoot: string): string | null {
+export function readTargetFromPattern(
+  pattern: string,
+  workDir: string,
+  agentRoot: string,
+): string | null {
   let target = pattern.trim();
   if (!target || target.includes('\0')) return null;
   const doubleQuoted = target.startsWith('"') && target.endsWith('"');
@@ -153,7 +157,7 @@ function readTargetFromPattern(pattern: string, workDir: string, agentRoot: stri
   return null;
 }
 
-function containsSymlinkAncestor(target: string, root: string): boolean {
+export function containsSymlinkAncestor(target: string, root: string): boolean {
   const rel = relative(resolve(root), resolve(target));
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) return false;
   let cursor = resolve(root);

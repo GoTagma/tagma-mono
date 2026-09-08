@@ -73,6 +73,31 @@ function rehash<T extends { readonly recordHash: string }>(value: T): T {
 }
 
 describe('ChatTurn Operation V2 interactive request records', () => {
+  test('preserves bounded target labels in permission records but excludes them from diagnostics', () => {
+    const input = {
+      ...permissionInput(),
+      content: {
+        actionCode: 'read',
+        resourceCode: 'staged_files',
+        targetSummary: { targets: ['pipeline/pipeline.yaml'], omitted: 0 },
+      },
+    };
+    const request = sealChatOperationV2InteractiveRequest(input);
+    expect(
+      decodeChatOperationV2InteractiveRequest(encodeChatOperationV2InteractiveRequest(request)),
+    ).toEqual(request);
+    expect(request.content).toEqual(input.content);
+    expect(JSON.stringify(toChatOperationV2InteractiveRequestEvidence(request))).not.toContain(
+      'pipeline.yaml',
+    );
+    expect(() =>
+      sealChatOperationV2InteractiveRequest({
+        ...input,
+        content: { ...input.content, targetSummary: { targets: ['../escape'], omitted: 0 } },
+      }),
+    ).toThrow();
+  });
+
   test('seals and round-trips one canonical live permission request', () => {
     const request = sealChatOperationV2InteractiveRequest(permissionInput());
 

@@ -70,6 +70,29 @@
   read authority is `none`, its prompt must state that no artifact was supplied, and the response
   must remain request-only. Only a diagnosis with a non-null sealed snapshot may claim artifact
   inspection. Discussion never accepts a snapshot.
+- Freeze the Host-selected visible canvas on every ordinary Chat send, including saved YAML and
+  layout. The historical `dirtySnapshot` wire field carries read evidence, not a dirty-state flag
+  or write grant. Require one unambiguous Host current-candidate id; keep classifier/discussion
+  invocation inputs snapshot-free and recovery bound to the exact persisted evidence.
+  Match the frozen visible coordinate against Host-issued inventory coordinates rather than a
+  cached `currentCanvas` flag. Refresh a missing candidate without recapturing the canvas. The
+  Host classifier's current-canvas marker follows that validated frozen selection, not a later
+  server canvas selection.
+- A Host-claimed pre-commit Stop/Discard wins over both rejected and resolved SDK responses,
+  including late success and returned error objects. Interrupt the pinned compatibility execution
+  drain and native admission channel for the same Host-owned session before relocation/cleanup;
+  closing the HTTP reader or interrupting native admission alone does not drain permissions.
+  Reject only fresh process-local pending requests in the owned session tree, then wait for
+  quiescence before relocation. A failed restore may resume monotonic progress of the same
+  authenticated relocation identity; never accept changed binding/session/directory identities.
+- Permission target summaries are bounded draft-relative display evidence, never path or grant
+  authority. Derive them from the same execution-target interpretation as staged authorization;
+  exclude credentials, absolute coordinates, traversal, bidi controls, and unknown target scopes.
+  Preserve old records without summaries and keep target labels out of diagnostic event evidence.
+- Trial Plan `begin` may return up to 16 KiB of the exact YAML already read for the Host-issued
+  revision check. Reuse those bytes instead of asking the agent to read the same target again.
+  Oversized YAML must return explicit omission metadata and retain targeted-read fallback; do
+  not expose siblings/companions, consume a commit attempt, or weaken revision/path checks.
 - Public Chat V2 API errors must use the shared discriminated kind-to-HTTP-status contract on both
   sides of the wire. Report a selected provider/model absent from configured providers as the typed
   model-configuration error and preserve the Composer request; never relabel it as a capability

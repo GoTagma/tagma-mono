@@ -57,6 +57,14 @@ export const TAGMA_CONTEXT_PACKAGER_AGENT = 'tagma-context-packager';
 export const TAGMA_PIPELINE_SECTION_BUILDER_AGENT = 'tagma-pipeline-section-builder';
 export const TAGMA_TRIAL_PLANNER_AGENT = 'tagma-trial-planner';
 
+export const TAGMA_READONLY_PIPELINE_REFERENCE = `Supported Tagma reference:
+- YAML uses a top-level pipeline object with tracks and tasks. Explicit dependencies use depends_on; continue_from also implies a dependency. Declaration order alone is not a dependency.
+- Qualified task references use track.task. Bare task references resolve in the same track first, then by a globally unique task id; qualify ambiguous references.
+- Dataflow is declared with task-level inputs and outputs. Matching names connect automatically; from can select task.outputs.name, track.task.outputs.name, or a documented raw stream. Do not invent alternate field names.
+- Command tasks consume {{inputs.name}}. Native JSON output bindings read final-line JSON; explicit stdout/stderr bindings select those streams. These are language rules, not evidence that a particular task ran.
+- Answer the user's question concisely. Distinguish configured behavior from observed execution; do not ask the user to provide internal Host ids or sealed records.
+`;
+
 export const TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT = `## Evidence Semantics
 
 - An empty \`compileDiagnostics\` array means only that the frozen editor snapshot contains no captured diagnostics. It is not evidence that Host compilation, preflight, Trial, or a pipeline run occurred.
@@ -64,9 +72,11 @@ export const TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT = `## Evidence Semantics
 - Keep configuration, captured diagnostics, static compilation, and runtime observations as disjoint evidence classes. Never group \`.compile.log\` with runtime evidence, including in examples or next steps. If both are missing, request compile evidence and Trial/run/task-output evidence separately and use each only for claims in its own class.
 - Preflight is separate environment/runtime evidence and requires an explicit preflight result. Never combine compilation and preflight into one claim, such as "compiled/preflighted" or "compilation/preflight". Before returning, check that every mention of \`.compile.log\` is limited to static compile or parse claims and never implies preflight or dependency availability.
 - Manifest, layout, and requirements are companion metadata, not execution evidence. Make runtime claims only from explicit Trial, run, reconciliation, or task-output evidence present in the handoff.
+- Missing or null companion fields mean not supplied in this snapshot, not absent on disk. In particular, requirementsMarkdown: null cannot prove that the pipeline declares no requirements.
 - A requirements entry named \`opencode\` with \`fromDriver: opencode\` is a Tagma-managed runtime dependency, not an operator-installed CLI. It is intentionally omitted from the human \`## CLI tools\` list, so the generated \`No CLI tools required yet.\` marker is not contradictory. Do not recommend installing or probing this managed binary. Treat other binaries according to their supplied requirement metadata.
-- Do not invent schema fields, task kinds, validation properties, or commands. Recommend a contract field only when the supplied artifact or an allowed loaded skill proves it exists. When static schema cannot prove a runtime value, state the required runtime observation without fabricating a YAML mechanism.
+- Do not invent schema fields, task kinds, validation properties, or commands. Recommend a contract field only when the supplied artifact, the supported Host reference below, or an allowed loaded skill proves it exists. When static schema cannot prove a runtime value, state the required runtime observation without fabricating a YAML mechanism.
 - Do not claim that an artifact was inspected unless its content is present in the sealed handoff or was read through an allowed path. A filename or candidate path alone is not its content.
+${TAGMA_READONLY_PIPELINE_REFERENCE}
 `;
 
 export function buildTagmaRouterAgent(): string {
@@ -229,7 +239,7 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 
 - The supplied \`<agent-root>\` is the sole filesystem read/write boundary. Do not inspect or access the live workspace or live \`.tagma\` outside it.
 - Use the exact staged Target YAML path and YAML hash from the host request. Never substitute a live \`.tagma\` path, another pipeline, or a newer YAML revision.
-- Inspect only that staged YAML and the smallest relevant companions inside \`<agent-root>\` needed to make its cases executable. Never edit pipeline artifacts or call another tool.
+- Call \`tagma_trial_plan begin\` before reading the target YAML. Its \`pipelineEvidence\` reuses the exact Host-authorized YAML bytes already read to check the revision. When \`kind: included\`, use those bytes and do not read the same YAML again. When \`kind: too_large\`, use bounded targeted reads; never treat omitted evidence as an empty pipeline. Read only genuinely missing relevant companion/supporting evidence inside \`<agent-root>\`. Never edit pipeline artifacts.
 - Every physical turn is one formal attempt. Assemble the draft sequentially with bounded \`tagma_trial_plan\` operations in this order: \`begin\` once, \`upsert-case\` once per case, \`set-coverage\` once, \`set-findings\` once, then \`commit\` exactly once. \`begin\` resumes a matching path-and-hash draft by default; use \`reset: true\` only when intentionally rebuilding it from scratch.
 - The Host resolves fixed tool-free single-prompt fast lanes deterministically before invoking this planner, including the sole qualified task target. Never call \`commit-plan\`; it remains only a compatibility operation for older hosts.
 - Only \`commit\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after the counted commit succeeds or fails, stop the physical turn.

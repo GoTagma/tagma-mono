@@ -183,6 +183,8 @@ export interface ChatOperationV2RendererCompileDiagnostic {
 }
 
 export interface ChatOperationV2RendererDirtySnapshot {
+  // Historical wire name: frozen visible-canvas evidence, whether saved or locally modified.
+  // Presence grants neither dirty-state semantics nor write authority.
   readonly canonicalYaml: string;
   readonly layoutJson: string | null;
   readonly requirementsMarkdown: string | null;

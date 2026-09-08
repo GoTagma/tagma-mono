@@ -68,6 +68,10 @@ interface RuntimeOptions {
   readonly repairDisposition?: 'changed' | 'no_change';
   readonly interactive?: readonly ChatOperationV2RuntimeInteractiveRequest[];
   readonly blockInvocation?: boolean;
+  readonly blockInvocationPurpose?: 'authoring' | 'repair' | 'trial_plan';
+  readonly abortResult?: 'provider_failure' | 'completed' | 'throw';
+  readonly interruptGate?: Promise<void>;
+  readonly waitForVerificationAbort?: boolean;
   readonly corruptRelocation?: boolean;
   readonly failForwardOnce?: boolean;
   readonly failResultPersistence?: boolean;
@@ -292,12 +296,22 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     for (const interactive of interactiveRequests) {
       await request.requestInteractive(interactive);
     }
-    if (this.options.blockInvocation) {
+    if (
+      this.options.blockInvocation &&
+      (!this.options.blockInvocationPurpose ||
+        this.options.blockInvocationPurpose === request.purpose)
+    ) {
       await new Promise<void>((resolve) => {
         if (request.signal.aborted) resolve();
         else request.signal.addEventListener('abort', () => resolve(), { once: true });
       });
-      return { kind: 'cancelled', code: 'cancelled_precommit' };
+      if (this.options.abortResult === 'provider_failure') {
+        return { kind: 'provider_unavailable', code: 'provider_invocation_failed' };
+      }
+      if (this.options.abortResult === 'throw') throw new DOMException('Aborted', 'AbortError');
+      if (this.options.abortResult !== 'completed') {
+        return { kind: 'cancelled', code: 'cancelled_precommit' };
+      }
     }
     if (
       this.options.providerUnavailableOnce &&
@@ -366,6 +380,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     input: Parameters<ChatOperationV2AuthoringRuntime['interruptInvocation']>[0],
   ) {
     this.interruptedInvocationIds.push(input.invocationId);
+    await this.options.interruptGate;
   }
 
   async forwardInteractive(command: ChatOperationV2InteractiveForwardingCommand) {
@@ -380,6 +395,12 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     input: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0],
   ): Promise<ChatOperationV2AuthoringVerificationResult> {
     this.verifyCalls.push(input.stage.stageId);
+    if (this.options.waitForVerificationAbort) {
+      await new Promise<void>((resolve) => {
+        if (input.signal.aborted) resolve();
+        else input.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+    }
     if (this.options.emitTrialProgress) {
       input.onTrialProgress?.({
         stageId: input.stage.stageId,
@@ -1495,6 +1516,99 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       phase: 'terminal',
       terminalOutcome: 'cancelled_precommit',
     });
+  });
+
+  for (const purpose of ['authoring', 'repair', 'trial_plan'] as const) {
+    for (const abortResult of ['provider_failure', 'completed', 'throw'] as const) {
+      test(`Host Stop wins over ${abortResult} returned while aborting ${purpose}`, async () => {
+        const { engine, store, runtime } = createHarness({
+          verification:
+            purpose === 'authoring'
+              ? ['passed']
+              : [purpose === 'repair' ? 'repair' : 'trial_plan', 'passed'],
+          blockInvocation: true,
+          blockInvocationPurpose: purpose,
+          abortResult,
+        });
+        const running = engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+        while (!runtime.invocationRequests.some((request) => request.purpose === purpose)) {
+          await Bun.sleep(1);
+        }
+        const current = store.getOperation('operation-1')!;
+        const stopped = await engine.stop({
+          operationId: current.operationId,
+          expectedGeneration: current.generation,
+          expectedVersion: current.version,
+          requestId: 'stop-returned-result',
+        });
+        expect(stopped.kind).toBe('cancelled_precommit');
+        expect((await running).kind).toBe('cancelled_precommit');
+        expect(store.getOperation('operation-1')).toMatchObject({
+          phase: 'terminal',
+          terminalOutcome: 'cancelled_precommit',
+          waitReason: null,
+          activeInvocationId: null,
+        });
+        const aborted = runtime.invocationRequests.find((request) => request.purpose === purpose)!;
+        expect(store.getInvocationOutbox(aborted.invocationId)?.status).toBe('interrupted');
+        const page = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+        if (page.kind !== 'events') throw new Error('Expected retained operation events.');
+        const events = page.events;
+        expect(events.filter((event) => event.type === 'operation_terminal')).toHaveLength(1);
+        expect(events.some((event) => event.type === 'invocation_failed_terminal')).toBe(false);
+        expect(runtime.restoredRelocationIds).toHaveLength(1);
+        expect(store.listCommitWal('scope-1')).toHaveLength(0);
+      });
+    }
+  }
+
+  test('cancellation waits for the runtime drain before restoring or discarding the stage', async () => {
+    let releaseDrain!: () => void;
+    const interruptGate = new Promise<void>((resolve) => {
+      releaseDrain = resolve;
+    });
+    const { engine, store, runtime } = createHarness({
+      blockInvocation: true,
+      abortResult: 'provider_failure',
+      interruptGate,
+    });
+    const running = engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    while (runtime.invocationRequests.length === 0) await Bun.sleep(1);
+    const current = store.getOperation('operation-1')!;
+    const stopping = engine.stop({
+      operationId: current.operationId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'stop-drain-order',
+    });
+    try {
+      while (runtime.interruptedInvocationIds.length === 0) await Bun.sleep(1);
+      await Bun.sleep(25);
+      expect(runtime.restoredRelocationIds).toHaveLength(0);
+      expect(runtime.discardedStageIds).toHaveLength(0);
+    } finally {
+      releaseDrain();
+      await stopping;
+      await running;
+    }
+    expect(store.getOperation('operation-1')?.terminalOutcome).toBe('cancelled_precommit');
+  });
+
+  test('Stop during Trial execution wins over a late successful verification result', async () => {
+    const { engine, store, runtime } = createHarness({ waitForVerificationAbort: true });
+    const running = engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    while (runtime.verifyCalls.length === 0) await Bun.sleep(1);
+    const current = store.getOperation('operation-1')!;
+    const stopped = await engine.stop({
+      operationId: current.operationId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'stop-verification',
+    });
+    expect(stopped.kind).toBe('cancelled_precommit');
+    expect((await running).kind).toBe('cancelled_precommit');
+    expect(store.listCommitWal('scope-1')).toHaveLength(0);
+    expect(store.getOperation('operation-1')?.terminalOutcome).toBe('cancelled_precommit');
   });
 
   test('honors an explicit discard before commit without publishing the reserved target', async () => {

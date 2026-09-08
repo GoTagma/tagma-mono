@@ -672,6 +672,136 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       }
       expect(productionExecution).toMatchObject({ kind: 'completed', finishCode: 'stop' });
       expect(productionInteractionCount).toBe(5);
+
+      // A native admission interrupt alone does not drain the compatibility prompt's pending
+      // permission. Exercise the production adapter against the pinned binary before relocation.
+      const cancelSessionID = `ses_tagma_cancel_adapter_${suffix}`;
+      const cancelInvocationID = `cancel-authoring-${suffix}`;
+      const cancelOperationID = `cancel-operation-${suffix}`;
+      const cancelBytes = new TextEncoder().encode('{"purpose":"cancel-conformance"}');
+      await productionAdapter.ensureSession({
+        sessionId: cancelSessionID,
+        sourceDirectory: tagmaCwd,
+      });
+      await productionAdapter.moveSession({
+        sessionId: cancelSessionID,
+        destinationDirectory: productionStageDirectory,
+      });
+      expect(
+        (
+          await productionAdapter.admit({
+            operationId: cancelOperationID,
+            workspaceScopeId: 'scope-conformance',
+            invocationId: cancelInvocationID,
+            sessionId: cancelSessionID,
+            inputId: `msg_tagma_cancel_admission_${suffix}`,
+            purpose: 'authoring',
+            canonicalRequestBytes: cancelBytes,
+            stageDirectory: productionStageDirectory,
+          })
+        ).kind,
+      ).toBe('admitted');
+      const cancelController = new AbortController();
+      let observePending!: () => void;
+      let releasePending!: () => void;
+      const pendingObserved = new Promise<void>((resolve) => {
+        observePending = resolve;
+      });
+      const pendingReleased = new Promise<void>((resolve) => {
+        releasePending = resolve;
+      });
+      const cancelExecution = productionAdapter.execute({
+        invocationId: cancelInvocationID,
+        sessionId: cancelSessionID,
+        executionMessageId: `msg_tagma_cancel_execution_${suffix}`,
+        purpose: 'authoring',
+        intent: 'create',
+        stageDirectory: productionStageDirectory,
+        targetRelativePath: 'cancel/cancel.yaml',
+        trialPlanRequest: null,
+        admission: productionAdmission,
+        clarificationThread: null,
+        canonicalRequestBytes: cancelBytes,
+        signal: cancelController.signal,
+        requestInteractive: async () => {
+          observePending();
+          await pendingReleased;
+        },
+      });
+      let pendingTimeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          pendingObserved,
+          new Promise<never>((_resolve, reject) => {
+            pendingTimeout = setTimeout(
+              () => reject(new Error('Cancellation conformance did not reach a pending request.')),
+              15_000,
+            );
+          }),
+        ]);
+        cancelController.abort();
+        await productionAdapter.interruptInvocation({
+          operationId: cancelOperationID,
+          invocationId: cancelInvocationID,
+        });
+      } finally {
+        clearTimeout(pendingTimeout);
+        cancelController.abort();
+        releasePending();
+      }
+      expect(await cancelExecution).toMatchObject({ kind: 'cancelled' });
+      let cancelActivity = await productionAdapter.getSessionActivity({
+        rootSessionId: cancelSessionID,
+        allowedDirectories: [tagmaCwd, productionStageDirectory],
+      });
+      const drainDeadline = Date.now() + 5_000;
+      while (cancelActivity === 'busy' && Date.now() < drainDeadline) {
+        await Bun.sleep(50);
+        cancelActivity = await productionAdapter.getSessionActivity({
+          rootSessionId: cancelSessionID,
+          allowedDirectories: [tagmaCwd, productionStageDirectory],
+        });
+      }
+      const cancelledClient = createClient(
+        handle.baseUrl,
+        productionStageDirectory,
+        handle.auth.authorization,
+        false,
+      );
+      const cancelledStatuses = await readSdkData(
+        cancelledClient.session.status({ directory: productionStageDirectory }),
+        'cancelled compatibility status',
+      );
+      const cancelledPermissions = await readSdkData(
+        cancelledClient.permission.list({ directory: productionStageDirectory }),
+        'cancelled permissions',
+      );
+      const cancelledQuestions = await readSdkData(
+        cancelledClient.question.list({ directory: productionStageDirectory }),
+        'cancelled questions',
+      );
+      expect({
+        activity: cancelActivity,
+        compatibilityStatus: sparseSessionStatusType(cancelledStatuses, cancelSessionID),
+        pendingPermissions: cancelledPermissions.filter(
+          (entry) => entry.sessionID === cancelSessionID,
+        ).length,
+        pendingQuestions: cancelledQuestions.filter((entry) => entry.sessionID === cancelSessionID)
+          .length,
+      }).toEqual({
+        activity: 'idle',
+        compatibilityStatus: 'absent',
+        pendingPermissions: 0,
+        pendingQuestions: 0,
+      });
+      await productionAdapter.moveSession({
+        sessionId: cancelSessionID,
+        destinationDirectory: tagmaCwd,
+      });
+      expect(
+        (await productionAdapter.listSessionTree({ rootSessionId: cancelSessionID }))[0]?.directory,
+      ).toBe(tagmaCwd);
+
       const productionTrialAdmission = await productionAdapter.admit({
         operationId: `production-operation-${suffix}`,
         workspaceScopeId: 'scope-conformance',

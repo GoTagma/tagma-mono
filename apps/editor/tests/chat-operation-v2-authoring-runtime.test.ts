@@ -24,6 +24,7 @@ import type {
   ChatOperationV2AuthoringInvocationRequest,
   ChatOperationV2RuntimeInteractiveRequest,
 } from '../server/chat-operations/authoring.js';
+import { sealChatOperationV2SessionRelocation } from '../server/chat-operations/authoring.js';
 import type { ChatOperationV2InteractiveForwardingCommand } from '../server/chat-operations/interactive-requests.js';
 import type {
   ChatPipelineTrialProgress,
@@ -1236,6 +1237,47 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     });
     expect(restored.phase).toBe('restored');
     expect(value.openCode.tree.every(({ directory }) => directory === value.sourceDirectory)).toBe(
+      true,
+    );
+    expect(value.staging.relocation).toBeNull();
+  });
+
+  test('retries the same authenticated restoration after an earlier busy drain', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-1',
+      stage: value.stage,
+    });
+    value.openCode.activity = 'busy';
+    await expect(
+      value.runtime.restoreSession({
+        operationId: 'operation-1',
+        operationGeneration: 1,
+        relocation,
+      }),
+    ).rejects.toThrow('still busy');
+    value.openCode.activity = 'idle';
+    await expect(
+      value.runtime.restoreSession({
+        operationId: 'operation-1',
+        operationGeneration: 1,
+        relocation: sealChatOperationV2SessionRelocation({
+          ...relocation,
+          bindingId: 'foreign-binding',
+        }),
+      }),
+    ).rejects.toThrow('authenticated relocation');
+    const restored = await value.runtime.restoreSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      relocation,
+    });
+    expect(restored.phase).toBe('restored');
+    expect(value.openCode.tree.every((entry) => entry.directory === value.sourceDirectory)).toBe(
       true,
     );
     expect(value.staging.relocation).toBeNull();

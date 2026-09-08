@@ -25,6 +25,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { tool } from "@opencode-ai/plugin";
 
 const CONTRACT = ${contract};
+const BEGIN_YAML_EVIDENCE_LIMIT = 16 * 1024;
 const normalizeTrialPrerequisiteCases = (${prerequisiteValidator});
 const REQUIRED_COVERAGE = [...CONTRACT.coverageDimensions];
 const COVERAGE_STATUSES = [...CONTRACT.coverageStatuses];
@@ -851,7 +852,7 @@ function writeTrialPlanDraft(paths, draft) {
   renameSync(tempPath, paths.draftPath);
 }
 
-function trialPlanDraftResult(operation, draft) {
+function trialPlanDraftResult(operation, draft, pipelineEvidence) {
   return JSON.stringify(
     {
       operation,
@@ -859,6 +860,7 @@ function trialPlanDraftResult(operation, draft) {
       cases: draft.cases.length,
       coverage: draft.coverage.length,
       findings: draft.findings.length,
+      ...(pipelineEvidence ? { pipelineEvidence } : {}),
       ...(draft.seededFromYamlHash
         ? { seededFromYamlHash: draft.seededFromYamlHash }
         : {}),
@@ -1327,7 +1329,8 @@ function executeTrialPlanOperation(args, context) {
   if (!HOST_ATTEMPT_ID_RE.test(attemptId)) {
     throw new Error('attempt_id must be the exact host-issued attempt ID');
   }
-  const yamlHash = createHash('sha1').update(readFileSync(yamlPath, 'utf8')).digest('hex');
+  const yamlText = readFileSync(yamlPath, 'utf8');
+  const yamlHash = createHash('sha1').update(yamlText).digest('hex');
   const paths = trialPlanAttemptPaths(root, yamlPath, yamlHash);
   if (
     !paths.hostAttempt ||
@@ -1390,7 +1393,11 @@ function executeTrialPlanOperation(args, context) {
       draft.summary = summary;
       draft.goals = goals;
       writeTrialPlanDraft(paths, draft);
-      return trialPlanDraftResult(operation, draft);
+      const byteCount = Buffer.byteLength(yamlText, 'utf8');
+      return trialPlanDraftResult(operation, draft,
+        byteCount <= BEGIN_YAML_EVIDENCE_LIMIT
+          ? { kind: 'included', yamlHash, byteCount, yaml: yamlText }
+          : { kind: 'too_large', yamlHash, byteCount, limitBytes: BEGIN_YAML_EVIDENCE_LIMIT });
     });
   }
 

@@ -16,6 +16,7 @@ import {
   TAGMA_GENERAL_DISCUSSION_AGENT,
   TAGMA_PIPELINE_DIAGNOSIS_AGENT,
   TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT,
+  TAGMA_READONLY_PIPELINE_REFERENCE,
   TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT,
 } from '../opencode-seed.js';
 import {
@@ -116,6 +117,10 @@ export interface OpenCodeAdapterSdkClient {
     };
   };
   readonly session: {
+    abort(input: {
+      readonly sessionID: string;
+      readonly directory: string;
+    }): Promise<OpenCodeAdapterSdkResult>;
     prompt(
       input: OpenCodeAdapterClassifierTextPromptInput | OpenCodeAdapterTextPromptInput,
       options?: { readonly signal?: AbortSignal },
@@ -736,14 +741,25 @@ export class OpenCodeSdkAdapter
 
   async interruptSession(sessionId: string): Promise<void> {
     const client = await this.resolveClient();
-    const result = await client.v2.session.interrupt({ sessionID: sessionId });
+    // Native admission and the pinned compatibility prompt have distinct execution drains.
+    // Interrupt both Host-owned channels, even when one fails, before allowing stage cleanup.
+    const results = await Promise.allSettled([
+      Promise.resolve().then(() =>
+        client.session.abort({ sessionID: sessionId, directory: this.workspaceDirectory }),
+      ),
+      Promise.resolve().then(() => client.v2.session.interrupt({ sessionID: sessionId })),
+    ]);
     if (
-      result.error !== undefined ||
-      !Number.isInteger(result.response?.status) ||
-      result.response.status < 200 ||
-      result.response.status >= 300
+      results.some(
+        (result) =>
+          result.status === 'rejected' ||
+          result.value.error !== undefined ||
+          !Number.isInteger(result.value.response?.status) ||
+          result.value.response.status < 200 ||
+          result.value.response.status >= 300,
+      )
     ) {
-      throw new Error('OpenCode native interrupt failed.');
+      throw new Error('OpenCode session interruption failed.');
     }
   }
 }
@@ -922,6 +938,7 @@ export function parseReadonlyTextCanonicalRequestBytes(input: {
       : [
           'Answer this Tagma read-only discussion using only the Host-authenticated request.',
           'Do not use tools, inspect files, or claim that pipeline or workspace state was modified.',
+          TAGMA_READONLY_PIPELINE_REFERENCE,
         ].join(' ');
   const providerContext = {
     schemaVersion: 1,

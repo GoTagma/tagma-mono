@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import yaml from 'js-yaml';
 import {
   createChatVerificationOutcome,
   serializeChatVerificationOutcome,
@@ -13,6 +14,7 @@ import { buildConversationExport } from '../src/utils/chat-export';
 
 const originalFetch = globalThis.fetch;
 const originalEventSource = globalThis.EventSource;
+const originalPipelineConfig = usePipelineStore.getState().config;
 const workspace = 'D:\\chat-operation-cutover';
 const workspaceB = 'D:\\chat-operation-cutover-b';
 
@@ -173,7 +175,12 @@ afterEach(async () => {
     sendError: null,
     completionWarning: null,
   });
-  usePipelineStore.setState({ isDirty: false, layoutDirty: false } as never);
+  usePipelineStore.setState({
+    config: originalPipelineConfig,
+    yamlPath: null,
+    isDirty: false,
+    layoutDirty: false,
+  });
 });
 
 test('production sends and Stop use only the operation API for one executor', async () => {
@@ -845,7 +852,11 @@ test('production permission decisions use V2 CAS and never raw OpenCode replies'
               hostRequestId: 'permission-1',
               state: 'live_pending',
               requestedAt: 101,
-              content: { actionCode: 'write', resourceCode: 'pipeline_artifact' },
+              content: {
+                actionCode: 'write',
+                resourceCode: 'pipeline_artifact',
+                targetSummary: { targets: ['current/current.yaml'], omitted: 0 },
+              },
             }),
       );
     }
@@ -857,6 +868,11 @@ test('production permission decisions use V2 CAS and never raw OpenCode replies'
     chatOperationMode: 'production',
   });
   expect(useChatStore.getState().pendingPermissions).toHaveLength(1);
+
+  expect(useChatStore.getState().pendingPermissions[0]?.targetSummary).toEqual({
+    targets: ['current/current.yaml'],
+    omitted: 0,
+  });
 
   await useChatStore
     .getState()
@@ -1053,54 +1069,121 @@ test('routes restart recovery through the distinct qualified interaction endpoin
   ).toBe(false);
 });
 
-test('submits dirty canvas bytes only against the Host-projected current candidate', async () => {
+test.each([
+  ['saved', false, false, true, false],
+  ['unsaved YAML', true, false, true, false],
+  ['unsaved layout', false, true, true, false],
+  ['saved after navigation', false, false, false, false],
+  ['saved after inventory refresh', false, false, true, true],
+] as const)(
+  'submits %s canvas evidence against the Host-projected current candidate',
+  async (_label, isDirty, layoutDirty, currentCanvas, refreshInventory) => {
+    setClientWorkspace(workspace);
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    const requests: Array<{ url: string; body: unknown }> = [];
+    let created = operation();
+    let snapshotReads = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+      requests.push({ url, body });
+      if (url === '/api/chat/operations/snapshot') {
+        snapshotReads++;
+        if (refreshInventory && snapshotReads === 1) return Response.json(snapshot());
+        if (refreshInventory) {
+          usePipelineStore.setState({ config: { ...config, name: 'Later canvas edit' } });
+        }
+        const projected = inventory(true);
+        projected.candidates[0]!.currentCanvas = currentCanvas;
+        return Response.json(snapshot([], projected));
+      }
+      if (url === '/api/chat/operations' && init?.method === 'POST') {
+        const payload = body?.payload as { conversationId: string; rendererInstanceId: string };
+        created = operation({
+          conversationId: payload.conversationId,
+          rendererInstanceId: payload.rendererInstanceId,
+        });
+        return Response.json({
+          protocolVersion: 2,
+          result: { kind: 'in_progress', operation: created },
+        });
+      }
+      if (url === '/api/chat/operations/operation-cutover-1') {
+        return Response.json(detail(created));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+    const config = {
+      name: isDirty ? 'Unsaved analysis' : 'Saved workflow',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            { id: 'source', name: 'Source', command: 'echo source' },
+            { id: 'join', name: 'Join', command: 'echo finished', depends_on: ['source'] },
+          ],
+        },
+      ],
+    };
+    usePipelineStore.setState({
+      config,
+      isDirty,
+      layoutDirty,
+      yamlPath: `${workspace}\\.tagma\\current\\current.yaml`,
+    });
+    useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
+
+    await activateChatOperationExecutionForWorkspace(workspace, {
+      chatOperationProtocolVersion: 2,
+      chatOperationMode: 'production',
+    });
+    await useChatStore.getState().send('Explain the current pipeline without changing it.');
+
+    const create = requests.find(({ url }) => url === '/api/chat/operations')?.body as {
+      payload: {
+        candidateId: string;
+        localRevision: number;
+        dirtySnapshot: { canonicalYaml: string; layoutJson: string };
+      };
+    };
+    expect(create.payload.candidateId).toBe('candidate-current');
+    expect(Number.isInteger(create.payload.localRevision)).toBe(true);
+    expect(yaml.load(create.payload.dirtySnapshot.canonicalYaml)).toEqual({ pipeline: config });
+    expect(JSON.parse(create.payload.dirtySnapshot.layoutJson)).toHaveProperty('positions');
+    expect(usePipelineStore.getState().isDirty).toBe(isDirty);
+    expect(usePipelineStore.getState().layoutDirty).toBe(layoutDirty);
+    expect(snapshotReads).toBe(refreshInventory ? 2 : 1);
+  },
+);
+
+test('saved canvas evidence fails closed when the Host current candidate is ambiguous', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
-  const requests: Array<{ url: string; body: unknown }> = [];
-  let created = operation();
+  let creates = 0;
+  const projected = inventory(true);
+  projected.candidates.push({
+    ...projected.candidates[0]!,
+    candidateId: 'another-current',
+    relativeCoordinate: 'another/another.yaml',
+  });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
-    requests.push({ url, body });
-    if (url === '/api/chat/operations/snapshot') {
-      return Response.json(snapshot([], inventory(true)));
+    if (String(input) === '/api/chat/operations' && init?.method === 'POST') creates++;
+    if (String(input) === '/api/chat/operations/snapshot') {
+      return Response.json(snapshot([], projected));
     }
-    if (url === '/api/chat/operations' && init?.method === 'POST') {
-      const payload = body?.payload as { conversationId: string; rendererInstanceId: string };
-      created = operation({
-        conversationId: payload.conversationId,
-        rendererInstanceId: payload.rendererInstanceId,
-      });
-      return Response.json({
-        protocolVersion: 2,
-        result: { kind: 'in_progress', operation: created },
-      });
-    }
-    if (url === '/api/chat/operations/operation-cutover-1') {
-      return Response.json(detail(created));
-    }
-    throw new Error(`Unexpected request: ${url}`);
+    throw new Error(`Unexpected request: ${String(input)}`);
   }) as unknown as typeof fetch;
-  usePipelineStore.setState({ isDirty: true, layoutDirty: false } as never);
+  usePipelineStore.setState({ isDirty: false, layoutDirty: false });
   useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
-
   await activateChatOperationExecutionForWorkspace(workspace, {
     chatOperationProtocolVersion: 2,
     chatOperationMode: 'production',
   });
-  await useChatStore.getState().send('Use the unsaved canvas.');
-
-  const create = requests.find(({ url }) => url === '/api/chat/operations')?.body as {
-    payload: {
-      candidateId: string;
-      localRevision: number;
-      dirtySnapshot: { canonicalYaml: string; layoutJson: string };
-    };
-  };
-  expect(create.payload.candidateId).toBe('candidate-current');
-  expect(Number.isInteger(create.payload.localRevision)).toBe(true);
-  expect(create.payload.dirtySnapshot.canonicalYaml.length).toBeGreaterThan(0);
-  expect(JSON.parse(create.payload.dirtySnapshot.layoutJson)).toHaveProperty('positions');
+  await expect(useChatStore.getState().send('Explain this saved pipeline.')).rejects.toThrow(
+    'one unambiguous candidate',
+  );
+  expect(creates).toBe(0);
 });
 
 test('a contradictory handshake leaves the store non-executable', async () => {

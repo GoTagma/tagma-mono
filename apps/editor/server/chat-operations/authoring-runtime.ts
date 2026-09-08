@@ -37,6 +37,7 @@ import {
 } from '../chat-yaml-staging.js';
 import { createStreamingLoopbackFetch } from '../loopback-fetch.js';
 import { ensureOpencode, ensureRealTagmaDirectory } from '../opencode-lifecycle.js';
+import { describeChatPermissionTargets } from './permission-targets';
 import { TAGMA_PIPELINE_AGENT, TAGMA_TRIAL_PLANNER_AGENT } from '../opencode-seed.js';
 import {
   assertPipelineYamlPath,
@@ -60,6 +61,7 @@ import {
   type ChatOperationV2ClarificationThread,
 } from './clarification.js';
 import {
+  CHAT_OPERATION_V2_SESSION_RELOCATION_PHASES,
   ChatOperationV2AuthoringProtocolError,
   parseChatOperationV2SessionRelocation,
   sealChatOperationV2SessionRelocation,
@@ -1157,7 +1159,9 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
   async execute(
     input: Parameters<ManagedChatOperationV2AuthoringOpenCodeAdapter['execute']>[0],
   ): Promise<ManagedChatOperationV2AuthoringExecutionResult> {
+    if (input.signal.aborted) return { kind: 'cancelled', code: 'cancelled_precommit' };
     const { client, processGeneration } = await this.client(input.stageDirectory);
+    if (input.signal.aborted) return { kind: 'cancelled', code: 'cancelled_precommit' };
     this.activeInteractive.set(input.invocationId, {
       sessionId: input.sessionId,
       directory: input.stageDirectory,
@@ -1185,6 +1189,7 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
         },
         { signal: input.signal },
       );
+      if (input.signal.aborted) return { kind: 'cancelled', code: 'cancelled_precommit' };
       if (
         sdkResult.error !== undefined ||
         sdkResult.data === undefined ||
@@ -1333,11 +1338,23 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
           continue;
         seen.add(`permission:${permission.id}`);
         this.activeInteractive.get(input.invocationId)?.pending.set(permission.id, 'permission');
+        const targetSummary = describeChatPermissionTargets({
+          permission: String(permission.permission ?? 'tool'),
+          patterns:
+            Array.isArray(permission.patterns) &&
+            permission.patterns.every((pattern: unknown) => typeof pattern === 'string')
+              ? permission.patterns
+              : [],
+          metadata: permission.metadata,
+          workDir: dirname(this.sourceDirectory),
+          agentRoot: input.stageDirectory,
+        });
         await input.requestInteractive({
           kind: 'permission',
           content: {
             actionCode: safeCode(String(permission.permission ?? 'tool'), 'tool'),
-            resourceCode: 'workspace_resource',
+            resourceCode: targetSummary ? 'staged_files' : 'workspace_resource',
+            ...(targetSummary ? { targetSummary } : {}),
           },
           openCodeRequestId: permission.id,
           openCodeProcessGeneration: processGeneration,
@@ -1417,9 +1434,74 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
   async interruptInvocation(input: { operationId: string; invocationId: string }): Promise<void> {
     const active = this.activeInteractive.get(input.invocationId);
     const outbox = this.store.getInvocationOutbox(input.invocationId);
+    if (!outbox || outbox.operationId !== input.operationId) {
+      throw new Error('Cancellation does not match Host invocation authority.');
+    }
     const sessionId = active?.sessionId ?? outbox?.sessionId;
     if (!sessionId) return;
-    await this.native(active?.directory ?? this.sourceDirectory).interruptSession(sessionId);
+    const discovered = await this.listSessionTree({ rootSessionId: sessionId });
+    if (discovered.length === 0) return;
+    const tree = sessionTreeChildrenFirst(discovered, sessionId);
+    const root = tree.find((entry) => entry.sessionId === sessionId)!;
+    const stageDirectory = active?.directory ?? root.directory;
+    const directories = [...new Set([this.sourceDirectory, stageDirectory])];
+    if (
+      tree.some(
+        (entry) =>
+          entry.workspaceBound ||
+          !directories.some((directory) =>
+            sameFilesystemPathCoordinate(entry.directory, directory),
+          ),
+      )
+    ) {
+      throw new Error('Cancellation session tree escaped its authenticated directories.');
+    }
+    for (const entry of tree) {
+      await this.native(entry.directory).interruptSession(entry.sessionId);
+    }
+    const sessionIds = new Set(tree.map((entry) => entry.sessionId));
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      // OpenCode 1.18.18 may leave pending permission/question records after the model drain
+      // stops. Reject only currently listed requests of this owned tree; never recreate one.
+      for (const directory of directories) {
+        const scoped = await this.client(directory);
+        if (active && scoped.processGeneration !== active.processGeneration) {
+          throw new Error('OpenCode process generation changed during cancellation.');
+        }
+        const [permissions, questions] = await Promise.all([
+          unwrapSdk<any[]>(scoped.client.permission.list({ directory })),
+          unwrapSdk<any[]>(scoped.client.question.list({ directory })),
+        ]);
+        const pending = [
+          ...permissions.map((request) => ({ kind: 'permission' as const, request })),
+          ...questions.map((request) => ({ kind: 'question' as const, request })),
+        ].filter(({ request }) => sessionIds.has(request?.sessionID));
+        if (pending.length > 256) throw new Error('Cancellation interaction bound exceeded.');
+        for (const { kind, request } of pending) {
+          if (typeof request.id !== 'string')
+            throw new Error('Cancellation request id is invalid.');
+          const result =
+            kind === 'permission'
+              ? await scoped.client.permission.reply({
+                  requestID: request.id,
+                  directory,
+                  reply: 'reject',
+                })
+              : await scoped.client.question.reject({ requestID: request.id, directory });
+          // Another authorized response may have consumed this exact process-local request.
+          if (result.response?.status !== 404) await unwrapSdk(Promise.resolve(result));
+        }
+      }
+      const activity = await this.getSessionActivity({
+        rootSessionId: sessionId,
+        allowedDirectories: directories,
+      });
+      if (activity === 'idle' || activity === 'missing') return;
+      if (Date.now() >= deadline)
+        throw new Error('OpenCode cancellation did not drain its session tree.');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
   }
 
   async forwardInteractive(command: ChatOperationV2InteractiveForwardingCommand): Promise<void> {
@@ -2218,10 +2300,23 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
   }
 
   async restoreSession(input: Parameters<ChatOperationV2AuthoringRuntime['restoreSession']>[0]) {
+    const requested = parseChatOperationV2SessionRelocation(input.relocation);
     const authority = await this.authority(input.relocation.stageId);
+    const current = authority.relocation;
+    // A prior attempt can durably advance to restoring before an external drain/move fails.
+    // Permit forward progress of that exact authenticated identity, never an identity change.
+    const matchingRelocation =
+      current &&
+      current.updatedAt >= requested.updatedAt &&
+      CHAT_OPERATION_V2_SESSION_RELOCATION_PHASES.indexOf(current.phase) >=
+        CHAT_OPERATION_V2_SESSION_RELOCATION_PHASES.indexOf(requested.phase) &&
+      sealChatOperationV2SessionRelocation({
+        ...requested,
+        phase: current.phase,
+        updatedAt: current.updatedAt,
+      }).recordHash === current.recordHash;
     if (
-      !authority.relocation ||
-      authority.relocation.recordHash !== input.relocation.recordHash ||
+      !matchingRelocation ||
       authority.stage.operationId !== input.operationId ||
       authority.stage.operationGeneration !== input.operationGeneration
     ) {
@@ -2230,7 +2325,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         'Restore input does not match the authenticated relocation.',
       );
     }
-    if (authority.relocation.phase === 'restored') return authority.relocation;
+    if (current.phase === 'restored') return current;
     let journal = await this.staging.readRelocation(authority.stage.stageId);
     if (!journal) throw new Error('Session relocation journal is missing before restore.');
     if (journal.phase === 'staged') {

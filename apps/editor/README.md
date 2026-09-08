@@ -137,6 +137,24 @@ needed only after a create/edit decision reaches the isolated authoring branch. 
 the exact configured provider/model pair without consulting advisory model capability or status
 metadata, so catalog refreshes cannot change request identity or recovery.
 
+Chat diagnosis receives a frozen snapshot of the selected visible pipeline, including saved
+pipelines and unsaved canvas changes. The Host seals that evidence for the operation; later canvas
+changes do not retarget an in-flight answer. Classification and discussion never receive the
+snapshot, and diagnosis cannot publish it. With no selected pipeline, diagnosis remains explicitly
+request-only.
+
+Stop ends an operation before publication, including while it is waiting for an agent permission.
+The Host interrupts both pinned OpenCode execution channels, restores the staged session, and
+settles the operation once. An SDK error returned as a consequence of that cancellation is not a
+provider outage. Genuine provider failures still preserve the message for an explicit resend;
+cleanup of the prior operation must finish before the replacement request starts.
+
+Permission prompts show bounded target names relative to the staged draft, with explicit hidden
+or unavailable detail. Target names are display-only; approval still uses the same Host request
+and generation/version checks. Trial Plan preparation reuses the exact target YAML returned by
+its authorized `begin` operation when it fits the 16 KiB evidence limit, avoiding a duplicate read
+approval. Larger targets retain bounded reads, with no change to permissions or verification.
+
 Every mutating Chat session owns a Host-authenticated pipeline branch. Sessions may clone the same
 read-only origin, but they never share a writable target; a session reuses only its own published
 branch on later edits. Finished branches reconcile independently, so one preserved failure does not

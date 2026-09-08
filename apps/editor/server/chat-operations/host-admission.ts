@@ -255,7 +255,15 @@ export function resolveChatOperationV2CreateAdmission(
     repairMaxAttempts: authority.repairMaxAttempts,
     inventory: authority.inventory,
     candidates: Object.freeze(
-      authority.candidates.map((candidate) => Object.freeze({ ...candidate })),
+      authority.candidates.map((candidate) =>
+        Object.freeze({
+          ...candidate,
+          // The supplied snapshot freezes the visible selection before any renderer await.
+          // Its candidate id was validated against this Host inventory above.
+          currentCanvas:
+            dirtySnapshot === null ? candidate.currentCanvas : candidate.id === payload.candidateId,
+        }),
+      ),
     ),
     dirtySnapshot:
       dirtySnapshot === null

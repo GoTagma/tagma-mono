@@ -7,6 +7,13 @@ interface PermissionBubbleProps {
   permission: PendingPermission;
 }
 
+const targetActionLabels: Readonly<Record<string, string>> = {
+  read: 'Read files',
+  edit: 'Edit files',
+  write: 'Write files',
+  external_directory: 'Access directory',
+};
+
 /**
  * Inline prompt for an opencode tool-permission request. Rendered at the end
  * of the chat stream after YamlActionBubble; appears until the server emits
@@ -54,7 +61,31 @@ export function PermissionBubble({ permission }: PermissionBubbleProps) {
 
       <dl className="mb-2 grid grid-cols-[auto,minmax(0,1fr)] gap-x-2 gap-y-1 text-caption">
         <dt className="text-tagma-muted">Requested action</dt>
-        <dd className="min-w-0 break-words text-tagma-text">{permission.title}</dd>
+        <dd className="min-w-0 break-words text-tagma-text">
+          {permission.targetSummary
+            ? (targetActionLabels[permission.tool] ?? permission.title)
+            : permission.title}
+        </dd>
+        {permission.targetSummary ? (
+          <>
+            <dt className="text-tagma-muted">Targets in this draft</dt>
+            <dd className="min-w-0 max-h-28 overflow-y-auto whitespace-pre-wrap break-all font-mono text-tagma-text">
+              {permission.targetSummary.targets.map((target) => (
+                <div key={target}>{target}</div>
+              ))}
+              {permission.targetSummary.omitted > 0 && (
+                <div className="text-tagma-muted">
+                  {permission.targetSummary.omitted} additional target(s) hidden
+                </div>
+              )}
+            </dd>
+          </>
+        ) : permission.metadata?.chatOperationProtocol === 'v2' ? (
+          <>
+            <dt className="text-tagma-muted">Target</dt>
+            <dd className="text-tagma-muted">Details unavailable</dd>
+          </>
+        ) : null}
         <dt className="text-tagma-muted">Workspace</dt>
         <dd className="min-w-0 truncate font-mono text-tagma-text" title={permission.workspaceKey}>
           {workspaceLabel}

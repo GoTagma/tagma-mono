@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths';
 import {
   formatChatVerificationOutcomeForExport,
   parseChatVerificationOutcome,
@@ -22,6 +23,7 @@ import {
   ChatOperationV2ApiError,
   resetChatOperationV2ControlData as apiResetChatOperationV2ControlData,
   fetchChatOperationV2Operation,
+  fetchChatOperationV2Snapshot,
   type ChatOperationV2ApiErrorKind,
   type ChatOperationV2CreatePayload,
   type ChatOperationV2FailureProjection,
@@ -944,6 +946,7 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
           sessionID: operationId,
           title: `${detail.pendingInput.content.actionCode}: ${detail.pendingInput.content.resourceCode}`,
           tool: detail.pendingInput.content.actionCode,
+          targetSummary: detail.pendingInput.content.targetSummary,
           protocol: 'current',
           metadata: { chatOperationProtocol: 'v2' },
           createdAt: detail.pendingInput.requestedAt,
@@ -1078,19 +1081,15 @@ async function sendChatOperationV2(
   let localRevision: number | null = null;
   let candidateId: string | null = null;
   let dirtySnapshot: ChatOperationV2CreatePayload['dirtySnapshot'] = null;
-  if (pipeline.isDirty || pipeline.layoutDirty) {
-    const currentCandidates = state.chatOperationV2Inventory?.candidates.filter(
-      (candidate) => candidate.currentCanvas,
-    );
-    if (currentCandidates?.length !== 1) {
-      const error = new Error(
-        'The Host did not expose one unambiguous candidate for the dirty visible canvas.',
-      );
-      set({ sendError: error.message });
-      throw error;
-    }
+  // Freeze the visible canvas before the first await, including saved pipelines. The historical
+  // wire field name is not a dirty-state or write grant; only the Host's diagnosis may read it.
+  if (
+    pipeline.yamlPath ||
+    pipeline.isDirty ||
+    pipeline.layoutDirty ||
+    state.chatOperationV2Inventory?.candidates.some((candidate) => candidate.currentCanvas)
+  ) {
     localRevision = getLocalPipelineEditRevision();
-    candidateId = currentCandidates[0]!.candidateId;
     dirtySnapshot = {
       canonicalYaml: serializePreviewYaml(pipeline.config),
       layoutJson: JSON.stringify({
@@ -1158,6 +1157,32 @@ async function sendChatOperationV2(
       ) {
         throw new Error('The previous request is still being recovered.');
       }
+    }
+    if (dirtySnapshot && !(clarificationRequestId && activeOperationId) && !questionRequest) {
+      // A cached currentCanvas flag can lag ordinary pipeline navigation. Match the frozen
+      // visible coordinate to Host-issued ids; never send a path as candidate authority.
+      const selectCanvas = (inventory: ChatOperationV2Inventory | null) =>
+        inventory?.candidates.filter((candidate) =>
+          pipeline.yamlPath
+            ? sameFilesystemPathCoordinate(
+                pipeline.yamlPath,
+                `${workspaceKeyAtStart?.replace(/[\\/]+$/, '')}/.tagma/${candidate.relativeCoordinate}`,
+                pipeline.hostPlatform,
+              )
+            : candidate.currentCanvas,
+        ) ?? [];
+      let candidates = selectCanvas(state.chatOperationV2Inventory);
+      if (candidates.length === 0 && pipeline.yamlPath) {
+        const fresh = await fetchChatOperationV2Snapshot({ workspaceKey: workspaceKeyAtStart });
+        if (!activationIsCurrent()) return;
+        candidates = selectCanvas(fresh.inventory);
+      }
+      if (candidates.length !== 1) {
+        throw new Error(
+          'The Host did not expose one unambiguous candidate for the visible canvas.',
+        );
+      }
+      candidateId = candidates[0]!.candidateId;
     }
     await (clarificationRequestId && activeOperationId
       ? controller.replyClarification(activeOperationId, {

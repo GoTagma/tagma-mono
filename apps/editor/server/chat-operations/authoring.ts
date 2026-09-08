@@ -1281,6 +1281,14 @@ export class ChatOperationV2AuthoringEngine {
     { readonly invocationId: string; readonly controller: AbortController }
   >();
   private readonly terminationIntents = new Map<string, 'cancelled_precommit' | 'discarded'>();
+  private readonly terminationDrains = new Map<
+    string,
+    {
+      requestId: string;
+      promise: Promise<void>;
+      settled: boolean;
+    }
+  >();
   private readonly interactiveByHostRequest = new Map<string, InteractiveWait>();
   private readonly currentInteractiveByOperation = new Map<string, string>();
 
@@ -1837,6 +1845,11 @@ export class ChatOperationV2AuthoringEngine {
         this.currentInteractiveByOperation.delete(context.operationId);
       }
     }
+    // A claimed Host termination wins before commit regardless of how the transport settles.
+    // The pinned SDK can resolve an error object (or a late completion) instead of rejecting.
+    if (controller.signal.aborted) {
+      result = { kind: 'cancelled', code: 'cancelled_precommit' };
+    }
     this.validateInvocationResult(result);
     this.completeInvocationUsage(
       outbox,
@@ -1897,7 +1910,7 @@ export class ChatOperationV2AuthoringEngine {
       });
       return { kind: 'recovery_required', operation: operationAfterInvocation, recovery };
     }
-    if (result.kind === 'cancelled') {
+    if (result.kind === 'cancelled' || this.terminationDrains.has(context.operationId)) {
       const outcome = this.terminationIntents.get(context.operationId) ?? 'cancelled_precommit';
       return this.finishPrecommit(context, outcome);
     }
@@ -2515,6 +2528,12 @@ export class ChatOperationV2AuthoringEngine {
       const observed = this.activeControllers.get(context.operationId);
       if (observed?.controller === controller) this.activeControllers.delete(context.operationId);
     }
+    if (controller.signal.aborted || this.terminationDrains.has(context.operationId)) {
+      return this.finishPrecommit(
+        context,
+        this.terminationIntents.get(context.operationId) ?? 'cancelled_precommit',
+      );
+    }
     this.appendEvent(context.operationId, 'trial_status_changed', {
       stageId: context.stage.stageId,
       trialId: verification.trialId,
@@ -2753,6 +2772,12 @@ export class ChatOperationV2AuthoringEngine {
     interactiveRecoveryInput?: ResolveChatOperationV2InteractiveRecoveryInput,
     terminalReason?: ChatOperationV2TerminalReason,
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
+    const termination = this.terminationDrains.get(context.operationId);
+    if (termination) {
+      await termination.promise;
+      outcome = this.terminationIntents.get(context.operationId) ?? outcome;
+      interactiveCancellationRequestId ??= termination.requestId;
+    }
     if (outcome !== 'failed_terminal') {
       this.terminationIntents.set(
         context.operationId,
@@ -2939,6 +2964,7 @@ export class ChatOperationV2AuthoringEngine {
       event: terminalEvent,
     });
     this.terminationIntents.delete(context.operationId);
+    this.terminationDrains.delete(context.operationId);
     if (!terminal.applied) {
       return terminal.reason !== 'terminal'
         ? { kind: 'stale', operation: terminal.operation }
@@ -2982,6 +3008,46 @@ export class ChatOperationV2AuthoringEngine {
     input: DiscardChatOperationV2AuthoringInput,
   ): Promise<ChatOperationV2AuthoringStopResult> {
     return this.requestTermination(input, 'discarded');
+  }
+
+  private beginTerminationDrain(
+    operation: StoredChatOperationV2,
+    context: OperationContext | null,
+    requestId: string,
+  ): Promise<void> {
+    const existing = this.terminationDrains.get(operation.operationId);
+    if (existing && !existing.settled) return existing.promise;
+    const controller = this.activeControllers.get(operation.operationId);
+    const entry = { requestId, promise: Promise.resolve(), settled: false };
+    // Install the barrier before abort can synchronously settle the provider request.
+    entry.promise = Promise.resolve()
+      .then(async () => {
+        controller?.controller.abort();
+        const invocationId = controller
+          ? operation.activeInvocationId === controller.invocationId
+            ? controller.invocationId
+            : null
+          : this.persistence
+              .listInvocationOutbox(operation.workspaceScopeId)
+              .filter(
+                (outbox) =>
+                  outbox.operationId === operation.operationId &&
+                  outbox.sessionId === context?.sessionId &&
+                  ['authoring', 'repair', 'trial_plan'].includes(outbox.purpose),
+              )
+              .sort((left, right) => right.preparedAt - left.preparedAt)[0]?.invocationId;
+        if (invocationId) {
+          await this.runtime.interruptInvocation({
+            operationId: operation.operationId,
+            invocationId,
+          });
+        }
+      })
+      .finally(() => {
+        entry.settled = true;
+      });
+    this.terminationDrains.set(operation.operationId, entry);
+    return entry.promise;
   }
 
   private async requestTermination(
@@ -3033,15 +3099,8 @@ export class ChatOperationV2AuthoringEngine {
       });
       this.terminationIntents.set(input.operationId, 'cancelled_precommit');
       const controller = this.activeControllers.get(input.operationId);
-      if (controller) {
-        controller.controller.abort();
-        if (current.activeInvocationId === controller.invocationId) {
-          await this.runtime.interruptInvocation({
-            operationId: input.operationId,
-            invocationId: controller.invocationId,
-          });
-        }
-      }
+      const dispatch = this.dispatches.get(input.operationId);
+      await this.beginTerminationDrain(current, context, input.requestId);
       const interactiveId = this.currentInteractiveByOperation.get(input.operationId);
       if (interactiveId) {
         this.interactiveByHostRequest.get(interactiveId)?.reject(new Error('cancelled_precommit'));
@@ -3050,7 +3109,10 @@ export class ChatOperationV2AuthoringEngine {
       if (!context) {
         return { kind: 'stale', operation: this.requireOperation(input.operationId) };
       }
-      const terminal = await this.finishPrecommit(context, 'cancelled_precommit', input.requestId);
+      const terminal =
+        dispatch && controller
+          ? await dispatch
+          : await this.finishPrecommit(context, 'cancelled_precommit', input.requestId);
       return terminal.kind === 'cancelled_precommit'
         ? { kind: 'cancelled_precommit', operation: terminal.operation }
         : { kind: 'stale', operation: terminal.operation };
@@ -3073,21 +3135,13 @@ export class ChatOperationV2AuthoringEngine {
     }
     this.terminationIntents.set(input.operationId, outcome);
     const controller = this.activeControllers.get(input.operationId);
-    if (controller) {
-      controller.controller.abort();
-      if (claimed.operation.activeInvocationId === controller.invocationId) {
-        await this.runtime.interruptInvocation({
-          operationId: input.operationId,
-          invocationId: controller.invocationId,
-        });
-      }
-    }
+    const dispatch = this.dispatches.get(input.operationId);
+    await this.beginTerminationDrain(claimed.operation, context, input.requestId);
     const interactiveId = this.currentInteractiveByOperation.get(input.operationId);
     if (interactiveId) {
       this.interactiveByHostRequest.get(interactiveId)?.reject(new Error(outcome));
       this.currentInteractiveByOperation.delete(input.operationId);
     }
-    const dispatch = this.dispatches.get(input.operationId);
     let result: ChatOperationV2AuthoringDispatchResult;
     if (dispatch && controller) {
       result = await dispatch;

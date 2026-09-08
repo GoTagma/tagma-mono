@@ -1,5 +1,9 @@
 import { getClientAuthToken, getClientWorkspace } from './client';
 import {
+  isChatPermissionTargetSummary,
+  type ChatPermissionTargetSummary,
+} from '../../shared/chat-permission-targets';
+import {
   isChatOperationFeedback,
   type ChatOperationFeedback,
 } from '../../shared/chat-operation-feedback.js';
@@ -622,6 +626,7 @@ export interface ChatOperationV2PermissionPending {
   readonly content: {
     readonly actionCode: string;
     readonly resourceCode: string;
+    readonly targetSummary?: ChatPermissionTargetSummary;
   };
 }
 
@@ -732,6 +737,7 @@ export interface ChatOperationV2RendererCompileDiagnostic {
 }
 
 export interface ChatOperationV2RendererDirtySnapshot {
+  // Historical wire name retained for request replay: evidence includes saved visible canvases.
   readonly canonicalYaml: string;
   readonly layoutJson: string | null;
   readonly requirementsMarkdown: string | null;
@@ -1984,11 +1990,19 @@ function parsePendingInput(value: unknown): ChatOperationV2PendingInput | null {
       parsePendingBase(value);
       if (value.kind === 'permission') {
         if (
-          !hasExactKeys(value.content, ['actionCode', 'resourceCode']) ||
+          !hasExactKeys(value.content, [
+            'actionCode',
+            'resourceCode',
+            ...(Object.prototype.hasOwnProperty.call(value.content, 'targetSummary')
+              ? ['targetSummary']
+              : []),
+          ]) ||
           typeof value.content.actionCode !== 'string' ||
           !PROJECTION_SAFE_CODE.test(value.content.actionCode) ||
           typeof value.content.resourceCode !== 'string' ||
-          !PROJECTION_SAFE_CODE.test(value.content.resourceCode)
+          !PROJECTION_SAFE_CODE.test(value.content.resourceCode) ||
+          (Object.prototype.hasOwnProperty.call(value.content, 'targetSummary') &&
+            !isChatPermissionTargetSummary(value.content.targetSummary))
         ) {
           return invalid('permission content projection is invalid');
         }

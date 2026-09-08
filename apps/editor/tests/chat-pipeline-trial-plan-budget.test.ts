@@ -180,6 +180,54 @@ function writeStageAttemptLimit(agentTagmaDir: string, maxAttempts: number): voi
   );
 }
 
+test('begin reuses exact authenticated YAML evidence with an explicit size-bound fallback', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-begin-evidence-'));
+  try {
+    const directory = join(root, '.tagma', '.chat-staging', 'stage-1', 'agent-workspace', '.tagma');
+    const yamlPath = join(directory, 'flow', 'flow.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    const tool = await loadGeneratedTool(root);
+    const limit = 16 * 1024;
+    const base = 'pipeline:\n  name: Evidence\n  tracks: []\n';
+    const inputs = [
+      'pipeline:\n  name: Serial\n  tracks:\n    - id: work\n      tasks:\n        - id: start\n          command: echo start\n        - id: end\n          depends_on: [start]\n          command: echo end\n',
+      'pipeline:\n  name: Parallel\n  tracks:\n    - id: a\n      tasks:\n        - id: first\n          command: echo first\n    - id: b\n      tasks:\n        - id: second\n          command: echo second\n',
+      base + '#' + 'x'.repeat(limit - Buffer.byteLength(base) - 2) + '\n',
+      base + '#' + 'x'.repeat(limit) + '\n',
+    ];
+    for (const [index, yaml] of inputs.entries()) {
+      writeFileSync(yamlPath, yaml, 'utf8');
+      writeStageAttemptLimit(directory, 2);
+      const args = {
+        operation: 'begin',
+        pipeline_path: yamlPath,
+        attempt_id: `evidence-${index}`,
+        summary: 'Verify the target behavior.',
+        goals: ['Check the terminal result.'],
+      };
+      issueTrialPlanAttempt(args, { directory }, args.attempt_id);
+      const result = JSON.parse(await tool.execute(args, { directory }));
+      const byteCount = Buffer.byteLength(yaml, 'utf8');
+      expect(result.pipelineEvidence).toMatchObject({
+        yamlHash: createHash('sha1').update(yaml).digest('hex'),
+        byteCount,
+      });
+      if (byteCount <= limit) {
+        expect(result.pipelineEvidence).toMatchObject({ kind: 'included', yaml });
+      } else {
+        expect(result.pipelineEvidence).toMatchObject({ kind: 'too_large', limitBytes: limit });
+        expect(result.pipelineEvidence).not.toHaveProperty('yaml');
+      }
+      await expect(
+        tool.execute({ ...args, attempt_id: 'not-issued' }, { directory }),
+      ).rejects.toThrow('not issued');
+      expect(readFileSync(yamlPath, 'utf8')).toBe(yaml);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('generated tool and Host preserve the same positive and negative prerequisite contract', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-prerequisite-tool-'));
   try {

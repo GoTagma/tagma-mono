@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  isChatPermissionTargetSummary,
+  type ChatPermissionTargetSummary,
+} from '../../shared/chat-permission-targets';
 
 import { CHAT_OPERATION_V2_PHASES, type ChatOperationV2Phase } from './types.js';
 
@@ -98,6 +102,7 @@ export type ChatOperationV2InteractiveRequestState =
 export interface ChatOperationV2InteractivePermissionContent {
   readonly actionCode: string;
   readonly resourceCode: string;
+  readonly targetSummary?: ChatPermissionTargetSummary;
 }
 
 export interface ChatOperationV2InteractiveQuestionOption {
@@ -654,10 +659,25 @@ function safeCode(value: unknown, label: string): string {
 }
 
 function parsePermissionContent(value: unknown): ChatOperationV2InteractivePermissionContent {
-  const record = exactRecord(value, ['actionCode', 'resourceCode'], [], 'Permission content');
+  const record = exactRecord(
+    value,
+    ['actionCode', 'resourceCode'],
+    ['targetSummary'],
+    'Permission content',
+  );
+  let targetSummary: ChatPermissionTargetSummary | undefined;
+  if (Object.prototype.hasOwnProperty.call(record, 'targetSummary')) {
+    if (!isChatPermissionTargetSummary(record.targetSummary))
+      return fail('invalid_content', 'Permission targets must be bounded safe display labels.');
+    targetSummary = {
+      targets: [...record.targetSummary.targets],
+      omitted: record.targetSummary.omitted,
+    };
+  }
   return {
     actionCode: safeCode(record.actionCode, 'Permission actionCode'),
     resourceCode: safeCode(record.resourceCode, 'Permission resourceCode'),
+    ...(targetSummary ? { targetSummary } : {}),
   };
 }
 

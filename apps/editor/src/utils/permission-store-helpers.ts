@@ -1,3 +1,5 @@
+import type { ChatPermissionTargetSummary } from '../../shared/chat-permission-targets';
+
 export type PermissionProtocol = 'current' | 'legacy';
 
 export interface PendingPermission {
@@ -10,6 +12,7 @@ export interface PendingPermission {
   tool: string;
   protocol: PermissionProtocol;
   metadata?: Record<string, unknown>;
+  targetSummary?: ChatPermissionTargetSummary;
   createdAt: number;
 }
 
