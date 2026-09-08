@@ -7,9 +7,11 @@ import { advanceLiveActivityNow, TurnActivityPanel } from '../src/components/cha
 import { CompletionWarningBannerView } from '../src/components/chat/ChatComposer';
 import {
   ChatOperationV2TerminalNoticeView,
+  ConversationFlowBarView,
   RetryableOperationNoticeView,
 } from '../src/components/chat/ChatPanel';
 import { PermissionBubble } from '../src/components/chat/PermissionBubble';
+import { OperationTimingDetails } from '../src/components/chat/OperationTiming';
 import { ChatVerificationOutcomeView } from '../src/components/chat/VerificationOutcome';
 import { MessageBubble } from '../src/components/chat/MessageBubble';
 import { chatOperationV2Activity } from '../src/store/chat-store';
@@ -27,6 +29,57 @@ const activity = [
 ] satisfies ActivityEvent[];
 
 describe('Chat Operation V2 activity panel', () => {
+  test('shows cumulative attempts and separate durations, advancing only the active wait', () => {
+    const timing = {
+      schemaVersion: 1,
+      observedAt: 9000,
+      elapsedMs: 8000,
+      trialPlanAttempts: 2,
+      activeCategory: 'approval',
+      durationsMs: { approval: 2000, ai: 3000, execution: 1000, other: 2000 },
+      evidence: {
+        layer: 'chat-operation-timing-history',
+        totalEventCount: 8,
+        returnedEventCount: 8,
+        omittedEventCount: 0,
+        fromStart: true,
+      },
+    } as const;
+    const html = renderToStaticMarkup(
+      createElement(OperationTimingDetails, { timing, now: 11000 }),
+    );
+    expect(html).toContain('10s total');
+    expect(html).toContain('Trial plan attempts: 2');
+    expect(html).toContain('Waiting for your input</dt><dd>4s');
+    expect(html).toContain('AI request processing</dt><dd>3s');
+    expect(html).toContain('Trial execution</dt><dd>1s');
+    const terminalHtml = renderToStaticMarkup(
+      createElement(OperationTimingDetails, {
+        timing: { ...timing, activeCategory: null },
+        now: 11000,
+      }),
+    );
+    expect(terminalHtml).toContain('8s total');
+    const partialHtml = renderToStaticMarkup(
+      createElement(OperationTimingDetails, {
+        timing: { ...timing, durationsMs: null, activeCategory: null },
+      }),
+    );
+    expect(partialHtml).toContain('retained event history is incomplete');
+    expect(partialHtml).not.toContain('<dd>0');
+  });
+  test('does not invent completion percentages while work or approval is pending', () => {
+    for (const step of [
+      { key: 'work', label: 'Model', status: 'active' as const },
+      { key: 'permission', label: 'Permission', status: 'active' as const },
+    ]) {
+      const html = renderToStaticMarkup(createElement(ConversationFlowBarView, { steps: [step] }));
+      expect(html).toContain('Conversation flow');
+      expect(html).not.toContain('aria-valuenow');
+      expect(html).not.toMatch(/\d+%/);
+    }
+  });
+
   test('keeps an automatic discarded terminal visible instead of ending with a blank transcript', () => {
     const html = renderToStaticMarkup(
       createElement(ChatOperationV2TerminalNoticeView, { terminalOutcome: 'discarded' }),
@@ -35,6 +88,27 @@ describe('Chat Operation V2 activity panel', () => {
     expect(html).toContain('Pipeline update was not published');
     expect(html).toContain('verification or repair did not produce a publishable result');
     expect(html).toContain('Your current pipeline was left unchanged');
+  });
+
+  test('shows the Host verification cause and failed tasks with an edit-request action', () => {
+    const html = renderToStaticMarkup(
+      createElement(ChatOperationV2TerminalNoticeView, {
+        terminalOutcome: 'discarded',
+        terminalReasonCode: 'trial_failed',
+        feedback: {
+          schemaVersion: 1,
+          stage: 'trial',
+          details: 'The working directory was unavailable during Sandbox execution.',
+          failedTaskIds: ['numbers.emit_seven'],
+          omittedFailedTaskCount: 0,
+        },
+        onEditRequest: () => undefined,
+      }),
+    );
+    expect(html).toContain('numbers.emit_seven');
+    expect(html).toContain('working directory was unavailable');
+    expect(html).toContain('Edit request');
+    expect(html).not.toContain('Review the activity status');
   });
 
   test('renders the specific Host discard reason copy when one is projected', () => {

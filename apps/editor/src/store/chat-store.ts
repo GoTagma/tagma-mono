@@ -75,6 +75,24 @@ import { chatHistoryTopic, type ChatHistoryTopic } from '../utils/chat-history-t
 
 export { chatOperationV2FailureRequiresModelChange } from '../utils/chat-operation-v2-failure';
 
+/** Reuse visible request bytes as a draft; this never retries or mutates the old operation. */
+export function restoreChatOperationRequest(
+  message: ChatOperationV2OperationDetail['userMessage'],
+): boolean {
+  const state = useChatStore.getState();
+  if (state.sending || state.composerDraft.length > 0 || state.composerAttachments.length > 0)
+    return false;
+  useChatStore.setState({
+    composerDraft: message.text,
+    composerAttachments: message.attachments.map((attachment) => ({
+      id: attachment.referenceId,
+      label: attachment.label,
+      content: attachment.content,
+    })),
+  });
+  return true;
+}
+
 // Re-export for backward compatibility — external consumers (ProviderConnectDialog, etc.)
 // import this type from chat-store.
 export type { ProviderCatalogEntry } from './chat-provider-catalog';

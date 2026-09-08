@@ -14,7 +14,8 @@ interface PipelineCopyPathRelocation {
 }
 
 export interface RewriteCopiedPipelineYamlOptions {
-  workDir: string;
+  sourceWorkDir: string;
+  destinationWorkDir: string;
   sourceContentPath: string;
   sourceIdentityPath: string;
   destinationYamlPath: string;
@@ -29,7 +30,11 @@ function portableRelative(from: string, to: string): string {
   return relative(from, to).replace(/\\/g, '/');
 }
 
-function relocatePipelineLocalPath(value: unknown, options: PipelineCopyPathRelocation): unknown {
+function relocatePipelineLocalPath(
+  value: unknown,
+  options: PipelineCopyPathRelocation,
+  stagedFileFallback = true,
+): unknown {
   if (typeof value !== 'string' || value.trim().length === 0) return value;
   const raw = value.trim();
   let absolute = isAbsolute(raw) ? resolve(raw) : resolve(options.sourceCwd, raw);
@@ -38,7 +43,7 @@ function relocatePipelineLocalPath(value: unknown, options: PipelineCopyPathRelo
     : isPathWithin(absolute, options.sourcePipelineDir)
       ? options.sourcePipelineDir
       : null;
-  if (!sourceRoot && !isAbsolute(raw)) {
+  if (stagedFileFallback && !sourceRoot && !isAbsolute(raw)) {
     const stagedPipelineLocal = resolve(options.sourceContentDir, raw);
     if (
       isPathWithin(stagedPipelineLocal, options.sourceContentDir) &&
@@ -80,11 +85,15 @@ export function rewriteCopiedPipelineYaml(
     sourceCwd,
     destinationCwd,
   });
-  const resolveCwd = (cwd: string | undefined): string =>
-    cwd && isAbsolute(cwd) ? resolve(cwd) : resolve(options.workDir, cwd ?? '.');
+  const resolveCwd = (cwd: string | undefined, workDir: string): string =>
+    cwd && isAbsolute(cwd) ? resolve(cwd) : resolve(workDir, cwd ?? '.');
   const rewriteCwd = (cwd: string | undefined): string | undefined => {
     if (!cwd) return cwd;
-    const rewritten = relocatePipelineLocalPath(cwd, pathOptions(options.workDir, options.workDir));
+    const rewritten = relocatePipelineLocalPath(
+      cwd,
+      pathOptions(options.sourceWorkDir, options.destinationWorkDir),
+      false,
+    );
     if (rewritten !== cwd) changed = true;
     return typeof rewritten === 'string' ? rewritten : cwd;
   };
@@ -104,8 +113,8 @@ export function rewriteCopiedPipelineYaml(
     name: options.pipelineName,
     tracks: config.tracks.map((track) => {
       const nextTrackCwd = rewriteCwd(track.cwd);
-      const sourceTrackCwd = resolveCwd(track.cwd);
-      const destinationTrackCwd = resolveCwd(nextTrackCwd);
+      const sourceTrackCwd = resolveCwd(track.cwd, options.sourceWorkDir);
+      const destinationTrackCwd = resolveCwd(nextTrackCwd, options.destinationWorkDir);
       const trackPathOptions = pathOptions(sourceTrackCwd, destinationTrackCwd);
       return {
         ...track,
@@ -115,8 +124,12 @@ export function rewriteCopiedPipelineYaml(
         ),
         tasks: track.tasks.map((task) => {
           const nextTaskCwd = rewriteCwd(task.cwd);
-          const sourceTaskCwd = task.cwd ? resolveCwd(task.cwd) : sourceTrackCwd;
-          const destinationTaskCwd = nextTaskCwd ? resolveCwd(nextTaskCwd) : destinationTrackCwd;
+          const sourceTaskCwd = task.cwd
+            ? resolveCwd(task.cwd, options.sourceWorkDir)
+            : sourceTrackCwd;
+          const destinationTaskCwd = nextTaskCwd
+            ? resolveCwd(nextTaskCwd, options.destinationWorkDir)
+            : destinationTrackCwd;
           const taskPathOptions = pathOptions(sourceTaskCwd, destinationTaskCwd);
           return {
             ...task,

@@ -1,5 +1,13 @@
 import { getClientAuthToken, getClientWorkspace } from './client';
 import {
+  isChatOperationFeedback,
+  type ChatOperationFeedback,
+} from '../../shared/chat-operation-feedback.js';
+import {
+  isChatOperationTiming,
+  type ChatOperationTiming,
+} from '../../shared/chat-operation-timing.js';
+import {
   CHAT_OPERATION_V2_API_ERROR_KINDS,
   hasExpectedChatOperationV2ApiErrorStatus,
   isChatOperationV2ApiErrorKind,
@@ -702,6 +710,8 @@ export interface ChatOperationV2OperationDetail {
   readonly result: ChatOperationV2ResultProjection | null;
   /** Optional only for wire compatibility with an older V2 Host projection. */
   readonly trialProgress?: ChatOperationV2TrialProgress | null;
+  readonly timing?: ChatOperationTiming | null;
+  readonly verificationFeedback?: ChatOperationFeedback | null;
 }
 
 export interface ChatOperationV2RendererAttachment {
@@ -2248,7 +2258,10 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
   ] as const;
   if (
     !isPlainRecord(value) ||
-    (!hasExactKeys(value, detailKeys) && !hasExactKeys(value, [...detailKeys, 'trialProgress'])) ||
+    !hasExactKeys(value, [
+      ...detailKeys,
+      ...['trialProgress', 'timing', 'verificationFeedback'].filter((key) => key in value),
+    ]) ||
     value.schemaVersion !== CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION ||
     !projectionHostId(value.workspaceScopeId)
   ) {
@@ -2261,6 +2274,37 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
   const failure = parseFailureProjection(value.failure);
   const result = parseResultProjection(value.result);
   const trialProgress = parseTrialProgress(value.trialProgress);
+  if (
+    value.verificationFeedback !== undefined &&
+    value.verificationFeedback !== null &&
+    !isChatOperationFeedback(value.verificationFeedback)
+  ) {
+    invalid('verification feedback projection is invalid');
+  }
+  const verificationFeedback = isChatOperationFeedback(value.verificationFeedback)
+    ? value.verificationFeedback
+    : null;
+  if (
+    verificationFeedback &&
+    ((operation.terminalOutcome !== 'discarded' &&
+      operation.terminalOutcome !== 'failed_terminal') ||
+      !operation.terminalReasonCode)
+  ) {
+    invalid('verification feedback is not attached to a terminal failure');
+  }
+  if (value.timing !== undefined && value.timing !== null && !isChatOperationTiming(value.timing)) {
+    invalid('operation timing projection is invalid');
+  }
+  const timing = isChatOperationTiming(value.timing) ? value.timing : null;
+  if (
+    timing &&
+    (timing.elapsedMs !== timing.observedAt - operation.createdAt ||
+      timing.observedAt < operation.updatedAt ||
+      (operation.terminalOutcome !== null &&
+        (timing.activeCategory !== null || timing.observedAt !== operation.updatedAt)))
+  ) {
+    invalid('operation timing linkage is inconsistent');
+  }
   if (
     userMessage.operationId !== operation.operationId ||
     (pendingInput !== null &&
@@ -2291,6 +2335,8 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
     failure,
     result,
     ...(value.trialProgress !== undefined ? { trialProgress } : {}),
+    ...(value.timing !== undefined ? { timing } : {}),
+    ...(value.verificationFeedback !== undefined ? { verificationFeedback } : {}),
   };
 }
 

@@ -1,4 +1,10 @@
 import { parseChatOperationV2Admission, type ChatOperationV2Admission } from './admission.js';
+import type { ChatOperationTiming } from '../../shared/chat-operation-timing.js';
+import {
+  isChatOperationFeedback,
+  type ChatOperationFeedback,
+} from '../../shared/chat-operation-feedback.js';
+import { buildChatOperationTiming } from './operation-timing.js';
 import {
   CHAT_OPERATION_V2_EXECUTION_STATES,
   deriveChatOperationV2ExecutionState,
@@ -208,6 +214,8 @@ export interface ChatOperationV2RendererOperationDetail {
   readonly failure: ChatOperationV2RendererFailureProjection | null;
   readonly result: ChatOperationV2RendererResultProjection | null;
   readonly trialProgress?: ChatOperationV2RendererTrialProgress | null;
+  readonly timing?: ChatOperationTiming | null;
+  readonly verificationFeedback?: ChatOperationFeedback | null;
 }
 
 export interface ChatOperationV2RendererTrialProgress {
@@ -253,6 +261,7 @@ export interface ChatOperationV2ProjectionReadPersistence {
   getResultProjection(operationId: string): ChatOperationV2RendererResultProjection | null;
   readonly getLatestOperationEvent?: ChatOperationV2Store['getLatestOperationEvent'];
   readonly listOperationEvents?: ChatOperationV2Store['listOperationEvents'];
+  readonly getOperationEventHistory?: ChatOperationV2Store['getOperationEventHistory'];
 }
 
 export interface ChatOperationV2ProjectionAdmission extends ChatOperationV2Admission {
@@ -1168,16 +1177,44 @@ export function projectChatOperationV2OperationDetail(
   const result = validateResultProjection(parts.result, operation);
   const pending = pendingInput({ ...parts, operation, result });
   const failure = failureProjection(operation, parts.outboxes);
+  const summary = operationSummary(persistence, operation, parts.admission, result, pending);
+  const feedback =
+    summary.terminalReasonCode !== null
+      ? persistence.getLatestOperationEvent?.(operation.operationId, 'trial_status_changed')
+          ?.payload.feedback
+      : undefined;
+  if (feedback !== undefined && !isChatOperationFeedback(feedback)) {
+    fail('invalid_record', 'Verification feedback is invalid.');
+  }
+  const history = persistence.getOperationEventHistory?.(operation.operationId);
+  const timing = history
+    ? buildChatOperationTiming({
+        operation,
+        events: history.events.filter(
+          (event) =>
+            event.generation <= operation.generation && event.operationVersion <= operation.version,
+        ),
+        outboxes: parts.outboxes.filter(
+          (entry) =>
+            entry.operationId === operation.operationId &&
+            entry.workspaceScopeId === operation.workspaceScopeId,
+        ),
+        totalEventCount: history.totalEventCount,
+        observedAt: Date.now(),
+      })
+    : null;
   return Object.freeze({
     schemaVersion: CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
     workspaceScopeId: operation.workspaceScopeId,
-    operation: operationSummary(persistence, operation, parts.admission, result, pending),
+    operation: summary,
     userMessage: projectUserMessage(operation, parts.admission),
     inventory: parts.inventory,
     pendingInput: pending,
     failure,
     result,
     trialProgress: parts.trialProgress ?? null,
+    timing,
+    verificationFeedback: isChatOperationFeedback(feedback) ? feedback : null,
   });
 }
 

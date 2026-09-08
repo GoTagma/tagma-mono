@@ -514,6 +514,13 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         errorCode: 'trial_blocked',
         diagnosticCodes: ['trial_blocked'],
         redactedSummary: 'Trial requires an explicitly authorized Live Smoke Test.',
+        feedback: {
+          schemaVersion: 1,
+          stage: 'trial',
+          details: 'The terminal branch is missing Sandbox coverage.',
+          failedTaskIds: [],
+          omittedFailedTaskCount: 0,
+        },
         outcome,
         stagedSnapshotHash: input.stage.snapshotHash,
         artifactSetHash: this.prepare.artifactSetHash,
@@ -935,6 +942,7 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     ).toMatchObject({
       status: 'blocked',
       errorCode: 'trial_blocked',
+      feedback: { details: 'The terminal branch is missing Sandbox coverage.' },
     });
   });
 

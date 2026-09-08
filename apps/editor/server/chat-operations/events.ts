@@ -305,6 +305,7 @@ export interface ChatOperationV2HostEventPayloads {
     readonly failedCount: number;
     readonly warningCount: number;
     readonly errorCode: string | null;
+    readonly feedback?: ChatOperationFeedback;
   };
   readonly commit_wal_prepared: {
     readonly commitId: string;
@@ -749,7 +750,9 @@ const payloadValidators = {
       'failedCount',
       'warningCount',
       'errorCode',
+      ...('feedback' in value ? ['feedback'] : []),
     ]) &&
+    (!('feedback' in value) || isChatOperationFeedback(value.feedback)) &&
     isHostId(value.stageId) &&
     isHostId(value.trialId) &&
     includesValue(CHAT_OPERATION_V2_TRIAL_STATUSES, value.status) &&
@@ -1095,3 +1098,7 @@ export function toHostOperationEventInput(value: unknown): HostOperationEventInp
   }
   return input;
 }
+import {
+  isChatOperationFeedback,
+  type ChatOperationFeedback,
+} from '../../shared/chat-operation-feedback.js';

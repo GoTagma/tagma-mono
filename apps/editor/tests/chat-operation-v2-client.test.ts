@@ -334,6 +334,84 @@ test('reads one operation by its Host id without exposing a mutation surface', a
   await expect(fetchChatOperationV2Operation('operation-1')).resolves.toEqual(operationDetail());
 });
 
+test('round-trips optional timing and feedback and rejects misleading terminal metadata', async () => {
+  const feedback = {
+    schemaVersion: 1,
+    stage: 'trial',
+    details: 'Copied working directory unavailable.',
+    failedTaskIds: ['numbers.seed'],
+    omittedFailedTaskCount: 0,
+  } as const;
+  const timing = {
+    schemaVersion: 1,
+    observedAt: 120,
+    elapsedMs: 20,
+    trialPlanAttempts: 2,
+    activeCategory: null,
+    durationsMs: { approval: 5, ai: 10, execution: 3, other: 2 },
+    evidence: {
+      layer: 'chat-operation-timing-history',
+      totalEventCount: 4,
+      returnedEventCount: 4,
+      omittedEventCount: 0,
+      fromStart: true,
+    },
+  } as const;
+  const detail = {
+    ...operationDetail(),
+    timing,
+    verificationFeedback: feedback,
+    operation: {
+      ...operation(),
+      phase: 'terminal',
+      executionState: 'terminal',
+      terminalOutcome: 'discarded',
+      updatedAt: 120,
+      terminalReasonCode: 'trial_failed',
+      terminalDiagnosticCodes: ['trial_failed'],
+    },
+  };
+  const respond = (value: unknown) => {
+    globalThis.fetch = (async () =>
+      Response.json({ protocolVersion: 2, detail: value })) as unknown as typeof fetch;
+  };
+  respond(detail);
+  const parsed = await fetchChatOperationV2Operation('operation-1');
+  expect(parsed.timing).toEqual(timing);
+  expect(parsed.verificationFeedback).toEqual(feedback);
+  for (const invalid of [
+    {
+      ...detail,
+      timing: {
+        ...timing,
+        observedAt: 121,
+        elapsedMs: 21,
+        durationsMs: { ...timing.durationsMs, other: 3 },
+      },
+    },
+    { ...detail, timing: { ...timing, activeCategory: 'ai' } },
+    { ...detail, verificationFeedback: { ...feedback, details: 'Bearer private-token' } },
+    {
+      ...detail,
+      operation: { ...detail.operation, terminalReasonCode: null, terminalDiagnosticCodes: [] },
+    },
+    {
+      ...detail,
+      operation: {
+        ...detail.operation,
+        terminalOutcome: 'cancelled_precommit',
+        terminalReasonCode: null,
+        terminalDiagnosticCodes: [],
+      },
+    },
+  ]) {
+    respond(invalid);
+    await expect(fetchChatOperationV2Operation('operation-1')).rejects.toBeInstanceOf(
+      ChatOperationV2ProtocolError,
+    );
+  }
+});
+
 test('parses strict result messages and rejects private projection coordinates or pending content', async () => {
   const completedOperation = {
     ...operation(),

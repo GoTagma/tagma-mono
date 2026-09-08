@@ -12,7 +12,13 @@ import {
   Brain,
   Terminal,
 } from 'lucide-react';
-import { useChatStore } from '../../store/chat-store';
+import {
+  chatOperationV2Activity,
+  restoreChatOperationRequest,
+  useChatStore,
+} from '../../store/chat-store';
+import type { ChatOperationFeedback } from '../../../shared/chat-operation-feedback';
+import type { ChatOperationTiming } from '../../../shared/chat-operation-timing';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { api, type WorkspaceYamlEntry } from '../../api/client';
 import {
@@ -26,10 +32,13 @@ import type {
   ChatOperationV2ApiErrorKind,
   ChatOperationV2Projection,
   ChatOperationV2ResultProjection,
+  ChatOperationV2TrialProgress,
+  ChatOperationV2OperationDetail,
 } from '../../api/chat-operations';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
-import { TurnActivityPanel } from './ActivityPanel';
+import { formatDurationShort, TurnActivityPanel } from './ActivityPanel';
+import { OperationTimingDetails } from './OperationTiming';
 import {
   ChatComposer,
   ChatInteractionRecoveryNotice,
@@ -150,6 +159,12 @@ function ConversationFlowBar() {
   const pendingActivity = useChatStore((s) => s.pendingActivity);
   const pendingPermissions = useChatStore((s) => s.pendingPermissions);
   const sendError = useChatStore((s) => s.sendError);
+  const operation = useChatStore((s) => s.activeChatOperationV2);
+  const detail = useChatStore((s) =>
+    s.activeChatOperationV2
+      ? s.chatOperationV2ThreadDetails[s.activeChatOperationV2.operationId]
+      : undefined,
+  );
 
   const activity = pendingActivity;
   const steps = useMemo(
@@ -164,20 +179,51 @@ function ConversationFlowBar() {
     [activity, sending, pendingUserText, pendingPermissions.length, sendError],
   );
 
-  return <ConversationFlowBarView steps={steps} />;
+  return (
+    <ConversationFlowBarView
+      steps={steps}
+      operation={operation}
+      trialProgress={detail?.trialProgress}
+      timing={detail?.timing}
+    />
+  );
 }
 
-export function ConversationFlowBarView({ steps }: { steps: FlowStep[] }) {
+export function ConversationFlowBarView({
+  steps,
+  operation,
+  trialProgress,
+  timing,
+}: {
+  steps: FlowStep[];
+  operation?: ChatOperationV2Projection | null;
+  trialProgress?: ChatOperationV2TrialProgress | null;
+  timing?: ChatOperationTiming | null;
+}) {
+  const [now, setNow] = useState(Date.now);
+  const running = !!operation && operation.terminalOutcome === null;
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running, operation?.operationId]);
   const hasSteps = steps.length > 0;
 
   if (!hasSteps) return null;
 
   const activeStep =
     [...steps].reverse().find((step) => step.status === 'active') ?? steps[steps.length - 1];
-  const percent = conversationFlowProgressPercent(steps);
-  const majorStage = conversationFlowMajorStage(steps, activeStep);
   const terminalStatus = conversationFlowTerminalStatus(steps, activeStep);
   const waitingForInput = activeStep.label === 'Waiting';
+  const stageDetail =
+    operation && terminalStatus === 'active' && activeStep.key !== 'permission' && !waitingForInput
+      ? chatOperationV2Activity(operation, trialProgress ?? null)[0]?.detail
+      : null;
+  const majorStage = stageDetail || conversationFlowMajorStage(steps, activeStep);
+  const elapsed = operation
+    ? Math.max(0, (running ? now : operation.updatedAt) - operation.createdAt)
+    : null;
 
   return (
     // One slim status strip: a live stage readout over a hairline progress
@@ -203,61 +249,31 @@ export function ConversationFlowBarView({ steps }: { steps: FlowStep[] }) {
         <span className="min-w-0 flex-1 truncate text-tagma-text/90" title={majorStage}>
           {majorStage}
         </span>
-        <span className="shrink-0 text-tagma-muted-dim tabular-nums">{Math.round(percent)}%</span>
+        {elapsed !== null && (
+          <span className="shrink-0 text-tagma-muted-dim tabular-nums">
+            Elapsed {formatDurationShort(elapsed)}
+          </span>
+        )}
       </div>
       <div
         role="progressbar"
         aria-label="Conversation flow progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(percent)}
+        aria-valuetext={majorStage}
         className="mt-1 h-[2px] w-full bg-tagma-border/25"
       >
         <div
-          className={`chat-flow-fill h-full transition-[width] duration-slow ease-smooth ${
+          className={`chat-flow-fill h-full w-full ${
             terminalStatus === 'error'
               ? 'is-error'
               : terminalStatus === 'complete'
                 ? 'is-complete'
-                : 'is-active'
+                : 'is-active opacity-40 animate-pulse-slow'
           }`}
-          style={{ width: `${percent}%` }}
         />
       </div>
+      {timing && <OperationTimingDetails timing={timing} now={now} />}
     </section>
   );
-}
-
-const CONVERSATION_FLOW_PROGRESS = {
-  starting: 12,
-  working: 45,
-  approval: 62,
-  responding: 78,
-  complete: 100,
-} as const;
-
-/**
- * Report progress by durable lifecycle phase instead of counting activity
- * events. OpenCode can emit an unknown number of thinking, tool, retry, and
- * compaction events, so treating each event as an equal slice makes long
- * Working phases appear almost complete. The fixed bands deliberately reserve
- * most of the range between Starting and Responding for that variable work.
- */
-export function conversationFlowProgressPercent(steps: FlowStep[]): number {
-  if (conversationFlowTerminalStatus(steps) === 'complete') {
-    return CONVERSATION_FLOW_PROGRESS.complete;
-  }
-
-  const reportedSteps = steps.filter((step) => step.key !== 'error');
-  if (reportedSteps.length === 0) return CONVERSATION_FLOW_PROGRESS.starting;
-  return Math.max(...reportedSteps.map(conversationFlowStepProgress));
-}
-
-function conversationFlowStepProgress(step: FlowStep): number {
-  if (step.label === 'Request') return CONVERSATION_FLOW_PROGRESS.starting;
-  if (step.key === 'permission') return CONVERSATION_FLOW_PROGRESS.approval;
-  if (step.label === 'Response') return CONVERSATION_FLOW_PROGRESS.responding;
-  return CONVERSATION_FLOW_PROGRESS.working;
 }
 
 /**
@@ -976,7 +992,7 @@ function ChatMessages() {
                 Ask opencode anything about YAML pipelines.
               </div>
               <div className="text-caption font-mono text-tagma-muted/70">
-                House rules and your current file are loaded automatically.
+                Describe a change, or include the pipeline details you want to discuss.
               </div>
             </div>
           )}
@@ -1003,7 +1019,10 @@ function ChatMessages() {
                   surfaceActivitySummary={sending && entry.info.id === currentTurnAssistantId}
                 />
                 {turnEnd && <ChatOperationV2PipelineResult result={turnEnd.result} />}
-                {turnEnd && <ChatOperationV2TerminalNotice operation={turnEnd.operation} />}
+                {turnEnd && <ChatOperationV2TerminalNotice detail={turnEnd} />}
+                {turnEnd?.operation.terminalOutcome && turnEnd.timing && (
+                  <OperationTimingDetails timing={turnEnd.timing} />
+                )}
               </div>
             );
           })}
@@ -1040,9 +1059,15 @@ function ChatMessages() {
 export function ChatOperationV2TerminalNoticeView({
   terminalOutcome,
   terminalReasonCode = null,
+  feedback = null,
+  onEditRequest,
+  editRequestDisabled = false,
 }: {
   terminalOutcome: 'discarded' | 'failed_terminal';
   terminalReasonCode?: string | null;
+  feedback?: ChatOperationFeedback | null;
+  onEditRequest?: () => void;
+  editRequestDisabled?: boolean;
 }) {
   const discarded = terminalOutcome === 'discarded';
   const reason = discarded ? chatOperationV2TerminalDiscardPresentation(terminalReasonCode) : null;
@@ -1064,19 +1089,65 @@ export function ChatOperationV2TerminalNoticeView({
             ? 'Tagma discarded the staged draft before publication. If you did not discard it, verification or repair did not produce a publishable result. Your current pipeline was left unchanged.'
             : 'Tagma could not produce a safe result for this request. Your current pipeline was left unchanged.')}
       </p>
+      {feedback ? (
+        <div className="mt-2 min-w-0 text-caption text-tagma-muted">
+          <div className="font-medium">
+            {feedback.stage === 'compile'
+              ? 'Compilation'
+              : feedback.stage === 'trial_plan'
+                ? 'Trial planning'
+                : 'Trial verification'}
+          </div>
+          {feedback.failedTaskIds.length > 0 && (
+            <div className="mt-1 break-words font-mono">
+              Failed tasks: {feedback.failedTaskIds.join(', ')}
+              {feedback.omittedFailedTaskCount > 0
+                ? ` · ${feedback.omittedFailedTaskCount} more`
+                : ''}
+            </div>
+          )}
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono">
+            {feedback.details}
+          </pre>
+        </div>
+      ) : terminalReasonCode ? (
+        <p className="mt-1 text-caption font-sans text-tagma-muted/80">
+          Detailed verification information was not recorded for this operation.
+        </p>
+      ) : null}
       <p className="mt-1 text-caption font-sans text-tagma-muted/80">
-        Review the activity status and send the request again after correcting the reported issue.
+        You can edit this request and send it again.
       </p>
       {terminalReasonCode ? (
         <p className="mt-1 text-caption font-mono text-tagma-muted-dim">
           {`Reason: ${terminalReasonCode}`}
         </p>
       ) : null}
+      {onEditRequest && (
+        <button
+          type="button"
+          onClick={onEditRequest}
+          disabled={editRequestDisabled}
+          title={
+            editRequestDisabled
+              ? 'Keep or clear the current draft before reusing this request.'
+              : 'Put this request back in the composer for review; it is not sent automatically.'
+          }
+          className="mt-2 border border-tagma-border px-2 py-1 text-caption text-tagma-text disabled:opacity-50"
+        >
+          Edit request
+        </button>
+      )}
     </section>
   );
 }
 
-function ChatOperationV2TerminalNotice({ operation }: { operation: ChatOperationV2Projection }) {
+function ChatOperationV2TerminalNotice({ detail }: { detail: ChatOperationV2OperationDetail }) {
+  const operation = detail.operation;
+  const canEdit = useChatStore(
+    (state) =>
+      !state.sending && state.composerDraft.length === 0 && state.composerAttachments.length === 0,
+  );
   if (
     operation?.executionState !== 'terminal' ||
     (operation.terminalOutcome !== 'discarded' && operation.terminalOutcome !== 'failed_terminal')
@@ -1087,6 +1158,11 @@ function ChatOperationV2TerminalNotice({ operation }: { operation: ChatOperation
     <ChatOperationV2TerminalNoticeView
       terminalOutcome={operation.terminalOutcome}
       terminalReasonCode={operation.terminalReasonCode ?? null}
+      feedback={detail.verificationFeedback ?? null}
+      editRequestDisabled={!canEdit}
+      onEditRequest={() => {
+        restoreChatOperationRequest(detail.userMessage);
+      }}
     />
   );
 }

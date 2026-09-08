@@ -509,6 +509,7 @@ interface VerificationBase {
   readonly passedCount: number;
   readonly failedCount: number;
   readonly warningCount: number;
+  readonly feedback?: ChatOperationFeedback;
 }
 
 interface VerificationArtifactAuthority {
@@ -1192,6 +1193,12 @@ function validateVerification(
     );
   }
   assertHostId(result.trialId, 'Trial id');
+  if (result.feedback !== undefined && !isChatOperationFeedback(result.feedback)) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Verification feedback is invalid.',
+    );
+  }
   if (result.planHash !== null) assertHash(result.planHash, 'Trial plan hash');
   for (const [label, value] of [
     ['case count', result.caseCount],
@@ -2524,6 +2531,7 @@ export class ChatOperationV2AuthoringEngine {
       passedCount: verification.passedCount,
       failedCount: verification.failedCount,
       warningCount: verification.warningCount,
+      ...(verification.feedback ? { feedback: verification.feedback } : {}),
       errorCode:
         verification.kind === 'passed'
           ? null
@@ -3950,3 +3958,7 @@ export class ChatOperationV2AuthoringEngine {
     return operation;
   }
 }
+import {
+  isChatOperationFeedback,
+  type ChatOperationFeedback,
+} from '../../shared/chat-operation-feedback.js';

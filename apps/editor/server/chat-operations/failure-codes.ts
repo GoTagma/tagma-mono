@@ -1,3 +1,33 @@
+import { CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES } from './types.js';
+
+/** Host lifecycle diagnostics are separate from untrusted provider failure categories. */
+export const CHAT_OPERATION_V2_SAFE_LIFECYCLE_DIAGNOSTIC_CODES = [
+  ...CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES,
+  'compile_failed',
+  'compile_parse_failed',
+  'compile_unavailable',
+  'stage_create_failed',
+  'stage_scope_violation',
+  'trial_aborted',
+  'trial_blocked',
+  'trial_busy',
+  'trial_compile_failed',
+  'trial_failed',
+  'trial_passed',
+  'trial_passed_with_warnings',
+  'trial_plan_required',
+  'trial_plan_failed',
+  'trial_preflight_failed',
+  'trial_plan_request_invalid',
+  'trial_setup_failed',
+  'trial_timed_out',
+  'trial_unavailable',
+  'trial_witness_failed',
+  'repair_required',
+  'verification_cancelled',
+  'verification_failed',
+] as const;
+
 export const CHAT_OPERATION_V2_SAFE_FAILURE_CODES = [
   'aborted',
   'admission_authentication_failed',

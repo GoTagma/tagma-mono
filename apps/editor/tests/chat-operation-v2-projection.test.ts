@@ -368,6 +368,79 @@ function allKeys(value: unknown): string[] {
 }
 
 describe('ChatTurn Operation V2 renderer projection', () => {
+  test('counts timing only for this operation and workspace', () => {
+    const terminal = operation('operation-timed', {
+      ...state({ phase: 'terminal', terminalOutcome: 'discarded' }),
+    });
+    const outbox: StoredInvocationOutboxRecord = {
+      invocationId: 'own-invocation',
+      workspaceScopeId: 'scope-01',
+      operationId: terminal.operationId,
+      purpose: 'trial_plan',
+      sessionId: 'private-session',
+      inputId: 'private-input',
+      requestDigest: HASH_A,
+      status: 'settled',
+      preparedAt: 105,
+      updatedAt: 110,
+      admittedAggregateSeq: 1,
+      settledAt: 110,
+      failureCode: null,
+    };
+    const value = harness({
+      operations: [terminal],
+      outboxes: [
+        outbox,
+        {
+          ...outbox,
+          invocationId: 'other-operation',
+          operationId: 'foreign-operation',
+          preparedAt: 100,
+          settledAt: 120,
+        },
+        {
+          ...outbox,
+          invocationId: 'other-workspace',
+          workspaceScopeId: 'foreign-scope',
+          preparedAt: 100,
+          settledAt: 120,
+        },
+      ],
+    });
+    const getOperationEventHistory: NonNullable<
+      ChatOperationV2ProjectionReadPersistence['getOperationEventHistory']
+    > = () => ({
+      totalEventCount: 1,
+      events: [
+        {
+          workspaceSeq: 1,
+          workspaceScopeId: 'scope-01',
+          operationId: terminal.operationId,
+          eventId: 'created-event',
+          type: 'operation_created',
+          generation: 1,
+          operationVersion: 0,
+          phase: 'created',
+          waitReason: null,
+          timestamp: 100,
+          source: null,
+          terminal: false,
+          payload: {},
+        },
+      ],
+    });
+    const detail = readChatOperationV2OperationProjection(
+      { ...value.persistence, getOperationEventHistory },
+      value.resolver,
+      'scope-01',
+      terminal.operationId,
+    );
+    expect(detail.timing).toMatchObject({
+      elapsedMs: 20,
+      trialPlanAttempts: 1,
+      durationsMs: { approval: 0, ai: 5, execution: 0, other: 15 },
+    });
+  });
   test('projects the latest content-minimized Trial heartbeat separately from semantic phase time', () => {
     const running = operation('operation-trial-progress', {
       ...state({ phase: 'trial-running', stageId: 'stage-01' }),
@@ -1002,6 +1075,47 @@ describe('ChatTurn Operation V2 renderer projection', () => {
 });
 
 describe('ChatTurn Operation V2 terminal discard reason projection', () => {
+  test('retains the latest verification cause after discard without exposing it on user cancellation', () => {
+    const feedback = {
+      schemaVersion: 1,
+      stage: 'trial',
+      details: 'Copied working directory is unavailable.',
+      failedTaskIds: ['numbers.seed'],
+      omittedFailedTaskCount: 0,
+    } as const;
+    for (const outcome of ['discarded', 'cancelled_precommit'] as const) {
+      const terminal = operation('operation-feedback', {
+        ...state({ phase: 'terminal', terminalOutcome: outcome }),
+      });
+      const value = harness({
+        operations: [terminal],
+        latestEvents: [
+          {
+            operationId: terminal.operationId,
+            type: 'trial_status_changed',
+            payload: { feedback },
+          },
+          {
+            operationId: terminal.operationId,
+            type: 'stage_status_changed',
+            payload: {
+              stageId: 'stage-01',
+              status: 'discarded',
+              errorCode: 'trial_failed',
+              diagnosticCodes: ['trial_failed'],
+            },
+          },
+        ],
+      });
+      const detail = readChatOperationV2OperationProjection(
+        value.persistence,
+        value.resolver,
+        'scope-01',
+        terminal.operationId,
+      );
+      expect(detail.verificationFeedback).toEqual(outcome === 'discarded' ? feedback : null);
+    }
+  });
   test('projects the Host discard reason onto detail and workspace summaries', () => {
     const terminal = operation('operation-discarded', {
       ...state({ phase: 'terminal', terminalOutcome: 'discarded' }),

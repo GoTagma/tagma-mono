@@ -510,7 +510,10 @@ export interface ChatPipelineTrialRunResult {
     | 21
     | 22
     | 23
-    | 24;
+    | 24
+    | 25
+    | 26
+    | 27;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;

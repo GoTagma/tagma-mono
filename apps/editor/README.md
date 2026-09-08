@@ -103,6 +103,12 @@ Trial can pass. Results distinguish Sandbox coverage from real-environment readi
 with Live Smoke skipped does not satisfy the environment or approval requirements of an ordinary Run.
 Missing executables and actual task, output, or assertion failures remain visible verification failures.
 
+Sandbox copies resolve pipeline-local relative working directories from the original workspace,
+then relocate them into the copied pipeline directory. This also covers task-level cwd overrides
+and built-in file paths, so editing a pipeline into a differently named branch does not leave its
+Sandbox tasks pointing at the original directory. Shared workspace coordinates and command text
+retain their authored meaning.
+
 Trial plans run positive end-to-end cases before targeted negative prerequisite probes. A negative
 case names its positive `baselineCaseId`, preserves the same targets and fixtures, and removes one
 declared test environment input (`environment: [{ name, value: null }]`) or rejects one manual trigger
@@ -171,6 +177,18 @@ keeps that unchanged branch under a collapsed **Failed Chat drafts** section. Th
 openable and explicitly removable; editing it or replacing it with a newer successful result returns
 it to the ordinary pipeline list. A legacy result whose route provenance is missing offers **Save as
 independent pipeline** instead of repeating a deterministic Retry.
+
+Chat shows the current verification phase and cumulative elapsed time across repair and Trial Plan
+attempts. **Timing details** separates waiting for your input, AI request processing, Trial execution,
+and other processing. AI request time includes provider and tool activity; Trial execution includes
+case setup and assertions, so neither is a pure model-generation or runner benchmark. Incomplete
+retained history is explicitly marked unavailable rather than reported as zero.
+
+When verification prevents publication, the failed turn preserves the Host's validation detail and
+failed task names even after its staged draft is discarded. **Edit request** restores the request
+to an empty Composer for revision and a new send. Older failures may have no saved detail. Long
+verification text carries an explicit truncation marker and omitted character count. Discussion
+uses the request and attached context; include pipeline details when asking about a particular file.
 
 ## Production diagnostics for coding agents
 

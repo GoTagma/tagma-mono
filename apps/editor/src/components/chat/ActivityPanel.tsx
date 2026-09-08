@@ -266,7 +266,7 @@ function formatTimelineOffset(milliseconds: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-function formatDurationShort(milliseconds: number): string {
+export function formatDurationShort(milliseconds: number): string {
   if (milliseconds < 1000) return `${Math.max(0, Math.round(milliseconds))}ms`;
   const seconds = Math.floor(milliseconds / 1000);
   if (seconds < 60) return `${seconds}s`;

@@ -6272,6 +6272,31 @@ export class ChatOperationV2Store {
     }
   }
 
+  getOperationEventHistory(operationId: string): {
+    totalEventCount: number;
+    events: readonly StoredHostOperationEvent[];
+  } {
+    this.assertOpen();
+    assertIdentifier(operationId, 'operationId');
+    return this.readTransaction(() => {
+      const count = this.database.prepare<{ count: number }, [string]>(
+        'SELECT COUNT(*) AS count FROM operation_events WHERE operation_id = ?',
+      );
+      const rows = this.database.prepare<EventRow, [string, number]>(
+        'SELECT * FROM operation_events WHERE operation_id = ? ORDER BY workspace_seq LIMIT ?',
+      );
+      try {
+        return {
+          totalEventCount: count.get(operationId)?.count ?? 0,
+          events: rows.all(operationId, 4096).map(eventFromRow),
+        };
+      } finally {
+        count.finalize();
+        rows.finalize();
+      }
+    });
+  }
+
   appendOperationAnnotation(input: AppendOperationAnnotationInput): StoredOperationAnnotation {
     this.assertOpen();
     assertIdentifier(input.operationId, 'operationId');

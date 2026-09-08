@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
+import { isChatOperationFeedback } from '../shared/chat-operation-feedback';
 import { normalizeChatOperationV2TargetCoordinate } from '../server/chat-operations/binding.js';
 import {
   buildManagedChatOperationV2ExecutionPrompt,
@@ -431,6 +432,241 @@ function invocationRequest(
 }
 
 describe('managed Chat Operation V2 authoring runtime', () => {
+  test('does not blame expected task failures in successful negative cases', async () => {
+    const value = await readyRuntime();
+    const request = {
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    };
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      summary: 'Positive case assertion failed: expected 15, got 14.',
+      repairAuthorization: 'diagnostic-only',
+      cases: [
+        { id: 'negative', success: true },
+        { id: 'positive', success: false },
+      ],
+      tasks: [
+        {
+          caseId: 'negative',
+          taskId: 'main.expected_timeout',
+          status: 'timeout',
+          failureKind: 'timeout',
+          repairScope: 'diagnostic-only',
+          stderr: 'EXPECTED_NEGATIVE_FAILURE',
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const result = await value.runtime.verifyStage(request);
+    expect(result.feedback?.failedTaskIds).toEqual([]);
+    expect(result.feedback?.details).toContain('expected 15, got 14');
+    expect(result.feedback?.details).not.toContain('expected_timeout');
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      tasks: [
+        ...value.staging.trialResult.tasks!,
+        {
+          caseId: null,
+          taskId: 'main.live',
+          status: 'failed',
+          failureKind: 'spawn_error',
+          repairScope: 'diagnostic-only',
+          stderr: 'Working directory unavailable.',
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    expect((await value.runtime.verifyStage(request)).feedback?.failedTaskIds).toEqual([
+      'main.live',
+    ]);
+  });
+  test('bounded feedback remains valid when clipping crosses a redaction boundary', async () => {
+    const value = await readyRuntime();
+    for (let prefixLength = 4000; prefixLength < 4050; prefixLength++) {
+      value.staging.trialResult = {
+        ...value.staging.trialResult,
+        success: false,
+        kind: 'failed',
+        ran: true,
+        summary: 'x'.repeat(prefixLength) + ' CUSTOM_TOKEN=example-value\n' + 'tail '.repeat(80),
+        repairAuthorization: 'diagnostic-only',
+        cases: [{ id: 'case-1', success: false }],
+      } as unknown as ChatPipelineTrialRunResult;
+      const result = await value.runtime.verifyStage({
+        operationId: 'operation-1',
+        workspaceScopeId: 'scope-1',
+        operationGeneration: 1,
+        bindingId: 'binding-1',
+        targetId: 'pipeline-1',
+        stage: value.stage,
+        repairAttempts: 0,
+        signal: new AbortController().signal,
+      });
+      expect(isChatOperationFeedback(result.feedback)).toBe(true);
+      expect(result.feedback?.details).not.toContain('example-value');
+      expect(result.feedback?.details).toMatch(/characters omitted\]/);
+    }
+  });
+  for (const [label, summary] of [
+    ['ASCII', 'verification '.repeat(500)],
+    ['Unicode', '检查🧭'.repeat(1400)],
+  ]) {
+    test(`labels bounded verification details for ${label} summaries`, async () => {
+      const value = await readyRuntime();
+      value.staging.trialResult = { ...value.staging.trialResult, ran: true, summary: summary! };
+      const result = await value.runtime.verifyStage({
+        operationId: 'operation-1',
+        workspaceScopeId: 'scope-1',
+        operationGeneration: 1,
+        bindingId: 'binding-1',
+        targetId: 'pipeline-1',
+        stage: value.stage,
+        repairAttempts: 0,
+        signal: new AbortController().signal,
+      });
+      expect(result.kind).toBe('passed');
+      if (result.kind !== 'passed') throw new Error('Expected verified result');
+      expect(result.outcome.details.length).toBeLessThanOrEqual(4096);
+      expect(result.outcome.details).toMatch(
+        /\[chat-verification-details: \d+ characters omitted\]/,
+      );
+      expect(result.outcome.details).not.toMatch(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
+      );
+    });
+  }
+
+  test('keeps short verification details complete and redacted', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      ran: true,
+      summary: 'Checks passed. Bearer private-test-value',
+    };
+    const result = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+    if (result.kind !== 'passed') throw new Error('Expected verified result');
+    expect(result.outcome.details).toBe('Checks passed. [redacted]');
+  });
+
+  test('returns bounded Host validation and task-startup feedback before cleanup', async () => {
+    const value = await readyRuntime();
+    const request = {
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    };
+    value.staging.compileResult = {
+      success: false,
+      parseOk: true,
+      summary: 'Invalid input binding',
+      validation: {
+        errors: [
+          {
+            path: 'tracks.main.tasks.check.inputs.value',
+            message: 'Required upstream output is missing.',
+          },
+        ],
+        warnings: [],
+      },
+    };
+    const compile = await value.runtime.verifyStage(request);
+    expect(compile).toMatchObject({
+      kind: 'repair_required',
+      feedback: { stage: 'compile', failedTaskIds: [] },
+    });
+    expect(compile.feedback?.details).toContain('Required upstream output is missing');
+
+    value.staging.compileResult = {
+      success: true,
+      parseOk: true,
+      summary: 'Valid',
+      validation: { errors: [], warnings: [] },
+    };
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      summary: 'A Sandbox case could not start.',
+      repairAuthorization: 'diagnostic-only',
+      cases: [{ id: 'case-1', success: false }],
+      tasks: [
+        {
+          taskId: 'main.check',
+          status: 'failed',
+          failureKind: 'spawn_error',
+          repairScope: 'diagnostic-only',
+          stderr: "Working directory unavailable: C:\\private\\work; stat '/tmp/private/work'.",
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const trial = await value.runtime.verifyStage(request);
+    expect(trial.feedback).toMatchObject({
+      stage: 'trial',
+      failedTaskIds: ['main.check'],
+      omittedFailedTaskCount: 0,
+    });
+    expect(trial.feedback?.details).toContain('Working directory unavailable');
+    expect(trial.feedback?.details).not.toContain('C:\\private');
+    expect(trial.feedback?.details).not.toContain('/tmp/private');
+  });
+
+  test('does not retain raw provider failure text in terminal feedback', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      summary: 'PRIVATE_PROVIDER_RESPONSE',
+      repairAuthorization: 'diagnostic-only',
+      cases: [{ id: 'case-1', success: false }],
+      tasks: [
+        {
+          taskId: 'main.prompt',
+          status: 'failed',
+          failureKind: 'primary_stream_error',
+          repairScope: 'diagnostic-only',
+          stderr: 'PRIVATE_PROVIDER_RESPONSE',
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const result = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+    expect(result.feedback?.failedTaskIds).toEqual(['main.prompt']);
+    expect(JSON.stringify(result.feedback)).not.toContain('PRIVATE_PROVIDER_RESPONSE');
+  });
+
   test('preserves a definitive native admission failure without starting provider execution', async () => {
     const value = await readyRuntime();
     const relocation = await value.runtime.relocateSession({

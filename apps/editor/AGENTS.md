@@ -464,6 +464,13 @@
 - When reconciliation publishes a numbered copy, rebase only pipeline-local track/task `cwd`
   values and known built-in file paths from the source or staged pipeline folder to the copy
   folder. Preserve shared workspace paths, external trigger paths, and command-shaped fields.
+- Pipeline copying carries explicit source and destination workspace roots. Resolve authored
+  relative cwd in the source workspace before relocating it, then serialize it relative to the
+  destination workspace. Sandbox copies must never compare destination-resolved relative paths
+  with the live source identity; cover renamed folders, nested task cwd, and absolute-path controls.
+  Normalize a Host V2 edit's copied baseline into its reserved branch before authoring and hashing.
+  Explicit root/shared cwd values must never use staged-file existence as a fallback; malformed
+  original YAML remains available for authoring repair and must still pass the compile gate later.
 - If the agent branch is unchanged, discard it regardless of live/local drift. For an actual
   staged mutation, adopt in place when the live and renderer branches still match base; fork only
   for a real conflicting branch or a compile-failure preservation path. A new session-owned edit is
@@ -1248,6 +1255,21 @@
 
 ## Chat Usage Stats And Terminal Discard Reasons
 
+- Operation detail timing uses only that operation's durable events and invocation outboxes,
+  filtered by workspace and operation identity. Partition elapsed wall time without double counting:
+  human input waits take precedence over Trial execution, which takes precedence over AI requests.
+  AI request time includes provider/tool activity; Trial execution includes case setup and assertions.
+  Keep total elapsed time anchored to operation creation across repairs and Trial Plan attempts.
+  Missing or capped event history yields unavailable category timings with explicit evidence counts;
+  terminal timing stops at the immutable terminal timestamp. Never invent completion percentages.
+  Workspace summary reads must not perform per-operation timing history scans.
+- Persist bounded, redacted verification feedback in the existing `trial_status_changed` event
+  before staged cleanup. Project it only with an automatic terminal failure reason. Keep provider
+  response bodies out of diagnostic-only failures and show explicit absence for old events. Exclude
+  expected task failures from successful negative cases before choosing a failure cause. Text clipping
+  must mark its layer/omitted character count, preserve Unicode and redaction boundaries, and pass
+  the shared feedback validator. The Edit request action restores a sealed request only into an
+  empty, idle Composer; it cannot send, overwrite a draft, or mutate a terminal operation.
 - The Usage Stats page reads `GET /api/chat/operations/usage`, served from the control-store
   `usage_ledger` (newest-first, exclusive `created_at` `before` cursor, exact `hasMore` via a
   `LIMIT + 1` read). The legacy `/api/workspace/usage` jsonl routes and the renderer
@@ -1315,6 +1337,9 @@
   A tail-read or response-size limit is diagnostic-interface truncation, not proof that the
   underlying runtime, file, task output, or persisted record was truncated. Locate and test the
   exact layer before changing source behavior.
+- Diagnostics retain the fixed Host lifecycle/discard reason vocabulary as well as provider failure
+  categories. Keep those allowlists separate so adding a Host verification reason does not admit
+  it as an untrusted provider error; unknown content and user-initiated discard causes remain absent.
 - Workspace-scoped diagnostics filters must compare paths through the shared canonical form
   (`normalizeWorkspaceKey`: resolve + realpath + Windows drive-root lowercasing), never strict
   string equality and never full-path lowercasing (NTFS can host case-sensitive directories):

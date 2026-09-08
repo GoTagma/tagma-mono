@@ -2627,7 +2627,8 @@ async function executeTargetedTrialCase(
     );
     const stagedYaml = readFileSync(input.stagedYamlPath, 'utf-8');
     const relocatedCaseYaml = rewriteCopiedPipelineYaml(stagedYaml, {
-      workDir: caseWorkspace.workDir,
+      sourceWorkDir: input.ws.workDir,
+      destinationWorkDir: caseWorkspace.workDir,
       sourceContentPath: input.stagedYamlPath,
       sourceIdentityPath: input.logicalYamlPath,
       destinationYamlPath: caseWorkspace.yamlPath,

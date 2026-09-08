@@ -23,7 +23,10 @@ import {
   prepareChatOperationV2Control,
   type PrepareChatOperationV2ControlOptions,
 } from './control-root.js';
-import { CHAT_OPERATION_V2_SAFE_FAILURE_CODES } from './failure-codes.js';
+import {
+  CHAT_OPERATION_V2_SAFE_FAILURE_CODES,
+  CHAT_OPERATION_V2_SAFE_LIFECYCLE_DIAGNOSTIC_CODES,
+} from './failure-codes.js';
 import {
   CHAT_OPERATION_V2_SCHEMA_VERSION,
   ChatOperationV2StoreError,
@@ -485,7 +488,10 @@ export function isChatOperationV2ShadowEnabled(
 
 const CHAT_OPERATION_V2_DIAGNOSTICS_EVENT_LIMIT = 100;
 const SAFE_DIAGNOSTIC_CODE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const SAFE_DIAGNOSTIC_FAILURE_CODES = new Set<string>(CHAT_OPERATION_V2_SAFE_FAILURE_CODES);
+const SAFE_DIAGNOSTIC_FAILURE_CODES = new Set<string>([
+  ...CHAT_OPERATION_V2_SAFE_FAILURE_CODES,
+  ...CHAT_OPERATION_V2_SAFE_LIFECYCLE_DIAGNOSTIC_CODES,
+]);
 const SAFE_DIAGNOSTIC_RECOVERY_CODES = new Set([
   'apply_all',
   'repair_authority',
@@ -1846,6 +1852,8 @@ export class ChatOperationV2Service {
         getResultProjection: (operationId) => resultResolver.getResultProjection(operationId),
         getLatestOperationEvent: (operationId, type) =>
           authority.store.getLatestOperationEvent(operationId, type),
+        getOperationEventHistory: (operationId) =>
+          authority.store.getOperationEventHistory(operationId),
       },
     };
     this.#projectionRuntimes.set(authority.scope.canonicalPathHmac, runtime);

@@ -12,6 +12,8 @@ import {
   type ChatVerificationOutcome,
 } from '../../shared/chat-verification-outcome.js';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
+import { redactDiagnosticText } from '../../shared/diagnostics.js';
+import type { ChatOperationFeedback } from '../../shared/chat-operation-feedback.js';
 import { CREATE_NEW_PIPELINE_ACTION_KIND } from '../../shared/requested-action.js';
 import { pipelineTrialPlanPath } from '../chat-pipeline-trial-plan.js';
 import {
@@ -173,10 +175,9 @@ function verificationOutcomeFromTrial(
     taskStatusCounts: trial.taskStatusCounts ?? {},
     liveSmokeStatus,
     reasonCode: input.reasonCode,
-    details: boundedInteractiveText(
+    details: boundedVerificationDetails(
       trial.summary,
       trial.success ? 'Trial verification completed.' : 'Trial verification could not complete.',
-      4_096,
     ),
   });
 }
@@ -1461,15 +1462,107 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
 }
 
 function boundedInteractiveText(value: unknown, fallback: string, maxLength: number): string {
+  return redactedInteractiveText(value, fallback).slice(0, maxLength) || fallback;
+}
+
+function redactedInteractiveText(value: unknown, fallback: string): string {
   if (typeof value !== 'string') return fallback;
-  const normalized = replaceControlCharacters(value)
+  const normalized = replaceControlCharacters(redactDiagnosticText(value))
     .replace(/\bBearer\s+\S+/giu, '[redacted]')
     .replace(/\b(?:token|secret|password|api[_ -]?key)\s*[:=]\s*\S+/giu, '[redacted]')
     .replace(/\bhttps?:\/\/\S+/giu, '[redacted-url]')
-    .replace(/(?:[A-Za-z]:[\\/]|\\\\|(?:^|\s)\/(?:[^\s/]+\/)+)\S*/gu, ' [path]')
-    .trim()
-    .slice(0, maxLength);
+    .replace(/(?:[A-Za-z]:[\\/]|\\\\)\S*/gu, '[path]')
+    .replace(/(^|[\s("'`])\/(?:[^\s/]+\/)+\S*/gu, '$1[path]')
+    .replace(
+      /(^|[\s("'`])\/(?:home|Users|private|tmp|var|etc|opt|mnt|workspace)\b\S*/giu,
+      '$1[path]',
+    )
+    .trim();
   return normalized || fallback;
+}
+
+function boundedVerificationDetails(
+  value: unknown,
+  fallback: string,
+  layer = 'chat-verification-details',
+  maxLength = 4_096,
+): string {
+  const text = redactedInteractiveText(value, fallback);
+  if (text.length <= maxLength) return text;
+  const marker = (omitted: number) => `\n\n[${layer}: ${omitted} characters omitted]`;
+  // Reserve the widest possible count before selecting the prefix. Count
+  // omitted Unicode characters after redaction, never original secret bytes.
+  let end = maxLength - marker(text.length).length;
+  const lastCodeUnit = text.charCodeAt(end - 1);
+  if (lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) end -= 1;
+  let clipped = text.slice(0, end) + marker(Array.from(text.slice(end)).length);
+  // A cut through a redaction placeholder or an unfinished credential
+  // assignment must not turn safe feedback into an invalid wire record.
+  while (redactDiagnosticText(clipped) !== clipped && end > 0) {
+    const prefix = text.slice(0, end).trimEnd();
+    end = Math.max(0, prefix.search(/\s+\S*$/u));
+    clipped = text.slice(0, end) + marker(Array.from(text.slice(end)).length);
+  }
+  return clipped;
+}
+
+function verificationFeedback(
+  stage: ChatOperationFeedback['stage'],
+  details: string,
+  failedTaskIds: readonly string[] = [],
+): ChatOperationFeedback {
+  const ids = [...new Set(failedTaskIds)].filter(
+    (id) => /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(id) && redactDiagnosticText(id) === id,
+  );
+  return {
+    schemaVersion: 1,
+    stage,
+    details: boundedVerificationDetails(
+      details,
+      'Detailed verification information is unavailable.',
+      'chat-operation-feedback',
+    ),
+    failedTaskIds: ids.slice(0, 8),
+    omittedFailedTaskCount: Math.max(0, ids.length - 8),
+  };
+}
+
+function trialVerificationFeedback(trial: ChatPipelineTrialRunResult): ChatOperationFeedback {
+  const passedCases = new Set(
+    (trial.cases ?? []).filter((entry) => entry.success).map((entry) => entry.id),
+  );
+  const failures = (trial.tasks ?? []).filter(
+    (task) =>
+      (task.status === 'failed' || task.status === 'timeout') &&
+      (task.caseId == null || !passedCases.has(task.caseId)),
+  );
+  const externalFailure = failures.some(
+    (task) => task.repairScope === 'diagnostic-only' && task.failureKind !== 'spawn_error',
+  );
+  const taskDetails = failures.slice(0, 8).map((task) => {
+    const status = `${task.taskId}: ${task.status}${task.failureKind ? ` (${task.failureKind})` : ''}`;
+    // Startup evidence is produced before a provider process runs. Other
+    // diagnostic-only driver failures retain categories, never provider text.
+    const stderr =
+      task.failureKind === 'spawn_error' || task.repairScope === 'pipeline-artifact'
+        ? boundedVerificationDetails(task.stderr, '', 'chat-operation-task-feedback', 400)
+        : '';
+    return stderr ? `${status}\n${stderr}` : status;
+  });
+  const summary = externalFailure
+    ? 'Trial execution did not complete; see the task failure categories above.'
+    : [
+        ...new Set(
+          [trial.planRequest?.message, trial.summary].filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+          ),
+        ),
+      ].join('\n\n');
+  return verificationFeedback(
+    trial.kind === 'plan-required' ? 'trial_plan' : 'trial',
+    [...taskDetails, summary].filter(Boolean).join('\n\n'),
+    failures.map((task) => task.taskId),
+  );
 }
 
 export interface ManagedChatOperationV2ExecutionPrompt {
@@ -2500,12 +2593,19 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     }
     if (!compile.success) {
       const diagnostics = ['compile_failed', ...(!compile.parseOk ? ['compile_parse_failed'] : [])];
-      return verificationRepair(id, diagnostics, {
-        compileSuccess: false,
-        parseOk: compile.parseOk,
-        errorCount: compile.validation.errors.length,
-        warningCount: compile.validation.warnings.length,
-      });
+      return {
+        ...verificationRepair(id, diagnostics, {
+          compileSuccess: false,
+          parseOk: compile.parseOk,
+          errorCount: compile.validation.errors.length,
+          warningCount: compile.validation.warnings.length,
+        }),
+        feedback: verificationFeedback(
+          'compile',
+          compile.validation.errors.map((error) => `${error.path}: ${error.message}`).join('\n') ||
+            compile.summary,
+        ),
+      };
     }
     let trial: ChatPipelineTrialRunResult;
     try {
@@ -2578,10 +2678,12 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       };
     }
     const diagnostic = safeCode(`trial_${trial.kind.replace(/-/g, '_')}`, 'trial_failed');
+    const feedback = trialVerificationFeedback(trial);
     if (trial.kind === 'plan-required') {
       if (!trial.planRequest) {
         return {
           ...verificationDiscard(id, 'trial_plan_request_invalid', [diagnostic]),
+          feedback,
           planHash,
           caseCount,
           passedCount,
@@ -2598,12 +2700,14 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         failedCount,
         warningCount,
         planRequest: trial.planRequest,
+        feedback,
       };
     }
     if (trial.repairAuthorization !== 'pipeline-change-allowed') {
       const current = await this.requireCurrentSnapshot(authority);
       return {
         kind: 'unverified' as const,
+        feedback,
         trialId: id,
         planHash,
         caseCount,
@@ -2625,10 +2729,11 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
             : ('failed' as const),
         errorCode: diagnostic,
         diagnosticCodes: [diagnostic],
-        redactedSummary: boundedInteractiveText(
+        redactedSummary: boundedVerificationDetails(
           trial.summary,
           'Trial verification could not complete.',
-          4_096,
+          'chat-verification-summary',
+          2_048,
         ),
         stagedSnapshotHash: current.snapshotHash,
         artifactSetHash: current.artifactSetHash,
@@ -2642,6 +2747,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         passedCount,
         failedCount,
       }),
+      feedback,
       planHash,
       caseCount,
       passedCount,

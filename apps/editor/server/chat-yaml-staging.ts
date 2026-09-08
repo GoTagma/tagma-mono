@@ -1565,6 +1565,24 @@ export function createChatYamlStage(
       const originBasePath = resolveRelativeInside(paths.baseTagmaDir, activeRelativePath!);
       const targetBasePath = resolveRelativeInside(paths.baseTagmaDir, hostEditTargetRelativePath);
       copyPipelineArtifactsToTarget(originBasePath, targetBasePath);
+      const originYaml = assertRegularTextFile(originBasePath, 'Host edit origin snapshot');
+      let targetYaml = originYaml;
+      try {
+        targetYaml = rewriteCopiedPipelineYaml(originYaml, {
+          sourceWorkDir: ws.workDir,
+          destinationWorkDir: ws.workDir,
+          sourceContentPath: originBasePath,
+          sourceIdentityPath: resolveRelativeInside(realTagmaDir, activeRelativePath!),
+          destinationYamlPath: resolveRelativeInside(realTagmaDir, hostEditTargetRelativePath),
+          pipelineName: parseYaml(originYaml).name,
+        });
+      } catch {
+        // Malformed source YAML must remain available to the authoring agent
+        // for repair. Compilation still gates all verification/publication.
+      }
+      // Normalize the logical branch before taking its base hash. The agent
+      // must not inherit the read-only origin's working directory as its own.
+      if (targetYaml !== originYaml) atomicWriteFileSync(targetBasePath, targetYaml);
       const hashes = pipelineArtifactHashes(targetBasePath);
       if (!hashes) throw new Error('Failed to capture Host edit branch base snapshot.');
       baseEntries.push({ relativePath: hostEditTargetRelativePath, ...hashes });
@@ -2547,7 +2565,8 @@ function writeStagedArtifactsToDestination(
       ? yamlWithPipelineName(stagedYaml, options.pipelineName)
       : stagedYaml;
     const destinationYaml = rewriteCopiedPipelineYaml(renamedYaml, {
-      workDir: ws.workDir,
+      sourceWorkDir: ws.workDir,
+      destinationWorkDir: ws.workDir,
       sourceContentPath: stagedYamlPath,
       sourceIdentityPath: options.sourceIdentityPath ?? destinationYamlPath,
       destinationYamlPath,

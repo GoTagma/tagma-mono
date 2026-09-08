@@ -6208,6 +6208,15 @@ describe('ChatTurn Operation V2 operation authority', () => {
         'operation_created',
         'phase_changed',
       ]);
+      seedOperation(reopened, 'other-operation');
+      expect(reopened.getOperationEventHistory(operation.operationId)).toEqual({
+        totalEventCount: 2,
+        events: journal.events,
+      });
+      expect(reopened.getOperationEventHistory('missing-operation')).toEqual({
+        totalEventCount: 0,
+        events: [],
+      });
     }
   });
 
