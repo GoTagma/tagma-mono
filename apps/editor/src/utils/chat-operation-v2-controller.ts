@@ -1,3 +1,4 @@
+import { getChatConversationKey } from './chat-conversation-key';
 import {
   cancelChatOperationV2,
   chooseChatOperationV2Recovery,
@@ -341,7 +342,15 @@ class Controller implements ChatOperationV2Controller {
       const result = await this.#api.create(
         {
           clientRequestId: this.#nextId('create'),
-          payload: { ...input, rendererInstanceId },
+          payload: {
+            ...input,
+            rendererInstanceId,
+            conversationKey: getChatConversationKey(
+              workspaceKey,
+              rendererInstanceId,
+              input.conversationId,
+            ),
+          },
         },
         { workspaceKey, signal },
       );

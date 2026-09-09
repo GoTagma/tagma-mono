@@ -6,6 +6,14 @@ export const CHAT_COMMIT_WAL_RECORD_VERSION = 1 as const;
 export const CHAT_COMMIT_MAX_ARTIFACTS = 256;
 export const CHAT_COMMIT_MAX_METADATA_CODES = 16;
 
+export class ChatCommitTargetChangedBeforePrepareError extends Error {
+  readonly code = 'target_changed_before_commit';
+  constructor() {
+    super('The pipeline changed after staging; the prepared update was not published.');
+    this.name = 'ChatCommitTargetChangedBeforePrepareError';
+  }
+}
+
 const OPAQUE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 const SHA256_RE = /^[a-f0-9]{64}$/i;
 const METADATA_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;

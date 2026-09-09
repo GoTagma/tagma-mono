@@ -1,4 +1,15 @@
 import { randomUUID as systemRandomUUID } from 'node:crypto';
+import {
+  authenticateChatConversationContext,
+  boundChatConversationHistory,
+  conversationAuthorityError,
+  deriveChatConversationOwnerId,
+  sealChatConversationContext,
+  type ChatConversationContext,
+  type ChatConversationHistoryTurn,
+  type SealedChatConversationContext,
+} from './conversation.js';
+import { buildChatOperationV2ClarifiedRequestText } from './clarification.js';
 
 import type {
   ChatOperationV2DiscardRequest,
@@ -361,6 +372,13 @@ export interface ChatOperationV2AuthoringTargetResolution {
   readonly targetId: string;
   readonly target: ChatOperationV2TargetCoordinate;
   readonly originHash: string | null;
+  readonly supersedePublished?: { readonly bindingId: string; readonly expectedVersion: number };
+}
+
+export interface ChatOperationV2OwnedTarget {
+  readonly target: ChatOperationV2TargetCoordinate;
+  readonly busy: boolean;
+  readonly activeLease: { readonly bindingId: string; readonly expectedVersion: number } | null;
 }
 
 export interface ResolveChatOperationV2AuthoringTargetInput {
@@ -368,6 +386,8 @@ export interface ResolveChatOperationV2AuthoringTargetInput {
   readonly evidence: ChatOperationV2AuthoringTargetEvidence;
   /** Correlation only. A resolver must not treat it as session or write authority. */
   readonly conversationId: string;
+  /** Joined by the Host from authenticated conversation records and immutable publications. */
+  readonly ownedTargets?: readonly ChatOperationV2OwnedTarget[];
 }
 
 export interface ChatOperationV2AuthoringTargetResolver {
@@ -466,7 +486,7 @@ export type ChatOperationV2ReadonlyResultPersistenceFactory = (
 export type CreateAndDispatchReadonlyInput = Omit<
   CreateAndDispatchChatOperationV2Input,
   'operationId' | 'workspaceScopeId'
->;
+> & { readonly conversationKey?: string };
 
 export type RecoverReadonlyInput = Omit<RecoverChatOperationV2ContextInput, 'workspaceScopeId'>;
 
@@ -1080,7 +1100,126 @@ export class ChatOperationV2Service {
       input.clientRequestId,
     );
     const operationId = existing?.operationId ?? this.#nextHostId('operation');
-    return this.#trackReadonlyCall(this.#dispatchManagedCreate(runtime, input, operationId));
+    const conversationContext = this.#freezeConversationContext(runtime, input, operationId);
+    return this.#trackReadonlyCall(
+      this.#dispatchManagedCreate(runtime, { ...input, conversationContext }, operationId),
+    );
+  }
+
+  #conversationContext(
+    authority: ChatOperationV2ReadonlyWorkspaceAuthority,
+    operationId: string,
+  ): ChatConversationContext | null {
+    const record = authority.store.getOperationConversationContext(operationId);
+    if (record === null) return null;
+    const context = authenticateChatConversationContext(record, this.#authorityForUse().key);
+    const admission = authority.store.getOperationAdmission(operationId);
+    if (
+      context.schemaVersion !== 1 ||
+      context.operationId !== operationId ||
+      context.workspaceScopeId !== authority.scope.workspaceScopeId ||
+      context.controlGeneration !== authority.scope.controlGeneration ||
+      context.rendererInstanceId !== admission?.rendererInstanceId ||
+      context.conversationId !== admission?.conversationId
+    )
+      conversationAuthorityError();
+    return context;
+  }
+
+  #freezeConversationContext(
+    authority: ChatOperationV2ReadonlyWorkspaceAuthority,
+    input: CreateAndDispatchReadonlyInput,
+    operationId: string,
+  ): SealedChatConversationContext | null {
+    const saved = this.#conversationContext(authority, operationId);
+    if (input.conversationKey === undefined) {
+      if (saved !== null) conversationAuthorityError();
+      for (const prior of authority.store.getWorkspaceOperationSnapshot(
+        authority.scope.workspaceScopeId,
+      ).operations) {
+        const context = this.#conversationContext(authority, prior.operationId);
+        if (
+          context?.rendererInstanceId === input.rendererInstanceId &&
+          context.conversationId === input.conversationId
+        )
+          conversationAuthorityError();
+      }
+      return null; // Legacy requests have no reusable history or target authority.
+    }
+    const key = this.#authorityForUse().key;
+    const ownerId = deriveChatConversationOwnerId(
+      key,
+      {
+        workspaceScopeId: authority.scope.workspaceScopeId,
+        controlGeneration: authority.scope.controlGeneration,
+      },
+      {
+        rendererInstanceId: input.rendererInstanceId,
+        conversationId: input.conversationId,
+        conversationKey: input.conversationKey,
+      },
+    );
+    if (saved !== null) {
+      if (saved.ownerId !== ownerId) conversationAuthorityError();
+      return sealChatConversationContext(saved, key);
+    }
+    // Do not upgrade a legacy retry into a different request or infer its old ownership.
+    if (authority.store.getOperation(operationId) !== null) conversationAuthorityError();
+    const snapshot = authority.store.getWorkspaceOperationSnapshot(
+      authority.scope.workspaceScopeId,
+    );
+    const turns: ChatConversationHistoryTurn[] = [];
+    for (const [index, prior] of snapshot.operations.entries()) {
+      const context = this.#conversationContext(authority, prior.operationId);
+      if (
+        context?.rendererInstanceId === input.rendererInstanceId &&
+        context.conversationId === input.conversationId &&
+        context.ownerId !== ownerId
+      )
+        conversationAuthorityError();
+      if (
+        prior.operationId === operationId ||
+        prior.phase !== 'terminal' ||
+        ![
+          'completed_readonly',
+          'completed_noop',
+          'completed_published',
+          'completed_forked',
+        ].includes(prior.terminalOutcome ?? '')
+      )
+        continue;
+      if (context?.ownerId !== ownerId) continue;
+      const admission = authority.store.getOperationAdmission(prior.operationId)!;
+      const result = authority.store.getResultProjection(prior.operationId);
+      if (!result || result.terminalOutcome !== prior.terminalOutcome) conversationAuthorityError();
+      const userText = [
+        buildChatOperationV2ClarifiedRequestText(
+          admission.request.text,
+          authority.store.getOperationClarificationThread(prior.operationId),
+        ),
+        ...admission.request.attachments.map(({ label, content }) => `${label}:\n${content}`),
+      ].join('\n\n');
+      turns.push({
+        operationId: prior.operationId,
+        sequence: index + 1,
+        userText,
+        assistantText: result.messages.map(({ text }) => text).join('\n\n'),
+        truncated: false,
+      });
+    }
+    return sealChatConversationContext(
+      {
+        schemaVersion: 1,
+        operationId,
+        ownerId,
+        workspaceScopeId: authority.scope.workspaceScopeId,
+        rendererInstanceId: input.rendererInstanceId,
+        conversationId: input.conversationId,
+        controlGeneration: authority.scope.controlGeneration,
+        history: boundChatConversationHistory(turns, snapshot.latestCursor),
+      },
+      key,
+    );
   }
 
   async stopReadonly(
@@ -1747,6 +1886,8 @@ export class ChatOperationV2Service {
         store: authority.store,
       };
       orchestrator = new ChatOperationV2ReadonlyOrchestrator({
+        getConversationHistory: (operationId) =>
+          this.#conversationContext(authority, operationId)?.history ?? null,
         persistence: authority.store,
         runner,
         resultPersistence:
@@ -1914,6 +2055,7 @@ export class ChatOperationV2Service {
       operation: classified.operation,
       evidence: classified.targetEvidence,
       conversationId: admission.conversationId,
+      ownedTargets: this.#ownedTargets(runtime, classified.operation.operationId),
     });
     this.#assertTargetResolution(classified.targetEvidence, resolution);
     let sessionId = authoring.sessionsByOperation.get(classified.operation.operationId);
@@ -1931,6 +2073,7 @@ export class ChatOperationV2Service {
       targetId: resolution.targetId,
       target: resolution.target,
       originHash: resolution.originHash,
+      supersedePublished: resolution.supersedePublished,
     });
     if (!background) return dispatched;
     const tracked = this.#trackReadonlyCall(dispatched);
@@ -1940,6 +2083,50 @@ export class ChatOperationV2Service {
       // requests can continue the same lifecycle.
     });
     return classified;
+  }
+
+  #ownedTargets(
+    authority: ChatOperationV2ReadonlyWorkspaceAuthority,
+    operationId: string,
+  ): readonly ChatOperationV2OwnedTarget[] {
+    const owner = this.#conversationContext(authority, operationId);
+    if (owner === null) return [];
+    const owned = new Map<string, ChatOperationV2OwnedTarget>();
+    for (const { record } of authority.store.listBindingLeases(authority.scope.workspaceScopeId)) {
+      if (record.status !== 'published') continue;
+      const publicationOwner = this.#conversationContext(authority, record.publishedByOperationId);
+      if (publicationOwner?.ownerId !== owner.ownerId) continue;
+      const result = authority.store.getResult(record.resultId);
+      const operation = authority.store.getOperation(record.publishedByOperationId);
+      if (
+        !result ||
+        result.operationId !== record.publishedByOperationId ||
+        result.terminal.bindingId !== record.bindingId ||
+        operation?.phase !== 'terminal' ||
+        !['completed_published', 'completed_forked'].includes(operation.terminalOutcome ?? '') ||
+        result.terminal.outcome !== operation.terminalOutcome
+      )
+        conversationAuthorityError();
+      const active = authority.store.getActiveBindingLeaseForTarget(
+        authority.scope.workspaceScopeId,
+        record.target,
+      );
+      if (
+        active?.record.status === 'published' &&
+        this.#conversationContext(authority, active.record.publishedByOperationId)?.ownerId !==
+          owner.ownerId
+      )
+        conversationAuthorityError();
+      owned.set(`${record.target.platform}:${record.target.identity}`, {
+        target: record.target,
+        busy: active?.record.status === 'reserved',
+        activeLease:
+          active?.record.status === 'published'
+            ? { bindingId: active.record.bindingId, expectedVersion: active.record.version }
+            : null,
+      });
+    }
+    return [...owned.values()];
   }
 
   #assertTargetResolution(

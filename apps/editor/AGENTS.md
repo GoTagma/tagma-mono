@@ -298,6 +298,24 @@
 
 ## Chat Context Window
 
+- V2 persists a separate 32-byte conversation credential in session storage before the first
+  request. Host HMAC binds it to workspace scope, renderer/conversation correlation, and control
+  generation. Never infer reusable history or write ownership from the displayed conversation id.
+  Keep this credential out of Zustand projections, model input, exports, and diagnostics. A browser
+  storage failure must fail Send before network activity; lost/corrupt identity requires a new
+  conversation instead of guessing ownership from visible history.
+- Schema v8 atomically persists `operation_conversation_contexts` and its operation hash. The Host
+  authenticates every record before use. Its immutable history keeps the newest 16 eligible complete
+  turns, at most 64 KiB of canonical JSON and 8 KiB UTF-8 per user/assistant text; report omitted
+  turns and clipped text. Order by Host admission time then operation id. Include accepted
+  clarification replies and user attachment text, but exclude internal invocations, unsuccessful
+  and unfinished turns, and historical canvas snapshots. Legacy operations lack this authority
+  and remain readable without being imported into a new owner.
+- Classifier, discussion, and diagnosis use that admission-frozen history across explicit retry,
+  same-id replay, and Host restart. Historical failed/interrupted read-only invocations may precede
+  one current invocation only when purpose and request digest match. Discussion recovery must pass
+  a null snapshot even when the admission captured a visible canvas for possible diagnosis.
+
 - "Limit AI context" (settings `chatContextLimitEnabled` + `chatContextRounds`) trims only the
   in-memory model input per request; it must never create, rotate, or clear OpenCode sessions.
   The conversation identity, History rows, and persisted messages stay untouched.
@@ -333,6 +351,23 @@
   inferred outputs and raw stream sources as valid producers.
 
 ## Chat YAML Branch Isolation
+
+- V2 target reuse comes from authenticated conversation context joined to an immutable successful
+  publication and binding, never from `conversationId`, names, path similarity, or file existence.
+  Selecting a different origin creates an independent target. A legacy publication without that
+  owner context remains a read-only origin. Native authoring sessions remain per operation.
+- Schema v9 keeps published binding records immutable and appends `successor_binding_id` under SQL
+  CAS when the same logical owner reserves the same target for another operation. The active-target
+  unique index excludes superseded records; registry validation uses those same current records.
+  Update the predecessor marker and insert the new reservation in the same operation transaction,
+  with a deferred foreign key. No-op/Stop/failed verification releases the new reservation while
+  retaining the old publication as ownership/history evidence. A busy owned target must conflict
+  and offer retry, never silently allocate another branch.
+- Existing-target staging reuses the original base copy when the Host publish target equals its
+  authenticated source. Before storing commit preparation, compare every before-image with that
+  base (or required absence for a new target). A mismatch is a Host-authored
+  `target_changed_before_commit` discard. Keep post-decision recovery on its original WAL so a
+  concurrent external edit is preserved and the verified update can fork.
 
 - A non-null Chat YAML snapshot is always bound to its required stage. Publish pipeline results only
   through staged finalize; do not reintroduce a live-edit/copy/restore fallback such as
@@ -919,6 +954,13 @@
 
 ## Managed OpenCode Execution
 
+- Normalize null, empty, and whitespace-only authoring text through the shared completion-text
+  contract before sealing and validating a visible result. The Host fallback must not claim a
+  pipeline update succeeded. A settled `no_change` invocation, including a permission denial with
+  `tool_calls` and no text, finishes through `completed_noop`, discards its stage, and seals one
+  terminal result. Exercise the production result persistence adapter in lifecycle tests; a fake
+  adapter can otherwise hide a normalization mismatch that strands foreground/background turns.
+
 - Keep Host-assigned OpenCode identities in OpenCode's native namespaces: session ids are
   `ses_tagma_<purpose>_<uuidhex>` and native admission input ids are
   `msg_tagma_<purpose>_<uuidhex>`. Internal operation, invocation, usage, request, and event ids
@@ -1012,7 +1054,9 @@
   service must verify that full record after every keyless SQLite read before trusting it.
 - Version the Chat control Store by its append-only SQLite schema lineage, never by editor/sidecar
   semver. Every persisted migration freezes its SQL interpolation values, name, and checksum; extend
-  the schema only by appending the next migration and ledger entry. Schema v7 adds the
+  the schema only by appending the next migration and ledger entry. Schema v9 adds atomic owned
+  target lease succession without changing published binding/result identity. Schema v8 adds authenticated
+  per-operation conversation context without importing legacy ownership. Schema v7 adds the
   `trial-running` phase by rebuilding `operations` and `operation_events` transactionally with
   foreign keys disabled only for that bounded rebuild and an in-transaction `foreign_key_check`.
   Older supported stores migrate without data loss, newer stores and checksum/schema drift fail

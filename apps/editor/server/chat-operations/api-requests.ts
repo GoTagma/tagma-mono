@@ -192,6 +192,7 @@ export interface ChatOperationV2RendererDirtySnapshot {
 }
 
 export interface ChatOperationV2CreatePayload {
+  readonly conversationKey?: string;
   readonly request: ChatOperationV2RendererMessage;
   readonly provider: string;
   readonly model: string;
@@ -590,6 +591,16 @@ function hostId(value: unknown, label: string): string {
   });
 }
 
+function conversationKey(value: unknown): string {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) {
+    return invalid(
+      'invalid_content',
+      'Conversation credential must be exactly 32 bytes of lowercase hexadecimal.',
+    );
+  }
+  return value;
+}
+
 function parseCandidateId(value: unknown, label: string): string {
   return boundedString(value, label, {
     maxBytes: CHAT_OPERATION_V2_API_MAX_IDENTIFIER_BYTES,
@@ -909,7 +920,7 @@ export function parseChatOperationV2CreateRequest(value: unknown): ChatOperation
   const payloadRecord = exactRecord(
     record.payload,
     ['request', 'provider', 'model', 'rendererInstanceId', 'conversationId'],
-    ['variant', 'localRevision', 'candidateId', 'dirtySnapshot'],
+    ['variant', 'localRevision', 'candidateId', 'dirtySnapshot', 'conversationKey'],
     'Create payload',
   );
   const requestRecord = exactRecord(
@@ -967,6 +978,9 @@ export function parseChatOperationV2CreateRequest(value: unknown): ChatOperation
           : hostId(payloadRecord.variant, 'Model variant id'),
       rendererInstanceId: hostId(payloadRecord.rendererInstanceId, 'Renderer instance id'),
       conversationId: hostId(payloadRecord.conversationId, 'Renderer conversation id'),
+      ...(payloadRecord.conversationKey === undefined
+        ? {}
+        : { conversationKey: conversationKey(payloadRecord.conversationKey) }),
       localRevision,
       candidateId,
       dirtySnapshot,

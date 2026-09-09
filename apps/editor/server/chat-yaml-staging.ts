@@ -1555,13 +1555,18 @@ export function createChatYamlStage(
     if (
       hostEditTargetRelativePath &&
       (activeRelativePath === null ||
-        sourceRelativePaths.some((candidate) =>
-          samePipelineRelativePath(candidate, hostEditTargetRelativePath),
+        sourceRelativePaths.some(
+          (candidate) =>
+            samePipelineRelativePath(candidate, hostEditTargetRelativePath) &&
+            !samePipelineRelativePath(candidate, activeRelativePath!),
         ))
     ) {
       throw new Error('Host edit target requires an inventoried origin and a fresh branch.');
     }
-    if (hostEditTargetRelativePath) {
+    if (
+      hostEditTargetRelativePath &&
+      !samePipelineRelativePath(hostEditTargetRelativePath, activeRelativePath!)
+    ) {
       const originBasePath = resolveRelativeInside(paths.baseTagmaDir, activeRelativePath!);
       const targetBasePath = resolveRelativeInside(paths.baseTagmaDir, hostEditTargetRelativePath);
       copyPipelineArtifactsToTarget(originBasePath, targetBasePath);
@@ -1643,6 +1648,24 @@ export function listChatYamlStage(
   }
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   return descriptor(ws, paths, metadata);
+}
+
+/** Private Host commit bridge: authenticate the captured base before using its file bytes. */
+export function readChatYamlStageTargetBaseline(
+  ws: WorkspaceState,
+  stageId: string,
+  relativePath: string,
+): string | null {
+  const { paths, metadata } = readMetadata(ws, stageId);
+  const target = assertPortableRelativePath(relativePath);
+  if (!metadata.sourceRelativePaths.some((source) => samePipelineRelativePath(source, target)))
+    return null;
+  const expected = baseEntryFor(metadata, target);
+  const basePath = resolveRelativeInside(paths.baseTagmaDir, target);
+  if (!expected || !sameArtifactHashes(pipelineArtifactHashes(basePath), expected)) {
+    throw new Error('Chat YAML stage base snapshot is invalid.');
+  }
+  return basePath;
 }
 
 export function readChatYamlStageSessionRelocation(

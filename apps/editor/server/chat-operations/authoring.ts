@@ -7,6 +7,7 @@ import {
 } from '../../shared/chat-verification-outcome.js';
 import type { ChatPipelineTrialRunResult } from '../chat-pipeline-trial-run.js';
 import type { ChatOperationV2Admission } from './admission.js';
+import { normalizeChatOperationV2AuthoringCompletionText } from './authoring-results.js';
 import {
   normalizeChatOperationV2TargetCoordinate,
   type ChatOperationV2BindingReservedRecord,
@@ -15,6 +16,7 @@ import {
 } from './binding.js';
 import type { ChatOperationV2ClarificationThread } from './clarification.js';
 import {
+  ChatCommitTargetChangedBeforePrepareError,
   deriveChatCommitCoordinateId,
   parseChatCommitPrepareRecord,
   type ChatCommitPrepareRecord,
@@ -750,6 +752,7 @@ export type ChatOperationV2AuthoringPersistence = Pick<
 >;
 
 export interface DispatchChatOperationV2AuthoringInput {
+  readonly supersedePublished?: { readonly bindingId: string; readonly expectedVersion: number };
   readonly operationId: string;
   readonly workspaceScopeId: string;
   readonly expectedGeneration: number;
@@ -1396,6 +1399,9 @@ export class ChatOperationV2AuthoringEngine {
       bindingUpdate: {
         kind: 'cas',
         originHash: input.originHash,
+        ...(input.supersedePublished === undefined
+          ? {}
+          : { supersedePublished: input.supersedePublished }),
         request: {
           bindingId,
           expectedVersion: null,
@@ -2120,6 +2126,7 @@ export class ChatOperationV2AuthoringEngine {
     }
     assertHostId(persisted.resultId, 'Persisted visible result id');
     const message = parseChatOperationV2ResultMessage(persisted.message);
+    const completion = normalizeChatOperationV2AuthoringCompletionText(input.text);
     if (
       message.resultId !== persisted.resultId ||
       persisted.pendingMessageId !== message.messageId ||
@@ -2133,7 +2140,7 @@ export class ChatOperationV2AuthoringEngine {
       message.invocationId !== input.invocationId ||
       message.purpose !== 'authoring' ||
       message.evidence.executionMessageId !== input.executionMessageId ||
-      message.text !== (input.text ?? '') ||
+      message.text !== completion.text ||
       (input.verificationNotice === null
         ? message.attachments.length !== 0
         : message.attachments.length !== 1 ||
@@ -2630,17 +2637,27 @@ export class ChatOperationV2AuthoringEngine {
     }
     this.assertAllUsageComplete(context.operationId);
     context.relocation = await this.restoreRelocation(context);
-    const prepare = parseChatCommitPrepareRecord(
-      await this.runtime.prepareCommit({
-        operation: current,
-        binding: context.binding,
-        stage: context.stage,
-        relocation: context.relocation,
-        verification,
-        targetId: context.targetId,
-        resultAuthority: visibleResult,
-      }),
-    );
+    let prepare: ChatCommitPrepareRecord;
+    try {
+      prepare = parseChatCommitPrepareRecord(
+        await this.runtime.prepareCommit({
+          operation: current,
+          binding: context.binding,
+          stage: context.stage,
+          relocation: context.relocation,
+          verification,
+          targetId: context.targetId,
+          resultAuthority: visibleResult,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof ChatCommitTargetChangedBeforePrepareError) {
+        return this.finishPrecommit(context, 'discarded', undefined, undefined, {
+          reasonCode: error.code,
+        });
+      }
+      throw error;
+    }
     this.assertCommitPrepareMatches(context, current, verification, prepare);
     const preparedAt = Math.max(this.now(), current.updatedAt, prepare.preparedAt);
     const transitioned = this.persistence.transitionOperation({

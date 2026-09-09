@@ -745,6 +745,7 @@ export interface ChatOperationV2RendererDirtySnapshot {
 }
 
 export interface ChatOperationV2CreatePayload {
+  readonly conversationKey?: string;
   readonly request: ChatOperationV2RendererMessage;
   readonly provider: string;
   readonly model: string;

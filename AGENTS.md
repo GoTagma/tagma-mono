@@ -136,7 +136,8 @@ Do not amend the same commit to include these files after naming them with the c
 - Packaged V2 cutover is declared in `apps/electron/package.json` with
   `tagma.chatOperationProtocolVersion: 2`; `runtime-paths.ts` only emits
   `TAGMA_CHAT_OPERATION_V2_SHADOW=1` and `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2` when that
-  gate passes. The control store schema version is 7, and schema mismatches fail closed.
+  gate passes. The control store schema version is 9; supported older schemas migrate through the
+  append-only migration ledger, while newer versions, checksum drift, and schema drift fail closed.
 - Tool-free text compatibility prompts have no public message read on a Host-created native session,
   but replaying the exact same Host message id returns cached text before and after restart without
   another provider call. Permit that one digest-authenticated same-id replay for classifier,
@@ -167,6 +168,27 @@ Do not amend the same commit to include these files after naming them with the c
 - New V2 clients mutate Chat only through the versioned operation API with generation/version CAS.
   Raw OpenCode prompt, interrupt, permission, move, update, and delete routes are never a renderer
   compatibility path; version-skewed mutation attempts must fail explicitly with HTTP 426.
+
+## Chat Logical Conversation Authority
+
+- Renderer conversation ids are correlation only. A 32-byte random conversation credential is
+  persisted before Send, scoped to workspace/renderer/conversation, and never enters model prompts,
+  diagnostics, or readable history projections. Host HMAC derives the stable owner identity from
+  that credential and authenticated workspace/control generation; a changed or missing credential
+  cannot join an already authenticated conversation.
+- Freeze a signed, bounded history record atomically with each operation. Read prior requests,
+  clarification replies, attachments, and sealed visible results only from that same Host owner.
+  Exclude failed, cancelled, and unfinished turns. Classifier/discussion/diagnosis recovery uses
+  the frozen record, never a newly assembled history; current canvas snapshots remain separate.
+- Reuse a published target only by joining its immutable publication/result to the same
+  authenticated conversation owner. Schema v9 appends a successor binding reference while keeping
+  the original published binding bytes and result identity intact. Reserve the successor at the
+  same coordinate atomically; current-target uniqueness still fences concurrent operations. No-op,
+  failure, and cancellation release only the new reservation and retain prior ownership evidence.
+- Commit before-images must match the immutable staging baseline, including absence for a new
+  target, before the Host persists commit preparation. A pre-prepare external edit or deletion
+  discards with `target_changed_before_commit`; after `commit_decided`, recovery rolls forward or
+  forks using the existing WAL and never overwrites third-party bytes.
 
 ## Static Context Source Integrity
 

@@ -155,10 +155,28 @@ and generation/version checks. Trial Plan preparation reuses the exact target YA
 its authorized `begin` operation when it fits the 16 KiB evidence limit, avoiding a duplicate read
 approval. Larger targets retain bounded reads, with no change to permissions or verification.
 
+When an authoring invocation ends without changing the staged pipeline, Chat completes the turn
+without publishing anything, including after a denied permission returns no response text. Missing
+or blank text receives a neutral Host message. The same normalized message is sealed and validated
+before the no-op terminal transition; replay and Host restart preserve that one terminal result.
+Send, New conversation, and History become available from the Host's terminal projection.
+
 Every mutating Chat session owns a Host-authenticated pipeline branch. Sessions may clone the same
 read-only origin, but they never share a writable target; a session reuses only its own published
 branch on later edits. Finished branches reconcile independently, so one preserved failure does not
 block other sessions. Host Trial remains a workspace-wide safety barrier while it is running.
+
+Continuing an edit of that session's published target updates the same path, including after Host
+restart. Selecting another source creates an independent branch. The Host joins authenticated
+conversation ownership to the prior publication and atomically reserves its successor; an already
+busy target requires retry. Old results remain readable, and no-op, failed verification, or Stop
+preserves the previous file and ownership. Older records without authenticated ownership are
+read-only origins for a new independent branch.
+
+Before commit preparation, the Host compares the target with the immutable staging baseline.
+External edits or deletion at that point end the turn without publication. Once `commit_decided`
+has been recorded, restart recovery finishes the decision or forks the verified update while
+preserving third-party changes.
 
 History remains readable from a new editor page. Host events refresh other conversations' status
 without replacing the selected transcript or granting their write authority. A history selection
@@ -175,6 +193,23 @@ real PowerShell commands and Host Sandbox Trial with deterministic model respons
 boundaries without provider calls.
 
 ### Chat control database compatibility
+
+Chat keeps bounded conversation context across turns, History switches, page reloads, and Host
+restart. A separate random credential stays in the page's session storage; the Host verifies the
+conversation owner and reads its earlier requests and sealed answers from the control database.
+Matching conversation names or ids do not grant access to another conversation's context.
+
+Each turn freezes its context at admission. The Host selects the newest 16 successfully completed
+turns, ordered by admission time and operation id, then applies a 64 KiB canonical-JSON limit and
+an 8 KiB UTF-8 limit per user or assistant text. Accepted clarifications and attached text are part
+of the user turn. Truncated text and omitted turns are marked. Failed, cancelled, and unfinished
+turns and internal tool/repair messages are excluded. Earlier pipeline descriptions remain
+conversation history; only the separately sealed current canvas is diagnosis evidence.
+
+Retries and recovery reuse those frozen bytes. The credential is never sent to the model or exposed
+in diagnostics, exports, or history reads. If browser storage cannot preserve it, Send fails before
+dispatch. Losing that credential requires a new conversation. Older Chat records stay readable,
+but do not establish ownership or become implicit context for a new conversation.
 
 Chat Operation V2 authority is shared across workspaces in the stable user-data
 `server-control/chat-operation-v2.sqlite` database. Compatibility follows its append-only SQLite

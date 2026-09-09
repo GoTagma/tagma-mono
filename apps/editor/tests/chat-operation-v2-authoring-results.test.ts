@@ -81,6 +81,20 @@ function input(purpose: 'authoring' | 'repair' | 'trial_plan' = 'authoring') {
 }
 
 describe('Chat Operation V2 authoring result persistence adapter', () => {
+  for (const text of [null, '', ' \n\t']) {
+    test(`normalizes missing response text ${JSON.stringify(text)} without claiming publication`, async () => {
+      const fixture = harness();
+      const request = { ...input(), text, finishCode: 'tool_calls' };
+      const first = await fixture.persistence.persistCompletedInvocationResult(request);
+      const replay = await fixture.persistence.persistCompletedInvocationResult(request);
+      expect(first).toEqual(replay);
+      expect(first.message).toMatchObject({
+        text: 'The authoring invocation ended without a text response.',
+        evidence: { capture: 'host_completion', finishCode: 'tool_calls' },
+      });
+    });
+  }
+
   test('prepares one stable visible message authority and replays idempotently', async () => {
     const fixture = harness();
     const first = await fixture.persistence.persistCompletedInvocationResult(input());

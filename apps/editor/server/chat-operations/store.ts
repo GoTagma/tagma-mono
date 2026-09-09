@@ -150,7 +150,13 @@ import type {
   TrustedWorkspaceScopeRecord,
 } from './workspace-identity.js';
 
-export const CHAT_OPERATION_V2_SCHEMA_VERSION = 7;
+import {
+  canonicalConversationJson,
+  conversationContextHash,
+  type SealedChatConversationContext,
+} from './conversation.js';
+
+export const CHAT_OPERATION_V2_SCHEMA_VERSION = 9;
 export const CHAT_OPERATION_V2_MAX_CLIENT_REQUEST_ID_BYTES = 128;
 
 export function deriveInitialChatOperationV2ControlLineageId(keyId: string): string {
@@ -169,6 +175,7 @@ export const CHAT_OPERATION_V2_TABLES = [
   'operations',
   'operation_events',
   'operation_annotations',
+  'operation_conversation_contexts',
   'operation_result_chains',
   'operation_result_messages',
   'operation_results',
@@ -367,6 +374,7 @@ export interface StoredHostOperationEvent {
 }
 
 export interface CreateChatOperationV2Input {
+  readonly conversationContext?: SealedChatConversationContext | null;
   readonly operationId: string;
   readonly clientRequestId: string;
   readonly workspaceScopeId: string;
@@ -478,6 +486,10 @@ export type ChatOperationV2BindingUpdate =
       readonly kind: 'cas';
       readonly originHash: string | null;
       readonly request: ChatOperationV2BindingCasRequest;
+      readonly supersedePublished?: {
+        readonly bindingId: string;
+        readonly expectedVersion: number;
+      };
     }
   | {
       readonly kind: 'terminal';
@@ -1062,6 +1074,7 @@ interface SourceCursorRow {
 }
 
 interface BindingLeaseRow {
+  successor_binding_id: string | null;
   binding_id: string;
   workspace_scope_id: string;
   binding_version: number;
@@ -2357,6 +2370,38 @@ ON operation_events(operation_id, workspace_seq);
 
 const SCHEMA_V7_CHECKSUM = createHash('sha256').update(SCHEMA_V7_SQL, 'utf8').digest('hex');
 
+const SCHEMA_V8_SQL = `
+ALTER TABLE operations ADD COLUMN conversation_context_hash TEXT
+  CHECK (conversation_context_hash IS NULL OR (length(conversation_context_hash) = 64 AND conversation_context_hash NOT GLOB '*[^0-9a-f]*'));
+CREATE TABLE operation_conversation_contexts (
+  operation_id TEXT PRIMARY KEY REFERENCES operations(operation_id),
+  workspace_scope_id TEXT NOT NULL REFERENCES workspace_scopes(workspace_scope_id),
+  owner_id TEXT NOT NULL,
+  renderer_instance_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  record_canonical TEXT NOT NULL CHECK (length(record_canonical) <= 131072)
+);
+CREATE INDEX operation_conversation_contexts_owner ON operation_conversation_contexts(workspace_scope_id, owner_id);
+CREATE INDEX operation_conversation_contexts_correlation ON operation_conversation_contexts(workspace_scope_id, renderer_instance_id, conversation_id);
+CREATE TRIGGER operation_conversation_contexts_same_owner BEFORE INSERT ON operation_conversation_contexts
+WHEN EXISTS (SELECT 1 FROM operation_conversation_contexts WHERE workspace_scope_id = NEW.workspace_scope_id
+  AND renderer_instance_id = NEW.renderer_instance_id AND conversation_id = NEW.conversation_id AND owner_id <> NEW.owner_id)
+BEGIN SELECT RAISE(ABORT, 'conversation_authority_mismatch'); END;
+`;
+const SCHEMA_V8_CHECKSUM = createHash('sha256').update(SCHEMA_V8_SQL, 'utf8').digest('hex');
+
+const SCHEMA_V9_SQL = `
+ALTER TABLE binding_leases ADD COLUMN successor_binding_id TEXT
+  CHECK (successor_binding_id IS NULL OR (binding_status = 'published' AND successor_binding_id <> binding_id))
+  REFERENCES binding_leases(binding_id) DEFERRABLE INITIALLY DEFERRED;
+DROP INDEX binding_leases_active_target;
+CREATE UNIQUE INDEX binding_leases_active_target
+ON binding_leases(workspace_scope_id, target_platform, target_identity)
+WHERE binding_status IN ('reserved', 'published') AND successor_binding_id IS NULL;
+CREATE UNIQUE INDEX binding_leases_successor ON binding_leases(successor_binding_id) WHERE successor_binding_id IS NOT NULL;
+`;
+const SCHEMA_V9_CHECKSUM = createHash('sha256').update(SCHEMA_V9_SQL, 'utf8').digest('hex');
+
 const CHAT_OPERATION_V2_MIGRATIONS = [
   {
     version: 1,
@@ -2399,6 +2444,18 @@ const CHAT_OPERATION_V2_MIGRATIONS = [
     name: 'trial_running_phase_authority',
     sql: SCHEMA_V7_SQL,
     checksum: SCHEMA_V7_CHECKSUM,
+  },
+  {
+    version: 8,
+    name: 'conversation_context_authority',
+    sql: SCHEMA_V8_SQL,
+    checksum: SCHEMA_V8_CHECKSUM,
+  },
+  {
+    version: 9,
+    name: 'owned_binding_lease_succession',
+    sql: SCHEMA_V9_SQL,
+    checksum: SCHEMA_V9_CHECKSUM,
   },
 ] as const;
 
@@ -2445,6 +2502,16 @@ export const CHAT_OPERATION_V2_MIGRATION_LEDGER = Object.freeze([
     version: 7,
     name: 'trial_running_phase_authority',
     checksum: '20e66658c80bd4a87abe031641d901a4dafddc7c847487e5c85ec9ff5eec8fda',
+  }),
+  Object.freeze({
+    version: 8,
+    name: 'conversation_context_authority',
+    checksum: '6c2e9593444255fe7af075075d466561325803c120d516228eddb445a5e9d618',
+  }),
+  Object.freeze({
+    version: 9,
+    name: 'owned_binding_lease_succession',
+    checksum: 'f9a36407ac7d2c1409bbe049d65d309dbb3821eb72f9b38eb0f755250a9af52c',
   }),
 ] as const);
 
@@ -4807,6 +4874,21 @@ export class ChatOperationV2Store {
       );
     }
     const preparedAdmission = prepareAdmissionForCreate(input.admission);
+    const conversation = input.conversationContext ?? null;
+    const contextHash = conversation === null ? null : conversationContextHash(conversation);
+    if (
+      conversation &&
+      (conversation.context.operationId !== input.operationId ||
+        conversation.context.workspaceScopeId !== input.workspaceScopeId ||
+        conversation.context.rendererInstanceId !==
+          preparedAdmission.admission.rendererInstanceId ||
+        conversation.context.conversationId !== preparedAdmission.admission.conversationId)
+    ) {
+      throw new ChatOperationV2StoreError(
+        'operation_conflict',
+        'Conversation context does not match operation admission.',
+      );
+    }
     const createdAt = input.createdAt ?? preparedAdmission.admission.admittedAt;
     assertTimestamp(createdAt, 'operation createdAt');
     if (createdAt !== preparedAdmission.admission.admittedAt) {
@@ -4862,6 +4944,16 @@ export class ChatOperationV2Store {
         input.clientRequestId,
       );
       if (existingRequest) {
+        const existingContext = this.getOperationConversationContext(input.operationId);
+        if (
+          (existingContext === null ? null : conversationContextHash(existingContext)) !==
+          contextHash
+        ) {
+          throw new ChatOperationV2StoreError(
+            'operation_conflict',
+            'Operation retry changed its frozen conversation context.',
+          );
+        }
         return this.resolveExactOperationCreationRetry({
           row: existingRequest,
           operationId: input.operationId,
@@ -4879,6 +4971,24 @@ export class ChatOperationV2Store {
           'Operation id already belongs to an authority row.',
         );
       }
+      if (
+        conversation !== null &&
+        this.database
+          .query<{ present: number }, [string, string, string, string]>(
+            'SELECT 1 AS present FROM operation_conversation_contexts WHERE workspace_scope_id = ? AND renderer_instance_id = ? AND conversation_id = ? AND owner_id <> ? LIMIT 1',
+          )
+          .get(
+            input.workspaceScopeId,
+            conversation.context.rendererInstanceId,
+            conversation.context.conversationId,
+            conversation.context.ownerId,
+          )
+      ) {
+        throw new ChatOperationV2StoreError(
+          'operation_conflict',
+          'Conversation identity is already bound to a different owner.',
+        );
+      }
       this.insertOperation(
         input.operationId,
         input.clientRequestId,
@@ -4893,6 +5003,23 @@ export class ChatOperationV2Store {
         createdAt,
       );
       const operation = this.requireOperation(input.operationId);
+      if (conversation !== null) {
+        this.database
+          .query('UPDATE operations SET conversation_context_hash = ? WHERE operation_id = ?')
+          .run(contextHash, input.operationId);
+        this.database
+          .query(
+            'INSERT INTO operation_conversation_contexts (operation_id, workspace_scope_id, owner_id, renderer_instance_id, conversation_id, record_canonical) VALUES (?, ?, ?, ?, ?, ?)',
+          )
+          .run(
+            input.operationId,
+            input.workspaceScopeId,
+            conversation.context.ownerId,
+            conversation.context.rendererInstanceId,
+            conversation.context.conversationId,
+            canonicalConversationJson(conversation),
+          );
+      }
       this.insertEvent(operation, input.event, payloadJson, eventTimestamp);
       return operation;
     });
@@ -4903,6 +5030,51 @@ export class ChatOperationV2Store {
     assertIdentifier(operationId, 'operationId');
     const row = this.operationRow(operationId);
     return row ? operationFromRow(row) : null;
+  }
+
+  /** Keyless read: the service must authenticate the returned record HMAC before using it. */
+  getOperationConversationContext(operationId: string): SealedChatConversationContext | null {
+    this.assertOpen();
+    const row = this.database
+      .query<
+        {
+          conversation_context_hash: string | null;
+          record_canonical: string | null;
+          owner_id: string | null;
+          workspace_scope_id: string;
+          context_scope: string | null;
+          renderer_instance_id: string | null;
+          conversation_id: string | null;
+        },
+        [string]
+      >(
+        `SELECT o.conversation_context_hash, c.record_canonical, c.owner_id, o.workspace_scope_id,
+          c.workspace_scope_id AS context_scope, c.renderer_instance_id, c.conversation_id
+       FROM operations o LEFT JOIN operation_conversation_contexts c ON c.operation_id = o.operation_id WHERE o.operation_id = ?`,
+      )
+      .get(operationId);
+    if (!row || (row.conversation_context_hash === null && row.record_canonical === null))
+      return null;
+    try {
+      const record = JSON.parse(row.record_canonical!) as SealedChatConversationContext;
+      if (
+        conversationContextHash(record) === row.conversation_context_hash &&
+        canonicalConversationJson(record) === row.record_canonical &&
+        record.context.operationId === operationId &&
+        record.context.ownerId === row.owner_id &&
+        record.context.rendererInstanceId === row.renderer_instance_id &&
+        record.context.conversationId === row.conversation_id &&
+        record.context.workspaceScopeId === row.context_scope &&
+        record.context.workspaceScopeId === row.workspace_scope_id
+      )
+        return record;
+    } catch {
+      /* Corruption is a typed fail-closed store error below. */
+    }
+    throw new ChatOperationV2StoreError(
+      'schema_mismatch',
+      'Conversation context record is missing or inconsistent.',
+    );
   }
 
   hasNonterminalOperations(): boolean {
@@ -5411,6 +5583,20 @@ export class ChatOperationV2Store {
     return row ? bindingLeaseFromRow(row) : null;
   }
 
+  getActiveBindingLeaseForTarget(
+    workspaceScopeId: string,
+    target: ChatOperationV2BindingRecord['target'],
+  ): StoredChatOperationV2BindingLease | null {
+    this.assertOpen();
+    const row = this.database
+      .query<BindingLeaseRow, [string, string, string]>(
+        `SELECT * FROM binding_leases WHERE workspace_scope_id = ? AND target_platform = ? AND target_identity = ?
+       AND binding_status IN ('reserved', 'published') AND successor_binding_id IS NULL`,
+      )
+      .get(workspaceScopeId, target.platform, target.identity);
+    return row ? bindingLeaseFromRow(row) : null;
+  }
+
   listBindingLeases(workspaceScopeId: string): StoredChatOperationV2BindingLease[] {
     this.assertOpen();
     assertIdentifier(workspaceScopeId, 'workspaceScopeId', 128);
@@ -5629,10 +5815,58 @@ export class ChatOperationV2Store {
           'Operation binding identity may change only with an atomic binding update.',
         );
       }
+      let bindingSuccession: {
+        bindingId: string;
+        expectedVersion: number;
+        successorBindingId: string;
+      } | null = null;
       if (input.bindingUpdate !== undefined) {
-        const currentLeases = this.bindingLeaseRowsForWorkspace(current.workspaceScopeId).map(
-          bindingLeaseFromRow,
-        );
+        const update = input.bindingUpdate;
+        if (update.kind === 'cas' && update.supersedePublished) {
+          const proof = update.supersedePublished;
+          const priorRow = this.bindingLeaseRow(proof.bindingId);
+          const prior = priorRow ? bindingLeaseFromRow(priorRow).record : null;
+          const next = update.request.next;
+          const owner = this.getOperationConversationContext(current.operationId)?.context;
+          const priorOwner =
+            prior?.status === 'published'
+              ? this.getOperationConversationContext(prior.publishedByOperationId)?.context
+              : null;
+          if (
+            current.phase !== 'awaiting_input' ||
+            input.state.phase !== 'reserving' ||
+            current.bindingId !== null ||
+            update.request.intent.kind !== 'reserve' ||
+            next.status !== 'reserved' ||
+            prior?.status !== 'published' ||
+            priorRow!.successor_binding_id !== null ||
+            prior.version !== proof.expectedVersion ||
+            prior.workspaceScopeId !== current.workspaceScopeId ||
+            next.workspaceScopeId !== current.workspaceScopeId ||
+            next.operationId !== current.operationId ||
+            next.target.platform !== prior.target.platform ||
+            next.target.identity !== prior.target.identity ||
+            !owner ||
+            !priorOwner ||
+            owner.ownerId !== priorOwner.ownerId ||
+            owner.controlGeneration !== priorOwner.controlGeneration ||
+            owner.workspaceScopeId !== current.workspaceScopeId ||
+            priorOwner.workspaceScopeId !== current.workspaceScopeId ||
+            this.getResult(prior.resultId)?.terminal.bindingId !== prior.bindingId
+          ) {
+            throw new ChatOperationV2StoreError(
+              'binding_conflict',
+              'Owned target lease succession lost its authenticated publication or CAS.',
+            );
+          }
+          bindingSuccession = { ...proof, successorBindingId: next.bindingId };
+        }
+        const currentLeases = this.bindingLeaseRowsForWorkspace(current.workspaceScopeId)
+          .filter(
+            (row) =>
+              row.successor_binding_id === null && row.binding_id !== bindingSuccession?.bindingId,
+          )
+          .map(bindingLeaseFromRow);
         const currentRecords = currentLeases.map(({ record }) => record);
         const registryValidation = validateChatOperationV2BindingRegistry(currentRecords);
         if (!registryValidation.valid) {
@@ -6040,6 +6274,22 @@ export class ChatOperationV2Store {
         }
       }
       if (preparedInteractive) this.writeInteractiveRequestUpdate(preparedInteractive);
+      if (bindingSuccession !== null) {
+        const changed = this.database
+          .query(
+            "UPDATE binding_leases SET successor_binding_id = ? WHERE binding_id = ? AND binding_version = ? AND binding_status = 'published' AND successor_binding_id IS NULL",
+          )
+          .run(
+            bindingSuccession.successorBindingId,
+            bindingSuccession.bindingId,
+            bindingSuccession.expectedVersion,
+          );
+        if (changed.changes !== 1)
+          throw new ChatOperationV2StoreError(
+            'binding_conflict',
+            'Owned target lease succession lost SQL CAS.',
+          );
+      }
       for (const preparedBindingUpdate of preparedBindingUpdates) {
         if (preparedBindingUpdate.kind === 'applied') {
           this.writeBindingLeaseUpdate(preparedBindingUpdate);

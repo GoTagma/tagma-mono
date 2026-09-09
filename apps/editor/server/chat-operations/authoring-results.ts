@@ -14,6 +14,19 @@ type AuthoringResultStore = Pick<
   'getInvocationOutbox' | 'preparePendingResultMessage'
 >;
 
+/** Shared by persistence and Host validation; missing text never asserts publication. */
+export function normalizeChatOperationV2AuthoringCompletionText(text: string | null): {
+  readonly text: string;
+  readonly capture: 'host_completion' | 'direct_response';
+} {
+  return text === null || text.trim().length === 0
+    ? {
+        text: 'The authoring invocation ended without a text response.',
+        capture: 'host_completion',
+      }
+    : { text, capture: 'direct_response' };
+}
+
 function digest(...parts: readonly (string | number | null)[]): string {
   const hash = createHash('sha256');
   for (const part of parts) hash.update(String(part)).update('\0');
@@ -78,6 +91,7 @@ class StoreAuthoringResultPersistence implements ChatOperationV2AuthoringResultP
 
     const resultId = opaqueId('result', input.operationId, input.operationGeneration);
     const messageId = opaqueId('message', input.operationId, input.invocationId);
+    const completion = normalizeChatOperationV2AuthoringCompletionText(input.text);
     const messageInput = {
       messageId,
       resultId,
@@ -86,7 +100,7 @@ class StoreAuthoringResultPersistence implements ChatOperationV2AuthoringResultP
       invocationId: input.invocationId,
       purpose: 'authoring',
       createdAt: input.capturedAt,
-      text: input.text ?? 'Pipeline update completed.',
+      text: completion.text,
       attachments:
         input.verificationNotice === null
           ? []
@@ -105,7 +119,7 @@ class StoreAuthoringResultPersistence implements ChatOperationV2AuthoringResultP
               },
             ],
       evidence: {
-        capture: input.text === null ? 'host_completion' : 'direct_response',
+        capture: completion.capture,
         requestDigest: input.requestDigest,
         executionMessageId: input.executionMessageId,
         finishCode: input.finishCode,

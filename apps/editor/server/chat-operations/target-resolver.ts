@@ -59,6 +59,26 @@ class HostInventoryAuthoringTargetResolver implements ChatOperationV2AuthoringTa
           code: 'host_inventory_conflict',
         });
       }
+      const candidateTarget = normalizeChatOperationV2TargetCoordinate(
+        candidate.relativePath,
+        this.#platform,
+      );
+      const owned = input.ownedTargets?.find(
+        ({ target }) =>
+          target.platform === candidateTarget.platform &&
+          target.identity === candidateTarget.identity,
+      );
+      if (owned?.busy)
+        throw Object.assign(new Error('The owned pipeline is being edited by another operation.'), {
+          code: 'authoring_target_conflict',
+        });
+      if (owned)
+        return Object.freeze({
+          targetId: candidate.id,
+          target: candidateTarget,
+          originHash: candidate.contentHash,
+          ...(owned.activeLease === null ? {} : { supersedePublished: owned.activeLease }),
+        });
       const { relativePath } = isolatedTargetCoordinate(
         inventory,
         'tagma-chat-operation-v2-edit-target',

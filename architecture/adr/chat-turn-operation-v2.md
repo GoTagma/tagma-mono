@@ -69,7 +69,7 @@ The control plane lives outside the workspace in the stable server-control root.
 
 The SQLite database is the trusted journal for admissions, aggregate sequence, recovery state, and terminal outcome.
 
-- The control-store schema version is 6. Schema mismatches fail closed, and the migration/reset paths rebuild V2 state against that schema instead of silently downgrading.
+- The control-store schema version is 9. Supported older stores migrate transactionally through the immutable migration ledger; newer versions and checksum/schema drift fail closed. Version 8 freezes authenticated logical-conversation ownership and bounded history with each new operation, while preserving legacy operations without importing their correlation-only ownership. Version 9 atomically appends binding lease succession for the same authenticated owner, preserving prior published records and immutable result identities.
 
 ## Workspace Identity And Snapshots
 

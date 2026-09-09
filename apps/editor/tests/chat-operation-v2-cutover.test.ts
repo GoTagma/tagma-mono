@@ -11,6 +11,8 @@ import { collectRendererDiagnosticsContributors } from '../src/diagnostics/rende
 import { activateChatOperationExecutionForWorkspace, useChatStore } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { buildConversationExport } from '../src/utils/chat-export';
+import { getChatComposerAvailability } from '../src/components/chat/ChatComposer';
+import { chatHeaderControlLocks } from '../src/components/chat/ChatPanel';
 
 const originalFetch = globalThis.fetch;
 const originalEventSource = globalThis.EventSource;
@@ -793,120 +795,149 @@ test('projects published pipeline authority for the Open Pipeline action', async
   });
 });
 
-test('production permission decisions use V2 CAS and never raw OpenCode replies', async () => {
-  setClientWorkspace(workspace);
-  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
-  const requests: Array<{ url: string; method: string; body: unknown }> = [];
-  let waiting = operation({
-    version: 2,
-    phase: 'authoring',
-    waitReason: 'permission',
-    executionState: 'waiting_for_user',
-    pendingInputKind: 'permission',
-  });
-  const foreground = operation({
-    operationId: 'operation-foreground',
-    version: 9,
-    updatedAt: 500,
-  });
-  let resolved = operation({
-    version: 3,
-    phase: 'authoring',
-    waitReason: null,
-    executionState: 'running',
-    pendingInputKind: null,
-    updatedAt: 501,
-  });
-  let permissionResolved = false;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const method = init?.method ?? 'GET';
-    const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
-    requests.push({ url, method, body });
-    if (url === '/api/chat/operations/snapshot') {
-      const correlation = useChatStore.getState();
-      waiting = operation({
-        ...waiting,
-        conversationId: correlation.chatOperationV2ConversationId!,
-        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
-      });
-      resolved = operation({
-        ...resolved,
-        conversationId: correlation.chatOperationV2ConversationId!,
-        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
-      });
-      return Response.json(snapshot([waiting, foreground]));
+test.each(['once', 'reject'] as const)(
+  'production permission %s uses V2 CAS and projects Host completion',
+  async (choice) => {
+    setClientWorkspace(workspace);
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+    let waiting = operation({
+      version: 2,
+      phase: 'authoring',
+      waitReason: 'permission',
+      executionState: 'waiting_for_user',
+      pendingInputKind: 'permission',
+    });
+    const foreground = operation({
+      operationId: 'operation-foreground',
+      version: 9,
+      updatedAt: 500,
+    });
+    let resolved = operation({
+      version: 3,
+      phase: choice === 'reject' ? 'terminal' : 'authoring',
+      waitReason: null,
+      executionState: choice === 'reject' ? 'terminal' : 'running',
+      terminalOutcome: choice === 'reject' ? 'completed_noop' : null,
+      pendingInputKind: null,
+      updatedAt: 501,
+    });
+    let permissionResolved = false;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
+      requests.push({ url, method, body });
+      if (url === '/api/chat/operations/snapshot') {
+        const correlation = useChatStore.getState();
+        waiting = operation({
+          ...waiting,
+          conversationId: correlation.chatOperationV2ConversationId!,
+          rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
+        });
+        resolved = operation({
+          ...resolved,
+          conversationId: correlation.chatOperationV2ConversationId!,
+          rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
+        });
+        return Response.json(snapshot([waiting, foreground]));
+      }
+      if (url.endsWith('/permissions/permission-1/reply')) {
+        return Response.json({ protocolVersion: 2, result: { kind: 'stale', operation: waiting } });
+      }
+      if (url === '/api/chat/operations/operation-cutover-1') {
+        return Response.json(
+          permissionResolved
+            ? detail(resolved)
+            : detail(waiting, {
+                kind: 'permission',
+                operationId: waiting.operationId,
+                generation: waiting.generation,
+                operationVersion: waiting.version,
+                hostRequestId: 'permission-1',
+                state: 'live_pending',
+                requestedAt: 101,
+                content: {
+                  actionCode: 'write',
+                  resourceCode: 'pipeline_artifact',
+                  targetSummary: { targets: ['current/current.yaml'], omitted: 0 },
+                },
+              }),
+        );
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    }) as unknown as typeof fetch;
+
+    await activateChatOperationExecutionForWorkspace(workspace, {
+      chatOperationProtocolVersion: 2,
+      chatOperationMode: 'production',
+    });
+    expect(useChatStore.getState().pendingPermissions).toHaveLength(1);
+
+    expect(useChatStore.getState().pendingPermissions[0]?.targetSummary).toEqual({
+      targets: ['current/current.yaml'],
+      omitted: 0,
+    });
+
+    await useChatStore
+      .getState()
+      .replyPermission('permission-1', choice, 'operation-cutover-1', workspace, 'current');
+
+    expect(
+      requests.find(({ url }) =>
+        url.endsWith('/operation-cutover-1/permissions/permission-1/reply'),
+      ),
+    ).toMatchObject({
+      url: '/api/chat/operations/operation-cutover-1/permissions/permission-1/reply',
+      method: 'POST',
+      body: {
+        protocolVersion: 2,
+        operationId: 'operation-cutover-1',
+        expectedGeneration: 1,
+        expectedVersion: 2,
+        payload: { requestId: 'permission-1', choice: choice === 'reject' ? 'deny' : 'allow_once' },
+      },
+    });
+    expect(requests.some(({ url }) => url.includes('/api/opencode/chat/proxy'))).toBe(false);
+    // The mutation response is not renderer authority for resolution; the
+    // matching Host permission_resolved_live event clears this row.
+    expect(useChatStore.getState().pendingPermissions).toHaveLength(1);
+    permissionResolved = true;
+    FakeEventSource.instances[0]!.emit(
+      'chat_operation_wake',
+      {
+        protocolVersion: 2,
+        wake: { workspaceSeq: 1, operationId: 'operation-cutover-1' },
+      },
+      '1',
+    );
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(useChatStore.getState().pendingPermissions).toEqual([]);
+    if (choice === 'reject') {
+      const state = useChatStore.getState();
+      const operationActive = state.activeChatOperationV2?.executionState !== 'terminal';
+      expect(state.sending).toBe(false);
+      expect(
+        getChatComposerAvailability({
+          hasContent: true,
+          hasModel: true,
+          ready: true,
+          sending: state.sending,
+          operationActive,
+          acceptsActiveOperationReply: false,
+        }).canSend,
+      ).toBe(true);
+      expect(
+        chatHeaderControlLocks({
+          ready: true,
+          sending: state.sending,
+          operationActive,
+          yamlEditLocked: false,
+        }),
+      ).toMatchObject({ navigationBlocked: false });
     }
-    if (url.endsWith('/permissions/permission-1/reply')) {
-      return Response.json({ protocolVersion: 2, result: { kind: 'stale', operation: waiting } });
-    }
-    if (url === '/api/chat/operations/operation-cutover-1') {
-      return Response.json(
-        permissionResolved
-          ? detail(resolved)
-          : detail(waiting, {
-              kind: 'permission',
-              operationId: waiting.operationId,
-              generation: waiting.generation,
-              operationVersion: waiting.version,
-              hostRequestId: 'permission-1',
-              state: 'live_pending',
-              requestedAt: 101,
-              content: {
-                actionCode: 'write',
-                resourceCode: 'pipeline_artifact',
-                targetSummary: { targets: ['current/current.yaml'], omitted: 0 },
-              },
-            }),
-      );
-    }
-    throw new Error(`Unexpected request: ${method} ${url}`);
-  }) as unknown as typeof fetch;
-
-  await activateChatOperationExecutionForWorkspace(workspace, {
-    chatOperationProtocolVersion: 2,
-    chatOperationMode: 'production',
-  });
-  expect(useChatStore.getState().pendingPermissions).toHaveLength(1);
-
-  expect(useChatStore.getState().pendingPermissions[0]?.targetSummary).toEqual({
-    targets: ['current/current.yaml'],
-    omitted: 0,
-  });
-
-  await useChatStore
-    .getState()
-    .replyPermission('permission-1', 'once', 'operation-cutover-1', workspace, 'current');
-
-  expect(
-    requests.find(({ url }) => url.endsWith('/operation-cutover-1/permissions/permission-1/reply')),
-  ).toMatchObject({
-    url: '/api/chat/operations/operation-cutover-1/permissions/permission-1/reply',
-    method: 'POST',
-    body: {
-      protocolVersion: 2,
-      operationId: 'operation-cutover-1',
-      expectedGeneration: 1,
-      expectedVersion: 2,
-      payload: { requestId: 'permission-1', choice: 'allow_once' },
-    },
-  });
-  expect(requests.some(({ url }) => url.includes('/api/opencode/chat/proxy'))).toBe(false);
-  // The mutation response is not renderer authority for resolution; the
-  // matching Host permission_resolved_live event clears this row.
-  expect(useChatStore.getState().pendingPermissions).toHaveLength(1);
-  permissionResolved = true;
-  FakeEventSource.instances[0]!.emit(
-    'chat_operation_wake',
-    {
-      protocolVersion: 2,
-      wake: { workspaceSeq: 1, operationId: 'operation-cutover-1' },
-    },
-    '1',
-  );
-  for (let index = 0; index < 8; index += 1) await Promise.resolve();
-  expect(useChatStore.getState().pendingPermissions).toEqual([]);
-});
+  },
+);
 
 test('routes a projected live question reply through the qualified V2 endpoint', async () => {
   setClientWorkspace(workspace);

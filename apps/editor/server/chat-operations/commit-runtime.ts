@@ -31,6 +31,7 @@ import {
   type ChatOperationV2TargetCoordinate,
 } from './binding.js';
 import {
+  ChatCommitTargetChangedBeforePrepareError,
   deriveChatCommitCoordinateId,
   type ChatCommitDecisionEvidence,
   type ChatCommitFallbackReservation,
@@ -411,6 +412,18 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
       resultAuthority: input.resultAuthority,
     });
     const prepare = await context.executor.prepare(context.plan);
+    const baseline = new Map(
+      material.targetBaseline.map(({ artifactId, hash }) => [artifactId, hash]),
+    );
+    if (
+      prepare.artifacts.some(
+        (artifact) =>
+          !baseline.has(artifact.artifactId) ||
+          baseline.get(artifact.artifactId) !== artifact.oldHash,
+      )
+    ) {
+      throw new ChatCommitTargetChangedBeforePrepareError();
+    }
     if (
       prepare.stagedSnapshotHash !== input.verification.stagedSnapshotHash ||
       prepare.artifactSetHash !== input.verification.artifactSetHash ||

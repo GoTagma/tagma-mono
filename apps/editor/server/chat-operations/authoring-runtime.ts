@@ -30,6 +30,7 @@ import {
   createChatYamlStage,
   discardChatYamlStageWithDisposition,
   listChatYamlStage,
+  readChatYamlStageTargetBaseline,
   prepareChatYamlStageSessionRelocation,
   readChatYamlStageSessionRelocation,
   type ChatYamlStageDescriptor,
@@ -857,6 +858,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
   async readAuthority(
     stageId: string,
   ): Promise<ManagedChatOperationV2AuthoringAuthorityRecord | null> {
+    if ((await this.inspectStage(stageId)) === null) return null;
     const authority = this.authorityPath(stageId);
     if (!existsSync(authority.path)) return null;
     return readAuthenticatedServerRecordSync<ManagedChatOperationV2AuthoringAuthorityRecord>(
@@ -1936,12 +1938,24 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       );
     }
     const targetRelativePath = exactPipelineRelativePath(input.binding.target.coordinate);
-    const resolvedTarget = await this.resolveTarget({
-      targetId: input.targetId,
-      binding: input.binding,
-      intent: input.intent,
-      originHash: input.originHash,
-    });
+    let resolvedTarget: { readonly sourceRelativePath: string | null };
+    try {
+      resolvedTarget = await this.resolveTarget({
+        targetId: input.targetId,
+        binding: input.binding,
+        intent: input.intent,
+        originHash: input.originHash,
+      });
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'unknown_candidate') {
+        return {
+          kind: 'failed' as const,
+          errorCode: 'stage_source_unavailable',
+          diagnosticCodes: ['stage_source_unavailable'],
+        };
+      }
+      throw error;
+    }
     const sourceRelativePath =
       resolvedTarget.sourceRelativePath === null
         ? null
@@ -2949,6 +2963,7 @@ function sessionTreeChildrenFirst(
 }
 
 export interface ManagedChatOperationV2CommitStageMaterial {
+  readonly targetBaseline: readonly { readonly artifactId: string; readonly hash: string | null }[];
   readonly workspaceScopeId: string;
   readonly stage: ChatOperationV2AuthoringStage;
   readonly relocation: ChatOperationV2SessionRelocation | null;
@@ -2994,6 +3009,17 @@ export async function readManagedChatOperationV2CommitStageMaterial(input: {
   if (authority.relocation) parseChatOperationV2SessionRelocation(authority.relocation);
   const descriptor = listChatYamlStage(workspace, input.stageId, true);
   const artifactSet = deriveManagedChatOperationV2CommitArtifactSet(descriptor);
+  const existingTarget =
+    readChatYamlStageTargetBaseline(workspace, input.stageId, authority.targetRelativePath) !==
+    null;
+  const targetBaseline = artifactSet.artifacts.map((artifact) => ({
+    artifactId: artifact.artifactId,
+    hash: existingTarget
+      ? regularFileHashOrNull(
+          join(descriptor.baseWorkspaceDir, '.tagma', artifact.stagedRelativePath),
+        )
+      : null,
+  }));
   if (
     artifactSet.artifactSetHash !== snapshot.artifactSetHash ||
     artifactSet.artifacts.length !== snapshot.artifactCount
@@ -3014,6 +3040,7 @@ export async function readManagedChatOperationV2CommitStageMaterial(input: {
     stagedSnapshotHash: snapshot.snapshotHash,
     artifactSetHash: artifactSet.artifactSetHash,
     artifacts: artifactSet.artifacts,
+    targetBaseline,
   });
 }
 

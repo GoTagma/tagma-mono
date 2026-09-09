@@ -1,5 +1,6 @@
 import type { ChatOperationV2AdmissionRequest } from './admission.js';
 import type { ChatReadSnapshot } from './snapshots.js';
+import { parseChatConversationHistory, type ChatConversationHistory } from './conversation.js';
 
 const encoder = new TextEncoder();
 
@@ -24,6 +25,7 @@ export function buildReadonlyTextCanonicalRequestBytes(input: {
   readonly purpose: ChatOperationV2ReadonlyTextPurpose;
   readonly request: ChatOperationV2AdmissionRequest;
   readonly readSnapshot: ChatReadSnapshot | null;
+  readonly history?: ChatConversationHistory | null;
 }): Uint8Array {
   if (input.purpose === 'discussion' && input.readSnapshot !== null) {
     throw new TypeError('Discussion cannot receive a read snapshot.');
@@ -32,6 +34,7 @@ export function buildReadonlyTextCanonicalRequestBytes(input: {
     canonicalJson({
       purpose: input.purpose,
       request: input.request,
+      ...(input.history == null ? {} : { history: parseChatConversationHistory(input.history) }),
       access:
         input.readSnapshot === null
           ? { kind: 'none' }

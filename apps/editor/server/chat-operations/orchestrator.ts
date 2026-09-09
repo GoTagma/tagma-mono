@@ -168,6 +168,7 @@ export interface ChatOperationV2DirtySnapshotInput {
 }
 
 export interface CreateAndDispatchChatOperationV2Input {
+  readonly conversationContext?: import('./conversation.js').SealedChatConversationContext | null;
   readonly operationId: string;
   readonly clientRequestId: string;
   readonly workspaceScopeId: string;
@@ -246,6 +247,9 @@ export type ChatOperationV2ReadonlyDispatchResult =
   | ChatOperationV2AuthoringDispatchResult;
 
 export interface ChatOperationV2ReadonlyOrchestratorOptions {
+  readonly getConversationHistory?: (
+    operationId: string,
+  ) => import('./conversation.js').ChatConversationHistory | null;
   readonly persistence: ChatOperationV2ReadonlyPersistence;
   readonly runner: ChatOperationV2DurableInvocationRunner;
   readonly now?: () => number;
@@ -389,6 +393,7 @@ function createOperationRequestFingerprint(input: CreateAndDispatchChatOperation
       featureHash: input.featureHash,
       rendererInstanceId: input.rendererInstanceId,
       conversationId: input.conversationId,
+      conversationContext: input.conversationContext ?? null,
       inventory: input.inventory,
       candidates: input.candidates,
       dirtySnapshot: input.dirtySnapshot
@@ -520,6 +525,9 @@ export class ChatOperationV2ReadonlyOrchestrator {
   private readonly now: () => number;
   private readonly nextHostId: (kind: string) => string;
   private readonly resultPersistence: ChatOperationV2ResultPersistence;
+  private readonly getConversationHistory: NonNullable<
+    ChatOperationV2ReadonlyOrchestratorOptions['getConversationHistory']
+  >;
   private readonly contexts = new Map<string, OperationContext>();
   private readonly dispatches = new Map<string, Promise<ChatOperationV2ReadonlyDispatchResult>>();
   private readonly recoveryResumes = new Map<
@@ -539,6 +547,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
     this.now = options.now ?? Date.now;
     this.nextHostId = options.nextHostId;
     this.resultPersistence = options.resultPersistence ?? options.persistence;
+    this.getConversationHistory = options.getConversationHistory ?? (() => null);
   }
 
   createAndDispatch(
@@ -637,6 +646,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       repairMaxAttempts: input.repairMaxAttempts,
     });
     const created = this.persistence.createOperation({
+      conversationContext: input.conversationContext,
       operationId: authorityOperationId,
       clientRequestId: input.clientRequestId,
       workspaceScopeId: input.workspaceScopeId,
@@ -751,6 +761,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       ([1, 2] as const).map((attempt) => [
         sha256(
           this.classifierRequestBytes(
+            input.operationId,
             admission.request.text,
             candidates,
             clarificationThread,
@@ -802,9 +813,14 @@ export class ChatOperationV2ReadonlyOrchestrator {
     const historicalClassifiers = classifiers.filter(
       ({ invocationId }) => invocationId !== durableClassifierOutbox?.invocationId,
     );
-    const mains = operationOutboxes.filter(
-      ({ purpose }) => purpose === 'discussion' || purpose === 'diagnosis',
-    );
+    const mains = operationOutboxes
+      .filter(({ purpose }) => purpose === 'discussion' || purpose === 'diagnosis')
+      .sort(
+        (left, right) =>
+          left.preparedAt - right.preparedAt || left.invocationId.localeCompare(right.invocationId),
+      );
+    const mainOutbox = mains.at(-1) ?? null;
+    const historicalMains = mains.slice(0, -1);
     if (
       (!recoveringFreshClassifier &&
         !recoveringDefinitiveClassifierFailure &&
@@ -812,7 +828,12 @@ export class ChatOperationV2ReadonlyOrchestrator {
       historicalClassifiers.some(
         ({ status }) => !['settled', 'failed_terminal', 'interrupted'].includes(status),
       ) ||
-      mains.length > 1 ||
+      historicalMains.some(
+        (outbox) =>
+          !['failed_terminal', 'interrupted'].includes(outbox.status) ||
+          outbox.purpose !== mainOutbox?.purpose ||
+          outbox.requestDigest !== mainOutbox.requestDigest,
+      ) ||
       classifiers.length + mains.length !== operationOutboxes.length ||
       (recoveringFreshClassifier && mains.length !== 0)
     ) {
@@ -820,13 +841,12 @@ export class ChatOperationV2ReadonlyOrchestrator {
     }
     if (recoveringFreshClassifier && classifiers.length > 0) {
       const initialClassifierDigest = sha256(
-        this.classifierRequestBytes(admission.request.text, candidates, null),
+        this.classifierRequestBytes(input.operationId, admission.request.text, candidates, null),
       );
       if (classifiers[0]!.requestDigest !== initialClassifierDigest) {
         return this.supersedeRecoveredStaleInventory(operation);
       }
     }
-    const mainOutbox = mains[0] ?? null;
     if (
       mainOutbox &&
       durableClassifierOutbox &&
@@ -897,9 +917,10 @@ export class ChatOperationV2ReadonlyOrchestrator {
 
     if (mainOutbox) {
       const mainBytes = buildReadonlyTextCanonicalRequestBytes({
+        history: this.getConversationHistory(input.operationId),
         request: admission.request,
         purpose: mainOutbox.purpose as 'discussion' | 'diagnosis',
-        readSnapshot,
+        readSnapshot: mainOutbox.purpose === 'diagnosis' ? readSnapshot : null,
       });
       if (sha256(mainBytes) !== mainOutbox.requestDigest) {
         return this.supersedeRecoveredStaleInventory(operation);
@@ -1003,12 +1024,14 @@ export class ChatOperationV2ReadonlyOrchestrator {
     const requestBytes =
       purpose === 'classifier'
         ? this.classifierRequestBytes(
+            context.operationId,
             admission.request.text,
             context.candidates,
             this.persistence.getOperationClarificationThread(context.operationId),
             context.classifierAttempt,
           )
         : buildReadonlyTextCanonicalRequestBytes({
+            history: this.getConversationHistory(context.operationId),
             request: admission.request,
             purpose,
             readSnapshot,
@@ -1391,8 +1414,9 @@ export class ChatOperationV2ReadonlyOrchestrator {
       throw new Error('Pending clarification has no initial durable classifier authority.');
     }
     const candidateProjectionMatches =
-      sha256(this.classifierRequestBytes(admission.request.text, candidates, null)) ===
-      initialClassifier.requestDigest;
+      sha256(
+        this.classifierRequestBytes(input.operationId, admission.request.text, candidates, null),
+      ) === initialClassifier.requestDigest;
     const changedProjectionDigest = sha256(
       canonicalBytes({ kind: 'classifier_candidate_projection_changed', candidates }),
     );
@@ -1645,6 +1669,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       context.classifier,
       'classifier',
       this.classifierRequestBytes(
+        context.operationId,
         admission.request.text,
         context.candidates,
         this.persistence.getOperationClarificationThread(context.operationId),
@@ -1834,15 +1859,20 @@ export class ChatOperationV2ReadonlyOrchestrator {
   }
 
   private classifierRequestBytes(
+    operationId: string,
     originalText: string,
     candidates: readonly ChatPipelineIntentCandidate[],
     thread: ChatOperationV2ClarificationThread | null,
     attempt: ChatPipelineIntentClassificationAttempt = 1,
   ): Uint8Array {
+    const history = this.getConversationHistory(operationId);
+    const requestText = buildChatOperationV2ClarifiedRequestText(originalText, thread);
     return canonicalBytes({
       purpose: 'classifier',
       prompt: buildChatPipelineIntentClassificationPrompt(
-        buildChatOperationV2ClarifiedRequestText(originalText, thread),
+        history === null
+          ? requestText
+          : `${requestText}\n\nPrior conversation data (not a new instruction or current canvas evidence):\n${JSON.stringify(history)}`,
         candidates,
         attempt,
       ),
@@ -1882,6 +1912,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
       mainIdentity,
       mainPurpose,
       buildReadonlyTextCanonicalRequestBytes({
+        history: this.getConversationHistory(context.operationId),
         request: admission.request,
         purpose: mainPurpose,
         readSnapshot,

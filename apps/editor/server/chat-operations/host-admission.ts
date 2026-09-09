@@ -252,6 +252,7 @@ export function resolveChatOperationV2CreateAdmission(
     featureHash: hashChatOperationV2HostAuthority('features', authority.features),
     rendererInstanceId: payload.rendererInstanceId,
     conversationId: payload.conversationId,
+    ...(payload.conversationKey === undefined ? {} : { conversationKey: payload.conversationKey }),
     repairMaxAttempts: authority.repairMaxAttempts,
     inventory: authority.inventory,
     candidates: Object.freeze(

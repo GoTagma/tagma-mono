@@ -64,6 +64,29 @@ function createRequest() {
   } as const;
 }
 
+test('accepts only a bounded conversation credential and excludes it from diagnostic evidence', () => {
+  const base = createRequest();
+  const conversationKey = 'c'.repeat(64);
+  const request = parseChatOperationV2CreateRequest({
+    ...base,
+    payload: { ...base.payload, conversationKey },
+  });
+  expect(request.payload.conversationKey).toBe(conversationKey);
+  expect(
+    JSON.stringify(
+      toChatOperationV2ApiRequestEvidence(parseChatOperationV2ApiRequest('create', request)),
+    ),
+  ).not.toContain(conversationKey);
+  for (const invalid of [null, 'c'.repeat(63), 'c'.repeat(65), 'G'.repeat(64), { history: [] }]) {
+    expect(() =>
+      parseChatOperationV2CreateRequest({
+        ...base,
+        payload: { ...base.payload, conversationKey: invalid },
+      }),
+    ).toThrow(ChatOperationV2ApiRequestError);
+  }
+});
+
 test('parses the renderer-only create envelope without caller operation authority', () => {
   const parsed = parseChatOperationV2CreateRequest(createRequest());
 

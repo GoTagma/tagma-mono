@@ -58,6 +58,14 @@ import {
 import { sealChatOperationV2InteractiveRequest } from '../server/chat-operations/interactive-requests.js';
 import type { ChatOperationV2MutationService } from '../server/routes/chat-operations.js';
 import { appendChatOperationV2ResultMessage } from '../server/chat-operations/results.js';
+import { createChatOperationV2AuthoringResultPersistence } from '../server/chat-operations/authoring-results.js';
+import { parseReadonlyTextCanonicalRequestBytes } from '../server/chat-operations/opencode-adapter.js';
+import {
+  canonicalConversationJson,
+  conversationContextHash,
+  CHAT_CONVERSATION_HISTORY_MAX_BYTES,
+  parseChatConversationHistory,
+} from '../server/chat-operations/conversation.js';
 
 const roots: string[] = [];
 const services: ChatOperationV2Service[] = [];
@@ -129,6 +137,7 @@ class AbortableReadonlyRunner implements ChatOperationV2DurableInvocationRunner 
 const fixtureHash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 interface ServiceAuthoringRuntimeOptions {
+  readonly text?: string | null;
   readonly interactive?: readonly ChatOperationV2RuntimeInteractiveRequest[];
   readonly providerUnavailableOnce?: boolean;
   readonly relocationUnavailableOnce?: boolean;
@@ -285,9 +294,9 @@ class FakeServiceAuthoringRuntime implements ChatOperationV2AuthoringRuntimeCore
     return {
       kind: 'completed' as const,
       disposition: 'no_change' as const,
-      text: 'Authoring complete.',
+      text: this.options.text === undefined ? 'Authoring complete.' : this.options.text,
       executionMessageId: `authoring-execution-message-${this.invocations.length}`,
-      finishCode: 'stop',
+      finishCode: this.options.text === null ? 'tool_calls' : 'stop',
       admittedAggregateSeq: this.invocations.length,
       source: {
         aggregateSeq: 100 + this.invocations.length,
@@ -456,6 +465,7 @@ function createMutationService(input: {
   readonly runner: ChatOperationV2DurableInvocationRunner;
   readonly runtime: FakeServiceAuthoringRuntime;
   readonly results?: FakeServiceAuthoringResults;
+  readonly realResults?: boolean;
   readonly targets?: FakeServiceAuthoringTargets;
   readonly commit?: FakeServiceCommitCoordinator;
   readonly randomUUID?: () => string;
@@ -478,6 +488,7 @@ function createMutationService(input: {
     },
     authoringResultPersistenceFactory: ({ workspaceScopeId, store }) => {
       factoryScopes.push(`results:${workspaceScopeId}`);
+      if (input.realResults) return createChatOperationV2AuthoringResultPersistence(store);
       results.attachStore(store);
       return results;
     },
@@ -1641,6 +1652,509 @@ describe('ChatTurn Operation V2 service activation', () => {
     ).toBeNull();
   });
 
+  test('same-conversation read-only invocation receives prior turns in the actual provider prompt', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const discussion = {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(discussion, 1),
+      completedReadonlyInvocation('I remember the marker and the two budgets.', 2),
+      completedReadonlyInvocation(discussion, 3),
+      completedReadonlyInvocation('200', 4),
+    ]);
+    const run = runner.run.bind(runner);
+    runner.run = async (request) => {
+      const result = await run(request);
+      if (request.purpose !== 'discussion' || runner.calls.length !== 4) return result;
+      const prompt = parseReadonlyTextCanonicalRequestBytes({
+        bytes: request.canonicalRequestBytes,
+        purpose: 'discussion',
+        readSnapshot: null,
+      });
+      const providerContext = JSON.parse(prompt.user.split('\n')[1]!);
+      const priorText = providerContext.history.turns
+        .map((turn: { userText: string }) => turn.userText)
+        .join('\n');
+      const budgets = /budgets (\d+) and (\d+)/.exec(priorText);
+      const marker = /星桥-\d+/.exec(priorText)?.[0];
+      if (!budgets || !marker || !priorText.includes('琥珀'))
+        throw new Error('Provider fixture did not receive the prior facts.');
+      return completedReadonlyInvocation(
+        `${marker}, 琥珀, ${Number(budgets[1]) + Number(budgets[2])}`,
+        4,
+      );
+    };
+    const service = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: join(root, 'server-control') },
+      readonlyRunnerFactory: () => runner,
+    });
+    services.push(service);
+    const first = {
+      ...readonlyCreateInput('context-first'),
+      conversationId: 'conversation-context',
+      conversationKey: 'a'.repeat(64),
+      request: {
+        schemaVersion: 1 as const,
+        text: 'Remember 星桥-472, 琥珀, and budgets 80 and 120.',
+        attachments: [],
+      },
+    };
+    await service.createAndDispatchReadonly(workspace, first);
+    await service.createAndDispatchReadonly(workspace, {
+      ...first,
+      clientRequestId: 'context-second',
+      request: {
+        schemaVersion: 1,
+        text: 'What was the marker, and what is the sum of those budgets?',
+        attachments: [],
+      },
+    });
+    const invocation = runner.calls[3]!;
+    const prompt = parseReadonlyTextCanonicalRequestBytes({
+      bytes: invocation.canonicalRequestBytes,
+      purpose: 'discussion',
+      readSnapshot: null,
+    });
+    expect(prompt.user).toContain('星桥-472');
+    expect(prompt.user).toContain('琥珀');
+    expect(prompt.user).toContain('80 and 120');
+    expect(prompt.user).toContain('I remember the marker and the two budgets.');
+    expect(
+      service.getDiagnosticsSessionProjection(workspace, invocation.sessionId)?.messages.at(-1),
+    ).toMatchObject({ text: '星桥-472, 琥珀, 200' });
+    expect(invocation.readSnapshot).toBeNull();
+    expect(
+      service
+        .getWorkspaceSnapshot(workspace)
+        .operations.every(({ bindingId, stageId }) => bindingId === null && stageId === null),
+    ).toBe(true);
+  });
+
+  test('conversation credentials isolate history across sessions/workspaces and survive Host reconstruction', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    const otherWorkspace = join(root, 'other');
+    mkdirSync(workspace);
+    mkdirSync(otherWorkspace);
+    const controlDir = join(root, 'control');
+    const decision = {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const runner = new FakeReadonlyRunner(
+      Array.from({ length: 4 }, (_, i) => [
+        completedReadonlyInvocation(decision, i * 2 + 1),
+        completedReadonlyInvocation(`answer-${i}`, i * 2 + 2),
+      ]).flat(),
+    );
+    const construct = () => {
+      const service = new ChatOperationV2Service({
+        env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+        readonlyRunnerFactory: () => runner,
+      });
+      services.push(service);
+      return service;
+    };
+    let service = construct();
+    const input = { ...readonlyCreateInput('owner-first'), conversationKey: '1'.repeat(64) };
+    await service.createAndDispatchReadonly(workspace, {
+      ...input,
+      request: { schemaVersion: 1, text: 'PRIVATE_MARKER_A', attachments: [] },
+    });
+    const count = runner.calls.length;
+    for (const conversationKey of [undefined, '2'.repeat(64)]) {
+      await expect(
+        service.createAndDispatchReadonly(workspace, {
+          ...input,
+          clientRequestId: 'forged',
+          conversationKey,
+        }),
+      ).rejects.toMatchObject({ code: 'conversation_authority_mismatch' });
+    }
+    expect(runner.calls).toHaveLength(count);
+    await service.createAndDispatchReadonly(workspace, {
+      ...input,
+      clientRequestId: 'other-conversation',
+      conversationId: 'other-conversation',
+      conversationKey: '2'.repeat(64),
+    });
+    expect(new TextDecoder().decode(runner.calls.at(-1)!.canonicalRequestBytes)).not.toContain(
+      'PRIVATE_MARKER_A',
+    );
+    await service.close();
+    service = construct();
+    await service.createAndDispatchReadonly(workspace, {
+      ...input,
+      clientRequestId: 'owner-again',
+    });
+    const prompt = parseReadonlyTextCanonicalRequestBytes({
+      bytes: runner.calls.at(-1)!.canonicalRequestBytes,
+      purpose: 'discussion',
+      readSnapshot: null,
+    });
+    expect(prompt.user).toContain('PRIVATE_MARKER_A');
+    expect(prompt.user).not.toContain('answer-1');
+    await service.createAndDispatchReadonly(otherWorkspace, {
+      ...input,
+      clientRequestId: 'foreign-workspace',
+    });
+    expect(new TextDecoder().decode(runner.calls.at(-1)!.canonicalRequestBytes)).not.toContain(
+      'PRIVATE_MARKER_A',
+    );
+    expect(JSON.stringify(service.getWorkspaceSnapshot(workspace))).not.toContain(
+      input.conversationKey,
+    );
+  });
+
+  test('unknown-response recovery replays frozen history despite a later completed conversation turn', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const controlDir = join(root, 'control');
+    const decision = {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(decision, 1),
+      completedReadonlyInvocation('FIRST_ANSWER', 2),
+      completedReadonlyInvocation(decision, 3),
+      { kind: 'provider_unavailable', code: 'submitted_unknown', submissionUnknown: true },
+      completedReadonlyInvocation(decision, 5),
+      completedReadonlyInvocation('LATER_ANSWER', 6),
+    ]);
+    const service = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+      readonlyRunnerFactory: () => runner,
+    });
+    services.push(service);
+    const input = {
+      ...readonlyCreateInput('history-first'),
+      conversationKey: '3'.repeat(64),
+      inventory: createChatInventorySnapshot(1, [
+        { id: 'canvas', relativePath: 'demo/demo.yaml', contentHash: 'a'.repeat(64) },
+      ]),
+      candidates: [
+        {
+          id: 'canvas',
+          path: 'demo/demo.yaml',
+          pipelineName: 'demo',
+          currentCanvas: true,
+          sessionOwned: false,
+          manualNewDraft: false,
+        },
+      ],
+      dirtySnapshot: {
+        candidateId: 'canvas',
+        localRevision: 1,
+        canonicalYaml: 'name: demo\ntracks: []\n',
+        layoutJson: null,
+        requirementsMarkdown: null,
+        compileDiagnostics: [],
+        validateCanonicalYaml: () => {},
+      },
+    };
+    await service.createAndDispatchReadonly(workspace, input);
+    const uncertainInput = {
+      ...input,
+      clientRequestId: 'history-unknown',
+      request: { schemaVersion: 1 as const, text: 'CURRENT_ONCE', attachments: [] },
+    };
+    const uncertain = await service.createAndDispatchReadonly(workspace, uncertainInput);
+    const original = runner.calls.at(-1)!;
+    await service.createAndDispatchReadonly(workspace, {
+      ...input,
+      clientRequestId: 'history-later',
+    });
+    expect(new TextDecoder().decode(runner.calls.at(-1)!.canonicalRequestBytes)).not.toContain(
+      'CURRENT_ONCE',
+    );
+    await service.close();
+    const recoveredRunner = new FakeReadonlyRunner(
+      [],
+      [completedReadonlyInvocation('RECOVERED_ANSWER', 4)],
+    );
+    const recoveredService = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+      readonlyRunnerFactory: () => recoveredRunner,
+    });
+    services.push(recoveredService);
+    const recovered = await recoveredService.createAndDispatchReadonly(workspace, uncertainInput);
+    expect(recovered.kind).toBe('completed_readonly');
+    expect(recovered.operation.operationId).toBe(uncertain.operation.operationId);
+    expect(recoveredRunner.reconciliations).toHaveLength(1);
+    const replay = recoveredRunner.reconciliations[0]!;
+    expect(replay).toMatchObject({
+      sessionId: original.sessionId,
+      inputId: original.inputId,
+      invocationId: original.invocationId,
+    });
+    expect(replay.canonicalRequestBytes).toEqual(original.canonicalRequestBytes);
+    const prompt = parseReadonlyTextCanonicalRequestBytes({
+      bytes: replay.canonicalRequestBytes,
+      purpose: 'discussion',
+      readSnapshot: null,
+    });
+    expect(prompt.user).toContain('FIRST_ANSWER');
+    expect(prompt.user).not.toContain('LATER_ANSWER');
+    expect(prompt.user.match(/CURRENT_ONCE/g)).toHaveLength(1);
+    await recoveredService.createAndDispatchReadonly(workspace, uncertainInput);
+    expect(recoveredRunner.reconciliations).toHaveLength(1);
+    expect(recoveredRunner.calls).toEqual([]);
+  });
+
+  test('diagnosis keeps current sealed canvas evidence separate from prior conversational claims', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(
+        { kind: 'discussion', targetCandidateId: null, clarification: null, candidateIds: [] },
+        1,
+      ),
+      completedReadonlyInvocation('Earlier you described OLD_CANVAS_STATE.', 2),
+      completedReadonlyInvocation(
+        { kind: 'diagnosis', targetCandidateId: 'canvas', clarification: null, candidateIds: [] },
+        3,
+      ),
+      completedReadonlyInvocation('The sealed canvas is current.', 4),
+    ]);
+    const service = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: join(root, 'control') },
+      readonlyRunnerFactory: () => runner,
+    });
+    services.push(service);
+    const input = {
+      ...readonlyCreateInput('diagnosis-history'),
+      conversationKey: '7'.repeat(64),
+      inventory: createChatInventorySnapshot(1, [
+        { id: 'canvas', relativePath: 'demo/demo.yaml', contentHash: 'a'.repeat(64) },
+      ]),
+      candidates: [
+        {
+          id: 'canvas',
+          path: 'demo/demo.yaml',
+          pipelineName: 'demo',
+          currentCanvas: true,
+          sessionOwned: false,
+          manualNewDraft: false,
+        },
+      ],
+      dirtySnapshot: {
+        candidateId: 'canvas',
+        localRevision: 1,
+        canonicalYaml: 'name: CURRENT_CANVAS_STATE\ntracks: []\n',
+        layoutJson: null,
+        requirementsMarkdown: null,
+        compileDiagnostics: [],
+        validateCanonicalYaml: () => {},
+      },
+    };
+    await service.createAndDispatchReadonly(workspace, input);
+    const diagnosed = await service.createAndDispatchReadonly(workspace, {
+      ...input,
+      clientRequestId: 'diagnosis-next',
+    });
+    const invocation = runner.calls.at(-1)!;
+    const prompt = parseReadonlyTextCanonicalRequestBytes({
+      bytes: invocation.canonicalRequestBytes,
+      purpose: 'diagnosis',
+      readSnapshot: invocation.readSnapshot,
+    });
+    const providerContext = JSON.parse(prompt.user.split('\n')[1]!);
+    expect(providerContext.sealedSnapshot.canonicalYaml).toContain('CURRENT_CANVAS_STATE');
+    expect(JSON.stringify(providerContext.history)).toContain('OLD_CANVAS_STATE');
+    expect(JSON.stringify(providerContext.history)).not.toContain('CURRENT_CANVAS_STATE');
+    expect(prompt.system).toContain('Only sealedSnapshot');
+    expect(diagnosed.operation).toMatchObject({
+      bindingId: null,
+      stageId: null,
+      terminalOutcome: 'completed_readonly',
+    });
+  });
+
+  test('an explicit read-only retry preserves history and remains recoverable after another Host restart', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const controlDir = join(root, 'control');
+    const decision = {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(decision, 1),
+      completedReadonlyInvocation('RETRY_HISTORY', 2),
+      completedReadonlyInvocation(decision, 3),
+      { kind: 'provider_unavailable', code: 'rate_limited' },
+      { kind: 'provider_unavailable', code: 'submitted_unknown', submissionUnknown: true },
+    ]);
+    const service = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+      readonlyRunnerFactory: () => runner,
+    });
+    services.push(service);
+    const input = { ...readonlyCreateInput('retry-history'), conversationKey: '6'.repeat(64) };
+    await service.createAndDispatchReadonly(workspace, input);
+    const next = { ...input, clientRequestId: 'retry-history-next' };
+    const failed = await service.createAndDispatchReadonly(workspace, next);
+    const original = runner.calls.at(-1)!;
+    const retried = await service.retryReadonly(workspace, {
+      operationId: failed.operation.operationId,
+      expectedGeneration: failed.operation.generation,
+      expectedVersion: failed.operation.version,
+      requestId: 'explicit-history-retry',
+    });
+    expect(retried.kind).toBe('provider_unavailable');
+    const second = runner.calls.at(-1)!;
+    expect(second.canonicalRequestBytes).toEqual(original.canonicalRequestBytes);
+    expect(second.sessionId).not.toBe(original.sessionId);
+    await service.close();
+    const recoveryRunner = new FakeReadonlyRunner(
+      [],
+      [completedReadonlyInvocation('Recovered retry', 4)],
+    );
+    const recovery = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+      readonlyRunnerFactory: () => recoveryRunner,
+    });
+    services.push(recovery);
+    expect((await recovery.createAndDispatchReadonly(workspace, next)).kind).toBe(
+      'completed_readonly',
+    );
+    expect(recoveryRunner.reconciliations[0]).toMatchObject({
+      invocationId: second.invocationId,
+      sessionId: second.sessionId,
+      inputId: second.inputId,
+    });
+    expect(recoveryRunner.reconciliations[0]?.canonicalRequestBytes).toEqual(
+      original.canonicalRequestBytes,
+    );
+    expect(recoveryRunner.calls).toEqual([]);
+  });
+
+  test('long conversation history is bounded and excludes cancelled and failed turns', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const decision = {
+      kind: 'discussion',
+      targetCandidateId: null,
+      clarification: null,
+      candidateIds: [],
+    };
+    const runner = new FakeReadonlyRunner([
+      { kind: 'cancelled', code: 'cancelled_precommit' },
+      { kind: 'provider_unavailable', code: 'authentication_failed' },
+      ...Array.from({ length: 20 }, (_, i) => [
+        completedReadonlyInvocation(decision, i * 2 + 1),
+        completedReadonlyInvocation(`ANSWER_${i}`, i * 2 + 2),
+      ]).flat(),
+    ]);
+    const service = new ChatOperationV2Service({
+      env: { TAGMA_CHAT_CONTROL_DIR: join(root, 'control') },
+      readonlyRunnerFactory: () => runner,
+    });
+    services.push(service);
+    const input = { ...readonlyCreateInput('bounded'), conversationKey: '4'.repeat(64) };
+    const send = (id: string, text: string) =>
+      service.createAndDispatchReadonly(workspace, {
+        ...input,
+        clientRequestId: id,
+        request: { schemaVersion: 1, text, attachments: [] },
+      });
+    await send('cancelled', 'CANCELLED_MARKER');
+    await send('failed', 'FAILED_MARKER');
+    for (let i = 0; i < 18; i += 1) await send(`turn-${i}`, `USER_${i}`);
+    await send('long-turn', `LONG_LATEST_${'星'.repeat(20_000)}`);
+    const beforeLong = JSON.parse(
+      new TextDecoder().decode(runner.calls.at(-1)!.canonicalRequestBytes),
+    ).history;
+    expect(beforeLong.turns).toHaveLength(16);
+    expect(beforeLong.omittedTurns).toBe(2);
+    expect(beforeLong.turns[0].userText).toBe('USER_2');
+    await send('last-turn', 'Recall the latest turn.');
+    const canonical = new TextDecoder().decode(runner.calls.at(-1)!.canonicalRequestBytes);
+    const history = parseChatConversationHistory(JSON.parse(canonical).history);
+    expect(Buffer.byteLength(canonicalConversationJson(history))).toBeLessThanOrEqual(
+      CHAT_CONVERSATION_HISTORY_MAX_BYTES,
+    );
+    expect(history.turns.at(-1)).toMatchObject({ truncated: true, assistantText: 'ANSWER_18' });
+    expect(history.turns.at(-1)?.userText).toStartWith('LONG_LATEST_');
+    expect(canonical).not.toContain('CANCELLED_MARKER');
+    expect(canonical).not.toContain('FAILED_MARKER');
+    expect(history.turns.map(({ operationId }) => operationId)).toHaveLength(
+      new Set(history.turns.map(({ operationId }) => operationId)).size,
+    );
+  }, 120_000);
+
+  test('a rewritten conversation record fails HMAC authentication even with a recomputed content hash', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const controlDir = join(root, 'control');
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(
+        { kind: 'discussion', targetCandidateId: null, clarification: null, candidateIds: [] },
+        1,
+      ),
+      completedReadonlyInvocation('Original answer', 2),
+    ]);
+    const options = {
+      env: { TAGMA_CHAT_CONTROL_DIR: controlDir },
+      readonlyRunnerFactory: () => runner,
+    };
+    const service = new ChatOperationV2Service(options);
+    services.push(service);
+    const input = { ...readonlyCreateInput('tamper'), conversationKey: '5'.repeat(64) };
+    const first = await service.createAndDispatchReadonly(workspace, input);
+    await service.close();
+    const database = new Database(join(controlDir, 'chat-operation-v2.sqlite'), {
+      readwrite: true,
+      create: false,
+    });
+    try {
+      const row = database
+        .query<{ record_canonical: string }, [string]>(
+          'SELECT record_canonical FROM operation_conversation_contexts WHERE operation_id = ?',
+        )
+        .get(first.operation.operationId)!;
+      const record = JSON.parse(row.record_canonical);
+      record.context.history.omittedTurns += 1;
+      database
+        .query(
+          'UPDATE operation_conversation_contexts SET record_canonical = ? WHERE operation_id = ?',
+        )
+        .run(canonicalConversationJson(record), first.operation.operationId);
+      database
+        .query('UPDATE operations SET conversation_context_hash = ? WHERE operation_id = ?')
+        .run(conversationContextHash(record), first.operation.operationId);
+    } finally {
+      database.close();
+    }
+    const restarted = new ChatOperationV2Service(options);
+    services.push(restarted);
+    await expect(
+      restarted.createAndDispatchReadonly(workspace, {
+        ...input,
+        clientRequestId: 'tampered-next',
+      }),
+    ).rejects.toMatchObject({ code: 'conversation_authority_mismatch' });
+    expect(runner.calls).toHaveLength(2);
+  });
+
   test('client request retries return one durable operation and reject changed admission', async () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');
@@ -1812,6 +2326,174 @@ describe('ChatTurn Operation V2 service activation', () => {
       'discussion',
     ]);
   });
+
+  for (const intent of ['create', 'edit'] as const) {
+    for (const clarified of [false, true]) {
+      test(`permission denial with null text completes ${intent} (${clarified ? 'background' : 'foreground'}) and replays after Host restart`, async () => {
+        const root = makeTempRoot();
+        const controlDir = join(root, 'server-control');
+        const workspace = join(root, 'workspace');
+        mkdirSync(workspace);
+        const inventory = createChatInventorySnapshot(2, [
+          { id: 'pipeline-1', relativePath: 'demo/demo.yaml', contentHash: '5'.repeat(64) },
+        ]);
+        const candidates = [
+          {
+            id: 'pipeline-1',
+            path: 'demo/demo.yaml',
+            pipelineName: 'demo',
+            currentCanvas: true,
+            sessionOwned: false,
+            manualNewDraft: false,
+          },
+        ];
+        const decision = {
+          kind: intent,
+          targetCandidateId: intent === 'edit' ? 'pipeline-1' : null,
+          clarification: null,
+          candidateIds: [],
+        };
+        const runner = new FakeReadonlyRunner([
+          ...(clarified
+            ? [
+                completedReadonlyInvocation(
+                  {
+                    kind: 'clarify',
+                    targetCandidateId: null,
+                    clarification: 'Create or edit?',
+                    candidateIds: ['pipeline-1'],
+                  },
+                  10,
+                ),
+              ]
+            : []),
+          completedReadonlyInvocation(decision, 11),
+        ]);
+        const runtime = new FakeServiceAuthoringRuntime({
+          text: null,
+          interactive: [
+            {
+              kind: 'permission',
+              content: { actionCode: 'read', resourceCode: 'staged_file' },
+              openCodeRequestId: 'denied-read',
+              openCodeProcessGeneration: 1,
+              requestedAt: Date.now(),
+            },
+          ],
+        });
+        const { service } = createMutationService({
+          controlDir,
+          runner,
+          runtime,
+          realResults: true,
+        });
+        const input = { ...readonlyCreateInput('denied-read'), inventory, candidates };
+        const dispatch = service.createAndDispatchReadonly(workspace, input);
+        // Observe a rejected foreground dispatch without allowing an unhandled rejection.
+        const observed = dispatch.then(
+          (result) => ({ result }),
+          (error: unknown) => ({ error }),
+        );
+        if (clarified) {
+          const pending = await dispatch;
+          if (pending.kind !== 'clarification_pending') throw new Error('Expected clarification.');
+          const reply = await service.replyToReadonlyClarification(workspace, {
+            operationId: pending.operation.operationId,
+            clarificationId: pending.clarificationId,
+            expectedGeneration: pending.operation.generation,
+            expectedVersion: pending.operation.version,
+            clientRequestId: 'clarified-denied-read',
+            rendererInstanceId: input.rendererInstanceId,
+            text: intent === 'edit' ? 'Edit the current pipeline.' : 'Create a new pipeline.',
+            candidateIds: intent === 'edit' ? ['pipeline-1'] : [],
+            attachments: [],
+            inventory,
+            candidates,
+          });
+          expect(reply.kind).toBe('authoring_deferred');
+        }
+        for (let attempt = 0; attempt < 100 && runtime.invocations.length === 0; attempt += 1)
+          await Bun.sleep(1);
+        const active = service
+          .getWorkspaceSnapshot(workspace)
+          .operations.find((operation) => operation.pendingPermissionRequestId !== null)!;
+        expect(active).toBeDefined();
+        expect(
+          await service.permissionReplyReadonly(workspace, {
+            protocolVersion: 2,
+            clientRequestId: 'deny',
+            operationId: active.operationId,
+            expectedGeneration: active.generation,
+            expectedVersion: active.version,
+            payload: { requestId: active.pendingPermissionRequestId!, choice: 'deny' },
+          }),
+        ).toMatchObject({ kind: 'forwarded' });
+        if (!clarified)
+          expect(await observed).toMatchObject({ result: { kind: 'completed_noop' } });
+        let detail = service.getOperationProjection(workspace, active.operationId);
+        for (
+          let attempt = 0;
+          attempt < 100 && detail.operation.phase !== 'terminal';
+          attempt += 1
+        ) {
+          await Bun.sleep(1);
+          detail = service.getOperationProjection(workspace, active.operationId);
+        }
+        expect(detail.operation).toMatchObject({
+          phase: 'terminal',
+          terminalOutcome: 'completed_noop',
+          executionState: 'terminal',
+          pendingInputKind: null,
+          waitReason: null,
+        });
+        expect(
+          service
+            .getWorkspaceSnapshot(workspace)
+            .operations.find(({ operationId }) => operationId === active.operationId),
+        ).toMatchObject({ activeInvocationId: null, pendingPermissionRequestId: null });
+        expect(detail.result?.messages).toEqual([
+          expect.objectContaining({
+            text: 'The authoring invocation ended without a text response.',
+          }),
+        ]);
+        expect(runtime.invocations).toHaveLength(1);
+        expect(runtime.stages.get(active.operationId)?.status).toBe('discarded');
+        const before = service.listEvents(workspace, { after: 0 });
+        await service.close();
+        const database = new Database(join(controlDir, 'chat-operation-v2.sqlite'), {
+          readwrite: true,
+          create: false,
+        });
+        try {
+          expect(
+            database
+              .query<{ count: number }, [string]>(
+                'SELECT COUNT(*) AS count FROM operation_events WHERE operation_id = ? AND terminal = 1',
+              )
+              .get(active.operationId)?.count,
+          ).toBe(1);
+          expect(
+            database.query<{ count: number }, []>('SELECT COUNT(*) AS count FROM commit_wal').get()
+              ?.count,
+          ).toBe(0);
+        } finally {
+          database.close();
+        }
+        const restarted = createMutationService({
+          controlDir,
+          runner,
+          runtime,
+          realResults: true,
+        }).service;
+        expect(await restarted.createAndDispatchReadonly(workspace, input)).toMatchObject({
+          kind: 'completed_noop',
+        });
+        expect(restarted.getOperationProjection(workspace, active.operationId)).toEqual(detail);
+        expect(restarted.listEvents(workspace, { after: 0 })).toEqual(before);
+        expect(runtime.invocations).toHaveLength(1);
+      });
+    }
+  }
 
   test('a clarification create reply enters authoring without an explicit retry', async () => {
     const root = makeTempRoot();

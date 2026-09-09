@@ -314,6 +314,13 @@ function mapMutationError(error: unknown): PublicRouteError {
         error:
           'The selected model is not configured in the current OpenCode runtime. Refresh models or choose a configured model. Your message is preserved.',
       };
+    case 'conversation_authority_mismatch':
+      return {
+        status: 409,
+        kind: 'chat_operation_conflict',
+        error:
+          'This conversation identity is unavailable or changed. Start a new conversation; existing history remains readable.',
+      };
     case 'operation_conflict':
     case 'host_inventory_conflict':
     case 'unknown_candidate':

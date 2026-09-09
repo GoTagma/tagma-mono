@@ -163,6 +163,79 @@ test('authenticates only the exact production capability pair', () => {
   }
 });
 
+test('persists the conversation credential before sending and reuses it across switches and controller reload', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    },
+  });
+  const fake = fakeApi();
+  const create = fake.api.create;
+  fake.api.create = async (input, options) => {
+    expect([...values.values()]).toContain(input.payload.conversationKey!);
+    return create(input, options);
+  };
+  let controller = createChatOperationV2Controller({
+    api: fake.api,
+    rendererInstanceId: 'renderer-proof',
+  });
+  let sequence = 0;
+  const send = async (workspaceKey: string, conversationId: string) => {
+    await controller.activate({
+      workspaceKey,
+      conversationId,
+      handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    });
+    const completed = operation({
+      operationId: `proof-${++sequence}`,
+      conversationId,
+      rendererInstanceId: 'renderer-proof',
+      phase: 'terminal',
+      executionState: 'terminal',
+      terminalOutcome: 'completed_readonly',
+    });
+    fake.setResult({ kind: 'completed_readonly', operation: completed });
+    fake.setOperation(completed);
+    await controller.send({
+      conversationId,
+      request: { text: 'Remember this.', attachments: [] },
+      provider: 'test',
+      model: 'test',
+      variant: null,
+      localRevision: null,
+      candidateId: null,
+      dirtySnapshot: null,
+    });
+    const sent = fake.calls.filter(({ name }) => name === 'create').at(-1)!.input as Parameters<
+      ChatOperationV2ControllerApi['create']
+    >[0];
+    return sent.payload.conversationKey;
+  };
+  try {
+    const first = await send('workspace-a', 'conversation-a');
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    expect(await send('workspace-a', 'conversation-b')).not.toBe(first);
+    expect(await send('workspace-a', 'conversation-a')).toBe(first);
+    controller.dispose();
+    controller = createChatOperationV2Controller({
+      api: fake.api,
+      rendererInstanceId: 'renderer-proof',
+    });
+    expect(await send('workspace-a', 'conversation-a')).toBe(first);
+    expect(await send('workspace-b', 'conversation-a')).not.toBe(first);
+  } finally {
+    controller.dispose();
+    if (descriptor) Object.defineProperty(globalThis, 'sessionStorage', descriptor);
+    else Reflect.deleteProperty(globalThis, 'sessionStorage');
+  }
+});
+
 test('activates V2 from snapshot before SSE', async () => {
   const fake = fakeApi();
   fake.setSnapshot(
