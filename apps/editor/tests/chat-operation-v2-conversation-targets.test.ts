@@ -405,9 +405,13 @@ function createFixture() {
 
 test('one authenticated conversation creates, edits and edits again at the same published target across Host restart', async () => {
   const fixture = createFixture();
-  const first = await fixture.send();
+  const first = await fixture.send({ taskCount: 1 });
   expect(first.operation.terminalOutcome).toBe('completed_published');
   expect(first.path).not.toBeNull();
+  expect(
+    (yaml.load(fixture.read(first.path!)) as { tracks: Array<{ tasks: unknown[] }> }).tracks[0]!
+      .tasks,
+  ).toHaveLength(1);
   const second = await fixture.send({ target: first.path, taskCount: 3 });
   expect(second.path).toBe(first.path!);
   expect(

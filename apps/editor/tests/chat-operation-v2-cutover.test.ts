@@ -445,6 +445,8 @@ test('returns a generic model failure to the composer and permits same-model res
       operationId: 'operation-cutover-2',
       executionState: 'running',
     },
+    composerDraft: '',
+    composerAttachments: [],
   });
 });
 

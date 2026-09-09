@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import {
+  createChatOperationV2,
+  type ChatOperationV2CreateMutationInput,
+} from '../src/api/chat-operations';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -1652,7 +1656,7 @@ describe('ChatTurn Operation V2 service activation', () => {
     ).toBeNull();
   });
 
-  test('same-conversation read-only invocation receives prior turns in the actual provider prompt', async () => {
+  test('serialized browser requests deliver same-conversation history to the actual provider prompt', async () => {
     const root = makeTempRoot();
     const workspace = join(root, 'workspace');
     mkdirSync(workspace);
@@ -1690,11 +1694,11 @@ describe('ChatTurn Operation V2 service activation', () => {
         4,
       );
     };
-    const service = new ChatOperationV2Service({
-      env: { TAGMA_CHAT_CONTROL_DIR: join(root, 'server-control') },
-      readonlyRunnerFactory: () => runner,
+    const { service } = createMutationService({
+      controlDir: join(root, 'server-control'),
+      runner,
+      runtime: new FakeServiceAuthoringRuntime(),
     });
-    services.push(service);
     const first = {
       ...readonlyCreateInput('context-first'),
       conversationId: 'conversation-context',
@@ -1705,16 +1709,59 @@ describe('ChatTurn Operation V2 service activation', () => {
         attachments: [],
       },
     };
-    await service.createAndDispatchReadonly(workspace, first);
-    await service.createAndDispatchReadonly(workspace, {
-      ...first,
-      clientRequestId: 'context-second',
-      request: {
-        schemaVersion: 1,
-        text: 'What was the marker, and what is the sum of those budgets?',
-        attachments: [],
-      },
-    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const { clientRequestId, payload } = JSON.parse(
+        String(init?.body),
+      ) as ChatOperationV2CreateMutationInput;
+      const dispatched = await service.createAndDispatchReadonly(workspace, {
+        clientRequestId,
+        ...payload,
+        dirtySnapshot: null,
+        request: { schemaVersion: 1, ...payload.request },
+        agentPolicyHash: first.agentPolicyHash,
+        settingsHash: first.settingsHash,
+        capabilityHash: first.capabilityHash,
+        featureHash: first.featureHash,
+        inventory: first.inventory,
+        candidates: first.candidates,
+      });
+      return Response.json({
+        protocolVersion: 2,
+        result: {
+          kind: dispatched.kind,
+          operation: service.getOperationProjection(workspace, dispatched.operation.operationId)
+            .operation,
+        },
+      });
+    }) as typeof fetch;
+    try {
+      const payload = {
+        request: { text: first.request.text, attachments: [] },
+        provider: first.provider,
+        model: first.model,
+        variant: first.variant,
+        rendererInstanceId: first.rendererInstanceId,
+        conversationId: first.conversationId,
+        conversationKey: first.conversationKey,
+        localRevision: null,
+        candidateId: null,
+        dirtySnapshot: null,
+      };
+      await createChatOperationV2({ clientRequestId: first.clientRequestId, payload });
+      await createChatOperationV2({
+        clientRequestId: 'context-second',
+        payload: {
+          ...payload,
+          request: {
+            text: 'What was the marker, and what is the sum of those budgets?',
+            attachments: [],
+          },
+        },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
     const invocation = runner.calls[3]!;
     const prompt = parseReadonlyTextCanonicalRequestBytes({
       bytes: invocation.canonicalRequestBytes,
@@ -2725,6 +2772,12 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(runner.calls.map(({ purpose }) => purpose)).toEqual(['classifier']);
     expect(runtime.invocations).toHaveLength(0);
     expect(factoryScopes).toEqual([]);
+    expect(
+      service.getOperationProjection(workspace, unavailable.operation.operationId).failure,
+    ).toMatchObject({
+      stage: 'classification',
+      code: 'submitted_unknown',
+    });
   });
 
   test('a restarted service recovers and resumes durable read-only invocation ids', async () => {

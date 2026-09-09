@@ -2335,7 +2335,17 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
         (result.purpose !== 'authoring' && result.terminalOutcome !== 'completed_readonly'))) ||
     operation.hasResult !== (result !== null) ||
     operation.pendingInputKind !== (pendingInput?.kind ?? null) ||
-    (operation.executionState === 'retryable_failure') !== (failure !== null) ||
+    (operation.executionState === 'retryable_failure' && failure === null) ||
+    (failure !== null &&
+      operation.executionState !== 'retryable_failure' &&
+      !(
+        operation.executionState === 'terminal' &&
+        (operation.terminalOutcome === 'discarded' ||
+          operation.terminalOutcome === 'failed_terminal') &&
+        (failure.outboxStatus === 'failed_terminal' ||
+          failure.outboxStatus === 'submitted_unknown' ||
+          failure.outboxStatus === 'interrupted')
+      )) ||
     (failure !== null && failure.recordedAt > operation.updatedAt)
   ) {
     invalid('operation detail linkage is inconsistent');
@@ -2560,6 +2570,7 @@ function canonicalCreateMutation(input: ChatOperationV2CreateMutationInput) {
       variant: input.payload.variant,
       rendererInstanceId: input.payload.rendererInstanceId,
       conversationId: input.payload.conversationId,
+      conversationKey: input.payload.conversationKey,
       localRevision: input.payload.localRevision,
       candidateId: input.payload.candidateId,
       dirtySnapshot:

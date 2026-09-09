@@ -86,7 +86,8 @@ describe('Chat Operation V2 activity panel', () => {
     );
 
     expect(html).toContain('Pipeline update was not published');
-    expect(html).toContain('verification or repair did not produce a publishable result');
+    expect(html).not.toContain('verification or repair did not produce a publishable result');
+    expect(html).not.toContain('discarded the staged draft');
     expect(html).toContain('Your current pipeline was left unchanged');
   });
 
@@ -135,9 +136,34 @@ describe('Chat Operation V2 activity panel', () => {
     );
 
     expect(html).toContain('Pipeline update was not published');
-    expect(html).toContain('verification or repair did not produce a publishable result');
+    expect(html).not.toContain('verification or repair did not produce a publishable result');
     expect(html).toContain('Reason: trial_unavailable');
   });
+
+  test.each(['classification', 'authoring'] as const)(
+    'explains the actual %s provider failure after cleanup',
+    (stage) => {
+      const html = renderToStaticMarkup(
+        createElement(ChatOperationV2TerminalNoticeView, {
+          terminalOutcome: 'discarded',
+          failure: {
+            stage,
+            code: 'provider_unavailable',
+            invocationId: 'failure-1',
+            outboxStatus: 'failed_terminal',
+            recordedAt: 120,
+          },
+        }),
+      );
+      expect(html).toContain('Provider is temporarily unavailable');
+      expect(html).toContain(
+        stage === 'classification' ? 'Understanding the request' : 'Writing the pipeline draft',
+      );
+      expect(html).toContain('Reason: provider_unavailable');
+      expect(html).not.toContain('verification or repair did not produce');
+      expect(html).not.toContain('discarded the staged draft');
+    },
+  );
 
   test('retains a failed terminal activity after generation stops', () => {
     expect(

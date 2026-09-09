@@ -77,10 +77,14 @@ export function CompletionWarningBanner() {
   const dismiss = useChatStore((s) => s.dismissCompletionWarning);
   const hasQuestion = useChatStore((s) => {
     const operation = s.activeChatOperationV2;
+    const pending = operation
+      ? s.chatOperationV2ThreadDetails[operation.operationId]?.pendingInput
+      : null;
     return (
       !!operation &&
       (!!s.chatOperationV2InteractiveRecoveryRequests[operation.operationId] ||
-        !!s.chatOperationV2QuestionRequests[operation.operationId])
+        !!s.chatOperationV2QuestionRequests[operation.operationId] ||
+        (pending?.kind === 'clarification' && pending.candidates.length > 0))
     );
   });
   const awaitingReply = useChatStore(

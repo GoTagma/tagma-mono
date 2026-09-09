@@ -12,19 +12,11 @@ import {
   Brain,
   Terminal,
 } from 'lucide-react';
-import {
-  chatOperationV2Activity,
-  restoreChatOperationRequest,
-  useChatStore,
-} from '../../store/chat-store';
-import type { ChatOperationFeedback } from '../../../shared/chat-operation-feedback';
+import { chatOperationV2Activity, useChatStore } from '../../store/chat-store';
 import type { ChatOperationTiming } from '../../../shared/chat-operation-timing';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { api, type WorkspaceYamlEntry } from '../../api/client';
-import {
-  chatOperationV2FailurePresentation,
-  chatOperationV2TerminalDiscardPresentation,
-} from '../../utils/chat-operation-v2-failure';
+import { chatOperationV2FailurePresentation } from '../../utils/chat-operation-v2-failure';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
@@ -33,7 +25,6 @@ import type {
   ChatOperationV2Projection,
   ChatOperationV2ResultProjection,
   ChatOperationV2TrialProgress,
-  ChatOperationV2OperationDetail,
 } from '../../api/chat-operations';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
@@ -47,6 +38,9 @@ import {
 } from './ChatComposer';
 import { HistoryDrawer } from './HistoryDrawer';
 import { QuestionPanel } from './QuestionPanel';
+import { ClarificationPanel } from './ClarificationPanel';
+import { ChatOperationV2TerminalNotice } from './TerminalNotice';
+export { ChatOperationV2TerminalNoticeView } from './TerminalNotice';
 import { MessageBubble } from './MessageBubble';
 import { BotBridgeStatusBadge } from './BotBridgeStatusBadge';
 import { FloatingPanel } from './FloatingPanel';
@@ -87,6 +81,7 @@ export function ChatPanel() {
         <RetryableOperationNotice />
         <ChatInteractionRecoveryNotice />
         <QuestionPanel />
+        <ClarificationPanel />
         <CompletionWarningBanner />
         <ErrorBanner />
       </div>
@@ -1053,117 +1048,6 @@ function ChatMessages() {
         </button>
       )}
     </>
-  );
-}
-
-export function ChatOperationV2TerminalNoticeView({
-  terminalOutcome,
-  terminalReasonCode = null,
-  feedback = null,
-  onEditRequest,
-  editRequestDisabled = false,
-}: {
-  terminalOutcome: 'discarded' | 'failed_terminal';
-  terminalReasonCode?: string | null;
-  feedback?: ChatOperationFeedback | null;
-  onEditRequest?: () => void;
-  editRequestDisabled?: boolean;
-}) {
-  const discarded = terminalOutcome === 'discarded';
-  const reason = discarded ? chatOperationV2TerminalDiscardPresentation(terminalReasonCode) : null;
-  return (
-    <section
-      aria-label="Chat operation did not complete"
-      className="max-w-[90%] self-start border border-tagma-error/35 bg-tagma-surface px-3 py-2"
-    >
-      <div className="flex items-center gap-2 text-label font-sans text-tagma-text">
-        <AlertTriangle size={12} className="shrink-0 text-tagma-error" />
-        <span>
-          {reason?.title ??
-            (discarded ? 'Pipeline update was not published' : 'Chat operation stopped')}
-        </span>
-      </div>
-      <p className="mt-1 text-caption font-sans text-tagma-muted break-words">
-        {reason?.detail ??
-          (discarded
-            ? 'Tagma discarded the staged draft before publication. If you did not discard it, verification or repair did not produce a publishable result. Your current pipeline was left unchanged.'
-            : 'Tagma could not produce a safe result for this request. Your current pipeline was left unchanged.')}
-      </p>
-      {feedback ? (
-        <div className="mt-2 min-w-0 text-caption text-tagma-muted">
-          <div className="font-medium">
-            {feedback.stage === 'compile'
-              ? 'Compilation'
-              : feedback.stage === 'trial_plan'
-                ? 'Trial planning'
-                : 'Trial verification'}
-          </div>
-          {feedback.failedTaskIds.length > 0 && (
-            <div className="mt-1 break-words font-mono">
-              Failed tasks: {feedback.failedTaskIds.join(', ')}
-              {feedback.omittedFailedTaskCount > 0
-                ? ` · ${feedback.omittedFailedTaskCount} more`
-                : ''}
-            </div>
-          )}
-          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono">
-            {feedback.details}
-          </pre>
-        </div>
-      ) : terminalReasonCode ? (
-        <p className="mt-1 text-caption font-sans text-tagma-muted/80">
-          Detailed verification information was not recorded for this operation.
-        </p>
-      ) : null}
-      <p className="mt-1 text-caption font-sans text-tagma-muted/80">
-        You can edit this request and send it again.
-      </p>
-      {terminalReasonCode ? (
-        <p className="mt-1 text-caption font-mono text-tagma-muted-dim">
-          {`Reason: ${terminalReasonCode}`}
-        </p>
-      ) : null}
-      {onEditRequest && (
-        <button
-          type="button"
-          onClick={onEditRequest}
-          disabled={editRequestDisabled}
-          title={
-            editRequestDisabled
-              ? 'Keep or clear the current draft before reusing this request.'
-              : 'Put this request back in the composer for review; it is not sent automatically.'
-          }
-          className="mt-2 border border-tagma-border px-2 py-1 text-caption text-tagma-text disabled:opacity-50"
-        >
-          Edit request
-        </button>
-      )}
-    </section>
-  );
-}
-
-function ChatOperationV2TerminalNotice({ detail }: { detail: ChatOperationV2OperationDetail }) {
-  const operation = detail.operation;
-  const canEdit = useChatStore(
-    (state) =>
-      !state.sending && state.composerDraft.length === 0 && state.composerAttachments.length === 0,
-  );
-  if (
-    operation?.executionState !== 'terminal' ||
-    (operation.terminalOutcome !== 'discarded' && operation.terminalOutcome !== 'failed_terminal')
-  ) {
-    return null;
-  }
-  return (
-    <ChatOperationV2TerminalNoticeView
-      terminalOutcome={operation.terminalOutcome}
-      terminalReasonCode={operation.terminalReasonCode ?? null}
-      feedback={detail.verificationFeedback ?? null}
-      editRequestDisabled={!canEdit}
-      onEditRequest={() => {
-        restoreChatOperationRequest(detail.userMessage);
-      }}
-    />
   );
 }
 

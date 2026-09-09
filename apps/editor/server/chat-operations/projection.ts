@@ -1123,10 +1123,15 @@ function inferredFailureCode(outbox: StoredInvocationOutboxRecord | null): strin
 function failureProjection(
   operation: StoredChatOperationV2,
   outboxes: readonly StoredInvocationOutboxRecord[],
+  persistence: ChatOperationV2ProjectionReadPersistence,
 ): ChatOperationV2RendererFailureProjection | null {
+  const terminalFailure =
+    operation.phase === 'terminal' &&
+    (operation.terminalOutcome === 'discarded' || operation.terminalOutcome === 'failed_terminal');
   if (
-    operation.phase === 'terminal' ||
-    (operation.waitReason !== 'provider_unavailable' && operation.waitReason !== 'user_retry')
+    !terminalFailure &&
+    (operation.phase === 'terminal' ||
+      (operation.waitReason !== 'provider_unavailable' && operation.waitReason !== 'user_retry'))
   ) {
     return null;
   }
@@ -1140,8 +1145,9 @@ function failureProjection(
     });
   }
   const postReservation =
+    operation.phase !== 'terminal' &&
     CHAT_OPERATION_V2_PHASES.indexOf(operation.phase) >=
-    CHAT_OPERATION_V2_PHASES.indexOf('reserving');
+      CHAT_OPERATION_V2_PHASES.indexOf('reserving');
   const outbox =
     outboxes
       .filter(
@@ -1156,6 +1162,33 @@ function failureProjection(
         (left, right) =>
           right.preparedAt - left.preparedAt || right.invocationId.localeCompare(left.invocationId),
       )[0] ?? null;
+  const unknownSubmission =
+    terminalFailure && outbox?.status === 'interrupted'
+      ? persistence.getLatestOperationEvent?.(
+          operation.operationId,
+          'invocation_submission_unknown',
+        )
+      : null;
+  const retainedUnknown =
+    unknownSubmission &&
+    unknownSubmission.workspaceScopeId === operation.workspaceScopeId &&
+    unknownSubmission.operationId === operation.operationId &&
+    unknownSubmission.payload.invocationId === outbox?.invocationId &&
+    unknownSubmission.timestamp >= outbox.preparedAt &&
+    unknownSubmission.timestamp <= operation.updatedAt
+      ? unknownSubmission
+      : null;
+  // Cleanup clears the wait state, but must not erase the last failed attempt.
+  // Inspect the newest invocation first: an earlier failed attempt superseded by
+  // a successful retry is not the cause of a later discard.
+  if (
+    terminalFailure &&
+    (!outbox ||
+      (outbox.status !== 'failed_terminal' &&
+        outbox.status !== 'submitted_unknown' &&
+        !(outbox.status === 'interrupted' && (outbox.failureCode || retainedUnknown))))
+  )
+    return null;
   if (!outbox && operation.phase === 'staging') {
     return Object.freeze({
       stage: 'authoring',
@@ -1168,7 +1201,9 @@ function failureProjection(
   if (outbox && outbox.workspaceScopeId !== operation.workspaceScopeId) {
     return fail('workspace_mismatch', 'Invocation failure evidence belongs to another workspace.');
   }
-  const code = inferredFailureCode(outbox);
+  const code = retainedUnknown
+    ? safeChatOperationV2FailureCode(retainedUnknown.payload.errorCode, 'submitted_unknown')
+    : inferredFailureCode(outbox);
   if (!SAFE_CODE.test(code)) {
     return fail('invalid_record', 'Invocation failure evidence contains an unsafe code.');
   }
@@ -1177,7 +1212,8 @@ function failureProjection(
     code,
     invocationId: outbox ? hostId(outbox.invocationId, 'Failure invocation id') : null,
     outboxStatus: outbox?.status ?? null,
-    recordedAt: operation.updatedAt,
+    recordedAt:
+      retainedUnknown?.timestamp ?? (terminalFailure ? outbox!.updatedAt : operation.updatedAt),
   });
 }
 
@@ -1188,7 +1224,7 @@ export function projectChatOperationV2OperationDetail(
   const operation = validateStoredOperation(parts.operation, parts.operation.workspaceScopeId);
   const result = validateResultProjection(parts.result, operation);
   const pending = pendingInput({ ...parts, operation, result });
-  const failure = failureProjection(operation, parts.outboxes);
+  const failure = failureProjection(operation, parts.outboxes, persistence);
   const summary = operationSummary(persistence, operation, parts.admission, result, pending);
   const feedback =
     summary.terminalReasonCode !== null

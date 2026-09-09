@@ -199,6 +199,12 @@
 
 ## Chat Message Layout
 
+- Render clarification candidates from the operation's Host-projected pending input, with names,
+  relative coordinates, and the available canvas/ownership markers. Submit only the selected
+  candidate id through that pending request's CAS action, preserving the ordinary Composer draft.
+- Restore a retryable request once per failed invocation identity, not once per operation update
+  timestamp. Discard cleanup can advance the old operation while the replacement Send is pending;
+  re-projecting that same failure must never refill submitted text or attachments.
 - Live Host questions retain their option descriptions and multiple-selection contract in a
   request-keyed form. Keep the ordinary Composer draft intact while that form is active, serialize
   replies through the qualified operation API, and keep pending clarification visible until resolved.
@@ -298,6 +304,9 @@
 
 ## Chat Context Window
 
+- The browser create-request allowlist must serialize `conversationKey` unchanged. Test the real
+  `createChatOperationV2` HTTP body and feed those bytes into Host admission; controller fixtures
+  with a manually supplied credential cannot detect loss at the serializer boundary.
 - V2 persists a separate 32-byte conversation credential in session storage before the first
   request. Host HMAC binds it to workspace scope, renderer/conversation correlation, and control
   generation. Never infer reusable history or write ownership from the displayed conversation id.
@@ -1322,6 +1331,10 @@
 
 ## Chat Usage Stats And Terminal Discard Reasons
 
+- Terminal discarded/failed operations retain the newest failed invocation's bounded failure
+  code and stage. An interrupted unknown submission may recover its cause only from a matching
+  durable `invocation_submission_unknown` event. Successful retries and cancellation do not project
+  stale failures; a reason-less discard must not invent a draft, verification failure, or repair.
 - Operation detail timing uses only that operation's durable events and invocation outboxes,
   filtered by workspace and operation identity. Partition elapsed wall time without double counting:
   human input waits take precedence over Trial execution, which takes precedence over AI requests.

@@ -582,6 +582,80 @@ describe('ChatTurn Operation V2 renderer projection', () => {
     expect(JSON.stringify(detail.failure)).not.toContain(HASH_A);
   });
 
+  test.each(['classifier', 'authoring'] as const)(
+    'retains the latest %s provider failure after discard, but not after success or cancellation',
+    (purpose) => {
+      for (const terminalOutcome of [
+        'discarded',
+        'failed_terminal',
+        'cancelled_precommit',
+        'completed_noop',
+      ] as const) {
+        const terminal = operation('operation-provider-discard', {
+          ...state({ phase: 'terminal', terminalOutcome }),
+          updatedAt: 150,
+        });
+        const failed: StoredInvocationOutboxRecord = {
+          invocationId: 'failed-invocation',
+          workspaceScopeId: 'scope-01',
+          operationId: terminal.operationId,
+          purpose,
+          sessionId: 'private-session',
+          inputId: 'private-input',
+          requestDigest: HASH_A,
+          status: 'failed_terminal',
+          preparedAt: 110,
+          updatedAt: 130,
+          admittedAggregateSeq: null,
+          settledAt: 130,
+          failureCode: 'provider_unavailable',
+        };
+        const value = harness({ operations: [terminal], outboxes: [failed] });
+        const read = () =>
+          readChatOperationV2OperationProjection(
+            value.persistence,
+            value.resolver,
+            'scope-01',
+            terminal.operationId,
+          );
+        expect(read().failure).toEqual(
+          terminalOutcome === 'discarded' || terminalOutcome === 'failed_terminal'
+            ? {
+                stage: purpose === 'classifier' ? 'classification' : 'authoring',
+                code: 'provider_unavailable',
+                invocationId: failed.invocationId,
+                outboxStatus: 'failed_terminal',
+                recordedAt: 130,
+              }
+            : null,
+        );
+        const recovered = harness({
+          operations: [terminal],
+          outboxes: [
+            failed,
+            {
+              ...failed,
+              invocationId: 'successful-retry',
+              status: 'settled',
+              failureCode: null,
+              preparedAt: 135,
+              updatedAt: 145,
+              settledAt: 145,
+            },
+          ],
+        });
+        expect(
+          readChatOperationV2OperationProjection(
+            recovered.persistence,
+            recovered.resolver,
+            'scope-01',
+            terminal.operationId,
+          ).failure,
+        ).toBeNull();
+      }
+    },
+  );
+
   test('projects a failed Trial Plan invocation instead of the earlier settled authoring turn', () => {
     const retryable = operation('operation-trial-plan-failure', {
       ...state({ phase: 'repairing', waitReason: 'provider_unavailable' }),

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { QuestionForm, buildQuestionAnswers } from '../src/components/chat/QuestionPanel';
 import { MessageBubble } from '../src/components/chat/MessageBubble';
 import { CompletionWarningBannerView } from '../src/components/chat/ChatComposer';
+import { ClarificationOptions } from '../src/components/chat/ClarificationPanel';
 import { buildConversationExport } from '../src/utils/chat-export';
 import type { OpencodeThreadEntry } from '../src/api/opencode-chat';
 
@@ -17,6 +18,50 @@ const content = {
 };
 
 describe('structured Chat questions', () => {
+  test('distinguishes same-name candidates with relative paths and explicit selection buttons', () => {
+    const candidates = [
+      {
+        candidateId: 'pipeline-opaque-a',
+        name: 'QA 问候',
+        relativeCoordinate: 'original/hello.yaml',
+        currentCanvas: true,
+        sessionOwned: false,
+        manualNewDraft: false,
+      },
+      {
+        candidateId: 'pipeline-opaque-b',
+        name: 'QA 问候',
+        relativeCoordinate: 'edited/hello.yaml',
+        currentCanvas: false,
+        sessionOwned: true,
+        manualNewDraft: false,
+      },
+    ];
+    const html = renderToStaticMarkup(
+      <ClarificationOptions
+        question="Which pipeline?"
+        candidates={candidates}
+        pending={false}
+        onChoose={() => {}}
+      />,
+    );
+    expect(html).toContain('QA 问候');
+    expect(html).toContain('original/hello.yaml');
+    expect(html).toContain('edited/hello.yaml');
+    expect(html).toContain('Current canvas');
+    expect(html).toContain('This conversation');
+    expect(html.match(/<button/g)).toHaveLength(2);
+    expect(html).not.toContain('pipeline-opaque-');
+    const sending = renderToStaticMarkup(
+      <ClarificationOptions
+        question="Which pipeline?"
+        candidates={candidates}
+        pending={true}
+        onChoose={() => {}}
+      />,
+    );
+    expect(sending.match(/disabled=""/g)).toHaveLength(2);
+  });
   test('preserves multiple selected answers and an optional custom answer', () => {
     expect(buildQuestionAnswers(content, [0, 1], ' Staging ')).toEqual([
       'Development',

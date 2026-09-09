@@ -904,6 +904,7 @@ function createMutationInput() {
       variant: 'high',
       rendererInstanceId: 'renderer-window-01',
       conversationId: 'conversation-01',
+      conversationKey: 'c'.repeat(64),
       localRevision: 7,
       candidateId: 'candidate-01',
       dirtySnapshot: {
@@ -991,6 +992,43 @@ test('creates through the versioned mutation boundary with exact renderer-only b
     ...createMutationInput(),
   });
   expect(JSON.stringify(request!.body)).not.toContain('must-not-leak');
+});
+
+test('reads durable failure evidence after discard while rejecting it on successful or cancelled operations', async () => {
+  for (const terminalOutcome of [
+    'discarded',
+    'failed_terminal',
+    'cancelled_precommit',
+    'completed_noop',
+  ] as const) {
+    const terminal = {
+      ...operation(),
+      phase: 'terminal',
+      waitReason: null,
+      executionState: 'terminal',
+      terminalOutcome,
+      updatedAt: 150,
+    };
+    const failure = {
+      stage: 'classification',
+      code: 'provider_unavailable',
+      invocationId: 'failed-classifier',
+      outboxStatus: 'failed_terminal',
+      recordedAt: 120,
+    } as const;
+    globalThis.fetch = (async () =>
+      Response.json({
+        protocolVersion: 2,
+        detail: { ...operationDetail(), operation: terminal, failure },
+      })) as unknown as typeof fetch;
+    if (terminalOutcome === 'discarded' || terminalOutcome === 'failed_terminal') {
+      expect((await fetchChatOperationV2Operation('operation-1')).failure).toEqual(failure);
+    } else {
+      await expect(fetchChatOperationV2Operation('operation-1')).rejects.toBeInstanceOf(
+        ChatOperationV2ProtocolError,
+      );
+    }
+  }
 });
 
 test('sends every same-operation decision to its exact endpoint and canonical CAS envelope', async () => {

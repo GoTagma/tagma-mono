@@ -341,6 +341,11 @@ interface ChatStore {
    */
   abort: () => Promise<void>;
   retryActiveChatOperationV2: () => Promise<void>;
+  chooseActiveChatOperationV2Candidate: (
+    operationId: string,
+    requestId: string,
+    candidateId: string,
+  ) => Promise<boolean>;
   discardActiveChatOperationV2: () => Promise<void>;
   changeProviderForActiveChatOperationV2: () => Promise<void>;
   replyActiveChatOperationV2Question: (
@@ -913,10 +918,16 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
       label: attachment.label,
       content: attachment.content,
     }));
+    const previousFailure = previous.chatOperationV2ThreadDetails[operationId]?.failure;
     const newlyRetryable =
       detail.operation.executionState === 'retryable_failure' &&
       detail.failure !== null &&
-      previous.activeChatOperationV2Failure?.recordedAt !== detail.failure.recordedAt;
+      (!previousFailure ||
+        previousFailure.invocationId !== detail.failure.invocationId ||
+        previousFailure.code !== detail.failure.code ||
+        previousFailure.stage !== detail.failure.stage ||
+        (detail.failure.invocationId === null &&
+          previousFailure.recordedAt !== detail.failure.recordedAt));
     // Result notices are durable transcript attachments. Promoting the same
     // typed attachment into the composer warning would render one Host result
     // twice and make dismissing the duplicate look like evidence was removed.
@@ -1953,6 +1964,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           ? current.composerAttachments
           : [...(request?.attachments ?? [])],
     }));
+  },
+
+  async chooseActiveChatOperationV2Candidate(operationId, requestId, candidateId) {
+    const state = get();
+    const request = state.chatOperationV2ThreadDetails[operationId]?.pendingInput;
+    if (
+      state.chatExecutionMode !== 'operation-v2' ||
+      state.activeChatOperationV2?.operationId !== operationId ||
+      state.activeChatOperationV2.executionState !== 'waiting_for_user' ||
+      request?.kind !== 'clarification' ||
+      request.clarificationId !== requestId ||
+      !request.candidates.some((candidate) => candidate.candidateId === candidateId)
+    )
+      return false;
+    set({ sendError: null });
+    return runChatOperationV2UiMutation(set, "Couldn't select the pipeline", (controller) =>
+      controller.replyClarification(operationId, {
+        requestId,
+        text: '',
+        candidateIds: [candidateId],
+        attachments: [],
+      }),
+    );
   },
 
   async replyActiveChatOperationV2Question(operationId, requestId, choice, answers) {
