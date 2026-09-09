@@ -11,7 +11,10 @@ import {
   deriveChatOperationV2ResetPlanId,
   deriveChatOperationV2ResetRequestIdentity,
 } from '../server/chat-operations/migration-service.js';
-import { ChatOperationV2Store } from '../server/chat-operations/store.js';
+import {
+  CHAT_OPERATION_V2_SCHEMA_VERSION,
+  ChatOperationV2Store,
+} from '../server/chat-operations/store.js';
 import { WorkspaceState } from '../server/workspace-state.js';
 import { tagmaDirOf } from '../server/pipeline-paths.js';
 
@@ -320,10 +323,13 @@ describe('Chat Operation V2 migration service facade', () => {
         databasePath: fixture.controlPaths.databasePath,
         keyId: generatedKeyId,
       });
-      expect(reopened.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6, 7,
-      ]);
-      reopened.close();
+      try {
+        expect(reopened.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual(
+          Array.from({ length: CHAT_OPERATION_V2_SCHEMA_VERSION }, (_, index) => index + 1),
+        );
+      } finally {
+        reopened.close();
+      }
     } finally {
       stop(fixture);
     }

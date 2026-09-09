@@ -1496,6 +1496,10 @@
   default.
 - For fast regressions, pass repeatable unique selectors such as
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
+- Control-reset facade tests must expect the complete migration sequence through
+  `CHAT_OPERATION_V2_SCHEMA_VERSION`; the Store contract tests pin individual migration versions
+  and names. Close reopened SQLite stores in `finally` so assertion failures do not also leave
+  Windows fixture cleanup failing with `EBUSY`.
 - Trial settings disclosures are checked by `tests/editor-settings-chat-trial-run.test.ts`.
   Update those assertions with copy changes while retaining coverage of synthetic Sandbox inputs,
   closed stdin/TTY, application-level isolation, Live Smoke prerequisites, and ordinary-run approvals.
