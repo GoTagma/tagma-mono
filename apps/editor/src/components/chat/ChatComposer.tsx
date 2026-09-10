@@ -7,6 +7,7 @@ import type {
   ChatOperationV2InteractiveRecoveryChoice,
 } from '../../api/chat-operations';
 import { useChatStore } from '../../store/chat-store';
+import { chatOperationV2RetainedWorkKind } from '../../utils/chat-operation-v2-failure';
 import { shouldSubmitChatComposerKey } from '../../utils/chat-composer-key';
 export { shouldSubmitChatComposerKey } from '../../utils/chat-composer-key';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
@@ -302,9 +303,11 @@ export function getChatComposerAvailability(input: {
   sending: boolean;
   operationActive: boolean;
   acceptsActiveOperationReply: boolean;
+  retainedWork?: boolean;
 }): { blockedByAnotherChatUpdate: boolean; canSend: boolean } {
   const blockedByAnotherChatUpdate =
-    (input.sending || input.operationActive) && !input.acceptsActiveOperationReply;
+    !!input.retainedWork ||
+    ((input.sending || input.operationActive) && !input.acceptsActiveOperationReply);
   return {
     blockedByAnotherChatUpdate,
     canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,
@@ -319,6 +322,9 @@ export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
   const sending = useChatStore((s) => s.sending);
+  const retainedWork = useChatStore(
+    (s) => chatOperationV2RetainedWorkKind(s.activeChatOperationV2) !== null,
+  );
   const operationActive = useChatStore(
     (s) =>
       !!s.activeChatOperationV2 &&
@@ -370,6 +376,7 @@ export function ChatComposer() {
     sending,
     operationActive,
     acceptsActiveOperationReply,
+    retainedWork,
   });
   const stopMode = getChatComposerStopMode({ sending });
   const stopLabel = 'Stop generating';
@@ -393,11 +400,17 @@ export function ChatComposer() {
   const placeholder = !ready
     ? 'Starting OpenCode...'
     : model
-      ? blockedByAnotherChatUpdate
-        ? 'Waiting for the current chat update to finish...'
-        : 'Message opencode... (Enter to send)'
+      ? retainedWork
+        ? 'Use the controls above to continue retained work...'
+        : blockedByAnotherChatUpdate
+          ? 'Waiting for the current chat update to finish...'
+          : 'Message opencode... (Enter to send)'
       : 'Pick a model first';
-  const sendLabel = blockedByAnotherChatUpdate ? 'Waiting for current chat update' : 'Send';
+  const sendLabel = retainedWork
+    ? 'Continue retained work using the controls above'
+    : blockedByAnotherChatUpdate
+      ? 'Waiting for current chat update'
+      : 'Send';
 
   if (answeringQuestion) return null;
 

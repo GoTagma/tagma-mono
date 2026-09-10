@@ -36,6 +36,61 @@ function waitForScheduledFlush(): Promise<void> {
 }
 
 describe('stream-renderer', () => {
+  test.each(['finalize', 'abort'] as const)(
+    '%s waits for an in-flight edit and renders the final text and footer',
+    async (method) => {
+      let release!: () => void;
+      let entered!: () => void;
+      const editGate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const editStarted = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const writes: string[] = [];
+      let activeEdits = 0;
+      let maxActiveEdits = 0;
+      const sink: MessageSink = {
+        async editMessage(_chatId, _messageId, text) {
+          activeEdits++;
+          maxActiveEdits = Math.max(maxActiveEdits, activeEdits);
+          writes.push(text);
+          entered();
+          await editGate;
+          activeEdits--;
+        },
+        async sendMessage(chatId, text) {
+          writes.push(text);
+          return { chatId, messageId: '2' };
+        },
+      };
+      const turn = createStreamTurn({ sink, chatId: '1', initialMessageId: '1' });
+      turn.applyTextPart('answer', 'Partial answer');
+      await editStarted;
+      turn.applyTextPart('answer', 'Final answer');
+      let settled = false;
+      const final = turn[method]('Final footer').then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      try {
+        expect(settled).toBe(false);
+      } finally {
+        release();
+        await final;
+      }
+      expect(writes.at(-1)).toContain('Final answer');
+      expect(writes.at(-1)).toContain('Final footer');
+      expect(maxActiveEdits).toBe(1);
+      if (method === 'abort') expect(writes.at(-1)).toContain('aborted');
+      const count = writes.length;
+      turn.applyTextPart('answer', 'Too late');
+      await turn.finalize('Duplicate footer');
+      expect(writes).toHaveLength(count);
+    },
+  );
+
   test('finalize flushes accumulated text into the initial message', async () => {
     const { sink, calls } = mockSink();
     const turn = createStreamTurn({ sink, chatId: '42', initialMessageId: '7' });

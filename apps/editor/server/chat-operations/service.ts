@@ -356,6 +356,12 @@ export type ChatOperationV2AuthoringResultPersistenceFactory = (
 
 export interface ChatOperationV2AuthoringCommitCoordinator {
   prepareCommit: ChatOperationV2AuthoringRuntime['prepareCommit'];
+  retry(
+    input: RetryChatOperationV2Input & {
+      readonly workspaceScopeId: string;
+      readonly operation: StoredChatOperationV2;
+    },
+  ): Promise<ChatOperationV2ReadonlyDispatchResult>;
   stop(
     input: StopChatOperationV2Input & { readonly operation: StoredChatOperationV2 },
   ): Promise<StopChatOperationV2Result>;
@@ -1273,6 +1279,15 @@ export class ChatOperationV2Service {
       );
     }
     const runtime = this.#authoringRuntimeForWorkspace(authority);
+    if (operation.phase.startsWith('commit_')) {
+      return this.#trackReadonlyCall(
+        runtime.commitCoordinator.retry({
+          ...input,
+          workspaceScopeId: operation.workspaceScopeId,
+          operation,
+        }),
+      );
+    }
     if (operation.waitReason === 'user_recovery_choice' && operation.pendingPermissionRequestId) {
       const request = authority.store.getInteractiveRequest({
         workspaceScopeId: operation.workspaceScopeId,

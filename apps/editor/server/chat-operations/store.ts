@@ -7,6 +7,10 @@ import {
   rmSync as systemRmSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import {
+  serializeChatVerificationOutcome,
+  type ChatVerificationOutcome,
+} from '../../shared/chat-verification-outcome.js';
 
 import {
   CHAT_OPERATION_V2_ANNOTATION_SCHEMA_VERSION,
@@ -136,6 +140,7 @@ import {
   assertChatOperationV2ResultLinkage,
   parseChatOperationV2Result,
   parseChatOperationV2ResultMessage,
+  sealChatOperationV2ResultMessage,
   projectChatOperationV2ResultForRenderer,
   validateChatOperationV2ResultMessageAppend,
   type ChatOperationV2RendererResultProjection,
@@ -517,6 +522,11 @@ export interface StoredChatOperationV2BindingLease {
 }
 
 export type ChatOperationV2CommitUpdate =
+  | {
+      /** Change only execution liveness; every publication/WAL artifact remains immutable. */
+      readonly kind: 'execution_wait';
+      readonly expectedCommitVersion: number;
+    }
   | {
       readonly kind: 'prepare';
       readonly expectedCommitVersion: null;
@@ -5390,6 +5400,88 @@ export class ChatOperationV2Store {
     });
   }
 
+  sealPendingResultVerification(input: {
+    readonly operationId: string;
+    readonly workspaceScopeId: string;
+    readonly expectedGeneration: number;
+    readonly expectedVersion: number;
+    readonly expectedMessageHash: string;
+    readonly outcome: ChatVerificationOutcome;
+  }): StoredChatOperationV2PendingResultMessage | null {
+    this.assertOpen();
+    assertIdentifier(input.operationId, 'operationId');
+    assertIdentifier(input.workspaceScopeId, 'workspaceScopeId');
+    assertSafeInteger(input.expectedGeneration, 'expected generation', 1);
+    assertSafeInteger(input.expectedVersion, 'expected version', 0);
+    const content = serializeChatVerificationOutcome(input.outcome);
+    return this.immediateTransaction(() => {
+      const operation = this.requireOperation(input.operationId);
+      if (
+        operation.workspaceScopeId !== input.workspaceScopeId ||
+        operation.generation !== input.expectedGeneration ||
+        operation.version !== input.expectedVersion ||
+        operation.phase !== 'trial-running' ||
+        operation.waitReason !== null ||
+        operation.activeInvocationId !== null ||
+        this.commitWalRowByOperation(operation.operationId)
+      )
+        return null;
+      const pending = this.getPendingResultMessage(operation.operationId);
+      if (!pending || pending.message.messageHash !== input.expectedMessageHash) return null;
+      const original = pending.message;
+      // The Host may enrich a retained draft's verification before preparing a
+      // WAL. It cannot replace authored text, provider evidence, or message ids.
+      const message = sealChatOperationV2ResultMessage({
+        messageId: original.messageId,
+        resultId: original.resultId,
+        operationId: original.operationId,
+        generation: original.generation,
+        invocationId: original.invocationId,
+        purpose: original.purpose,
+        sequence: original.sequence,
+        previousMessageHash: original.previousMessageHash,
+        createdAt: original.createdAt,
+        text: original.text,
+        evidence: original.evidence,
+        attachments: [
+          {
+            attachmentId: `verification_${createHash('sha256').update(original.messageId).digest('hex')}`,
+            kind: 'notice',
+            mediaType: 'application/json',
+            label: 'Pipeline verification outcome',
+            content,
+          },
+        ],
+      });
+      if (message.messageHash === original.messageHash) return pending;
+      const canonical = migrationCanonicalBytes(message);
+      if (canonical.byteLength > CHAT_OPERATION_V2_MAX_RESULT_MESSAGE_BYTES + 4096) {
+        throw new ChatOperationV2StoreError(
+          'invalid_result',
+          'Verified result exceeds its durable envelope limit.',
+        );
+      }
+      const update = this.database.prepare(
+        `UPDATE pending_result_messages SET content_hash = ?, message_hash = ?, message_canonical = ?
+         WHERE operation_id = ? AND operation_generation = ? AND message_hash = ?`,
+      );
+      try {
+        const result = update.run(
+          message.contentHash,
+          message.messageHash,
+          canonical,
+          operation.operationId,
+          operation.generation,
+          input.expectedMessageHash,
+        );
+        if (result.changes !== 1) return null;
+      } finally {
+        update.finalize();
+      }
+      return this.getPendingResultMessage(operation.operationId);
+    });
+  }
+
   getPendingResultMessage(operationId: string): StoredChatOperationV2PendingResultMessage | null {
     this.assertOpen();
     assertIdentifier(operationId, 'operationId');
@@ -7235,6 +7327,27 @@ export class ChatOperationV2Store {
         'invalid_commit_update',
         'Commit WAL identity does not match operation generation, stage, or binding.',
       );
+    }
+    if (update.kind === 'execution_wait') {
+      const previousState = stateFromOperation(operation);
+      if (
+        !['preparing', 'decided', 'applying', 'recovering'].includes(current.status) ||
+        operation.phase !== `commit_${current.status}` ||
+        bindingUpdate !== undefined ||
+        ![null, 'user_retry'].includes(operation.waitReason) ||
+        ![null, 'user_retry'].includes(nextState.waitReason) ||
+        operation.waitReason === nextState.waitReason ||
+        Object.entries(previousState).some(
+          ([key, value]) =>
+            key !== 'waitReason' && nextState[key as keyof ChatOperationV2State] !== value,
+        )
+      ) {
+        throw new ChatOperationV2StoreError(
+          'invalid_commit_update',
+          'Commit execution waits may only pause or resume the same unfinished WAL and operation.',
+        );
+      }
+      return { current, next: { ...current, commitVersion: current.commitVersion + 1, updatedAt } };
     }
     this.assertCommitFallbackReserved(current.prepare, operation.workspaceScopeId);
     const base = {

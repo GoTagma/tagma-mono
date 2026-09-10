@@ -278,6 +278,10 @@ function operationReadError(error: unknown): PublicRouteError {
 
 function mapMutationError(error: unknown): PublicRouteError {
   switch (errorCode(error)) {
+    case 'schema_mismatch':
+    case 'corrupt_store':
+    case 'unsupported_schema_version':
+      return mapReadError(error);
     case 'operation_not_found':
     case 'operation_mismatch':
     case 'operation_workspace_mismatch':

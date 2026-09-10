@@ -736,6 +736,7 @@ export type ChatOperationV2AuthoringPersistence = Pick<
   | 'getInteractiveRequest'
   | 'listPendingInteractiveRequests'
   | 'getPendingResultMessage'
+  | 'sealPendingResultVerification'
   | 'transitionOperation'
   | 'appendOperationEvent'
   | 'getBindingLease'
@@ -2640,6 +2641,28 @@ export class ChatOperationV2AuthoringEngine {
           summary: verification.outcome.details,
           outcome: verification.outcome,
         },
+      };
+    } else if (context.visibleResult) {
+      const verified = this.persistence.sealPendingResultVerification({
+        operationId: current.operationId,
+        workspaceScopeId: current.workspaceScopeId,
+        expectedGeneration: current.generation,
+        expectedVersion: current.version,
+        expectedMessageHash: context.visibleResult.pendingMessageHash,
+        outcome: verification.outcome,
+      });
+      if (!verified) {
+        const latest = this.requireOperation(context.operationId);
+        return latest.phase === 'terminal'
+          ? terminalResult(latest)
+          : { kind: 'stale', operation: latest };
+      }
+      context.visibleResult = {
+        resultId: verified.resultId,
+        pendingMessageId: verified.pendingMessageId,
+        pendingMessageHash: verified.message.messageHash,
+        message: verified.message,
+        messageCount: 1,
       };
     }
     await this.persistVisibleCompletion(context);

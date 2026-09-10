@@ -2,6 +2,32 @@
 
 ## Chat Session Concurrency
 
+- Chat workspace reset must synchronously dispose the operation controller, close EventSource,
+  and invalidate bootstrap/history epochs. Workspace keys alone do not fence close-and-reopen
+  races for the same path. Controller disposal has no handshake error; only an actual failed
+  handshake supplies one. Preserve workspace-independent draft text separately from attachments.
+- Start the disk-edit grace window only when the same operation in the same workspace transitions
+  from running/waiting to idle. Empty activation, foreign-window wakes, history selection, and
+  repeated terminal projections must not refresh it; workspace reset clears it.
+- Retained verification drafts, authoring handoffs, and paused publication use explicit Host Retry.
+  Share that classification between Composer eligibility, Send guards, and retry notices. Ordinary
+  Send must neither consume attachments nor discard retained work. Post-decision publication has
+  no discard/cancel affordance; Retry resumes the same WAL through generation/version CAS.
+- Automatic commit execution retries only bounded transient filesystem errors. Exhaustion or an
+  unexpected executor failure pauses the same commit phase with `user_retry` through an atomic
+  `execution_wait` WAL update; only wait state/version/time may change. Keep the decision, artifacts,
+  binding, and result authority immutable. Skip a paused/failed job so other recoveries continue;
+  control-store failures still fail closed and surface typed reset/upgrade guidance on reads.
+- A retained authoring message may receive a Host-validated verification attachment only during
+  active Trial and before any commit WAL exists. Fence enrichment by operation generation/version
+  and prior message hash, preserve authored text/evidence/identity, and reseal hashes atomically.
+  Commit preparation freezes the enriched message; subsequent enrichment must fail closed.
+- Erroring a raw loopback response body must also close its upstream socket; stream error does not
+  invoke stream cancellation. Bot finalize/abort must await an in-flight edit and a serialized final
+  flush; repeated terminal calls join that flush rather than returning before delivery completes.
+- Deferred findings and product decisions from the September 2026 audit are tracked in
+  `chat-v2-maintenance.md`; do not promote conditional risks to reproduced defects without evidence.
+
 - Workspace-scoped Host operation reads may contain other renderer identities. Update their
   history summaries on every wake, but project transcript/interactive detail only for the selected
   operation. Historical reads must not inherit mutation ownership: keep renderer/conversation CAS

@@ -1109,6 +1109,9 @@ describe('Chat Operation V2 mutations', () => {
       ['projection_unavailable', 503, 'chat_operation_action_unavailable'],
       ['unsafe_mutation_result', 503, 'chat_operation_action_unavailable'],
       ['selected_model_unavailable', 409, 'chat_operation_model_unavailable'],
+      ['schema_mismatch', 409, 'chat_operation_control_reset_required'],
+      ['corrupt_store', 409, 'chat_operation_control_reset_required'],
+      ['unsupported_schema_version', 409, 'chat_operation_control_version_unsupported'],
       ['authoring_target_conflict', 409, 'chat_operation_conflict'],
       ['operation_mismatch', 404, 'operation_not_found'],
       ['workspace_mismatch', 404, 'operation_not_found'],
@@ -1136,6 +1139,12 @@ describe('Chat Operation V2 mutations', () => {
         });
       }
       expect(JSON.stringify(res.body)).not.toContain('private');
+      if (kind === 'chat_operation_control_reset_required') {
+        expect(JSON.stringify(res.body)).toContain('Archive and reset Chat data');
+      } else if (kind === 'chat_operation_control_version_unsupported') {
+        expect(JSON.stringify(res.body)).toContain('Update Tagma');
+        expect(JSON.stringify(res.body)).not.toContain('reset');
+      }
     }
   });
 

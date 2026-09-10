@@ -5,7 +5,11 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { createChatVerificationOutcome } from '../shared/chat-verification-outcome.js';
+import {
+  createChatVerificationOutcome,
+  parseChatVerificationOutcome,
+  formatChatVerificationOutcomeForExport,
+} from '../shared/chat-verification-outcome.js';
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
 import {
   createManagedChatOperationV2AuthoringRuntime,
@@ -492,6 +496,106 @@ async function fixture(): Promise<Fixture> {
 }
 
 describe('managed Chat Operation V2 commit coordinator', () => {
+  test('publishes and exports an enriched retained result while fencing later outcome changes', async () => {
+    const value = await fixture();
+    const material = await readManagedChatOperationV2CommitStageMaterial({
+      canonicalWorkspaceRoot: value.workspaceRoot,
+      workspaceScopeId: value.workspaceScopeId,
+      stageId: STAGE_ID,
+    });
+    const current = value.operation;
+    const trial = value.store.transitionOperation({
+      operationId: current.operationId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      state: state({
+        phase: 'trial-running',
+        bindingId: value.binding.bindingId,
+        stageId: STAGE_ID,
+      }),
+      updatedAt: 35,
+      event: toHostOperationEventInput({
+        schemaVersion: 1,
+        eventId: 'verification-enrichment-trial',
+        type: 'operation_state_changed',
+        timestamp: 35,
+        payload: {
+          generation: current.generation,
+          version: current.version + 1,
+          phase: 'trial-running',
+          waitReason: null,
+          repairAttempts: 0,
+          clarificationRounds: 0,
+        },
+      }),
+    });
+    if (!trial.applied) throw new Error('Expected Trial transition');
+    const original = value.resultAuthority.message;
+    value.store.preparePendingResultMessage({
+      pendingMessageId: original.messageId,
+      operationId: current.operationId,
+      expectedGeneration: current.generation,
+      resultId: original.resultId,
+      message: original,
+      preparedAt: original.createdAt,
+    });
+    const sealInput = {
+      operationId: current.operationId,
+      workspaceScopeId: current.workspaceScopeId,
+      expectedGeneration: trial.operation.generation,
+      expectedVersion: trial.operation.version,
+      expectedMessageHash: original.messageHash,
+      outcome: verification(material).outcome,
+    };
+    expect(
+      value.store.sealPendingResultVerification({ ...sealInput, expectedVersion: 0 }),
+    ).toBeNull();
+    expect(
+      value.store.sealPendingResultVerification({
+        ...sealInput,
+        expectedMessageHash: '0'.repeat(64),
+      }),
+    ).toBeNull();
+    const pending = value.store.sealPendingResultVerification(sealInput);
+    if (!pending) throw new Error('Expected enriched verification');
+    expect(pending.message.text).toBe(original.text);
+    expect(pending.message.evidence).toEqual(original.evidence);
+    const verifiedValue = {
+      ...value,
+      operation: trial.operation,
+      resultAuthority: {
+        ...value.resultAuthority,
+        message: pending.message,
+        pendingMessageHash: pending.message.messageHash,
+      },
+    };
+    const managed = coordinator(verifiedValue);
+    const prepare = await managed.prepareCommit(prepareInput(verifiedValue, material));
+    const prepared = persistPrepare(verifiedValue, prepare);
+    expect(
+      value.store.sealPendingResultVerification({
+        ...sealInput,
+        expectedVersion: prepared.version,
+        expectedMessageHash: pending.message.messageHash,
+      }),
+    ).toBeNull();
+    await managed.resumePending();
+    const published = value.store.listMessages(RESULT_ID);
+    expect(published).toEqual([pending.message]);
+    const outcome = parseChatVerificationOutcome(published[0]!.attachments[0]!.content);
+    if (!outcome) throw new Error('Missing sealed verification outcome');
+    const exported = formatChatVerificationOutcomeForExport(outcome, 'published');
+    expect(exported).toContain('Sandbox Trial: passed');
+    expect(exported).toContain('published');
+    expect(
+      value.store.sealPendingResultVerification({
+        ...sealInput,
+        expectedVersion: value.store.getOperation(current.operationId)!.version,
+        expectedMessageHash: pending.message.messageHash,
+      }),
+    ).toBeNull();
+  }, 20_000);
+
   test('prepares authenticated YAML, layout, requirements, and support artifacts with one stable result id', async () => {
     const value = await fixture();
     const material = await readManagedChatOperationV2CommitStageMaterial({
@@ -619,6 +723,122 @@ describe('managed Chat Operation V2 commit coordinator', () => {
       artifactSetHash: prepare.artifactSetHash,
     });
   }, 20_000);
+
+  test('automatically resumes a transient filesystem failure without restarting the coordinator', async () => {
+    const value = await fixture();
+    const material = await readManagedChatOperationV2CommitStageMaterial({
+      canonicalWorkspaceRoot: value.workspaceRoot,
+      workspaceScopeId: value.workspaceScopeId,
+      stageId: STAGE_ID,
+    });
+    let failed = false;
+    const managed = coordinator(value, {
+      autoResume: true,
+      fault: ({ checkpoint }) => {
+        if (!failed && checkpoint === 'after_artifact_write') {
+          failed = true;
+          throw Object.assign(new Error('File busy'), { code: 'EBUSY' });
+        }
+      },
+    });
+    const prepare = await managed.prepareCommit(prepareInput(value, material));
+    persistPrepare(value, prepare);
+    await Bun.sleep(20);
+    await managed.waitForIdle();
+    expect(failed).toBe(true);
+    expect(value.store.getOperation(value.operation.operationId)).toMatchObject({
+      phase: 'terminal',
+      terminalOutcome: 'completed_published',
+    });
+    expect(value.store.listMessages(RESULT_ID)).toEqual([value.resultAuthority.message]);
+    const events = value.store.listOperationEvents({
+      workspaceScopeId: value.workspaceScopeId,
+      after: 0,
+    });
+    if (events.kind !== 'events') throw new Error('Expected Host events');
+    expect(events.events.filter(({ type }) => type === 'commit_decided')).toHaveLength(1);
+    expect(events.events.filter(({ terminal }) => terminal)).toHaveLength(1);
+  }, 20_000);
+
+  test.each(['same-process', 'restart', 'external-edit'] as const)(
+    'durably pauses a persistent commit failure and retries the same WAL through CAS (%s)',
+    async (scenario) => {
+      const value = await fixture();
+      const material = await readManagedChatOperationV2CommitStageMaterial({
+        canonicalWorkspaceRoot: value.workspaceRoot,
+        workspaceScopeId: value.workspaceScopeId,
+        stageId: STAGE_ID,
+      });
+      let unavailable = true;
+      let failures = 0;
+      const managed = coordinator(value, {
+        autoResume: true,
+        fault: ({ checkpoint }) => {
+          if (unavailable && checkpoint === 'before_terminal_handoff') {
+            failures++;
+            throw Object.assign(new Error('File busy'), { code: 'EBUSY' });
+          }
+        },
+      });
+      const prepare = await managed.prepareCommit(prepareInput(value, material));
+      persistPrepare(value, prepare);
+      await Bun.sleep(20);
+      await managed.waitForIdle();
+      const paused = value.store.getOperation(value.operation.operationId)!;
+      expect(paused).toMatchObject({
+        phase: 'commit_applying',
+        waitReason: 'user_retry',
+        terminalOutcome: null,
+      });
+      expect(failures).toBeGreaterThan(1);
+      expect(failures).toBeLessThanOrEqual(4);
+      const version = paused.version;
+      await Bun.sleep(50);
+      expect(value.store.getOperation(paused.operationId)?.version).toBe(version);
+      unavailable = false;
+      const retrying = scenario === 'restart' ? coordinator(value, { autoResume: true }) : managed;
+      if (scenario === 'restart') {
+        await retrying.waitForIdle();
+        expect(value.store.getOperation(paused.operationId)?.version).toBe(version);
+      }
+      const primaryYaml = join(value.workspaceRoot, '.tagma', value.binding.target.coordinate);
+      if (scenario === 'external-edit')
+        writeFileSync(primaryYaml, 'Third-party edit must survive', 'utf8');
+      const walBeforeRetry = value.store.getCommitWal(prepare.commitId)!;
+      expect(
+        await retrying.retry({
+          operationId: paused.operationId,
+          workspaceScopeId: paused.workspaceScopeId,
+          expectedGeneration: paused.generation,
+          expectedVersion: paused.version - 1,
+          requestId: 'stale-publication-retry',
+        }),
+      ).toMatchObject({ kind: 'stale' });
+      expect(value.store.getOperation(paused.operationId)?.version).toBe(version);
+      expect(
+        await retrying.retry({
+          operationId: paused.operationId,
+          workspaceScopeId: paused.workspaceScopeId,
+          expectedGeneration: paused.generation,
+          expectedVersion: paused.version,
+          requestId: 'publication-retry',
+        }),
+      ).toMatchObject({ kind: 'in_progress' });
+      await retrying.waitForIdle();
+      expect(value.store.getOperation(paused.operationId)).toMatchObject({
+        phase: 'terminal',
+        waitReason: null,
+        terminalOutcome: scenario === 'external-edit' ? 'completed_forked' : 'completed_published',
+      });
+      if (scenario === 'external-edit')
+        expect(readFileSync(primaryYaml, 'utf8')).toBe('Third-party edit must survive');
+      expect(value.store.getCommitWal(prepare.commitId)?.status).toBe('applied');
+      expect(value.store.getCommitWal(prepare.commitId)?.decision).toEqual(walBeforeRetry.decision);
+      expect(value.store.getCommitWal(prepare.commitId)?.prepare).toEqual(walBeforeRetry.prepare);
+      expect(value.store.listMessages(RESULT_ID)).toEqual([value.resultAuthority.message]);
+    },
+    20_000,
+  );
 
   test('resumes a partial filesystem apply after Store restart with one immutable terminal result', async () => {
     const value = await fixture();

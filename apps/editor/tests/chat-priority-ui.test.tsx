@@ -4,8 +4,47 @@ import { groupChatHistory } from '../src/components/chat/HistoryDrawer';
 import type { ChatOperationV2Projection } from '../src/api/chat-operations';
 import {
   ChatInteractionRecoveryNoticeView,
+  getChatComposerAvailability,
   shouldSubmitChatComposerKey,
 } from '../src/components/chat/ChatComposer';
+import { RetainedOperationNoticeView } from '../src/components/chat/ChatPanel';
+import { chatOperationV2RetainedWorkKind } from '../src/utils/chat-operation-v2-failure';
+
+test.each(['commit_applying', 'trial-running', 'awaiting_input'] as const)(
+  'Composer requires the explicit retry action for retained %s work',
+  (phase) => {
+    expect(
+      getChatComposerAvailability({
+        hasContent: true,
+        hasModel: true,
+        ready: true,
+        sending: false,
+        operationActive: false,
+        acceptsActiveOperationReply: false,
+        retainedWork: chatOperationV2RetainedWorkKind({ phase, waitReason: 'user_retry' }) !== null,
+      }).canSend,
+    ).toBe(false);
+  },
+);
+
+test('paused publication exposes Retry without offering post-decision discard', () => {
+  const html = renderToStaticMarkup(
+    <RetainedOperationNoticeView kind="publication" pending={false} onRetry={() => {}} />,
+  );
+  expect(html).toContain('Retry publication');
+  expect(html).not.toContain('Cancel publication');
+  expect(html).not.toContain('Discard');
+});
+
+test('retained handoff exposes explicit retry and disables decisions while submitting', () => {
+  const props = { kind: 'handoff' as const, onRetry: () => {}, onDiscard: () => {} };
+  const html = renderToStaticMarkup(<RetainedOperationNoticeView {...props} pending={false} />);
+  expect(html).toContain('Retry pipeline work');
+  expect(html).toContain('Discard request');
+  expect(html).not.toContain('send again');
+  const submitting = renderToStaticMarkup(<RetainedOperationNoticeView {...props} pending />);
+  expect(submitting.match(/disabled=""/g)).toHaveLength(2);
+});
 
 describe('Chat composer input method handling', () => {
   test('keeps composition confirmation and Shift+Enter out of the send path', () => {

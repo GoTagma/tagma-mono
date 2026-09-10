@@ -964,30 +964,51 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     });
   });
 
-  test('explicit verification retry reuses the draft after a Host restart without another model invocation', async () => {
-    const { engine, store, runtime, resultPersistence, now } = createHarness({
-      verification: ['unverified', 'passed'],
-    });
-    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
-    const waiting = store.getOperation('operation-1')!;
-    const restarted = new ChatOperationV2AuthoringEngine({
-      persistence: store,
-      runtime,
-      resultPersistence,
-      now,
-      nextHostId: (kind) => `retry-${kind}-${now()}`,
-    });
-    const result = await restarted.retryProviderUnavailable({
-      operationId: waiting.operationId,
-      workspaceScopeId: waiting.workspaceScopeId,
-      expectedGeneration: waiting.generation,
-      expectedVersion: waiting.version,
-      requestId: 'retry-verification',
-    });
-    expect(result.kind).toBe('commit_preparing');
-    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
-    expect(resultPersistence.calls).toHaveLength(1);
-  });
+  test.each([false, true])(
+    'explicit verification retry seals its outcome without another model invocation (restart=%s)',
+    async (restart) => {
+      const { engine, store, runtime, resultPersistence, now } = createHarness({
+        verification: ['unverified', 'passed'],
+      });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      const waiting = store.getOperation('operation-1')!;
+      const before = store.getPendingResultMessage('operation-1')!;
+      const restarted = restart
+        ? new ChatOperationV2AuthoringEngine({
+            persistence: store,
+            runtime,
+            resultPersistence,
+            now,
+            nextHostId: (kind) => `retry-${kind}-${now()}`,
+          })
+        : engine;
+      const result = await restarted.retryProviderUnavailable({
+        operationId: waiting.operationId,
+        workspaceScopeId: waiting.workspaceScopeId,
+        expectedGeneration: waiting.generation,
+        expectedVersion: waiting.version,
+        requestId: 'retry-verification',
+      });
+      expect(result.kind).toBe('commit_preparing');
+      expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+      expect(resultPersistence.calls).toHaveLength(1);
+      const pending = store.getPendingResultMessage('operation-1')!;
+      expect(pending.message.attachments).toHaveLength(1);
+      expect(pending.message.attachments[0]).toMatchObject({
+        label: 'Pipeline verification outcome',
+        kind: 'notice',
+        mediaType: 'application/json',
+      });
+      expect(JSON.parse(pending.message.attachments[0]!.content)).toMatchObject({
+        schemaVersion: 1,
+        sandbox: { status: 'passed' },
+      });
+      expect(pending.message.text).toBe(before.message.text);
+      expect(pending.message.evidence).toEqual(before.message.evidence);
+      expect(pending.message.messageId).toBe(before.message.messageId);
+      expect(pending.message.messageHash).not.toBe(before.message.messageHash);
+    },
+  );
 
   test('repeated verification failure retains work until explicit discard', async () => {
     const { engine, store, runtime } = createHarness({

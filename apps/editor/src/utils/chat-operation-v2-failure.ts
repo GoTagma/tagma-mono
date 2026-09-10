@@ -1,4 +1,17 @@
-import type { ChatOperationV2FailureProjection } from '../api/chat-operations';
+import type {
+  ChatOperationV2FailureProjection,
+  ChatOperationV2Projection,
+} from '../api/chat-operations';
+
+export function chatOperationV2RetainedWorkKind(
+  operation: Pick<ChatOperationV2Projection, 'phase' | 'waitReason'> | null,
+): 'publication' | 'verification' | 'handoff' | null {
+  if (operation?.waitReason !== 'user_retry') return null;
+  if (operation.phase.startsWith('commit_')) return 'publication';
+  if (operation.phase === 'trial-running') return 'verification';
+  if (operation.phase === 'awaiting_input') return 'handoff';
+  return null;
+}
 
 export interface ChatOperationV2FailurePresentation {
   readonly title: string;
@@ -25,6 +38,18 @@ const TEXT_MODEL_INCOMPATIBLE: ChatOperationV2FailurePresentation = Object.freez
 });
 
 const PRESENTATIONS: Readonly<Record<string, ChatOperationV2FailurePresentation>> = Object.freeze({
+  commit_execution_paused: {
+    title: 'Publication paused',
+    detail: 'Retry publication to finish saving the existing pipeline without generating it again.',
+    reason: 'Publication interrupted',
+    requiresModelChange: false,
+  },
+  authoring_handoff_retry_required: {
+    title: 'Pipeline work paused',
+    detail: 'Retry pipeline work to continue the existing request.',
+    reason: 'Pipeline request awaiting retry',
+    requiresModelChange: false,
+  },
   admission_invalid_request: {
     title: 'Tagma could not submit the OpenCode request',
     detail: RETRY_SAME_MODEL,

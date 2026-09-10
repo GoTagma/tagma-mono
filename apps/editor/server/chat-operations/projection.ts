@@ -1139,6 +1139,15 @@ function failureProjection(
     return null;
   }
   if (operation.waitReason === 'user_retry') {
+    if (operation.phase.startsWith('commit_')) {
+      return Object.freeze({
+        stage: 'operation',
+        code: 'commit_execution_paused',
+        invocationId: null,
+        outboxStatus: null,
+        recordedAt: operation.updatedAt,
+      });
+    }
     if (operation.phase === 'trial-running') {
       return Object.freeze({
         stage: 'verification',

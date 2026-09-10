@@ -65,12 +65,30 @@ import type {
   StoredChatOperationV2CommitWal,
 } from './store.js';
 import type { ChatOperationV2State } from './types.js';
-import type { StopChatOperationV2Input, StopChatOperationV2Result } from './orchestrator.js';
+import type {
+  RetryChatOperationV2Input,
+  ChatOperationV2ReadonlyDispatchResult,
+  StopChatOperationV2Input,
+  StopChatOperationV2Result,
+} from './orchestrator.js';
 import { pipelineLayoutPath, pipelineRequirementsPath, tagmaDirOf } from '../pipeline-paths.js';
 
 const RESERVATION_VERSION = 1 as const;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 const MAX_WAL_PERSIST_POLLS = 500;
+const EXECUTION_RETRY_DELAYS_MS = [100, 500, 2_000] as const;
+const TRANSIENT_FILESYSTEM_CODES = new Set(['EPERM', 'EACCES', 'EBUSY', 'EMFILE', 'ENFILE']);
+
+function executionErrorCode(error: unknown): string {
+  try {
+    if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
+      return TRANSIENT_FILESYSTEM_CODES.has(error.code) ? error.code : 'commit_execution_failed';
+    }
+  } catch {
+    /* Never render arbitrary exception objects or paths. */
+  }
+  return 'commit_execution_failed';
+}
 
 function sha256(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
@@ -572,6 +590,29 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
     };
   }
 
+  async retry(
+    input: RetryChatOperationV2Input & { readonly workspaceScopeId: string },
+  ): Promise<ChatOperationV2ReadonlyDispatchResult> {
+    const current = this.#store.getOperation(input.operationId);
+    if (!current)
+      throw new ChatCommitExecutorError('authority_mismatch', 'Commit operation is unavailable.');
+    if (
+      input.workspaceScopeId !== this.#workspaceScopeId ||
+      current.workspaceScopeId !== this.#workspaceScopeId ||
+      current.generation !== input.expectedGeneration ||
+      current.version !== input.expectedVersion ||
+      !current.phase.startsWith('commit_') ||
+      current.waitReason !== 'user_retry'
+    )
+      return { kind: 'stale', operation: current };
+    const wal = this.#walForOperation(current.operationId);
+    if (!wal) return { kind: 'stale', operation: current };
+    const resumed = this.#setExecutionWait(wal, current, null);
+    if (!resumed.applied) return { kind: 'stale', operation: resumed.operation };
+    this.#scheduleExecuteAfterPrepare(wal.commitId);
+    return { kind: 'in_progress', operation: resumed.operation };
+  }
+
   async resumePending(): Promise<readonly ChatCommitExecutorResult[]> {
     const results: ChatCommitExecutorResult[] = [];
     for (const wal of this.#store.listCommitWal(this.#workspaceScopeId)) {
@@ -582,8 +623,15 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
       ) {
         continue;
       }
-      const context = await this.#contextForWal(wal);
-      results.push(await this.#runContext(context));
+      const operation = this.#store.getOperation(wal.operationId);
+      if (this.#autoResume && operation?.waitReason === 'user_retry') continue;
+      try {
+        const context = await this.#contextForWal(wal);
+        results.push(await this.#runContext(context));
+      } catch (error) {
+        if (!this.#autoResume) throw error;
+        this.#handleExecutionFailure(wal.commitId, error);
+      }
     }
     return results;
   }
@@ -1424,14 +1472,66 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
   }
 
   #scheduleExecuteAfterPrepare(commitId: string): void {
-    setTimeout(() => {
-      void this.#waitForPersistedWal(commitId)
-        .then(async (wal) => {
-          const context = await this.#contextForWal(wal);
-          return this.#runContext(context);
-        })
-        .catch(() => undefined);
-    }, 0);
+    const work = Promise.resolve()
+      .then(async () => {
+        const wal = await this.#waitForPersistedWal(commitId);
+        const operation = this.#store.getOperation(wal.operationId);
+        if (operation?.waitReason === 'user_retry') return;
+        const context = await this.#contextForWal(wal);
+        return this.#runContext(context);
+      })
+      .catch((error) => this.#handleExecutionFailure(commitId, error));
+    this.#idle = Promise.allSettled([this.#idle, work]).then(() => undefined);
+  }
+
+  #setExecutionWait(
+    wal: StoredChatOperationV2CommitWal,
+    operation: StoredChatOperationV2,
+    waitReason: 'user_retry' | null,
+  ) {
+    const updatedAt = Math.max(this.#now(), operation.updatedAt, wal.updatedAt);
+    return this.#store.transitionOperation({
+      operationId: operation.operationId,
+      expectedGeneration: operation.generation,
+      expectedVersion: operation.version,
+      state: { ...stateOf(operation), waitReason },
+      commitUpdate: { kind: 'execution_wait', expectedCommitVersion: wal.commitVersion },
+      updatedAt,
+      event: toHostOperationEventInput({
+        schemaVersion: 1,
+        eventId: opaqueId('event', wal.commitId, 'execution-wait', String(operation.version)),
+        type: 'operation_state_changed',
+        timestamp: updatedAt,
+        payload: {
+          generation: operation.generation,
+          version: operation.version + 1,
+          phase: operation.phase,
+          waitReason,
+          repairAttempts: operation.repairAttempts,
+          clarificationRounds: operation.clarificationRounds,
+        },
+      }),
+    });
+  }
+
+  #handleExecutionFailure(commitId: string, error: unknown): void {
+    console.warn('[chat-operation-v2] Publication execution paused:', executionErrorCode(error));
+    try {
+      const wal = this.#store.getCommitWal(commitId);
+      const operation = wal ? this.#store.getOperation(wal.operationId) : null;
+      if (
+        !wal ||
+        !operation ||
+        !operation.phase.startsWith('commit_') ||
+        operation.waitReason !== null
+      )
+        return;
+      this.#setExecutionWait(wal, operation, 'user_retry');
+    } catch {
+      // A broken control store cannot authenticate a new state. Keep it failed
+      // closed; ordinary operation reads expose the typed control recovery error.
+      console.warn('[chat-operation-v2] Could not persist publication failure.');
+    }
   }
 
   async #waitForPersistedWal(commitId: string): Promise<StoredChatOperationV2CommitWal> {
@@ -1450,21 +1550,41 @@ export class ManagedChatOperationV2CommitCoordinator implements ChatOperationV2A
     const existing = this.#active.get(context.plan.prepare.commitId);
     if (existing) return existing;
     const pending = (async () => {
-      const wal = this.#store.getCommitWal(context.plan.prepare.commitId);
-      if (wal?.status === 'preparing') await this.#ensureFallbackBinding(context);
-      return context.executor.execute(context.plan);
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const wal = this.#store.getCommitWal(context.plan.prepare.commitId);
+          if (wal?.status === 'preparing') await this.#ensureFallbackBinding(context);
+          return await context.executor.execute(context.plan);
+        } catch (error) {
+          const delay = EXECUTION_RETRY_DELAYS_MS[attempt];
+          if (
+            !this.#autoResume ||
+            delay === undefined ||
+            !TRANSIENT_FILESYSTEM_CODES.has(executionErrorCode(error))
+          )
+            throw error;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
     })().finally(() => {
       if (this.#active.get(context.plan.prepare.commitId) === pending) {
         this.#active.delete(context.plan.prepare.commitId);
       }
     });
     this.#active.set(context.plan.prepare.commitId, pending);
-    this.#idle = Promise.allSettled([...this.#active.values()]).then(() => undefined);
     return pending;
   }
 
   #scheduleResumePending(): void {
-    setTimeout(() => void this.resumePending().catch(() => undefined), 0);
+    const work = Promise.resolve()
+      .then(() => this.resumePending())
+      .catch((error) => {
+        console.warn(
+          '[chat-operation-v2] Publication recovery unavailable:',
+          executionErrorCode(error),
+        );
+      });
+    this.#idle = Promise.allSettled([this.#idle, work]).then(() => undefined);
   }
 }
 

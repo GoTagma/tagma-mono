@@ -434,6 +434,12 @@ class FakeServiceAuthoringTargets implements ChatOperationV2AuthoringTargetResol
 class FakeServiceCommitCoordinator implements ChatOperationV2AuthoringCommitCoordinator {
   readonly stops: string[] = [];
   readonly recoveries: string[] = [];
+  readonly retries: string[] = [];
+
+  async retry(input: Parameters<ChatOperationV2AuthoringCommitCoordinator['retry']>[0]) {
+    this.retries.push(input.operationId);
+    return { kind: 'in_progress' as const, operation: input.operation };
+  }
 
   async prepareCommit(): Promise<never> {
     throw new Error('No-op service fixture must not prepare a commit.');
@@ -3663,6 +3669,15 @@ describe('ChatTurn Operation V2 authoring service integration', () => {
       }),
     ).toMatchObject({ kind: 'stale' });
     expect(commit.stops).toEqual(['operation-commit-service']);
+    expect(
+      await service.retryReadonly(workspace, {
+        operationId: 'operation-commit-service',
+        expectedGeneration: 1,
+        expectedVersion: 0,
+        requestId: 'commit-retry-request',
+      }),
+    ).toMatchObject({ kind: 'in_progress' });
+    expect(commit.retries).toEqual(['operation-commit-service']);
     expect(
       await service.recoveryChoiceReadonly(workspace, {
         protocolVersion: 2,

@@ -16,7 +16,10 @@ import { chatOperationV2Activity, useChatStore } from '../../store/chat-store';
 import type { ChatOperationTiming } from '../../../shared/chat-operation-timing';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { api, type WorkspaceYamlEntry } from '../../api/client';
-import { chatOperationV2FailurePresentation } from '../../utils/chat-operation-v2-failure';
+import {
+  chatOperationV2FailurePresentation,
+  chatOperationV2RetainedWorkKind,
+} from '../../utils/chat-operation-v2-failure';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
@@ -129,6 +132,56 @@ export function RetryableOperationNoticeView({
   );
 }
 
+export function RetainedOperationNoticeView({
+  kind,
+  pending,
+  onRetry,
+  onDiscard,
+}: {
+  kind: 'publication' | 'handoff';
+  pending: boolean;
+  onRetry: () => void;
+  onDiscard?: () => void;
+}) {
+  const publication = kind === 'publication';
+  return (
+    <section
+      role="status"
+      aria-label={publication ? 'Publication paused' : 'Pipeline work paused'}
+      className="border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2 text-caption"
+    >
+      <div className="text-label text-tagma-text">
+        {publication ? 'Publication paused' : 'Pipeline work paused'}
+      </div>
+      <p className="mt-1 text-tagma-muted">
+        {publication
+          ? 'Saving this pipeline did not finish. Retry publication to resume the saved work. If it fails again, check file access and available disk space.'
+          : 'Your request is retained. Retry to continue preparing this pipeline.'}
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onRetry}
+          className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
+        >
+          {pending ? 'Submitting…' : publication ? 'Retry publication' : 'Retry pipeline work'}
+        </button>
+        {onDiscard && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={onDiscard}
+            className="border border-tagma-border px-2 py-1 text-tagma-muted disabled:opacity-50"
+          >
+            {publication ? 'Cancel publication' : 'Discard request'}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function RetryableOperationNotice() {
   const retryable = useChatStore(
     (state) => state.activeChatOperationV2?.executionState === 'retryable_failure',
@@ -143,9 +196,41 @@ function RetryableOperationNotice() {
   );
   const retry = useChatStore((state) => state.retryActiveChatOperationV2);
   const discard = useChatStore((state) => state.discardActiveChatOperationV2);
+  const abort = useChatStore((state) => state.abort);
   const [pending, setPending] = useState(false);
   if (!retryable) return null;
-  if (operation?.phase === 'trial-running' && operation.waitReason === 'user_retry') {
+  const retainedWork = chatOperationV2RetainedWorkKind(operation);
+  if (retainedWork === 'publication' || retainedWork === 'handoff') {
+    const decide = async (action: () => Promise<void>) => {
+      setPending(true);
+      try {
+        await action();
+      } finally {
+        setPending(false);
+      }
+    };
+    return (
+      <RetainedOperationNoticeView
+        kind={retainedWork}
+        pending={pending}
+        onRetry={() => {
+          void decide(retry);
+        }}
+        onDiscard={
+          retainedWork === 'handoff'
+            ? () => {
+                void decide(discard);
+              }
+            : operation?.phase === 'commit_preparing'
+              ? () => {
+                  void decide(abort);
+                }
+              : undefined
+        }
+      />
+    );
+  }
+  if (retainedWork === 'verification') {
     return (
       <section
         aria-label="Pipeline draft retained"

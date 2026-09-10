@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createServer, type Socket } from 'node:net';
 
 import { createStreamingLoopbackFetch } from '../server/loopback-fetch';
 
@@ -47,6 +48,60 @@ afterEach(() => {
 });
 
 describe('createStreamingLoopbackFetch', () => {
+  test.each(['abort', 'cancel'] as const)(
+    'closes the upstream SSE socket on post-header %s',
+    async (mode) => {
+      const sockets = new Set<Socket>();
+      let closed!: () => void;
+      const connectionClosed = new Promise<void>((resolve) => {
+        closed = resolve;
+      });
+      const server = createServer((socket) => {
+        sockets.add(socket);
+        socket.on('close', () => {
+          sockets.delete(socket);
+          closed();
+        });
+        socket.once('data', () =>
+          socket.write(
+            'HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: first\n\n',
+          ),
+        );
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('Missing loopback port');
+        const url = `http://127.0.0.1:${address.port}`;
+        const abort = new AbortController();
+        const response = await createStreamingLoopbackFetch(url)(url, { signal: abort.signal });
+        const reader = response.body!.getReader();
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain('data: first');
+        if (mode === 'abort') {
+          abort.abort();
+          await expect(reader.read()).rejects.toThrow();
+        } else {
+          await reader.cancel();
+        }
+        await Promise.race([
+          connectionClosed,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('Upstream SSE connection remained open')),
+              500,
+            );
+          }),
+        ]);
+        expect(sockets.size).toBe(0);
+      } finally {
+        clearTimeout(timer);
+        for (const socket of sockets) socket.destroy();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
+
   test('reaches a loopback server even with HTTP/HTTPS/ALL proxies set (proxy present)', async () => {
     setProxyEnv();
     const server = Bun.serve({

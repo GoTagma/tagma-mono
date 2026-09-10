@@ -72,7 +72,11 @@ import {
   refreshProvidersAndAuth,
   type ProviderCatalogEntry,
 } from './chat-provider-catalog';
-import { chatOperationV2FailureRequiresModelChange } from '../utils/chat-operation-v2-failure';
+import {
+  chatOperationV2FailureRequiresModelChange,
+  chatOperationV2RetainedWorkKind,
+} from '../utils/chat-operation-v2-failure';
+import { registerWorkspaceStoreReset } from './workspace-store-reset';
 import { chatHistoryTopic, type ChatHistoryTopic } from '../utils/chat-history-topic';
 
 export { chatOperationV2FailureRequiresModelChange } from '../utils/chat-operation-v2-failure';
@@ -199,11 +203,10 @@ interface ChatStore {
    */
   pendingUserText: string | null;
   /**
-   * `Date.now()` when the most recent `send()` call finished (in the finally
-   * block). Lets external-change/external-conflict SSE handlers distinguish
-   * "chat just edited the current YAML" from "someone else edited the file on
-   * disk": if chat was active or finished within the grace window, adopt the
-   * new state silently instead of popping a reload dialog.
+   * `Date.now()` when the same workspace's active Host operation became idle.
+   * Gives disk-change handlers a bounded file-watcher grace window; unrelated
+   * projections never extend it. The configured conflict policy still decides
+   * whether Chat-driven disk changes may replace local edits.
    */
   lastSendingEndedAt: number;
   /**
@@ -421,6 +424,7 @@ function persistChatSelectionToEditorSettings(patch: ChatSelectionSettingsPatch)
 
 let bootstrappingWorkspaceKey: string | null = null;
 let appliedBootstrapWorkspaceKey: string | null = null;
+let chatBootstrapEpoch = 0;
 let composerAttachmentSeq = 0;
 
 // V2 is Host-owned; the renderer has no raw OpenCode turn, SSE, queue,
@@ -496,6 +500,52 @@ function chatOperationV2ConversationId(workspaceKey: string, rotate = false): st
 
 let chatOperationV2Controller: ChatOperationV2Controller | null = null;
 let chatOperationV2HistorySelectionEpoch = 0;
+
+function emptyChatWorkspaceState(): Partial<ChatStore> {
+  return {
+    bootstrapStatus: 'idle',
+    bootstrapError: null,
+    bootstrapErrorKind: null,
+    historyOpen: false,
+    connectOpen: false,
+    providers: [],
+    providerCatalog: [],
+    customProviders: [],
+    chatExecutionMode: 'unavailable',
+    chatOperationV2WorkspaceKey: null,
+    chatOperationV2Operations: [],
+    chatOperationV2ThreadDetails: {},
+    chatOperationV2HistoryTopics: {},
+    chatOperationV2Inventory: null,
+    activeChatOperationV2: null,
+    activeChatOperationV2Result: null,
+    activeChatOperationV2Failure: null,
+    activeChatOperationV2FailureModel: null,
+    activeChatOperationV2Request: null,
+    chatOperationV2Connected: false,
+    chatOperationV2LatestCursor: 0,
+    chatOperationV2RendererInstanceId: null,
+    chatOperationV2ConversationId: null,
+    chatOperationV2ClarificationRequests: {},
+    chatOperationV2QuestionRequests: {},
+    chatOperationV2InteractiveRecoveryRequests: {},
+    resettingChatControlData: false,
+    currentSessionId: null,
+    selectingSessionId: null,
+    messages: [],
+    sending: false,
+    pendingUserText: null,
+    pendingPermissions: [],
+    pendingActivity: [],
+    lastSendingEndedAt: 0,
+    sendError: null,
+    completionWarning: null,
+    composerAttachments: [],
+    pendingChatOpenRequest: false,
+    model: null,
+    reasoningEffort: DEFAULT_CHAT_REASONING_EFFORT,
+  };
+}
 
 export function chatOperationV2Activity(
   operation: ChatOperationV2Projection | null,
@@ -632,7 +682,12 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
       chatExecutionMode: snapshot.executionMode,
       chatOperationV2WorkspaceKey: snapshot.workspaceKey,
       ...(workspaceChanged
-        ? { messages: [], chatOperationV2ThreadDetails: {}, chatOperationV2HistoryTopics: {} }
+        ? {
+            messages: [],
+            chatOperationV2ThreadDetails: {},
+            chatOperationV2HistoryTopics: {},
+            lastSendingEndedAt: 0,
+          }
         : {}),
       chatOperationV2Operations: snapshot.operations,
       chatOperationV2Inventory: snapshot.inventory,
@@ -659,9 +714,7 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
           sending: false,
           pendingUserText: null,
           pendingActivity: [],
-          sendError:
-            snapshot.error?.message ??
-            'Chat execution is unavailable because the sidecar handshake is invalid.',
+          sendError: snapshot.error?.message ?? null,
         };
       }
       return {
@@ -679,6 +732,15 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
       operation?.executionState === 'running' || operation?.executionState === 'waiting_for_user';
     const activeOperationChanged =
       previous.activeChatOperationV2?.operationId !== operation?.operationId;
+    // SSE wake-ups and idle/history projections are not evidence of a finished send.
+    // Only a live-to-idle transition of this workspace's same operation starts the
+    // file-watcher grace window; unrelated events must never extend it.
+    const sendingEnded =
+      !workspaceChanged &&
+      !activeOperationChanged &&
+      !busy &&
+      (previous.activeChatOperationV2?.executionState === 'running' ||
+        previous.activeChatOperationV2?.executionState === 'waiting_for_user');
     const sameConversation =
       !!operation &&
       previous.activeChatOperationV2?.conversationId === operation.conversationId &&
@@ -700,7 +762,8 @@ function projectChatOperationV2Snapshot(snapshot: ChatOperationV2ControllerSnaps
             chatOperationV2InteractiveRecoveryRequests: {},
           }
         : {}),
-      ...(busy ? {} : { pendingUserText: null, lastSendingEndedAt: Date.now() }),
+      ...(busy ? {} : { pendingUserText: null }),
+      ...(sendingEnded ? { lastSendingEndedAt: Date.now() } : {}),
       ...(snapshot.error
         ? { sendError: `Chat Operation V2 projection failed: ${snapshot.error.message}` }
         : {}),
@@ -921,9 +984,7 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
     const previousFailure = previous.chatOperationV2ThreadDetails[operationId]?.failure;
     const newlyRetryable =
       detail.operation.executionState === 'retryable_failure' &&
-      !(
-        detail.operation.phase === 'trial-running' && detail.operation.waitReason === 'user_retry'
-      ) &&
+      chatOperationV2RetainedWorkKind(detail.operation) === null &&
       detail.failure !== null &&
       (!previousFailure ||
         previousFailure.invocationId !== detail.failure.invocationId ||
@@ -1077,13 +1138,17 @@ async function sendChatOperationV2(
 ): Promise<void> {
   const state = get();
   const model = state.model;
-  if (
-    state.activeChatOperationV2?.phase === 'trial-running' &&
-    state.activeChatOperationV2.waitReason === 'user_retry'
-  ) {
-    throw new Error(
-      'Your pipeline draft is retained. Continue verification or explicitly discard it before sending a new request.',
+  const retainedWork = chatOperationV2RetainedWorkKind(state.activeChatOperationV2);
+  if (retainedWork) {
+    const error = new Error(
+      retainedWork === 'publication'
+        ? 'Publication is paused. Retry publication before sending a new request.'
+        : retainedWork === 'verification'
+          ? 'Your pipeline draft is retained. Continue verification or explicitly discard it before sending a new request.'
+          : 'Pipeline work is paused. Retry pipeline work or explicitly discard it before sending a new request.',
     );
+    set({ sendError: error.message });
+    throw error;
   }
   if (!model) {
     const error = new Error('Select a model before sending a Chat Operation V2 request.');
@@ -1625,6 +1690,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const prevStatus = get().bootstrapStatus;
     if (prevStatus === 'booting' && bootstrappingWorkspaceKey === workspaceKeyAtStart) return;
     bootstrappingWorkspaceKey = workspaceKeyAtStart;
+    const bootstrapEpoch = ++chatBootstrapEpoch;
+    const isCurrentBootstrap = () =>
+      bootstrapEpoch === chatBootstrapEpoch && getOpencodeWorkspaceKey() === workspaceKeyAtStart;
+    const finishBootstrap = () => {
+      if (
+        bootstrapEpoch === chatBootstrapEpoch &&
+        bootstrappingWorkspaceKey === workspaceKeyAtStart
+      )
+        bootstrappingWorkspaceKey = null;
+    };
 
     const workspaceChanged = appliedBootstrapWorkspaceKey !== workspaceKeyAtStart;
     if (workspaceChanged) {
@@ -1633,45 +1708,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const isInitial = prevStatus !== 'ready' || workspaceChanged;
     if (isInitial) {
       set({
+        ...(workspaceChanged ? emptyChatWorkspaceState() : {}),
         bootstrapStatus: 'booting',
         bootstrapError: null,
         bootstrapErrorKind: null,
-        ...(workspaceChanged ? { completionWarning: null } : {}),
-        ...(workspaceChanged
-          ? {
-              providers: [],
-              chatExecutionMode: 'unavailable',
-              chatOperationV2Operations: [],
-              chatOperationV2ThreadDetails: {},
-              chatOperationV2HistoryTopics: {},
-              chatOperationV2Inventory: null,
-              activeChatOperationV2: null,
-              activeChatOperationV2Result: null,
-              activeChatOperationV2Failure: null,
-              activeChatOperationV2FailureModel: null,
-              activeChatOperationV2Request: null,
-              chatOperationV2Connected: false,
-              chatOperationV2LatestCursor: 0,
-              chatOperationV2RendererInstanceId: null,
-              chatOperationV2ConversationId: null,
-              chatOperationV2ClarificationRequests: {},
-              chatOperationV2QuestionRequests: {},
-              chatOperationV2InteractiveRecoveryRequests: {},
-              resettingChatControlData: false,
-              currentSessionId: null,
-              selectingSessionId: null,
-              messages: [],
-              sending: false,
-              pendingUserText: null,
-              pendingPermissions: [],
-              pendingActivity: [],
-              composerAttachments: [],
-              providerCatalog: [],
-              customProviders: [],
-              model: null,
-              reasoningEffort: DEFAULT_CHAT_REASONING_EFFORT,
-            }
-          : {}),
       });
     }
 
@@ -1688,8 +1728,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     } catch (err) {
       console.warn('[chat] editor settings load failed:', err);
     }
-    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
-      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+    if (!isCurrentBootstrap()) {
+      finishBootstrap();
       return;
     }
     const earlySettingsModel = earlySettings?.opencodeChatModel ?? null;
@@ -1713,13 +1753,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     let chatExecutionMode: ChatOperationExecutionMode;
     try {
       const clientBootstrap = await getClientBootstrap(workspaceKeyAtStart);
+      if (!isCurrentBootstrap()) {
+        finishBootstrap();
+        return;
+      }
       chatExecutionMode = await activateChatOperationExecutionForWorkspace(workspaceKeyAtStart, {
         chatOperationProtocolVersion: clientBootstrap.chatOperationProtocolVersion,
         chatOperationMode: clientBootstrap.chatOperationMode,
       });
     } catch (err) {
       console.error('[chat] opencode bootstrap failed:', err);
-      if (isInitial && getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
+      if (isInitial && isCurrentBootstrap()) {
         appliedBootstrapWorkspaceKey = workspaceKeyAtStart;
         set({
           bootstrapStatus: 'error',
@@ -1727,15 +1771,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           bootstrapErrorKind: err instanceof ChatOperationV2ApiError ? err.kind : null,
         });
       }
-      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+      finishBootstrap();
       return;
     }
-    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
-      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
-      return;
-    }
-    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
-      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+    if (!isCurrentBootstrap()) {
+      finishBootstrap();
       return;
     }
     // Fire catalog queries in parallel — they're independent and each survives
@@ -1762,8 +1802,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         };
       }),
     ]);
-    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
-      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+    if (!isCurrentBootstrap()) {
+      finishBootstrap();
       return;
     }
     const providersRes = providersLoad.value;
@@ -1822,7 +1862,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     appliedBootstrapWorkspaceKey = workspaceKey;
-    if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+    finishBootstrap();
     set({
       providers,
       providerCatalog,
@@ -2069,6 +2109,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     );
   },
 }));
+
+registerWorkspaceStoreReset('chat', () => {
+  chatBootstrapEpoch++;
+  chatOperationV2HistorySelectionEpoch++;
+  bootstrappingWorkspaceKey = null;
+  appliedBootstrapWorkspaceKey = null;
+  chatOperationV2Controller?.dispose();
+  chatOperationV2Controller = null;
+  useChatStore.setState(emptyChatWorkspaceState());
+});
 
 registerRendererDiagnosticsContributor('chatOperationV2', ({ workspaceKey }) => {
   const state = useChatStore.getState();

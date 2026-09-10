@@ -80,8 +80,6 @@ interface RenderState {
   flushTimer: ReturnType<typeof setTimeout> | null;
   /** True after finalize() — further part events become no-ops. */
   sealed: boolean;
-  /** True while a flush is mid-air (prevents reentrant edit storms). */
-  flushing: boolean;
 }
 
 function renderBody(state: RenderState, isFinal: boolean): string {
@@ -151,8 +149,9 @@ export function createStreamTurn(opts: CreateOpts): StreamTurnHandle {
     lastEditAt: 0,
     flushTimer: null,
     sealed: false,
-    flushing: false,
   };
+  let activeFlush: Promise<void> | null = null;
+  let terminalFlush: Promise<void> | null = null;
 
   const scheduleFlush = () => {
     if (state.sealed) return;
@@ -165,49 +164,54 @@ export function createStreamTurn(opts: CreateOpts): StreamTurnHandle {
     }, delay);
   };
 
-  const flush = async (isFinal: boolean): Promise<void> => {
-    if (state.flushing) {
-      // A flush is already underway — schedule another one for after if we're
-      // not final, so the latest pending text catches up without overlapping
-      // edit calls.
-      if (!isFinal) scheduleFlush();
-      return;
-    }
-    state.flushing = true;
-    try {
-      const fullBody = renderBody(state, isFinal);
-      const chunks = chunkBody(fullBody, chunkLimit);
-      const rendered = chunks.map((chunk, index) =>
-        index === chunks.length - 1 ? chunk : chunk + TRAILER_WHEN_SPLIT,
-      );
-      for (let i = 0; i < rendered.length; i++) {
-        const text = rendered[i]!;
-        const existingMessageId = state.messageIds[i];
-        try {
-          if (existingMessageId !== undefined) {
-            if (state.writtenTextByMessageId.get(existingMessageId) === text) continue;
-            await opts.sink.editMessage(opts.chatId, existingMessageId, text);
-            state.writtenTextByMessageId.set(existingMessageId, text);
-          } else {
-            const sent = await opts.sink.sendMessage(opts.chatId, text);
-            state.messageIds[i] = sent.messageId;
-            state.writtenTextByMessageId.set(sent.messageId, text);
-          }
-        } catch (err) {
-          // 400 "message is not modified" can sneak through if Telegram
-          // server-side dedupes harder than our local guard. Swallow it —
-          // any other error gets logged so the user can diagnose.
-          const msg = err instanceof Error ? err.message : String(err);
-          if (!/not modified/i.test(msg)) {
-            console.warn('[bot-bridge] chunk render failed:', msg);
-          }
-          break;
+  const writeChunks = async (isFinal: boolean): Promise<void> => {
+    const fullBody = renderBody(state, isFinal);
+    const chunks = chunkBody(fullBody, chunkLimit);
+    const rendered = chunks.map((chunk, index) =>
+      index === chunks.length - 1 ? chunk : chunk + TRAILER_WHEN_SPLIT,
+    );
+    for (let i = 0; i < rendered.length; i++) {
+      const text = rendered[i]!;
+      const existingMessageId = state.messageIds[i];
+      try {
+        if (existingMessageId !== undefined) {
+          if (state.writtenTextByMessageId.get(existingMessageId) === text) continue;
+          await opts.sink.editMessage(opts.chatId, existingMessageId, text);
+          state.writtenTextByMessageId.set(existingMessageId, text);
+        } else {
+          const sent = await opts.sink.sendMessage(opts.chatId, text);
+          state.messageIds[i] = sent.messageId;
+          state.writtenTextByMessageId.set(sent.messageId, text);
         }
+      } catch (err) {
+        // 400 "message is not modified" can sneak through if Telegram
+        // server-side dedupes harder than our local guard. Swallow it —
+        // any other error gets logged so the user can diagnose.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/not modified/i.test(msg)) {
+          console.warn('[bot-bridge] chunk render failed:', msg);
+        }
+        break;
       }
-      state.lastEditAt = Date.now();
-    } finally {
-      state.flushing = false;
     }
+    state.lastEditAt = Date.now();
+  };
+
+  const flush = (isFinal: boolean): Promise<void> => {
+    if (activeFlush) {
+      if (!isFinal) {
+        scheduleFlush();
+        return activeFlush;
+      }
+      // Final text must be rendered after the edit already in flight. Sealing
+      // prevents new scheduled flushes, but must not drop this last update.
+      return activeFlush.then(() => flush(true));
+    }
+    const pending = writeChunks(isFinal).finally(() => {
+      if (activeFlush === pending) activeFlush = null;
+    });
+    activeFlush = pending;
+    return pending;
   };
 
   const upsertPart = (id: string, kind: SectionPart['kind'], text: string) => {
@@ -241,7 +245,10 @@ export function createStreamTurn(opts: CreateOpts): StreamTurnHandle {
       scheduleFlush();
     },
     async finalize(footer) {
-      if (state.sealed) return;
+      if (state.sealed) {
+        await terminalFlush;
+        return;
+      }
       if (state.flushTimer) {
         clearTimeout(state.flushTimer);
         state.flushTimer = null;
@@ -253,17 +260,22 @@ export function createStreamTurn(opts: CreateOpts): StreamTurnHandle {
         state.toolLog.push(footer);
       }
       state.sealed = true;
-      await flush(true);
+      terminalFlush = flush(true);
+      await terminalFlush;
     },
     async abort(reason) {
-      if (state.sealed) return;
+      if (state.sealed) {
+        await terminalFlush;
+        return;
+      }
       if (state.flushTimer) {
         clearTimeout(state.flushTimer);
         state.flushTimer = null;
       }
       state.toolLog.push(`⚠️ aborted: ${reason}`);
       state.sealed = true;
-      await flush(true);
+      terminalFlush = flush(true);
+      await terminalFlush;
     },
   };
 }

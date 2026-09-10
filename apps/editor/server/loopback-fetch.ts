@@ -180,6 +180,9 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
       if (bodyClosed) return;
       bodyClosed = true;
       detachAbort();
+      // Erroring a ReadableStream does not run its cancel hook. Dispose the
+      // transport here as well, especially for an aborted long-lived SSE body.
+      socketRef?.end();
       try {
         controller?.error(err);
       } catch {
@@ -196,7 +199,6 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
           pieces = decoder.push(data);
         } catch (err) {
           failBody(err);
-          socketRef?.end();
           return;
         }
         for (const p of pieces) controller?.enqueue(new Uint8Array(p));
