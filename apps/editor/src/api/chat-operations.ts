@@ -1,5 +1,10 @@
 import { getClientAuthToken, getClientWorkspace } from './client';
 import {
+  isChatOperationDraft,
+  type ChatOperationDraft,
+  type ChatOperationDraftEdit,
+} from '../../shared/chat-operation-draft';
+import {
   isChatPermissionTargetSummary,
   type ChatPermissionTargetSummary,
 } from '../../shared/chat-permission-targets';
@@ -2885,6 +2890,37 @@ export async function retryChatOperationV2(
     options,
     CHAT_OPERATION_V2_DISPATCH_RESULT_KINDS,
   )) as ChatOperationV2DispatchMutationResult;
+}
+
+export async function accessChatOperationDraft(
+  input: ChatOperationV2CasMutationInput,
+  payload: {
+    rendererInstanceId: string;
+    conversationId: string;
+    conversationKey: string;
+    fileId?: string;
+    edit?: ChatOperationDraftEdit;
+  },
+  options: ChatOperationV2MutationOptions = {},
+): Promise<{ draft: ChatOperationDraft; detail: ChatOperationV2OperationDetail }> {
+  const response = await fetch(
+    `/api/chat/operations/${mutationOperationPath(input.operationId)}/draft`,
+    {
+      method: 'POST',
+      headers: mutationHeaders(captureWorkspaceKey(options.workspaceKey)),
+      body: JSON.stringify({ ...canonicalCasMutation(input), payload }),
+      signal: options.signal,
+    },
+  );
+  const value = await response.json().catch(() => invalid('response body is not JSON'));
+  if (!response.ok) throwApiError(response.status, value);
+  assertProtocolVersion(value);
+  if (!isPlainRecord(value.result) || !isChatOperationDraft(value.result.draft))
+    return invalid('draft response is invalid');
+  const detail = parseOperationDetail(value.result.detail);
+  if (detail.operation.operationId !== input.operationId)
+    return invalid('draft operation does not match');
+  return { draft: value.result.draft, detail };
 }
 
 export async function discardChatOperationV2(

@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import { types as utilTypes } from 'node:util';
+import {
+  isChatOperationDraftEdit,
+  type ChatOperationDraftEdit,
+} from '../../shared/chat-operation-draft.js';
 
 import { CHAT_OPERATION_V2_PROTOCOL_VERSION } from './types.js';
 
@@ -1006,6 +1010,46 @@ export function parseChatOperationV2CancelRequest(value: unknown): ChatOperation
 
 export function parseChatOperationV2RetryRequest(value: unknown): ChatOperationV2RetryRequest {
   return parseCasRequest(value, 'Retry request');
+}
+
+export type ChatOperationV2DraftRequest = ChatOperationV2CasRequest & {
+  readonly payload: {
+    readonly rendererInstanceId: string;
+    readonly conversationId: string;
+    readonly conversationKey: string;
+    readonly fileId?: string;
+    readonly edit?: ChatOperationDraftEdit;
+  };
+};
+
+export function parseChatOperationV2DraftRequest(value: unknown): ChatOperationV2DraftRequest {
+  const { base, payload } = parseCasRequestWithPayload(value, 'Draft request');
+  const record = exactRecord(
+    payload,
+    ['rendererInstanceId', 'conversationId', 'conversationKey'],
+    ['fileId', 'edit'],
+    'Draft request payload',
+  );
+  if (
+    typeof record.conversationKey !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(record.conversationKey) ||
+    (record.fileId !== undefined &&
+      (typeof record.fileId !== 'string' || !/^[a-f0-9]{64}$/.test(record.fileId))) ||
+    (record.edit !== undefined && !isChatOperationDraftEdit(record.edit))
+  )
+    return invalid('invalid_content', 'Draft request content is invalid.');
+  const parsed = {
+    ...base,
+    payload: {
+      rendererInstanceId: hostId(record.rendererInstanceId, 'Draft renderer id'),
+      conversationId: hostId(record.conversationId, 'Draft conversation id'),
+      conversationKey: record.conversationKey,
+      ...(record.fileId === undefined ? {} : { fileId: record.fileId as string }),
+      ...(record.edit === undefined ? {} : { edit: record.edit as ChatOperationDraftEdit }),
+    },
+  };
+  assertParsedRequestByteSize(parsed);
+  return parsed;
 }
 
 export function parseChatOperationV2DiscardRequest(value: unknown): ChatOperationV2DiscardRequest {

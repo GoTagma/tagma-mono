@@ -1357,6 +1357,23 @@
 
 ## Chat Usage Stats And Terminal Discard Reasons
 
+- Retain completed authoring drafts after automatic repair/Trial-plan no-change, repair exhaustion,
+  and verification failure. Record the pause cause in `trial_status_changed`; historical terminal
+  reason codes remain readable. A prior artifact must not disappear because the latest attempt
+  changed nothing. Explicit Stop/Discard and post-commit roll-forward retain their separate contracts.
+- Open draft edits only the authenticated stage's existing artifact inventory, including invalid
+  YAML and companions. Authenticate the logical conversation credential; fence saves with operation
+  generation/version and file hash, serialize against verification, reject symlinks/foreign paths,
+  and preserve file modes. Save never publishes, resets repair limits, or overwrites the origin.
+- Repair prompts consume the latest Host failure codes and redacted failed expectations directly
+  from canonical request bytes. Do not replace evidence with its hash. If required evidence is absent,
+  retain the draft. Expected negative-case task failures are excluded from repair authorization as
+  well as user-facing feedback; mixed cases retain genuine unexpected failures. Trial cache protocol
+  v28 invalidates the earlier repair-scope interpretation.
+- Preserve failed task-status expectations from earlier runs of a repeated case. A later expected
+  result must not erase an earlier unexpected acceptance/rejection, and unrelated diagnostic-only
+  failures must not downgrade a task-status assertion that already has direct artifact evidence.
+
 - A completed authoring draft whose Trial returns `unverified` must remain in its authenticated
   stage with a durable pending authoring result, at `trial-running` / `user_retry`. It is neither
   published nor automatically discarded. Explicit Retry rehydrates that stage, binding, relocation,

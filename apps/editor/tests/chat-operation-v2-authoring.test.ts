@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { buildManagedChatOperationV2ExecutionPrompt } from '../server/chat-operations/authoring-runtime.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -163,6 +164,11 @@ class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPe
 }
 
 class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
+  async accessDraft(
+    _input: Parameters<NonNullable<ChatOperationV2AuthoringRuntime['accessDraft']>>[0],
+  ) {
+    return { files: [], selected: null, totalFileCount: 0, omittedFileCount: 0 };
+  }
   readonly invocationRequests: ChatOperationV2AuthoringInvocationRequest[] = [];
   readonly forwarded: ChatOperationV2InteractiveForwardingCommand[] = [];
   readonly discardedStageIds: string[] = [];
@@ -440,6 +446,13 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         warningCount: 0,
         diagnosticCodes: ['compile_failed'],
         evidenceHash: hash(`evidence-${this.verificationIndex}`),
+        feedback: {
+          schemaVersion: 1,
+          stage: 'compile',
+          details: `Task output is missing its required value (attempt ${this.verificationIndex}).`,
+          failedTaskIds: ['main.task'],
+          omittedFailedTaskCount: 0,
+        },
       };
     }
     if (disposition === 'trial_plan') {
@@ -932,6 +945,29 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     ).resolves.toMatchObject({ kind: 'commit_handoff_required', operation: result.operation });
   });
 
+  test.each([
+    ['repair_no_change', { verification: ['repair'], repairDisposition: 'no_change' }],
+    ['trial_plan_no_change', { verification: ['trial_plan'], repairDisposition: 'no_change' }],
+    ['repair_attempts_exhausted', { verification: ['repair', 'repair', 'repair', 'repair'] }],
+    ['trial_unavailable', { verification: ['discard'] }],
+  ] as const)('preserves generated work after automatic failure: %s', async (reason, options) => {
+    const { engine, store, runtime } = createHarness(options);
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
+    });
+    expect(runtime.discardedStageIds).toEqual([]);
+    expect(store.getPendingResultMessage('operation-1')).not.toBeNull();
+    expect(
+      store.getLatestOperationEvent('operation-1', 'trial_status_changed')?.payload,
+    ).toMatchObject({
+      errorCode: reason,
+    });
+    expect(store.getResultProjection('operation-1')).toBeNull();
+  });
+
   test('retains the authored draft when verification cannot complete, without publishing', async () => {
     const { engine, store, runtime, resultPersistence } = createHarness({
       verification: ['unverified'],
@@ -1097,6 +1133,147 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     ]);
   });
 
+  test('each repair receives the latest failure and stops after the repaired verification passes', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['repair', 'repair', 'passed'],
+    });
+    const run = runtime.runInvocation.bind(runtime);
+    const received: string[] = [];
+    runtime.runInvocation = async (request) => {
+      if (request.purpose === 'repair') {
+        const prompt = buildManagedChatOperationV2ExecutionPrompt({
+          invocationId: request.invocationId,
+          sessionId: request.sessionId,
+          executionMessageId: 'execution-repair',
+          purpose: request.purpose,
+          intent: 'create',
+          stageDirectory: '/test-stage',
+          targetRelativePath: 'pipeline/pipeline.yaml',
+          trialPlanRequest: request.trialPlanRequest,
+          admission: request.admission,
+          clarificationThread: request.clarificationThread,
+          canonicalRequestBytes: request.canonicalRequestBytes,
+          signal: request.signal,
+          requestInteractive: request.requestInteractive,
+        });
+        received.push(prompt.text);
+        expect(prompt.text).toContain(`attempt ${received.length}`);
+      }
+      return run(request);
+    };
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(result.kind).toBe('commit_preparing');
+    expect(received).toHaveLength(2);
+    expect(received[1]).not.toContain('attempt 1');
+    expect(runtime.verifyCalls).toHaveLength(3);
+  });
+
+  test('missing repair feedback preserves the draft instead of invoking an uninformed repair', async () => {
+    const { engine, store, runtime } = createHarness({ verification: ['repair'] });
+    const verify = runtime.verifyStage.bind(runtime);
+    runtime.verifyStage = async (input) => {
+      const result = await verify(input);
+      return { ...result, feedback: undefined };
+    };
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(runtime.invocationRequests.map((request) => request.purpose)).toEqual(['authoring']);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
+    });
+    expect(
+      store.getLatestOperationEvent('operation-1', 'trial_status_changed')?.payload.errorCode,
+    ).toBe('repair_evidence_unavailable');
+  });
+
+  test.each([false, true])(
+    'retained draft editing is fenced by operation CAS and survives Host reconstruction (%s)',
+    async (restart) => {
+      const { engine, store, runtime, resultPersistence, now, nextHostId } = createHarness({
+        verification: ['repair'],
+        repairDisposition: 'no_change',
+      });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      let writes = 0;
+      runtime.accessDraft = async (input) => {
+        input.signal.throwIfAborted();
+        if (input.edit) writes++;
+        return { files: [], selected: null, totalFileCount: 0, omittedFileCount: 0 };
+      };
+      const host = restart
+        ? new ChatOperationV2AuthoringEngine({
+            persistence: store,
+            runtime,
+            resultPersistence,
+            now,
+            nextHostId,
+          })
+        : engine;
+      const current = store.getOperation('operation-1')!;
+      const input = {
+        operationId: current.operationId,
+        workspaceScopeId: current.workspaceScopeId,
+        expectedGeneration: current.generation,
+        expectedVersion: current.version,
+        requestId: 'manual-edit',
+        edit: { fileId: 'a'.repeat(64), expectedHash: 'b'.repeat(64), text: 'invalid: [' },
+      };
+      await host.accessDraft(input);
+      expect(writes).toBe(1);
+      await expect(host.accessDraft(input)).rejects.toThrow();
+      const saved = store.getOperation(current.operationId)!;
+      expect(saved).toMatchObject({
+        phase: 'trial-running',
+        waitReason: 'user_retry',
+        terminalOutcome: null,
+      });
+      expect(saved.version).toBeGreaterThan(current.version);
+      expect(runtime.discardedStageIds).toEqual([]);
+    },
+  );
+
+  test('saving a draft remains durably paused and blocks concurrent verification', async () => {
+    const { engine, store, runtime } = createHarness({ verification: ['unverified', 'passed'] });
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    runtime.accessDraft = async (input) => {
+      await gate;
+      input.signal.throwIfAborted();
+      return { files: [], selected: null, totalFileCount: 0, omittedFileCount: 0 };
+    };
+    const before = store.getOperation('operation-1')!;
+    const saving = engine.accessDraft({
+      operationId: before.operationId,
+      workspaceScopeId: before.workspaceScopeId,
+      expectedGeneration: before.generation,
+      expectedVersion: before.version,
+      requestId: 'save-draft-paused',
+      edit: { fileId: 'a'.repeat(64), expectedHash: 'b'.repeat(64), text: 'draft' },
+    });
+    const current = store.getOperation(before.operationId)!;
+    expect(current).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      activeInvocationId: null,
+    });
+    const retry = await engine.retryProviderUnavailable({
+      operationId: current.operationId,
+      workspaceScopeId: current.workspaceScopeId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'retry-during-save',
+    });
+    expect(retry.kind).toBe('in_progress');
+    expect(runtime.verifyCalls).toHaveLength(1);
+    release();
+    await saving;
+    expect(store.getOperation(before.operationId)?.waitReason).toBe('user_retry');
+  });
+
   test('keeps edit origin authority on the isolated writable branch', async () => {
     const { engine, store } = createHarness();
     const operation = store.getOperation('operation-1')!;
@@ -1117,26 +1294,27 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     });
   });
 
-  test('ends as discarded when verification still needs repair at the frozen maximum', async () => {
+  test('retains generated work when verification still needs repair at the frozen maximum', async () => {
     const { engine, store, runtime, resultPersistence } = createHarness({
       verification: ['repair', 'repair', 'repair', 'repair'],
     });
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
+    expect(result.kind).toBe('provider_unavailable');
     expect(store.getOperation('operation-1')).toMatchObject({
-      phase: 'terminal',
-      terminalOutcome: 'discarded',
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
       repairAttempts: 3,
     });
     expect(runtime.invocationRequests.filter(({ purpose }) => purpose === 'repair')).toHaveLength(
       3,
     );
-    expect(runtime.discardedStageIds).toHaveLength(1);
+    expect(runtime.discardedStageIds).toHaveLength(0);
     expect(store.getBindingLease(store.getOperation('operation-1')!.bindingId!)).toMatchObject({
-      record: { status: 'released', releaseReason: 'discarded' },
+      record: { status: 'reserved' },
     });
-    expect(resultPersistence.calls.every(({ rendererProjectable }) => !rendererProjectable)).toBe(
+    expect(resultPersistence.calls.some(({ rendererProjectable }) => rendererProjectable)).toBe(
       true,
     );
     expect(store.getResultProjection('operation-1')).toBeNull();
@@ -1150,15 +1328,16 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
+    expect(result.kind).toBe('provider_unavailable');
     expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
       'authoring',
       'repair',
     ]);
     expect(runtime.verifyCalls).toHaveLength(1);
     expect(store.getOperation('operation-1')).toMatchObject({
-      phase: 'terminal',
-      terminalOutcome: 'discarded',
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
       repairAttempts: 1,
     });
   });
@@ -1253,19 +1432,19 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
+    expect(result.kind).toBe('provider_unavailable');
     expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
       'authoring',
       'trial_plan',
     ]);
     expect(runtime.verifyCalls).toHaveLength(1);
     expect(store.getOperation('operation-1')).toMatchObject({
-      terminalOutcome: 'discarded',
+      terminalOutcome: null,
       repairAttempts: 0,
     });
   });
 
-  test('records trial_plan_no_change as the discard reason when the planner leaves the snapshot unchanged', async () => {
+  test('records trial_plan_no_change as the retention reason when the planner leaves the snapshot unchanged', async () => {
     const { engine, store } = createHarness({
       verification: ['trial_plan', 'trial_plan'],
       repairDisposition: 'no_change',
@@ -1273,16 +1452,15 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
-    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(result.kind).toBe('provider_unavailable');
+    const event = store.getLatestOperationEvent('operation-1', 'trial_status_changed');
     expect(event?.payload).toMatchObject({
-      status: 'discarded',
+      status: 'failed',
       errorCode: 'trial_plan_no_change',
-      diagnosticCodes: [],
     });
   });
 
-  test('records repair_no_change as the discard reason when a repair leaves the snapshot unchanged', async () => {
+  test('records repair_no_change as the retention reason when a repair leaves the snapshot unchanged', async () => {
     const { engine, store } = createHarness({
       verification: ['repair', 'repair', 'repair'],
       repairDisposition: 'no_change',
@@ -1290,12 +1468,11 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
-    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(result.kind).toBe('provider_unavailable');
+    const event = store.getLatestOperationEvent('operation-1', 'trial_status_changed');
     expect(event?.payload).toMatchObject({
-      status: 'discarded',
+      status: 'failed',
       errorCode: 'repair_no_change',
-      diagnosticCodes: [],
     });
   });
 
@@ -1306,26 +1483,24 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
-    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(result.kind).toBe('provider_unavailable');
+    const event = store.getLatestOperationEvent('operation-1', 'trial_status_changed');
     expect(event?.payload).toMatchObject({
-      status: 'discarded',
+      status: 'failed',
       errorCode: 'repair_attempts_exhausted',
-      diagnosticCodes: ['compile_failed'],
     });
   });
 
-  test('records the verification discard code as the discard reason', async () => {
+  test('records the verification discard code as the retention reason', async () => {
     const { engine, store } = createHarness({ verification: ['discard'] });
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
-    const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
+    expect(result.kind).toBe('provider_unavailable');
+    const event = store.getLatestOperationEvent('operation-1', 'trial_status_changed');
     expect(event?.payload).toMatchObject({
-      status: 'discarded',
+      status: 'failed',
       errorCode: 'trial_unavailable',
-      diagnosticCodes: ['trial_unavailable'],
     });
   });
 

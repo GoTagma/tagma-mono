@@ -1844,7 +1844,9 @@ export function reconcileCaseExpectationRepairScopes(
   const hasPipelineRuntimeFailure = runtimeFailureScopes.includes('pipeline-artifact');
   if (!hasDiagnosticRuntimeFailure || hasPipelineRuntimeFailure) return [...expectations];
   return expectations.map((expectation) =>
-    !expectation.passed && expectation.repairScope === 'pipeline-artifact'
+    !expectation.passed &&
+    expectation.repairScope === 'pipeline-artifact' &&
+    expectation.type !== 'task-status'
       ? {
           ...expectation,
           repairScope: 'diagnostic-only' as const,
@@ -1877,6 +1879,46 @@ export function trialTaskRepairScope(
     return 'diagnostic-only';
   }
   return 'pipeline-artifact';
+}
+
+export function trialTaskFailureIsExpected(
+  testCase: Pick<ChatPipelineTrialPlanCase, 'expectations'>,
+  task: { taskId: string; status: string },
+): boolean {
+  return (
+    task.status !== 'success' &&
+    testCase.expectations.some(
+      (expectation) =>
+        expectation.type === 'task-status' &&
+        expectation.taskId === task.taskId &&
+        expectation.status === task.status,
+    )
+  );
+}
+
+export function hasChatPipelineTrialArtifactFailure(
+  baselineTasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[],
+  cases: readonly {
+    success: boolean;
+    tasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[];
+    expectations: readonly Pick<ChatPipelineTrialExpectationResult, 'passed' | 'repairScope'>[];
+  }[],
+): boolean {
+  return (
+    [
+      ...baselineTasks,
+      ...cases.filter((testCase) => !testCase.success).flatMap((testCase) => testCase.tasks),
+    ].some(
+      (task) =>
+        task.repairScope === 'pipeline-artifact' &&
+        !['success', 'skipped', 'blocked'].includes(task.status),
+    ) ||
+    cases.some((testCase) =>
+      testCase.expectations.some(
+        (expectation) => !expectation.passed && expectation.repairScope === 'pipeline-artifact',
+      ),
+    )
+  );
 }
 
 function countTrialTaskStatuses(
@@ -2578,6 +2620,19 @@ export function evaluateChatPipelineTrialCaseSuccess(input: {
   );
 }
 
+export function evaluateTrialTaskStatusExpectations(
+  testCase: Pick<ChatPipelineTrialPlanCase, 'expectations'>,
+  result: EngineResult,
+  runNumber: number,
+): ChatPipelineTrialExpectationResult[] {
+  return testCase.expectations
+    .filter((expectation) => expectation.type === 'task-status')
+    .map((expectation) => {
+      const evaluated = evaluateTrialExpectation('', '', expectation, result);
+      return { ...evaluated, detail: `Run ${runNumber}: ${evaluated.detail}` };
+    });
+}
+
 async function executeTargetedTrialCase(
   input: Omit<
     RunTrialPipelineInput,
@@ -2600,6 +2655,7 @@ async function executeTargetedTrialCase(
   let totalTaskCount = 0;
   const taskStatusCounts: Record<string, number> = {};
   const runResults: EngineResult[] = [];
+  const earlierTaskExpectations: ChatPipelineTrialExpectationResult[] = [];
   const repeatedOutputPaths = input.verifyRepeatedFileOutputs
     ? findChatPipelineTrialRepeatedFileOutputPaths(input.testCase)
     : [];
@@ -2676,6 +2732,13 @@ async function executeTargetedTrialCase(
         freshnessObservations.push(...freshnessProbes.map(observeRepeatedArtifactFreshness));
       }
       runResults.push(lastResult);
+      // The final run's filesystem assertions do not explain an earlier task-status mismatch.
+      if (runNumber < input.testCase.runs)
+        earlierTaskExpectations.push(
+          ...evaluateTrialTaskStatusExpectations(input.testCase, lastResult, runNumber).filter(
+            (expectation) => !expectation.passed,
+          ),
+        );
       const evidence = trialTaskResults(
         lastResult,
         casePipelineConfig,
@@ -2684,14 +2747,18 @@ async function executeTargetedTrialCase(
       );
       totalTaskCount += evidence.totalTaskCount;
       mergeTrialTaskStatusCounts(taskStatusCounts, evidence.taskStatusCounts);
-      tasks.push(...evidence.tasks);
+      tasks.push(
+        ...evidence.tasks.map((task) =>
+          trialTaskFailureIsExpected(input.testCase, task) ? { ...task, repairScope: null } : task,
+        ),
+      );
       if (input.controller.signal.aborted) break;
     }
   } catch (err) {
     executionError = `Case execution crashed: ${errorMessage(err)}`;
   }
 
-  const expectations: ChatPipelineTrialExpectationResult[] = [];
+  const expectations: ChatPipelineTrialExpectationResult[] = [...earlierTaskExpectations];
   if (executionError) {
     expectations.push(diagnosticCaseExecutionExpectation(executionError));
   } else if (caseWorkspace) {
@@ -2731,8 +2798,13 @@ async function executeTargetedTrialCase(
   }
   const runtimeFailureScopes: Array<'pipeline-artifact' | 'diagnostic-only' | null> = [];
   for (const runResult of runResults) {
-    for (const state of runResult.states.values()) {
-      if (state.status === 'success' || state.status === 'skipped') continue;
+    for (const [taskId, state] of runResult.states) {
+      if (
+        state.status === 'success' ||
+        state.status === 'skipped' ||
+        trialTaskFailureIsExpected(input.testCase, { taskId, status: state.status })
+      )
+        continue;
       runtimeFailureScopes.push(
         trialTaskRepairScope(
           state.status,
@@ -3848,17 +3920,10 @@ async function executeTrial(
           : runtimePrerequisiteOnly
             ? 'blocked'
             : 'failed';
-    const hasPipelineArtifactFailure =
-      allTaskEvidenceCandidates.some(
-        (task) =>
-          task.repairScope === 'pipeline-artifact' &&
-          !['success', 'skipped', 'blocked'].includes(task.status),
-      ) ||
-      cases.some((testCase) =>
-        testCase.expectations.some(
-          (expectation) => !expectation.passed && expectation.repairScope === 'pipeline-artifact',
-        ),
-      );
+    const hasPipelineArtifactFailure = hasChatPipelineTrialArtifactFailure(
+      baselineEvidence.tasks,
+      cases,
+    );
     const ran = !baselineSkipped || executedCaseCount > 0 || reusedCaseCount > 0;
     const trialPlanRepairAttempt =
       kind === 'failed' &&

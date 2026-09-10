@@ -31,6 +31,8 @@ import { normalizeChatOperationV2TargetCoordinate } from '../server/chat-operati
 import {
   sealChatOperationV2SessionRelocation,
   type ChatOperationV2AuthoringInvocationRequest,
+  type ChatOperationV2AuthoringInvocationResult,
+  type ChatOperationV2AuthoringVerificationResult,
   type ChatOperationV2AuthoringResultPersistence,
   type ChatOperationV2AuthoringStage,
   type ChatOperationV2RuntimeInteractiveRequest,
@@ -271,7 +273,9 @@ class FakeServiceAuthoringRuntime implements ChatOperationV2AuthoringRuntimeCore
     return { kind: stage ? ('discarded' as const) : ('missing' as const), stageId: input.stageId };
   }
 
-  async runInvocation(request: ChatOperationV2AuthoringInvocationRequest) {
+  async runInvocation(
+    request: ChatOperationV2AuthoringInvocationRequest,
+  ): Promise<ChatOperationV2AuthoringInvocationResult> {
     this.invocations.push(request);
     const interactive = this.options.interactive?.[this.interactiveIndex++];
     if (interactive) {
@@ -330,7 +334,7 @@ class FakeServiceAuthoringRuntime implements ChatOperationV2AuthoringRuntimeCore
     this.forwarded.push(command);
   }
 
-  async verifyStage(): Promise<never> {
+  async verifyStage(): Promise<ChatOperationV2AuthoringVerificationResult> {
     throw new Error('No-op service fixture must not verify or prepare a commit.');
   }
 }
@@ -469,6 +473,59 @@ function deterministicUuidFactory(): () => string {
     return `00000000-0000-4000-8000-${sequence.toString(16).padStart(12, '0')}`;
   };
 }
+
+test('draft access authenticates the conversation before constructing a file-access runtime', async () => {
+  const root = makeTempRoot();
+  const workspace = join(root, 'workspace');
+  mkdirSync(workspace);
+  const runner = new FakeReadonlyRunner([
+    completedReadonlyInvocation(
+      { kind: 'discussion', targetCandidateId: null, clarification: null, candidateIds: [] },
+      1,
+    ),
+    completedReadonlyInvocation('Answer.', 2),
+  ]);
+  const service = new ChatOperationV2Service({
+    env: { TAGMA_CHAT_CONTROL_DIR: join(root, 'control') },
+    readonlyRunnerFactory: () => runner,
+  });
+  services.push(service);
+  const input = { ...readonlyCreateInput('draft-owner'), conversationKey: '1'.repeat(64) };
+  const result = await service.createAndDispatchReadonly(workspace, input);
+  for (const identity of [
+    {
+      rendererInstanceId: input.rendererInstanceId,
+      conversationId: input.conversationId,
+      conversationKey: '2'.repeat(64),
+    },
+    {
+      rendererInstanceId: 'another-renderer',
+      conversationId: input.conversationId,
+      conversationKey: input.conversationKey,
+    },
+  ]) {
+    await expect(
+      service.accessDraft(workspace, {
+        protocolVersion: 2,
+        operationId: result.operation.operationId,
+        expectedGeneration: result.operation.generation,
+        expectedVersion: result.operation.version,
+        clientRequestId: 'draft-forged',
+        payload: identity,
+      }),
+    ).rejects.toMatchObject({ code: 'conversation_authority_mismatch' });
+  }
+  expect(runner.calls).toHaveLength(2);
+});
+
+test('diagnostics preserve the missing repair evidence pause cause', () => {
+  expect(
+    diagnosticsForEvent({
+      type: 'trial_status_changed',
+      payload: { errorCode: 'repair_evidence_unavailable' },
+    } as never),
+  ).toEqual({ errorCode: 'repair_evidence_unavailable' });
+});
 
 function createMutationService(input: {
   readonly controlDir: string;
@@ -2906,6 +2963,94 @@ describe('ChatTurn Operation V2 service activation', () => {
 });
 
 describe('ChatTurn Operation V2 authoring service integration', () => {
+  test('the owning conversation can read and save its retained draft through the service', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const runtime = new FakeServiceAuthoringRuntime();
+    const invoke = runtime.runInvocation.bind(runtime);
+    runtime.runInvocation = async (request) => {
+      const result = await invoke(request);
+      return result.kind === 'completed' ? { ...result, disposition: 'changed' } : result;
+    };
+    runtime.verifyStage = async () => ({
+      kind: 'discard',
+      trialId: 'trial-draft',
+      planHash: null,
+      caseCount: 0,
+      passedCount: 0,
+      failedCount: 0,
+      warningCount: 0,
+      errorCode: 'trial_unavailable',
+      diagnosticCodes: [],
+    });
+    let contents = 'pipeline: [unfinished';
+    const withDraft = Object.assign(runtime, {
+      accessDraft: async (request: { edit?: { text: string } }) => {
+        if (request.edit) contents = request.edit.text;
+        return {
+          files: [
+            {
+              id: 'a'.repeat(64),
+              name: 'pipeline/pipeline.yaml',
+              bytes: contents.length,
+              editable: true,
+            },
+          ],
+          totalFileCount: 1,
+          omittedFileCount: 0,
+          selected: { id: 'a'.repeat(64), text: contents, hash: 'b'.repeat(64) },
+        };
+      },
+    });
+    const runner = new FakeReadonlyRunner([
+      completedReadonlyInvocation(
+        { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+        1,
+      ),
+    ]);
+    const { service } = createMutationService({
+      controlDir: join(root, 'control'),
+      runner,
+      runtime: withDraft,
+    });
+    const input = {
+      ...readonlyCreateInput('create-editable-draft'),
+      conversationKey: 'a'.repeat(64),
+    };
+    const result = await service.createAndDispatchReadonly(workspace, input);
+    expect(result.operation).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
+    });
+    const request = {
+      protocolVersion: 2 as const,
+      operationId: result.operation.operationId,
+      expectedGeneration: result.operation.generation,
+      expectedVersion: result.operation.version,
+      clientRequestId: 'read-owned-draft',
+      payload: {
+        rendererInstanceId: input.rendererInstanceId,
+        conversationId: input.conversationId,
+        conversationKey: input.conversationKey,
+      },
+    };
+    const read = await service.accessDraft(workspace, request);
+    expect(read.draft.selected?.text).toBe(contents);
+    const saved = await service.accessDraft(workspace, {
+      ...request,
+      clientRequestId: 'save-owned-draft',
+      payload: {
+        ...request.payload,
+        edit: { fileId: 'a'.repeat(64), expectedHash: 'b'.repeat(64), text: 'edited: [' },
+      },
+    });
+    expect(saved.draft.selected?.text).toBe('edited: [');
+    expect(saved.detail.operation.version).toBeGreaterThan(request.expectedVersion);
+    expect(saved.detail.operation.hasResult).toBe(false);
+  });
+
   test('recovers retryable staging from authenticated stage authority after a service restart', async () => {
     const root = makeTempRoot();
     const controlDir = join(root, 'server-control');

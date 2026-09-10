@@ -31,6 +31,7 @@ import type {
 } from '../../api/chat-operations';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
+import { DraftEditor } from './DraftEditor';
 import { formatDurationShort, TurnActivityPanel } from './ActivityPanel';
 import { OperationTimingDetails } from './OperationTiming';
 import {
@@ -183,6 +184,35 @@ export function RetainedOperationNoticeView({
 }
 
 function RetryableOperationNotice() {
+  const [editingDraft, setEditingDraft] = useState<{
+    operation: ChatOperationV2Projection;
+    workspaceKey: string;
+  } | null>(null);
+  const workspaceKey = usePipelineStore((state) => state.workDir);
+  return (
+    <>
+      {editingDraft && (
+        <DraftEditor
+          key={editingDraft.operation.operationId}
+          operation={editingDraft.operation}
+          workspaceKey={editingDraft.workspaceKey}
+          onClose={() => setEditingDraft(null)}
+        />
+      )}
+      <RetryableOperationNoticeBody
+        onOpenDraft={(operation) => {
+          if (workspaceKey) setEditingDraft({ operation, workspaceKey });
+        }}
+      />
+    </>
+  );
+}
+
+function RetryableOperationNoticeBody({
+  onOpenDraft,
+}: {
+  onOpenDraft: (operation: ChatOperationV2Projection) => void;
+}) {
   const retryable = useChatStore(
     (state) => state.activeChatOperationV2?.executionState === 'retryable_failure',
   );
@@ -239,7 +269,7 @@ function RetryableOperationNotice() {
         <div className="text-label text-tagma-text">Draft saved; verification needs attention</div>
         <p className="mt-1 text-tagma-muted">
           Your generated pipeline and verification plan are retained. Nothing has been published.
-          Continue verification to reuse this draft without repeating generation. Verification may
+          Open the draft to review or edit its files, then continue verification. Verification may
           use additional model tokens.
         </p>
         {detail?.verificationFeedback && (
@@ -256,6 +286,14 @@ function RetryableOperationNotice() {
           </details>
         )}
         <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={pending}
+            onClick={() => operation && onOpenDraft(operation)}
+          >
+            Open draft
+          </button>
           <button
             type="button"
             disabled={pending}

@@ -24,6 +24,7 @@ export const CHAT_OPERATION_V2_SAFE_LIFECYCLE_DIAGNOSTIC_CODES = [
   'trial_unavailable',
   'trial_witness_failed',
   'repair_required',
+  'repair_evidence_unavailable',
   'verification_cancelled',
   'verification_failed',
 ] as const;

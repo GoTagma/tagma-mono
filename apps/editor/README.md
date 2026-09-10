@@ -237,15 +237,32 @@ and other processing. AI request time includes provider and tool activity; Trial
 case setup and assertions, so neither is a pure model-generation or runner benchmark. Incomplete
 retained history is explicitly marked unavailable rather than reported as zero.
 
-When Trial cannot complete and does not authorize pipeline repair (for example, a model API
-connection interruption), Chat retains the authenticated draft, plan, and authoring notes and shows
+When automatic verification or repair cannot finish, Chat retains the authenticated draft, plan,
+and authoring notes and shows
 **Draft saved; verification needs attention**. **Continue verification** explicitly runs verification
 again against that draft, including after a Host restart, without repeating classification or pipeline
 generation. Existing Trial cache rules still apply: prompt and triggered cases rerun, and verification
 may consume additional model tokens. A failed or unexecuted Trial never becomes a published result.
 The generated notes are available under **Generated notes (not yet verified)**; they are not a verified
 completion. A normal Send cannot implicitly discard this retained work. **Discard draft** explicitly
-abandons it. Terminal failures from older versions remain terminal and cannot be retroactively resumed.
+abandons it. A repair or Trial planner returning no changes, exhaustion of the repair budget, and
+compilation/Trial failures preserve the generated work instead of deleting it. The repair budget
+remains bounded; retrying verification does not reset it.
+
+**Open draft** shows the generated YAML, layout, requirements, and companion files in a file editor.
+**Save draft** accepts incomplete or invalid YAML so you can finish it manually. Saving is not
+publication and does not modify the original pipeline. Close the file editor and use **Continue
+verification** when ready. Text files up to 1 MiB can be edited; binary and larger files remain in the
+draft. Stale saves are rejected rather than overwriting another edit. Access requires the owning
+conversation, and active execution, terminal operations, and foreign workspaces cannot be edited.
+Terminal failures from older versions remain terminal; drafts already deleted by older versions
+cannot be retroactively restored.
+
+Repair authorization ignores expected task failures in passing negative cases. A repair receives the
+latest Host failure codes and bounded, redacted failed expectations in its prompt, sealed into that
+invocation's request identity. Missing repair evidence pauses the draft for inspection rather than
+starting an uninformed retry. Genuine artifact failures still authorize bounded repair and require a
+fresh successful verification; external or diagnostic-only failures do not authorize unrelated edits.
 
 Other terminal failures retain the Host's validation detail and failed task names when available.
 **Edit request** restores those requests to an empty Composer for revision and a new send. Older

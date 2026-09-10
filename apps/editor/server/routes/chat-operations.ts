@@ -14,6 +14,8 @@ import {
   parseChatOperationV2QuestionReplyRequest,
   parseChatOperationV2RecoveryChoiceRequest,
   parseChatOperationV2RetryRequest,
+  parseChatOperationV2DraftRequest,
+  type ChatOperationV2DraftRequest,
   type ChatOperationV2ClarificationReplyRequest,
   type ChatOperationV2CreateRequest,
   type ChatOperationV2DiscardRequest,
@@ -104,6 +106,7 @@ type MaybePromise<T> = T | Promise<T>;
  * land. An absent optional action fails explicitly and fails closed.
  */
 export interface ChatOperationV2MutationService extends ChatOperationV2ReadService {
+  accessDraft?(workDir: string, request: ChatOperationV2DraftRequest): MaybePromise<unknown>;
   projectMutationResult(workDir: string, value: unknown): unknown;
   createAndDispatchReadonly(
     workDir: string,
@@ -278,6 +281,12 @@ function operationReadError(error: unknown): PublicRouteError {
 
 function mapMutationError(error: unknown): PublicRouteError {
   switch (errorCode(error)) {
+    case 'stale_operation':
+      return {
+        status: 409,
+        kind: 'chat_operation_conflict',
+        error: 'The draft changed or is busy. Close and reopen it before editing.',
+      };
     case 'schema_mismatch':
     case 'corrupt_store':
     case 'unsupported_schema_version':
@@ -762,6 +771,21 @@ export function registerChatOperationV2Routes(
           requestId: request.clientRequestId,
         });
       });
+    });
+
+    app.post('/api/chat/operations/:id/draft', async (req, res) => {
+      const workDir = requireMutationWorkDir(req, res);
+      if (!workDir) return;
+      await respondWithMutation(
+        res,
+        async () => {
+          const request = parseChatOperationV2DraftRequest(req.body);
+          assertRouteOperationId(req, request.operationId);
+          if (!mutationService.accessDraft) return unavailableAction();
+          return mutationService.accessDraft(workDir, request);
+        },
+        (value) => value,
+      );
     });
 
     app.post('/api/chat/operations/:id/discard', async (req, res) => {

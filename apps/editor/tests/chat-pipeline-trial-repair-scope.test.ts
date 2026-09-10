@@ -4,7 +4,87 @@ import {
   isExternalDriverStreamFailure,
   reconcileCaseExpectationRepairScopes,
   trialTaskRepairScope,
+  hasChatPipelineTrialArtifactFailure,
+  trialTaskFailureIsExpected,
+  evaluateTrialTaskStatusExpectations,
 } from '../server/chat-pipeline-trial-run';
+import type { EngineResult } from '@tagma/sdk';
+
+test('a repeated negative case that unexpectedly succeeds on an earlier run keeps actionable evidence', () => {
+  const testCase = {
+    expectations: [
+      { type: 'task-status' as const, taskId: 'validate.input', status: 'failed' as const },
+    ],
+  };
+  const unexpectedAcceptance = {
+    states: new Map([['validate.input', { status: 'success' }]]),
+  } as unknown as EngineResult;
+  const expectations = evaluateTrialTaskStatusExpectations(testCase, unexpectedAcceptance, 1);
+  expect(expectations[0]).toMatchObject({ passed: false, repairScope: 'pipeline-artifact' });
+  expect(expectations[0]?.detail).toContain('Run 1');
+  expect(
+    reconcileCaseExpectationRepairScopes(expectations, ['diagnostic-only'])[0]?.repairScope,
+  ).toBe('pipeline-artifact');
+  expect(
+    hasChatPipelineTrialArtifactFailure(
+      [],
+      [{ success: false, tasks: [{ status: 'failed', repairScope: null }], expectations }],
+    ),
+  ).toBe(true);
+});
+
+test('successful negative cases never turn unrelated diagnostic failures into repair authority', () => {
+  const negative = {
+    success: true,
+    tasks: [{ status: 'failed', repairScope: 'pipeline-artifact' as const }],
+    expectations: [],
+  };
+  const external = {
+    success: false,
+    tasks: [{ status: 'failed', repairScope: 'diagnostic-only' as const }],
+    expectations: [{ passed: false, repairScope: 'diagnostic-only' as const }],
+  };
+  expect(hasChatPipelineTrialArtifactFailure([], [external])).toBe(false);
+  expect(hasChatPipelineTrialArtifactFailure([], [negative, external])).toBe(false);
+  expect(
+    hasChatPipelineTrialArtifactFailure(
+      [],
+      [
+        {
+          ...negative,
+          tasks: [...negative.tasks, { status: 'skipped', repairScope: 'diagnostic-only' }],
+        },
+        external,
+      ],
+    ),
+  ).toBe(false);
+  expect(hasChatPipelineTrialArtifactFailure([], [{ ...negative, success: false }, external])).toBe(
+    true,
+  );
+  expect(
+    hasChatPipelineTrialArtifactFailure(
+      [],
+      [{ ...external, expectations: [{ passed: false, repairScope: 'pipeline-artifact' }] }],
+    ),
+  ).toBe(true);
+});
+
+test('an expected rejection in a mixed case is not a second repair cause', () => {
+  const testCase = {
+    expectations: [
+      { type: 'task-status' as const, taskId: 'validation.reject', status: 'failed' as const },
+    ],
+  };
+  expect(
+    trialTaskFailureIsExpected(testCase, { taskId: 'validation.reject', status: 'failed' }),
+  ).toBe(true);
+  expect(trialTaskFailureIsExpected(testCase, { taskId: 'model.check', status: 'failed' })).toBe(
+    false,
+  );
+  expect(
+    trialTaskFailureIsExpected(testCase, { taskId: 'validation.reject', status: 'success' }),
+  ).toBe(false);
+});
 
 test('command task non-zero exit stays a pipeline-artifact defect', () => {
   expect(trialTaskRepairScope('failed', 'exit_nonzero')).toBe('pipeline-artifact');

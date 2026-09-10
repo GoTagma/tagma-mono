@@ -1,4 +1,5 @@
 import { randomUUID as systemRandomUUID } from 'node:crypto';
+import type { ChatOperationV2DraftRequest } from './api-requests.js';
 import {
   authenticateChatConversationContext,
   boundChatConversationHistory,
@@ -1344,6 +1345,38 @@ export class ChatOperationV2Service {
     );
   }
 
+  async accessDraft(workspacePath: string, request: ChatOperationV2DraftRequest) {
+    this.#assertOpen();
+    const authority = this.#readonlyAuthorityForWorkspace(workspacePath);
+    const operation = this.#requireOperationInWorkspace(authority, request.operationId);
+    const context = this.#conversationContext(authority, operation.operationId);
+    const ownerId = deriveChatConversationOwnerId(
+      this.#authorityForUse().key,
+      {
+        workspaceScopeId: authority.scope.workspaceScopeId,
+        controlGeneration: authority.scope.controlGeneration,
+      },
+      {
+        rendererInstanceId: request.payload.rendererInstanceId,
+        conversationId: request.payload.conversationId,
+        conversationKey: request.payload.conversationKey,
+      },
+    );
+    if (!context || context.ownerId !== ownerId) conversationAuthorityError();
+    const draft = await this.#trackReadonlyCall(
+      this.#authoringRuntimeForWorkspace(authority).engine.accessDraft({
+        operationId: operation.operationId,
+        workspaceScopeId: operation.workspaceScopeId,
+        expectedGeneration: request.expectedGeneration,
+        expectedVersion: request.expectedVersion,
+        requestId: request.clientRequestId,
+        fileId: request.payload.fileId,
+        edit: request.payload.edit,
+      }),
+    );
+    return { draft, detail: this.getOperationProjection(workspacePath, operation.operationId) };
+  }
+
   async discardReadonly(
     workspacePath: string,
     request: ChatOperationV2DiscardRequest,
@@ -1945,6 +1978,13 @@ export class ChatOperationV2Service {
     const core = runtimeFactory(factoryInput);
     const commitCoordinator = commitFactory(factoryInput);
     const runtime: ChatOperationV2AuthoringRuntime = {
+      ...(core.accessDraft
+        ? {
+            accessDraft: (
+              input: Parameters<NonNullable<ChatOperationV2AuthoringRuntime['accessDraft']>>[0],
+            ) => core.accessDraft!(input),
+          }
+        : {}),
       ensureStage: (input) => core.ensureStage(input),
       inspectStage: (input) => core.inspectStage(input),
       relocateSession: (input) => core.relocateSession(input),

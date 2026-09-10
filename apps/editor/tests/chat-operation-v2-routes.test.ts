@@ -353,6 +353,63 @@ function harness(
   return app;
 }
 
+test('draft access remains versioned, bounded, and uses Host-issued file identities', async () => {
+  let calls = 0;
+  const { value } = service({
+    accessDraft: async () => {
+      calls += 1;
+      return {
+        draft: { files: [], totalFileCount: 0, omittedFileCount: 0, selected: null },
+        detail: operationDetail(),
+      };
+    },
+  });
+  const app = harness(value);
+  const body = {
+    protocolVersion: 2,
+    clientRequestId: 'draft-read-1',
+    operationId: 'operation-1',
+    expectedGeneration: 1,
+    expectedVersion: 0,
+    payload: {
+      rendererInstanceId: 'renderer-1',
+      conversationId: 'conversation-1',
+      conversationKey: 'a'.repeat(64),
+    },
+  };
+  for (const [requestBody, expectedStatus] of [
+    [body, 200],
+    [{ ...body, protocolVersion: 1 }, 426],
+    [{ ...body, payload: { ...body.payload, fileId: '../../secret' } }, 400],
+    [
+      {
+        ...body,
+        payload: {
+          ...body.payload,
+          edit: {
+            fileId: 'b'.repeat(64),
+            expectedHash: 'c'.repeat(64),
+            text: 'x'.repeat(1024 * 1024 + 1),
+          },
+        },
+      },
+      400,
+    ],
+  ] as const) {
+    const res = new FakeResponse();
+    await app.route('/api/chat/operations/:id/draft', 'POST')(
+      new FakeRequest('/api/chat/operations/operation-1/draft', {
+        method: 'POST',
+        params: { id: 'operation-1' },
+        body: requestBody,
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(expectedStatus);
+  }
+  expect(calls).toBe(1);
+});
+
 function trustedClarificationInputResolver(
   implementation?: ChatOperationV2ClarificationInputResolver,
 ): ChatOperationV2ClarificationInputResolver {
@@ -487,6 +544,7 @@ describe('Chat Operation V2 route registration', () => {
       'POST /api/chat/operations/:id/clarification',
       'POST /api/chat/operations/:id/cancel',
       'POST /api/chat/operations/:id/retry',
+      'POST /api/chat/operations/:id/draft',
       'POST /api/chat/operations/:id/discard',
       'POST /api/chat/operations/:id/permissions/:requestId/reply',
       'POST /api/chat/operations/:id/questions/:requestId/reply',

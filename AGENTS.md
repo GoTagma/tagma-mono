@@ -171,6 +171,17 @@ Do not amend the same commit to include these files after naming them with the c
 
 ## Chat Logical Conversation Authority
 
+- Automatic post-authoring verification failure, repair/Trial-plan no-change, and exhausted repair
+  budgets retain the authenticated draft at `trial-running` / `user_retry`; no-change describes the
+  last attempt, not the value of earlier artifacts. Keep explicit Stop/Discard and commit authority
+  separate. Manual draft edits require owning-conversation authentication, operation CAS, and a
+  Host-issued existing artifact identity; even invalid YAML is retainable, never implicitly published.
+- Derive repair authority from unexpected failures. Passing negative cases and explicitly expected
+  task failures cannot grant artifact repair permission. Carry the latest bounded redacted failed
+  expectations into the repair prompt itself, sealed in canonical invocation bytes; an evidence hash
+  alone is not model feedback. Missing repair evidence retains the draft instead of starting a blind
+  repair. Keep successful verification mandatory before commit and invalidate old Trial cache semantics.
+
 - Renderer conversation ids are correlation only. A 32-byte random conversation credential is
   persisted before Send, scoped to workspace/renderer/conversation, and never enters model prompts,
   diagnostics, or readable history projections. Host HMAC derives the stable owner identity from

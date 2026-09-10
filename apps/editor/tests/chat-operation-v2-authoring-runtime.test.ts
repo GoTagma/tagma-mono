@@ -433,6 +433,56 @@ function invocationRequest(
 }
 
 describe('managed Chat Operation V2 authoring runtime', () => {
+  test('mixed external failures do not hide actionable failed expectations from repair feedback', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      repairAuthorization: 'pipeline-change-allowed',
+      summary: 'An independent output assertion failed.',
+      cases: [
+        {
+          id: 'output',
+          success: false,
+          expectations: [
+            {
+              type: 'file-contains',
+              passed: false,
+              repairScope: 'pipeline-artifact',
+              detail: 'Report must contain the audited decision.',
+            },
+          ],
+        },
+      ],
+      tasks: [
+        {
+          caseId: null,
+          taskId: 'network.fetch',
+          status: 'failed',
+          failureKind: 'exit_nonzero',
+          repairScope: 'diagnostic-only',
+          stderr: 'AI_APICallError: socket connection was closed',
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const result = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+    expect(result.kind).toBe('repair_required');
+    expect(result.feedback?.details).toContain('Report must contain the audited decision.');
+    expect(result.feedback?.details).toContain('An independent output assertion failed.');
+    expect(result.feedback?.details).not.toContain('AI_APICallError');
+  });
+
   test('does not blame expected task failures in successful negative cases', async () => {
     const value = await readyRuntime();
     const request = {
@@ -851,6 +901,41 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     });
   });
 
+  test('the repair model receives concrete failed assertions, not only an evidence digest', () => {
+    const repairEvidence = {
+      evidenceHash: 'b'.repeat(64),
+      diagnosticCodes: ['trial_failed'],
+      feedback: {
+        schemaVersion: 1 as const,
+        stage: 'trial' as const,
+        details: 'The output report must contain the audited verdict; received an empty report.',
+        failedTaskIds: ['report.write'],
+        omittedFailedTaskCount: 0,
+      },
+    };
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'repair-invocation-1',
+      sessionId: 'session-root',
+      executionMessageId: 'execution-message-1',
+      purpose: 'repair',
+      intent: 'create',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'pipeline/pipeline.yaml',
+      trialPlanRequest: null,
+      admission: admission(),
+      clarificationThread: null,
+      canonicalRequestBytes: new TextEncoder().encode(
+        JSON.stringify({ purpose: 'repair', repairAttempt: 1, repairEvidence }),
+      ),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+    expect(prompt.text).toContain('received an empty report');
+    expect(prompt.text).toContain('report.write');
+    expect(prompt.text).toContain('<tagma-internal>');
+    expect(prompt.system).toContain('failed expectations');
+  });
+
   test('selects the dedicated Trial Plan agent with exact Host-issued planning authority', () => {
     const prompt = buildManagedChatOperationV2ExecutionPrompt({
       invocationId: 'trial-plan-invocation-1',
@@ -1043,6 +1128,30 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       'pipeline:\n  name: New\ntracks: []\n',
       'utf8',
     );
+    const draftInput = {
+      operationId: 'operation-production',
+      operationGeneration: 1,
+      stageId: STAGE_ID,
+      signal: new AbortController().signal,
+    };
+    const draft = await runtime.accessDraft!(draftInput);
+    expect(draft.selected?.text).toContain('name: New');
+    await runtime.accessDraft!({
+      ...draftInput,
+      edit: {
+        fileId: draft.selected!.id,
+        expectedHash: draft.selected!.hash,
+        text: 'pipeline: [unfinished',
+      },
+    });
+    expect((await runtime.accessDraft!(draftInput)).selected?.text).toBe('pipeline: [unfinished');
+    await expect(
+      runtime.accessDraft!({ ...draftInput, operationId: 'foreign-operation' }),
+    ).rejects.toThrow('belong');
+    expect(readFileSync(join(targetFolder, 'new-pipeline.yaml'), 'utf8')).toBe(
+      'pipeline: [unfinished',
+    );
+    writeFileSync(join(targetFolder, 'new-pipeline.yaml'), 'pipeline:\n  name: New\ntracks: []\n');
     writeFileSync(
       join(siblingFolder, 'unexpected.yaml'),
       'pipeline:\n  name: Unexpected\ntracks: []\n',

@@ -31,6 +31,7 @@ describe('modal theme contract', () => {
       'components/SaveAsDialog.tsx',
       'components/board/BoardCanvas.tsx',
       'components/chat/CustomProviderModal.tsx',
+      'components/chat/DraftEditor.tsx',
       'components/chat/ProviderConnectDialog.tsx',
       'components/panels/ConfirmDialog.tsx',
       'components/panels/SecretsManagerPanel.tsx',
@@ -46,7 +47,7 @@ describe('modal theme contract', () => {
       (count, { source }) => count + (source.match(/role="dialog"/g)?.length ?? 0),
       0,
     );
-    expect(dialogCount).toBe(16);
+    expect(dialogCount).toBe(17);
   });
 
   test('routes every modal surface through the shared theme skin', () => {

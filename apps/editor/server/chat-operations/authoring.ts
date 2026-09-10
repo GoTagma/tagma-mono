@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import type {
+  ChatOperationDraft,
+  ChatOperationDraftEdit,
+} from '../../shared/chat-operation-draft.js';
 
 import {
   parseChatVerificationOutcome,
@@ -582,6 +586,14 @@ export interface ChatOperationV2TrialProgressUpdate {
 }
 
 export interface ChatOperationV2AuthoringRuntime {
+  accessDraft?(input: {
+    operationId: string;
+    operationGeneration: number;
+    stageId: string;
+    fileId?: string;
+    edit?: ChatOperationDraftEdit;
+    signal: AbortSignal;
+  }): Promise<ChatOperationDraft>;
   ensureStage(input: {
     readonly operationId: string;
     readonly workspaceScopeId: string;
@@ -729,6 +741,7 @@ export interface ChatOperationV2AuthoringResultPersistence {
 
 export type ChatOperationV2AuthoringPersistence = Pick<
   ChatOperationV2Store,
+  | 'getLatestOperationEvent'
   | 'getOperation'
   | 'getWorkspaceOperationSnapshot'
   | 'getOperationAdmission'
@@ -1655,6 +1668,7 @@ export class ChatOperationV2AuthoringEngine {
     repairEvidence: {
       readonly evidenceHash: string;
       readonly diagnosticCodes: readonly string[];
+      readonly feedback?: ChatOperationFeedback;
     } | null,
     interactiveRecoveryInput?: ResolveChatOperationV2InteractiveRecoveryInput,
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
@@ -1663,6 +1677,23 @@ export class ChatOperationV2AuthoringEngine {
         'authority_mismatch',
         'Authoring stage is unavailable.',
       );
+    }
+    if (purpose === 'repair' && !repairEvidence?.feedback) {
+      const prior = this.persistence.getLatestOperationEvent(
+        context.operationId,
+        'trial_status_changed',
+      );
+      if (!isChatOperationFeedback(prior?.payload.feedback))
+        return this.retainDraft(context, 'repair_evidence_unavailable');
+      repairEvidence = {
+        evidenceHash: sha256(canonicalBytes(prior.payload)),
+        diagnosticCodes: [
+          typeof prior?.payload.errorCode === 'string'
+            ? prior.payload.errorCode
+            : 'verification_failed',
+        ],
+        feedback: prior!.payload.feedback as ChatOperationFeedback,
+      };
     }
     const trialPlanRequest =
       purpose === 'trial_plan' ? validateTrialPlanRequest(context.pendingTrialPlanRequest) : null;
@@ -1941,9 +1972,10 @@ export class ChatOperationV2AuthoringEngine {
       return this.finishPrecommit(context, 'completed_noop');
     }
     if (purpose !== 'authoring' && result.disposition === 'no_change') {
-      return this.finishPrecommit(context, 'discarded', undefined, undefined, {
-        reasonCode: purpose === 'trial_plan' ? 'trial_plan_no_change' : 'repair_no_change',
-      });
+      return this.retainDraft(
+        context,
+        purpose === 'trial_plan' ? 'trial_plan_no_change' : 'repair_no_change',
+      );
     }
     const verifying = this.transition(operationAfterInvocation, {
       ...stateOf(operationAfterInvocation),
@@ -2576,23 +2608,16 @@ export class ChatOperationV2AuthoringEngine {
     const current = this.requireOperation(context.operationId);
     if (current.phase === 'terminal') return terminalResult(current);
     if (verification.kind === 'discard') {
-      return this.finishPrecommit(context, 'discarded', undefined, undefined, {
-        reasonCode: SAFE_CODE_RE.test(verification.errorCode)
-          ? verification.errorCode
-          : 'trial_verification_failed',
-        diagnosticCodes: verification.diagnosticCodes,
-      });
+      return this.retainDraft(context, verification.errorCode);
     }
     if (verification.kind === 'repair_required') {
       if (current.repairAttempts >= current.repairMaxAttempts) {
-        return this.finishPrecommit(context, 'discarded', undefined, undefined, {
-          reasonCode: 'repair_attempts_exhausted',
-          diagnosticCodes: verification.diagnosticCodes,
-        });
+        return this.retainDraft(context, 'repair_attempts_exhausted');
       }
       return this.runControlledInvocation(context, 'repair', current.repairAttempts + 1, {
         evidenceHash: verification.evidenceHash,
         diagnosticCodes: verification.diagnosticCodes,
+        ...(verification.feedback ? { feedback: verification.feedback } : {}),
       });
     }
     if (verification.kind === 'trial_plan_required') {
@@ -2822,6 +2847,52 @@ export class ChatOperationV2AuthoringEngine {
         'Every authoring invocation must have completed usage before commit preparation.',
       );
     }
+  }
+
+  /** A failed automatic attempt is not permission to destroy earlier generated work. */
+  private async retainDraft(
+    context: OperationContext,
+    reasonCode: string,
+  ): Promise<ChatOperationV2AuthoringDispatchResult> {
+    const before = this.requireOperation(context.operationId);
+    if (before.phase === 'terminal') return terminalResult(before);
+    if (this.terminationDrains.has(context.operationId)) {
+      return this.finishPrecommit(
+        context,
+        this.terminationIntents.get(context.operationId) ?? 'cancelled_precommit',
+      );
+    }
+    await this.persistVisibleCompletion(context);
+    const current = this.requireOperation(context.operationId);
+    if (current.phase === 'terminal') return terminalResult(current);
+    const previous = this.persistence.getLatestOperationEvent(
+      current.operationId,
+      'trial_status_changed',
+    );
+    this.appendEvent(current.operationId, 'trial_status_changed', {
+      stageId: current.stageId,
+      trialId: previous?.payload.trialId ?? `trial-retained-${current.version}`,
+      status: 'failed',
+      planHash: previous?.payload.planHash ?? null,
+      caseCount: previous?.payload.caseCount ?? 0,
+      passedCount: previous?.payload.passedCount ?? 0,
+      failedCount: previous?.payload.failedCount ?? 0,
+      warningCount: previous?.payload.warningCount ?? 0,
+      ...(previous?.payload.feedback ? { feedback: previous.payload.feedback } : {}),
+      errorCode: SAFE_CODE_RE.test(reasonCode) ? reasonCode : 'trial_verification_failed',
+    });
+    const waiting = this.transition(current, {
+      ...stateOf(current),
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      activeInvocationId: null,
+      pendingPermissionRequestId: null,
+    });
+    return waiting.applied
+      ? { kind: 'provider_unavailable', operation: waiting.operation }
+      : waiting.reason === 'terminal'
+        ? terminalResult(waiting.operation)
+        : { kind: 'stale', operation: waiting.operation };
   }
 
   private async finishPrecommit(
@@ -3227,6 +3298,74 @@ export class ChatOperationV2AuthoringEngine {
     return { kind: 'stale', operation: observed };
   }
 
+  async accessDraft(input: {
+    operationId: string;
+    workspaceScopeId: string;
+    expectedGeneration: number;
+    expectedVersion: number;
+    requestId: string;
+    fileId?: string;
+    edit?: ChatOperationDraftEdit;
+  }): Promise<ChatOperationDraft> {
+    const current = this.requireOperation(input.operationId);
+    if (
+      current.workspaceScopeId !== input.workspaceScopeId ||
+      current.generation !== input.expectedGeneration ||
+      current.version !== input.expectedVersion ||
+      current.phase !== 'trial-running' ||
+      current.waitReason !== 'user_retry' ||
+      current.activeInvocationId !== null ||
+      !current.stageId ||
+      this.activeControllers.has(current.operationId) ||
+      this.dispatches.has(current.operationId)
+    ) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'stale_operation',
+        'Draft is no longer available for editing. Reload it.',
+      );
+    }
+    if (!this.runtime.accessDraft)
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_stage',
+        'Draft editing is unavailable.',
+      );
+    const controller = new AbortController();
+    if (input.edit) {
+      // Keep a durable pause while writing: a crash here must never become permission
+      // to resume Trial/model execution automatically after restart.
+      const claimed = this.transition(current, stateOf(current));
+      if (!claimed.applied)
+        throw new ChatOperationV2AuthoringProtocolError('stale_operation', 'Draft changed.');
+      this.activeControllers.set(current.operationId, {
+        invocationId: `draft:${input.requestId}`,
+        controller,
+      });
+    }
+    try {
+      return await this.runtime.accessDraft({
+        operationId: current.operationId,
+        operationGeneration: current.generation,
+        stageId: current.stageId,
+        fileId: input.fileId,
+        edit: input.edit,
+        signal: controller.signal,
+      });
+    } finally {
+      if (input.edit) {
+        if (this.activeControllers.get(current.operationId)?.controller === controller)
+          this.activeControllers.delete(current.operationId);
+        const latest = this.requireOperation(current.operationId);
+        if (
+          latest.phase === 'trial-running' &&
+          latest.waitReason === 'user_retry' &&
+          !this.terminationDrains.has(current.operationId)
+        ) {
+          this.transition(latest, { ...stateOf(latest), waitReason: 'user_retry' });
+        }
+      }
+    }
+  }
+
   async retryProviderUnavailable(
     input: RetryChatOperationV2AuthoringProviderInput,
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
@@ -3244,6 +3383,8 @@ export class ChatOperationV2AuthoringEngine {
       return { kind: 'stale', operation: current };
     }
     if (current.phase === 'terminal') return terminalResult(current);
+    if (this.activeControllers.has(current.operationId))
+      return { kind: 'in_progress', operation: current };
     if (
       current.phase === 'trial-running' &&
       current.waitReason === 'user_retry' &&
