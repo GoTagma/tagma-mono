@@ -932,27 +932,24 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     ).resolves.toMatchObject({ kind: 'commit_handoff_required', operation: result.operation });
   });
 
-  test('does not publish when enabled Sandbox verification never ran', async () => {
+  test('retains the authored draft when verification cannot complete, without publishing', async () => {
     const { engine, store, runtime, resultPersistence } = createHarness({
       verification: ['unverified'],
     });
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
-    expect(result.kind).toBe('discarded');
+    expect(result.kind).toBe('provider_unavailable');
     expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
     expect(store.getOperation('operation-1')).toMatchObject({
-      phase: 'terminal',
-      terminalOutcome: 'discarded',
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
       repairAttempts: 0,
     });
-    expect(resultPersistence.calls).toEqual([]);
-    expect(
-      store.getLatestOperationEvent('operation-1', 'stage_status_changed')?.payload,
-    ).toMatchObject({
-      status: 'discarded',
-      errorCode: 'trial_blocked',
-    });
+    expect(resultPersistence.calls).toHaveLength(1);
+    expect(store.getPendingResultMessage('operation-1')).not.toBeNull();
+    expect(runtime.discardedStageIds).toEqual([]);
     const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
     if (events.kind !== 'events') throw new Error('Expected authoring event page.');
     expect(
@@ -965,6 +962,92 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       errorCode: 'trial_blocked',
       feedback: { details: 'The terminal branch is missing Sandbox coverage.' },
     });
+  });
+
+  test('explicit verification retry reuses the draft after a Host restart without another model invocation', async () => {
+    const { engine, store, runtime, resultPersistence, now } = createHarness({
+      verification: ['unverified', 'passed'],
+    });
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    const waiting = store.getOperation('operation-1')!;
+    const restarted = new ChatOperationV2AuthoringEngine({
+      persistence: store,
+      runtime,
+      resultPersistence,
+      now,
+      nextHostId: (kind) => `retry-${kind}-${now()}`,
+    });
+    const result = await restarted.retryProviderUnavailable({
+      operationId: waiting.operationId,
+      workspaceScopeId: waiting.workspaceScopeId,
+      expectedGeneration: waiting.generation,
+      expectedVersion: waiting.version,
+      requestId: 'retry-verification',
+    });
+    expect(result.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+    expect(resultPersistence.calls).toHaveLength(1);
+  });
+
+  test('repeated verification failure retains work until explicit discard', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['unverified', 'unverified'],
+    });
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    const waiting = store.getOperation('operation-1')!;
+    const retry = {
+      operationId: waiting.operationId,
+      workspaceScopeId: waiting.workspaceScopeId,
+      expectedGeneration: waiting.generation,
+      expectedVersion: waiting.version,
+      requestId: 'retry-trial-once',
+    };
+    await engine.retryProviderUnavailable(retry);
+    expect((await engine.retryProviderUnavailable(retry)).kind).toBe('stale');
+    expect(runtime.verifyCalls).toHaveLength(2);
+    expect(runtime.invocationRequests).toHaveLength(1);
+    expect(runtime.discardedStageIds).toEqual([]);
+    expect(store.getPendingResultMessage(waiting.operationId)).not.toBeNull();
+    const current = store.getOperation(waiting.operationId)!;
+    await engine.discard({
+      operationId: current.operationId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'explicit-discard',
+    });
+    expect(store.getOperation(waiting.operationId)?.terminalOutcome).toBe('discarded');
+    expect(store.getPendingResultMessage(waiting.operationId)).toBeNull();
+    expect(runtime.discardedStageIds).toHaveLength(1);
+  });
+
+  test('background verification retry releases the request and still drains before Stop cleanup', async () => {
+    const options = {
+      verification: ['unverified', 'passed'] as const,
+      waitForVerificationAbort: false,
+    };
+    const { engine, store } = createHarness(options);
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    options.waitForVerificationAbort = true;
+    const waiting = store.getOperation('operation-1')!;
+    const accepted = await engine.retryProviderUnavailable({
+      operationId: waiting.operationId,
+      workspaceScopeId: waiting.workspaceScopeId,
+      expectedGeneration: waiting.generation,
+      expectedVersion: waiting.version,
+      requestId: 'background-verification',
+      backgroundVerification: true,
+    });
+    expect(accepted.kind).toBe('in_progress');
+    const current = store.getOperation(waiting.operationId)!;
+    const stopped = await engine.stop({
+      operationId: current.operationId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'stop-retried-verification',
+    });
+    expect(stopped.kind).toBe('cancelled_precommit');
+    expect(store.getPendingResultMessage(waiting.operationId)).toBeNull();
+    expect(store.listCommitWal('scope-1')).toHaveLength(0);
   });
 
   test('bounds repair attempts and re-verifies after each controlled repair invocation', async () => {

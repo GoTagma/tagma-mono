@@ -717,6 +717,7 @@ export interface ChatOperationV2OperationDetail {
   readonly trialProgress?: ChatOperationV2TrialProgress | null;
   readonly timing?: ChatOperationTiming | null;
   readonly verificationFeedback?: ChatOperationFeedback | null;
+  readonly draftSummary?: string | null;
 }
 
 export interface ChatOperationV2RendererAttachment {
@@ -2275,7 +2276,9 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
     !isPlainRecord(value) ||
     !hasExactKeys(value, [
       ...detailKeys,
-      ...['trialProgress', 'timing', 'verificationFeedback'].filter((key) => key in value),
+      ...['trialProgress', 'timing', 'verificationFeedback', 'draftSummary'].filter(
+        (key) => key in value,
+      ),
     ]) ||
     value.schemaVersion !== CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION ||
     !projectionHostId(value.workspaceScopeId)
@@ -2290,6 +2293,16 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
   const result = parseResultProjection(value.result);
   const trialProgress = parseTrialProgress(value.trialProgress);
   if (
+    value.draftSummary !== undefined &&
+    value.draftSummary !== null &&
+    (typeof value.draftSummary !== 'string' ||
+      value.draftSummary.length > 16_000 ||
+      operation.phase !== 'trial-running' ||
+      operation.waitReason !== 'user_retry')
+  ) {
+    invalid('draft summary is not attached to retained verification work');
+  }
+  if (
     value.verificationFeedback !== undefined &&
     value.verificationFeedback !== null &&
     !isChatOperationFeedback(value.verificationFeedback)
@@ -2301,6 +2314,7 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
     : null;
   if (
     verificationFeedback &&
+    !(operation.phase === 'trial-running' && operation.waitReason === 'user_retry') &&
     ((operation.terminalOutcome !== 'discarded' &&
       operation.terminalOutcome !== 'failed_terminal') ||
       !operation.terminalReasonCode)
@@ -2362,6 +2376,9 @@ function parseOperationDetail(value: unknown): ChatOperationV2OperationDetail {
     ...(value.trialProgress !== undefined ? { trialProgress } : {}),
     ...(value.timing !== undefined ? { timing } : {}),
     ...(value.verificationFeedback !== undefined ? { verificationFeedback } : {}),
+    ...(value.draftSummary !== undefined
+      ? { draftSummary: value.draftSummary as string | null }
+      : {}),
   };
 }
 

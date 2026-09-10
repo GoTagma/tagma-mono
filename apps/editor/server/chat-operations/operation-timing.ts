@@ -81,7 +81,8 @@ export function buildChatOperationTiming(input: {
     if (executing) interval('execution', cursor, at);
     waiting =
       USER_WAITS.has(event.waitReason ?? '') ||
-      (event.phase === 'awaiting_input' && event.waitReason === 'user_retry');
+      ((event.phase === 'awaiting_input' || event.phase === 'trial-running') &&
+        event.waitReason === 'user_retry');
     if (event.phase !== 'trial-running' || event.type === 'trial_status_changed') executing = false;
     else if (event.type === 'trial_progressed') {
       executing =

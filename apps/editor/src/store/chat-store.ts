@@ -921,6 +921,9 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
     const previousFailure = previous.chatOperationV2ThreadDetails[operationId]?.failure;
     const newlyRetryable =
       detail.operation.executionState === 'retryable_failure' &&
+      !(
+        detail.operation.phase === 'trial-running' && detail.operation.waitReason === 'user_retry'
+      ) &&
       detail.failure !== null &&
       (!previousFailure ||
         previousFailure.invocationId !== detail.failure.invocationId ||
@@ -1074,6 +1077,14 @@ async function sendChatOperationV2(
 ): Promise<void> {
   const state = get();
   const model = state.model;
+  if (
+    state.activeChatOperationV2?.phase === 'trial-running' &&
+    state.activeChatOperationV2.waitReason === 'user_retry'
+  ) {
+    throw new Error(
+      'Your pipeline draft is retained. Continue verification or explicitly discard it before sending a new request.',
+    );
+  }
   if (!model) {
     const error = new Error('Select a model before sending a Chat Operation V2 request.');
     set({ sendError: error.message });
@@ -1471,6 +1482,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   connectOpen: false,
   openConnect: () => {
+    if (
+      get().activeChatOperationV2?.phase === 'trial-running' &&
+      get().activeChatOperationV2?.waitReason === 'user_retry'
+    ) {
+      set({ connectOpen: true });
+      return;
+    }
     if (get().activeChatOperationV2?.executionState === 'retryable_failure') {
       void get().changeProviderForActiveChatOperationV2();
       return;

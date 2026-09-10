@@ -257,6 +257,50 @@ test('parses optional terminal discard reason fields and tolerates their absence
   expect(parsed.operations[1]).toEqual(legacyTerminal);
 });
 
+test('accepts retained verification notes and feedback only on a paused Trial', async () => {
+  const detail = {
+    ...operationDetail(),
+    operation: {
+      ...operation(),
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      executionState: 'retryable_failure',
+    },
+    failure: {
+      stage: 'verification',
+      code: 'trial_verification_paused',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: operation().updatedAt,
+    },
+    draftSummary: 'Generated pipeline design; verification is still pending.',
+    verificationFeedback: {
+      schemaVersion: 1,
+      stage: 'trial',
+      details: 'The model API connection was interrupted.',
+      failedTaskIds: ['main.check'],
+      omittedFailedTaskCount: 0,
+    },
+  };
+  globalThis.fetch = (async () =>
+    Response.json({ protocolVersion: 2, detail })) as unknown as typeof fetch;
+  expect((await fetchChatOperationV2Operation('operation-1')).draftSummary).toBe(
+    detail.draftSummary,
+  );
+  globalThis.fetch = (async () =>
+    Response.json({
+      protocolVersion: 2,
+      detail: {
+        ...detail,
+        operation: { ...detail.operation, waitReason: null, executionState: 'running' },
+        failure: null,
+      },
+    })) as unknown as typeof fetch;
+  await expect(fetchChatOperationV2Operation('operation-1')).rejects.toBeInstanceOf(
+    ChatOperationV2ProtocolError,
+  );
+});
+
 test('rejects malformed terminal discard reason fields', async () => {
   const malformed = [
     { ...operation(), terminalReasonCode: 'Not A Safe Code', terminalDiagnosticCodes: [] },

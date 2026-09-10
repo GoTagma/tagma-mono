@@ -222,6 +222,11 @@ export interface ChatOperationV2TerminalDiscardPresentation {
 const TERMINAL_DISCARD_PRESENTATIONS: Readonly<
   Record<string, ChatOperationV2TerminalDiscardPresentation>
 > = Object.freeze({
+  trial_failed: {
+    title: 'Pipeline verification did not complete',
+    detail:
+      'One or more Trial checks failed. This older operation ended before publication; your current pipeline was left unchanged. Review the failure details before deciding whether the request needs changes.',
+  },
   trial_plan_no_change: {
     title: 'Trial planning produced no usable verification plan',
     detail:

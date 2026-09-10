@@ -221,6 +221,8 @@ export interface ChatOperationV2RendererOperationDetail {
   readonly trialProgress?: ChatOperationV2RendererTrialProgress | null;
   readonly timing?: ChatOperationTiming | null;
   readonly verificationFeedback?: ChatOperationFeedback | null;
+  /** Unpublished authoring notes, never a sealed successful result. */
+  readonly draftSummary?: string | null;
 }
 
 export interface ChatOperationV2RendererTrialProgress {
@@ -267,6 +269,7 @@ export interface ChatOperationV2ProjectionReadPersistence {
   readonly getLatestOperationEvent?: ChatOperationV2Store['getLatestOperationEvent'];
   readonly listOperationEvents?: ChatOperationV2Store['listOperationEvents'];
   readonly getOperationEventHistory?: ChatOperationV2Store['getOperationEventHistory'];
+  readonly getPendingResultMessage?: ChatOperationV2Store['getPendingResultMessage'];
 }
 
 export interface ChatOperationV2ProjectionAdmission extends ChatOperationV2Admission {
@@ -1136,6 +1139,15 @@ function failureProjection(
     return null;
   }
   if (operation.waitReason === 'user_retry') {
+    if (operation.phase === 'trial-running') {
+      return Object.freeze({
+        stage: 'verification',
+        code: 'trial_verification_paused',
+        invocationId: null,
+        outboxStatus: null,
+        recordedAt: operation.updatedAt,
+      });
+    }
     return Object.freeze({
       stage: 'authoring',
       code: 'authoring_handoff_retry_required',
@@ -1227,7 +1239,8 @@ export function projectChatOperationV2OperationDetail(
   const failure = failureProjection(operation, parts.outboxes, persistence);
   const summary = operationSummary(persistence, operation, parts.admission, result, pending);
   const feedback =
-    summary.terminalReasonCode !== null
+    summary.terminalReasonCode !== null ||
+    (operation.phase === 'trial-running' && operation.waitReason === 'user_retry')
       ? persistence.getLatestOperationEvent?.(operation.operationId, 'trial_status_changed')
           ?.payload.feedback
       : undefined;
@@ -1235,6 +1248,16 @@ export function projectChatOperationV2OperationDetail(
     fail('invalid_record', 'Verification feedback is invalid.');
   }
   const history = persistence.getOperationEventHistory?.(operation.operationId);
+  const paused = operation.phase === 'trial-running' && operation.waitReason === 'user_retry';
+  const draft = paused ? persistence.getPendingResultMessage?.(operation.operationId) : null;
+  if (
+    draft &&
+    (draft.workspaceScopeId !== operation.workspaceScopeId ||
+      draft.operationGeneration !== operation.generation ||
+      draft.message.purpose !== 'authoring')
+  ) {
+    fail('operation_mismatch', 'Draft summary does not match the operation authority.');
+  }
   const timing = history
     ? buildChatOperationTiming({
         operation,
@@ -1263,6 +1286,14 @@ export function projectChatOperationV2OperationDetail(
     trialProgress: parts.trialProgress ?? null,
     timing,
     verificationFeedback: isChatOperationFeedback(feedback) ? feedback : null,
+    ...(draft
+      ? {
+          draftSummary:
+            draft.message.text.length > 16_000
+              ? `${draft.message.text.slice(0, 15_900)}\n[Draft summary shortened for display.]`
+              : draft.message.text,
+        }
+      : {}),
   });
 }
 

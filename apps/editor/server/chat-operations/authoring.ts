@@ -840,6 +840,9 @@ export interface RetryChatOperationV2AuthoringProviderInput {
   readonly expectedGeneration: number;
   readonly expectedVersion: number;
   readonly requestId: string;
+  /** Release the HTTP mutation after the verification CAS, retaining Host-owned work. */
+  readonly backgroundVerification?: boolean;
+  readonly onVerificationStarted?: (work: Promise<ChatOperationV2AuthoringDispatchResult>) => void;
 }
 
 export type MarkChatOperationV2AuthoringInteractiveRestartResult =
@@ -2596,13 +2599,29 @@ export class ChatOperationV2AuthoringEngine {
       return this.runControlledInvocation(context, 'trial_plan', current.repairAttempts, null);
     }
     if (verification.kind === 'unverified') {
-      // A Live-only prerequisite warning is a passed Sandbox result with an
-      // explicit skipped Live Smoke outcome. Missing Sandbox evidence or an
-      // executed verification failure cannot become a completed publication.
-      return this.finishPrecommit(context, 'discarded', undefined, undefined, {
-        reasonCode: verification.errorCode,
-        diagnosticCodes: verification.diagnosticCodes,
+      // Keep the paid-for authoring result and authenticated stage durable.
+      // This is not a publication: only a subsequent successful verification
+      // may prepare a commit. Stop/Discard remain explicit destructive choices.
+      await this.persistVisibleCompletion(context);
+      const retained = this.requireOperation(context.operationId);
+      if (retained.phase === 'terminal') return terminalResult(retained);
+      if (this.terminationDrains.has(context.operationId)) {
+        return this.finishPrecommit(
+          context,
+          this.terminationIntents.get(context.operationId) ?? 'cancelled_precommit',
+        );
+      }
+      const waiting = this.transition(retained, {
+        ...stateOf(retained),
+        waitReason: 'user_retry',
+        activeInvocationId: null,
+        pendingPermissionRequestId: null,
       });
+      return waiting.applied
+        ? { kind: 'provider_unavailable', operation: waiting.operation }
+        : waiting.reason !== 'terminal'
+          ? { kind: 'stale', operation: waiting.operation }
+          : terminalResult(waiting.operation);
     }
     context.pendingTrialPlanRequest = null;
     const pendingCompletion = context.pendingVisibleCompletion;
@@ -3202,6 +3221,81 @@ export class ChatOperationV2AuthoringEngine {
       return { kind: 'stale', operation: current };
     }
     if (current.phase === 'terminal') return terminalResult(current);
+    if (
+      current.phase === 'trial-running' &&
+      current.waitReason === 'user_retry' &&
+      current.activeInvocationId === null
+    ) {
+      const context =
+        this.contexts.get(current.operationId) ?? (await this.recoverDurableStageContext(current));
+      const pending = this.persistence.getPendingResultMessage(current.operationId);
+      if (
+        !pending ||
+        pending.operationGeneration !== current.generation ||
+        pending.workspaceScopeId !== current.workspaceScopeId ||
+        pending.message.operationId !== current.operationId ||
+        pending.message.purpose !== 'authoring'
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'authority_mismatch',
+          'Verification retry lost its durable authoring result.',
+        );
+      }
+      context.visibleResult = {
+        resultId: pending.resultId,
+        pendingMessageId: pending.pendingMessageId,
+        pendingMessageHash: pending.message.messageHash,
+        message: pending.message,
+        messageCount: 1,
+      };
+      const resumed = this.transition(current, { ...stateOf(current), waitReason: null });
+      if (!resumed.applied)
+        return resumed.reason === 'terminal'
+          ? terminalResult(resumed.operation)
+          : { kind: 'stale', operation: resumed.operation };
+      const verification = this.verifyAndRepair(context, resumed.operation).finally(() => {
+        if (this.dispatches.get(current.operationId) === verification)
+          this.dispatches.delete(current.operationId);
+      });
+      this.dispatches.set(current.operationId, verification);
+      if (!input.backgroundVerification) return verification;
+      input.onVerificationStarted?.(verification);
+      void verification
+        .catch(() => {
+          const latest = this.requireOperation(current.operationId);
+          if (
+            latest.phase !== 'trial-running' ||
+            latest.waitReason !== null ||
+            latest.activeInvocationId !== null ||
+            this.terminationDrains.has(latest.operationId)
+          )
+            return;
+          this.appendEvent(latest.operationId, 'trial_status_changed', {
+            stageId: latest.stageId,
+            trialId: `trial-retry-${latest.version}`,
+            status: 'failed',
+            planHash: null,
+            caseCount: 0,
+            passedCount: 0,
+            failedCount: 0,
+            warningCount: 0,
+            errorCode: 'trial_unavailable',
+            feedback: {
+              schemaVersion: 1,
+              stage: 'trial',
+              failedTaskIds: [],
+              omittedFailedTaskCount: 0,
+              details:
+                'Verification could not complete. The draft is retained; retry verification after resolving the runtime issue.',
+            },
+          });
+          this.transition(latest, { ...stateOf(latest), waitReason: 'user_retry' });
+        })
+        .catch(() => {
+          console.warn('[chat-operation-v2] Could not persist verification retry failure.');
+        });
+      return { kind: 'in_progress', operation: resumed.operation };
+    }
     if (current.waitReason !== 'provider_unavailable' || current.activeInvocationId !== null) {
       return { kind: 'in_progress', operation: current };
     }
@@ -3867,7 +3961,10 @@ export class ChatOperationV2AuthoringEngine {
         reasonCode: 'process_local_interactive_request_lost',
       };
     }
-    if (operation.waitReason === 'provider_unavailable') {
+    if (
+      operation.waitReason === 'provider_unavailable' ||
+      (operation.phase === 'trial-running' && operation.waitReason === 'user_retry')
+    ) {
       return { action: 'await_provider_retry', reasonCode: 'explicit_retry_required' };
     }
     if (

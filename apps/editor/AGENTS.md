@@ -1331,6 +1331,15 @@
 
 ## Chat Usage Stats And Terminal Discard Reasons
 
+- A completed authoring draft whose Trial returns `unverified` must remain in its authenticated
+  stage with a durable pending authoring result, at `trial-running` / `user_retry`. It is neither
+  published nor automatically discarded. Explicit Retry rehydrates that stage, binding, relocation,
+  and pending result after restart and runs verification only, using generation/version CAS. Keep
+  the ordinary success/commit and explicit cancellation/discard boundaries unchanged. Ordinary Send
+  and provider-dialog opening must never implicitly discard a retained verification draft. Project
+  its bounded authoring notes separately from sealed successful history; never expose repair or
+  Trial Plan text. Preserve typed, fixed connection-failure explanations without provider payloads.
+
 - Terminal discarded/failed operations retain the newest failed invocation's bounded failure
   code and stage. An interrupted unknown submission may recover its cause only from a matching
   durable `invocation_submission_unknown` event. Successful retries and cancellation do not project

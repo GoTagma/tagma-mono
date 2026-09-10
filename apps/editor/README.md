@@ -237,10 +237,20 @@ and other processing. AI request time includes provider and tool activity; Trial
 case setup and assertions, so neither is a pure model-generation or runner benchmark. Incomplete
 retained history is explicitly marked unavailable rather than reported as zero.
 
-When verification prevents publication, the failed turn preserves the Host's validation detail and
-failed task names even after its staged draft is discarded. **Edit request** restores the request
-to an empty Composer for revision and a new send. Older failures may have no saved detail. Long
-verification text carries an explicit truncation marker and omitted character count. Discussion
+When Trial cannot complete and does not authorize pipeline repair (for example, a model API
+connection interruption), Chat retains the authenticated draft, plan, and authoring notes and shows
+**Draft saved; verification needs attention**. **Continue verification** explicitly runs verification
+again against that draft, including after a Host restart, without repeating classification or pipeline
+generation. Existing Trial cache rules still apply: prompt and triggered cases rerun, and verification
+may consume additional model tokens. A failed or unexecuted Trial never becomes a published result.
+The generated notes are available under **Generated notes (not yet verified)**; they are not a verified
+completion. A normal Send cannot implicitly discard this retained work. **Discard draft** explicitly
+abandons it. Terminal failures from older versions remain terminal and cannot be retroactively resumed.
+
+Other terminal failures retain the Host's validation detail and failed task names when available.
+**Edit request** restores those requests to an empty Composer for revision and a new send. Older
+failures may have no saved detail. Long verification text carries an explicit truncation marker and
+omitted character count. Discussion
 uses the request and attached context; include pipeline details when asking about a particular file.
 
 ## Production diagnostics for coding agents

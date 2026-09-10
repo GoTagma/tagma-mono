@@ -668,6 +668,50 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(JSON.stringify(result.feedback)).not.toContain('PRIVATE_PROVIDER_RESPONSE');
   });
 
+  test.each([
+    'AI_APICallError: The socket connection was closed unexpectedly',
+    'APIError: fetch failed: ECONNRESET',
+  ])('explains a model connection failure without exposing provider text: %s', async (error) => {
+    const value = await readyRuntime();
+    const task = {
+      taskId: 'main.prompt',
+      status: 'failed',
+      failureKind: 'exit_nonzero',
+      repairScope: 'diagnostic-only',
+      stderr: `${error} PRIVATE_PROVIDER_RESPONSE`,
+    };
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      summary: 'PRIVATE_PROVIDER_RESPONSE',
+      repairAuthorization: 'diagnostic-only',
+      cases: [
+        { id: 'first', success: false },
+        { id: 'second', success: false },
+      ],
+      tasks: [
+        { ...task, caseId: 'first' },
+        { ...task, caseId: 'second' },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const result = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+    expect(result.kind).toBe('unverified');
+    expect(result.feedback?.details).toContain('model API connection was interrupted');
+    expect(result.feedback?.details.match(/main\.prompt: failed/g)).toHaveLength(1);
+    expect(JSON.stringify(result.feedback)).not.toContain('PRIVATE_PROVIDER_RESPONSE');
+  });
+
   test('preserves a definitive native admission failure without starting provider execution', async () => {
     const value = await readyRuntime();
     const relocation = await value.runtime.relocateSession({

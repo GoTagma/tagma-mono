@@ -135,7 +135,82 @@ function RetryableOperationNotice() {
   );
   const failureCode = useChatStore((state) => state.activeChatOperationV2Failure?.code ?? null);
   const failureStage = useChatStore((state) => state.activeChatOperationV2Failure?.stage ?? null);
+  const operation = useChatStore((state) => state.activeChatOperationV2);
+  const detail = useChatStore((state) =>
+    state.activeChatOperationV2
+      ? state.chatOperationV2ThreadDetails[state.activeChatOperationV2.operationId]
+      : undefined,
+  );
+  const retry = useChatStore((state) => state.retryActiveChatOperationV2);
+  const discard = useChatStore((state) => state.discardActiveChatOperationV2);
+  const [pending, setPending] = useState(false);
   if (!retryable) return null;
+  if (operation?.phase === 'trial-running' && operation.waitReason === 'user_retry') {
+    return (
+      <section
+        aria-label="Pipeline draft retained"
+        className="border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2 text-caption"
+      >
+        <div className="text-label text-tagma-text">Draft saved; verification needs attention</div>
+        <p className="mt-1 text-tagma-muted">
+          Your generated pipeline and verification plan are retained. Nothing has been published.
+          Continue verification to reuse this draft without repeating generation. Verification may
+          use additional model tokens.
+        </p>
+        {detail?.verificationFeedback && (
+          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words text-tagma-muted">
+            {detail.verificationFeedback.details}
+          </pre>
+        )}
+        {detail?.draftSummary && (
+          <details className="mt-2 text-tagma-muted">
+            <summary className="cursor-pointer">Generated notes (not yet verified)</summary>
+            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words">
+              {detail.draftSummary}
+            </pre>
+          </details>
+        )}
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            disabled={pending}
+            className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
+            onClick={async () => {
+              setPending(true);
+              try {
+                await retry();
+              } finally {
+                setPending(false);
+              }
+            }}
+          >
+            {pending ? 'Submitting…' : 'Continue verification'}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            className="border border-tagma-border px-2 py-1 text-tagma-muted disabled:opacity-50"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  'Discard this generated draft and its recovery progress? This cannot be undone.',
+                )
+              )
+                return;
+              setPending(true);
+              try {
+                await discard();
+              } finally {
+                setPending(false);
+              }
+            }}
+          >
+            Discard draft
+          </button>
+        </div>
+      </section>
+    );
+  }
   return <RetryableOperationNoticeView failureCode={failureCode} failureStage={failureStage} />;
 }
 

@@ -1304,6 +1304,13 @@ export class ChatOperationV2Service {
         expectedGeneration: input.expectedGeneration,
         expectedVersion: input.expectedVersion,
         requestId: input.requestId,
+        backgroundVerification:
+          operation.phase === 'trial-running' && operation.waitReason === 'user_retry',
+        onVerificationStarted: (work) => {
+          void this.#trackReadonlyCall(work).catch(() => {
+            // The authoring engine persists a retained verification failure.
+          });
+        },
       }),
     );
   }
@@ -1995,6 +2002,8 @@ export class ChatOperationV2Service {
           authority.store.getLatestOperationEvent(operationId, type),
         getOperationEventHistory: (operationId) =>
           authority.store.getOperationEventHistory(operationId),
+        getPendingResultMessage: (operationId) =>
+          authority.store.getPendingResultMessage(operationId),
       },
     };
     this.#projectionRuntimes.set(authority.scope.canonicalPathHmac, runtime);

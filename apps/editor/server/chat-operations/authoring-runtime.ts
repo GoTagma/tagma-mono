@@ -1631,7 +1631,19 @@ function trialVerificationFeedback(trial: ChatPipelineTrialRunResult): ChatOpera
       task.failureKind === 'spawn_error' || task.repairScope === 'pipeline-artifact'
         ? boundedVerificationDetails(task.stderr, '', 'chat-operation-task-feedback', 400)
         : '';
-    return stderr ? `${status}\n${stderr}` : status;
+    // Classify the observed transport symptom locally. Never project arbitrary
+    // provider text, URLs, headers, or credentials as a recovery instruction.
+    const connectionInterrupted =
+      task.repairScope === 'diagnostic-only' &&
+      /(?:AI_APICallError|APIError)/i.test(task.stderr) &&
+      /(?:socket connection was closed|cannot connect to API|connection reset|ECONNRESET|ECONNREFUSED|fetch failed)/i.test(
+        task.stderr,
+      );
+    return connectionInterrupted
+      ? `${status}\nThe model API connection was interrupted. Verification did not finish; this does not establish a pipeline logic error.`
+      : stderr
+        ? `${status}\n${stderr}`
+        : status;
   });
   const summary = externalFailure
     ? 'Trial execution did not complete; see the task failure categories above.'
@@ -1644,7 +1656,7 @@ function trialVerificationFeedback(trial: ChatPipelineTrialRunResult): ChatOpera
       ].join('\n\n');
   return verificationFeedback(
     trial.kind === 'plan-required' ? 'trial_plan' : 'trial',
-    [...taskDetails, summary].filter(Boolean).join('\n\n'),
+    [...new Set(taskDetails), summary].filter(Boolean).join('\n\n'),
     failures.map((task) => task.taskId),
   );
 }
