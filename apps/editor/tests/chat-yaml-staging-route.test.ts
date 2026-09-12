@@ -4916,16 +4916,6 @@ describe('chat YAML staging routes', () => {
   test('replays a completed trial response after workspace drift but rejects stale finalize', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
-    const startRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/start')(
-      request(ws, { activePath: sourcePath }, 'chat-lock'),
-      startRes,
-    );
-    const stage = startRes.body as {
-      id: string;
-      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
-    };
-    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     const counterPath = join(ws.workDir, 'trial-success-counter.txt');
     const helperPath = join(dirname(sourcePath), 'helper.js');
     const writeHelper = (version: string) =>
@@ -4941,6 +4931,17 @@ describe('chat YAML staging routes', () => {
         'utf-8',
       );
     writeHelper('helper-v1');
+    // The initial baseline must execute the same helper version as its snapshot.
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     writeFileSync(
       entry.stagedPath,
       serializePipeline({
@@ -5009,16 +5010,6 @@ describe('chat YAML staging routes', () => {
   test('rejects stale finalize reuse after live pipeline-folder inputs change since the last trial', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
-    const startRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/start')(
-      request(ws, { activePath: sourcePath }, 'chat-lock'),
-      startRes,
-    );
-    const stage = startRes.body as {
-      id: string;
-      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
-    };
-    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     const helperInputPath = join(dirname(sourcePath), 'helper-input.txt');
     const helperPath = join(dirname(sourcePath), 'verify-input.js');
     writeFileSync(helperInputPath, 'alpha\n', 'utf-8');
@@ -5030,6 +5021,16 @@ describe('chat YAML staging routes', () => {
       ].join(' '),
       'utf-8',
     );
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     writeFileSync(
       entry.stagedPath,
       serializePipeline({

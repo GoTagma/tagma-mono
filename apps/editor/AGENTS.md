@@ -13,6 +13,11 @@
   Share that classification between Composer eligibility, Send guards, and retry notices. Ordinary
   Send must neither consume attachments nor discard retained work. Post-decision publication has
   no discard/cancel affordance; Retry resumes the same WAL through generation/version CAS.
+- Provider interruptions at staging, authoring, repair, or Trial planning retain the existing
+  stage and use explicit Host Retry. Ordinary Send and provider settings must never discard
+  that work. Persist completed authoring result authority before pausing a repair/planning
+  invocation; reconstruct the same stage, binding, pending result, and planning authority on
+  explicit Retry after Host restart. A pre-authoring failure may still restore the Composer.
 - Automatic commit execution retries only bounded transient filesystem errors. Exhaustion or an
   unexpected executor failure pauses the same commit phase with `user_retry` through an atomic
   `execution_wait` WAL update; only wait state/version/time may change. Keep the decision, artifacts,
@@ -78,8 +83,8 @@
   orchestrator; the authoring engine has no operation context yet. A classifier-side
   `provider_unavailable` discard must terminalize as `discarded` without allocating an authoring
   runtime. After reservation, preserve the authoring and commit cleanup paths. Do not expose Host
-  stages, outbox states, or a cluster of retry/discard/provider controls for an ordinary retryable
-  failure. Restore the frozen request once into the normal Composer; the next ordinary Send must
+  stages, outbox states, or a cluster of retry/discard/provider controls for a retryable failure
+  before authoring owns a stage. Restore that frozen request once into the normal Composer; the next ordinary Send must
   discard the old operation through Host authority before creating a new operation with the current
   provider/model selection.
 - Chat V2 Host admission must authenticate the exact selected model against the managed configured
@@ -717,6 +722,19 @@
   middleware and compare target-pipeline `static_context` sources in the real workspace with the
   exact staged Trial snapshot. Missing, deleted, or byte-divergent staged sources exclude that
   branch from Live Smoke and require Sandbox coverage.
+- Live Smoke must also compare literal target-pipeline file arguments in task commands,
+  output-check completions, and hooks against the immutable staged snapshot. Added, changed,
+  deleted, or unreadable referenced files exclude the affected task and its dependents; hooks
+  exclude the whole baseline. Bind these exclusions into signed readiness at execution and
+  publication verification. Same-id completed-response replay remains read-only and must not
+  re-execute or issue a different plan; Finalize still revalidates the current witness/readiness.
+  This is literal argument evidence, not transitive import analysis.
+- A failed Live Smoke baseline may satisfy only a complete case over the identical task closure,
+  with explicit status assertions for every task and no fixtures or prerequisite overrides.
+  Evaluate every assertion against the actual live result/files; timeout, abort, spawn, and
+  incomplete-output failures never qualify. All Sandbox cases must still pass. Keep the actual
+  pipeline run failed and report expected-failure verification separately. Cache v29 fences the
+  earlier raw-success-only verdict and command-file readiness semantics.
 - Before finalize, a new target pipeline directory cannot exist in the real workspace. When a
   task's effective cwd is inside that target directory, the live cwd is verifiably absent, and the
   exact projected directory exists in the authenticated staged snapshot, exclude that task and its
@@ -1339,6 +1357,9 @@
   because authored one-liners are routinely raw PowerShell. A semicolon inside `@{ ... }` is not
   evidence that the following field name is a new command. Keep discovering real external commands
   elsewhere in the same line.
+- Keep balanced `$((...))` arithmetic expansions inside one lexical token, including whitespace,
+  nested grouping, bitwise, and boolean operators; still discover commands after the expansion.
+  Do not turn arithmetic operands into PATH requirements.
 - Multiple live `RunSession`s in one workspace are for distinct YAML sources. An equivalent request
   for the same normalized YAML while its session is running or waiting must return that session's
   `runId` with `alreadyRunning`; reject a different config/target request with 409, and allow a new

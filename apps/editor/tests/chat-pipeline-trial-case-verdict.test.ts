@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import type { ChatPipelineTrialPlanCase } from '../server/chat-pipeline-trial-plan';
 import {
   evaluateChatPipelineTrialCaseSuccess,
+  evaluateChatPipelineLiveSmokeExpectedFailure,
   evaluateTrialExpectation,
   type ChatPipelineTrialExpectationResult,
 } from '../server/chat-pipeline-trial-run';
@@ -45,6 +46,75 @@ function passed(expectation: {
     repairScope: 'pipeline-artifact',
   } as ChatPipelineTrialExpectationResult;
 }
+
+test('Live Smoke accepts only a complete unchanged case and trustworthy expected rejection evidence', () => {
+  const pipelineConfig = {
+    name: 'negative',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [
+          { id: 'ready', name: 'Ready', command: 'echo ready' },
+          { id: 'gate', name: 'Gate', command: 'exit 7', depends_on: ['main.ready'] },
+        ],
+      },
+    ],
+  };
+  const testCase = casePlan({
+    targetTaskIds: ['main.gate'],
+    expectations: [
+      { type: 'task-status', taskId: 'main.ready', status: 'success' },
+      { type: 'task-status', taskId: 'main.gate', status: 'failed' },
+    ],
+  });
+  const result = engineResult(
+    new Map([
+      ['main.ready', { status: 'success', result: { failureKind: null } }],
+      ['main.gate', { status: 'failed', result: { failureKind: 'exit_nonzero' } }],
+    ]),
+    false,
+  );
+  const check = (overrides: Partial<ChatPipelineTrialPlanCase> = {}, engine = result) =>
+    evaluateChatPipelineLiveSmokeExpectedFailure({
+      result: engine,
+      pipelineConfig,
+      targetTaskIds: ['main.ready', 'main.gate'],
+      cases: [{ ...testCase, ...overrides }],
+      workDir: '/tmp',
+      relativeYamlPath: 'example/example.yaml',
+    });
+  expect(check()).toBe('case-x');
+  expect(check({ fixtures: [{ path: 'input.txt', content: 'invalid' }] })).toBeNull();
+  expect(check({ environment: [{ name: 'INPUT_MODE', value: 'invalid' }] })).toBeNull();
+  expect(check({ baselineCaseId: 'positive', deniedManualTaskIds: ['main.gate'] })).toBeNull();
+  expect(check({ targetTaskIds: ['main.ready'] })).toBeNull();
+  expect(check({ expectations: [testCase.expectations[1]!] })).toBeNull();
+  expect(
+    check({
+      expectations: [
+        ...testCase.expectations,
+        { type: 'task-status', taskId: 'main.gate', status: 'success' },
+      ],
+    }),
+  ).toBeNull();
+  for (const failureKind of [
+    'output_error',
+    'spawn_error',
+    'binary_missing',
+    'aborted',
+    'timeout',
+  ]) {
+    const broken = engineResult(
+      new Map([
+        ['main.ready', { status: 'success' }],
+        ['main.gate', { status: 'failed', result: { failureKind } }],
+      ]),
+      false,
+    );
+    expect(check({}, broken)).toBeNull();
+  }
+});
 
 test('case passes when the only task failure is declared by a task-status expectation (empty-input fail-fast)', () => {
   const testCase = casePlan({

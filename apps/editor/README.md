@@ -112,6 +112,18 @@ Trial can pass. Results distinguish Sandbox coverage from real-environment readi
 with Live Smoke skipped does not satisfy the environment or approval requirements of an ordinary Run.
 Missing executables and actual task, output, or assertion failures remain visible verification failures.
 
+Live Smoke checks literal pipeline-file arguments in commands, completion checks, and hooks against
+the staged snapshot. A referenced script or input that is new, changed, deleted, or unreadable in the
+real directory excludes that task and its dependents until publication; Sandbox must cover those
+terminal branches. Tagma does not copy staged scripts into the real directory to make a Smoke pass.
+This argument check does not infer dynamic paths or transitive imports.
+
+A deliberately failing pipeline can pass verification when a complete, fixture-free case declares
+every task's outcome and all assertions also match the actual Live Smoke run. Cases with test
+environment overrides or denied approvals cannot reinterpret a live failure. Runtime interruption,
+missing executables, and incomplete output remain failures. The pipeline's run history keeps its
+actual failed status even when expected-failure verification passes.
+
 Sandbox copies resolve pipeline-local relative working directories from the original workspace,
 then relocate them into the copied pipeline directory. This also covers task-level cwd overrides
 and built-in file paths, so editing a pipeline into a differently named branch does not leave its
@@ -155,8 +167,11 @@ request-only.
 Stop ends an operation before publication, including while it is waiting for an agent permission.
 The Host interrupts both pinned OpenCode execution channels, restores the staged session, and
 settles the operation once. An SDK error returned as a consequence of that cancellation is not a
-provider outage. Genuine provider failures still preserve the message for an explicit resend;
-cleanup of the prior operation must finish before the replacement request starts.
+provider outage. A provider failure before authoring preserves the message for explicit resend;
+cleanup of that prior operation finishes before the replacement request starts. Once authoring owns
+a stage, provider interruptions retain the draft instead. After resolving billing or connection
+issues, **Continue pipeline work** retries the same operation and stage, including after Host restart.
+Opening provider settings does not discard the draft. Starting over requires explicit **Discard draft**.
 
 Permission prompts show bounded target names relative to the staged draft, with explicit hidden
 or unavailable detail. Target names are display-only; approval still uses the same Host request

@@ -1956,8 +1956,13 @@ export class ChatOperationV2AuthoringEngine {
       return this.finishPrecommit(context, outcome);
     }
     if (result.kind === 'provider_unavailable') {
-      const waiting = this.transition(operationAfterInvocation, {
-        ...stateOf(operationAfterInvocation),
+      // A repair/planning outage must not leave the completed authoring result
+      // solely in this Host's memory. Keep it unpublished but restart-recoverable.
+      if (context.pendingVisibleCompletion) await this.persistVisibleCompletion(context);
+      const retained = this.requireOperation(context.operationId);
+      if (retained.phase === 'terminal') return terminalResult(retained);
+      const waiting = this.transition(retained, {
+        ...stateOf(retained),
         waitReason: 'provider_unavailable',
         activeInvocationId: null,
         pendingPermissionRequestId: null,
@@ -3463,8 +3468,22 @@ export class ChatOperationV2AuthoringEngine {
     if (current.waitReason !== 'provider_unavailable' || current.activeInvocationId !== null) {
       return { kind: 'in_progress', operation: current };
     }
+    const previous = this.persistence
+      .listInvocationOutbox(current.workspaceScopeId)
+      .filter(({ operationId }) => operationId === current.operationId)
+      .sort(
+        (left, right) =>
+          left.preparedAt - right.preparedAt || left.invocationId.localeCompare(right.invocationId),
+      )
+      .at(-1);
     let context = this.contexts.get(current.operationId);
-    if (!context && current.phase === 'staging') {
+    // A definitive provider rejection can resume the authenticated stage.
+    // Unknown admission still requires durable-history reconciliation first.
+    if (
+      !context &&
+      current.stageId &&
+      (current.phase === 'staging' || previous?.status === 'failed_terminal')
+    ) {
       context = await this.recoverDurableStageContext(current);
     }
     if (current.phase === 'staging') {
@@ -3478,15 +3497,7 @@ export class ChatOperationV2AuthoringEngine {
       return this.continueSessionRelocation(stagingContext, current, stagingContext.stage);
     }
     if (!context) {
-      const lastSessionId = this.persistence
-        .listInvocationOutbox(current.workspaceScopeId)
-        .filter(({ operationId }) => operationId === current.operationId)
-        .sort(
-          (left, right) =>
-            left.preparedAt - right.preparedAt ||
-            left.invocationId.localeCompare(right.invocationId),
-        )
-        .at(-1)?.sessionId;
+      const lastSessionId = previous?.sessionId;
       if (!lastSessionId) {
         throw new ChatOperationV2AuthoringProtocolError(
           'authority_mismatch',
@@ -3499,14 +3510,6 @@ export class ChatOperationV2AuthoringEngine {
       });
       return { kind: 'recovery_required', operation: current, recovery };
     }
-    const invocations = this.persistence
-      .listInvocationOutbox(current.workspaceScopeId)
-      .filter(({ operationId }) => operationId === current.operationId)
-      .sort(
-        (left, right) =>
-          left.preparedAt - right.preparedAt || left.invocationId.localeCompare(right.invocationId),
-      );
-    const previous = invocations.at(-1);
     if (!previous || !['authoring', 'repair', 'trial_plan'].includes(previous.purpose)) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
@@ -3514,6 +3517,9 @@ export class ChatOperationV2AuthoringEngine {
       );
     }
     const purpose = previous.purpose as ChatOperationV2AuthoringInvocationPurpose;
+    if (purpose === 'trial_plan' && !context.pendingTrialPlanRequest) {
+      await this.recoverTrialPlanRequest(context, current);
+    }
     const repairAttempt =
       purpose === 'repair'
         ? current.repairAttempts + 1
@@ -3585,6 +3591,27 @@ export class ChatOperationV2AuthoringEngine {
       const relocation = parseChatOperationV2SessionRelocation(relocationValue);
       this.assertRelocationMatches(context, stage, relocation, relocation.phase);
       context.relocation = relocation;
+    }
+    const pending = this.persistence.getPendingResultMessage(operation.operationId);
+    if (pending) {
+      if (
+        pending.operationGeneration !== operation.generation ||
+        pending.workspaceScopeId !== operation.workspaceScopeId ||
+        pending.message.operationId !== operation.operationId ||
+        pending.message.purpose !== 'authoring'
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'authority_mismatch',
+          'Recovered draft result does not match its operation.',
+        );
+      }
+      context.visibleResult = {
+        resultId: pending.resultId,
+        pendingMessageId: pending.pendingMessageId,
+        pendingMessageHash: pending.message.messageHash,
+        message: pending.message,
+        messageCount: 1,
+      };
     }
     this.contexts.set(operation.operationId, context);
     return context;

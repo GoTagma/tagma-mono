@@ -5,7 +5,14 @@ import type {
 
 export function chatOperationV2RetainedWorkKind(
   operation: Pick<ChatOperationV2Projection, 'phase' | 'waitReason'> | null,
-): 'publication' | 'verification' | 'handoff' | null {
+): 'publication' | 'verification' | 'handoff' | 'authoring' | null {
+  // These phases already own an authenticated stage, even if the interrupted
+  // invocation never returned a visible result. A fresh Send would delete it.
+  if (
+    operation?.waitReason === 'provider_unavailable' &&
+    ['staging', 'authoring', 'repairing', 'trial-running'].includes(operation.phase)
+  )
+    return 'authoring';
   if (operation?.waitReason !== 'user_retry') return null;
   if (operation.phase.startsWith('commit_')) return 'publication';
   if (operation.phase === 'trial-running') return 'verification';

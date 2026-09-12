@@ -718,6 +718,43 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(JSON.stringify(result.feedback)).not.toContain('PRIVATE_PROVIDER_RESPONSE');
   });
 
+  test('a completed diagnostic-only Live Smoke failure is not described as incomplete execution', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      repairAuthorization: 'diagnostic-only',
+      liveSmokeStatus: 'failed',
+      summary: 'Live Smoke failed.',
+      cases: [{ id: 'case-1', success: true }],
+      tasks: [
+        {
+          taskId: 'main.check',
+          status: 'failed',
+          failureKind: 'exit_nonzero',
+          repairScope: 'diagnostic-only',
+          caseId: null,
+          stderr: 'PRIVATE_PROVIDER_RESPONSE',
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const result = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+    expect(result.feedback?.details).toContain('completed with a failure');
+    expect(result.feedback?.details).not.toContain('did not complete');
+    expect(result.feedback?.details).not.toContain('PRIVATE_PROVIDER_RESPONSE');
+  });
+
   test.each([
     'AI_APICallError: The socket connection was closed unexpectedly',
     'APIError: fetch failed: ECONNRESET',

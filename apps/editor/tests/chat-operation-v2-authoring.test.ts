@@ -1694,6 +1694,51 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     });
   });
 
+  test.each(['authoring', 'repair', 'trial_plan'] as const)(
+    'billing recovery retains %s stage authority across Host restart',
+    async (purpose) => {
+      const { engine, store, runtime, resultPersistence, now, nextHostId } = createHarness({
+        verification:
+          purpose === 'repair'
+            ? ['repair', 'passed']
+            : purpose === 'trial_plan'
+              ? ['trial_plan', 'trial_plan', 'passed']
+              : ['passed'],
+        providerUnavailableOnce: true,
+        providerUnavailablePurpose: purpose,
+        providerFailureCode: 'provider_billing_required',
+        providerSubmissionUnknown: false,
+      });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      const waiting = store.getOperation('operation-1')!;
+      expect(waiting.waitReason).toBe('provider_unavailable');
+      if (purpose !== 'authoring')
+        expect(store.getPendingResultMessage(waiting.operationId)).not.toBeNull();
+      const restarted = new ChatOperationV2AuthoringEngine({
+        persistence: store,
+        runtime,
+        resultPersistence,
+        now,
+        nextHostId,
+      });
+      const retried = await restarted.retryProviderUnavailable({
+        operationId: waiting.operationId,
+        workspaceScopeId: waiting.workspaceScopeId,
+        expectedGeneration: waiting.generation,
+        expectedVersion: waiting.version,
+        requestId: 'billing-restored',
+      });
+      expect(retried.kind).toBe('commit_preparing');
+      expect(retried.operation.stageId).toBe(waiting.stageId);
+      expect(retried.operation.bindingId).toBe(waiting.bindingId);
+      expect(runtime.discardedStageIds).toEqual([]);
+      expect(runtime.invocationRequests.at(-1)?.purpose).toBe(purpose);
+      expect(runtime.invocationRequests.at(-1)?.sessionId).toBe(
+        runtime.invocationRequests[0]?.sessionId,
+      );
+    },
+  );
+
   test('persists the exact submission-unknown reason and purpose for Trial Plan diagnostics', async () => {
     const { engine, store } = createHarness({
       verification: ['trial_plan'],
@@ -1715,6 +1760,32 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
         reasonCode: 'admission_preflight_history_request_failed',
       },
     });
+  });
+
+  test('Host reconstruction does not turn an unknown provider submission into a fresh invocation', async () => {
+    const { engine, store, runtime, resultPersistence, now, nextHostId } = createHarness({
+      providerUnavailableOnce: true,
+      providerSubmissionUnknown: true,
+    });
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    const waiting = store.getOperation('operation-1')!;
+    const restarted = new ChatOperationV2AuthoringEngine({
+      persistence: store,
+      runtime,
+      resultPersistence,
+      now,
+      nextHostId,
+    });
+    const result = await restarted.retryProviderUnavailable({
+      operationId: waiting.operationId,
+      workspaceScopeId: waiting.workspaceScopeId,
+      expectedGeneration: waiting.generation,
+      expectedVersion: waiting.version,
+      requestId: 'unknown-recovery',
+    });
+    expect(result.kind).toBe('recovery_required');
+    expect(runtime.invocationRequests).toHaveLength(1);
+    expect(runtime.discardedStageIds).toEqual([]);
   });
 
   test('seals a relocation outage as retryable staging and resumes the same durable relocation', async () => {

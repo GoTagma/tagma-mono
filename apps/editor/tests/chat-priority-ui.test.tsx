@@ -36,6 +36,35 @@ test('paused publication exposes Retry without offering post-decision discard', 
   expect(html).not.toContain('Discard');
 });
 
+test.each(['staging', 'authoring', 'repairing', 'trial-running'] as const)(
+  'a provider interruption retains %s work instead of permitting a destructive resend',
+  (phase) => {
+    expect(chatOperationV2RetainedWorkKind({ phase, waitReason: 'provider_unavailable' })).toBe(
+      'authoring',
+    );
+    expect(
+      chatOperationV2RetainedWorkKind({ phase: 'classifying', waitReason: 'provider_unavailable' }),
+    ).toBeNull();
+  },
+);
+
+test('provider recovery explains the retained draft and offers explicit continuation', () => {
+  const html = renderToStaticMarkup(
+    <RetainedOperationNoticeView
+      kind="authoring"
+      pending={false}
+      failureCode="provider_billing_required"
+      onRetry={() => {}}
+      onDiscard={() => {}}
+    />,
+  );
+  expect(html).toContain('Draft saved');
+  expect(html).toContain('Continue pipeline work');
+  expect(html).toContain('Discard draft');
+  expect(html).toContain('Billing or credits');
+  expect(html).not.toContain('send again');
+});
+
 test('retained handoff exposes explicit retry and disables decisions while submitting', () => {
   const props = { kind: 'handoff' as const, onRetry: () => {}, onDiscard: () => {} };
   const html = renderToStaticMarkup(<RetainedOperationNoticeView {...props} pending={false} />);

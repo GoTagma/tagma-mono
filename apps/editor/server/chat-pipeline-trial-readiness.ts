@@ -6,6 +6,7 @@ import { buildDag } from '@tagma/sdk/config';
 
 import type { ChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
 import { isPathWithin } from './path-utils.js';
+import { commandUsesUnpublishedPipelineFile } from './chat-pipeline-command-files.js';
 
 export interface ChatPipelineTrialFixtureInput {
   taskId: string;
@@ -45,6 +46,7 @@ export type ChatPipelineLiveSmokeBaseline =
       manualGatedTaskIds: string[];
       middlewareUnavailableTaskIds: string[];
       cwdUnavailableTaskIds: string[];
+      commandFileUnavailableTaskIds: string[];
     }
   | {
       mode: 'targeted';
@@ -52,12 +54,14 @@ export type ChatPipelineLiveSmokeBaseline =
       manualGatedTaskIds: string[];
       middlewareUnavailableTaskIds: string[];
       cwdUnavailableTaskIds: string[];
+      commandFileUnavailableTaskIds: string[];
     }
   | {
       mode: 'skip';
       manualGatedTaskIds: string[];
       middlewareUnavailableTaskIds: string[];
       cwdUnavailableTaskIds: string[];
+      commandFileUnavailableTaskIds: string[];
     };
 
 export interface ChatPipelineLiveSmokeArtifactProjection {
@@ -217,13 +221,42 @@ export function resolveChatPipelineLiveSmokeBaseline(
     .filter(([, node]) => effectiveCwdIsStagedOnly(workDir, node, projection))
     .map(([taskId]) => taskId)
     .sort();
+  const commandAvailability = new Map<string, boolean>();
+  const hookUnavailable =
+    projection &&
+    Object.values(pipelineConfig.hooks ?? {}).some((command) =>
+      commandUsesUnpublishedPipelineFile(command, workDir, projection, commandAvailability),
+    );
+  const commandFileUnavailableTaskIds = projection
+    ? [...dag.nodes.entries()]
+        .filter(([, node]) => {
+          const cwd = resolve(workDir, node.task.cwd ?? node.track.cwd ?? '.');
+          const completion = node.task.completion;
+          return (
+            hookUnavailable ||
+            [
+              node.task.command,
+              completion?.type === 'output_check' ? completion.check : undefined,
+            ].some((command) =>
+              commandUsesUnpublishedPipelineFile(command, cwd, projection, commandAvailability),
+            )
+          );
+        })
+        .map(([taskId]) => taskId)
+        .sort()
+    : [];
   const exclusions = {
     manualGatedTaskIds,
     middlewareUnavailableTaskIds,
     cwdUnavailableTaskIds,
+    commandFileUnavailableTaskIds,
   };
   const gatedTaskIds = [
-    ...new Set([...middlewareUnavailableTaskIds, ...cwdUnavailableTaskIds]),
+    ...new Set([
+      ...middlewareUnavailableTaskIds,
+      ...cwdUnavailableTaskIds,
+      ...commandFileUnavailableTaskIds,
+    ]),
   ].sort();
   if (dataReadiness.state === 'blocked') {
     return { mode: 'skip', ...exclusions };

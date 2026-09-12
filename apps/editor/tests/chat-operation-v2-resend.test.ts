@@ -179,9 +179,15 @@ afterEach(async () => {
   });
 });
 
-test.each(['', 'newly typed request', 'request'])(
-  'resend does not restore old failure evidence over the later draft %j',
-  async (laterDraft) => {
+test.each([
+  { laterDraft: '', phase: 'classifying' },
+  { laterDraft: 'newly typed request', phase: 'classifying' },
+  { laterDraft: 'request', phase: 'classifying' },
+  { laterDraft: 'later request', phase: 'authoring' },
+  { laterDraft: 'later request', phase: 'repairing' },
+] as const)(
+  'provider recovery preserves the appropriate request or draft: %j',
+  async ({ laterDraft, phase }) => {
     setClientWorkspace(workspace);
     globalThis.EventSource = Events as unknown as typeof EventSource;
     usePipelineStore.setState({ yamlPath: null, isDirty: false, layoutDirty: false });
@@ -194,7 +200,7 @@ test.each(['', 'newly typed request', 'request'])(
       operationId: 'failed-turn',
       conversationId: 'conversation',
       rendererInstanceId: 'renderer',
-      phase: 'authoring',
+      phase,
       waitReason: 'provider_unavailable',
       executionState: 'retryable_failure',
       terminalOutcome: null,
@@ -225,8 +231,13 @@ test.each(['', 'newly typed request', 'request'])(
       failure:
         current.executionState === 'retryable_failure'
           ? {
-              stage: 'authoring',
-              code: 'provider_unavailable',
+              stage:
+                phase === 'classifying'
+                  ? 'classification'
+                  : phase === 'repairing'
+                    ? 'repair'
+                    : 'authoring',
+              code: 'provider_billing_required',
               invocationId: 'failed-invocation',
               outboxStatus: 'failed_terminal',
               recordedAt: current.updatedAt,
@@ -234,8 +245,10 @@ test.each(['', 'newly typed request', 'request'])(
           : null,
     });
     let oldDetail: ChatOperationV2OperationDetail | null = null;
+    const mutations: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (init?.method === 'POST') mutations.push(url);
       if (url.endsWith('/snapshot')) {
         const correlation = useChatStore.getState();
         current = {
@@ -289,6 +302,13 @@ test.each(['', 'newly typed request', 'request'])(
           result: { kind: 'discarded', operation: current },
         });
       }
+      if (url.endsWith('/retry')) {
+        current = { ...current, waitReason: null, executionState: 'running', version: 3 };
+        return Response.json({
+          protocolVersion: 2,
+          result: { kind: 'in_progress', operation: current },
+        });
+      }
       if (url === '/api/chat/operations' && init?.method === 'POST') {
         current = {
           ...current,
@@ -316,6 +336,23 @@ test.each(['', 'newly typed request', 'request'])(
       chatOperationProtocolVersion: 2,
       chatOperationMode: 'production',
     });
+    if (phase !== 'classifying') {
+      useChatStore.setState({
+        composerDraft: laterDraft,
+        composerAttachments: [{ id: 'later-note', label: 'Later', content: 'keep' }],
+      });
+      await expect(useChatStore.getState().send('request')).rejects.toThrow(/paused|retained/);
+      useChatStore.getState().openConnect();
+      await useChatStore.getState().changeProviderForActiveChatOperationV2();
+      expect(mutations).toEqual([]);
+      expect(useChatStore.getState().composerDraft).toBe(laterDraft);
+      expect(useChatStore.getState().composerAttachments).toHaveLength(1);
+      await useChatStore.getState().retryActiveChatOperationV2();
+      expect(mutations).toEqual(['/api/chat/operations/failed-turn/retry']);
+      expect(useChatStore.getState().activeChatOperationV2?.operationId).toBe('failed-turn');
+      expect(useChatStore.getState().composerDraft).toBe(laterDraft);
+      return;
+    }
     expect(useChatStore.getState().composerDraft).toBe('request');
     useChatStore.getState().setComposerDraft(''); // the real Composer clears on submit
     await useChatStore.getState().send('request');

@@ -83,21 +83,94 @@ function commandWithInertContext(
   };
 }
 
-type AnyTask =
-  | ReturnType<typeof manualTask>
-  | ReturnType<typeof plainTask>
-  | ReturnType<typeof contextTask>
-  | ReturnType<typeof commandWithInertContext>;
-
-function pipeline(tasks: AnyTask[]): PipelineConfig {
+function pipeline(tasks: PipelineConfig['tracks'][number]['tasks'], cwd?: string): PipelineConfig {
   return {
     name: 'Live smoke baseline',
-    tracks: [{ id: 'main', name: 'Main', tasks }],
+    tracks: [{ id: 'main', name: 'Main', tasks, ...(cwd ? { cwd } : {}) }],
   } as PipelineConfig;
 }
 
 const runnable: ChatPipelineTrialReadiness = { state: 'runnable' };
 const workDir = join(tmpdir(), 'tagma-trial-baseline');
+
+test('Live Smoke excludes absent, changed and deleted command files using the effective cwd', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-smoke-command-files-'));
+  const livePipelineDir = join(root, '.tagma', 'pipeline');
+  const stagedPipelineDir = join(root, 'snapshot', 'pipeline');
+  mkdirSync(livePipelineDir, { recursive: true });
+  mkdirSync(stagedPipelineDir, { recursive: true });
+  const filename = 'helper 中文.py';
+  try {
+    for (const state of ['added', 'changed', 'deleted', 'identical'] as const) {
+      for (const dir of [livePipelineDir, stagedPipelineDir])
+        rmSync(join(dir, filename), { force: true });
+      if (state !== 'deleted') writeFileSync(join(stagedPipelineDir, filename), 'print(42)');
+      if (state !== 'added')
+        writeFileSync(
+          join(livePipelineDir, filename),
+          state === 'identical' ? 'print(42)' : 'print(21)',
+        );
+      for (const command of [
+        { argv: ['python3', filename] },
+        { argv: ['custom-runner', `--script=${filename}`] },
+        { shell: `python3 "${filename}"` },
+        `python3 '${filename}'`,
+      ]) {
+        const config = pipeline([
+          { ...plainTask('script'), command, cwd: '.tagma/pipeline' },
+          plainTask('sink', ['script']),
+          plainTask('independent'),
+        ]);
+        const result = resolveChatPipelineLiveSmokeBaseline(config, runnable, root, {
+          livePipelineDir,
+          stagedPipelineDir,
+          targetPipelineIsNew: false,
+        });
+        expect(result.mode).toBe(state === 'identical' ? 'run-all' : 'targeted');
+        if (result.mode === 'targeted') expect(result.targetTaskIds).toEqual(['main.independent']);
+      }
+    }
+    writeFileSync(join(stagedPipelineDir, filename), 'print(42)');
+    rmSync(join(livePipelineDir, filename));
+    const config = pipeline(
+      [{ ...plainTask('script'), command: { argv: ['python3', `pipeline/${filename}`] } }],
+      '.tagma',
+    );
+    expect(
+      resolveChatPipelineLiveSmokeBaseline(config, runnable, root, {
+        livePipelineDir,
+        stagedPipelineDir,
+        targetPipelineIsNew: true,
+      }).mode,
+    ).toBe('skip');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Live Smoke checks output_check scripts as well as task commands', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-smoke-check-file-'));
+  const livePipelineDir = join(root, '.tagma', 'pipeline');
+  const stagedPipelineDir = join(root, 'snapshot');
+  mkdirSync(livePipelineDir, { recursive: true });
+  mkdirSync(stagedPipelineDir, { recursive: true });
+  writeFileSync(join(stagedPipelineDir, 'verify.js'), 'process.exit(0)');
+  try {
+    const config = pipeline(
+      [{ ...plainTask('script'), completion: { type: 'output_check', check: 'bun verify.js' } }],
+      '.tagma/pipeline',
+    );
+    expect(
+      resolveChatPipelineLiveSmokeBaseline(config, runnable, root, {
+        livePipelineDir,
+        stagedPipelineDir,
+        targetPipelineIsNew: false,
+      }).mode,
+    ).toBe('skip');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('manual root tasks remain eligible for a consented live smoke auto-grant', () => {
   const config = pipeline([
@@ -111,6 +184,7 @@ test('manual root tasks remain eligible for a consented live smoke auto-grant', 
     manualGatedTaskIds: ['main.pick_input'],
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
+    commandFileUnavailableTaskIds: [],
   });
 });
 
@@ -125,6 +199,7 @@ test('a fully manual-gated pipeline keeps a runnable live smoke baseline', () =>
     manualGatedTaskIds: ['main.pick_input'],
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
+    commandFileUnavailableTaskIds: [],
   });
 });
 
@@ -140,6 +215,7 @@ test('mid-pipeline manual tasks remain eligible for a consented live smoke auto-
     manualGatedTaskIds: ['main.review'],
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
+    commandFileUnavailableTaskIds: [],
   });
 });
 
@@ -150,6 +226,7 @@ test('a pipeline without manual tasks keeps the run-all baseline', () => {
     manualGatedTaskIds: [],
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
+    commandFileUnavailableTaskIds: [],
   });
 });
 
@@ -163,6 +240,7 @@ test('command tasks ignore inert static_context configuration when selecting Liv
     manualGatedTaskIds: [],
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
+    commandFileUnavailableTaskIds: [],
   });
 });
 
@@ -230,6 +308,7 @@ test('a present static_context source does not gate the live smoke', () => {
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
+      commandFileUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -293,6 +372,7 @@ test('byte-identical staged and live static_context sources remain Live Smoke re
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
+      commandFileUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -374,6 +454,7 @@ test('an existing pipeline losing its cwd remains Live Smoke eligible for the ru
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
+      commandFileUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -410,6 +491,7 @@ test('an arbitrary missing cwd without a staged directory mirror remains Live Sm
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
+      commandFileUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -447,6 +529,7 @@ test('a live cwd with the wrong filesystem type is not reclassified as staged-on
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
+      commandFileUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -488,6 +571,7 @@ test('a live cwd below a dangling symlink is not reclassified as staged-only', (
       manualGatedTaskIds: [],
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
+      commandFileUnavailableTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });

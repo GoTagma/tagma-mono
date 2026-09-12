@@ -134,6 +134,35 @@ test('extractBinariesFromYaml preserves PascalCase hyphenated binaries outside P
   expect(binaries!.map((binary) => binary.name)).toEqual(['Acme-Tool']);
 });
 
+test('shell arithmetic stays one expansion while subsequent external commands are discovered', () => {
+  const { tagmaDir } = makeWorkspace();
+  for (const expression of [
+    '$(( b - a ))',
+    '$(( (b + 2) * (a - 1) ))',
+    '$(( b > a ? b - a : a - b ))',
+    '$(( (b << 1) | a ))',
+    '$(( a && b ))',
+    '"$(( b - a ))"',
+    '$((b-a))',
+  ]) {
+    const command = `a=3; b=8; result=${expression}; printf '%s' "$result"; git status && bun test`;
+    const yamlPath = writeYaml(
+      tagmaDir,
+      'arithmetic.yaml',
+      [
+        'pipeline:',
+        '  name: arithmetic',
+        '  tracks:',
+        '    - id: main',
+        '      tasks:',
+        '        - id: compute',
+        `          command: ${JSON.stringify(command)}`,
+      ].join('\n'),
+    );
+    expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(['bun', 'git']);
+  }
+});
+
 test('extractBinariesFromYaml preserves external binaries after a PowerShell segment', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(

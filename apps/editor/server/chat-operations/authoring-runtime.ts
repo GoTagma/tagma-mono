@@ -1676,7 +1676,11 @@ function trialVerificationFeedback(trial: ChatPipelineTrialRunResult): ChatOpera
     );
   const summary =
     externalFailure && trial.repairAuthorization !== 'pipeline-change-allowed'
-      ? 'Trial execution did not complete; see the task failure categories above.'
+      ? failures.every(
+          (task) => task.failureKind === 'exit_nonzero' || task.failureKind === 'completion_failed',
+        )
+        ? 'Trial execution completed with a failure that did not match its verification contract; see the task failure categories above.'
+        : 'Trial execution did not complete; see the task failure categories above.'
       : [
           ...new Set(
             [trial.planRequest?.message, trial.summary].filter(

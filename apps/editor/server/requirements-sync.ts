@@ -137,7 +137,8 @@ function isMultilineScript(s: string): boolean {
 
 /**
  * Split a shell-style string on whitespace, respecting matched single / double
- * quotes. Backslash escapes and `$()` / backtick subshells are NOT honored.
+ * quotes and balanced arithmetic expansions. `$()` / backtick subshells are
+ * otherwise opaque to dependency discovery.
  * Tagma input placeholders are masked before scanning so a filter separator in
  * `{{inputs.value | shellquote}}` cannot look like a shell pipeline.
  */
@@ -145,9 +146,21 @@ function splitShellTokens(s: string): string[] {
   const out: string[] = [];
   let cur = '';
   let quote: string | null = null;
+  let arithmeticDepth = 0;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i]!;
-    if (quote) {
+    // Whitespace, pipes and boolean operators inside arithmetic are not shell
+    // command boundaries. Keep the entire expansion attached to its assignment
+    // or argument, including nested grouping and arithmetic expansions.
+    if (arithmeticDepth > 0) {
+      cur += ch;
+      if (ch === '(') arithmeticDepth++;
+      if (ch === ')') arithmeticDepth--;
+    } else if (quote !== "'" && s.startsWith('$((', i)) {
+      cur += '$((';
+      arithmeticDepth = 2;
+      i += 2;
+    } else if (quote) {
       if (ch === quote) quote = null;
       else cur += ch;
     } else if (ch === '"' || ch === "'") {

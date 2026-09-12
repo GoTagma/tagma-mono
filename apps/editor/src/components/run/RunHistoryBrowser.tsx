@@ -286,11 +286,13 @@ export interface HistoryRunPrimaryAction {
 export function getHistoryRunPrimaryAction({
   selectedRun,
   summary,
+  summaryLoading = false,
   replayBusy,
   stopBusy,
 }: {
   selectedRun: RunHistoryEntry | null;
   summary: RunSummary | null;
+  summaryLoading?: boolean;
   replayBusy: boolean;
   stopBusy: boolean;
 }): HistoryRunPrimaryAction {
@@ -311,11 +313,15 @@ export function getHistoryRunPrimaryAction({
     label: 'Replay',
     disabled: replayBusy || !hasYamlSnapshot,
     busy: replayBusy,
-    title: !hasYamlSnapshot
-      ? 'No yaml snapshot available - this run predates the snapshot feature'
-      : replayBusy
-        ? 'Replay is starting'
-        : 'Replay this pipeline snapshot as a new run. Your editor content is not affected; the replay is recorded as a new history entry.',
+    title: !summary
+      ? summaryLoading
+        ? 'Loading run details…'
+        : 'Run details are unavailable. Reload them to check Replay availability.'
+      : !hasYamlSnapshot
+        ? 'No yaml snapshot available - this run predates the snapshot feature'
+        : replayBusy
+          ? 'Replay is starting'
+          : 'Replay this pipeline snapshot as a new run. Your editor content is not affected; the replay is recorded as a new history entry.',
   };
 }
 
@@ -894,6 +900,7 @@ export function RunHistoryBrowser({
       ? getHistoryRunPrimaryAction({
           selectedRun,
           summary,
+          summaryLoading,
           replayBusy,
           stopBusy: stopLoading,
         })

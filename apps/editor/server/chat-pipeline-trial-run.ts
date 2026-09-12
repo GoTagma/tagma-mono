@@ -609,13 +609,12 @@ function trialCacheRecordContext(
   };
 }
 
-function readCachedTrial(
+function readCompletedTrialResponse(
   ws: WorkspaceState,
   stageId: string,
   path: string,
   inputHash: string,
   trialabilityReportHash: string,
-  liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null,
 ): ChatPipelineTrialRunResult | null {
   if (!existsSync(path)) return null;
   try {
@@ -631,7 +630,6 @@ function readCachedTrial(
       typeof parsed.hostWitness?.digest !== 'string' ||
       (parsed.liveSmokeReadiness !== null &&
         !isChatPipelineTrialLiveSmokeReadiness(parsed.liveSmokeReadiness)) ||
-      !isDeepStrictEqual(parsed.liveSmokeReadiness, liveSmokeReadiness) ||
       !Array.isArray(parsed.caseReuse) ||
       !parsed.result ||
       parsed.result.version !== TRIAL_CACHE_VERSION ||
@@ -2620,6 +2618,63 @@ export function evaluateChatPipelineTrialCaseSuccess(input: {
   );
 }
 
+/** Match a real baseline only to an unmodified, complete case contract. */
+export function evaluateChatPipelineLiveSmokeExpectedFailure(input: {
+  result: EngineResult;
+  pipelineConfig: PipelineConfig;
+  targetTaskIds: readonly string[];
+  cases: readonly ChatPipelineTrialPlanCase[];
+  workDir: string;
+  relativeYamlPath: string;
+}): string | null {
+  if (input.result.success) return null;
+  const dag = buildDag(input.pipelineConfig);
+  const liveClosure = taskIdsInTargetClosure(dag, [...input.targetTaskIds]);
+  // Runtime/infrastructure failures never become an accepted negative result.
+  for (const taskId of liveClosure) {
+    const state = input.result.states.get(taskId);
+    if (!state || !['success', 'failed', 'skipped'].includes(state.status)) return null;
+    if (
+      state.status === 'failed' &&
+      !['exit_nonzero', 'completion_failed'].includes(state.result?.failureKind ?? '')
+    )
+      return null;
+  }
+  for (const testCase of input.cases) {
+    if (
+      testCase.fixtures.length ||
+      testCase.baselineCaseId ||
+      testCase.environment?.length ||
+      testCase.deniedManualTaskIds?.length
+    )
+      continue;
+    if (!isDeepStrictEqual(taskIdsInTargetClosure(dag, testCase.targetTaskIds), liveClosure))
+      continue;
+    // Do not transplant a negative fixture or a partial branch expectation onto
+    // an unrelated live run. Every task in the actual closure must be declared.
+    if (
+      !liveClosure.every((taskId) =>
+        testCase.expectations.some(
+          (expectation) => expectation.type === 'task-status' && expectation.taskId === taskId,
+        ),
+      )
+    )
+      continue;
+    const expectations = testCase.expectations.map((expectation) =>
+      evaluateTrialExpectation(input.workDir, input.relativeYamlPath, expectation, input.result),
+    );
+    if (
+      evaluateChatPipelineTrialCaseSuccess({
+        testCase: { ...testCase, runs: 1 },
+        runResults: [input.result],
+        expectations,
+      })
+    )
+      return testCase.id;
+  }
+  return null;
+}
+
 export function evaluateTrialTaskStatusExpectations(
   testCase: Pick<ChatPipelineTrialPlanCase, 'expectations'>,
   result: EngineResult,
@@ -3419,6 +3474,7 @@ async function executeTrial(
     manualGatedTaskIds: [...baselineManualApprovalTaskIds],
     middlewareUnavailableTaskIds: liveSmokeBaseline.middlewareUnavailableTaskIds,
     cwdUnavailableTaskIds: liveSmokeBaseline.cwdUnavailableTaskIds,
+    commandFileUnavailableTaskIds: liveSmokeBaseline.commandFileUnavailableTaskIds,
   };
   const executedLiveSmokeBaseline: ChatPipelineLiveSmokeBaseline = baselineSkipped
     ? { mode: 'skip', ...baselineMetadata }
@@ -3477,6 +3533,7 @@ async function executeTrial(
       ...liveScopedSecretEnv,
     }).filter(Boolean);
     let baselineSuccess = true;
+    let baselineExpectedFailureCaseId: string | null = null;
     let baselineEvidence = {
       tasks: [] as ChatPipelineTrialTaskResult[],
       totalTaskCount: 0,
@@ -3521,7 +3578,15 @@ async function executeTrial(
         ...(baselineTargetTaskIds ? { targetTaskIds: baselineTargetTaskIds } : {}),
         onEvent: (event) => updateTrialTaskProgress(progress, event),
       });
-      baselineSuccess = baseline.success;
+      baselineExpectedFailureCaseId = evaluateChatPipelineLiveSmokeExpectedFailure({
+        result: baseline,
+        pipelineConfig,
+        targetTaskIds: runtimeReadyBaselineTaskIds,
+        cases: plan.cases,
+        workDir: ws.workDir,
+        relativeYamlPath: entry.relativePath,
+      });
+      baselineSuccess = baseline.success || baselineExpectedFailureCaseId !== null;
       baselineEvidence = trialTaskResults(baseline, pipelineConfig, null, 1);
     }
     const cases: ChatPipelineTrialCaseResult[] = [];
@@ -3832,6 +3897,16 @@ async function executeTrial(
     const planWarnings = [
       ...planWarningDiagnostics(plan),
       ...trialabilityReport.warnings,
+      ...(baselineExpectedFailureCaseId
+        ? [
+            `The Live Smoke Test verified an expected failure against every assertion of case ${baselineExpectedFailureCaseId}. The pipeline run remains failed; verification passed because its declared rejection behavior matched.`,
+          ]
+        : []),
+      ...(liveSmokeTestEnabled && liveSmokeBaseline.commandFileUnavailableTaskIds.length > 0
+        ? [
+            `The Live Smoke Test excluded tasks whose command or completion/hook file is missing, deleted, or differs from the staged pipeline: ${liveSmokeBaseline.commandFileUnavailableTaskIds.join(', ')}. Their terminal branches require Sandbox coverage. No staged file was copied into the real workspace before publication.`,
+          ]
+        : []),
       ...(missingLiveEnvironment.length > 0
         ? [
             `The Live Smoke Test was skipped because its required real environment is unavailable: ${missingLiveEnvironment.join(', ')}. Sandbox cases use synthetic values to validate pipeline logic; they do not verify real credentials or production readiness.`,
@@ -4235,6 +4310,28 @@ export async function trialRunChatYamlStage(
       };
     }
     const plan = planRead.plan;
+    const trialabilityReportHash = hashChatPipelineTrialabilityReport(trialabilityReport);
+    const inputHash = buildChatPipelineTrialInputHash({
+      stagedTreeHash: snapshot.treeHash,
+      planHash: planRead.planHash,
+      trialMode,
+      trialabilityReportHash,
+    });
+    const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
+    // Same stage/trial-id/input bytes replay the completed response. This is
+    // not current verification authority: Finalize separately authenticates
+    // the host witness and recomputes the full live readiness projection.
+    const cached = readCompletedTrialResponse(
+      ws,
+      stage.id,
+      cachePath,
+      inputHash,
+      trialabilityReportHash,
+    );
+    if (cached) return resultWithTrialPlan(cached, plan);
+    const inFlightKey = cachePath;
+    const existing = inFlightByCacheKey.get(inFlightKey);
+    if (existing) return existing;
     const preparation = await prepareTrialExecution(
       ws,
       stage,
@@ -4252,26 +4349,6 @@ export async function trialRunChatYamlStage(
     if (preparation.status === 'result') {
       return { ...resultWithTrialPlan(preparation.result, plan), planTelemetry };
     }
-    const trialabilityReportHash = hashChatPipelineTrialabilityReport(trialabilityReport);
-    const inputHash = buildChatPipelineTrialInputHash({
-      stagedTreeHash: snapshot.treeHash,
-      planHash: planRead.planHash,
-      trialMode,
-      trialabilityReportHash,
-    });
-    const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
-    const cached = readCachedTrial(
-      ws,
-      stage.id,
-      cachePath,
-      inputHash,
-      trialabilityReportHash,
-      trialLiveSmokeReadiness(preparation.prepared, entry),
-    );
-    if (cached) return resultWithTrialPlan(cached, plan);
-    const inFlightKey = cachePath;
-    const existing = inFlightByCacheKey.get(inFlightKey);
-    if (existing) return existing;
     pendingRunReservation = beginRunSessionStart(ws);
     if (pendingRunReservation === null) {
       return {

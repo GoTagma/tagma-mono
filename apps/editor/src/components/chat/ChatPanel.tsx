@@ -138,13 +138,17 @@ export function RetainedOperationNoticeView({
   pending,
   onRetry,
   onDiscard,
+  failureCode = null,
 }: {
-  kind: 'publication' | 'handoff';
+  kind: 'publication' | 'handoff' | 'authoring';
+  failureCode?: string | null;
   pending: boolean;
   onRetry: () => void;
   onDiscard?: () => void;
 }) {
   const publication = kind === 'publication';
+  const authoring = kind === 'authoring';
+  const failure = chatOperationV2FailurePresentation(failureCode);
   return (
     <section
       role="status"
@@ -152,13 +156,20 @@ export function RetainedOperationNoticeView({
       className="border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2 text-caption"
     >
       <div className="text-label text-tagma-text">
-        {publication ? 'Publication paused' : 'Pipeline work paused'}
+        {publication
+          ? 'Publication paused'
+          : authoring
+            ? 'Draft saved; pipeline work paused'
+            : 'Pipeline work paused'}
       </div>
       <p className="mt-1 text-tagma-muted">
         {publication
           ? 'Saving this pipeline did not finish. Retry publication to resume the saved work. If it fails again, check file access and available disk space.'
-          : 'Your request is retained. Retry to continue preparing this pipeline.'}
+          : authoring
+            ? 'Your existing draft and progress are retained. Resolve the provider issue, then continue with the same model. Continuing may use additional model tokens. To start over with another model, explicitly discard the draft first.'
+            : 'Your request is retained. Retry to continue preparing this pipeline.'}
       </p>
+      {authoring && <p className="mt-1 text-tagma-muted">Reason: {failure.reason}</p>}
       <div className="mt-2 flex gap-2">
         <button
           type="button"
@@ -166,7 +177,13 @@ export function RetainedOperationNoticeView({
           onClick={onRetry}
           className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
         >
-          {pending ? 'Submitting…' : publication ? 'Retry publication' : 'Retry pipeline work'}
+          {pending
+            ? 'Submitting…'
+            : publication
+              ? 'Retry publication'
+              : authoring
+                ? 'Continue pipeline work'
+                : 'Retry pipeline work'}
         </button>
         {onDiscard && (
           <button
@@ -175,7 +192,7 @@ export function RetainedOperationNoticeView({
             onClick={onDiscard}
             className="border border-tagma-border px-2 py-1 text-tagma-muted disabled:opacity-50"
           >
-            {publication ? 'Cancel publication' : 'Discard request'}
+            {publication ? 'Cancel publication' : authoring ? 'Discard draft' : 'Discard request'}
           </button>
         )}
       </div>
@@ -230,7 +247,11 @@ function RetryableOperationNoticeBody({
   const [pending, setPending] = useState(false);
   if (!retryable) return null;
   const retainedWork = chatOperationV2RetainedWorkKind(operation);
-  if (retainedWork === 'publication' || retainedWork === 'handoff') {
+  if (
+    retainedWork === 'publication' ||
+    retainedWork === 'handoff' ||
+    retainedWork === 'authoring'
+  ) {
     const decide = async (action: () => Promise<void>) => {
       setPending(true);
       try {
@@ -242,13 +263,21 @@ function RetryableOperationNoticeBody({
     return (
       <RetainedOperationNoticeView
         kind={retainedWork}
+        failureCode={failureCode}
         pending={pending}
         onRetry={() => {
           void decide(retry);
         }}
         onDiscard={
-          retainedWork === 'handoff'
+          retainedWork === 'handoff' || retainedWork === 'authoring'
             ? () => {
+                if (
+                  retainedWork === 'authoring' &&
+                  !window.confirm(
+                    'Discard this generated draft and its recovery progress? This cannot be undone.',
+                  )
+                )
+                  return;
                 void decide(discard);
               }
             : operation?.phase === 'commit_preparing'

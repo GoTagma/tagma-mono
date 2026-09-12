@@ -44,6 +44,34 @@ const summary = {
 } satisfies RunSummary;
 
 describe('run history browser helpers', () => {
+  test('Replay distinguishes unread details from a confirmed missing snapshot', () => {
+    const input = { selectedRun: entry({ runId: 'run_done' }), replayBusy: false, stopBusy: false };
+    expect(
+      getHistoryRunPrimaryAction({ ...input, summary: null, summaryLoading: true }),
+    ).toMatchObject({
+      disabled: true,
+      title: 'Loading run details…',
+    });
+    expect(
+      getHistoryRunPrimaryAction({ ...input, summary: null, summaryLoading: false }),
+    ).toMatchObject({
+      disabled: true,
+      title: 'Run details are unavailable. Reload them to check Replay availability.',
+    });
+    expect(getHistoryRunPrimaryAction({ ...input, summary })).toMatchObject({ disabled: false });
+    expect(
+      getHistoryRunPrimaryAction({ ...input, summary: { ...summary, hasYamlSnapshot: false } })
+        .title,
+    ).toContain('No yaml snapshot');
+    expect(
+      getHistoryRunPrimaryAction({
+        ...input,
+        selectedRun: entry({ running: true }),
+        summary: null,
+        summaryLoading: true,
+      }),
+    ).toMatchObject({ kind: 'stop', disabled: false });
+  });
   test('running filter uses the explicit running marker, not missing success metadata', () => {
     const runs = [
       entry({ runId: 'run_live', running: true, pipelineName: 'Live' }),

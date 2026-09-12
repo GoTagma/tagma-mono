@@ -1547,10 +1547,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   connectOpen: false,
   openConnect: () => {
-    if (
-      get().activeChatOperationV2?.phase === 'trial-running' &&
-      get().activeChatOperationV2?.waitReason === 'user_retry'
-    ) {
+    if (chatOperationV2RetainedWorkKind(get().activeChatOperationV2)) {
       set({ connectOpen: true });
       return;
     }
@@ -1987,6 +1984,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async changeProviderForActiveChatOperationV2() {
     const before = get();
     const active = before.activeChatOperationV2;
+    if (chatOperationV2RetainedWorkKind(active)) {
+      set({ connectOpen: true });
+      return;
+    }
     if (
       before.chatExecutionMode !== 'operation-v2' ||
       !active ||
