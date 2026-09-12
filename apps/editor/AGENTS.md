@@ -1365,6 +1365,9 @@
   and verification failure. Record the pause cause in `trial_status_changed`; historical terminal
   reason codes remain readable. A prior artifact must not disappear because the latest attempt
   changed nothing. Explicit Stop/Discard and post-commit roll-forward retain their separate contracts.
+  Ownership integration tests must cover this nonterminal wait across Host restart: Retry publishes
+  only after successful verification, while explicit Discard releases the draft reservation and
+  preserves the previous publication's ownership for a later edit.
 - Open draft edits only the authenticated stage's existing artifact inventory, including invalid
   YAML and companions. Authenticate the logical conversation credential; fence saves with operation
   generation/version and file hash, serialize against verification, reject symlinks/foreign paths,

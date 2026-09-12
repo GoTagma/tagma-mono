@@ -337,6 +337,9 @@ function createFixture() {
     onVerify(callback: () => void) {
       verifyHook = callback;
     },
+    allowVerification() {
+      failVerification = false;
+    },
     onEnsure(callback: () => void) {
       ensureHook = callback;
     },
@@ -352,6 +355,7 @@ function createFixture() {
         failVerification?: boolean;
         block?: boolean;
         deferCommit?: boolean;
+        expectedPhase?: 'terminal' | 'trial-running';
         legacy?: boolean;
         requireReadPermission?: boolean;
       } = {},
@@ -385,7 +389,7 @@ function createFixture() {
       if (result.kind === 'commit_preparing' && !options.deferCommit)
         await coordinator.resumePending();
       const operation = store.getOperation(result.operation.operationId)!;
-      if (!options.deferCommit) expect(operation.phase).toBe('terminal');
+      if (!options.deferCommit) expect(operation.phase).toBe(options.expectedPhase ?? 'terminal');
       const projection = store.getResultProjection(operation.operationId);
       return {
         operation,
@@ -396,6 +400,10 @@ function createFixture() {
     },
     read(path: string) {
       return readFileSync(join(workspaceRoot, '.tagma', path), 'utf8');
+    },
+    readDraft(stageId: string) {
+      const descriptor = listChatYamlStage(workspace, stageId, true);
+      return readFileSync(join(descriptor.agentTagmaDir, descriptor.activeRelativePath!), 'utf8');
     },
     write(path: string, text: string) {
       writeFileSync(join(workspaceRoot, '.tagma', path), text, 'utf8');
@@ -460,22 +468,102 @@ test('different conversations branch from one read-only origin and selecting ano
   expect(editB.path).toBe(branchB.path);
 }, 60_000);
 
-test('owned no-op and failed verification publish nothing and preserve ownership for a later edit', async () => {
+test('owned no-op publishes nothing and preserves ownership for a later edit', async () => {
   const fixture = createFixture();
   const first = await fixture.send();
   const bytes = fixture.read(first.path!);
   const noop = await fixture.send({ target: first.path, noChange: true });
   expect(noop.operation.terminalOutcome).toBe('completed_noop');
   expect(noop.path).toBeNull();
-  const failed = await fixture.send({ target: first.path, taskCount: 3, failVerification: true });
-  expect(failed.operation.terminalOutcome).toBe('discarded');
-  expect(failed.path).toBeNull();
   expect(fixture.read(first.path!)).toBe(bytes);
   expect(fixture.store.listCommitWal(first.operation.workspaceScopeId)).toHaveLength(1);
   await fixture.restart();
   expect((await fixture.send({ target: first.path, taskCount: 4 })).path).toBe(first.path!);
   expect(fixture.store.getResultProjection(first.operation.operationId)).toEqual(first.projection);
 }, 60_000);
+
+test.each(['retry', 'discard'] as const)(
+  'owned verification failure retains the draft and target across restart until explicit %s',
+  async (action) => {
+    const fixture = createFixture();
+    const first = await fixture.send();
+    const bytes = fixture.read(first.path!);
+    const failed = await fixture.send({
+      target: first.path,
+      taskCount: 3,
+      failVerification: true,
+      expectedPhase: 'trial-running',
+    });
+    expect(failed.operation).toMatchObject({ waitReason: 'user_retry', terminalOutcome: null });
+    expect(failed.path).toBeNull();
+    expect(fixture.read(first.path!)).toBe(bytes);
+    expect(fixture.store.listCommitWal(first.operation.workspaceScopeId)).toHaveLength(1);
+    expect(fixture.store.getBindingLease(failed.operation.bindingId!)?.record.status).toBe(
+      'reserved',
+    );
+    const draft = fixture.readDraft(failed.operation.stageId!);
+    expect(
+      (yaml.load(draft) as { tracks: Array<{ tasks: unknown[] }> }).tracks[0]!.tasks,
+    ).toHaveLength(3);
+    const invocations = fixture.invocationCount;
+
+    await fixture.restart();
+    const retained = fixture.store.getOperation(failed.operation.operationId)!;
+    expect(retained).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
+      stageId: failed.operation.stageId,
+      bindingId: failed.operation.bindingId,
+    });
+    expect(fixture.readDraft(retained.stageId!)).toBe(draft);
+    expect(fixture.read(first.path!)).toBe(bytes);
+    expect(fixture.invocationCount).toBe(invocations);
+    if (action === 'retry') {
+      fixture.allowVerification();
+      expect(
+        await fixture.service.retryReadonly(fixture.workspaceRoot, {
+          operationId: retained.operationId,
+          expectedGeneration: retained.generation,
+          expectedVersion: retained.version,
+          requestId: 'retry-owned-verification',
+        }),
+      ).toMatchObject({ kind: 'in_progress' });
+      for (let attempt = 0; attempt < 500; attempt += 1) {
+        const current = fixture.store.getOperation(retained.operationId)!;
+        if (current.phase !== 'trial-running' || current.waitReason !== null) break;
+        await Bun.sleep(10);
+      }
+      expect(fixture.store.getOperation(retained.operationId)?.phase).toBe('commit_preparing');
+      await fixture.flush();
+      expect(fixture.store.getResultProjection(retained.operationId)).toMatchObject({
+        terminalOutcome: 'completed_published',
+        pipeline: { relativeCoordinate: first.path },
+      });
+      expect(fixture.read(first.path!)).toBe(draft);
+      expect(fixture.invocationCount).toBe(invocations);
+    } else {
+      expect(
+        await fixture.service.discardReadonly(fixture.workspaceRoot, {
+          protocolVersion: 2,
+          operationId: retained.operationId,
+          expectedGeneration: retained.generation,
+          expectedVersion: retained.version,
+          clientRequestId: 'discard-owned-verification',
+        }),
+      ).toMatchObject({ kind: 'discarded' });
+      expect(fixture.store.getBindingLease(retained.bindingId!)?.record.status).toBe('released');
+      expect(fixture.store.getResultProjection(retained.operationId)).toBeNull();
+      expect(fixture.read(first.path!)).toBe(bytes);
+      expect(fixture.store.listCommitWal(first.operation.workspaceScopeId)).toHaveLength(1);
+      expect((await fixture.send({ target: first.path, taskCount: 4 })).path).toBe(first.path!);
+    }
+    expect(fixture.store.getResultProjection(first.operation.operationId)).toEqual(
+      first.projection,
+    );
+  },
+  60_000,
+);
 
 test('owned publication never overwrites third-party bytes written after staging but before commit prepare', async () => {
   const fixture = createFixture();
