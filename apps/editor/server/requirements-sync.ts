@@ -28,7 +28,7 @@ import { atomicWriteFileSync } from './path-utils.js';
 export interface RequirementsBinary {
   /** Bare command name as it should appear on PATH (e.g. "git", "bun", "claude"). */
   readonly name: string;
-  /** Probe command the preflight uses. Defaults to `<name> --version`. */
+  /** Legacy/manual verification hint; never executed by the runtime preflight. */
   readonly probe?: string;
   /** Qualified task ids / hook keys that reference this binary. */
   readonly usedBy: readonly string[];
@@ -453,7 +453,6 @@ function commandBaseName(arg: string): string | null {
 
 interface MutableBinary {
   name: string;
-  probe: string;
   usedBy: string[];
   fromDriver?: string;
 }
@@ -473,7 +472,6 @@ function addBinary(
   if (!entry) {
     entry = {
       name,
-      probe: `${name} --version`,
       usedBy: [],
       ...(fromDriver !== undefined ? { fromDriver } : {}),
     };
@@ -735,12 +733,18 @@ function externalBinaryBodyEntries(binaries: readonly RequirementsBinary[]): Req
   });
 }
 
-function buildInitialBody(yamlBasename: string, binaries: readonly RequirementsBinary[]): string {
+function buildInitialBody(
+  yamlBasename: string,
+  binaries: readonly RequirementsBinary[],
+  legacyVersionGuidance = false,
+): string {
   const externalBinaries = externalBinaryBodyEntries(binaries);
   const cliSection =
     externalBinaries.length === 0
       ? '<!-- No CLI tools required yet. -->'
-      : externalBinaries.map(buildBinaryBodySection).join('\n\n');
+      : externalBinaries
+          .map((binary) => buildBinaryBodySection(binary, legacyVersionGuidance))
+          .join('\n\n');
 
   return `# Requirements for \`${yamlBasename}\`
 
@@ -765,16 +769,23 @@ ${cliSection}
 `;
 }
 
-function buildBinaryBodySection(binary: RequirementsBinary): string {
+function buildBinaryBodySection(binary: RequirementsBinary, legacyVersionGuidance = false): string {
   const usedBy = binary.usedBy.map((u) => `\`${u}\``).join(', ');
-  const probe = binary.probe ?? `${binary.name} --version`;
+  // A binary need not support --version. Keep both platforms in portable
+  // requirements files; never choose a command from the generating host's OS.
+  // Unusual names need authored guidance, not a guessed shell command.
+  const verification = legacyVersionGuidance
+    ? `Verify: \`${binary.probe ?? `${binary.name} --version`}\``
+    : /^[A-Za-z0-9_][A-Za-z0-9_.+-]*$/.test(binary.name)
+      ? `Verify (macOS / Linux): \`command -v '${binary.name}'\`\n\nVerify (Windows): \`where.exe "${binary.name}"\`\n\nThese checks locate the executable on PATH; they do not check its version.`
+      : "Verify: Use your platform's command lookup to locate this executable on PATH.";
   return `### \`${binary.name}\`
 
 Used in: ${usedBy}
 
 <!-- TODO: install instructions for \`${binary.name}\` (macOS / Linux / Windows). -->
 
-Verify: \`${probe}\``;
+${verification}`;
 }
 
 function hasBinaryBodySection(body: string, name: string): boolean {
@@ -788,7 +799,7 @@ function ensureBinaryBodySections(body: string, binaries: readonly RequirementsB
   );
   if (missing.length === 0) return body;
 
-  const additions = missing.map(buildBinaryBodySection).join('\n\n');
+  const additions = missing.map((binary) => buildBinaryBodySection(binary)).join('\n\n');
   const next = body.replace(/\n?<!-- No CLI tools required yet\. -->\n?/g, '\n');
   const environmentHeader = /^## Environment\s*$/m.exec(next);
   if (environmentHeader) {
@@ -803,7 +814,10 @@ function isUntouchedGeneratedBody(existing: ParsedRequirements): boolean {
   const generatedFor = existing.frontmatter?.generatedFor;
   const binaries = existing.frontmatter?.binaries;
   if (typeof generatedFor !== 'string' || !Array.isArray(binaries)) return false;
-  return existing.body.trim() === buildInitialBody(generatedFor, binaries).trim();
+  return (
+    existing.body.trim() === buildInitialBody(generatedFor, binaries).trim() ||
+    existing.body.trim() === buildInitialBody(generatedFor, binaries, true).trim()
+  );
 }
 
 // ── Main entry point ────────────────────────────────────────────────────────
@@ -843,7 +857,8 @@ export function runRequirementsSync(yamlPath: string): void {
       ? buildInitialBody(yamlBasename, binaries)
       : isUntouchedGeneratedBody(existing)
         ? existing.frontmatter?.generatedFor === yamlBasename &&
-          JSON.stringify(existing.frontmatter.binaries) === JSON.stringify(binaries)
+          JSON.stringify(existing.frontmatter.binaries) === JSON.stringify(binaries) &&
+          existing.body.trim() === buildInitialBody(yamlBasename, binaries).trim()
           ? existing.body
           : buildInitialBody(yamlBasename, binaries)
         : ensureBinaryBodySections(existing.body, binaries);

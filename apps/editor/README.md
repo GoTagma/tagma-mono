@@ -81,6 +81,15 @@ curl -fsSL https://bun.sh/install | bash
 
 ## Workflow editor and run behavior
 
+Generated requirements documents use `Verify (macOS / Linux)` and `Verify (Windows)`
+instructions to locate external executables on PATH (`command -v` and `where.exe`). These
+checks establish availability, not a version or feature guarantee. Runtime preflight independently
+checks PATH (or the managed driver resolver) and required environment variables; it never executes
+the optional legacy `probe` hint. Add version checks only when the tool documents the command.
+Both dependency-help views retain support for existing unlabelled `Verify:` instructions.
+Requirements sync upgrades an untouched generated document to this guidance while preserving
+customized bodies and repeat-save byte idempotence.
+
 Pipeline Detail exposes four run modes: run once, retry until success, repeat a fixed count, or
 repeat until aborted. Retry until success is bounded by an editable maximum attempt count
 (default 3) and feeds failed-attempt evidence into the next agent attempt. Pipeline success is the
@@ -351,6 +360,15 @@ loss, admission-prompt transport, exact-replay transport, conflict reconciliatio
 reconciliation, admission source history missing/request/scan/conflict outcomes, execution-prompt
 uncertainty, and missing durable settlement. Unknown legacy values collapse to `legacy_unknown`;
 raw exception or provider text is never returned.
+
+Both the event window and paged endpoint optionally include `trialProgress` on `trial_progressed`
+events: the fixed Trial step `phase`, `startedAt`, `semanticUpdatedAt`, `heartbeatAt`,
+`caseIndex`/`caseCount`, and `runNumber`/`runCount`. Indices are one-based; each counter pair
+is null when not applicable. A newer heartbeat with unchanged semantic time is liveness evidence,
+not proof that another case finished. Missing or invalid legacy progress is omitted, never inferred
+from the operation phase. This is an allowlisted projection of existing durable evidence: it
+contains no stage/trial identifiers, case titles, paths, fixtures, prompts, or raw payloads, and
+does not add runtime polling or change the control-store schema.
 
 Fresh Host invocations may continue when only their pre-submission history check is temporarily
 unavailable, because no request has yet been attempted under that fresh authority. Once a native

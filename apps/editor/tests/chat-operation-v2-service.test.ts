@@ -26,6 +26,7 @@ import {
   type ChatOperationV2AuthoringCommitCoordinator,
   type ChatOperationV2AuthoringRuntimeCore,
   type ChatOperationV2AuthoringTargetResolver,
+  type ChatOperationV2DiagnosticsEventSummary,
 } from '../server/chat-operations/service.js';
 import { normalizeChatOperationV2TargetCoordinate } from '../server/chat-operations/binding.js';
 import {
@@ -1218,6 +1219,108 @@ describe('ChatTurn Operation V2 service activation', () => {
       retention: { requestedEventLossCount: 0, truncated: false },
       page: { limit: 2, omittedEventCount: 1, truncated: true },
     });
+  });
+
+  test('diagnostics preserve safe Trial progress across snapshots, pages, and restart', () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    seedWorkspaceOperation(controlDir, workspace, 'scope-progress', 'operation-progress');
+    const service = new ChatOperationV2Service({ env: { TAGMA_CHAT_CONTROL_DIR: controlDir } });
+    services.push(service);
+    service.getWorkspaceSnapshot(workspace);
+    const store = service.getTrustedMigrationStore();
+    type TrialProgress = NonNullable<ChatOperationV2DiagnosticsEventSummary['trialProgress']>;
+    const preparing: TrialProgress = {
+      phase: 'preparing',
+      startedAt: 100,
+      semanticUpdatedAt: 100,
+      heartbeatAt: 100,
+      caseIndex: null,
+      caseCount: null,
+      runNumber: null,
+      runCount: null,
+    };
+    const running: TrialProgress = {
+      ...preparing,
+      phase: 'running-case',
+      semanticUpdatedAt: 200,
+      heartbeatAt: 200,
+      caseIndex: 2,
+      caseCount: 3,
+      runNumber: 1,
+      runCount: 2,
+    };
+    const samples: TrialProgress[] = [
+      preparing,
+      { ...preparing, phase: 'running-baseline', semanticUpdatedAt: 150, heartbeatAt: 150 },
+      running,
+      { ...running, heartbeatAt: 250 },
+      { ...running, semanticUpdatedAt: 300, heartbeatAt: 300, runNumber: 2 },
+      { ...preparing, phase: 'verifying-workspace', semanticUpdatedAt: 400, heartbeatAt: 400 },
+    ];
+    for (const [index, progress] of samples.entries()) {
+      store.appendOperationEvent({
+        operationId: 'operation-progress',
+        eventId: `event-progress-${index}`,
+        type: 'trial_progressed',
+        timestamp: 1_777_777_778_000 + index,
+        payload: {
+          ...progress,
+          stageId: 'private-stage',
+          trialId: 'private-trial',
+          detail: 'private-fixture-and-prompt',
+          nativeSessionId: 'private-session',
+        },
+      });
+    }
+    for (const [index, invalid] of [
+      {},
+      { ...running, phase: 'private-phase' },
+      { ...running, caseIndex: 4 },
+      { ...running, caseCount: null },
+      { ...running, runNumber: 0 },
+      { ...running, runCount: 1_000_000_001 },
+      { ...running, heartbeatAt: 199 },
+      { ...running, startedAt: -1 },
+      { ...running, semanticUpdatedAt: 1.5 },
+      { ...running, caseIndex: 'private-value' },
+    ].entries()) {
+      store.appendOperationEvent({
+        operationId: 'operation-progress',
+        eventId: `event-invalid-${index}`,
+        type: 'trial_progressed',
+        timestamp: 1_777_777_779_000 + index,
+        payload: { stageId: 'private-stage', trialId: 'private-trial', ...invalid },
+      });
+    }
+    store.appendOperationEvent({
+      operationId: 'operation-progress',
+      eventId: 'event-non-trial',
+      type: 'operation_state_changed',
+      timestamp: 1_777_777_780_000,
+      payload: running,
+    });
+    const summaries = service.getDiagnosticsSnapshot(workspace).eventEvidence!.events;
+    expect(summaries.slice(1, 7).map((entry) => entry.trialProgress)).toEqual(samples);
+    expect(summaries.slice(7).every((entry) => !('trialProgress' in entry))).toBe(true);
+    expect(JSON.stringify(summaries)).not.toContain('private-');
+    const paged = [];
+    let after = 0;
+    for (;;) {
+      const page = service.listDiagnosticsEvents(workspace, { after, limit: 3 });
+      if (page.kind !== 'events') throw new Error('Expected progress page');
+      paged.push(...page.events);
+      after = page.nextCursor;
+      if (!page.hasMore) break;
+    }
+    expect(paged).toEqual([...summaries]);
+    service.close();
+    const restarted = new ChatOperationV2Service({ env: { TAGMA_CHAT_CONTROL_DIR: controlDir } });
+    services.push(restarted);
+    restarted.getWorkspaceSnapshot(workspace);
+    expect(restarted.getDiagnosticsSnapshot(workspace).eventEvidence!.events).toEqual(summaries);
   });
 
   test('diagnostics expose only fixed recovery dispositions from commit recovery events', () => {

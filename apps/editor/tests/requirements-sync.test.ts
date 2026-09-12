@@ -10,6 +10,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { parseRequirementsVerification } from '../src/utils/requirements-verification';
 import {
   extractBinariesFromYaml,
   parseRequirementsMd,
@@ -79,7 +81,7 @@ test('extractBinariesFromYaml pulls command first-tokens, dedupes, sorts', () =>
 
   const git = binaries!.find((b) => b.name === 'git')!;
   expect(git.usedBy).toEqual(['build.clone', 'deploy.push']);
-  expect(git.probe).toBe('git --version');
+  expect(git.probe).toBeUndefined();
 
   const bun = binaries!.find((b) => b.name === 'bun')!;
   expect(bun.usedBy).toEqual(['build.deps', 'build.argv']);
@@ -700,6 +702,131 @@ test('runRequirementsSync seeds a new file when none exists', () => {
   // Initial body template lists each binary as a section so the user sees TODO markers.
   expect(parsed.body).toContain('### `git`');
   expect(parsed.body).toContain('TODO');
+});
+
+test('generated verification checks PATH without assuming a version flag', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'portable.yaml',
+    `pipeline:
+  name: portable
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: shell
+          command: { argv: [sh, -c, 'exit 0'] }
+        - id: git
+          command: { argv: [git, status] }
+        - id: custom
+          command: { argv: [Acme-Tool, check] }
+`,
+  );
+  runRequirementsSync(yamlPath);
+  const path = requirementsPath(yamlPath);
+  const first = readFileSync(path, 'utf8');
+  const parsed = parseRequirementsMd(first);
+  for (const name of ['sh', 'git', 'Acme-Tool']) {
+    expect(parsed.body).toContain(`Verify (macOS / Linux): \`command -v '${name}'\``);
+    expect(parsed.body).toContain(`Verify (Windows): \`where.exe "${name}"\``);
+  }
+  expect(first).not.toContain('--version');
+  expect(parsed.frontmatter!.binaries.every((binary) => binary.probe === undefined)).toBe(true);
+  runRequirementsSync(yamlPath);
+  expect(readFileSync(path, 'utf8')).toBe(first);
+});
+
+test('legacy generated verification is upgraded without rewriting custom guidance', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'legacy.yaml',
+    'pipeline:\n  name: legacy\n  tracks:\n    - id: main\n      name: Main\n      tasks:\n        - id: shell\n          command: { argv: [sh, -c, "exit 0"] }\n',
+  );
+  const body =
+    "# Requirements for `legacy.yaml`\n\n> External dependencies required to run this pipeline. Tagma checks this file\n> before launching the pipeline and refuses to start when a binary or required\n> env var is missing on this machine.\n>\n> The `binaries:` list in the YAML frontmatter is auto-generated from\n> `legacy.yaml` and will be overwritten on every save — do not edit it\n> by hand. Everything else (`env`, `services`, the install instructions\n> below) is yours / the chat agent's to maintain.\n\n## CLI tools\n\n### `sh`\n\nUsed in: `main.shell`\n\n<!-- TODO: install instructions for `sh` (macOS / Linux / Windows). -->\n\nVerify: `sh --version`\n\n## Environment\n\n<!-- List required environment variables here. Match each entry's\n     `name` to an `env:` row in the frontmatter so the runtime preflight\n     can check it. -->\n";
+  const path = requirementsPath(yamlPath);
+  const frontmatter = {
+    schemaVersion: 1 as const,
+    generatedFor: 'legacy.yaml',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    binaries: [{ name: 'sh', probe: 'sh --version', usedBy: ['main.shell'] }],
+    env: [],
+    services: [],
+  };
+  writeFileSync(path, serializeRequirementsMd({ frontmatter, body }));
+  runRequirementsSync(yamlPath);
+  const upgraded = readFileSync(path, 'utf8');
+  expect(upgraded).not.toContain('sh --version');
+  expect(upgraded).toContain("command -v 'sh'");
+  runRequirementsSync(yamlPath);
+  expect(readFileSync(path, 'utf8')).toBe(upgraded);
+
+  const customBody = body.replace(
+    'Verify: `sh --version`',
+    'Verify: `sh -c "exit 0"`\n\nTeam-owned instructions.',
+  );
+  writeFileSync(path, serializeRequirementsMd({ frontmatter, body: customBody }));
+  const storedCustomBody = parseRequirementsMd(readFileSync(path, 'utf8')).body;
+  runRequirementsSync(yamlPath);
+  expect(parseRequirementsMd(readFileSync(path, 'utf8')).body).toBe(storedCustomBody);
+});
+
+test('generated availability hints distinguish an installed shell from a missing executable', () => {
+  const { tagmaDir } = makeWorkspace();
+  const present = process.platform === 'win32' ? 'cmd' : 'sh';
+  const missing = 'tagma-test-cli-that-does-not-exist-72591';
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'lookup.yaml',
+    `pipeline:
+  name: lookup
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: present
+          command: { argv: [${present}, unused] }
+        - id: missing
+          command: { argv: [${missing}, unused] }
+`,
+  );
+  runRequirementsSync(yamlPath);
+  const body = parseRequirementsMd(readFileSync(requirementsPath(yamlPath), 'utf8')).body;
+  const platform = process.platform === 'win32' ? 'Windows' : 'macOS / Linux';
+  const checks = parseRequirementsVerification(body).filter((check) => check.platform === platform);
+  expect(checks).toHaveLength(2);
+  for (const check of checks) {
+    const result =
+      process.platform === 'win32'
+        ? spawnSync('cmd.exe', ['/d', '/s', '/c', check.command])
+        : spawnSync('sh', ['-c', check.command]);
+    expect(result.error).toBeUndefined();
+    if (check.command.includes(missing)) expect(result.status).not.toBe(0);
+    else expect(result.status).toBe(0);
+  }
+});
+
+test('unusual executable names do not become guessed shell verification commands', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'unusual.yaml',
+    `pipeline:
+  name: unusual
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: check
+          command: { argv: ['Acme%TOOL%', unused] }
+`,
+  );
+  runRequirementsSync(yamlPath);
+  const body = parseRequirementsMd(readFileSync(requirementsPath(yamlPath), 'utf8')).body;
+  expect(parseRequirementsVerification(body)).toEqual([]);
+  expect(body).toContain('locate this executable on PATH');
 });
 
 test('runRequirementsSync is byte-idempotent when generated requirements semantics are unchanged', () => {

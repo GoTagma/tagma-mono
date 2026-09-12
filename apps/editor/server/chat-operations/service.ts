@@ -1,6 +1,11 @@
 import { randomUUID as systemRandomUUID } from 'node:crypto';
 import type { ChatOperationV2DraftRequest } from './api-requests.js';
 import {
+  CHAT_OPERATION_V2_HOST_EVENT_SCHEMA_VERSION,
+  validateChatOperationV2HostEvent,
+  type ChatOperationV2HostEventPayloads,
+} from './events.js';
+import {
   authenticateChatConversationContext,
   boundChatConversationHistory,
   conversationAuthorityError,
@@ -276,6 +281,9 @@ export interface ChatOperationV2DiagnosticsEventSummary {
     currentFailureCode: string | null;
   }>;
   readonly submissionUnknown?: ChatOperationV2SubmissionUnknownDiagnostic;
+  readonly trialProgress?: Readonly<
+    Omit<ChatOperationV2HostEventPayloads['trial_progressed'], 'stageId' | 'trialId'>
+  >;
 }
 
 export interface ChatOperationV2DiagnosticsEventEvidence {
@@ -573,6 +581,48 @@ export function diagnosticsForEvent(
   });
 }
 
+function diagnosticsTrialProgress(
+  event: StoredHostOperationEvent,
+): ChatOperationV2DiagnosticsEventSummary['trialProgress'] {
+  if (event.type !== 'trial_progressed') return undefined;
+  const source = event.payload;
+  // Validate just the fixed contract, then project only enum/numeric fields. Older
+  // events may lack progress; arbitrary payload extensions never enter diagnostics.
+  const payload = {
+    stageId: source.stageId,
+    trialId: source.trialId,
+    phase: source.phase,
+    startedAt: source.startedAt,
+    semanticUpdatedAt: source.semanticUpdatedAt,
+    heartbeatAt: source.heartbeatAt,
+    caseIndex: source.caseIndex,
+    caseCount: source.caseCount,
+    runNumber: source.runNumber,
+    runCount: source.runCount,
+  };
+  if (
+    !validateChatOperationV2HostEvent({
+      schemaVersion: CHAT_OPERATION_V2_HOST_EVENT_SCHEMA_VERSION,
+      eventId: event.eventId,
+      type: 'trial_progressed',
+      timestamp: event.timestamp,
+      payload,
+    }).valid
+  )
+    return undefined;
+  const progress = payload as ChatOperationV2HostEventPayloads['trial_progressed'];
+  return Object.freeze({
+    phase: progress.phase,
+    startedAt: progress.startedAt,
+    semanticUpdatedAt: progress.semanticUpdatedAt,
+    heartbeatAt: progress.heartbeatAt,
+    caseIndex: progress.caseIndex,
+    caseCount: progress.caseCount,
+    runNumber: progress.runNumber,
+    runCount: progress.runCount,
+  });
+}
+
 function diagnosticsEventSummary(
   event: StoredHostOperationEvent,
   outbox: StoredInvocationOutboxRecord | null,
@@ -581,6 +631,7 @@ function diagnosticsEventSummary(
     event.type === 'invocation_submission_unknown'
       ? describeChatOperationV2SubmissionUnknown(event.payload.reasonCode)
       : null;
+  const trialProgress = diagnosticsTrialProgress(event);
   return Object.freeze({
     workspaceSeq: event.workspaceSeq,
     operationId: event.operationId,
@@ -602,6 +653,7 @@ function diagnosticsEventSummary(
         }
       : {}),
     ...(submissionUnknown ? { submissionUnknown } : {}),
+    ...(trialProgress ? { trialProgress } : {}),
   });
 }
 

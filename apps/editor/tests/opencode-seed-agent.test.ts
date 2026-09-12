@@ -702,6 +702,13 @@ test('multi-step planning keeps new-pipeline companions Host-owned', () => {
   );
 });
 
+test('tagma-yaml-contract distinguishes preflight availability from version guidance', () => {
+  const contractSkill = buildTagmaYamlContractSkill();
+  expect(contractSkill).toContain('never executes the optional probe hint');
+  expect(contractSkill).toContain('Verify (macOS / Linux)');
+  expect(contractSkill).toContain('Verify (Windows)');
+});
+
 test('schema-driven YAML generation emits least-authority prompt tasks and rejects ambiguous result contracts', async () => {
   // This first generated-tool test also stages the pinned plugin runtime on disk.
   // Windows cold filesystem reads need a separate bounded setup budget.

@@ -11,13 +11,17 @@ import { api } from '../../api/client';
 import { useRunStore, type RequirementsMissingState } from '../../store/run-store';
 import { CopyButton } from './CopyButton';
 import { openLocalFilePath } from '../../desktop';
+import {
+  parseRequirementsVerification,
+  type RequirementsVerification,
+} from '../../utils/requirements-verification';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface BinarySection {
   readonly label: string;
   readonly usedBy: readonly string[];
   readonly commands: ReadonlyArray<{ readonly platform: string; readonly command: string }>;
-  readonly verify: string | null;
+  readonly verification: readonly RequirementsVerification[];
   readonly hasContent: boolean;
 }
 
@@ -38,7 +42,7 @@ function extractBinarySection(body: string, name: string): BinarySection {
     label: name,
     usedBy: [],
     commands: [],
-    verify: null,
+    verification: [],
     hasContent: false,
   };
   const escName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -65,14 +69,14 @@ function extractBinarySection(body: string, name: string): BinarySection {
     }
   }
 
-  const verifyMatch = /^Verify:\s+`([^`]+)`/m.exec(section);
+  const verification = parseRequirementsVerification(section);
 
   return {
     label: name,
     usedBy,
     commands,
-    verify: verifyMatch ? verifyMatch[1]! : null,
-    hasContent: commands.length > 0 || verifyMatch !== null || usedBy.length > 0,
+    verification,
+    hasContent: commands.length > 0 || verification.length > 0 || usedBy.length > 0,
   };
 }
 
@@ -280,11 +284,12 @@ function BinaryCard({ name, section }: { name: string; section: BinarySection | 
         </p>
       )}
 
-      {section?.verify && (
-        <p className="text-caption text-tagma-muted/80">
-          Verify: <code className="font-mono text-tagma-text/80">{section.verify}</code>
+      {section?.verification.map((verify, index) => (
+        <p key={index} className="text-caption text-tagma-muted/80">
+          Verify{verify.platform ? ` (${verify.platform})` : ''}:{' '}
+          <code className="font-mono text-tagma-text/80">{verify.command}</code>
         </p>
-      )}
+      ))}
     </div>
   );
 }
