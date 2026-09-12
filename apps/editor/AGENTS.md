@@ -50,6 +50,10 @@
   runtime into both isolated extension roots, with matching package/lock metadata, before starting
   the pinned binary. The smoke validates OpenCode integration; package installation is covered by
   the repository dependency gates.
+- For a managed tool-registry `UnknownError`, correlate its `ref` with OpenCode's internal log
+  under the resolved data home's `opencode/log/`. A failed background npm install can leave
+  `@opencode-ai/plugin` unavailable to seeded tools even after health and database probes pass;
+  check the preceding install error before attributing the failure to a readiness race.
 - Keep the health/database/tool-registry readiness probes abortable and tied to the spawned
   process's `exited` promise. A restart kills the previous process, so without that abort its
   pollers keep probing the dead port until the full readiness budget expires and
