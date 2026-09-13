@@ -1,3 +1,4 @@
+import { subscribeWorkspaceEvents } from './workspace-events';
 // ═══ Pipeline types — direct re-export from @tagma/types ═══
 //
 // Prior to 2026-04 this file hand-wrote a local copy of every pipeline
@@ -2493,24 +2494,19 @@ export const api = {
   subscribeWorkflowEvents: (
     onEvent: (event: WorkflowGraphEvent) => void,
     onConnectionChange?: (connected: boolean) => void,
-  ): (() => void) => {
-    const es = new EventSource(`${BASE}${withWorkspaceParam('/run/workflow/events')}`);
-    es.addEventListener('workflow_event', (e) => {
-      try {
-        onEvent(JSON.parse((e as MessageEvent).data) as WorkflowGraphEvent);
-      } catch (_err) {
-        console.warn('[workflow-events] failed to parse SSE message:', (e as MessageEvent).data);
-      }
-    });
-    es.onopen = () => {
-      onConnectionChange?.(true);
-    };
-    es.onerror = () => {
-      onConnectionChange?.(false);
-    };
-    return () => es.close();
-  },
-
+  ): (() => void) =>
+    subscribeWorkspaceEvents(
+      `${BASE}${withWorkspaceParam('/workspace/events')}`,
+      'workflow_event',
+      (message) => {
+        try {
+          onEvent(JSON.parse(message.data) as WorkflowGraphEvent);
+        } catch {
+          /* Ignore malformed frames. */
+        }
+      },
+      onConnectionChange,
+    ),
   /**
    * Fetch the parsed `*.requirements.md` for the current workspace's pipeline
    * (or for an explicitly passed path). Used by the pre-run "requirements
@@ -2554,29 +2550,19 @@ export const api = {
   subscribeRunEvents: (
     onEvent: (event: RunEvent) => void,
     onConnectionChange?: (connected: boolean) => void,
-  ): (() => void) => {
-    // C8: EventSource natively sends Last-Event-ID on reconnect when the
-    // server stamps events with `id:` fields (which our server does).
-    // We just need to track connection state for UI feedback.
-    const es = new EventSource(`${BASE}${withWorkspaceParam('/run/events')}`);
-    es.addEventListener('run_event', (e) => {
-      try {
-        const event: RunEvent = JSON.parse(e.data);
-        onEvent(event);
-      } catch (_err) {
-        console.warn('[run-events] failed to parse SSE message:', e.data);
-      }
-    });
-    es.onopen = () => {
-      onConnectionChange?.(true);
-    };
-    es.onerror = () => {
-      // EventSource auto-reconnects; notify UI of disconnect.
-      onConnectionChange?.(false);
-    };
-    return () => es.close();
-  },
-
+  ): (() => void) =>
+    subscribeWorkspaceEvents(
+      `${BASE}${withWorkspaceParam('/workspace/events')}`,
+      'run_event',
+      (message) => {
+        try {
+          onEvent(JSON.parse(message.data) as RunEvent);
+        } catch {
+          /* Ignore malformed frames. */
+        }
+      },
+      onConnectionChange,
+    ),
   // ── Plugin management ──
 
   listPlugins: () => request<PluginListResult>('/plugins'),
@@ -2729,26 +2715,17 @@ export const api = {
   subscribeStateEvents: (
     onEvent: (event: ServerStateEvent) => void,
     onConnectionChange?: (connected: boolean) => void,
-  ): (() => void) => {
-    const es = new EventSource(`${BASE}${withWorkspaceParam('/state/events')}`);
-    es.addEventListener('state_event', (e) => {
-      try {
-        const event = JSON.parse((e as MessageEvent).data) as ServerStateEvent;
-        // An SSE notification is not itself acceptance of the disk branch.
-        // The consumer may preserve the current canvas, so only the state
-        // application path may advance the optimistic-lock baseline.
-        onEvent(event);
-      } catch {
-        // malformed payload — ignore
-      }
-    });
-    es.onopen = () => {
-      onConnectionChange?.(true);
-    };
-    es.onerror = () => {
-      // EventSource auto-reconnects; notify UI of disconnect.
-      onConnectionChange?.(false);
-    };
-    return () => es.close();
-  },
+  ): (() => void) =>
+    subscribeWorkspaceEvents(
+      `${BASE}${withWorkspaceParam('/workspace/events')}`,
+      'state_event',
+      (message) => {
+        try {
+          onEvent(JSON.parse(message.data) as ServerStateEvent);
+        } catch {
+          /* Ignore malformed frames. */
+        }
+      },
+      onConnectionChange,
+    ),
 };

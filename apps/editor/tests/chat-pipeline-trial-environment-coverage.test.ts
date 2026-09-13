@@ -174,7 +174,7 @@ function createFixture(options: {
   writeFileSync(
     entry.stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify({
-      version: 9,
+      version: 10,
       yamlHash: createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex'),
       summary: 'Verify the dependency closure with test environment inputs and manual grants.',
       goals: [

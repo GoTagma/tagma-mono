@@ -47,6 +47,7 @@ export type ChatPipelineLiveSmokeBaseline =
       middlewareUnavailableTaskIds: string[];
       cwdUnavailableTaskIds: string[];
       commandFileUnavailableTaskIds: string[];
+      pipelineOutputTaskIds: string[];
     }
   | {
       mode: 'targeted';
@@ -55,6 +56,7 @@ export type ChatPipelineLiveSmokeBaseline =
       middlewareUnavailableTaskIds: string[];
       cwdUnavailableTaskIds: string[];
       commandFileUnavailableTaskIds: string[];
+      pipelineOutputTaskIds: string[];
     }
   | {
       mode: 'skip';
@@ -62,6 +64,7 @@ export type ChatPipelineLiveSmokeBaseline =
       middlewareUnavailableTaskIds: string[];
       cwdUnavailableTaskIds: string[];
       commandFileUnavailableTaskIds: string[];
+      pipelineOutputTaskIds: string[];
     };
 
 export interface ChatPipelineLiveSmokeArtifactProjection {
@@ -203,8 +206,52 @@ export function resolveChatPipelineLiveSmokeBaseline(
   dataReadiness: ChatPipelineTrialReadiness,
   workDir: string,
   projection?: ChatPipelineLiveSmokeArtifactProjection,
+  trial?: { plan: ChatPipelineTrialPlan; relativeYamlPath: string },
 ): ChatPipelineLiveSmokeBaseline {
   const dag = buildDag(pipelineConfig);
+  // A pre-publication run cannot write the target's immutable commit before-images.
+  // File assertions do not identify their producer, so fence the complete case
+  // closure conservatively. Sandbox still executes and verifies that closure.
+  // This is an exclusion, never a write grant or an exemption from byte checks.
+  const pipelineOutputs = new Set<string>();
+  const addClosure = (taskId: string): void => {
+    if (pipelineOutputs.has(taskId)) return;
+    pipelineOutputs.add(taskId);
+    for (const dependency of dag.nodes.get(taskId)?.dependsOn ?? []) addClosure(dependency);
+  };
+  if (projection) {
+    for (const [taskId, node] of dag.nodes) {
+      const completion = node.task.completion;
+      if (
+        completion?.type === 'file_exists' &&
+        typeof completion.path === 'string' &&
+        isPathWithin(
+          resolve(workDir, node.task.cwd ?? node.track.cwd ?? '.', completion.path),
+          projection.livePipelineDir,
+        )
+      ) {
+        addClosure(taskId);
+      }
+    }
+    for (const testCase of trial?.plan.cases ?? []) {
+      const fixtures = new Set(testCase.fixtures.map(({ path }) => path.toLowerCase()));
+      const hasPipelineOutput = testCase.expectations.some((expectation) => {
+        if (
+          !('path' in expectation) ||
+          fixtures.has(expectation.path.toLowerCase()) ||
+          expectation.type === 'path-not-exists'
+        )
+          return false;
+        const path = chatPipelineTrialWorkspacePathFromCasePath(
+          expectation.path,
+          trial!.relativeYamlPath,
+        );
+        return isPathWithin(resolve(workDir, path), projection.livePipelineDir);
+      });
+      if (hasPipelineOutput) for (const taskId of testCase.targetTaskIds) addClosure(taskId);
+    }
+  }
+  const pipelineOutputTaskIds = [...pipelineOutputs].sort();
   const manualGatedTaskIds = [...dag.nodes.entries()]
     .filter(([, node]) => node.task.trigger?.type === 'manual')
     .map(([taskId]) => taskId)
@@ -250,12 +297,14 @@ export function resolveChatPipelineLiveSmokeBaseline(
     middlewareUnavailableTaskIds,
     cwdUnavailableTaskIds,
     commandFileUnavailableTaskIds,
+    pipelineOutputTaskIds,
   };
   const gatedTaskIds = [
     ...new Set([
       ...middlewareUnavailableTaskIds,
       ...cwdUnavailableTaskIds,
       ...commandFileUnavailableTaskIds,
+      ...pipelineOutputTaskIds,
     ]),
   ].sort();
   if (dataReadiness.state === 'blocked') {
@@ -611,7 +660,11 @@ function trialCaseSuppliesInput(
   input: ChatPipelineTrialFixtureInput,
   dag: ReturnType<typeof buildDag>,
 ): boolean {
-  if (testCase.fixtures.some((fixture) => suppliedPathMatchesInput(fixture.path, input))) {
+  if (
+    testCase.fixtures.some(
+      (fixture) => fixture.content !== null && suppliedPathMatchesInput(fixture.path, input),
+    )
+  ) {
     return true;
   }
   // A generated input can satisfy a non-root trigger only: at least one

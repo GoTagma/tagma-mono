@@ -2,6 +2,13 @@
 
 ## Chat Session Concurrency
 
+- Share state, Run, and Workflow subscriptions through one `/api/workspace/events` connection
+  per renderer/workspace; keep Chat's authenticated event cursor separate. Multiplexed reconnects
+  carry independent run/workflow cursors because SSE has only one native Last-Event-ID register.
+  Release every server registration on close, fence callbacks from replaced sources, cancel retry
+  timers on final unsubscribe, and close/reopen on pagehide/pageshow (including browser back cache).
+  Same-origin browser tabs must leave ordinary requests able to reach the Host.
+
 - Chat workspace reset must synchronously dispose the operation controller, close EventSource,
   and invalidate bootstrap/history epochs. Workspace keys alone do not fence close-and-reopen
   races for the same path. Controller disposal has no handshake error; only an actual failed
@@ -733,6 +740,12 @@
   publication verification. Same-id completed-response replay remains read-only and must not
   re-execute or issue a different plan; Finalize still revalidates the current witness/readiness.
   This is literal argument evidence, not transitive import analysis.
+- Before publication, exclude branches that may produce target-pipeline files from Live Smoke.
+  Derive this conservatively from file completions and non-fixture file assertions; an assertion
+  without producer identity fences its complete case closure. Require Sandbox terminal coverage,
+  report the skipped Live Smoke scope, and bind output exclusions into signed readiness. Never
+  adopt or restore Smoke-written bytes as a new commit baseline. Dynamic unasserted writes remain
+  outside static analysis; ordinary dependency/witness and third-party conflict checks still apply.
 - A failed Live Smoke baseline may satisfy only a complete case over the identical task closure,
   with explicit status assertions for every task and no fixtures or prerequisite overrides.
   Evaluate every assertion against the actual live result/files; timeout, abort, spawn, and
@@ -938,6 +951,12 @@
 - Trial-plan fixture and expectation paths are relative to the isolated case project root and may
   target only case fixtures or outputs. Reject plans that inspect the staged YAML or its
   host-private companion artifacts under the case `.tagma` tree before starting Trial.
+- Trial Plan v10 fixtures use `content: null` to remove one regular file only from the isolated
+  copy; `content: ""` creates an empty file, and omitted fixtures preserve copied support files.
+  Removal cannot satisfy trigger input or empty-content coverage, remove directories/symlinks,
+  or address pipeline control artifacts. Structurally identical positive/negative file setups
+  with conflicting task-status expectations require plan correction before execution or repair.
+  Cache v30 binds the removal and prepublication output-exclusion semantics.
 - Pipeline-local Trial fixtures and outputs use the `.tagma`-relative namespace `<stem>/...` in
   plans, never a literal `.tagma/<stem>/...` path. Readiness must translate a missing real path
   under `.tagma/<stem>/` into that logical namespace, and isolated execution must map the same
@@ -1393,6 +1412,9 @@
   Ownership integration tests must cover this nonterminal wait across Host restart: Retry publishes
   only after successful verification, while explicit Discard releases the draft reservation and
   preserves the previous publication's ownership for a later edit.
+- Persist bounded successful verification feedback in the Host trial event as well as the pending
+  result. A later pre-prepare target conflict still discards under the immutable-baseline contract,
+  but its verification details must survive stage cleanup and Host restart.
 - Open draft edits only the authenticated stage's existing artifact inventory, including invalid
   YAML and companions. Authenticate the logical conversation credential; fence saves with operation
   generation/version and file hash, serialize against verification, reject symlinks/foreign paths,

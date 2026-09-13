@@ -2896,6 +2896,9 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         passedCount,
         failedCount,
         warningCount,
+        // Keep bounded verification evidence in the durable Host event even if
+        // a later pre-commit conflict discards the staged/pending result files.
+        feedback: trialVerificationFeedback(trial),
         outcome: verificationOutcomeFromTrial(trial, {
           caseCount,
           passedCount,

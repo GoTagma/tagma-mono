@@ -18,7 +18,7 @@ import {
 } from './chat-pipeline-trial-prerequisites.js';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 9,
+  version: 10,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,
@@ -120,7 +120,8 @@ export interface ChatPipelineTrialPlanFinding {
 
 export interface ChatPipelineTrialFixture {
   path: string;
-  content: string;
+  /** null removes one regular file from the isolated copy; empty string writes an empty file. */
+  content: string | null;
 }
 
 export type ChatPipelineTrialExpectation =
@@ -556,10 +557,10 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     (fixtureValue, fixtureIndex) => {
       const fixtureLabel = `${label}.fixtures[${fixtureIndex}]`;
       const fixture = asRecord(fixtureValue, fixtureLabel);
-      if (typeof fixture.content !== 'string') {
-        throw new Error(`${fixtureLabel}.content must be a string.`);
+      if (fixture.content !== null && typeof fixture.content !== 'string') {
+        throw new Error(`${fixtureLabel}.content must be a string or null (remove a copied file).`);
       }
-      const size = new TextEncoder().encode(fixture.content).length;
+      const size = new TextEncoder().encode(fixture.content ?? '').length;
       if (size > MAX_FIXTURE_BYTES) {
         throw new Error(`${fixtureLabel}.content exceeds ${MAX_FIXTURE_BYTES} bytes.`);
       }
@@ -671,7 +672,12 @@ function inputEvidence(testCase: ChatPipelineTrialPlanCase): ChatPipelineTrialIn
     );
     return expectation?.type === 'file-equals' ? [{ path, content: expectation.text }] : [];
   });
-  return [...testCase.fixtures, ...generated];
+  return [
+    ...testCase.fixtures.filter(
+      (item): item is { path: string; content: string } => item.content !== null,
+    ),
+    ...generated,
+  ];
 }
 
 function hasDuplicateInputBasenames(cases: ChatPipelineTrialPlanCase[]): boolean {
@@ -870,7 +876,7 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
   }
   const totalFixtureBytes = cases
     .flatMap((item) => item.fixtures)
-    .reduce((total, fixture) => total + new TextEncoder().encode(fixture.content).length, 0);
+    .reduce((total, fixture) => total + new TextEncoder().encode(fixture.content ?? '').length, 0);
   if (totalFixtureBytes > MAX_TOTAL_FIXTURE_BYTES) {
     throw new Error(`trial plan fixtures exceed ${MAX_TOTAL_FIXTURE_BYTES} bytes in total.`);
   }
@@ -1242,6 +1248,95 @@ function planRequest(
   };
 }
 
+/** Reject a structurally unchanged negative setup before it can authorize artifact repair. */
+export function validateChatPipelineTrialFixtureSetup(
+  plan: ChatPipelineTrialPlan,
+  stagedYamlPath: string,
+  relativeYamlPath: string,
+): void {
+  const namespace = dirname(relativeYamlPath).replace(/\\/g, '/');
+  const fingerprint = (content: string | Uint8Array | null): string | null =>
+    content === null ? null : createHash('sha256').update(content).digest('hex');
+  const base = new Map<string, string | null>();
+  const readBase = (path: string): string | null => {
+    if (base.has(path)) return base.get(path)!;
+    let value: string | null = null;
+    if (path.startsWith(`${namespace}/`)) {
+      const suffix = path.slice(namespace.length + 1);
+      let current = dirname(stagedYamlPath);
+      for (const segment of suffix.split('/')) {
+        current = join(current, segment);
+        try {
+          if (lstatSync(current).isSymbolicLink())
+            throw new Error('Trial fixtures must not address symlinks.');
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            base.set(path, null);
+            return null;
+          }
+          throw error;
+        }
+      }
+      if (!lstatSync(current).isFile())
+        throw new Error('Trial file fixtures must address regular files.');
+      value = fingerprint(readFileSync(current));
+    }
+    base.set(path, value);
+    return value;
+  };
+  for (const negative of plan.cases) {
+    if (
+      negative.baselineCaseId ||
+      (negative.environment?.length ?? 0) > 0 ||
+      (negative.deniedManualTaskIds?.length ?? 0) > 0
+    )
+      continue;
+    for (const positive of plan.cases) {
+      if (
+        positive === negative ||
+        positive.baselineCaseId ||
+        (positive.environment?.length ?? 0) > 0 ||
+        JSON.stringify([...positive.targetTaskIds].sort()) !==
+          JSON.stringify([...negative.targetTaskIds].sort())
+      )
+        continue;
+      const contradictsSuccess = negative.expectations.some(
+        (item) =>
+          item.type === 'task-status' &&
+          item.status !== 'success' &&
+          positive.expectations.some(
+            (other) =>
+              other.type === 'task-status' &&
+              other.taskId === item.taskId &&
+              other.status === 'success',
+          ),
+      );
+      if (!contradictsSuccess) continue;
+      const left = new Map(positive.fixtures.map((item) => [item.path, fingerprint(item.content)]));
+      const right = new Map(
+        negative.fixtures.map((item) => [item.path, fingerprint(item.content)]),
+      );
+      if ([...left.keys()].some((path) => !right.has(path))) {
+        throw new Error(
+          `Case ${negative.id} omits a file input controlled by positive case ${positive.id}. Omission keeps the staged file; it does not construct absence. Explicitly fixture the negative input (content: null for missing, a string for present bytes) before testing a contradictory task outcome. Correct the plan, not the pipeline.`,
+        );
+      }
+      const paths = new Set([...left.keys(), ...right.keys()]);
+      if (
+        [...paths].every(
+          (path) =>
+            (left.has(path) ? left.get(path) : readBase(path)) ===
+            (right.has(path) ? right.get(path) : readBase(path)),
+        )
+      ) {
+        throw new Error(
+          `Case ${negative.id} expects a different task outcome from ${positive.id} with the same effective file inputs and targets. fixtures: [] retains copied support files. Correct the plan's setup; use content: null to remove a required file and assert path-not-exists. Do not repair the pipeline to satisfy an unchanged negative setup.`,
+        );
+      }
+    }
+  }
+}
+
 export function readChatPipelineTrialPlan(
   stagedYamlPath: string,
   relativeYamlPath: string,
@@ -1308,6 +1403,7 @@ export function readChatPipelineTrialPlan(
     }
     const plan = parseChatPipelineTrialPlan(parsed);
     validateChatPipelineTrialPlanTargetPaths(plan, relativeYamlPath);
+    validateChatPipelineTrialFixtureSetup(plan, stagedYamlPath, relativeYamlPath);
     if (pipelineConfig && workDir) {
       validateChatPipelineTrialPlanTaskPathCoordinates(
         plan,

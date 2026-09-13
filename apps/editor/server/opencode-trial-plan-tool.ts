@@ -182,10 +182,10 @@ function validateCase(value, index) {
   ).map((fixtureValue, fixtureIndex) => {
     const fixtureLabel = label + ".fixtures[" + fixtureIndex + "]";
     const fixture = asRecord(fixtureValue, fixtureLabel);
-    if (typeof fixture.content !== "string") {
-      throw new Error(fixtureLabel + ".content must be a string.");
+    if (fixture.content !== null && typeof fixture.content !== "string") {
+      throw new Error(fixtureLabel + ".content must be a string or null (remove a copied file).");
     }
-    if (new TextEncoder().encode(fixture.content).length > CONTRACT.limits.fixtureBytes) {
+    if (new TextEncoder().encode(fixture.content ?? "").length > CONTRACT.limits.fixtureBytes) {
       throw new Error(
         fixtureLabel + ".content exceeds " + CONTRACT.limits.fixtureBytes + " bytes.",
       );
@@ -328,7 +328,7 @@ function validateCaseEntries(value, requireNonEmpty) {
   const totalFixtureBytes = cases
     .flatMap((item) => item.fixtures)
     .reduce(
-      (total, fixture) => total + new TextEncoder().encode(fixture.content).length,
+      (total, fixture) => total + new TextEncoder().encode(fixture.content ?? "").length,
       0,
     );
   if (totalFixtureBytes > CONTRACT.limits.totalFixtureBytes) {
@@ -349,7 +349,7 @@ function inputEvidence(testCase) {
       ? [{ path, content: expectation.text }]
       : [];
   });
-  return [...testCase.fixtures, ...generated];
+  return [...testCase.fixtures.filter((item) => item.content !== null), ...generated];
 }
 
 function hasDuplicateInputBasenames(cases) {
@@ -1209,7 +1209,7 @@ const caseSchema = tool.schema.object({
     .array(
       tool.schema.object({
         path: tool.schema.string(),
-        content: tool.schema.string(),
+        content: tool.schema.string().nullable().describe("A string writes a file; an empty string creates an empty file. null removes one regular file only from the isolated copy, never the original or staged source."),
       }),
     )
     .max(CONTRACT.limits.fixturesPerCase),

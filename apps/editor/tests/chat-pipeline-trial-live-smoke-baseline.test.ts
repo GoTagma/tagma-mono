@@ -185,6 +185,7 @@ test('manual root tasks remain eligible for a consented live smoke auto-grant', 
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
     commandFileUnavailableTaskIds: [],
+    pipelineOutputTaskIds: [],
   });
 });
 
@@ -200,6 +201,7 @@ test('a fully manual-gated pipeline keeps a runnable live smoke baseline', () =>
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
     commandFileUnavailableTaskIds: [],
+    pipelineOutputTaskIds: [],
   });
 });
 
@@ -216,6 +218,7 @@ test('mid-pipeline manual tasks remain eligible for a consented live smoke auto-
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
     commandFileUnavailableTaskIds: [],
+    pipelineOutputTaskIds: [],
   });
 });
 
@@ -227,6 +230,7 @@ test('a pipeline without manual tasks keeps the run-all baseline', () => {
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
     commandFileUnavailableTaskIds: [],
+    pipelineOutputTaskIds: [],
   });
 });
 
@@ -241,6 +245,7 @@ test('command tasks ignore inert static_context configuration when selecting Liv
     middlewareUnavailableTaskIds: [],
     cwdUnavailableTaskIds: [],
     commandFileUnavailableTaskIds: [],
+    pipelineOutputTaskIds: [],
   });
 });
 
@@ -309,6 +314,7 @@ test('a present static_context source does not gate the live smoke', () => {
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
       commandFileUnavailableTaskIds: [],
+      pipelineOutputTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -373,6 +379,7 @@ test('byte-identical staged and live static_context sources remain Live Smoke re
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
       commandFileUnavailableTaskIds: [],
+      pipelineOutputTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -455,6 +462,7 @@ test('an existing pipeline losing its cwd remains Live Smoke eligible for the ru
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
       commandFileUnavailableTaskIds: [],
+      pipelineOutputTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -492,6 +500,7 @@ test('an arbitrary missing cwd without a staged directory mirror remains Live Sm
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
       commandFileUnavailableTaskIds: [],
+      pipelineOutputTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -530,6 +539,7 @@ test('a live cwd with the wrong filesystem type is not reclassified as staged-on
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
       commandFileUnavailableTaskIds: [],
+      pipelineOutputTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -572,6 +582,7 @@ test('a live cwd below a dangling symlink is not reclassified as staged-only', (
       middlewareUnavailableTaskIds: [],
       cwdUnavailableTaskIds: [],
       commandFileUnavailableTaskIds: [],
+      pipelineOutputTaskIds: [],
     });
   } finally {
     rmSync(temp, { recursive: true, force: true });

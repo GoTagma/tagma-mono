@@ -1354,7 +1354,7 @@ function copyTrialPipelineTree(
   }
 }
 
-function prepareTrialCaseWorkspace(
+export function prepareTrialCaseWorkspace(
   stageRoot: string,
   stagedYamlPath: string,
   relativeYamlPath: string,
@@ -1376,6 +1376,14 @@ function prepareTrialCaseWorkspace(
     const yamlPath = join(copiedPipelineFolder, basename(stagedYamlPath));
     for (const fixture of testCase.fixtures) {
       const path = casePath(workDir, fixture.path, relativeYamlPath);
+      if (fixture.content === null) {
+        const stat = lstatOrNull(path);
+        if (stat && (stat.isSymbolicLink() || !stat.isFile())) {
+          throw new Error('A removal fixture may remove only a regular non-symlink file.');
+        }
+        if (stat) rmSync(path);
+        continue;
+      }
       mkdirSync(dirname(path), { recursive: true });
       atomicWriteFileSync(path, fixture.content);
     }
@@ -3168,6 +3176,7 @@ async function prepareTrialExecution(
     dataReadiness,
     ws.workDir,
     trialLiveSmokeArtifactProjection(ws, entry, snapshot),
+    { plan, relativeYamlPath: entry.relativePath },
   );
   const liveSmokeCoveredTaskIds = new Set<string>(
     !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip'
@@ -3475,6 +3484,7 @@ async function executeTrial(
     middlewareUnavailableTaskIds: liveSmokeBaseline.middlewareUnavailableTaskIds,
     cwdUnavailableTaskIds: liveSmokeBaseline.cwdUnavailableTaskIds,
     commandFileUnavailableTaskIds: liveSmokeBaseline.commandFileUnavailableTaskIds,
+    pipelineOutputTaskIds: liveSmokeBaseline.pipelineOutputTaskIds,
   };
   const executedLiveSmokeBaseline: ChatPipelineLiveSmokeBaseline = baselineSkipped
     ? { mode: 'skip', ...baselineMetadata }
@@ -3905,6 +3915,11 @@ async function executeTrial(
       ...(liveSmokeTestEnabled && liveSmokeBaseline.commandFileUnavailableTaskIds.length > 0
         ? [
             `The Live Smoke Test excluded tasks whose command or completion/hook file is missing, deleted, or differs from the staged pipeline: ${liveSmokeBaseline.commandFileUnavailableTaskIds.join(', ')}. Their terminal branches require Sandbox coverage. No staged file was copied into the real workspace before publication.`,
+          ]
+        : []),
+      ...(liveSmokeTestEnabled && liveSmokeBaseline.pipelineOutputTaskIds.length > 0
+        ? [
+            `Live Smoke excluded branches that may generate or rewrite target-pipeline files before publication: ${liveSmokeBaseline.pipelineOutputTaskIds.join(', ')}. Sandbox must verify these branches in isolated copies; the target's commit baseline remains unchanged.`,
           ]
         : []),
       ...(missingLiveEnvironment.length > 0
@@ -4611,6 +4626,7 @@ export async function trialRunChatYamlStage(
               currentDataReadiness,
               ws.workDir,
               trialLiveSmokeArtifactProjection(ws, entry, executionSnapshot),
+              { plan, relativeYamlPath: entry.relativePath },
             );
             const sealedLiveSmokeReadiness = trialLiveSmokeReadiness(
               revalidatedPreparation.prepared,

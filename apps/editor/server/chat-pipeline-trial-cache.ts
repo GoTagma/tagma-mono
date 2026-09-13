@@ -4,7 +4,7 @@ import type {
   ChatPipelineTrialReadiness,
 } from './chat-pipeline-trial-readiness.js';
 
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 29 as const;
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 30 as const;
 
 export interface ChatPipelineTrialLiveSmokeReadiness {
   targetPipelineIsNew: boolean;
@@ -16,6 +16,7 @@ export interface ChatPipelineTrialLiveSmokeReadiness {
   middlewareUnavailableTaskIds: string[];
   cwdUnavailableTaskIds: string[];
   commandFileUnavailableTaskIds: string[];
+  pipelineOutputTaskIds: string[];
 }
 
 const LIVE_SMOKE_READINESS_KEYS = [
@@ -26,6 +27,7 @@ const LIVE_SMOKE_READINESS_KEYS = [
   'manualGatedTaskIds',
   'middlewareUnavailableTaskIds',
   'mode',
+  'pipelineOutputTaskIds',
   'targetPipelineIsNew',
   'targetTaskIds',
 ] as const;
@@ -73,6 +75,7 @@ export function buildChatPipelineTrialLiveSmokeReadiness(input: {
     middlewareUnavailableTaskIds: canonicalTaskIds(input.baseline.middlewareUnavailableTaskIds),
     cwdUnavailableTaskIds: canonicalTaskIds(input.baseline.cwdUnavailableTaskIds),
     commandFileUnavailableTaskIds: canonicalTaskIds(input.baseline.commandFileUnavailableTaskIds),
+    pipelineOutputTaskIds: canonicalTaskIds(input.baseline.pipelineOutputTaskIds),
   };
 }
 
@@ -95,6 +98,7 @@ export function isChatPipelineTrialLiveSmokeReadiness(
     !isCanonicalTaskIds(candidate.manualGatedTaskIds) ||
     !isCanonicalTaskIds(candidate.middlewareUnavailableTaskIds) ||
     !isCanonicalTaskIds(candidate.commandFileUnavailableTaskIds) ||
+    !isCanonicalTaskIds(candidate.pipelineOutputTaskIds) ||
     !isCanonicalTaskIds(candidate.cwdUnavailableTaskIds)
   ) {
     return false;

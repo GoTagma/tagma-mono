@@ -272,6 +272,7 @@ app.use((req, res, next) => {
   const isSseEndpoint =
     req.path === '/api/run/events' ||
     req.path === '/api/state/events' ||
+    req.path === '/api/workspace/events' ||
     req.path === '/api/run/workflow/events' ||
     req.path === '/api/chat/operations/events';
   const queryToken = isSseEndpoint && typeof req.query.auth === 'string' ? req.query.auth : null;

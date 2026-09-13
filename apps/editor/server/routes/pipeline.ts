@@ -38,6 +38,7 @@ import { errorMessage } from '../path-utils.js';
 import { runCompileAndWriteLog } from '../compile-log.js';
 import { runPipelineManifestSync } from '../pipeline-manifest.js';
 import { getFileVersion } from '../optimistic-lock.js';
+import { attachWorkspaceRunEventStreams } from './run.js';
 
 /**
  * Fixed, workspace-free state used by the welcome-page read endpoints. Before
@@ -328,7 +329,37 @@ export function registerPipelineRoutes(app: express.Express): void {
     res.json(getRegistrySnapshot(ws));
   });
 
-  app.get('/api/state/events', (req, res) => {
+  app.get(['/api/state/events', '/api/workspace/events'], (req, res) => {
+    const multiplexed = req.path === '/api/workspace/events';
+    const channels =
+      multiplexed && typeof req.query.channels === 'string'
+        ? req.query.channels.split(',')
+        : ['state_event'];
+    if (
+      channels.length === 0 ||
+      channels.length > 3 ||
+      new Set(channels).size !== channels.length ||
+      channels.some((channel) => !['state_event', 'run_event', 'workflow_event'].includes(channel))
+    ) {
+      res.status(400).json({ error: 'Invalid workspace event channels.' });
+      return;
+    }
+    for (const [key, pattern] of [
+      ['runAfter', /^run_[A-Za-z0-9_-]+:\d+$/],
+      ['workflowAfter', /^graph_[A-Za-z0-9_-]+:\d+$/],
+    ] as const) {
+      const value = req.query[key];
+      if (
+        value !== undefined &&
+        (typeof value !== 'string' ||
+          value.length > 256 ||
+          !pattern.test(value) ||
+          !Number.isSafeInteger(Number(value.slice(value.lastIndexOf(':') + 1))))
+      ) {
+        res.status(400).json({ error: 'Invalid workspace event cursor.' });
+        return;
+      }
+    }
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache',
@@ -349,13 +380,24 @@ export function registerPipelineRoutes(app: express.Express): void {
         newState: WELCOME_EMPTY_STATE,
         seq: 0,
       });
-      res.write(`id: 0\nevent: state_event\ndata: ${syncData}\n\n`);
+      if (channels.includes('state_event'))
+        res.write(`id: 0\nevent: state_event\ndata: ${syncData}\n\n`);
       // Leave the connection open; the client will close it itself when it
       // reconnects with a workspace URL.
       return;
     }
 
     const ws = req.workspace;
+    const detachRuns = attachWorkspaceRunEventStreams(ws, res, {
+      ...(channels.includes('run_event')
+        ? { run: typeof req.query.runAfter === 'string' ? req.query.runAfter : '' }
+        : {}),
+      ...(channels.includes('workflow_event')
+        ? { workflow: typeof req.query.workflowAfter === 'string' ? req.query.workflowAfter : '' }
+        : {}),
+    });
+    req.on('close', detachRuns);
+    if (!channels.includes('state_event')) return;
     // B5: Send current state on connect so reconnecting clients are immediately
     // up-to-date even if they missed prior state events during disconnection.
     const syncData = JSON.stringify({

@@ -93,7 +93,7 @@ test.each(['expected-negative', 'changed-script'] as const)(
       writeFileSync(
         entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'),
         JSON.stringify({
-          version: 9,
+          version: 10,
           yamlHash: createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex'),
           summary: 'Verify declared task outcomes without changing the real support files.',
           goals: ['Preserve runtime outcomes and publish only verified staged behavior.'],

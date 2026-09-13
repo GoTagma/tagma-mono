@@ -7,7 +7,7 @@ import {
 } from '../server/chat-pipeline-trial-cache';
 
 test('builds a canonical complete Live Smoke readiness projection', () => {
-  expect(CHAT_PIPELINE_TRIAL_CACHE_VERSION).toBe(29);
+  expect(CHAT_PIPELINE_TRIAL_CACHE_VERSION).toBe(30);
   expect(
     buildChatPipelineTrialLiveSmokeReadiness({
       targetPipelineIsNew: true,
@@ -36,6 +36,7 @@ test('builds a canonical complete Live Smoke readiness projection', () => {
         middlewareUnavailableTaskIds: ['main.context'],
         cwdUnavailableTaskIds: ['main.waiting'],
         commandFileUnavailableTaskIds: [],
+        pipelineOutputTaskIds: [],
       },
     }),
   ).toEqual({
@@ -48,6 +49,7 @@ test('builds a canonical complete Live Smoke readiness projection', () => {
     middlewareUnavailableTaskIds: ['main.context'],
     cwdUnavailableTaskIds: ['main.waiting'],
     commandFileUnavailableTaskIds: [],
+    pipelineOutputTaskIds: [],
   });
 });
 
@@ -62,6 +64,7 @@ test('accepts only canonical complete Live Smoke readiness records', () => {
     middlewareUnavailableTaskIds: ['main.context'],
     cwdUnavailableTaskIds: ['main.cwd'],
     commandFileUnavailableTaskIds: [],
+    pipelineOutputTaskIds: [],
   };
   expect(isChatPipelineTrialLiveSmokeReadiness(valid)).toBe(true);
   const { commandFileUnavailableTaskIds: _omittedCommands, ...oldCommandEvidence } = valid;
@@ -94,6 +97,7 @@ test('accepts only canonical complete Live Smoke readiness records', () => {
       targetPipelineIsNew: false,
       cwdUnavailableTaskIds: ['main.cwd'],
       commandFileUnavailableTaskIds: [],
+      pipelineOutputTaskIds: [],
     }),
   ).toBe(false);
   expect(

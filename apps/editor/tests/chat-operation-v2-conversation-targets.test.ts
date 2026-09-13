@@ -11,8 +11,17 @@ import {
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import yaml from 'js-yaml';
+import { bootstrapBuiltins } from '@tagma/sdk/plugins';
+import { serializePipeline } from '@tagma/sdk/yaml';
+import { CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS } from '../server/chat-pipeline-trial-plan';
+import {
+  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+} from '../shared/chat-pipeline-trial-consent';
+import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
+import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
 import {
   ChatOperationV2Service,
   type CreateAndDispatchReadonlyInput,
@@ -38,12 +47,27 @@ afterEach(async () => {
 }, 30_000);
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 
-function createFixture() {
+function createFixture(
+  options: { realTrialAuthor?: (path: string, taskCount: number) => void } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), 'tagma-conversation-targets-'));
   const workspaceRoot = join(root, 'workspace');
   mkdirSync(join(workspaceRoot, '.tagma'), { recursive: true });
   const workspace = new WorkspaceState(workspaceRoot);
   workspace.workDir = workspaceRoot;
+  if (options.realTrialAuthor) {
+    bootstrapBuiltins(workspace.registry);
+    writeFileSync(
+      join(workspaceRoot, '.tagma', 'editor-settings.json'),
+      JSON.stringify({
+        opencodeChatTrialRunEnabled: true,
+        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+        opencodeChatTrialLiveSmokeTestEnabled: true,
+        opencodeChatTrialLiveSmokeTestConsentVersion:
+          CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+      }),
+    );
+  }
   let target: string | null = null;
   let taskCount = 2;
   let noChange = false;
@@ -208,6 +232,7 @@ function createFixture() {
               'utf8',
             );
           }
+          options.realTrialAuthor?.(path, desiredTaskCount);
           return {
             kind: 'completed',
             disposition: noChange ? 'no_change' : 'changed',
@@ -224,9 +249,12 @@ function createFixture() {
         };
         // This suite owns publication/ownership boundaries. Inject a verification verdict over
         // actual authenticated staged bytes; compile/Trial execution has dedicated suites.
-        runtime.verifyStage = async ({ stage }) => {
+        const verifyStage = runtime.verifyStage.bind(runtime);
+        runtime.verifyStage = async (request) => {
+          const { stage } = request;
           verifyHook?.();
           verifyHook = null;
+          if (options.realTrialAuthor) return verifyStage(request);
           if (failVerification)
             return {
               kind: 'discard',
@@ -294,6 +322,7 @@ function createFixture() {
   let turn = 0;
   cleanups.push(async () => {
     await service.close();
+    await disposeTrialWitnessWorker(workspace);
     Bun.gc(true);
     await Bun.sleep(100);
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
@@ -577,6 +606,107 @@ test('owned publication never overwrites third-party bytes written after staging
     fixture.store.getLatestOperationEvent(result.operation.operationId, 'stage_status_changed')
       ?.payload,
   ).toMatchObject({ errorCode: 'target_changed_before_commit' });
+}, 60_000);
+
+test('one conversation adds CSV and publishes after real repeated Sandbox verification with Smoke enabled', async () => {
+  const fixture = createFixture({
+    realTrialAuthor(path, count) {
+      const stem = basename(dirname(path));
+      const cities =
+        count === 2 ? ['北京', '上海'] : ['北京', '上海', 'City, Port', 'A "quoted" city'];
+      const rows = cities.map((city, i) => ({ city, total_cents: (cities.length - i) * 101 }));
+      const csv = rows
+        .map(({ city, total_cents }) => `"${city.replace(/"/g, '""')}",${total_cents}`)
+        .join('\n');
+      const script = `const fs=require('node:fs'); const rows=${JSON.stringify(rows)}; fs.writeFileSync('summary.json',JSON.stringify(rows));${count > 2 ? `fs.writeFileSync('summary.csv',${JSON.stringify(csv)});` : ''} // revision ${count}`;
+      writeFileSync(
+        path,
+        serializePipeline({
+          name: 'Owned pipeline',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              cwd: `.tagma/${stem}`,
+              tasks: [
+                {
+                  id: 'summarize',
+                  name: 'Summarize',
+                  command: { argv: [process.execPath, '-e', script] },
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      if (!existsSync(join(dirname(path), 'summary.json')))
+        writeFileSync(join(dirname(path), 'summary.json'), '[]');
+      writeFileSync(
+        path.replace(/\.yaml$/, '.trial-plan.json'),
+        JSON.stringify({
+          version: 10,
+          yamlHash: createHash('sha1').update(readFileSync(path)).digest('hex'),
+          summary: 'Verify integer amounts and CSV escaping.',
+          goals: ['Keep JSON and add CSV.'],
+          findings: [],
+          coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) => ({
+            dimension,
+            status: dimension === 'repeat-run' ? 'covered' : 'not-applicable',
+            caseIds: dimension === 'repeat-run' ? ['summary'] : [],
+            rationale: 'Deterministic output contract.',
+          })),
+          cases: [
+            {
+              id: 'summary',
+              title: 'Summary',
+              objective: 'Exact decoded JSON and escaped CSV.',
+              runs: 2,
+              targetTaskIds: ['main.summarize'],
+              fixtures: [],
+              expectations: [
+                { type: 'task-status', taskId: 'main.summarize', status: 'success' },
+                {
+                  type: 'json-pointer-equals',
+                  path: `${stem}/summary.json`,
+                  pointer: '',
+                  expectedJson: JSON.stringify(rows),
+                },
+                ...(count > 2
+                  ? [{ type: 'file-equals', path: `${stem}/summary.csv`, text: csv }]
+                  : []),
+              ],
+            },
+          ],
+        }),
+      );
+      writeAuthenticatedTrialPlanTelemetry(path);
+    },
+  });
+  const first = await fixture.send();
+  expect(first.operation.terminalOutcome).toBe('completed_published');
+  expect(first.path).not.toBeNull();
+  const second = await fixture.send({ target: first.path, taskCount: 3 });
+  expect(second.operation.terminalOutcome).toBe('completed_published');
+  expect(second.path).toBe(first.path);
+  expect(fixture.read(second.path!)).toContain('summary.csv');
+  expect(fixture.read(`${dirname(second.path!)}/summary.json`)).toBe('[]');
+  expect(fixture.store.listCommitWal(second.operation.workspaceScopeId)).toHaveLength(2);
+  const thirdParty = fixture.read(second.path!).replace('Owned pipeline', 'Third party');
+  fixture.onVerify(() => fixture.write(second.path!, thirdParty));
+  const third = await fixture.send({ target: second.path, taskCount: 4 });
+  expect(third.operation.terminalOutcome).toBe('discarded');
+  expect(fixture.read(second.path!)).toBe(thirdParty);
+  const event = fixture.store.getLatestOperationEvent(
+    third.operation.operationId,
+    'trial_status_changed',
+  );
+  expect(event?.payload.feedback).toMatchObject({ stage: 'trial', failedTaskIds: [] });
+  expect(JSON.stringify(event?.payload.feedback)).toContain('passed');
+  await fixture.restart();
+  expect(
+    fixture.store.getLatestOperationEvent(third.operation.operationId, 'trial_status_changed')
+      ?.payload.feedback,
+  ).toEqual(event?.payload.feedback);
 }, 60_000);
 
 test('owned commit recovers after decision by forking instead of overwriting third-party bytes', async () => {

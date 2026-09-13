@@ -299,7 +299,7 @@ test('host rejects a directly written trial plan without an authenticated tool c
     writeFileSync(
       yamlPath.replace(/\.yaml$/u, '.trial-plan.json'),
       JSON.stringify({
-        version: 9,
+        version: 10,
         yamlHash,
         summary: args.summary,
         goals: args.goals,
@@ -317,6 +317,53 @@ test('host rejects a directly written trial plan without an authenticated tool c
         message: expect.stringContaining('host-authorized trial plan tool'),
       },
     });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('generated tool and Host preserve null removal separately from empty file fixtures', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-removal-tool-'));
+  try {
+    const directory = join(root, '.tagma', '.chat-staging', 'stage-1', 'agent-workspace', '.tagma');
+    const path = join(directory, 'demo', 'demo.yaml');
+    mkdirSync(dirname(path), { recursive: true });
+    const yaml = 'pipeline:\n  name: Demo\n  tracks: []\n';
+    writeFileSync(path, yaml);
+    writeFileSync(join(dirname(path), 'rules.md'), 'source rules');
+    writeStageAttemptLimit(directory, 2);
+    const tool = await loadGeneratedTool(root);
+    const args = invalidPlanArgs(path);
+    args.coverage = acceptedRiskCoverage();
+    args.cases = [
+      {
+        id: 'missing',
+        title: 'Missing',
+        objective: 'Remove only the copied file.',
+        targetTaskIds: ['main.run'],
+        fixtures: [
+          { path: 'demo/rules.md', content: null },
+          { path: 'demo/empty.md', content: '' },
+        ],
+        expectations: [
+          { type: 'path-not-exists', path: 'demo/rules.md' },
+          { type: 'file-equals', path: 'demo/empty.md', text: '' },
+        ],
+      },
+    ];
+    await submitTrialPlan(tool, args, { directory }, 'remove-fixture');
+    const result = readChatPipelineTrialPlan(
+      path,
+      'demo/demo.yaml',
+      createHash('sha1').update(yaml).digest('hex'),
+    );
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') throw new Error(JSON.stringify(result));
+    expect(result.plan.cases[0]?.fixtures).toEqual([
+      { path: 'demo/rules.md', content: null },
+      { path: 'demo/empty.md', content: '' },
+    ]);
+    expect(readFileSync(join(dirname(path), 'rules.md'), 'utf8')).toBe('source rules');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

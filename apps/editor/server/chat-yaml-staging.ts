@@ -3342,6 +3342,7 @@ async function verifiedTrialDisposition(
                 stagedPipelineDir: dirname(stagedPath),
                 targetPipelineIsNew: sourcePath === null,
               },
+              { plan: planRead.plan, relativeYamlPath: relativePath },
             );
             return buildChatPipelineTrialLiveSmokeReadiness({
               targetPipelineIsNew: sourcePath === null,

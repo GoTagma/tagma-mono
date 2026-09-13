@@ -615,6 +615,46 @@ function parseLastEventId(
 
 // ═══ Route registration ═════════════════════════════════════════════════
 
+/** Attach multiplexed run channels using independent cursors, never the shared SSE id. */
+export function attachWorkspaceRunEventStreams(
+  ws: WorkspaceState,
+  res: express.Response,
+  cursors: { run?: string; workflow?: string },
+): () => void {
+  if (cursors.run !== undefined) {
+    ws.runSseClients.add(res);
+    const parsed = parseLastEventId(cursors.run);
+    for (const session of listSessions(ws)) {
+      const replay =
+        parsed?.runId === session.runId ? session.replayAfter(parsed.seq) : session.allBuffered();
+      for (const event of replay)
+        res.write(
+          `id: ${event.runId}:${event.seq}\nevent: run_event\ndata: ${JSON.stringify(event)}\n\n`,
+        );
+      const snapshot = session.emitSnapshot();
+      res.write(
+        `id: ${snapshot.runId}:${snapshot.seq}\nevent: run_event\ndata: ${JSON.stringify(snapshot)}\n\n`,
+      );
+    }
+  }
+  if (cursors.workflow !== undefined) {
+    ws.workflowSseClients.add(res);
+    const session = getWorkflowSession(ws);
+    if (session) {
+      const parsed = parseLastEventId(cursors.workflow, /^graph_[A-Za-z0-9_-]+$/);
+      const replay =
+        parsed?.runId === session.graphRunId
+          ? session.replayAfter(parsed.seq)
+          : session.allBuffered();
+      for (const event of replay) res.write(workflowSseFrame(event));
+    }
+  }
+  return () => {
+    ws.runSseClients.delete(res);
+    ws.workflowSseClients.delete(res);
+  };
+}
+
 /**
  * Called from graceful shutdown to close every workspace's in-flight run +
  * drain every workspace's SSE client list.
