@@ -1665,6 +1665,12 @@
   default.
 - For fast regressions, pass repeatable unique selectors such as
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
+- Chat action conformance tests that use real HTTP routes need native absolute workspace paths
+  (for example, `join(tmpdir(), name)`), including matching canvas paths. A Windows drive literal
+  passes renderer-only mocks but fails the Linux sidecar's workspace boundary.
+- Historical control-store fixtures must undo every newer migration's schema and ledger entry in
+  reverse order. Schema 8 ownership fixtures must remove both V10 Chat Control tables and V9 binding
+  succession; deleting only the V9 ledger entry leaves a non-contiguous migration history.
 - Control-reset facade tests must expect the complete migration sequence through
   `CHAT_OPERATION_V2_SCHEMA_VERSION`; the Store contract tests pin individual migration versions
   and names. Close reopened SQLite stores in `finally` so assertion failures do not also leave

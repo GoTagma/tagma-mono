@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { useChatStore } from '../src/store/chat-store';
 import { useChatDraftStore } from '../src/chat-actions/draft';
 import { resetWorkspaceStores } from '../src/store/workspace-store-reset';
@@ -12,7 +14,7 @@ import { setClientWorkspace } from '../src/api/client';
 import { submitThroughControlHttp } from './fixtures/agent-chat-control-http';
 
 const initial = useChatStore.getState();
-const workspace = 'D:/chat-operation-action-fixture';
+const workspace = join(tmpdir(), 'chat-operation-action-fixture');
 async function runAction(entry: 'ui' | 'http', action: ChatOperationAction) {
   if (entry === 'ui') return performChatOperationAction(action);
   setClientWorkspace(workspace);
@@ -65,7 +67,7 @@ afterEach(() => {
 test.each(['ui', 'http'] as const)(
   '%s retries retained publication through the same product action without bypassing commit authority',
   async (entry) => {
-    const workspace = 'D:/publication-action-fixture';
+    const workspace = join(tmpdir(), 'publication-action-fixture');
     setClientWorkspace(workspace);
     let retries = 0;
     useChatStore.setState({

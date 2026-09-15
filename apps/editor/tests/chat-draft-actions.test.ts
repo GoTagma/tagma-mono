@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as operationApi from '../src/api/chat-operations';
 import { setClientWorkspace } from '../src/api/client';
 import { useChatStore } from '../src/store/chat-store';
@@ -23,7 +25,7 @@ async function draftAction<K extends 'draft.open' | 'draft.edit' | 'draft.save' 
   return actions.close((parameters as { discardChanges: boolean }).discardChanges);
 }
 
-const workspace = 'D:/draft-actions-isolated';
+const workspace = join(tmpdir(), 'draft-actions-isolated');
 const initial = useChatStore.getState();
 const operation: operationApi.ChatOperationV2Projection = {
   operationId: 'draft-operation',

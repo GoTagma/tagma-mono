@@ -347,6 +347,11 @@ function createFixture(
         });
         try {
           database.exec(`
+            DROP TABLE agent_chat_events;
+            DROP TABLE agent_chat_commands;
+            DROP TABLE agent_chat_grants;
+            DROP TABLE agent_chat_controllers;
+            DELETE FROM migration_records WHERE schema_version = 10;
             DROP INDEX binding_leases_active_target;
             DROP INDEX binding_leases_successor;
             ALTER TABLE binding_leases DROP COLUMN successor_binding_id;

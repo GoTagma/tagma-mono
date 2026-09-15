@@ -1,4 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import yaml from 'js-yaml';
 import {
   createChatVerificationOutcome,
@@ -23,8 +25,8 @@ import { chatHeaderControlLocks } from '../src/components/chat/ChatPanel';
 const originalFetch = globalThis.fetch;
 const originalEventSource = globalThis.EventSource;
 const originalPipelineConfig = usePipelineStore.getState().config;
-const workspace = 'D:\\chat-operation-cutover';
-const workspaceB = 'D:\\chat-operation-cutover-b';
+const workspace = join(tmpdir(), 'chat-operation-cutover');
+const workspaceB = join(tmpdir(), 'chat-operation-cutover-b');
 
 async function performThroughEntry(entry: 'ui' | 'http', action: ChatOperationAction) {
   const { type, ...parameters } = action;
@@ -1378,7 +1380,7 @@ for (const entry of ['ui', 'http'] as const)
         config,
         isDirty,
         layoutDirty,
-        yamlPath: `${workspace}\\.tagma\\current\\current.yaml`,
+        yamlPath: join(workspace, '.tagma', 'current', 'current.yaml'),
       });
       useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
 
