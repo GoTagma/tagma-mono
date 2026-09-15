@@ -50,6 +50,25 @@ bun run pack             # build:all + fetch:opencode + stage sidecar + electron
 
 The unpacked output lives at `release/` (electron-builder default).
 
+For isolated Debug or packaged Release validation, explicitly set
+`TAGMA_DESKTOP_USER_DATA_DIR` to a separate absolute profile directory before launch.
+The shell applies it before the single-instance lock, session restoration and sidecar startup.
+Use a separate test workspace and isolated OpenCode XDG directories as well; the profile override
+alone does not isolate provider credentials. Ordinary launches retain the default profile.
+
+New desktop shells preserve Chat identities under the private userData `chat-identities` directory,
+independently of the changing loopback port. The preload API permits only the owning workspace's
+top-level editor window to read or create its credentials, and completes writes before Chat sends.
+Main still permits one window per workspace. The V2 sidecar continues to authenticate conversation
+owners and owns operations, grants, Trial and publication; this identity store grants no write access.
+
+An editor-only hot-update running on an older preload retains its previous page-lifetime identity
+behavior. Durable restart recovery requires the new desktop shell. An old conversation whose original
+credential was already lost remains read-only; it cannot acquire write authority from its id alone.
+When releasing this capability, set the hot-update manifest's minimum shell version to the first
+installer containing this preload API if durable restart recovery is required; an editor/sidecar
+hot-update alone cannot add the native identity store to an older shell.
+
 If `ensure:electron` fails with download `fetch failed` or a timeout, check proxy environment
 variables first. The launcher automatically opts Electron's downloader into any configured
 `HTTP_PROXY`/`HTTPS_PROXY` value. Clear every upper- and lowercase proxy variable when a local
@@ -95,6 +114,11 @@ Targets are declared in `package.json → build`:
 | macOS    | dmg (separate x64 and arm64)     |
 
 Artifacts are named `Tagma-${version}-${os}-${arch}.${ext}`.
+
+Sidecar staging compares the newest supported binary in each output directory. If an earlier
+cross-platform build left both `tagma-editor-server` and `tagma-editor-server.exe`, the older file
+must not hide the final build. A newer per-architecture build remains authoritative; check the
+packaged executable's hash against the intended source before release validation.
 
 ## Bundled OpenCode CLI
 

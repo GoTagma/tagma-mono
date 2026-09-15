@@ -1,5 +1,55 @@
 # Editor Agent Notes
 
+## Shared Chat Product Actions
+
+- Composer button/Enter submission uses `src/chat-actions/composer.ts`; preserve that common
+  availability, text normalization, submission fence and failure restoration when wiring external
+  control. The existing Chat store/controller alone freezes canvas/context and serializes V2.
+  Scope late restoration by conversation and workspace reset epoch, including close/reopen of
+  the same workspace path. Keep pending submission observable in the Chat store.
+- The draft modal uses `src/chat-actions/draft.ts` for its real open/read/edit/save/close state.
+  External control must use that same store and availability. File selection and close cannot
+  discard edited bytes without an explicit decision; saving invalid YAML is retainable and does
+  not publish. Keep Host-issued file hashes, operation CAS and internal conversation credentials
+  on every draft request, and invalidate late reads when the workspace closes.
+- Header model/variant/new-conversation and History selection use `src/chat-actions/selection.ts`.
+  Configured picker membership and pending/modal/navigation gates apply at execution time as well
+  as rendering. Read-only history selection never grants writable conversation ownership.
+- Permission/question/clarification/recovery and retained-work controls use the common operation
+  actions. Keep their pending decisions in the Chat store and give Stop an independent slot;
+  never disable the only Stop control inside a pending question fieldset. Pipeline context
+  commands must enter the mounted App navigation registration, including its workflow-return
+  handling and unsaved-change decision, rather than opening files through a second API path.
+- A V2 recovery/retry HTTP response may stay pending while the Host raises another interaction.
+  Key permission/question/recovery concurrency by qualified request, and Stop independently;
+  keep duplicate-request fencing and current Host generation/version CAS authoritative. A pending
+  Composer Send or previous interaction must not disable the next request's real UI/API action.
+- Chat Control observations distinguish Host projection from actual committed DOM. Markdown child
+  commits and `content-visibility:auto` layout can occur after the parent effect: refresh the surface
+  after subtree/layout/scroll changes, retain its own version/cursor and never synthesize success
+  from Host status. Disabled control must not observe surfaces; diagnostics remain independent.
+- Isolated desktop QA needs separate profile, control/global settings, OpenCode XDG and process home
+  directories. Recent-workspaces still uses `homedir()/.tagma`, independently of the global settings
+  override; on Windows set the test child's `USERPROFILE` before launch. Never copy all provider auth.
+- Chat Control persistence is schema 10 of the existing stable V2 store. Keep migration 10 SQL
+  and checksum append-only once shipped, authenticate record HMACs and their indexed columns,
+  and retain original conversation owner plus monotonically advancing grant versions. Revoke
+  queued commands separately from claimed work; a claimed unknown outcome cannot be replayed
+  merely because a renderer or controller reconnects. This store facade never authenticates a
+  caller-supplied conversation key; the Host must do that before granting an existing conversation.
+
+- New Electron shells persist Chat renderer/conversation identity and credentials in the private
+  userData `chat-identities` store through a fixed synchronous preload API. Only the trusted top-level
+  frame bound to that workspace may access it; main's one-window-per-workspace fence remains required.
+  Complete credential writes before first Host admission. A missing/old preload retains page-scoped
+  browser behavior; a present but failing/skewed persistence API must never silently fall back.
+  Lost legacy credentials cannot be recreated to make historical conversations writable.
+  Release manifests must require the first supporting shell when promising durable restart recovery;
+  editor/sidecar hot-updates cannot upgrade an old preload.
+- Taking back Chat Control removes the renderer acknowledgement drain. Mark its claimed receipts
+  unknown before disabling the controller; preserve their Host-operation association and never replay
+  them after re-enable. Per-conversation revocation can still accept an already-claimed acknowledgement.
+
 ## Chat Session Concurrency
 
 - Share state, Run, and Workflow subscriptions through one `/api/workspace/events` connection

@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { usePipelineStore } from './store/pipeline-store';
+import { startAgentChatControlBridge } from './agent-chat-control/session';
+import { openChatContextPath, registerChatContextNavigation } from './chat-actions/context';
 import { BoardCanvas } from './components/board/BoardCanvas';
 import { Toolbar } from './components/board/Toolbar';
 import { TaskConfigPanel } from './components/panels/TaskConfigPanel';
@@ -904,6 +906,15 @@ export function App() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [refreshWorkspaceYamls]);
 
+  useEffect(
+    () =>
+      registerChatContextNavigation(workDir, async (path) => {
+        clearWorkflowReturnPathForNavigation('open-workspace-file');
+        await openFile(path);
+      }),
+    [workDir, clearWorkflowReturnPathForNavigation, openFile],
+  );
+
   const handleOpenWorkspaceFile = useCallback(
     (path: string) => {
       guardUnsavedChanges({
@@ -912,13 +923,12 @@ export function App() {
           'The current pipeline has unsaved changes.',
           'Save or discard those changes before opening another YAML.',
         ],
-        run: () => {
-          clearWorkflowReturnPathForNavigation('open-workspace-file');
-          return openFile(path);
+        run: async () => {
+          await openChatContextPath(path, true);
         },
       });
     },
-    [clearWorkflowReturnPathForNavigation, openFile, guardUnsavedChanges],
+    [guardUnsavedChanges],
   );
 
   const handleDeleteWorkspaceFile = useCallback(
@@ -1128,6 +1138,11 @@ export function App() {
   const rightDock = useRightDock();
   const { openTab: openRightDockTab } = rightDock;
   const pendingChatOpenRequest = useChatStore((s) => s.pendingChatOpenRequest);
+  const agentControlRendererId = useChatStore((s) => s.chatOperationV2RendererInstanceId);
+  useEffect(() => {
+    if (!workDir || !agentControlRendererId) return;
+    return startAgentChatControlBridge(workDir, agentControlRendererId);
+  }, [workDir, agentControlRendererId]);
 
   useEffect(() => {
     if (!pendingChatOpenRequest) return;

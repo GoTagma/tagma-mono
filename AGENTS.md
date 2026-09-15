@@ -30,6 +30,11 @@ Do not amend the same commit to include these files after naming them with the c
   workspace directory directly with npm, and do not restore Bun 1.3.11's registry client path.
 - Desktop release finalization must refresh the root `bun.lock` after applying the released
   `apps/electron/package.json`, run `bun run check:deps`, and commit both files atomically.
+- Sidecar staging must compare the most recently built supported binary, not the first directory
+  entry: cross-platform output can retain both `tagma-editor-server` and `.exe`. Preserve newer
+  per-architecture builds and verify the packaged executable hash against the intended build.
+- Source hygiene and lint exclude generated `apps/electron/release/` packages and `.tmp` investigations;
+  keep regression coverage proving that application source and packaging scripts remain checked.
 
 ## Public Package Test Prerequisites
 
@@ -136,7 +141,7 @@ Do not amend the same commit to include these files after naming them with the c
 - Packaged V2 cutover is declared in `apps/electron/package.json` with
   `tagma.chatOperationProtocolVersion: 2`; `runtime-paths.ts` only emits
   `TAGMA_CHAT_OPERATION_V2_SHADOW=1` and `TAGMA_CHAT_OPERATION_V2_PRODUCTION_CUTOVER=2` when that
-  gate passes. The control store schema version is 9; supported older schemas migrate through the
+  gate passes. The control store schema version is 10; supported older schemas migrate through the
   append-only migration ledger, while newer versions, checksum drift, and schema drift fail closed.
 - Tool-free text compatibility prompts have no public message read on a Host-created native session,
   but replaying the exact same Host message id returns cached text before and after restart without

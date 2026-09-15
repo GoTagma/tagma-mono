@@ -3,6 +3,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { History, Loader2, Search, X } from 'lucide-react';
 import type { ChatOperationV2Projection } from '../../api/chat-operations';
 import { useChatStore } from '../../store/chat-store';
+import {
+  isChatHistorySelectionBlocked,
+  selectChatHistoryOperation,
+} from '../../chat-actions/selection';
 import type { ChatHistoryTopic } from '../../utils/chat-history-topic';
 
 function operationLabel(
@@ -123,7 +127,7 @@ export function HistoryOperationRow({
   return (
     <button
       type="button"
-      disabled={switching || (operation.phase !== 'terminal' && !active)}
+      disabled={isChatHistorySelectionBlocked({ operation, active, switching })}
       aria-current={active ? 'true' : undefined}
       aria-busy={switching || undefined}
       aria-label={`${switching ? 'Switching to' : 'Switch to'} ${title}`}
@@ -162,7 +166,7 @@ export function HistoryDrawerPanel() {
     (state) => state.activeChatOperationV2?.operationId ?? null,
   );
   const selectingOperationId = useChatStore((state) => state.selectingSessionId);
-  const selectOperation = useChatStore((state) => state.selectSession);
+  const selectOperation = selectChatHistoryOperation;
   const topics = useChatStore((state) => state.chatOperationV2HistoryTopics);
   const loadTopics = useChatStore((state) => state.loadChatHistoryTopics);
   const [query, setQuery] = useState('');

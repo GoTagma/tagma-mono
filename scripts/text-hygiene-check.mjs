@@ -3,9 +3,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOTS = ['README.md', 'docs', 'packages', 'apps', '.github', 'scripts'];
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'coverage', '.turbo']);
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'coverage', '.turbo', '.tmp']);
 const SKIP_FILES = new Set(['bun.lock']);
 const LOCAL_AGENT_EXPORT_RE = /^apps[\\/]editor[\\/][^\\/]*-local-command-[^\\/]*\.txt$/i;
+const DESKTOP_RELEASE_RE = /^apps[\\/]electron[\\/]release(?:[\\/]|$)/;
 const TEXT_EXTENSIONS = new Set([
   '.cjs',
   '.css',
@@ -32,6 +33,7 @@ function extensionOf(path) {
 }
 
 function* walk(path) {
+  if (DESKTOP_RELEASE_RE.test(path)) return;
   if (!existsSync(path)) return;
   const stat = statSync(path);
   if (stat.isFile()) {

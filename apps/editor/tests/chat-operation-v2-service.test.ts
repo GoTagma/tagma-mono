@@ -528,6 +528,84 @@ test('diagnostics preserve the missing repair evidence pause cause', () => {
   ).toEqual({ errorCode: 'repair_evidence_unavailable' });
 });
 
+test('Chat Control grants authenticate existing ownership before exposing a control-store facade', async () => {
+  const root = makeTempRoot();
+  const workspace = join(root, 'workspace');
+  mkdirSync(workspace);
+  const runner = new FakeReadonlyRunner([
+    completedReadonlyInvocation(
+      { kind: 'discussion', targetCandidateId: null, clarification: null, candidateIds: [] },
+      1,
+    ),
+    completedReadonlyInvocation('Answer.', 2),
+  ]);
+  const service = new ChatOperationV2Service({
+    env: { TAGMA_CHAT_CONTROL_DIR: join(root, 'control') },
+    readonlyRunnerFactory: () => runner,
+  });
+  services.push(service);
+  const input = { ...readonlyCreateInput('control-owner'), conversationKey: '1'.repeat(64) };
+  const created = await service.createAndDispatchReadonly(workspace, input);
+  const identity = {
+    rendererInstanceId: input.rendererInstanceId,
+    conversationId: input.conversationId,
+    conversationKey: input.conversationKey,
+    operationId: created.operation.operationId,
+  };
+  const authority = service.authenticateAgentChatConversation(workspace, identity);
+  expect(authority.ownerId.startsWith('conversation_')).toBe(true);
+  for (const forged of [
+    { ...identity, conversationKey: '2'.repeat(64) },
+    { ...identity, rendererInstanceId: 'another-renderer' },
+    { ...identity, conversationId: 'another-conversation' },
+  ]) {
+    expect(() => service.authenticateAgentChatConversation(workspace, forged)).toThrow(
+      expect.objectContaining({ code: 'conversation_authority_mismatch' }),
+    );
+  }
+  expect(JSON.stringify(authority)).not.toContain(input.conversationKey);
+  expect(runner.calls).toHaveLength(2);
+  const control = service.agentChatControlWorkspace(workspace);
+  expect(control.workspaceScopeId).toBe(authority.workspaceScopeId);
+  expect(control.controlGeneration).toBe(authority.controlGeneration);
+  const otherWorkspace = join(root, 'other-workspace');
+  mkdirSync(otherWorkspace);
+  expect(() => service.authenticateAgentChatConversation(otherWorkspace, identity)).toThrow(
+    expect.objectContaining({ code: 'conversation_authority_mismatch' }),
+  );
+  expect(() =>
+    service.authenticateAgentChatConversation(workspace, { ...identity, conversationKey: '' }),
+  ).toThrow(expect.objectContaining({ code: 'conversation_authority_mismatch' }));
+});
+
+test('Chat Control cannot promote legacy history into an owned writable conversation', async () => {
+  const root = makeTempRoot();
+  const workspace = join(root, 'workspace');
+  mkdirSync(workspace);
+  const runner = new FakeReadonlyRunner([
+    completedReadonlyInvocation(
+      { kind: 'discussion', targetCandidateId: null, clarification: null, candidateIds: [] },
+      1,
+    ),
+    completedReadonlyInvocation('Legacy answer.', 2),
+  ]);
+  const service = new ChatOperationV2Service({
+    env: { TAGMA_CHAT_CONTROL_DIR: join(root, 'control') },
+    readonlyRunnerFactory: () => runner,
+  });
+  services.push(service);
+  const input = readonlyCreateInput('legacy-control');
+  const created = await service.createAndDispatchReadonly(workspace, input);
+  expect(() =>
+    service.authenticateAgentChatConversation(workspace, {
+      rendererInstanceId: input.rendererInstanceId,
+      conversationId: input.conversationId,
+      conversationKey: '1'.repeat(64),
+      operationId: created.operation.operationId,
+    }),
+  ).toThrow(expect.objectContaining({ code: 'conversation_authority_mismatch' }));
+});
+
 function createMutationService(input: {
   readonly controlDir: string;
   readonly runner: ChatOperationV2DurableInvocationRunner;

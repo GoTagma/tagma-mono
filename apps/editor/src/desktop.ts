@@ -12,6 +12,7 @@ declare global {
 // instead of throwing, or a single call into a missing method at module load
 // (e.g. initThemeEarly → getTheme) blanks the whole window.
 export interface DesktopBridge {
+  chatIdentity?: DesktopChatIdentityBridge;
   requestSetWorkDir?: (workspacePath: string) => Promise<{ action: DesktopWorkspaceAction }>;
   commitSetWorkDir?: (workspacePath: string) => Promise<{ action: DesktopWorkspaceAction }>;
   openNewWindow?: (workspacePath?: string) => Promise<void>;
@@ -28,6 +29,33 @@ export interface DesktopBridge {
   onThemeChanged?: (listener: (theme: 'dark' | 'light') => void) => () => void;
   openExternal?: (url: string) => Promise<boolean>;
   openLocalPath?: (path: string) => Promise<boolean>;
+}
+
+export interface DesktopChatIdentityBridge {
+  protocolVersion: 1;
+  rendererId(workspace: string): string;
+  selectedConversation(workspace: string): string | null;
+  selectConversation(workspace: string, rendererId: string, conversationId: string): boolean;
+  conversationKey(
+    workspace: string,
+    rendererId: string,
+    conversationId: string,
+    create: boolean,
+  ): string | null;
+}
+
+export function getDesktopChatIdentityBridge(): DesktopChatIdentityBridge | null {
+  const identity = getDesktopBridge()?.chatIdentity;
+  // Older shipped preloads have no durable identity API; retain their existing page-lifetime behavior.
+  if (!identity) return null;
+  if (
+    identity.protocolVersion !== 1 ||
+    ['rendererId', 'selectedConversation', 'selectConversation', 'conversationKey'].some(
+      (key) => typeof identity[key as keyof DesktopChatIdentityBridge] !== 'function',
+    )
+  )
+    throw new Error('The desktop Chat identity protocol is incompatible. Update the desktop app.');
+  return identity;
 }
 
 function getDesktopBridge(): DesktopBridge | null {

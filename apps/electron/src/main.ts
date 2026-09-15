@@ -18,6 +18,7 @@ import {
   SidecarRestartGuard,
 } from './sidecar-recovery';
 import { createSidecarReadyParser } from './sidecar-stdout';
+import { DesktopChatIdentityStore, executeDesktopChatIdentityRequest } from './chat-identities';
 
 /**
  * Generate a per-session bearer token for the sidecar. The renderer receives
@@ -101,9 +102,11 @@ function applyDevHardwareAccelerationFlag(): void {
   app.commandLine.appendSwitch('in-process-gpu');
 }
 
-function applyDevUserDataDir(): void {
+// An explicit profile also permits isolated installed-build QA. Apply before
+// single-instance locking, control-store creation, and session restoration.
+function applyUserDataDir(): void {
   const userDataDir = process.env.TAGMA_DESKTOP_USER_DATA_DIR?.trim();
-  if (app.isPackaged || !userDataDir) return;
+  if (!userDataDir) return;
 
   const resolved = path.resolve(userDataDir);
   fs.mkdirSync(resolved, { recursive: true });
@@ -111,7 +114,7 @@ function applyDevUserDataDir(): void {
 }
 
 applyDevHardwareAccelerationFlag();
-applyDevUserDataDir();
+applyUserDataDir();
 
 // Windows GUI apps don't attach a console, so process.stdout writes from the
 // Electron main process are invisible to the user. Mirror sidecar stdout and
@@ -700,7 +703,7 @@ function installNavigationGuards(session: WindowSession): void {
   });
 }
 
-function isTrustedIpcSender(event: Electron.IpcMainInvokeEvent): boolean {
+function isTrustedIpcSender(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) return false;
   const session = byWindow.get(win.id);
@@ -918,6 +921,28 @@ ipcMain.handle('request-set-work-dir', (event, rawPath: string) => {
   }
 
   return { action: 'proceed' };
+});
+
+let desktopChatIdentities: DesktopChatIdentityStore | null = null;
+ipcMain.on('chat:identity', (event, request: unknown) => {
+  try {
+    if (!isTrustedIpcSender(event) || event.senderFrame !== event.sender.mainFrame)
+      throw new Error('desktop_chat_identity_unavailable');
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const workspace = win ? (byWindow.get(win.id)?.workspacePath ?? null) : null;
+    desktopChatIdentities ??= new DesktopChatIdentityStore(
+      path.join(app.getPath('userData'), 'chat-identities'),
+    );
+    event.returnValue = {
+      ok: true,
+      value: executeDesktopChatIdentityRequest(desktopChatIdentities, workspace, request),
+    };
+  } catch {
+    event.returnValue = {
+      ok: false,
+      error: 'Desktop Chat identity storage is unavailable or does not match this workspace.',
+    };
+  }
 });
 
 ipcMain.handle('commit-set-work-dir', (event, rawPath: string) => {

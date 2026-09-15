@@ -1,91 +1,49 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type {
-  ChatOperationDraft,
-  ChatOperationDraftEdit,
-} from '../../../shared/chat-operation-draft';
+import { useLayoutEffect, useRef } from 'react';
 import {
-  accessChatOperationDraft,
-  type ChatOperationV2Projection,
-} from '../../api/chat-operations';
+  commitDraftSurface,
+  unmountChatSurface,
+  useAgentChatSurfaceStore,
+} from '../../agent-chat-control/observations';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
-import { usePipelineStore } from '../../store/pipeline-store';
-import { getChatConversationKey } from '../../utils/chat-conversation-key';
+import {
+  getChatDraftActionAvailability,
+  isChatDraftDirty,
+  useChatDraftStore,
+} from '../../chat-actions/draft';
+import { useChatStore } from '../../store/chat-store';
 
-export function DraftEditor({
-  operation,
-  workspaceKey,
-  onClose,
-}: {
-  operation: ChatOperationV2Projection;
-  workspaceKey: string;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState<ChatOperationDraft | null>(null);
-  const [text, setText] = useState('');
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const authority = useRef(operation);
-  const request = useRef<AbortController | null>(null);
-  const activeWorkspace = usePipelineStore((state) => state.workDir);
-  const dirty = draft?.selected !== null && draft !== null && text !== draft.selected.text;
+export function DraftEditor() {
+  const state = useChatDraftStore();
+  const { draft, text, pending, error, saved, edit, save, select } = state;
+  // Host ownership/phase changes can disable an open modal without changing draft bytes.
+  useChatStore((chat) => chat.activeChatOperationV2);
+  const availability = getChatDraftActionAvailability(state);
+  const dirty = useChatDraftStore(isChatDraftDirty);
   const close = () => {
     if (pending || (dirty && !window.confirm('Close without saving these edits?'))) return;
-    onClose();
+    useChatDraftStore.getState().close(dirty);
   };
   const modal = useModalFocusTrap<HTMLDivElement>(true, close);
-  const load = useCallback(
-    async (fileId?: string, edit?: ChatOperationDraftEdit) => {
-      request.current?.abort();
-      const controller = new AbortController();
-      request.current = controller;
-      setPending(true);
-      setError(null);
-      setSaved(false);
-      const current = authority.current;
-      try {
-        const result = await accessChatOperationDraft(
-          {
-            operationId: current.operationId,
-            expectedGeneration: current.generation,
-            expectedVersion: current.version,
-            clientRequestId: `draft-${crypto.randomUUID()}`,
-          },
-          {
-            rendererInstanceId: current.rendererInstanceId,
-            conversationId: current.conversationId,
-            conversationKey: getChatConversationKey(
-              workspaceKey,
-              current.rendererInstanceId,
-              current.conversationId,
-            ),
-            ...(fileId ? { fileId } : {}),
-            ...(edit ? { edit } : {}),
-          },
-          { workspaceKey, signal: controller.signal },
-        );
-        if (controller.signal.aborted) return;
-        authority.current = result.detail.operation;
-        setDraft(result.draft);
-        setText(result.draft.selected?.text ?? '');
-        setSaved(!!edit);
-      } catch (cause) {
-        if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : 'The draft could not be opened.');
-      } finally {
-        if (!controller.signal.aborted) setPending(false);
-      }
-    },
-    [workspaceKey],
-  );
-  useEffect(() => {
-    void load();
-    return () => request.current?.abort();
-  }, [load]);
-  useEffect(() => {
-    if (activeWorkspace !== workspaceKey) onClose();
-  }, [activeWorkspace, workspaceKey, onClose]);
+  const observe = useAgentChatSurfaceStore((s) => s.enabled);
+  const surfaceId = useRef(crypto.randomUUID());
+  useLayoutEffect(() => {
+    if (!observe || !state.operation || !modal.current) return;
+    commitDraftSurface({
+      surfaceId: surfaceId.current,
+      conversationId: state.operation.conversationId,
+      operationId: state.operation.operationId,
+      fileId: draft?.selected?.id ?? null,
+      text: modal.current.querySelector<HTMLTextAreaElement>('textarea')?.value ?? '',
+      error,
+      pending,
+      saved,
+    });
+  });
+  useLayoutEffect(() => {
+    const id = surfaceId.current;
+    return () => unmountChatSurface('draft', id);
+  }, []);
   return createPortal(
     <div className="modal-viewport-backdrop">
       <div
@@ -124,12 +82,12 @@ export function DraftEditor({
               <button
                 key={file.id}
                 type="button"
-                disabled={pending}
+                disabled={availability.select !== null && availability.select !== 'unsaved_changes'}
                 aria-current={file.id === draft.selected?.id ? 'true' : undefined}
                 className={`block w-full break-all px-2 py-2 text-left text-caption ${file.id === draft.selected?.id ? 'bg-tagma-surface text-tagma-text' : 'text-tagma-muted'}`}
                 onClick={() => {
                   if (!dirty || window.confirm('Switch files without saving these edits?'))
-                    void load(file.id);
+                    void select(file.id, dirty);
                 }}
               >
                 {file.name}
@@ -148,10 +106,9 @@ export function DraftEditor({
                 spellCheck={false}
                 className="min-h-0 flex-1 resize-none border border-tagma-border bg-tagma-bg p-3 font-mono text-body text-tagma-text"
                 value={text}
-                disabled={pending}
+                disabled={availability.edit !== null}
                 onChange={(event) => {
-                  setText(event.target.value);
-                  setSaved(false);
+                  edit(event.target.value);
                 }}
               />
             ) : (
@@ -173,15 +130,10 @@ export function DraftEditor({
           </span>
           <button
             type="button"
-            disabled={pending || !dirty || !draft?.selected}
+            disabled={availability.save !== null}
             className="btn-primary"
             onClick={() => {
-              if (draft?.selected)
-                void load(draft.selected.id, {
-                  fileId: draft.selected.id,
-                  expectedHash: draft.selected.hash,
-                  text,
-                });
+              void save();
             }}
           >
             {pending ? 'Saving…' : 'Save draft'}

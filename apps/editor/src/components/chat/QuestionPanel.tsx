@@ -2,41 +2,27 @@ import { useId, useRef, useState } from 'react';
 import type { ChatOperationV2QuestionPending } from '../../api/chat-operations';
 import { useChatStore } from '../../store/chat-store';
 import { shouldSubmitChatComposerKey } from '../../utils/chat-composer-key';
+import {
+  buildQuestionAnswers,
+  chatOperationActionKey,
+  performChatOperationAction,
+} from '../../chat-actions/operation';
+export { buildQuestionAnswers } from '../../chat-actions/operation';
 
 type QuestionContent = ChatOperationV2QuestionPending['content'];
-
-export function buildQuestionAnswers(
-  content: QuestionContent,
-  selected: readonly number[],
-  custom: string,
-): string[] {
-  const answers = [
-    ...new Set([
-      ...selected.map((index) => {
-        const option = content.options[index];
-        if (!option) throw new Error('Choose an available option.');
-        return option.label;
-      }),
-      ...(custom.trim() ? [custom.trim()] : []),
-    ]),
-  ];
-  if (answers.length === 0) throw new Error('Choose an option or write an answer.');
-  if (!content.multiple && answers.length > 1) throw new Error('Choose one answer.');
-  if (answers.length > 32) throw new Error('Choose up to 32 answers.');
-  if (answers.some((answer) => new TextEncoder().encode(answer).length > 256)) {
-    throw new Error('The answer is too long. Please shorten it.');
-  }
-  return answers;
-}
 
 export function QuestionForm({
   content,
   onReply,
   onStop,
+  externalPending = false,
+  stopping = false,
 }: {
   content: QuestionContent;
   onReply: (choice: 'reply' | 'reject', answers: readonly string[]) => Promise<boolean>;
-  onStop?: () => Promise<void>;
+  onStop?: () => Promise<unknown>;
+  externalPending?: boolean;
+  stopping?: boolean;
 }) {
   const id = useId();
   const [selected, setSelected] = useState<number[]>([]);
@@ -45,7 +31,7 @@ export function QuestionForm({
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const submit = async (choice: 'reply' | 'reject') => {
-    if (inFlight.current) return;
+    if (inFlight.current || externalPending) return;
     let answers: string[];
     try {
       answers = choice === 'reject' ? [] : buildQuestionAnswers(content, selected, custom);
@@ -74,7 +60,7 @@ export function QuestionForm({
         void submit('reply');
       }}
     >
-      <fieldset disabled={pending} className="min-w-0">
+      <fieldset disabled={pending || externalPending} className="min-w-0">
         <legend className="text-label font-medium text-tagma-text">
           {content.header || 'Question'}
         </legend>
@@ -142,25 +128,26 @@ export function QuestionForm({
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button type="submit" className="btn-primary">
-            {pending ? 'Sending…' : 'Send answer'}
+            {pending || externalPending ? 'Sending…' : 'Send answer'}
           </button>
           <button type="button" className="btn-secondary" onClick={() => void submit('reject')}>
             Skip question
           </button>
-          {onStop && (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() =>
-                void onStop().catch(() => setError('Could not stop Chat. Please try again.'))
-              }
-            >
-              Stop chat
-            </button>
-          )}
           <span className="text-caption text-tagma-muted">Shift+Enter for a new line</span>
         </div>
       </fieldset>
+      {onStop && (
+        <button
+          type="button"
+          className="btn-secondary mt-2"
+          disabled={stopping}
+          onClick={() =>
+            void onStop().catch(() => setError('Could not stop Chat. Please try again.'))
+          }
+        >
+          Stop chat
+        </button>
+      )}
       {error && (
         <p role="alert" className="mt-1 text-caption text-tagma-error">
           {error}
@@ -175,17 +162,42 @@ export function QuestionPanel() {
   const request = useChatStore((state) =>
     operation ? state.chatOperationV2QuestionRequests[operation.operationId] : undefined,
   );
-  const reply = useChatStore((state) => state.replyActiveChatOperationV2Question);
-  const stop = useChatStore((state) => state.abort);
+  const pending = useChatStore(
+    (state) =>
+      !!operation &&
+      !!request &&
+      !!state.pendingChatActions[
+        chatOperationActionKey({
+          type: 'question.reply',
+          operationId: operation.operationId,
+          requestId: request.requestId,
+        })
+      ],
+  );
+  const stopping = useChatStore(
+    (state) => !!operation && !!state.pendingChatActions[`${operation.operationId}:stop`],
+  );
   if (operation?.executionState !== 'waiting_for_user' || request?.state !== 'live_pending')
     return null;
   return (
     <QuestionForm
       key={`${operation.operationId}:${request.requestId}`}
       content={request.content}
-      onStop={stop}
-      onReply={(choice, answers) =>
-        reply(operation.operationId, request.requestId, choice, answers)
+      externalPending={pending}
+      stopping={stopping}
+      onStop={() =>
+        performChatOperationAction({ type: 'operation.stop', operationId: operation.operationId })
+      }
+      onReply={async (choice, answers) =>
+        (
+          await performChatOperationAction({
+            type: 'question.reply',
+            operationId: operation.operationId,
+            requestId: request.requestId,
+            choice,
+            answers,
+          })
+        ).executed
       }
     />
   );

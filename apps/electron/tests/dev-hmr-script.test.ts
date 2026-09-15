@@ -84,11 +84,17 @@ describe('desktop HMR scripts', () => {
     expect(desktopHmrUserDataDir('run-a')).not.toBe(desktopHmrUserDataDir('run-b'));
   });
 
-  test('main process applies dev user data before taking the single-instance lock', () => {
+  test('main process applies an explicit isolated profile in Debug and Release before taking the single-instance lock', () => {
     const mainSource = readFileSync(join(electronRoot, 'src', 'main.ts'), 'utf-8');
 
-    expect(mainSource).toContain('function applyDevUserDataDir()');
-    expect(mainSource.indexOf('applyDevUserDataDir();')).toBeLessThan(
+    const profileSource = mainSource.slice(
+      mainSource.indexOf('function applyUserDataDir()'),
+      mainSource.indexOf('applyDevHardwareAccelerationFlag();'),
+    );
+    expect(profileSource).not.toBe('');
+    expect(profileSource).not.toContain('app.isPackaged');
+    expect(profileSource).toContain("app.setPath('userData', resolved)");
+    expect(mainSource.indexOf('applyUserDataDir();')).toBeLessThan(
       mainSource.indexOf('app.requestSingleInstanceLock()'),
     );
   });

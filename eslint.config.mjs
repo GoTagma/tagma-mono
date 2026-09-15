@@ -10,6 +10,8 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      'apps/electron/release/**',
+      '**/.tmp/**',
       '**/*.d.ts',
     ],
   },
@@ -66,10 +68,7 @@ export default tseslint.config(
     },
   },
   {
-    files: [
-      'packages/*/scripts/**/*.cjs',
-      'apps/*/scripts/**/*.cjs',
-    ],
+    files: ['packages/*/scripts/**/*.cjs', 'apps/*/scripts/**/*.cjs'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
     },

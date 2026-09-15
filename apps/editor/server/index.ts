@@ -61,6 +61,12 @@ import {
   createDiagnosticsOpencodeSessionReader,
 } from './diagnostics-opencode.js';
 import { registerDiagnosticsRoutes } from './routes/diagnostics.js';
+import { AgentChatControlHost } from './agent-chat-control/host.js';
+import {
+  isAgentChatExternalBearer,
+  isAgentChatPublicPath,
+  registerAgentChatControlRoutes,
+} from './agent-chat-control/routes.js';
 import { registerChatOperationV2Routes } from './routes/chat-operations.js';
 import { createChatOperationV2ShadowService } from './chat-operations/service.js';
 import { CHAT_OPERATION_V2_SCHEMA_VERSION } from './chat-operations/store.js';
@@ -178,15 +184,37 @@ const chatOperationV2MigrationService = chatOperationV2Service
       closeTrustedStoreForReset: () =>
         chatOperationV2Service.closeTrustedStoreForOfflineMigration(),
       onResetActivated: () => {
+        agentChatControlHost?.invalidate();
         chatOperationV2Service.invalidateAfterControlReset();
         chatOperationV2CommitCoordinators.clear();
       },
       onResetAborted: () => {
+        agentChatControlHost?.invalidate();
         chatOperationV2Service.invalidateAfterControlReset();
         chatOperationV2CommitCoordinators.clear();
       },
     })
   : null;
+const agentChatControlHost =
+  chatOperationV2Service && chatOperationV2MutationsEnabled
+    ? new AgentChatControlHost({
+        authority: (workspace) => chatOperationV2Service.agentChatControlWorkspace(workspace),
+        authenticateConversation: (workspace, proof) =>
+          chatOperationV2Service.authenticateAgentChatConversation(workspace, proof),
+        workspaceProjection: (workspace) =>
+          chatOperationV2Service.getWorkspaceProjection(workspace),
+        operationProjection: (workspace, operationId) =>
+          chatOperationV2Service.getOperationProjection(workspace, operationId),
+        findOperation: (workspace, requestId, rendererId, conversationId) =>
+          chatOperationV2Service.findAgentChatOperation(
+            workspace,
+            requestId,
+            rendererId,
+            conversationId,
+          ),
+      })
+    : null;
+
 const unregisterChatOperationV2Diagnostics = registerServerDiagnosticsContributor(
   'chatOperationV2',
   ({ workspaceKey }) =>
@@ -264,6 +292,15 @@ app.use((req, res, next) => {
   // A diagnostics-session token authorizes only the dedicated read-only
   // subtree. Its route-local middleware validates that independent token;
   // never compare it with or promote it to the sidecar's management token.
+  if (isAgentChatPublicPath(req.path)) return next();
+  if (
+    isAgentChatExternalBearer(req.get('authorization')) &&
+    !(AUTH_ENABLED && constantTimeEqual(req.get('authorization')!.slice(7), AUTH_TOKEN))
+  ) {
+    return res
+      .status(403)
+      .json({ error: 'Chat Control tokens are limited to the Chat Control API.' });
+  }
   if (isDiagnosticsAgentPath(req.path)) return next();
   if (!AUTH_ENABLED) return next();
   if (!req.path.startsWith('/api/')) return next();
@@ -381,6 +418,7 @@ registerChatOperationV2MutationFence(
 );
 registerChatOperationV2BodyParser(app, chatOperationV2MutationsEnabled);
 
+registerAgentChatControlRoutes(app, agentChatControlHost, { managementToken: AUTH_TOKEN });
 app.use(express.json({ limit: '5mb' }));
 
 // ── Per-request workspace resolution ──
@@ -824,6 +862,11 @@ function gracefulShutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   diagnosticsHub.disable();
+  try {
+    agentChatControlHost?.close();
+  } catch {
+    console.error('[agent-chat] Could not persist control shutdown. Temporary access was revoked.');
+  }
   unregisterChatOperationV2Diagnostics();
   const chatOperationV2Close = chatOperationV2Service?.close();
   console.log('[server] shutting down...');

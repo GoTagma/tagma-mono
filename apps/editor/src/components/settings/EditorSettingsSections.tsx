@@ -34,6 +34,7 @@ import {
 } from '../../../shared/execution-timeout-settings.js';
 
 import { DiagnosticsSettingsSection } from '../panels/DiagnosticsSettingsSection';
+import { ExternalAgentControlSection } from './ExternalAgentControlSection';
 import type {
   ApplyStatus,
   EditorSettingsController,
@@ -48,6 +49,7 @@ import type {
 export type SettingsCategory =
   | 'opencode-agents'
   | 'diagnostics'
+  | 'agent-control'
   | 'chat'
   | 'execution'
   | 'python-agent'
@@ -58,6 +60,7 @@ export type SettingsCategory =
 export const SETTINGS_CATEGORIES: ReadonlyArray<{ id: SettingsCategory; label: string }> = [
   { id: 'opencode-agents', label: 'OpenCode Agents' },
   { id: 'diagnostics', label: 'Diagnostics' },
+  { id: 'agent-control', label: 'External Agent Control' },
   { id: 'chat', label: 'Chat' },
   { id: 'execution', label: 'Execution' },
   { id: 'python-agent', label: 'Python AI Agent' },
@@ -213,6 +216,8 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
           onCopy={() => void copyDiagnosticsInstructions()}
         />
       )}
+
+      {show('agent-control') && <ExternalAgentControlSection workspace={controller.workDir} />}
 
       {settings && show('chat') && (
         <div>

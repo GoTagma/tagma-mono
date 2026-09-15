@@ -774,6 +774,63 @@ test('qualifies interactive replies by operation and fences a late reply result'
   });
 });
 
+test('a pending recovery permits distinct interactive replies and Stop while duplicate replies stay fenced', async () => {
+  const fake = fakeApi();
+  const current = operation({ phase: 'authoring', version: 8 });
+  fake.setSnapshot(snapshot([current]));
+  fake.setOperation(current);
+  let resolveRecovery!: (result: ChatOperationV2MutationResult) => void;
+  let resolvePermission!: (result: ChatOperationV2MutationResult) => void;
+  const pendingRecovery = new Promise<ChatOperationV2MutationResult>((resolve) => {
+    resolveRecovery = resolve;
+  });
+  const pendingPermission = new Promise<ChatOperationV2MutationResult>((resolve) => {
+    resolvePermission = resolve;
+  });
+  const replies: unknown[] = [];
+  const controller = createChatOperationV2Controller({
+    api: {
+      ...fake.api,
+      interactiveRecovery: async () => pendingRecovery,
+      permission: async (input) => {
+        replies.push(input);
+        return pendingPermission;
+      },
+    },
+    nextId: (purpose) => `${purpose}-01`,
+  });
+  await controller.activate({
+    workspaceKey: 'D:\\repo-a',
+    handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    conversationId: 'conversation-01',
+  });
+  const recovery = controller.recoverInteraction(
+    current.operationId,
+    'lost-request',
+    'retry_new_invocation',
+  );
+  const permission = controller.replyPermission(current.operationId, 'new-request', 'allow_once');
+  try {
+    await expect(
+      controller.replyPermission(current.operationId, 'new-request', 'deny'),
+    ).rejects.toThrow('in-flight');
+    await expect(controller.cancel()).resolves.toMatchObject({
+      operation: { operationId: current.operationId },
+    });
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      expectedGeneration: 1,
+      expectedVersion: 8,
+      payload: { requestId: 'new-request', choice: 'allow_once' },
+    });
+  } finally {
+    resolvePermission(staleResult(current));
+    resolveRecovery(staleResult(current));
+    await Promise.all([permission, recovery]);
+    controller.dispose();
+  }
+});
+
 test('an inconsistent handshake leaves the controller non-executable', async () => {
   const fake = fakeApi();
   const controller = createChatOperationV2Controller({ api: fake.api });

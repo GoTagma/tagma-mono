@@ -1,12 +1,21 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
-import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
-import type {
-  ChatOperationV2Projection,
-  ChatOperationV2QuestionPending,
-  ChatOperationV2InteractiveRecoveryChoice,
-} from '../../api/chat-operations';
+import type { ChatOperationV2InteractiveRecoveryChoice } from '../../api/chat-operations';
 import { useChatStore } from '../../store/chat-store';
+import { chatOperationActionKey, performChatOperationAction } from '../../chat-actions/operation';
+import {
+  getComposerActionAvailability,
+  getChatComposerEditAvailability,
+  editChatComposer,
+  getChatComposerStopMode,
+  submitChatComposer,
+} from '../../chat-actions/composer';
+export {
+  acceptsChatComposerReply,
+  getChatComposerAvailability,
+  getChatComposerStopMode,
+  restoreComposerDraftAfterSendFailure,
+} from '../../chat-actions/composer';
 import { chatOperationV2RetainedWorkKind } from '../../utils/chat-operation-v2-failure';
 import { shouldSubmitChatComposerKey } from '../../utils/chat-composer-key';
 export { shouldSubmitChatComposerKey } from '../../utils/chat-composer-key';
@@ -168,20 +177,14 @@ function ChatInteractionRecoveryControls({
   requestId: string;
   kind: 'permission' | 'question';
 }) {
-  const recover = useChatStore((s) => s.recoverActiveChatOperationV2Interaction);
-  const [pending, setPending] = useState<ChatOperationV2InteractiveRecoveryChoice | null>(null);
-  const inFlight = useRef(false);
-  const choose = async (choice: ChatOperationV2InteractiveRecoveryChoice) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setPending(choice);
-    try {
-      await recover(operationId, requestId, choice);
-    } finally {
-      inFlight.current = false;
-      setPending(null);
-    }
-  };
+  const pending = useChatStore(
+    (s) =>
+      s.pendingChatActions[
+        chatOperationActionKey({ type: 'interaction.recover', operationId, requestId })
+      ]?.choice ?? null,
+  ) as ChatOperationV2InteractiveRecoveryChoice | null;
+  const choose = (choice: ChatOperationV2InteractiveRecoveryChoice) =>
+    performChatOperationAction({ type: 'interaction.recover', operationId, requestId, choice });
   return (
     <ChatInteractionRecoveryNoticeView
       kind={kind}
@@ -231,7 +234,7 @@ function AttachmentChips() {
           className="flex min-w-0 max-w-full items-center gap-1 border border-tagma-border bg-tagma-bg/60 px-1.5 py-0.5 text-caption font-mono text-tagma-muted sm:max-w-[260px]"
         >
           <Paperclip size={10} className="shrink-0 text-tagma-muted/70" />
-          <span className="truncate" title={a.label}>
+          <span className="truncate" title={a.label} data-chat-context-label={a.id}>
             {a.label}
           </span>
           <button
@@ -276,79 +279,23 @@ function ChatContextWindowIndicator() {
   );
 }
 
-export function restoreComposerDraftAfterSendFailure(
-  submittedWorkspaceKey: string,
-  submittedText: string,
-): void {
-  const state = useChatStore.getState();
-  if (getOpencodeWorkspaceKey() !== submittedWorkspaceKey) return;
-  if (!state.composerDraft) state.setComposerDraft(submittedText);
-}
-
-export function acceptsChatComposerReply(input: {
-  executionState: ChatOperationV2Projection['executionState'] | null;
-  pendingInputKind: ChatOperationV2Projection['pendingInputKind'];
-  clarificationRequestReady: boolean;
-  questionRequestState: ChatOperationV2QuestionPending['state'] | null;
-}): boolean {
-  if (input.executionState !== 'waiting_for_user') return false;
-  if (input.pendingInputKind === 'clarification') return input.clarificationRequestReady;
-  return input.pendingInputKind === 'question' && input.questionRequestState === 'live_pending';
-}
-
-export function getChatComposerAvailability(input: {
-  hasContent: boolean;
-  hasModel: boolean;
-  ready: boolean;
-  sending: boolean;
-  operationActive: boolean;
-  acceptsActiveOperationReply: boolean;
-  retainedWork?: boolean;
-}): { blockedByAnotherChatUpdate: boolean; canSend: boolean } {
-  const blockedByAnotherChatUpdate =
-    !!input.retainedWork ||
-    ((input.sending || input.operationActive) && !input.acceptsActiveOperationReply);
-  return {
-    blockedByAnotherChatUpdate,
-    canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,
-  };
-}
-
-export function getChatComposerStopMode(input: { sending: boolean }): 'generation' | null {
-  return input.sending ? 'generation' : null;
-}
-
 export function ChatComposer() {
-  const send = useChatStore((s) => s.send);
-  const abort = useChatStore((s) => s.abort);
+  const activeOperationId = useChatStore((s) => s.activeChatOperationV2?.operationId);
+  const stopping = useChatStore(
+    (s) => !!activeOperationId && !!s.pendingChatActions[`${activeOperationId}:stop`],
+  );
   const sending = useChatStore((s) => s.sending);
   const retainedWork = useChatStore(
     (s) => chatOperationV2RetainedWorkKind(s.activeChatOperationV2) !== null,
   );
-  const operationActive = useChatStore(
-    (s) =>
-      !!s.activeChatOperationV2 &&
-      s.activeChatOperationV2.executionState !== 'terminal' &&
-      s.activeChatOperationV2.executionState !== 'retryable_failure',
+  const canSend = useChatStore((s) => getComposerActionAvailability(s).canSend);
+  const blockedByAnotherChatUpdate = useChatStore(
+    (s) => getComposerActionAvailability(s).blockedByAnotherChatUpdate,
   );
-  const acceptsActiveOperationReply = useChatStore((s) => {
-    const operation = s.activeChatOperationV2;
-    if (!operation) return false;
-    return acceptsChatComposerReply({
-      executionState: operation.executionState,
-      pendingInputKind: operation.pendingInputKind,
-      clarificationRequestReady:
-        typeof s.chatOperationV2ClarificationRequests[operation.operationId] === 'string',
-      questionRequestState: s.chatOperationV2QuestionRequests[operation.operationId]?.state ?? null,
-    });
-  });
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const text = useChatStore((s) => s.composerDraft);
-  const setText = useChatStore((s) => s.setComposerDraft);
-  // Attachments can carry a message on their own (the instruction is optional
-  // once context is attached), so the send affordance keys off either signal.
-  const hasAttachments = useChatStore((s) => s.composerAttachments.length > 0);
+  const editable = useChatStore((s) => getChatComposerEditAvailability(s) === null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const answeringQuestion = useChatStore((s) => {
     const operation = s.activeChatOperationV2;
@@ -369,31 +316,12 @@ export function ChatComposer() {
     el.style.height = `${next}px`;
   }, [text, answeringQuestion]);
 
-  const { blockedByAnotherChatUpdate, canSend } = getChatComposerAvailability({
-    hasContent: text.trim().length > 0 || hasAttachments,
-    hasModel: !!model,
-    ready,
-    sending,
-    operationActive,
-    acceptsActiveOperationReply,
-    retainedWork,
-  });
   const stopMode = getChatComposerStopMode({ sending });
   const stopLabel = 'Stop generating';
 
   const submit = () => {
-    if (!canSend) return;
-    const trimmed = text.trim();
-    const submittedWorkspaceKey = getOpencodeWorkspaceKey();
-    setText('');
-    // Restore the user's text on failure so they don't have to retype it.
-    // `send()` rethrows after surfacing the error via sendError, and we
-    // only restore if the user hasn't already typed something new in the
-    // composer since submit — overwriting their fresh input would be worse
-    // than losing the retry text. Attachments are restored by the store
-    // (immediate sends keep their chips on failure).
-    send(trimmed).catch(() => {
-      restoreComposerDraftAfterSendFailure(submittedWorkspaceKey, trimmed);
+    void submitChatComposer().catch(() => {
+      // The shared action restores input; the store exposes the error banner.
     });
   };
 
@@ -420,9 +348,10 @@ export function ChatComposer() {
       <ChatContextWindowIndicator />
       <div className="chat-composer-shell flex min-w-0 items-end gap-1 px-2 py-1.5">
         <textarea
+          aria-label="Chat message"
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => editChatComposer(e.target.value)}
           onKeyDown={(e) => {
             if (shouldSubmitChatComposerKey(e.nativeEvent)) {
               e.preventDefault();
@@ -431,7 +360,7 @@ export function ChatComposer() {
           }}
           placeholder={placeholder}
           rows={2}
-          disabled={!ready || !model}
+          disabled={!editable}
           style={{ maxHeight: COMPOSER_MAX_HEIGHT }}
           // The shell owns the border and the focus-within accent ring; the
           // textarea stays borderless inside it (`.chat-composer-shell
@@ -457,13 +386,16 @@ export function ChatComposer() {
           <button
             type="button"
             onClick={() => {
-              abort().catch(() => {
-                /* already surfaced via sendError */
-              });
+              if (activeOperationId)
+                void performChatOperationAction({
+                  type: 'operation.stop',
+                  operationId: activeOperationId,
+                });
             }}
             className="shrink-0 p-1.5 text-tagma-error/80 transition-[color,background-color,transform,opacity] duration-fast ease-smooth hover:text-tagma-error hover:bg-tagma-error/10 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0"
             title={stopLabel}
             aria-label={stopLabel}
+            disabled={stopping}
           >
             <Square size={14} />
           </button>

@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
 import type { ChatOperationV2InventoryCandidate } from '../../api/chat-operations';
 import { useChatStore } from '../../store/chat-store';
+import { chatOperationActionKey, performChatOperationAction } from '../../chat-actions/operation';
 
 export function ClarificationOptions({
   question,
@@ -66,20 +66,19 @@ function ClarificationSelection({
   question: string;
   candidates: readonly ChatOperationV2InventoryCandidate[];
 }) {
-  const choose = useChatStore((state) => state.chooseActiveChatOperationV2Candidate);
-  const [pending, setPending] = useState(false);
-  const inFlight = useRef(false);
-  const select = async (candidateId: string) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setPending(true);
-    try {
-      await choose(operationId, requestId, candidateId);
-    } finally {
-      inFlight.current = false;
-      setPending(false);
-    }
-  };
+  const pending = useChatStore(
+    (state) =>
+      !!state.pendingChatActions[
+        chatOperationActionKey({ type: 'clarification.reply', operationId, requestId })
+      ],
+  );
+  const select = (candidateId: string) =>
+    performChatOperationAction({
+      type: 'clarification.reply',
+      operationId,
+      requestId,
+      candidateId,
+    });
   return (
     <ClarificationOptions
       question={question}

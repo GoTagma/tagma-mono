@@ -12,6 +12,12 @@ import { activateChatOperationExecutionForWorkspace, useChatStore } from '../src
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { buildConversationExport } from '../src/utils/chat-export';
 import { getChatComposerAvailability } from '../src/components/chat/ChatComposer';
+import { submitChatComposer } from '../src/chat-actions/composer';
+import {
+  performChatOperationAction,
+  type ChatOperationAction,
+} from '../src/chat-actions/operation';
+import { submitThroughControlHttp } from './fixtures/agent-chat-control-http';
 import { chatHeaderControlLocks } from '../src/components/chat/ChatPanel';
 
 const originalFetch = globalThis.fetch;
@@ -19,6 +25,15 @@ const originalEventSource = globalThis.EventSource;
 const originalPipelineConfig = usePipelineStore.getState().config;
 const workspace = 'D:\\chat-operation-cutover';
 const workspaceB = 'D:\\chat-operation-cutover-b';
+
+async function performThroughEntry(entry: 'ui' | 'http', action: ChatOperationAction) {
+  const { type, ...parameters } = action;
+  const result =
+    entry === 'ui'
+      ? await performChatOperationAction(action)
+      : (await submitThroughControlHttp(workspace, { type, parameters })).result;
+  expect(result).toMatchObject({ executed: true });
+}
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -645,6 +660,99 @@ test('projects a terminal Host result notice once in transcript and export witho
   ).toHaveLength(1);
 });
 
+test.each(['ui', 'http'] as const)(
+  '%s exposes a completed Host result independently when the real renderer detail read fails',
+  async (entry) => {
+    setClientWorkspace(workspace);
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    let completed: ChatOperationV2Projection | null = null;
+    let creates = 0;
+    let detailReads = 0;
+    const hostResult = { resultId: 'host-only-result', messages: [{ text: 'Host answer' }] };
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/chat/operations/snapshot') return Response.json(snapshot());
+      if (url === '/api/chat/operations' && init?.method === 'POST') {
+        creates++;
+        const request = JSON.parse(String(init.body)) as {
+          payload: { conversationId: string; rendererInstanceId: string };
+        };
+        completed = operation({
+          conversationId: request.payload.conversationId,
+          rendererInstanceId: request.payload.rendererInstanceId,
+          version: 2,
+          phase: 'terminal',
+          executionState: 'terminal',
+          terminalOutcome: 'completed_readonly',
+          hasResult: true,
+        });
+        return Response.json({
+          protocolVersion: 2,
+          result: { kind: 'completed_readonly', operation: completed },
+        });
+      }
+      if (url === '/api/chat/operations/operation-cutover-1') {
+        detailReads++;
+        return Response.json(
+          {
+            protocolVersion: 2,
+            kind: 'chat_operation_read_failed',
+            error: 'Injected result detail read failure',
+          },
+          { status: 500 },
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+    useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
+    await activateChatOperationExecutionForWorkspace(workspace, {
+      chatOperationProtocolVersion: 2,
+      chatOperationMode: 'production',
+    });
+    const composerDraft = 'Show the result.';
+    const composerAttachments = [{ id: 'keep', label: 'Context', content: 'Original evidence' }];
+    useChatStore.setState({ bootstrapStatus: 'ready', composerDraft, composerAttachments });
+    const observed = await submitThroughControlHttp(workspace, undefined, {
+      observe: true,
+      ...(entry === 'ui'
+        ? {
+            uiAction: async () => {
+              await expect(submitChatComposer()).rejects.toThrow(
+                'Injected result detail read failure',
+              );
+              return { executed: false };
+            },
+          }
+        : {}),
+      // Host evidence is deliberately independent of the renderer store and failing V2 read.
+      host: {
+        workspaceProjection: () => ({ operations: completed ? [completed] : [] }),
+        operationProjection: () => {
+          if (!completed) throw new Error('Host operation not admitted');
+          return { operation: completed, result: hostResult };
+        },
+        findOperation: () => completed?.operationId ?? null,
+      },
+    });
+    expect(observed.result).toMatchObject({ executed: false });
+    expect(observed.state).not.toBeNull();
+    const controlState = observed.state!;
+    expect(controlState.host).toMatchObject({
+      operation: { terminalOutcome: 'completed_readonly', version: 2 },
+      result: hostResult,
+    });
+    expect(controlState.connection.connected).toBe(true);
+    expect(controlState.renderer?.view).toMatchObject({
+      result: null,
+      error: expect.stringContaining('Injected result detail read failure'),
+      composer: { text: composerDraft, attachments: composerAttachments },
+    });
+    expect(useChatStore.getState().activeChatOperationV2Result).toBeNull();
+    expect(creates).toBe(1);
+    expect(detailReads).toBeGreaterThan(0);
+  },
+);
+
 test('historical result messages survive a slower superseded history selection', async () => {
   setClientWorkspace(workspace);
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
@@ -797,9 +905,14 @@ test('projects published pipeline authority for the Open Pipeline action', async
   });
 });
 
-test.each(['once', 'reject'] as const)(
-  'production permission %s uses V2 CAS and projects Host completion',
-  async (choice) => {
+test.each([
+  ['once', 'ui'],
+  ['reject', 'ui'],
+  ['once', 'http'],
+  ['reject', 'http'],
+] as const)(
+  'production permission %s through %s uses V2 CAS and projects Host completion',
+  async (choice, entry) => {
     setClientWorkspace(workspace);
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
     const requests: Array<{ url: string; method: string; body: unknown }> = [];
@@ -881,9 +994,12 @@ test.each(['once', 'reject'] as const)(
       omitted: 0,
     });
 
-    await useChatStore
-      .getState()
-      .replyPermission('permission-1', choice, 'operation-cutover-1', workspace, 'current');
+    await performThroughEntry(entry, {
+      type: 'permission.reply',
+      operationId: 'operation-cutover-1',
+      requestId: 'permission-1',
+      choice,
+    });
 
     expect(
       requests.find(({ url }) =>
@@ -941,283 +1057,423 @@ test.each(['once', 'reject'] as const)(
   },
 );
 
-test('routes a projected live question reply through the qualified V2 endpoint', async () => {
-  setClientWorkspace(workspace);
-  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
-  const requests: Array<{ url: string; body: unknown }> = [];
-  let waiting = operation({
-    version: 4,
-    phase: 'awaiting_input',
-    waitReason: 'permission',
-    executionState: 'waiting_for_user',
-    pendingInputKind: 'question',
-  });
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
-    requests.push({ url, body });
-    if (url === '/api/chat/operations/snapshot') {
-      const correlation = useChatStore.getState();
-      waiting = operation({
-        ...waiting,
-        conversationId: correlation.chatOperationV2ConversationId!,
-        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
-      });
-      return Response.json(snapshot([waiting]));
-    }
-    if (url === '/api/chat/operations/operation-cutover-1') {
-      return Response.json(
-        detail(waiting, {
-          kind: 'question',
-          operationId: waiting.operationId,
-          generation: waiting.generation,
-          operationVersion: waiting.version,
-          hostRequestId: 'question-01',
-          state: 'live_pending',
-          requestedAt: 120,
-          content: {
-            header: 'Choose mode',
-            question: 'Which safe mode should be used?',
-            options: [],
-            multiple: false,
-          },
-        }),
-      );
-    }
-    if (url.endsWith('/questions/question-01/reply')) {
-      return Response.json({ protocolVersion: 2, result: { kind: 'stale', operation: waiting } });
-    }
-    throw new Error(`Unexpected request: ${url}`);
-  }) as unknown as typeof fetch;
-  usePipelineStore.setState({ isDirty: false, layoutDirty: false } as never);
-  useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
-  await activateChatOperationExecutionForWorkspace(workspace, {
-    chatOperationProtocolVersion: 2,
-    chatOperationMode: 'production',
-  });
-
-  expect(useChatStore.getState().completionWarning).toBe(
-    'Choose mode: Which safe mode should be used?',
-  );
-  expect(
-    useChatStore.getState().chatOperationV2QuestionRequests[waiting.operationId]?.content,
-  ).toMatchObject({
-    question: 'Which safe mode should be used?',
-    multiple: false,
-    options: [],
-  });
-  await useChatStore.getState().send('Use safe mode.');
-
-  expect(
-    requests.find(({ url }) => url.endsWith('/questions/question-01/reply'))?.body,
-  ).toMatchObject({
-    protocolVersion: 2,
-    operationId: 'operation-cutover-1',
-    expectedGeneration: 1,
-    expectedVersion: 4,
-    payload: { requestId: 'question-01', choice: 'reply', answers: ['Use safe mode.'] },
-  });
-  expect(requests.some(({ url }) => url.includes('/api/opencode/chat/proxy'))).toBe(false);
-  useChatStore.setState({ sendError: 'Previous question reply failed' });
-  await useChatStore
-    .getState()
-    .replyActiveChatOperationV2Question(waiting.operationId, 'question-01', 'reply', [
-      'Use safe mode.',
-    ]);
-  expect(useChatStore.getState().sendError).toBeNull();
-});
-
-test('routes restart recovery through the distinct qualified interaction endpoint', async () => {
-  setClientWorkspace(workspace);
-  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
-  const requests: Array<{ url: string; body: unknown }> = [];
-  let waiting = operation({
-    version: 5,
-    phase: 'awaiting_input',
-    waitReason: 'user_recovery_choice',
-    executionState: 'waiting_for_user',
-    pendingInputKind: 'question',
-  });
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
-    requests.push({ url, body });
-    if (url === '/api/chat/operations/snapshot') {
-      const correlation = useChatStore.getState();
-      waiting = operation({
-        ...waiting,
-        conversationId: correlation.chatOperationV2ConversationId!,
-        rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
-      });
-      return Response.json(snapshot([waiting]));
-    }
-    if (url === '/api/chat/operations/operation-cutover-1') {
-      return Response.json(
-        detail(waiting, {
-          kind: 'question',
-          operationId: waiting.operationId,
-          generation: waiting.generation,
-          operationVersion: waiting.version,
-          hostRequestId: 'question-recovery-01',
-          state: 'recovery_required',
-          requestedAt: 130,
-          content: {
-            header: 'Recovery',
-            question: 'The prior question drain was lost.',
-            options: [],
-            multiple: false,
-          },
-        }),
-      );
-    }
-    if (url.endsWith('/interactions/question-recovery-01/recovery')) {
-      return Response.json({ protocolVersion: 2, result: { kind: 'stale', operation: waiting } });
-    }
-    throw new Error(`Unexpected request: ${url}`);
-  }) as unknown as typeof fetch;
-  await activateChatOperationExecutionForWorkspace(workspace, {
-    chatOperationProtocolVersion: 2,
-    chatOperationMode: 'production',
-  });
-
-  await useChatStore
-    .getState()
-    .recoverActiveChatOperationV2Interaction(
-      'operation-cutover-1',
-      'question-recovery-01',
-      'repair_new_invocation',
-    );
-
-  expect(
-    requests.find(({ url }) => url.endsWith('/interactions/question-recovery-01/recovery'))?.body,
-  ).toMatchObject({
-    protocolVersion: 2,
-    operationId: 'operation-cutover-1',
-    expectedGeneration: 1,
-    expectedVersion: 5,
-    payload: { requestId: 'question-recovery-01', choice: 'repair_new_invocation' },
-  });
-  expect(
-    requests.some(({ url }) => url === '/api/chat/operations/operation-cutover-1/recovery'),
-  ).toBe(false);
-});
-
-test.each([
-  ['saved', false, false, true, false],
-  ['unsaved YAML', true, false, true, false],
-  ['unsaved layout', false, true, true, false],
-  ['saved after navigation', false, false, false, false],
-  ['saved after inventory refresh', false, false, true, true],
-] as const)(
-  'submits %s canvas evidence against the Host-projected current candidate',
-  async (_label, isDirty, layoutDirty, currentCanvas, refreshInventory) => {
+test.each(['ui', 'http'] as const)(
+  '%s routes a projected live question reply through the qualified V2 endpoint',
+  async (entry) => {
     setClientWorkspace(workspace);
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
     const requests: Array<{ url: string; body: unknown }> = [];
-    let created = operation();
-    let snapshotReads = 0;
+    let waiting = operation({
+      version: 4,
+      phase: 'awaiting_input',
+      waitReason: 'permission',
+      executionState: 'waiting_for_user',
+      pendingInputKind: 'question',
+    });
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+      const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
       requests.push({ url, body });
       if (url === '/api/chat/operations/snapshot') {
-        snapshotReads++;
-        if (refreshInventory && snapshotReads === 1) return Response.json(snapshot());
-        if (refreshInventory) {
-          usePipelineStore.setState({ config: { ...config, name: 'Later canvas edit' } });
-        }
-        const projected = inventory(true);
-        projected.candidates[0]!.currentCanvas = currentCanvas;
-        return Response.json(snapshot([], projected));
-      }
-      if (url === '/api/chat/operations' && init?.method === 'POST') {
-        const payload = body?.payload as { conversationId: string; rendererInstanceId: string };
-        created = operation({
-          conversationId: payload.conversationId,
-          rendererInstanceId: payload.rendererInstanceId,
+        const correlation = useChatStore.getState();
+        waiting = operation({
+          ...waiting,
+          conversationId: correlation.chatOperationV2ConversationId!,
+          rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
         });
-        return Response.json({
-          protocolVersion: 2,
-          result: { kind: 'in_progress', operation: created },
-        });
+        return Response.json(snapshot([waiting]));
       }
       if (url === '/api/chat/operations/operation-cutover-1') {
-        return Response.json(detail(created));
+        return Response.json(
+          detail(waiting, {
+            kind: 'question',
+            operationId: waiting.operationId,
+            generation: waiting.generation,
+            operationVersion: waiting.version,
+            hostRequestId: 'question-01',
+            state: 'live_pending',
+            requestedAt: 120,
+            content: {
+              header: 'Choose mode',
+              question: 'Which safe mode should be used?',
+              options: [],
+              multiple: false,
+            },
+          }),
+        );
+      }
+      if (url.endsWith('/questions/question-01/reply')) {
+        return Response.json({ protocolVersion: 2, result: { kind: 'stale', operation: waiting } });
       }
       throw new Error(`Unexpected request: ${url}`);
     }) as unknown as typeof fetch;
-    const config = {
-      name: isDirty ? 'Unsaved analysis' : 'Saved workflow',
-      tracks: [
-        {
-          id: 'main',
-          name: 'Main',
-          tasks: [
-            { id: 'source', name: 'Source', command: 'echo source' },
-            { id: 'join', name: 'Join', command: 'echo finished', depends_on: ['source'] },
-          ],
-        },
-      ],
-    };
-    usePipelineStore.setState({
-      config,
-      isDirty,
-      layoutDirty,
-      yamlPath: `${workspace}\\.tagma\\current\\current.yaml`,
-    });
+    usePipelineStore.setState({ isDirty: false, layoutDirty: false } as never);
     useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
-
     await activateChatOperationExecutionForWorkspace(workspace, {
       chatOperationProtocolVersion: 2,
       chatOperationMode: 'production',
     });
-    await useChatStore.getState().send('Explain the current pipeline without changing it.');
 
-    const create = requests.find(({ url }) => url === '/api/chat/operations')?.body as {
-      payload: {
-        candidateId: string;
-        localRevision: number;
-        dirtySnapshot: { canonicalYaml: string; layoutJson: string };
-      };
-    };
-    expect(create.payload.candidateId).toBe('candidate-current');
-    expect(Number.isInteger(create.payload.localRevision)).toBe(true);
-    expect(yaml.load(create.payload.dirtySnapshot.canonicalYaml)).toEqual({ pipeline: config });
-    expect(JSON.parse(create.payload.dirtySnapshot.layoutJson)).toHaveProperty('positions');
-    expect(usePipelineStore.getState().isDirty).toBe(isDirty);
-    expect(usePipelineStore.getState().layoutDirty).toBe(layoutDirty);
-    expect(snapshotReads).toBe(refreshInventory ? 2 : 1);
+    expect(useChatStore.getState().completionWarning).toBe(
+      'Choose mode: Which safe mode should be used?',
+    );
+    expect(
+      useChatStore.getState().chatOperationV2QuestionRequests[waiting.operationId]?.content,
+    ).toMatchObject({
+      question: 'Which safe mode should be used?',
+      multiple: false,
+      options: [],
+    });
+    await useChatStore.getState().send('Use safe mode.');
+
+    expect(
+      requests.find(({ url }) => url.endsWith('/questions/question-01/reply'))?.body,
+    ).toMatchObject({
+      protocolVersion: 2,
+      operationId: 'operation-cutover-1',
+      expectedGeneration: 1,
+      expectedVersion: 4,
+      payload: { requestId: 'question-01', choice: 'reply', answers: ['Use safe mode.'] },
+    });
+    expect(requests.some(({ url }) => url.includes('/api/opencode/chat/proxy'))).toBe(false);
+    useChatStore.setState({ sendError: 'Previous question reply failed' });
+    await performThroughEntry(entry, {
+      type: 'question.reply',
+      operationId: waiting.operationId,
+      requestId: 'question-01',
+      choice: 'reply',
+      answers: ['Use safe mode.'],
+    });
+    expect(useChatStore.getState().sendError).toBeNull();
   },
 );
 
-test('saved canvas evidence fails closed when the Host current candidate is ambiguous', async () => {
-  setClientWorkspace(workspace);
-  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
-  let creates = 0;
-  const projected = inventory(true);
-  projected.candidates.push({
-    ...projected.candidates[0]!,
-    candidateId: 'another-current',
-    relativeCoordinate: 'another/another.yaml',
-  });
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input) === '/api/chat/operations' && init?.method === 'POST') creates++;
-    if (String(input) === '/api/chat/operations/snapshot') {
-      return Response.json(snapshot([], projected));
-    }
-    throw new Error(`Unexpected request: ${String(input)}`);
-  }) as unknown as typeof fetch;
-  usePipelineStore.setState({ isDirty: false, layoutDirty: false });
-  useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
-  await activateChatOperationExecutionForWorkspace(workspace, {
-    chatOperationProtocolVersion: 2,
-    chatOperationMode: 'production',
-  });
-  await expect(useChatStore.getState().send('Explain this saved pipeline.')).rejects.toThrow(
-    'one unambiguous candidate',
+test.each(['ui', 'http'] as const)(
+  '%s routes restart recovery through the distinct qualified interaction endpoint',
+  async (entry) => {
+    setClientWorkspace(workspace);
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    const requests: Array<{ url: string; body: unknown }> = [];
+    let waiting = operation({
+      version: 5,
+      phase: 'awaiting_input',
+      waitReason: 'user_recovery_choice',
+      executionState: 'waiting_for_user',
+      pendingInputKind: 'question',
+    });
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
+      requests.push({ url, body });
+      if (url === '/api/chat/operations/snapshot') {
+        const correlation = useChatStore.getState();
+        waiting = operation({
+          ...waiting,
+          conversationId: correlation.chatOperationV2ConversationId!,
+          rendererInstanceId: correlation.chatOperationV2RendererInstanceId!,
+        });
+        return Response.json(snapshot([waiting]));
+      }
+      if (url === '/api/chat/operations/operation-cutover-1') {
+        return Response.json(
+          detail(waiting, {
+            kind: 'question',
+            operationId: waiting.operationId,
+            generation: waiting.generation,
+            operationVersion: waiting.version,
+            hostRequestId: 'question-recovery-01',
+            state: 'recovery_required',
+            requestedAt: 130,
+            content: {
+              header: 'Recovery',
+              question: 'The prior question drain was lost.',
+              options: [],
+              multiple: false,
+            },
+          }),
+        );
+      }
+      if (url.endsWith('/interactions/question-recovery-01/recovery')) {
+        return Response.json({ protocolVersion: 2, result: { kind: 'stale', operation: waiting } });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+    await activateChatOperationExecutionForWorkspace(workspace, {
+      chatOperationProtocolVersion: 2,
+      chatOperationMode: 'production',
+    });
+
+    await performThroughEntry(entry, {
+      type: 'interaction.recover',
+      operationId: 'operation-cutover-1',
+      requestId: 'question-recovery-01',
+      choice: 'repair_new_invocation',
+    });
+
+    expect(
+      requests.find(({ url }) => url.endsWith('/interactions/question-recovery-01/recovery'))?.body,
+    ).toMatchObject({
+      protocolVersion: 2,
+      operationId: 'operation-cutover-1',
+      expectedGeneration: 1,
+      expectedVersion: 5,
+      payload: { requestId: 'question-recovery-01', choice: 'repair_new_invocation' },
+    });
+    expect(
+      requests.some(({ url }) => url === '/api/chat/operations/operation-cutover-1/recovery'),
+    ).toBe(false);
+  },
+);
+
+test.each(['ui', 'http'] as const)(
+  '%s clarification uses the Host candidate and CAS while preserving the ordinary Composer',
+  async (entry) => {
+    setClientWorkspace(workspace);
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    let waiting = operation({
+      version: 6,
+      phase: 'awaiting_input',
+      waitReason: 'clarification',
+      executionState: 'waiting_for_user',
+      pendingInputKind: 'clarification',
+    });
+    const replies: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/chat/operations/snapshot') {
+        const state = useChatStore.getState();
+        waiting = {
+          ...waiting,
+          rendererInstanceId: state.chatOperationV2RendererInstanceId!,
+          conversationId: state.chatOperationV2ConversationId!,
+        };
+        return Response.json(snapshot([waiting], inventory(true)));
+      }
+      if (url === '/api/chat/operations/operation-cutover-1')
+        return Response.json(
+          detail(waiting, {
+            kind: 'clarification',
+            operationId: waiting.operationId,
+            generation: 1,
+            operationVersion: 6,
+            clarificationId: 'clarification-01',
+            round: 1,
+            maxRounds: 3,
+            question: 'Which pipeline should be edited?',
+            requestedAt: 120,
+            expiresAt: Date.now() + 60_000,
+            candidates: inventory(true).candidates,
+          }),
+        );
+      if (url.endsWith('/clarification')) {
+        replies.push(JSON.parse(String(init?.body)));
+        return Response.json({ protocolVersion: 2, result: { kind: 'stale', operation: waiting } });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+    await activateChatOperationExecutionForWorkspace(workspace, {
+      chatOperationProtocolVersion: 2,
+      chatOperationMode: 'production',
+    });
+    const composerDraft = 'Keep this later request';
+    const composerAttachments = [
+      { id: 'later-context', label: 'Context', content: 'Keep these bytes' },
+    ];
+    useChatStore.setState({ composerDraft, composerAttachments });
+    await performThroughEntry(entry, {
+      type: 'clarification.reply',
+      operationId: waiting.operationId,
+      requestId: 'clarification-01',
+      candidateId: 'candidate-current',
+    });
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      protocolVersion: 2,
+      operationId: waiting.operationId,
+      expectedGeneration: 1,
+      expectedVersion: 6,
+      payload: {
+        requestId: 'clarification-01',
+        text: '',
+        candidateIds: ['candidate-current'],
+        attachments: [],
+      },
+    });
+    expect(useChatStore.getState()).toMatchObject({ composerDraft, composerAttachments });
+    const invalid = {
+      type: 'clarification.reply' as const,
+      operationId: waiting.operationId,
+      requestId: 'clarification-01',
+      candidateId: 'not-a-host-candidate',
+    };
+    const { type, ...parameters } = invalid;
+    const result =
+      entry === 'ui'
+        ? await performChatOperationAction(invalid)
+        : (await submitThroughControlHttp(workspace, { type, parameters })).result;
+    expect(result).toMatchObject({ executed: false, reason: 'request_unavailable' });
+    expect(replies).toHaveLength(1);
+  },
+);
+
+for (const entry of ['ui', 'http'] as const)
+  test.each([
+    ['saved', false, false, true, false],
+    ['unsaved YAML', true, false, true, false],
+    ['unsaved layout', false, true, true, false],
+    ['saved after navigation', false, false, false, false],
+    ['saved after inventory refresh', false, false, true, true],
+  ] as const)(
+    `submits %s canvas evidence through ${entry} against the Host-projected current candidate`,
+    async (_label, isDirty, layoutDirty, currentCanvas, refreshInventory) => {
+      setClientWorkspace(workspace);
+      globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+      const requests: Array<{ url: string; body: unknown }> = [];
+      let created = operation();
+      let snapshotReads = 0;
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+        requests.push({ url, body });
+        if (url === '/api/chat/operations/snapshot') {
+          snapshotReads++;
+          if (refreshInventory && snapshotReads === 1) return Response.json(snapshot());
+          if (refreshInventory) {
+            usePipelineStore.setState({ config: { ...config, name: 'Later canvas edit' } });
+          }
+          const projected = inventory(true);
+          projected.candidates[0]!.currentCanvas = currentCanvas;
+          return Response.json(snapshot([], projected));
+        }
+        if (url === '/api/chat/operations' && init?.method === 'POST') {
+          const payload = body?.payload as { conversationId: string; rendererInstanceId: string };
+          created = operation({
+            conversationId: payload.conversationId,
+            rendererInstanceId: payload.rendererInstanceId,
+          });
+          return Response.json({
+            protocolVersion: 2,
+            result: { kind: 'in_progress', operation: created },
+          });
+        }
+        if (url === '/api/chat/operations/operation-cutover-1') {
+          return Response.json(detail(created));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }) as unknown as typeof fetch;
+      const config = {
+        name: isDirty ? 'Unsaved analysis' : 'Saved workflow',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              { id: 'source', name: 'Source', command: 'echo source' },
+              { id: 'join', name: 'Join', command: 'echo finished', depends_on: ['source'] },
+            ],
+          },
+        ],
+      };
+      usePipelineStore.setState({
+        config,
+        isDirty,
+        layoutDirty,
+        yamlPath: `${workspace}\\.tagma\\current\\current.yaml`,
+      });
+      useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
+
+      await activateChatOperationExecutionForWorkspace(workspace, {
+        chatOperationProtocolVersion: 2,
+        chatOperationMode: 'production',
+      });
+      useChatStore.setState({
+        bootstrapStatus: 'ready',
+        composerDraft: '  Explain the current pipeline without changing it.  ',
+        composerAttachments: [
+          { id: 'canvas-note', label: 'Context', content: 'Exact attachment bytes' },
+        ],
+        reasoningEffort: 'high',
+      });
+      let clientRequestId = 'control-submit-fixture';
+      if (entry === 'http') {
+        const submitted = await submitThroughControlHttp(workspace);
+        clientRequestId = submitted.clientRequestId;
+        expect(submitted.result).toMatchObject({ executed: true });
+      } else {
+        expect(await submitChatComposer({ clientRequestId })).toEqual({ submitted: true });
+      }
+      expect(useChatStore.getState().composerDraft).toBe('');
+
+      const create = requests.find(({ url }) => url === '/api/chat/operations')?.body as {
+        clientRequestId: string;
+        payload: {
+          candidateId: string;
+          localRevision: number;
+          dirtySnapshot: { canonicalYaml: string; layoutJson: string };
+        };
+      };
+      expect(create.payload.candidateId).toBe('candidate-current');
+      expect(create.clientRequestId).toBe(clientRequestId);
+      expect(create.payload).toMatchObject({
+        provider: 'openai',
+        model: 'gpt-5.4',
+        variant: 'high',
+        request: {
+          text: 'Explain the current pipeline without changing it.',
+          attachments: [
+            { referenceId: 'canvas-note', label: 'Context', content: 'Exact attachment bytes' },
+          ],
+        },
+      });
+      expect(Number.isInteger(create.payload.localRevision)).toBe(true);
+      expect(yaml.load(create.payload.dirtySnapshot.canonicalYaml)).toEqual({ pipeline: config });
+      expect(JSON.parse(create.payload.dirtySnapshot.layoutJson)).toHaveProperty('positions');
+      expect(usePipelineStore.getState().isDirty).toBe(isDirty);
+      expect(usePipelineStore.getState().layoutDirty).toBe(layoutDirty);
+      expect(snapshotReads).toBe(refreshInventory ? 2 : 1);
+    },
   );
-  expect(creates).toBe(0);
-});
+
+test.each(['ui', 'http'] as const)(
+  'ambiguous canvas fault fails closed through %s and retains the Composer evidence',
+  async (entry) => {
+    setClientWorkspace(workspace);
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    let creates = 0;
+    const projected = inventory(true);
+    projected.candidates.push({
+      ...projected.candidates[0]!,
+      candidateId: 'another-current',
+      relativeCoordinate: 'another/another.yaml',
+    });
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/chat/operations' && init?.method === 'POST') creates++;
+      if (String(input) === '/api/chat/operations/snapshot') {
+        return Response.json(snapshot([], projected));
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    }) as unknown as typeof fetch;
+    usePipelineStore.setState({ isDirty: false, layoutDirty: false });
+    useChatStore.setState({ model: { providerID: 'openai', modelID: 'gpt-5.4' } });
+    await activateChatOperationExecutionForWorkspace(workspace, {
+      chatOperationProtocolVersion: 2,
+      chatOperationMode: 'production',
+    });
+    const composerDraft = 'Explain this saved pipeline.';
+    const composerAttachments = [
+      { id: 'retain', label: 'Context', content: 'Do not lose these bytes' },
+    ];
+    useChatStore.setState({ bootstrapStatus: 'ready', composerDraft, composerAttachments });
+    if (entry === 'http') {
+      expect((await submitThroughControlHttp(workspace)).result).toMatchObject({ executed: false });
+    } else {
+      await expect(submitChatComposer()).rejects.toThrow('one unambiguous candidate');
+    }
+    expect(useChatStore.getState()).toMatchObject({ composerDraft, composerAttachments });
+    expect(useChatStore.getState().sendError).toContain('one unambiguous candidate');
+    expect(creates).toBe(0);
+  },
+);
 
 test('a contradictory handshake leaves the store non-executable', async () => {
   setClientWorkspace(workspace);

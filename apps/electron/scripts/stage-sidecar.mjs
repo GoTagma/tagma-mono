@@ -31,9 +31,14 @@ const defaultSrc = join(editorDir, 'desktop-dist');
 
 function sidecarBinaryPath(dir) {
   try {
-    const entries = readdirSync(dir);
-    const name = entries.find((entry) => entry.startsWith('tagma-editor-server'));
-    return name ? join(dir, name) : null;
+    // Cross-platform builds can leave both names behind. Directory order must not let an old
+    // no-extension binary hide a newer Windows build (or the reverse).
+    const binaries = readdirSync(dir)
+      .filter((entry) => entry === 'tagma-editor-server' || entry === 'tagma-editor-server.exe')
+      .map((entry) => ({ path: join(dir, entry), stat: statSync(join(dir, entry)) }))
+      .filter((entry) => entry.stat.isFile())
+      .sort((left, right) => right.stat.mtimeMs - left.stat.mtimeMs);
+    return binaries[0]?.path ?? null;
   } catch {
     return null;
   }

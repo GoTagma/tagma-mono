@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getDesktopChatIdentityBridge } from '../desktop';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths';
 import {
   formatChatVerificationOutcomeForExport,
@@ -226,6 +227,9 @@ interface ChatStore {
   completionWarning: string | null;
   dismissCompletionWarning: () => void;
   composerDraft: string;
+  composerSubmitting: boolean;
+  chatContextNavigationPending: boolean;
+  pendingChatActions: Readonly<Record<string, { type: string; choice: string | null }>>;
   setComposerDraft: (text: string) => void;
   pendingChatOpenRequest: boolean;
   prefillComposerForError: (text: string) => void;
@@ -336,7 +340,7 @@ interface ChatStore {
   bootstrap: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   newSession: () => Promise<void>;
-  send: (text: string) => Promise<void>;
+  send: (text: string, options?: { clientRequestId?: string }) => Promise<void>;
   /**
    * Ask opencode to stop generating on the current session. Safe to call any
    * time; the in-flight `send()` promise resolves shortly after the server
@@ -487,6 +491,18 @@ function chatOperationV2ConversationStorageKey(workspaceKey: string): string {
 }
 
 function chatOperationV2ConversationId(workspaceKey: string, rotate = false): string {
+  const desktop = getDesktopChatIdentityBridge();
+  if (desktop) {
+    const stored = rotate ? null : desktop.selectedConversation(workspaceKey);
+    if (stored !== null) {
+      if (!CHAT_OPERATION_V2_CORRELATION_ID.test(stored))
+        throw new Error('Invalid desktop Chat conversation identity.');
+      return stored;
+    }
+    const created = newChatOperationV2CorrelationId('conversation');
+    desktop.selectConversation(workspaceKey, desktop.rendererId(workspaceKey), created);
+    return created;
+  }
   const key = chatOperationV2ConversationStorageKey(workspaceKey);
   if (!rotate) {
     const stored = readSessionCorrelation(key) ?? fallbackChatOperationV2ConversationIds.get(key);
@@ -541,6 +557,9 @@ function emptyChatWorkspaceState(): Partial<ChatStore> {
     sendError: null,
     completionWarning: null,
     composerAttachments: [],
+    composerSubmitting: false,
+    chatContextNavigationPending: false,
+    pendingChatActions: {},
     pendingChatOpenRequest: false,
     model: null,
     reasoningEffort: DEFAULT_CHAT_REASONING_EFFORT,
@@ -1097,9 +1116,17 @@ function projectChatOperationV2Detail(detail: ChatOperationV2OperationDetail): v
   });
 }
 
-function getChatOperationV2Controller(): ChatOperationV2Controller {
+function getChatOperationV2Controller(rendererInstanceId?: string): ChatOperationV2Controller {
+  if (
+    rendererInstanceId &&
+    chatOperationV2Controller &&
+    chatOperationV2Controller.getRendererInstanceId() !== rendererInstanceId
+  ) {
+    chatOperationV2Controller.dispose();
+    chatOperationV2Controller = null;
+  }
   chatOperationV2Controller ??= createChatOperationV2Controller({
-    rendererInstanceId: chatOperationV2RendererInstanceId(),
+    rendererInstanceId: rendererInstanceId ?? chatOperationV2RendererInstanceId(),
     onChange: projectChatOperationV2Snapshot,
     onDetail: projectChatOperationV2Detail,
   });
@@ -1113,7 +1140,10 @@ export async function activateChatOperationExecutionForWorkspace(
 ): Promise<ChatOperationExecutionMode> {
   const production =
     handshake.chatOperationProtocolVersion === 2 && handshake.chatOperationMode === 'production';
-  const controller = getChatOperationV2Controller();
+  const rendererIdentity = production
+    ? getDesktopChatIdentityBridge()?.rendererId(workspaceKey)
+    : undefined;
+  const controller = getChatOperationV2Controller(rendererIdentity);
   const resolvedConversationId = production
     ? (conversationId ?? chatOperationV2ConversationId(workspaceKey))
     : null;
@@ -1135,6 +1165,7 @@ async function sendChatOperationV2(
   set: ChatSet,
   text: string,
   attachments: readonly ComposerAttachment[],
+  options?: { clientRequestId?: string },
 ): Promise<void> {
   const state = get();
   const model = state.model;
@@ -1280,23 +1311,26 @@ async function sendChatOperationV2(
         })
       : questionRequest && activeOperationId
         ? controller.replyQuestion(activeOperationId, questionRequest.requestId, 'reply', [text])
-        : controller.send({
-            request: {
-              text,
-              attachments: attachments.map(({ id, label, content }) => ({
-                referenceId: id,
-                label,
-                content,
-              })),
+        : controller.send(
+            {
+              request: {
+                text,
+                attachments: attachments.map(({ id, label, content }) => ({
+                  referenceId: id,
+                  label,
+                  content,
+                })),
+              },
+              provider: model.providerID,
+              model: model.modelID,
+              variant: state.reasoningEffort,
+              conversationId,
+              localRevision,
+              candidateId,
+              dirtySnapshot,
             },
-            provider: model.providerID,
-            model: model.modelID,
-            variant: state.reasoningEffort,
-            conversationId,
-            localRevision,
-            candidateId,
-            dirtySnapshot,
-          }));
+            options?.clientRequestId,
+          ));
     if (!activationIsCurrent()) return;
     await loadChatConversationHistory();
   } catch (error) {
@@ -1509,6 +1543,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   completionWarning: null,
   dismissCompletionWarning: () => set({ completionWarning: null }),
   composerDraft: '',
+  composerSubmitting: false,
+  chatContextNavigationPending: false,
+  pendingChatActions: {},
   setComposerDraft: (text) => set({ composerDraft: text }),
   pendingChatOpenRequest: false,
   composerAttachments: [],
@@ -1895,6 +1932,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const selected = get().chatOperationV2Operations.find(
         (operation) => operation.operationId === id,
       );
+      const desktop = getDesktopChatIdentityBridge();
+      if (
+        desktop &&
+        selected?.rendererInstanceId === controller.getRendererInstanceId() &&
+        desktop.conversationKey(
+          authority.workspaceKey,
+          selected.rendererInstanceId,
+          selected.conversationId,
+          false,
+        )
+      ) {
+        desktop.selectConversation(
+          authority.workspaceKey,
+          selected.rendererInstanceId,
+          selected.conversationId,
+        );
+      }
       set({
         currentSessionId: id,
         chatOperationV2ConversationId:
@@ -1943,7 +1997,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  async send(text) {
+  async send(text, options) {
     const state = get();
     if (state.chatExecutionMode === 'unavailable') {
       const error = new Error(
@@ -1952,7 +2006,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ sendError: error.message });
       throw error;
     }
-    return sendChatOperationV2(get, set, text, state.composerAttachments);
+    return sendChatOperationV2(get, set, text, state.composerAttachments, options);
   },
 
   async abort() {

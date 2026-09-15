@@ -15,6 +15,7 @@ const REVISION_BYPASS_PREFIXES = [
   '/api/python-agent/validate',
   '/api/secrets',
   '/api/chat-bridge/',
+  '/api/agent-chat/',
   '/api/editor/',
   '/api/sidecar/',
   '/api/release/',

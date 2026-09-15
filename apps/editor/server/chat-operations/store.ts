@@ -1,4 +1,8 @@
 import { Database } from 'bun:sqlite';
+import {
+  AgentChatControlStore,
+  AGENT_CHAT_CONTROL_SCHEMA_SQL,
+} from '../agent-chat-control/store.js';
 import { createHash } from 'node:crypto';
 import {
   chmodSync as systemChmodSync,
@@ -161,7 +165,7 @@ import {
   type SealedChatConversationContext,
 } from './conversation.js';
 
-export const CHAT_OPERATION_V2_SCHEMA_VERSION = 9;
+export const CHAT_OPERATION_V2_SCHEMA_VERSION = 10;
 export const CHAT_OPERATION_V2_MAX_CLIENT_REQUEST_ID_BYTES = 128;
 
 export function deriveInitialChatOperationV2ControlLineageId(keyId: string): string {
@@ -196,6 +200,10 @@ export const CHAT_OPERATION_V2_TABLES = [
   'migration_inventory_projection',
   'usage_ledger',
   'migration_records',
+  'agent_chat_controllers',
+  'agent_chat_grants',
+  'agent_chat_commands',
+  'agent_chat_events',
 ] as const;
 
 export { CHAT_OPERATION_V2_ANNOTATION_TYPES };
@@ -2467,6 +2475,12 @@ const CHAT_OPERATION_V2_MIGRATIONS = [
     sql: SCHEMA_V9_SQL,
     checksum: SCHEMA_V9_CHECKSUM,
   },
+  {
+    version: 10,
+    name: 'agent_chat_control_authority',
+    sql: AGENT_CHAT_CONTROL_SCHEMA_SQL,
+    checksum: createHash('sha256').update(AGENT_CHAT_CONTROL_SCHEMA_SQL, 'utf8').digest('hex'),
+  },
 ] as const;
 
 /**
@@ -2522,6 +2536,11 @@ export const CHAT_OPERATION_V2_MIGRATION_LEDGER = Object.freeze([
     version: 9,
     name: 'owned_binding_lease_succession',
     checksum: 'f9a36407ac7d2c1409bbe049d65d309dbb3821eb72f9b38eb0f755250a9af52c',
+  }),
+  Object.freeze({
+    version: 10,
+    name: 'agent_chat_control_authority',
+    checksum: 'c758ffc67cb71fd3c2a95d8c3f1149067066b759674d6090aaaf0ee541ad6f46',
   }),
 ] as const);
 
@@ -4539,6 +4558,21 @@ export class ChatOperationV2Store {
     this.closed = true;
     systemRmSync(`${this.databasePath}-wal`, { force: true });
     systemRmSync(`${this.databasePath}-shm`, { force: true });
+  }
+
+  /** Internal product authority; callers cannot substitute another database or a process-local key. */
+  agentChatControl(key: Uint8Array): AgentChatControlStore {
+    this.assertOpen();
+    if (
+      key.length !== 32 ||
+      `sha256:${createHash('sha256').update(key).digest('hex')}` !== this.keyId
+    ) {
+      throw new ChatOperationV2StoreError(
+        'schema_mismatch',
+        'Chat Control requires the durable control key.',
+      );
+    }
+    return new AgentChatControlStore(this.database, key, () => this.assertOpen());
   }
 
   inspectTables(): string[] {

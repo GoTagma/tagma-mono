@@ -769,6 +769,95 @@ export class ChatOperationV2Service {
     return this.#authorityForUse().store;
   }
 
+  /** Internal control-bridge authority; never serialize this facade to a renderer or agent. */
+  agentChatControlWorkspace(workspacePath: string) {
+    const authority = this.#authorityForUse();
+    const scope = this.#resolveWorkspaceScope(workspacePath);
+    return {
+      workspaceScopeId: scope.workspaceScopeId,
+      controlGeneration: scope.controlGeneration,
+      store: authority.store.agentChatControl(authority.key),
+    };
+  }
+
+  findAgentChatOperation(
+    workspacePath: string,
+    clientRequestId: string,
+    rendererInstanceId: string,
+    conversationId: string,
+  ): string | null {
+    const authority = this.#authorityForUse();
+    const scope = this.#resolveWorkspaceScope(workspacePath);
+    const operation = authority.store.findOperationByClientRequestId(
+      scope.workspaceScopeId,
+      clientRequestId,
+    );
+    if (!operation) return null;
+    const admission = authority.store.getOperationAdmission(operation.operationId);
+    if (
+      admission?.rendererInstanceId !== rendererInstanceId ||
+      admission.conversationId !== conversationId
+    )
+      conversationAuthorityError();
+    return operation.operationId;
+  }
+
+  /** Authenticate the original conversation key, including legacy/read-only-history rejection. */
+  authenticateAgentChatConversation(
+    workspacePath: string,
+    input: {
+      rendererInstanceId: string;
+      conversationId: string;
+      conversationKey: string;
+      operationId: string | null;
+    },
+  ) {
+    const authority = this.#authorityForUse();
+    const scope = this.#resolveWorkspaceScope(workspacePath);
+    for (const value of [input.rendererInstanceId, input.conversationId]) {
+      if (typeof value !== 'string' || !value || value.length > 128 || value.includes('\0'))
+        conversationAuthorityError();
+    }
+    const ownerId = deriveChatConversationOwnerId(
+      authority.key,
+      {
+        workspaceScopeId: scope.workspaceScopeId,
+        controlGeneration: scope.controlGeneration,
+      },
+      {
+        rendererInstanceId: input.rendererInstanceId,
+        conversationId: input.conversationId,
+        conversationKey: input.conversationKey,
+      },
+    );
+    let foundSelectedOperation = input.operationId === null;
+    for (const operation of authority.store.getWorkspaceOperationSnapshot(scope.workspaceScopeId)
+      .operations) {
+      const admission = authority.store.getOperationAdmission(operation.operationId);
+      const matches =
+        admission?.rendererInstanceId === input.rendererInstanceId &&
+        admission.conversationId === input.conversationId;
+      if (operation.operationId === input.operationId) {
+        if (!matches) conversationAuthorityError();
+        foundSelectedOperation = true;
+      }
+      if (!matches) continue;
+      const context = this.#conversationContext(
+        { scope, store: authority.store },
+        operation.operationId,
+      );
+      if (!context || context.ownerId !== ownerId) conversationAuthorityError();
+    }
+    if (!foundSelectedOperation) conversationAuthorityError();
+    return {
+      ownerId,
+      workspaceScopeId: scope.workspaceScopeId,
+      controlGeneration: scope.controlGeneration,
+      rendererInstanceId: input.rendererInstanceId,
+      conversationId: input.conversationId,
+    };
+  }
+
   getWorkspaceMigrationContext(workspacePath: string): ChatOperationV2WorkspaceMigrationContext {
     const scope = this.#resolveWorkspaceScope(workspacePath);
     return Object.freeze({

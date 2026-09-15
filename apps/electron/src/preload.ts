@@ -1,6 +1,39 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+function chatIdentity<T>(request: Record<string, unknown>): T {
+  // Identity writes must finish before the renderer can submit the first Host request.
+  const response = ipcRenderer.sendSync('chat:identity', request) as {
+    ok: boolean;
+    value?: T;
+    error?: string;
+  };
+  if (!response?.ok)
+    throw new Error(response?.error ?? 'Desktop Chat identity storage is unavailable.');
+  return response.value as T;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
+  chatIdentity: {
+    protocolVersion: 1,
+    rendererId: (workspace: string) => chatIdentity<string>({ method: 'renderer', workspace }),
+    selectedConversation: (workspace: string) =>
+      chatIdentity<string | null>({ method: 'selected', workspace }),
+    selectConversation: (workspace: string, rendererId: string, conversationId: string) =>
+      chatIdentity<boolean>({ method: 'select', workspace, rendererId, conversationId }),
+    conversationKey: (
+      workspace: string,
+      rendererId: string,
+      conversationId: string,
+      create: boolean,
+    ) =>
+      chatIdentity<string | null>({
+        method: 'credential',
+        workspace,
+        rendererId,
+        conversationId,
+        create,
+      }),
+  },
   /**
    * Ask the main process whether it's safe to switch to this workspace.
    * Returns { action: 'proceed' } or { action: 'focus-other' }.

@@ -303,6 +303,7 @@ function downgradeConversationAuthorityToV7(database: Database): void {
 }
 
 function downgradeOwnedBindingSuccessionToV8(database: Database): void {
+  downgradeAgentChatControlToV9(database);
   database.exec(`
     DROP INDEX binding_leases_active_target;
     DROP INDEX binding_leases_successor;
@@ -311,6 +312,16 @@ function downgradeOwnedBindingSuccessionToV8(database: Database): void {
     ON binding_leases(workspace_scope_id, target_platform, target_identity)
     WHERE binding_status IN ('reserved', 'published');
     DELETE FROM migration_records WHERE schema_version = 9;
+  `);
+}
+
+function downgradeAgentChatControlToV9(database: Database): void {
+  database.exec(`
+    DROP TABLE agent_chat_events;
+    DROP TABLE agent_chat_commands;
+    DROP TABLE agent_chat_grants;
+    DROP TABLE agent_chat_controllers;
+    DELETE FROM migration_records WHERE schema_version = 10;
   `);
 }
 
@@ -1729,6 +1740,11 @@ describe('ChatTurn Operation V2 trusted store schema', () => {
         name: 'owned_binding_lease_succession',
         checksum: 'f9a36407ac7d2c1409bbe049d65d309dbb3821eb72f9b38eb0f755250a9af52c',
       },
+      {
+        version: 10,
+        name: 'agent_chat_control_authority',
+        checksum: 'c758ffc67cb71fd3c2a95d8c3f1149067066b759674d6090aaaf0ee541ad6f46',
+      },
     ]);
     expect(Object.isFrozen(CHAT_OPERATION_V2_MIGRATION_LEDGER)).toBe(true);
   });
@@ -1849,6 +1865,10 @@ describe('ChatTurn Operation V2 trusted store schema', () => {
 
     expect(store.inspectTables()).toEqual([...CHAT_OPERATION_V2_TABLES].sort());
     expect(store.inspectTables()).toEqual([
+      'agent_chat_commands',
+      'agent_chat_controllers',
+      'agent_chat_events',
+      'agent_chat_grants',
       'binding_leases',
       'commit_wal',
       'control_lineages',
@@ -1870,7 +1890,7 @@ describe('ChatTurn Operation V2 trusted store schema', () => {
       'usage_ledger',
       'workspace_scopes',
     ]);
-    expect(CHAT_OPERATION_V2_SCHEMA_VERSION).toBe(9);
+    expect(CHAT_OPERATION_V2_SCHEMA_VERSION).toBe(10);
     expect(store.inspectMigrations()).toEqual([
       expect.objectContaining({
         schemaVersion: 1,
@@ -1915,6 +1935,11 @@ describe('ChatTurn Operation V2 trusted store schema', () => {
       expect.objectContaining({
         schemaVersion: 9,
         migrationName: 'owned_binding_lease_succession',
+        controlKeyId: `sha256:${'c'.repeat(64)}`,
+      }),
+      expect.objectContaining({
+        schemaVersion: 10,
+        migrationName: 'agent_chat_control_authority',
         controlKeyId: `sha256:${'c'.repeat(64)}`,
       }),
     ]);
@@ -2545,8 +2570,19 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
   });
 
   migrationStoreTest(
-    'migrates exact schema versions 1-8 and fails closed on migration checksum or index drift',
+    'migrates exact schema versions 1-9 and fails closed on migration checksum or index drift',
     () => {
+      const v9Path = makeDatabasePath();
+      const v9Initial = openStore(v9Path);
+      const preservedV9 = seedOperation(v9Initial, 'operation-preserved-from-v9').operation;
+      v9Initial.close();
+      const v9 = new Database(v9Path, { strict: true });
+      downgradeAgentChatControlToV9(v9);
+      v9.close();
+      const migratedV9 = openStore(v9Path);
+      expect(migratedV9.getOperation(preservedV9.operationId)).toEqual(preservedV9);
+      expect(migratedV9.inspectMigrations().at(-1)?.schemaVersion).toBe(10);
+      migratedV9.close();
       const v8Path = makeDatabasePath();
       const v8Initial = openStore(v8Path);
       const preservedV8 = seedOperation(v8Initial, 'operation-preserved-from-v8').operation;
@@ -2556,7 +2592,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       v8.close();
       const migratedV8 = openStore(v8Path);
       expect(migratedV8.getOperation(preservedV8.operationId)).toEqual(preservedV8);
-      expect(migratedV8.inspectMigrations().at(-1)?.schemaVersion).toBe(9);
+      expect(migratedV8.inspectMigrations().at(-1)?.schemaVersion).toBe(10);
       migratedV8.close();
       const v7Path = makeDatabasePath();
       const v7Initial = openStore(v7Path);
@@ -2568,7 +2604,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       const migratedV7 = openStore(v7Path);
       expect(migratedV7.getOperation(preservedV7.operationId)).toEqual(preservedV7);
       expect(migratedV7.getOperationConversationContext(preservedV7.operationId)).toBeNull();
-      expect(migratedV7.inspectMigrations().at(-1)?.schemaVersion).toBe(9);
+      expect(migratedV7.inspectMigrations().at(-1)?.schemaVersion).toBe(10);
       migratedV7.close();
       const v6Path = makeDatabasePath();
       const v6Initial = openStore(v6Path);
@@ -2581,7 +2617,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
       const migratedV6 = openStore(v6Path);
       expect(migratedV6.getOperation(preservedV6.operationId)).toEqual(preservedV6);
       expect(migratedV6.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
       ]);
       migratedV6.close();
       const v7Inspection = new Database(v6Path, { readonly: true, strict: true });
@@ -2631,7 +2667,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migrated.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
       ]);
       migrated.close();
 
@@ -2663,7 +2699,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV4.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
       ]);
       migratedV4.close();
 
@@ -2685,7 +2721,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV3.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
       ]);
       migratedV3.close();
 
@@ -2711,7 +2747,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV2.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
       ]);
       migratedV2.close();
 
@@ -2738,7 +2774,7 @@ describe('ChatTurn Operation V2 durable interactive authority', () => {
         'conversation-1',
       );
       expect(migratedV1.inspectMigrations().map(({ schemaVersion }) => schemaVersion)).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
       ]);
       migratedV1.close();
 

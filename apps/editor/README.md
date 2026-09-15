@@ -294,6 +294,30 @@ failures may have no saved detail. Long verification text carries an explicit tr
 omitted character count. Discussion
 uses the request and attached context; include pipeline details when asking about a particular file.
 
+## Chat Control API
+
+Open **Editor Settings → External Agent Control** and select **Enable control**, then
+**Copy agent instructions**. Share that temporary handoff with a local agent. The feature is
+available in Debug and Release, starts disabled, and is independent of read-only diagnostics.
+Keep the editor running; the agent operates its actual Chat actions, canvas/context and UI state.
+The existing V2 Host continues to own model execution, permissions, Trial, repair and publication.
+
+The handoff contains the current loopback address, temporary bearer credential and protocol
+entry point. Agents first read `/api/agent-chat/v1/manifest` and `/state`, then use the fixed
+commands, durable receipts and resumable events. A dedicated conversation can be created
+through `conversation.create`; existing conversations require an explicit **Authorize conversation**
+decision in Settings. Credentials for conversation ownership remain inside the product.
+
+Inspect both Host state and renderer observations. An accepted or executed command does not
+mean the model finished or the editor displayed its result. Preserve request ids when retrying
+transport failures; do not repeat an unknown command under a new id. Revoking a conversation
+or taking back control blocks later agent actions without implicitly stopping running Chat work.
+Use the ordinary Stop action to cancel. Restart invalidates the temporary token; re-enable control
+and copy a fresh handoff to reconnect.
+
+Implementation boundaries and verification evidence are recorded in
+[the Chat Control API acceptance map](chat-control-api.md).
+
 ## Production diagnostics for coding agents
 
 Packaged Tagma builds include an opt-in, read-only diagnostics API for debugging the installed

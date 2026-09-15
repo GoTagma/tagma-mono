@@ -161,7 +161,10 @@ export interface ChatOperationV2Controller {
   getRendererInstanceId(): string;
   captureActivationAuthority(): ChatOperationV2ActivationAuthority;
   isActivationAuthorityCurrent(authority: ChatOperationV2ActivationAuthority): boolean;
-  send(input: ChatOperationV2SendInput): Promise<ChatOperationV2MutationResult>;
+  send(
+    input: ChatOperationV2SendInput,
+    clientRequestId?: string,
+  ): Promise<ChatOperationV2MutationResult>;
   replyClarification(
     operationId: string,
     input: ChatOperationV2ClarificationInput,
@@ -325,7 +328,10 @@ class Controller implements ChatOperationV2Controller {
     return mode;
   }
 
-  async send(input: ChatOperationV2SendInput): Promise<ChatOperationV2MutationResult> {
+  async send(
+    input: ChatOperationV2SendInput,
+    clientRequestId?: string,
+  ): Promise<ChatOperationV2MutationResult> {
     const authority = this.#requireProduction();
     const { workspaceKey, activeOperation, signal } = authority;
     if (activeOperation && activeOperation.phase !== 'terminal') {
@@ -341,7 +347,7 @@ class Controller implements ChatOperationV2Controller {
     try {
       const result = await this.#api.create(
         {
-          clientRequestId: this.#nextId('create'),
+          clientRequestId: clientRequestId ?? this.#nextId('create'),
           payload: {
             ...input,
             rendererInstanceId,
@@ -406,8 +412,12 @@ class Controller implements ChatOperationV2Controller {
     requestId: string,
     choice: ChatOperationV2PermissionReplyChoice,
   ): Promise<ChatOperationV2MutationResult> {
-    return this.#mutate('permission', operationId, (cas, workspaceKey, signal) =>
-      this.#api.permission({ ...cas, payload: { requestId, choice } }, { workspaceKey, signal }),
+    return this.#mutate(
+      'permission',
+      operationId,
+      (cas, workspaceKey, signal) =>
+        this.#api.permission({ ...cas, payload: { requestId, choice } }, { workspaceKey, signal }),
+      requestId,
     );
   }
 
@@ -417,11 +427,15 @@ class Controller implements ChatOperationV2Controller {
     choice: ChatOperationV2QuestionReplyChoice,
     answers: readonly string[],
   ): Promise<ChatOperationV2MutationResult> {
-    return this.#mutate('question', operationId, (cas, workspaceKey, signal) =>
-      this.#api.question(
-        { ...cas, payload: { requestId, choice, answers: [...answers] } },
-        { workspaceKey, signal },
-      ),
+    return this.#mutate(
+      'question',
+      operationId,
+      (cas, workspaceKey, signal) =>
+        this.#api.question(
+          { ...cas, payload: { requestId, choice, answers: [...answers] } },
+          { workspaceKey, signal },
+        ),
+      requestId,
     );
   }
 
@@ -440,11 +454,15 @@ class Controller implements ChatOperationV2Controller {
     requestId: string,
     choice: ChatOperationV2InteractiveRecoveryChoice,
   ): Promise<ChatOperationV2MutationResult> {
-    return this.#mutate('interactive-recovery', operationId, (cas, workspaceKey, signal) =>
-      this.#api.interactiveRecovery(
-        { ...cas, payload: { requestId, choice } },
-        { workspaceKey, signal },
-      ),
+    return this.#mutate(
+      'interactive-recovery',
+      operationId,
+      (cas, workspaceKey, signal) =>
+        this.#api.interactiveRecovery(
+          { ...cas, payload: { requestId, choice } },
+          { workspaceKey, signal },
+        ),
+      requestId,
     );
   }
 
@@ -516,6 +534,7 @@ class Controller implements ChatOperationV2Controller {
       workspaceKey: string,
       signal: AbortSignal,
     ) => Promise<ChatOperationV2MutationResult>,
+    requestId?: string,
   ): Promise<ChatOperationV2MutationResult> {
     const authority = this.#requireProduction();
     const target = operationId
@@ -525,7 +544,11 @@ class Controller implements ChatOperationV2Controller {
     if (!this.#matchesCorrelation(target)) {
       throw new Error('The qualified Chat Operation belongs to a different renderer conversation.');
     }
-    const release = this.#claimMutation(`operation:${target.operationId}`);
+    // A long recovery/retry response may await a new runtime interaction. Fence
+    // duplicate decisions by request, while Stop and later interactions remain
+    // dispatchable using the latest Host projection's generation/version CAS.
+    const slot = purpose === 'cancel' ? ':cancel' : requestId ? `:${purpose}:${requestId}` : '';
+    const release = this.#claimMutation(`operation:${target.operationId}${slot}`);
     try {
       const result = await mutation(
         {

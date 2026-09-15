@@ -1061,6 +1061,27 @@ function request<T>(
   return operation();
 }
 
+/** Uses the renderer's existing management authentication; never the external agent token. */
+export function requestAgentChatControl<T>(
+  path: string,
+  body: unknown | undefined,
+  workspaceKey: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!path.startsWith('/control/') && !path.startsWith('/renderer/'))
+    throw new Error('Invalid Chat Control management path.');
+  return request<T>(
+    `/agent-chat${path}`,
+    {
+      method: body === undefined ? 'GET' : 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal,
+    },
+    workspaceKey,
+    false,
+  );
+}
+
 export function buildInstallPluginRequest(
   name: string,
   version?: string,

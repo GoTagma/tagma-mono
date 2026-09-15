@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { ShieldCheck, Check, Infinity as InfinityIcon, X } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { PendingPermission } from '../../utils/permission-store-helpers';
+import { chatOperationActionKey, performChatOperationAction } from '../../chat-actions/operation';
 
 interface PermissionBubbleProps {
   permission: PendingPermission;
@@ -24,30 +24,25 @@ const targetActionLabels: Readonly<Record<string, string>> = {
  * two POSTs; re-enabled on failure so retry works.
  */
 export function PermissionBubble({ permission }: PermissionBubbleProps) {
-  const reply = useChatStore((s) => s.replyPermission);
-  const [pending, setPending] = useState<null | 'once' | 'always' | 'reject'>(null);
-
-  const onClick = async (response: 'once' | 'always' | 'reject') => {
-    if (pending) return;
-    setPending(response);
-    try {
-      await reply(
-        permission.id,
-        response,
-        permission.sessionID,
-        permission.workspaceKey,
-        permission.protocol,
-        permission.directory,
-      );
-    } finally {
-      // Whether server removes the entry (on success) or keeps it (on
-      // failure — replyPermission sets sendError and doesn't throw),
-      // the button must re-enable so the user can act again.
-      setPending(null);
-    }
-  };
-
-  const disabled = pending !== null;
+  const action = useChatStore(
+    (s) =>
+      s.pendingChatActions[
+        chatOperationActionKey({
+          type: 'permission.reply',
+          operationId: permission.sessionID,
+          requestId: permission.id,
+        })
+      ],
+  );
+  const pending = action?.choice ?? null;
+  const onClick = (choice: 'once' | 'always' | 'reject') =>
+    performChatOperationAction({
+      type: 'permission.reply',
+      operationId: permission.sessionID,
+      requestId: permission.id,
+      choice,
+    });
+  const disabled = !!action;
   const workspaceLabel =
     permission.workspaceKey.split(/[\\/]/).filter(Boolean).at(-1) ?? permission.workspaceKey;
 

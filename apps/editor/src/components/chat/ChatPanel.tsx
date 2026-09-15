@@ -15,7 +15,17 @@ import {
 import { chatOperationV2Activity, useChatStore } from '../../store/chat-store';
 import type { ChatOperationTiming } from '../../../shared/chat-operation-timing';
 import { usePipelineStore } from '../../store/pipeline-store';
-import { api, type WorkspaceYamlEntry } from '../../api/client';
+import {
+  commitChatSurface,
+  unmountChatSurface,
+  useAgentChatSurfaceStore,
+} from '../../agent-chat-control/observations';
+import { api } from '../../api/client';
+import {
+  resolveChatOperationV2PipelineEntry,
+  sameChatContextPath as samePath,
+} from '../../chat-actions/context';
+export { resolveChatOperationV2PipelineEntry } from '../../chat-actions/context';
 import {
   chatOperationV2FailurePresentation,
   chatOperationV2RetainedWorkKind,
@@ -32,6 +42,15 @@ import type {
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { DraftEditor } from './DraftEditor';
+import { canOpenChatDraft, useChatDraftStore } from '../../chat-actions/draft';
+import { performChatOperationAction } from '../../chat-actions/operation';
+import {
+  createChatConversation,
+  getChatSelectionAvailability,
+  selectChatModel,
+  selectChatModelVariant,
+} from '../../chat-actions/selection';
+export { chatHeaderControlLocks } from '../../chat-actions/selection';
 import { formatDurationShort, TurnActivityPanel } from './ActivityPanel';
 import { OperationTimingDetails } from './OperationTiming';
 import {
@@ -66,9 +85,75 @@ import {
  */
 export function ChatPanel() {
   const bootstrapStatus = useChatStore((s) => s.bootstrapStatus);
+  const observe = useAgentChatSurfaceStore((s) => s.enabled);
+  const observedState = useChatStore((s) => (observe ? s : null));
+  const surface = useRef<HTMLDivElement>(null);
+  const surfaceId = useRef(crypto.randomUUID());
+  const captureSurface = useCallback(() => {
+    if (!observedState || !surface.current) return;
+    const composer = surface.current.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Chat message"]',
+    );
+    commitChatSurface({
+      surfaceId: surfaceId.current,
+      conversationId: observedState.chatOperationV2ConversationId,
+      operationId: observedState.activeChatOperationV2?.operationId ?? null,
+      operationVersion: observedState.activeChatOperationV2?.version ?? null,
+      eventCursor: observedState.chatOperationV2LatestCursor,
+      renderedText: surface.current.innerText ?? surface.current.textContent ?? '',
+      composerText: composer?.value ?? '',
+      composerPresent: !!composer,
+      attachmentLabels: [...surface.current.querySelectorAll('[data-chat-context-label]')].map(
+        (node) => node.textContent ?? '',
+      ),
+    });
+  }, [observedState]);
+  useLayoutEffect(() => {
+    const root = surface.current;
+    if (!observe || !root) return;
+    captureSurface();
+    let frame: number | null = null;
+    const captureAfterLayout = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          frame = null;
+          captureSurface();
+        });
+      });
+    };
+    captureAfterLayout();
+    // Child subscriptions and asynchronous Markdown commits can update the DOM
+    // without rendering this parent. Observe the committed subtree as well.
+    const observer = new MutationObserver(captureAfterLayout);
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['open', 'hidden', 'aria-expanded'],
+    });
+    root.addEventListener('input', captureSurface);
+    root.addEventListener('toggle', captureAfterLayout, true);
+    root.addEventListener('scroll', captureAfterLayout, true);
+    // content-visibility:auto can reveal message text after mutation delivery.
+    root.addEventListener('contentvisibilityautostatechange', captureAfterLayout, true);
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      root.removeEventListener('input', captureSurface);
+      root.removeEventListener('toggle', captureAfterLayout, true);
+      root.removeEventListener('scroll', captureAfterLayout, true);
+      root.removeEventListener('contentvisibilityautostatechange', captureAfterLayout, true);
+    };
+  }, [observe, captureSurface]);
+  useLayoutEffect(() => {
+    const id = surfaceId.current;
+    return () => unmountChatSurface('chat', id);
+  }, []);
 
   return (
-    <div className="h-full min-h-0 min-w-0 flex flex-col bg-tagma-bg">
+    <div ref={surface} className="h-full min-h-0 min-w-0 flex flex-col bg-tagma-bg">
       <ChatHeader />
       <ConversationFlowBar />
       <div className="flex-1 min-h-0 relative overflow-hidden">
@@ -201,24 +286,13 @@ export function RetainedOperationNoticeView({
 }
 
 function RetryableOperationNotice() {
-  const [editingDraft, setEditingDraft] = useState<{
-    operation: ChatOperationV2Projection;
-    workspaceKey: string;
-  } | null>(null);
-  const workspaceKey = usePipelineStore((state) => state.workDir);
+  const editingDraft = useChatDraftStore((state) => state.visible);
   return (
     <>
-      {editingDraft && (
-        <DraftEditor
-          key={editingDraft.operation.operationId}
-          operation={editingDraft.operation}
-          workspaceKey={editingDraft.workspaceKey}
-          onClose={() => setEditingDraft(null)}
-        />
-      )}
+      {editingDraft && <DraftEditor />}
       <RetryableOperationNoticeBody
-        onOpenDraft={(operation) => {
-          if (workspaceKey) setEditingDraft({ operation, workspaceKey });
+        onOpenDraft={() => {
+          void useChatDraftStore.getState().open();
         }}
       />
     </>
@@ -241,10 +315,36 @@ function RetryableOperationNoticeBody({
       ? state.chatOperationV2ThreadDetails[state.activeChatOperationV2.operationId]
       : undefined,
   );
-  const retry = useChatStore((state) => state.retryActiveChatOperationV2);
-  const discard = useChatStore((state) => state.discardActiveChatOperationV2);
-  const abort = useChatStore((state) => state.abort);
-  const [pending, setPending] = useState(false);
+  const pending = useChatStore(
+    (state) =>
+      !!operation &&
+      !!(
+        state.pendingChatActions[operation.operationId] ||
+        state.pendingChatActions[`${operation.operationId}:stop`]
+      ),
+  );
+  const retry = async () => {
+    if (operation)
+      await performChatOperationAction({
+        type: 'operation.retry',
+        operationId: operation.operationId,
+      });
+  };
+  const discard = async () => {
+    if (operation)
+      await performChatOperationAction({
+        type: 'operation.discard',
+        operationId: operation.operationId,
+        confirmed: true,
+      });
+  };
+  const abort = async () => {
+    if (operation)
+      await performChatOperationAction({
+        type: 'operation.stop',
+        operationId: operation.operationId,
+      });
+  };
   if (!retryable) return null;
   const retainedWork = chatOperationV2RetainedWorkKind(operation);
   if (
@@ -252,21 +352,13 @@ function RetryableOperationNoticeBody({
     retainedWork === 'handoff' ||
     retainedWork === 'authoring'
   ) {
-    const decide = async (action: () => Promise<void>) => {
-      setPending(true);
-      try {
-        await action();
-      } finally {
-        setPending(false);
-      }
-    };
     return (
       <RetainedOperationNoticeView
         kind={retainedWork}
         failureCode={failureCode}
         pending={pending}
         onRetry={() => {
-          void decide(retry);
+          void retry();
         }}
         onDiscard={
           retainedWork === 'handoff' || retainedWork === 'authoring'
@@ -278,11 +370,11 @@ function RetryableOperationNoticeBody({
                   )
                 )
                   return;
-                void decide(discard);
+                void discard();
               }
             : operation?.phase === 'commit_preparing'
               ? () => {
-                  void decide(abort);
+                  void abort();
                 }
               : undefined
         }
@@ -318,7 +410,7 @@ function RetryableOperationNoticeBody({
           <button
             type="button"
             className="btn-primary"
-            disabled={pending}
+            disabled={pending || !canOpenChatDraft()}
             onClick={() => operation && onOpenDraft(operation)}
           >
             Open draft
@@ -327,14 +419,7 @@ function RetryableOperationNoticeBody({
             type="button"
             disabled={pending}
             className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
-            onClick={async () => {
-              setPending(true);
-              try {
-                await retry();
-              } finally {
-                setPending(false);
-              }
-            }}
+            onClick={() => void retry()}
           >
             {pending ? 'Submitting…' : 'Continue verification'}
           </button>
@@ -349,12 +434,7 @@ function RetryableOperationNoticeBody({
                 )
               )
                 return;
-              setPending(true);
-              try {
-                await discard();
-              } finally {
-                setPending(false);
-              }
+              await discard();
             }}
           >
             Discard draft
@@ -795,42 +875,23 @@ export function BootstrapOverlay() {
   );
 }
 
-export function chatHeaderControlLocks(state: {
-  ready: boolean;
-  sending: boolean;
-  operationActive: boolean;
-  retryable?: boolean;
-  yamlEditLocked: boolean;
-}): {
-  modelSelectionBlocked: boolean;
-  providerBlocked: boolean;
-  navigationBlocked: boolean;
-} {
-  const conversationBlocked = state.sending || state.operationActive;
-  const selectionBlocked = state.sending || (state.operationActive && !state.retryable);
-  return {
-    modelSelectionBlocked: !state.ready || selectionBlocked,
-    providerBlocked: !state.ready || selectionBlocked || state.yamlEditLocked,
-    navigationBlocked: !state.ready || conversationBlocked,
-  };
-}
-
 function ChatHeader() {
-  const newSession = useChatStore((s) => s.newSession);
   const openHistory = useChatStore((s) => s.openHistory);
   const openConnect = useChatStore((s) => s.openConnect);
   const activeOperation = useChatStore((s) => s.activeChatOperationV2);
   const hasMessages = useChatStore((s) => s.messages.length > 0);
-  const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
-  const sending = useChatStore((s) => s.sending);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
-  const { modelSelectionBlocked, providerBlocked, navigationBlocked } = chatHeaderControlLocks({
-    ready,
-    sending,
-    operationActive: !!activeOperation && activeOperation.executionState !== 'terminal',
-    retryable: activeOperation?.executionState === 'retryable_failure',
-    yamlEditLocked,
-  });
+  const draftVisible = useChatDraftStore((state) => state.visible);
+  const modelSelectionBlocked = useChatStore(
+    (state) =>
+      getChatSelectionAvailability(state, draftVisible, yamlEditLocked).modelSelectionBlocked,
+  );
+  const providerBlocked = useChatStore(
+    (state) => getChatSelectionAvailability(state, draftVisible, yamlEditLocked).providerBlocked,
+  );
+  const navigationBlocked = useChatStore(
+    (state) => getChatSelectionAvailability(state, draftVisible, yamlEditLocked).navigationBlocked,
+  );
   const currentSessionTitle = activeOperation
     ? `Conversation ${new Date(activeOperation.createdAt).toLocaleString()}`
     : null;
@@ -864,7 +925,7 @@ function ChatHeader() {
       <button
         type="button"
         onClick={() => {
-          void newSession();
+          void createChatConversation();
         }}
         disabled={navigationBlocked}
         title="New conversation"
@@ -959,14 +1020,13 @@ function ExportFormatButton({ label, onClick }: { label: string; onClick: () => 
 function ModelPicker({ disabled = false }: { disabled?: boolean }) {
   const providers = useChatStore((s) => s.providers);
   const model = useChatStore((s) => s.model);
-  const setModel = useChatStore((s) => s.setModel);
   const openConnect = useChatStore((s) => s.openConnect);
 
   return (
     <ModelPickerDropdown
       providers={providers}
       value={model}
-      onSelect={setModel}
+      onSelect={selectChatModel}
       disabled={disabled}
       placeholder="Pick model"
       showManageProviders
@@ -981,7 +1041,6 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
   const providers = useChatStore((s) => s.providers);
   const model = useChatStore((s) => s.model);
   const reasoningEffort = useChatStore((s) => s.reasoningEffort);
-  const setReasoningEffort = useChatStore((s) => s.setReasoningEffort);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const variants = useMemo(() => modelVariantIds(providers, model), [model, providers]);
@@ -1027,7 +1086,7 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
                 key={option.value === null ? 'default:null' : `variant:${option.value}`}
                 type="button"
                 onClick={() => {
-                  setReasoningEffort(option.value);
+                  selectChatModelVariant(option.value);
                   setOpen(false);
                 }}
                 className={`w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-caption font-mono hover:bg-tagma-border/30 transition-colors ${
@@ -1276,46 +1335,6 @@ function ChatMessages() {
       )}
     </>
   );
-}
-
-function normalizedPath(value: string): { value: string; caseInsensitive: boolean } | null {
-  const normalized = value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
-  if (!normalized) return null;
-  return {
-    value: normalized,
-    caseInsensitive: /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//'),
-  };
-}
-
-function samePath(left: string, right: string): boolean {
-  const normalizedLeft = normalizedPath(left);
-  const normalizedRight = normalizedPath(right);
-  if (!normalizedLeft || !normalizedRight) return false;
-  const caseInsensitive = normalizedLeft.caseInsensitive || normalizedRight.caseInsensitive;
-  return caseInsensitive
-    ? normalizedLeft.value.toLowerCase() === normalizedRight.value.toLowerCase()
-    : normalizedLeft.value === normalizedRight.value;
-}
-
-export function resolveChatOperationV2PipelineEntry(args: {
-  workDir: string;
-  relativeCoordinate: string;
-  entries: readonly WorkspaceYamlEntry[];
-}): WorkspaceYamlEntry | null {
-  const root = normalizedPath(args.workDir);
-  const coordinate = args.relativeCoordinate.replace(/\\/g, '/');
-  if (
-    !root ||
-    coordinate.length === 0 ||
-    coordinate.startsWith('/') ||
-    /^[A-Za-z]:/.test(coordinate) ||
-    coordinate.split('/').some((segment) => !segment || segment === '.' || segment === '..')
-  ) {
-    return null;
-  }
-  const expected = `${root.value}/.tagma/${coordinate}`;
-  const matches = args.entries.filter((entry) => samePath(entry.path, expected));
-  return matches.length === 1 ? matches[0]! : null;
 }
 
 export function ChatOperationV2PipelineResultView({
