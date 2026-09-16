@@ -147,6 +147,7 @@ function splitShellTokens(s: string): string[] {
   let cur = '';
   let quote: string | null = null;
   let arithmeticDepth = 0;
+  let controlBlock = false;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i]!;
     // Whitespace, pipes and boolean operators inside arithmetic are not shell
@@ -165,6 +166,50 @@ function splitShellTokens(s: string): string[] {
       else cur += ch;
     } else if (ch === '"' || ch === "'") {
       quote = ch;
+    } else if (ch === '(' && CONTROL_WORDS.has((cur || out.at(-1) || '').toLowerCase())) {
+      // PowerShell conditions followed by a script block are expressions.
+      // POSIX `if ( command ); then` still contains a command to discover.
+      let depth = 1;
+      let conditionQuote: string | null = null;
+      let conditionEnd = i + 1;
+      for (; conditionEnd < s.length; conditionEnd++) {
+        const conditionChar = s[conditionEnd]!;
+        if (conditionChar === '`' && conditionQuote !== "'") {
+          conditionEnd++;
+        } else if (conditionQuote) {
+          if (conditionChar === conditionQuote) conditionQuote = null;
+        } else if (conditionChar === '"' || conditionChar === "'") {
+          conditionQuote = conditionChar;
+        } else if (conditionChar === '(') {
+          depth++;
+        } else if (conditionChar === ')' && --depth === 0) {
+          break;
+        }
+      }
+      if (
+        depth === 0 &&
+        s
+          .slice(conditionEnd + 1)
+          .trimStart()
+          .startsWith('{')
+      ) {
+        if (cur) out.push(cur);
+        cur = '';
+        out.push('$__tagma_control_condition__');
+        controlBlock = true;
+        i = conditionEnd;
+      } else {
+        cur += ch;
+      }
+    } else if (
+      (ch === '{' &&
+        (controlBlock || CONTROL_WORDS.has(cur.toLowerCase())) &&
+        (!cur || CONTROL_WORDS.has(cur.toLowerCase()))) ||
+      (ch === '}' && controlBlock)
+    ) {
+      if (cur) out.push(cur);
+      out.push(ch);
+      cur = '';
     } else if (/\s/.test(ch)) {
       if (cur) {
         out.push(cur);
@@ -209,6 +254,7 @@ const CONTROL_WORDS = new Set([
   'done',
   'elif',
   'else',
+  'elseif',
   'end',
   'esac',
   'fi',
@@ -395,6 +441,13 @@ function shellCommandTokens(s: string): string[] {
     if (!expectingCommand) continue;
 
     const lower = tok.toLowerCase();
+    const compactControl = /^([a-z]+)([({])/i.exec(withoutLeadingGrouping(tok));
+    if (compactControl && CONTROL_WORDS.has(compactControl[1]!.toLowerCase())) {
+      // if($t ...), foreach($item ...), and else{ are shell syntax even
+      // without whitespace. Do not scan condition operands as commands.
+      expectingCommand = compactControl[2] === '{';
+      continue;
+    }
     if (CONTROL_WORDS.has(lower) || isRedirectionToken(tok)) {
       continue;
     }

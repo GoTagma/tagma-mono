@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   isExternalDriverStreamFailure,
@@ -7,8 +10,78 @@ import {
   hasChatPipelineTrialArtifactFailure,
   trialTaskFailureIsExpected,
   evaluateTrialTaskStatusExpectations,
+  evaluateTrialExpectation,
+  trialNeedsPlanReview,
 } from '../server/chat-pipeline-trial-run';
 import type { EngineResult } from '@tagma/sdk';
+
+test('JSON Pointer array properties are plan errors, while object length remains a valid key', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-pointer-plan-'));
+  try {
+    for (const [value, pointer] of [
+      [['a'], '/length'],
+      [{ items: ['a'] }, '/items/length'],
+    ] as const) {
+      writeFileSync(join(root, 'result.json'), JSON.stringify(value));
+      expect(
+        evaluateTrialExpectation(
+          root,
+          'sample/sample.yaml',
+          {
+            type: 'json-pointer-equals',
+            path: 'result.json',
+            pointer,
+            expectedJson: '1',
+          },
+          null,
+        ),
+      ).toMatchObject({
+        passed: false,
+        repairScope: 'diagnostic-only',
+        detail: expect.stringContaining('array index'),
+      });
+    }
+    writeFileSync(join(root, 'result.json'), '{"length":1}');
+    expect(
+      evaluateTrialExpectation(
+        root,
+        'sample/sample.yaml',
+        {
+          type: 'json-pointer-equals',
+          path: 'result.json',
+          pointer: '/length',
+          expectedJson: '1',
+        },
+        null,
+      ).passed,
+    ).toBe(true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('plan review preserves genuine task failures and passing negative cases', () => {
+  const failed = {
+    success: false,
+    tasks: [{ status: 'failed', repairScope: 'pipeline-artifact' as const }],
+    expectations: [{ passed: false, type: 'path-exists' as const }],
+  };
+  expect(trialNeedsPlanReview([failed])).toBe(false);
+  expect(trialNeedsPlanReview([{ ...failed, success: true }])).toBe(false);
+  const assertionOnly = { ...failed, tasks: [{ status: 'success', repairScope: null }] };
+  expect(trialNeedsPlanReview([assertionOnly])).toBe(true);
+  expect(trialNeedsPlanReview([failed, assertionOnly])).toBe(true);
+  expect(
+    trialNeedsPlanReview([
+      { ...assertionOnly, expectations: [{ passed: false, type: 'case-execution' }] },
+    ]),
+  ).toBe(false);
+  expect(
+    trialNeedsPlanReview([
+      { ...failed, tasks: [{ status: 'failed', repairScope: 'diagnostic-only' }] },
+    ]),
+  ).toBe(false);
+});
 
 test('a repeated negative case that unexpectedly succeeds on an earlier run keeps actionable evidence', () => {
   const testCase = {

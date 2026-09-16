@@ -1137,7 +1137,11 @@ function promptOutputNameFromInput(
   if (dot > 0) {
     const sourceTaskId = source.slice(0, dot);
     if (!sourceRefMatchesTaskId(sourceTaskId, promptTaskId)) return null;
-    return source.slice(dot + 1);
+    const field = source.slice(dot + 1);
+    // Match input resolution: raw task fields do not require a JSON emission.
+    // Explicit .outputs.<name> above still selects a JSON key with that name.
+    if (['stdout', 'stderr', 'normalizedOutput', 'exitCode'].includes(field)) return null;
+    return field;
   }
 
   return source;

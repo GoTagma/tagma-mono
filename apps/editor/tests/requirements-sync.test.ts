@@ -23,6 +23,125 @@ import {
 
 const tempRoots: string[] = [];
 
+test('compact PowerShell completion conditions do not become binary requirements', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'compact.yaml',
+    [
+      'pipeline:',
+      '  name: compact',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: check',
+      '          command: "bun run business.ts"',
+      '          completion:',
+      '            type: output_check',
+      '            check: \'$t=[Console]::In.ReadToEnd(); if($t -ceq "ok"){exit 0}else{exit 1}; git status\'',
+    ].join('\n'),
+  );
+  expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(['bun', 'git']);
+});
+
+test('dependency discovery handles control spacing, quotations, multiline scripts, and argv boundaries', () => {
+  const { tagmaDir } = makeWorkspace();
+  for (const check of [
+    '$t="ok"; if($t -eq "ok"){exit 0}else{exit 1}; git status',
+    '$t="ok"; if ($t -eq "ok") { exit 0 } else { exit 1 }; git status',
+    '$t="ok"; while($false){break}; git status',
+    '$t="ok"; foreach($x in @(1,2)){Write-Output $x}; git status',
+    'Write-Output "if($t; fake-tool)"; git status',
+    "sh -c 'if test -f result; then fake-tool; fi'; git status",
+  ]) {
+    const yamlPath = writeYaml(
+      tagmaDir,
+      'controls.yaml',
+      [
+        'pipeline:',
+        '  name: controls',
+        '  tracks:',
+        '    - id: main',
+        '      name: Main',
+        '      tasks:',
+        '        - id: check',
+        `          command: ${JSON.stringify(check)}`,
+      ].join('\n'),
+    );
+    expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(
+      check.startsWith('sh ') ? ['git', 'sh'] : ['git'],
+    );
+  }
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'argv-control.yaml',
+    [
+      'pipeline:',
+      '  name: argv',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: literal',
+      '          command: { argv: ["if(tool", "argument"] }',
+      '        - id: multiline',
+      '          command: |',
+      '            if($t){',
+      '              Write-Output "ok"',
+      '            }',
+    ].join('\n'),
+  );
+  expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(['if(tool']);
+});
+
+test('PowerShell backslashes are literal and POSIX subshell commands retain dependency discovery', () => {
+  const { tagmaDir } = makeWorkspace();
+  for (const command of [
+    String.raw`if($path -eq "C:\"){git status}; bun test`,
+    'if ( git status ); then bun test; fi',
+  ]) {
+    const yamlPath = writeYaml(
+      tagmaDir,
+      'shell-boundary.yaml',
+      [
+        'pipeline:',
+        '  name: boundary',
+        '  tracks:',
+        '    - id: main',
+        '      name: Main',
+        '      tasks:',
+        '        - id: check',
+        `          command: ${JSON.stringify(command)}`,
+      ].join('\n'),
+    );
+    expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(['bun', 'git']);
+  }
+});
+
+test('compact control blocks still discover real branch commands without scanning conditions', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'compact-branches.yaml',
+    [
+      'pipeline:',
+      '  name: branches',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: check',
+      `          command: ${JSON.stringify('if($t -eq "a;b"){git status}else{bun test}; python report.py')}`,
+    ].join('\n'),
+  );
+  expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual([
+    'bun',
+    'git',
+    'python',
+  ]);
+});
+
 afterEach(() => {
   for (const root of tempRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
@@ -829,7 +948,11 @@ test('generated availability hints distinguish an installed shell from a missing
   for (const check of checks) {
     const result =
       process.platform === 'win32'
-        ? spawnSync('cmd.exe', ['/d', '/s', '/c', check.command])
+        ? // These are complete CMD commands, not argv for the executable inside
+          // them. Preserve their quotes instead of applying Win32 argv escaping.
+          spawnSync('cmd.exe', ['/d', '/s', '/c', check.command], {
+            windowsVerbatimArguments: true,
+          })
         : spawnSync('sh', ['-c', check.command]);
     expect(result.error).toBeUndefined();
     if (check.command.includes(missing)) expect(result.status).not.toBe(0);

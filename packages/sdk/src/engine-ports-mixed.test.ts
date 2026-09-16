@@ -138,6 +138,54 @@ function finalUpdateFor(events: RunEventPayload[], qid: string): RunEventPayload
 }
 
 describe('engine - mixed prompt/command unified bindings', () => {
+  test('raw prompt streams reach downstream commands without synthetic JSON key requirements', async () => {
+    const dir = makeDir();
+    try {
+      for (const source of ['normalizedOutput', 'stdout']) {
+        for (const explicit of [true, false]) {
+          const record = join(dir, 'prompt.txt');
+          const response = { summary: 'Ready', items: ['Fix'], breaking: false, language: 'zh-CN' };
+          const reg = registry({ 'rewrite-notes': response }, { 'rewrite-notes': record });
+          const config = pipeline([
+            task({
+              id: 'rewrite-notes',
+              prompt: 'Return release notes JSON.',
+              ...(explicit ? { outputs: { summary: { type: 'string' as const } } } : {}),
+            }),
+            task({
+              id: 'publish',
+              depends_on: ['rewrite-notes'],
+              command: 'publish {{inputs.notes}}',
+              inputs: {
+                notes: { from: `t.rewrite-notes.${source}`, type: 'string', required: true },
+              },
+            }),
+          ]);
+          const commands: string[] = [];
+          const runtime = fakeRuntime();
+          const original = runtime.runCommand;
+          const result = await runPipeline(config, dir, {
+            registry: reg,
+            skipPluginLoading: true,
+            runtime: {
+              ...runtime,
+              runCommand: async (...args) => {
+                commands.push(args[0]);
+                return original(...args);
+              },
+            },
+          });
+          expect(result.success).toBe(true);
+          expect(result.states.get('t.rewrite-notes')?.status).toBe('success');
+          expect(commands[0]).toContain(JSON.stringify(response));
+          expect(readFileSync(record, 'utf8')).not.toContain(`"${source}"`);
+        }
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('prompt outputs are inferred from downstream command inputs', async () => {
     const dir = makeDir();
     try {

@@ -33,12 +33,22 @@ test('an edit that regenerates pipeline artifacts verifies and retries without c
         name: 'Main',
         cwd: '.tagma/report',
         tasks: [
-          { id: 'generate', name: 'Generate', command: `printf '${value}' > ledger.txt` },
+          {
+            id: 'generate',
+            name: 'Generate',
+            command: {
+              argv: ['bun', '-e', `await Bun.write("ledger.txt", ${JSON.stringify(value)})`],
+            },
+          },
           {
             id: 'csv',
             name: 'CSV',
             depends_on: ['main.generate'],
-            command: 'cat ledger.txt > export.csv',
+            // Keep this publication test byte-exact on PowerShell as well as
+            // POSIX; shell redirection has platform-specific encoding/newlines.
+            command: {
+              argv: ['bun', '-e', 'await Bun.write("export.csv", Bun.file("ledger.txt"))'],
+            },
           },
         ],
       },

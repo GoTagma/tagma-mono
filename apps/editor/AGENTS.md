@@ -1706,6 +1706,16 @@
 
 ## Chat Trial Plan Semantics
 
+- Assertion-only failures after successful or expected task outcomes require Host plan review,
+  never an immediate pipeline-write grant. Carry the executed evidence and a fresh hash-bound
+  attempt id into `plan-required`; exhausted plans remain diagnostic-only retained drafts.
+  Fixture writes, file assertions, and repeated-output freshness share `casePath` coordinates.
+  An array JSON Pointer token must be numeric: `/length` on an array is a plan diagnostic,
+  while an object's own `length` key is valid. See `chat-trial-repair-boundaries.md`.
+- Prompt output inference must follow raw input-source semantics: `task.stdout`, `task.stderr`,
+  `task.normalizedOutput`, and `task.exitCode` cannot infer JSON keys. Explicit
+  `task.outputs.<name>` remains a named output even when the name resembles a raw stream.
+
 - A review verdict/score does not carry its actionable feedback. Author explicit required feedback
   inputs (or a declared feedback artifact) for revision, preserving valid empty feedback on approval.
   Session continuation is not a substitute for an independent reviewer's dataflow contract.

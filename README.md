@@ -50,6 +50,9 @@ Every task can consume inputs and publish outputs.
 - Prompt tasks receive inputs as context and produce outputs as structured JSON.
 - When names match, Tagma connects them automatically.
 - Use `from` only when you need to disambiguate, rename, or read raw streams.
+- `from: track.task.normalizedOutput` reads the task's raw normalized text; it does not require
+  a JSON key named `normalizedOutput`. Use `track.task.outputs.normalizedOutput` to select an
+  explicitly named structured output with that name.
 - Command placeholders are verbatim by default. Use `| shellquote` for string
   inputs in shell commands; otherwise a value containing shell syntax can change
   the command that runs.

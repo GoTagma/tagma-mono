@@ -1547,13 +1547,13 @@ function repeatedArtifactFreshnessExpectation(
 function resolveJsonPointer(
   value: unknown,
   pointer: string,
-): { found: true; value: unknown } | { found: false } {
+): { found: true; value: unknown } | { found: false; invalidArrayToken?: boolean } {
   if (pointer === '') return { found: true, value };
   let current = value;
   for (const encodedToken of pointer.slice(1).split('/')) {
     const token = encodedToken.replace(/~1/gu, '/').replace(/~0/gu, '~');
     if (Array.isArray(current)) {
-      if (!/^(?:0|[1-9]\d*)$/u.test(token)) return { found: false };
+      if (!/^(?:0|[1-9]\d*)$/u.test(token)) return { found: false, invalidArrayToken: true };
       const index = Number(token);
       if (!Number.isSafeInteger(index) || index >= current.length) return { found: false };
       current = current[index];
@@ -1670,8 +1670,10 @@ export function evaluateTrialExpectation(
         return {
           type: expectation.type,
           passed: false,
-          detail: `${expectation.path} does not contain JSON Pointer ${expectation.pointer || '<root>'}.`,
-          repairScope: 'pipeline-artifact',
+          detail: actual.invalidArrayToken
+            ? `${expectation.path} JSON Pointer ${expectation.pointer} requires a numeric array index; array properties such as length are not JSON Pointer members. Correct the Trial assertion.`
+            : `${expectation.path} does not contain JSON Pointer ${expectation.pointer || '<root>'}.`,
+          repairScope: actual.invalidArrayToken ? 'diagnostic-only' : 'pipeline-artifact',
         };
       }
       const passed = isDeepStrictEqual(actual.value, JSON.parse(expectation.expectedJson));
@@ -1924,6 +1926,25 @@ export function hasChatPipelineTrialArtifactFailure(
         (expectation) => !expectation.passed && expectation.repairScope === 'pipeline-artifact',
       ),
     )
+  );
+}
+
+/** Assertions alone cannot distinguish a bad test setup from a business defect. */
+export function trialNeedsPlanReview(
+  cases: readonly {
+    success: boolean;
+    tasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[];
+    expectations: readonly Pick<ChatPipelineTrialExpectationResult, 'passed' | 'type'>[];
+  }[],
+): boolean {
+  return cases.some(
+    (testCase) =>
+      !testCase.success &&
+      testCase.tasks.length > 0 &&
+      testCase.tasks.every((task) => task.status === 'success' || task.repairScope === null) &&
+      testCase.expectations.some(
+        (expectation) => !expectation.passed && expectation.type !== 'case-execution',
+      ),
   );
 }
 
@@ -4010,14 +4031,13 @@ async function executeTrial(
           : runtimePrerequisiteOnly
             ? 'blocked'
             : 'failed';
-    const hasPipelineArtifactFailure = hasChatPipelineTrialArtifactFailure(
-      baselineEvidence.tasks,
-      cases,
-    );
+    const needsPlanReview = kind === 'failed' && trialNeedsPlanReview(cases);
+    const hasPipelineArtifactFailure =
+      !needsPlanReview && hasChatPipelineTrialArtifactFailure(baselineEvidence.tasks, cases);
     const ran = !baselineSkipped || executedCaseCount > 0 || reusedCaseCount > 0;
     const trialPlanRepairAttempt =
       kind === 'failed' &&
-      hasPipelineArtifactFailure &&
+      (hasPipelineArtifactFailure || needsPlanReview) &&
       planTelemetry.toolAttemptCount < stage.trialPlanMaxAttempts
         ? trialPlanRepairAttemptId(trialId, snapshot.contentHash, planTelemetry.toolAttemptCount)
         : null;
@@ -4063,7 +4083,9 @@ async function executeTrial(
             repairAuthorization: hasPipelineArtifactFailure
               ? ('pipeline-change-allowed' as const)
               : ('diagnostic-only' as const),
-            ...(trialPlanRepairAttempt ? { trialPlanRepairAttemptId: trialPlanRepairAttempt } : {}),
+            ...(trialPlanRepairAttempt && !needsPlanReview
+              ? { trialPlanRepairAttemptId: trialPlanRepairAttempt }
+              : {}),
           }
         : kind === 'timed-out' || kind === 'witness-failed' || kind === 'blocked'
           ? { repairAuthorization: 'diagnostic-only' as const }
@@ -4126,6 +4148,48 @@ async function executeTrial(
         summary: boundedTrialText(
           `Trial is blocked by manual approval prerequisites outside the explicit target grant: ${describeTrialBlockers(prerequisiteState.blockers)}. Tagma did not grant execution to those manual tasks or execute their gated side effects.\n\n${result.summary}`,
         ),
+      };
+    }
+    if (needsPlanReview) {
+      const message = boundedTrialText(
+        'Trial assertions failed without an unexpected business task failure. Review fixture inputs, ' +
+          'effective task cwd, case-root assertion coordinates, JSON Pointer semantics, and freshness ' +
+          'checks before changing the pipeline. Keep business artifacts unchanged. Correct the plan; ' +
+          'only an independently evidenced business-contract defect may become a blocking pipeline-artifact finding.\n' +
+          result.summary,
+      );
+      return {
+        ...result,
+        kind: trialPlanRepairAttempt ? 'plan-required' : 'plan-failed',
+        repairAuthorization: 'diagnostic-only',
+        summary: trialPlanRepairAttempt
+          ? message
+          : `${message}\nTrial plan attempt budget exhausted; draft retained for review.`,
+        ...(trialPlanRepairAttempt
+          ? {
+              planRequest: {
+                ...buildChatPipelineTrialPlanRequest(
+                  'invalid',
+                  entry.relativePath,
+                  snapshot.contentHash,
+                  message,
+                  stage.trialPlanMaxAttempts,
+                ),
+                attemptId: trialPlanRepairAttempt,
+              },
+            }
+          : {}),
+        cases: result.cases.map((testCase) => ({
+          ...testCase,
+          expectations: testCase.expectations.map((expectation) =>
+            expectation.passed
+              ? expectation
+              : {
+                  ...expectation,
+                  repairScope: 'diagnostic-only' as const,
+                },
+          ),
+        })),
       };
     }
     return result;
