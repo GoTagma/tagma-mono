@@ -204,6 +204,8 @@ export interface ChatPipelineTrialExpectationResult {
   passed: boolean;
   detail: string;
   repairScope: 'pipeline-artifact' | 'diagnostic-only';
+  /** A Host-established assertion defect, distinct from observation limits. */
+  planError?: 'invalid-array-index';
   paths?: string[];
   omittedPathEventCount?: number;
   workspaceMutation?: ChatPipelineTrialWorkspaceMutationEvidence;
@@ -1674,6 +1676,7 @@ export function evaluateTrialExpectation(
             ? `${expectation.path} JSON Pointer ${expectation.pointer} requires a numeric array index; array properties such as length are not JSON Pointer members. Correct the Trial assertion.`
             : `${expectation.path} does not contain JSON Pointer ${expectation.pointer || '<root>'}.`,
           repairScope: actual.invalidArrayToken ? 'diagnostic-only' : 'pipeline-artifact',
+          ...(actual.invalidArrayToken ? { planError: 'invalid-array-index' as const } : {}),
         };
       }
       const passed = isDeepStrictEqual(actual.value, JSON.parse(expectation.expectedJson));
@@ -1934,7 +1937,10 @@ export function trialNeedsPlanReview(
   cases: readonly {
     success: boolean;
     tasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[];
-    expectations: readonly Pick<ChatPipelineTrialExpectationResult, 'passed' | 'type'>[];
+    expectations: readonly Pick<
+      ChatPipelineTrialExpectationResult,
+      'passed' | 'type' | 'repairScope' | 'planError'
+    >[];
   }[],
 ): boolean {
   return cases.some(
@@ -1943,7 +1949,12 @@ export function trialNeedsPlanReview(
       testCase.tasks.length > 0 &&
       testCase.tasks.every((task) => task.status === 'success' || task.repairScope === null) &&
       testCase.expectations.some(
-        (expectation) => !expectation.passed && expectation.type !== 'case-execution',
+        (expectation) =>
+          !expectation.passed &&
+          (expectation.planError === 'invalid-array-index' ||
+            (expectation.repairScope === 'pipeline-artifact' &&
+              expectation.type !== 'case-execution' &&
+              expectation.type !== 'run-artifact-freshness')),
       ),
   );
 }

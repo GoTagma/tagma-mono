@@ -31,12 +31,19 @@ assertion itself is not that evidence. An actual unexpected task failure still f
 repair routing. Successful expected negative cases remain successful. Mixed evidence requiring
 plan review is resolved before permitting business changes.
 
-Publication still requires successful verification. Trial cache protocol 31 rejects earlier cached
+Publication still requires successful verification. Trial cache protocol 32 rejects earlier cached
 repair decisions; no persisted YAML or public expectation shape changes.
 
 JSON Pointer addresses array elements by numeric index, not JavaScript properties. `/length` and
 `/items/length` on arrays are failed plan diagnostics; an object's own `length` field remains valid.
 Use a whole-array equality assertion when the complete expected array is known.
+
+Plan review also respects evidence authority: assertion-reader limits remain diagnostic-only and
+do not invoke planning. Host-authored freshness probes remain ordinary verification evidence;
+an unchanged file after a marked run is not an ambiguous authored assertion. A separate failing
+authored path/content assertion still requires review, including when a bad coordinate also makes
+freshness fail. Invalid array indexes carry typed `planError` evidence so they can request plan
+correction without treating every diagnostic-only failure as actionable.
 
 ## Other confirmed defects
 
@@ -57,7 +64,7 @@ repeated-output freshness, plan exhaustion, and genuine task failure. Core and S
 raw output inference and downstream delivery with deterministic driver responses. These are not
 real Kimi end-to-end validation.
 
-The focused editor verification passed 292 tests across Trial, Host lifecycle, requirements,
+The initial repair's focused editor verification passed 292 tests across Trial, Host lifecycle, requirements,
 and publication suites. Public builds passed; public-package tests passed 606 cases and failed
 two unchanged `runtime-bun/src/stdin-cancellation.test.ts` timing checks. Isolated repetition
 still measured about 3.0 seconds against a 2.5-second deadline; that runtime issue was not changed.
@@ -73,3 +80,31 @@ The original reported inline Windows command, provider response payload, and int
 were not captured during this repair. No executor quoting change, provider error reclassification,
 automatic provider retry, or interaction/performance optimization is justified by those reports
 alone. Live verification requires new authorization; no old diagnostic/control token is used.
+
+## CI follow-up: 2026-09-16
+
+CI run `35051842463` on `7d1b3aa4` exposed four failures in two additional editor suites.
+All four reproduced locally before this follow-up. The plan-review predicate was too broad:
+it requested planning for diagnostic reader limits and for Host-authored freshness failures.
+It now checks repair scope and evidence kind, with a fixed typed discriminator for invalid
+JSON array pointers. Cache version 32 invalidates decisions from the broader predicate.
+
+The duplicate-file and malformed-JSON route tests also still expected the old immediate business
+repair state. They now assert the bounded plan-review request and exhausted-budget draft retention,
+while preserving their failing artifact checks, strict JSON parsing, positive decoded-value case,
+and workspace isolation assertions. Freshness and reader-limit tests retain their original verdicts.
+
+The complete local editor run exercised 326 test files: 3,070 passed, five skipped, and two
+additional Windows test-budget failures surfaced. The timeout-order test's 2s lifecycle budget
+was shorter than the runner's 3s SIGKILL escalation grace; its lifecycle budget is now 8s (still
+below the child's 10s natural lifetime), its task deadline remains 25ms, and it additionally
+requires Sandbox case execution. The managed-tools fixture completed all 20 assertions but
+exceeded Bun's default 5s test limit while copying dependencies and loading tools; it now has
+an explicit 30s integration-test budget. Neither change alters product runtime timeouts.
+Both affected test files were then rerun in full: all 12 tests passed. The four failures from
+the supplied CI log also passed after the repair.
+
+Server/test type checks, lint, formatting, source hygiene, import/cycle checks, and script tests
+passed. Workspace/lock metadata comparison passed, but the frozen-install dependency gate could
+not finish: registry connections closed while resolving `js-yaml` and `chokidar`, including on
+retry. No dependency, registry, proxy, or credential setting was changed.

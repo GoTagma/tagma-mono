@@ -23,23 +23,32 @@ test('JSON Pointer array properties are plan errors, while object length remains
       [{ items: ['a'] }, '/items/length'],
     ] as const) {
       writeFileSync(join(root, 'result.json'), JSON.stringify(value));
-      expect(
-        evaluateTrialExpectation(
-          root,
-          'sample/sample.yaml',
-          {
-            type: 'json-pointer-equals',
-            path: 'result.json',
-            pointer,
-            expectedJson: '1',
-          },
-          null,
-        ),
-      ).toMatchObject({
+      const expectation = evaluateTrialExpectation(
+        root,
+        'sample/sample.yaml',
+        {
+          type: 'json-pointer-equals',
+          path: 'result.json',
+          pointer,
+          expectedJson: '1',
+        },
+        null,
+      );
+      expect(expectation).toMatchObject({
         passed: false,
         repairScope: 'diagnostic-only',
+        planError: 'invalid-array-index',
         detail: expect.stringContaining('array index'),
       });
+      expect(
+        trialNeedsPlanReview([
+          {
+            success: false,
+            tasks: [{ status: 'success', repairScope: null }],
+            expectations: [expectation],
+          },
+        ]),
+      ).toBe(true);
     }
     writeFileSync(join(root, 'result.json'), '{"length":1}');
     expect(
@@ -64,7 +73,9 @@ test('plan review preserves genuine task failures and passing negative cases', (
   const failed = {
     success: false,
     tasks: [{ status: 'failed', repairScope: 'pipeline-artifact' as const }],
-    expectations: [{ passed: false, type: 'path-exists' as const }],
+    expectations: [
+      { passed: false, type: 'path-exists' as const, repairScope: 'pipeline-artifact' as const },
+    ],
   };
   expect(trialNeedsPlanReview([failed])).toBe(false);
   expect(trialNeedsPlanReview([{ ...failed, success: true }])).toBe(false);
@@ -73,7 +84,10 @@ test('plan review preserves genuine task failures and passing negative cases', (
   expect(trialNeedsPlanReview([failed, assertionOnly])).toBe(true);
   expect(
     trialNeedsPlanReview([
-      { ...assertionOnly, expectations: [{ passed: false, type: 'case-execution' }] },
+      {
+        ...assertionOnly,
+        expectations: [{ passed: false, type: 'case-execution', repairScope: 'diagnostic-only' }],
+      },
     ]),
   ).toBe(false);
   expect(
@@ -81,6 +95,44 @@ test('plan review preserves genuine task failures and passing negative cases', (
       { ...failed, tasks: [{ status: 'failed', repairScope: 'diagnostic-only' }] },
     ]),
   ).toBe(false);
+});
+
+test('plan review distinguishes observation limits and Host freshness evidence from plan errors', () => {
+  const completedCase = {
+    success: false,
+    tasks: [{ status: 'success', repairScope: null }],
+  };
+  for (const type of ['file-contains', 'json-pointer-equals', 'run-artifact-freshness'] as const) {
+    expect(
+      trialNeedsPlanReview([
+        {
+          ...completedCase,
+          expectations: [{ type, passed: false, repairScope: 'diagnostic-only' }],
+        },
+      ]),
+    ).toBe(false);
+  }
+  expect(
+    trialNeedsPlanReview([
+      {
+        ...completedCase,
+        expectations: [
+          { type: 'run-artifact-freshness', passed: false, repairScope: 'pipeline-artifact' },
+        ],
+      },
+    ]),
+  ).toBe(false);
+  expect(
+    trialNeedsPlanReview([
+      {
+        ...completedCase,
+        expectations: [
+          { type: 'run-artifact-freshness', passed: false, repairScope: 'pipeline-artifact' },
+          { type: 'path-exists', passed: false, repairScope: 'pipeline-artifact' },
+        ],
+      },
+    ]),
+  ).toBe(true);
 });
 
 test('a repeated negative case that unexpectedly succeeds on an earlier run keeps actionable evidence', () => {

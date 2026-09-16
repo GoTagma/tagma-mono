@@ -7,6 +7,8 @@ import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
 import { stagePinnedOpencodePluginFixture } from './helpers/opencode-native-plugin-fixture';
 
+// Copies the pinned plugin and Zod twice and loads generated tools in a child.
+// This verifies module/fixture isolation, not a 5s filesystem benchmark.
 test('managed OpenCode tools load from the isolated runtime and migrate legacy workspaces', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma managed tools 中文-'));
   const tagmaCwd = join(root, '.tagma');
@@ -103,4 +105,4 @@ test('managed OpenCode tools load from the isolated runtime and migrate legacy w
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-});
+}, 30_000);

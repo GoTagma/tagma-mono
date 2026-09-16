@@ -2090,7 +2090,9 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'failed',
+      kind: 'plan-required',
+      repairAuthorization: 'diagnostic-only',
+      planRequest: { reason: 'invalid', attemptId: expect.stringMatching(/^trial_plan_repair_/) },
       ran: true,
       cases: [
         {
@@ -2105,6 +2107,7 @@ describe('chat YAML staging routes', () => {
     };
     expect(result.summary).toContain('duplicate-multiline-files');
     expect(result.cases[0]?.expectations.some((item) => !item.passed)).toBe(true);
+    expect(existsSync(entry.stagedPath)).toBe(true);
     expect(existsSync(join(ws.workDir, 'inputs', 'a', 'report.txt'))).toBe(false);
     expect(existsSync(join(ws.workDir, 'outputs', 'result.txt'))).toBe(false);
     discardStage(getRoute, ws, stage.id);
@@ -2197,9 +2200,12 @@ describe('chat YAML staging routes', () => {
 
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'failed',
-      repairAuthorization: 'pipeline-change-allowed',
-      trialPlanRepairAttemptId: expect.stringMatching(/^trial_plan_repair_[0-9]+_[0-9a-f]{64}$/),
+      kind: 'plan-required',
+      repairAuthorization: 'diagnostic-only',
+      planRequest: {
+        reason: 'invalid',
+        attemptId: expect.stringMatching(/^trial_plan_repair_[0-9]+_[0-9a-f]{64}$/),
+      },
       cases: [
         {
           id: 'invalid-json',
@@ -2236,10 +2242,12 @@ describe('chat YAML staging routes', () => {
     );
     expect(exhaustedRes.body).toMatchObject({
       success: false,
-      kind: 'failed',
-      repairAuthorization: 'pipeline-change-allowed',
+      kind: 'plan-failed',
+      repairAuthorization: 'diagnostic-only',
     });
     expect(exhaustedRes.body).not.toHaveProperty('trialPlanRepairAttemptId');
+    expect(exhaustedRes.body).not.toHaveProperty('planRequest');
+    expect(existsSync(entry.stagedPath)).toBe(true);
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
@@ -2330,6 +2338,8 @@ describe('chat YAML staging routes', () => {
         },
       ],
     });
+    expect(trialRes.body).not.toHaveProperty('planRequest');
+    expect(trialRes.body).not.toHaveProperty('trialPlanRepairAttemptId');
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();

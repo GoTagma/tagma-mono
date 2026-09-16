@@ -1623,6 +1623,12 @@
 
 ## Focused Editor Tests
 
+- Timeout-order fixtures must leave room for both Live Smoke and Sandbox process-termination
+  grace while keeping the Trial deadline below the child's natural lifetime; retain the tight
+  per-task deadline and assert Sandbox execution. Managed-tools isolation tests copy pinned
+  dependencies and import generated modules, so give them an explicit finite integration-test
+  budget. These budgets do not relax runtime cancellation-latency tests.
+
 - `bun run test:chat-v2-loop` is the agent-owned real-provider Chat V2 feedback loop. Keep its
   interface deep: one command owns two fresh real-provider source-sidecar matrix rounds, a new
   compiled sidecar build from current source, two fresh real-provider compiled-binary matrix
@@ -1712,6 +1718,11 @@
   Fixture writes, file assertions, and repeated-output freshness share `casePath` coordinates.
   An array JSON Pointer token must be numeric: `/length` on an array is a plan diagnostic,
   while an object's own `length` key is valid. See `chat-trial-repair-boundaries.md`.
+- Plan-review eligibility must inspect expectation authority, not just task success. Observation
+  limits remain diagnostic-only without planner invocation; Host freshness probes preserve their
+  own verdict. Typed `planError: invalid-array-index` identifies an actionable assertion defect
+  without parsing diagnostic prose or conflating it with reader truncation. Cache v32 seals this
+  distinction. Run the full editor suite when changing Trial result kinds or repair authority.
 - Prompt output inference must follow raw input-source semantics: `task.stdout`, `task.stderr`,
   `task.normalizedOutput`, and `task.exitCode` cannot infer JSON keys. Explicit
   `task.outputs.<name>` remains a named output even when the name resembles a raw stream.

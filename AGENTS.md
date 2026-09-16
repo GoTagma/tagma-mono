@@ -180,7 +180,9 @@ Do not amend the same commit to include these files after naming them with the c
   successful or expected task outcomes, use the bounded Host `trial_plan` review path; exhausted
   planning retains the draft. A planner must validate fixture consumption, cwd coordinates, and
   assertion semantics before reporting an independently evidenced business-contract defect.
-  Signed Trial cache v31 invalidates older assertion-only repair decisions.
+  Diagnostic-only observation limits do not trigger planning. Host-authored freshness failures
+  retain their repair scope; a separate failed authored assertion may still require plan review.
+  Signed Trial cache v32 invalidates older assertion-only repair decisions.
 
 - Automatic post-authoring verification failure, repair/Trial-plan no-change, and exhausted repair
   budgets retain the authenticated draft at `trial-running` / `user_retry`; no-change describes the

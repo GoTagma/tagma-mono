@@ -545,7 +545,10 @@ describe('chat YAML staging async witness ordering', () => {
         },
       ],
     });
-    __chatPipelineTrialRunTestHooks.timeoutMsOverride = 2_000;
+    // Live Smoke and Sandbox each need room for the runner's 3s SIGKILL
+    // escalation. Keep the total below the child's 10s natural lifetime:
+    // missing per-task timeout must still fail with a whole-Trial timeout.
+    __chatPipelineTrialRunTestHooks.timeoutMsOverride = 8_000;
     (
       __chatPipelineTrialRunTestHooks as typeof __chatPipelineTrialRunTestHooks & {
         taskTimeoutMsOverride?: number;
@@ -578,6 +581,8 @@ describe('chat YAML staging async witness ordering', () => {
       success: false,
       kind: 'failed',
       ran: true,
+      caseResultCount: 1,
+      cases: [{ id: 'case_timeout', success: false }],
     });
     const result = trialRes.body as {
       tasks: Array<{ taskId: string; status: string; failureKind: string | null }>;
@@ -591,7 +596,7 @@ describe('chat YAML staging async witness ordering', () => {
     expect(ws.chatPipelineTrialAbort).toBeNull();
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
-  });
+  }, 15_000);
 
   test('requests a fixture-plan correction before witness capture when baseline input is missing', async () => {
     const { ws, sourcePath } = makeWorkspace();
