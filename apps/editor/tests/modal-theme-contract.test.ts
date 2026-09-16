@@ -61,6 +61,26 @@ describe('modal theme contract', () => {
     }
   });
 
+  test('anchors every modal backdrop to the viewport', () => {
+    // The shared `.modal-viewport-backdrop` skin carries no positioning, and
+    // `html/body/#root` are fixed-height with hidden overflow: a backdrop
+    // without `fixed`/`absolute inset-0` renders exactly one viewport below
+    // the fold and can never be seen or reached.
+    for (const { relativePath, source } of modalFiles) {
+      const backdrops = source.match(/"[^"\n]*modal-viewport-backdrop[^"\n]*"/g) ?? [];
+      expect(
+        backdrops.length,
+        `${relativePath} must pair its shell with a backdrop class`,
+      ).toBeGreaterThan(0);
+      for (const backdrop of backdrops) {
+        expect(backdrop, `${relativePath} backdrop must be positioned`).toMatch(
+          /\b(fixed|absolute)\b/,
+        );
+        expect(backdrop, `${relativePath} backdrop must cover the viewport`).toContain('inset-0');
+      }
+    }
+  });
+
   test('defines theme-aware scrim, surface, and semantic tone tokens', async () => {
     const css = await Bun.file(new URL('../src/index.css', import.meta.url)).text();
 

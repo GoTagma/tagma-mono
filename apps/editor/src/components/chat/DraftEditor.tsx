@@ -45,7 +45,7 @@ export function DraftEditor() {
     return () => unmountChatSurface('draft', id);
   }, []);
   return createPortal(
-    <div className="modal-viewport-backdrop">
+    <div className="modal-viewport-backdrop fixed inset-0 z-[220] flex items-center justify-center">
       <div
         ref={modal}
         role="dialog"
