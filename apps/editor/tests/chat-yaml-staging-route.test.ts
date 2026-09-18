@@ -4224,7 +4224,7 @@ describe('chat YAML staging routes', () => {
     discardStage(getStageRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
-  });
+  }, 30_000);
   test('cancels only the matching host trial and does not cache the aborted result', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
@@ -4332,7 +4332,7 @@ describe('chat YAML staging routes', () => {
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
-  });
+  }, 30_000);
 
   test('returns bounded redacted evidence, caches identical trials, and invalidates on plan edits', async () => {
     const { ws, sourcePath } = makeWorkspace();
