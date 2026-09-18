@@ -79,7 +79,7 @@ Workspace identity is host-authenticated and path-aware, but it is not just a st
 - Different sessions may share a read-only origin.
 - Different sessions must not share a writable target.
 - Frozen snapshots carry the evidence needed for clarification and recovery.
-- A target-pipeline smoke path is valid only when the staged Trial snapshot bytes match the authenticated source snapshot.
+- (Removed with the Live Smoke Test trial mode: a target-pipeline smoke path was valid only when the staged Trial snapshot bytes matched the authenticated source snapshot. Sandbox Trial is now the only trial mode, and isolated cases resolve staged sources from the copied staged snapshot.)
 
 ## Outbox, History, And SSE
 
