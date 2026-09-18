@@ -84,9 +84,30 @@ test('ignored path classification covers the trial-owned runtime directories', (
     '.tagma/.usage/usage.jsonl',
     '.tagma/logs/run_x/pipeline.log',
     '.tagma/node_modules/pkg/index.js',
+    // Host-managed runtime the sealed byte witness deliberately excludes.
+    // While the monitor kept its own list these were tracked, so a control-store
+    // or venv write failed containment against a digest that never covered them.
+    '.tagma/.chat-pipeline-bindings/session.json',
+    '.tagma/.python-agent/venv/pyvenv.cfg',
   ]) {
     state = applyTrialWorkspaceMutationEvent(state, path);
   }
   expect(state.healthy).toBe(true);
   expect(state.revision).toBe(0);
+});
+
+test('the monitor scope is the sealed witness scope, not a blanket ignore', () => {
+  // Generated companions stay sealed: keeping an unchanged compile log from
+  // being rewritten is what avoids the false failure, never excluding it here.
+  let state = freshState();
+  state = applyTrialWorkspaceMutationEvent(state, '.tagma/pipeline/pipeline.compile.log');
+  state = applyTrialWorkspaceMutationEvent(state, '.tagma/pipeline/pipeline.requirements.md');
+  state = applyTrialWorkspaceMutationEvent(state, '.tagma/opencode.json');
+  expect(state.healthy).toBe(true);
+  expect(state.revision).toBe(3);
+  expect(state.recentChanges.map((item) => item.path)).toEqual([
+    '.tagma/pipeline/pipeline.compile.log',
+    '.tagma/pipeline/pipeline.requirements.md',
+    '.tagma/opencode.json',
+  ]);
 });

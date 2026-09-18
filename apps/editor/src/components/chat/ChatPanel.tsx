@@ -299,6 +299,85 @@ function RetryableOperationNotice() {
   );
 }
 
+export function RetainedVerificationNoticeView({
+  updatedAt,
+  verificationFeedback = null,
+  draftSummary,
+  pending,
+  canOpenDraft,
+  onOpenDraft,
+  onRetry,
+  onDiscard,
+}: {
+  updatedAt: number;
+  verificationFeedback?: { details: string } | null;
+  draftSummary?: string;
+  pending: boolean;
+  canOpenDraft: boolean;
+  onOpenDraft: () => void;
+  onRetry: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <section
+      aria-label="Pipeline draft retained"
+      className="border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2 text-caption"
+    >
+      <div className="text-label text-tagma-text">Draft saved; verification needs attention</div>
+      <p className="mt-1 text-tagma-muted">
+        Your generated pipeline and verification plan are retained. Nothing has been published. Open
+        the draft to review or edit its files, then continue verification. Verification may use
+        additional model tokens.
+      </p>
+      {verificationFeedback && (
+        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words text-tagma-muted">
+          {verificationFeedback.details}
+        </pre>
+      )}
+      {draftSummary && (
+        <details className="mt-2 text-tagma-muted">
+          <summary className="cursor-pointer">Generated notes (not yet verified)</summary>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words">
+            {draftSummary}
+          </pre>
+        </details>
+      )}
+      {/* A re-failed attempt returns to this identical notice; the timestamp is
+          the visible proof that Continue verification actually ran again. */}
+      <p className="mt-2 text-tagma-muted-dim">
+        Last update: {new Date(updatedAt).toLocaleString()}. Continuing runs verification again; if
+        it keeps failing, review the feedback above and edit the draft, or discard it.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={pending || !canOpenDraft}
+          onClick={onOpenDraft}
+        >
+          Open draft
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
+          onClick={onRetry}
+        >
+          {pending ? 'Submitting…' : 'Continue verification'}
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          className="border border-tagma-border px-2 py-1 text-tagma-muted disabled:opacity-50"
+          onClick={onDiscard}
+        >
+          Discard draft
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function RetryableOperationNoticeBody({
   onOpenDraft,
 }: {
@@ -382,65 +461,26 @@ function RetryableOperationNoticeBody({
     );
   }
   if (retainedWork === 'verification') {
+    if (!operation) return null;
     return (
-      <section
-        aria-label="Pipeline draft retained"
-        className="border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2 text-caption"
-      >
-        <div className="text-label text-tagma-text">Draft saved; verification needs attention</div>
-        <p className="mt-1 text-tagma-muted">
-          Your generated pipeline and verification plan are retained. Nothing has been published.
-          Open the draft to review or edit its files, then continue verification. Verification may
-          use additional model tokens.
-        </p>
-        {detail?.verificationFeedback && (
-          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words text-tagma-muted">
-            {detail.verificationFeedback.details}
-          </pre>
-        )}
-        {detail?.draftSummary && (
-          <details className="mt-2 text-tagma-muted">
-            <summary className="cursor-pointer">Generated notes (not yet verified)</summary>
-            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words">
-              {detail.draftSummary}
-            </pre>
-          </details>
-        )}
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={pending || !canOpenChatDraft()}
-            onClick={() => operation && onOpenDraft(operation)}
-          >
-            Open draft
-          </button>
-          <button
-            type="button"
-            disabled={pending}
-            className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
-            onClick={() => void retry()}
-          >
-            {pending ? 'Submitting…' : 'Continue verification'}
-          </button>
-          <button
-            type="button"
-            disabled={pending}
-            className="border border-tagma-border px-2 py-1 text-tagma-muted disabled:opacity-50"
-            onClick={async () => {
-              if (
-                !window.confirm(
-                  'Discard this generated draft and its recovery progress? This cannot be undone.',
-                )
-              )
-                return;
-              await discard();
-            }}
-          >
-            Discard draft
-          </button>
-        </div>
-      </section>
+      <RetainedVerificationNoticeView
+        updatedAt={operation.updatedAt}
+        verificationFeedback={detail?.verificationFeedback}
+        {...(detail?.draftSummary ? { draftSummary: detail.draftSummary } : {})}
+        pending={pending}
+        canOpenDraft={canOpenChatDraft()}
+        onOpenDraft={() => onOpenDraft(operation)}
+        onRetry={() => void retry()}
+        onDiscard={() => {
+          if (
+            !window.confirm(
+              'Discard this generated draft and its recovery progress? This cannot be undone.',
+            )
+          )
+            return;
+          void discard();
+        }}
+      />
     );
   }
   return <RetryableOperationNoticeView failureCode={failureCode} failureStage={failureStage} />;

@@ -29,6 +29,7 @@ import {
   type PreparedTrialHostWitnessInputs,
 } from '../server/chat-pipeline-trial-witness';
 import { hashChatPipelineTrialTree } from '../server/chat-yaml-staging';
+import { runCompileAndWriteLog } from '../server/compile-log';
 import { requirementsPath, serializeRequirementsMd } from '../server/requirements-sync';
 import { WorkspaceState } from '../server/workspace-state';
 
@@ -184,6 +185,47 @@ describe('chat pipeline trial host witness', () => {
       writeFileSync(authoredPath, 'pipeline-v2\n', 'utf-8');
       const authoredChange = captureTrialHostWitness(ws, prepared(root));
       expect(authoredChange.workspace.digest).not.toBe(first.workspace.digest);
+    },
+    GIT_WITNESS_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'a redundant recompile of unchanged YAML does not perturb the sealed digest',
+    () => {
+      const { root, ws } = makeWorkspace();
+      runGit(root, 'init', '--quiet');
+      writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+      runGit(root, 'add', 'source.txt');
+      const yamlPath = join(root, '.tagma', 'pipeline', 'pipeline.yaml');
+      mkdirSync(dirname(yamlPath), { recursive: true });
+      writeFileSync(yamlPath, 'pipeline:\n  name: Sealed\n  tracks: []\n', 'utf-8');
+      runCompileAndWriteLog(yamlPath);
+
+      const sealed = safeCaptureTrialHostWitness(ws, prepared(root));
+      expect(sealed.reason).toBeNull();
+      const digest = sealed.witness!.workspace.digest;
+
+      // The editor rewrites this companion on every recompile, so before the
+      // log was made byte-idempotent this moved the digest and an isolated case
+      // was reported as leaking into the real workspace.
+      runCompileAndWriteLog(yamlPath);
+
+      const after = safeCaptureTrialHostWitness(ws, prepared(root));
+      expect(after.reason).toBeNull();
+      expect(after.witness!.workspace.digest).toBe(digest);
+      expect(after.witness!.workspace.fileCount).toBe(sealed.witness!.workspace.fileCount);
+      expect(after.witness!.workspace.totalBytes).toBe(sealed.witness!.workspace.totalBytes);
+
+      // The log genuinely stays inside the sealed scope. This is the guard
+      // against "fixing" the perturbation by excluding generated companions
+      // from the witness, which would weaken real containment.
+      writeFileSync(
+        join(root, '.tagma', 'pipeline', 'pipeline.compile.log'),
+        '{"timestamp":"divergent"}\n',
+        'utf-8',
+      );
+      const diverged = safeCaptureTrialHostWitness(ws, prepared(root));
+      expect(diverged.witness!.workspace.digest).not.toBe(digest);
     },
     GIT_WITNESS_TEST_TIMEOUT_MS,
   );

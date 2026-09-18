@@ -442,11 +442,11 @@ export function registerDiagnosticsRoutes(
       },
       coverage: [
         'Electron launcher sidecar log tail, including managed OpenCode stdout/stderr',
-        'managed OpenCode runtime metadata',
+        'managed OpenCode runtime metadata, including the resolved log directory an OpenCode error `ref` must be correlated against',
         'workspace-scoped OpenCode session list and bounded message history',
         'renderer console/errors and transient OpenCode chat state',
         'current editor pipeline state and active run events',
-        'bounded-summary and cursor-paged content-minimized Chat Operation V2 Host chronology with invocation purpose/status, recovery classification, and exact safe submission-uncertainty reasons',
+        'bounded-summary and cursor-paged content-minimized Chat Operation V2 Host chronology with invocation purpose/status, recovery classification, bounded redacted Trial failure reasons, and exact safe submission-uncertainty reasons',
         'bounded content-minimized structured renderer timeline for chat, pipeline, run, page, and feature transitions',
       ],
       privacy:

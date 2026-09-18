@@ -681,13 +681,14 @@ input[type='checkbox'] {
      transform blurs the label mid-transition, whereas a whole-pixel shift
      stays crisp and still reads as a physical push. */
   .btn-primary {
-    @apply flex items-center gap-1.5 px-3 py-1 text-body font-medium tracking-wide bg-tagma-accent text-white hover:bg-tagma-accent/85;
+    @apply flex items-center gap-1.5 px-3 py-1 text-body font-medium tracking-wide bg-tagma-accent text-white disabled:opacity-40 disabled:cursor-not-allowed;
     transition:
       background-color var(--tagma-dur-base) var(--tagma-ease),
       box-shadow var(--tagma-dur-base) var(--tagma-ease),
       transform var(--tagma-dur-fast) var(--tagma-ease-snap);
   }
   .btn-primary:hover:not(:disabled) {
+    @apply bg-tagma-accent/85;
     box-shadow: 0 0 12px -4px rgb(var(--tagma-accent) / 0.55);
   }
   .btn-primary:active:not(:disabled) {

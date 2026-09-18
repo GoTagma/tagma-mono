@@ -396,6 +396,25 @@ describe('frontend layout resilience', () => {
     expect(bootstrap).toContain('min-h-full');
   });
 
+  test('shared primary and secondary button skins visibly style the disabled state', async () => {
+    // Chat's retained-draft controls (Open draft, Save draft) disable while the
+    // action is unavailable; without disabled styling a dead click looks identical
+    // to an enabled button and reads as "no reaction".
+    const css = await Bun.file(new URL('../src/index.css', import.meta.url)).text();
+    for (const name of ['btn-primary', 'btn-secondary']) {
+      const block = css.match(new RegExp(`\\.${name} \\{([^}]*)\\}`));
+      expect(block, `index.css must define .${name}`).not.toBeNull();
+      expect(block![1], `.${name} must dim when disabled`).toContain('disabled:opacity-');
+      expect(block![1], `.${name} must drop the pointer when disabled`).toContain(
+        'disabled:cursor-not-allowed',
+      );
+    }
+    // The accent hover must not fire on a disabled primary button.
+    const primaryHover = css.match(/\.btn-primary:hover:not\(:disabled\) \{([^}]*)\}/);
+    expect(primaryHover).not.toBeNull();
+    expect(primaryHover![1]).toContain('bg-tagma-accent');
+  });
+
   test('offers an explicit archive-and-reset recovery only for incompatible Chat control data', () => {
     const markup = renderToStaticMarkup(
       <BootstrapErrorContent

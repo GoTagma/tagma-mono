@@ -88,6 +88,7 @@ import type {
   TrialHostWitness,
 } from './chat-pipeline-trial-witness.js';
 import {
+  isTagmaHostManagedWitnessPath,
   safeCaptureTrialHostWitnessAsync,
   safeCaptureTrialWorkspaceWitnessAsync,
   safePrepareTrialHostWitnessInputs,
@@ -140,16 +141,6 @@ const MAX_TRIAL_WORKSPACE_CHANGE_PATHS = 32;
 const TRIAL_WORKSPACE_MONITOR_QUIET_INTERVAL_MS = 25;
 const TRIAL_WORKSPACE_MONITOR_QUIET_ROUNDS = 4;
 const TRIAL_WORKSPACE_MONITOR_MAX_SETTLE_MS = 1_000;
-const TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS = new Set([
-  '.chat-staging',
-  '.opencode',
-  '.opencode-runtime',
-  '.usage',
-  'logs',
-  'node_modules',
-  'plugin-runtime',
-  'plugin-store',
-]);
 
 export type ChatPipelineTrialRunKind =
   | 'passed'
@@ -2305,14 +2296,15 @@ function trialWorkspaceMutationPath(filename: string | Buffer | null): string | 
   return normalized;
 }
 
+/**
+ * The monitor tracks only paths the sealed workspace witness actually covers.
+ * Its scope is the witness's own skip predicate plus `.git`, so the two can no
+ * longer drift: a path outside the sealed byte manifest cannot perturb the
+ * witness digest, and reporting it as a containment change is a false failure.
+ */
 function ignoreTrialWorkspaceMutation(path: string): boolean {
-  const segments = path.split('/');
-  if (segments[0] === '.git') return true;
-  return (
-    segments[0] === '.tagma' &&
-    segments.length >= 2 &&
-    TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS.has(segments[1]!)
-  );
+  if (path.split('/')[0] === '.git') return true;
+  return isTagmaHostManagedWitnessPath(path);
 }
 
 export interface TrialWorkspaceMutationEventState {

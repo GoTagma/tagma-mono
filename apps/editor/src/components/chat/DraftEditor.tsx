@@ -126,7 +126,7 @@ export function DraftEditor() {
               ? 'Draft saved. Close this editor to continue verification.'
               : dirty
                 ? 'Unsaved edits'
-                : 'Not published'}
+                : 'No changes to save (the draft is kept, but not published)'}
           </span>
           <button
             type="button"

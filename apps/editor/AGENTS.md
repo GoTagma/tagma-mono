@@ -1877,6 +1877,11 @@
 - Modal footers use `btn-secondary`, `btn-primary`, or the semantic `btn-*-inline` variants so
   cancel, approve, warning, and destructive actions keep one size and palette. Update
   `tests/modal-theme-contract.test.ts` whenever adding or removing a modal surface.
+- Shared `btn-*` skins own their disabled state in `src/index.css` (`disabled:opacity-40`,
+  `disabled:cursor-not-allowed`, hover gated by `:not(:disabled)`). Do not patch `disabled:`
+  utilities per call site; a disabled button without skin-level styling looks enabled and reads
+  as a dead click (the retained-draft Save/Open draft regression). The contract is asserted in
+  `tests/frontend-layout-resilience.test.tsx`.
 - Keep `tagma-ready` (cyan) out of dialogs: it is the running/ready task-status hue owned by the
   canvas and run views. Success state inside a dialog uses `tagma-success`, and a header icon
   takes the color of the shell's `modal-tone-*` (accent for `modal-tone-accent`, warning for

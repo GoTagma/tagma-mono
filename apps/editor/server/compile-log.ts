@@ -1,5 +1,5 @@
-import { readFileSync, mkdirSync } from 'node:fs';
-import { dirname, basename, join } from 'node:path';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { dirname, basename, join, resolve } from 'node:path';
 import { compileYamlContent, type YamlCompileResult } from '@tagma/sdk/yaml';
 import type {
   CompletionPlugin,
@@ -152,9 +152,87 @@ function mergeCompileDiagnostics(
 
 export const __compileLogTestHooks = { mergeCompileDiagnostics };
 
+/**
+ * Compare two `sourceName` values as filesystem coordinates rather than byte
+ * strings. Drive-letter casing and `/` versus `\` are aliases of one path, so a
+ * recompile that spells the same YAML differently is not a semantic change.
+ * Mirrors `comparablePath` in `state.ts` (kept local: `state.ts` imports this
+ * module, so importing it back would close a cycle).
+ */
+function comparableSourcePath(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const normalized = resolve(value).replace(/\\/gu, '/').replace(/\/+$/u, '');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function sameDiagnostics(
+  existing: ReadonlyArray<unknown>,
+  next: ReadonlyArray<{ path: string; message: string }>,
+): boolean {
+  if (existing.length !== next.length) return false;
+  return existing.every((entry, index) => {
+    const expected = next[index]!;
+    if (typeof entry !== 'object' || entry === null) return false;
+    const candidate = entry as { path?: unknown; message?: unknown };
+    return candidate.path === expected.path && candidate.message === expected.message;
+  });
+}
+
+/**
+ * True when the log already on disk carries the same compile semantics as
+ * `next`. Only the volatile fields may differ: `timestamp` is stamped fresh on
+ * every compile, and `sourceName` may be respelled.
+ */
+function isEquivalentCompileLog(existingText: string, next: YamlCompileResult): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(existingText);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return false;
+  const candidate = parsed as Partial<YamlCompileResult>;
+  if (candidate.success !== next.success || candidate.parseOk !== next.parseOk) return false;
+  if (candidate.summary !== next.summary) return false;
+  if (comparableSourcePath(candidate.sourceName) !== comparableSourcePath(next.sourceName)) {
+    return false;
+  }
+  const errors = candidate.validation?.errors;
+  const warnings = candidate.validation?.warnings;
+  if (!Array.isArray(errors) || !Array.isArray(warnings)) return false;
+  return (
+    sameDiagnostics(errors, next.validation.errors) &&
+    sameDiagnostics(warnings, next.validation.warnings)
+  );
+}
+
+/** Unreadable or missing existing log: fall through to writing a fresh one. */
+function existingCompileLogMatches(path: string, next: YamlCompileResult): boolean {
+  try {
+    if (!existsSync(path)) return false;
+    return isEquivalentCompileLog(readFileSync(path, 'utf-8'), next);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The compile log is a generated companion that lives inside Trial's sealed
+ * real-workspace witness scope. Rewriting it for a compile that changed nothing
+ * perturbs that seal, so an isolated case is misreported as having leaked into
+ * the real workspace — a `diagnostic-only` failure the model is not allowed to
+ * repair. So the write is byte-idempotent: an equivalent log is left untouched,
+ * preserving its bytes, mtime, and ctime.
+ *
+ * This is the same contract `requirements-sync` (preserved `generatedAt`) and
+ * `pipeline-manifest` already honour, and it is the only supported way to keep
+ * an idempotent refresh from perturbing the witness. Do NOT instead narrow the
+ * witness scope: genuine external writes must still fail closed.
+ */
 function writeCompileLog(path: string, result: YamlCompileResult): void {
   try {
     mkdirSync(dirname(path), { recursive: true });
+    if (existingCompileLogMatches(path, result)) return;
     atomicWriteFileSync(path, JSON.stringify(result, null, 2) + '\n');
   } catch (err) {
     console.error(`[compile-log] failed to write ${path}:`, err);

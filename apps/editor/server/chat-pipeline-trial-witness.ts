@@ -244,11 +244,28 @@ function isCanonicalPathWithin(child: string, root: string): boolean {
   );
 }
 
-function shouldSkipWorkspaceWitnessDir(relativePath: string): boolean {
+/**
+ * True when a workspace-relative POSIX path sits under a `.tagma/<dir>/` subtree
+ * that is host-managed runtime rather than authored workspace content — the
+ * chat control registry, the staging roots, the OpenCode runtime/config trees,
+ * the Python agent venv, and the log/plugin/node_modules caches.
+ *
+ * Nothing under these paths is in the sealed byte manifest, so nothing here can
+ * perturb the witness digest. The Trial workspace-mutation monitor derives its
+ * ignore scope from this same predicate: while the two lists were maintained
+ * separately they drifted, and monitor-only entries (`.chat-pipeline-bindings`,
+ * `.python-agent`) reported containment failures for writes the byte witness
+ * deliberately never sealed.
+ */
+export function isTagmaHostManagedWitnessPath(relativePath: string): boolean {
   const segments = relativePath.split('/').filter(Boolean);
   if (segments[0] !== '.tagma') return false;
   if (segments.length < 2) return false;
   return SKIPPED_TAGMA_WITNESS_DIRS.has(segments[1]!);
+}
+
+function shouldSkipWorkspaceWitnessDir(relativePath: string): boolean {
+  return isTagmaHostManagedWitnessPath(relativePath);
 }
 
 function readRequirementsWitnessConfig(stagedYamlPath: string): TrialRequirementWitnessConfig {

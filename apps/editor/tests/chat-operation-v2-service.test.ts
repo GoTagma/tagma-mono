@@ -1401,6 +1401,88 @@ describe('ChatTurn Operation V2 service activation', () => {
     expect(restarted.getDiagnosticsSnapshot(workspace).eventEvidence!.events).toEqual(summaries);
   });
 
+  test('diagnostics expose the bounded redacted Trial failure reason', () => {
+    const root = makeTempRoot();
+    const controlDir = join(root, 'server-control');
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    seedWorkspaceOperation(controlDir, workspace, 'scope-feedback', 'operation-feedback');
+    const service = new ChatOperationV2Service({ env: { TAGMA_CHAT_CONTROL_DIR: controlDir } });
+    services.push(service);
+    service.getWorkspaceSnapshot(workspace);
+    const store = service.getTrustedMigrationStore();
+    type TrialFeedback = NonNullable<ChatOperationV2DiagnosticsEventSummary['trialFeedback']>;
+    const blocked: TrialFeedback = {
+      schemaVersion: 1,
+      stage: 'trial',
+      details: 'Trial blocked: the opencode driver is unavailable for this pipeline.',
+      failedTaskIds: ['fact_check.gather_evidence'],
+      omittedFailedTaskCount: 2,
+    };
+    // The store does not validate trial payloads, so these all persist verbatim;
+    // only the projection stands between them and the diagnostics reader.
+    const append = (eventId: string, timestamp: number, feedback?: unknown) =>
+      store.appendOperationEvent({
+        operationId: 'operation-feedback',
+        eventId,
+        type: 'trial_status_changed',
+        timestamp,
+        payload: {
+          stageId: 'private-stage',
+          trialId: 'private-trial',
+          status: 'failed',
+          planHash: null,
+          caseCount: 0,
+          passedCount: 0,
+          failedCount: 0,
+          warningCount: 0,
+          errorCode: 'trial_blocked',
+          ...(feedback === undefined ? {} : { feedback }),
+        },
+      });
+    append('event-blocked', 1_777_777_781_000, blocked);
+    // Absent feedback omits the key entirely rather than emitting null.
+    append('event-no-feedback', 1_777_777_782_000);
+    for (const [index, invalid] of [
+      { ...blocked, details: '' },
+      { ...blocked, details: 'C:\\Users\\private\\pipeline.yaml failed' },
+      { ...blocked, details: 'see https://example.test/log for details' },
+      { ...blocked, details: 'x'.repeat(4_097) },
+      { ...blocked, failedTaskIds: ['bad task id'] },
+      { ...blocked, failedTaskIds: Array.from({ length: 9 }, (_unused, i) => `t.${i}`) },
+      { ...blocked, omittedFailedTaskCount: -1 },
+      { ...blocked, stage: 'private-stage-name' },
+      { ...blocked, schemaVersion: 2 },
+    ].entries()) {
+      append(`event-invalid-feedback-${index}`, 1_777_777_783_000 + index, invalid);
+    }
+    const summaries = service.getDiagnosticsSnapshot(workspace).eventEvidence!.events;
+    // A rejected optional field must never drop the event that carried it.
+    const trialEvents = summaries.filter((entry) => entry.type === 'trial_status_changed');
+    expect(trialEvents).toHaveLength(1 + 1 + 9);
+    expect(
+      trialEvents.every((entry) => entry.diagnostic.errorCode === 'trial_blocked'),
+    ).toBe(true);
+    const withFeedback = summaries.filter((entry) => 'trialFeedback' in entry);
+    expect(withFeedback).toHaveLength(1);
+    expect(withFeedback[0]!.trialFeedback).toEqual(blocked);
+    // Nothing from the rejected payloads reaches any reader.
+    const serialized = JSON.stringify(summaries);
+    expect(serialized).not.toContain('private-');
+    expect(serialized).not.toContain('example.test');
+    expect(serialized).not.toContain('C:\\\\Users');
+    const paged = [];
+    let after = 0;
+    for (;;) {
+      const page = service.listDiagnosticsEvents(workspace, { after, limit: 4 });
+      if (page.kind !== 'events') throw new Error('Expected feedback page');
+      paged.push(...page.events);
+      after = page.nextCursor;
+      if (!page.hasMore) break;
+    }
+    expect(paged).toEqual([...summaries]);
+  });
+
   test('diagnostics expose only fixed recovery dispositions from commit recovery events', () => {
     const event: StoredHostOperationEvent = {
       workspaceSeq: 1,

@@ -16,6 +16,10 @@ import {
   type SealedChatConversationContext,
 } from './conversation.js';
 import { buildChatOperationV2ClarifiedRequestText } from './clarification.js';
+import {
+  isChatOperationFeedback,
+  type ChatOperationFeedback,
+} from '../../shared/chat-operation-feedback.js';
 
 import type {
   ChatOperationV2DiscardRequest,
@@ -284,6 +288,17 @@ export interface ChatOperationV2DiagnosticsEventSummary {
   readonly trialProgress?: Readonly<
     Omit<ChatOperationV2HostEventPayloads['trial_progressed'], 'stageId' | 'trialId'>
   >;
+  /**
+   * Why a Trial could not verify the pipeline, taken from the bounded redacted
+   * `feedback` the Host already persists on `trial_status_changed`.
+   *
+   * Without it a blocked or failed Trial surfaces only an opaque `errorCode`
+   * (e.g. `trial_blocked`), and the reason is unreachable from every read-only
+   * surface — the operator has to read it off the UI by hand. The payload is
+   * already guaranteed path-free and credential-free by
+   * `isChatOperationFeedback`, so it is projected as-is rather than re-bounded.
+   */
+  readonly trialFeedback?: ChatOperationFeedback;
 }
 
 export interface ChatOperationV2DiagnosticsEventEvidence {
@@ -623,6 +638,27 @@ function diagnosticsTrialProgress(
   });
 }
 
+/**
+ * Project the Trial failure reason the Host persisted on `trial_status_changed`.
+ * Only that event type carries `feedback`, so every other event type omits the
+ * key entirely rather than emitting `null` — mirroring `trialProgress`.
+ */
+function diagnosticsTrialFeedback(
+  event: StoredHostOperationEvent,
+): ChatOperationV2DiagnosticsEventSummary['trialFeedback'] {
+  if (event.type !== 'trial_status_changed') return undefined;
+  const feedback = event.payload.feedback;
+  // The stored payload is already bounded and redacted; reuse the shared
+  // validator instead of re-deriving its limits here.
+  if (!isChatOperationFeedback(feedback)) return undefined;
+  // Emit the validated shape unchanged, including its own `schemaVersion`, so a
+  // reader can re-validate the projected value with the same shared helper.
+  return Object.freeze({
+    ...feedback,
+    failedTaskIds: Object.freeze([...feedback.failedTaskIds]),
+  });
+}
+
 function diagnosticsEventSummary(
   event: StoredHostOperationEvent,
   outbox: StoredInvocationOutboxRecord | null,
@@ -632,6 +668,7 @@ function diagnosticsEventSummary(
       ? describeChatOperationV2SubmissionUnknown(event.payload.reasonCode)
       : null;
   const trialProgress = diagnosticsTrialProgress(event);
+  const trialFeedback = diagnosticsTrialFeedback(event);
   return Object.freeze({
     workspaceSeq: event.workspaceSeq,
     operationId: event.operationId,
@@ -654,6 +691,7 @@ function diagnosticsEventSummary(
       : {}),
     ...(submissionUnknown ? { submissionUnknown } : {}),
     ...(trialProgress ? { trialProgress } : {}),
+    ...(trialFeedback ? { trialFeedback } : {}),
   });
 }
 

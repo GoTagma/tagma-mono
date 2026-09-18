@@ -154,6 +154,22 @@ export function captureAgentChatRendererReport(): Omit<AgentChatRendererReport, 
     state.activeChatOperationV2?.conversationId === conversationId
       ? state.activeChatOperationV2
       : null;
+  const threadDetail = operation
+    ? state.chatOperationV2ThreadDetails[operation.operationId]
+    : undefined;
+  // Why the operation failed, so a controller can diagnose without reading the
+  // UI. Assembled only from detail the renderer already holds and already
+  // validated (`isChatOperationFeedback`), never from Host state: this view is a
+  // renderer observation and the two are deliberately separate.
+  const failure =
+    threadDetail && (threadDetail.failure || threadDetail.verificationFeedback)
+      ? {
+          ...(threadDetail.failure ? { projection: threadDetail.failure } : {}),
+          ...(threadDetail.verificationFeedback
+            ? { verificationFeedback: threadDetail.verificationFeedback }
+            : {}),
+        }
+      : null;
   const view = {
     bootstrapStatus: state.bootstrapStatus,
     sending: state.sending,
@@ -180,9 +196,8 @@ export function captureAgentChatRendererReport(): Omit<AgentChatRendererReport, 
       omittedModels: Math.max(0, Object.keys(provider.models).length - 500),
     })),
     inventory: state.chatOperationV2Inventory,
-    pendingInput: operation
-      ? (state.chatOperationV2ThreadDetails[operation.operationId]?.pendingInput ?? null)
-      : null,
+    pendingInput: threadDetail?.pendingInput ?? null,
+    failure,
     result: operation ? state.activeChatOperationV2Result : null,
     surface: surfaces.chat?.conversationId === conversationId ? surfaces.chat : null,
     draftSurface: surfaces.draft?.conversationId === conversationId ? surfaces.draft : null,

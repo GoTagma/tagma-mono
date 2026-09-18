@@ -21,6 +21,7 @@ import { ALLOWED_ORIGINS } from './allowed-origins.js';
 import {
   buildEmbeddedOpencodeRuntimeConfig,
   prepareEmbeddedOpencodeRuntime,
+  resolveOpencodeRuntimePaths,
 } from './opencode-config.js';
 import { TAGMA_MANAGED_OPENCODE_TOOL_IDS } from './opencode-managed-tools.js';
 import {
@@ -61,6 +62,13 @@ export interface OpencodeRuntimeDiagnostics {
   databaseInitialization: PreparedManagedOpencodeDatabase['initialization'] | null;
   runtimeVersion: string | null;
   runtimeSource: string | null;
+  /**
+   * Directory OpenCode writes its own rotating log to. An `UnknownError` from
+   * OpenCode carries a `ref` that is only meaningful against that file, and a
+   * nested `opencode` CLI spawned by a pipeline task writes there too, so this
+   * is the coordinate the documented ref-correlation step needs.
+   */
+  logDir: string;
 }
 
 // A fresh workspace can require a cold OpenCode database initialization before
@@ -1133,6 +1141,13 @@ export function getOpencodeRuntimeDiagnostics(): OpencodeRuntimeDiagnostics[] {
         databaseInitialization: handle?.database.initialization ?? null,
         runtimeVersion: handle?.database.runtimeVersion ?? null,
         runtimeSource: handle?.database.runtimeSource ?? null,
+        // Where OpenCode writes its own rotating log. An `UnknownError` carries
+        // a `ref` that is only meaningful against this file, and a nested
+        // `opencode` CLI spawned by a pipeline task logs here too. Without the
+        // directory, the documented "correlate the ref with OpenCode's internal
+        // log" step has nowhere to look. Resolved purely from paths; this is a
+        // read-side projection and must not prepare or mutate the runtime.
+        logDir: join(resolveOpencodeRuntimePaths(cwd).dataHome, 'opencode', 'log'),
       };
     });
 }

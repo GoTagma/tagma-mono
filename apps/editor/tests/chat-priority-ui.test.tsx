@@ -7,7 +7,10 @@ import {
   getChatComposerAvailability,
   shouldSubmitChatComposerKey,
 } from '../src/components/chat/ChatComposer';
-import { RetainedOperationNoticeView } from '../src/components/chat/ChatPanel';
+import {
+  RetainedOperationNoticeView,
+  RetainedVerificationNoticeView,
+} from '../src/components/chat/ChatPanel';
 import { chatOperationV2RetainedWorkKind } from '../src/utils/chat-operation-v2-failure';
 
 test.each(['commit_applying', 'trial-running', 'awaiting_input'] as const)(
@@ -47,6 +50,26 @@ test.each(['staging', 'authoring', 'repairing', 'trial-running'] as const)(
     ).toBeNull();
   },
 );
+
+test('retained verification notice shows the last attempt so a re-run is visible', () => {
+  const html = renderToStaticMarkup(
+    <RetainedVerificationNoticeView
+      updatedAt={new Date('2026-09-16T08:00:00').getTime()}
+      verificationFeedback={{ details: 'Sandbox case failed: output mismatch' }}
+      pending={false}
+      canOpenDraft={true}
+      onOpenDraft={() => {}}
+      onRetry={() => {}}
+      onDiscard={() => {}}
+    />,
+  );
+  expect(html).toContain('Open draft');
+  expect(html).toContain('Continue verification');
+  expect(html).toContain('Discard draft');
+  expect(html).toContain('Sandbox case failed: output mismatch');
+  expect(html).toContain('Last update');
+  expect(html).toContain(new Date('2026-09-16T08:00:00').toLocaleString());
+});
 
 test('provider recovery explains the retained draft and offers explicit continuation', () => {
   const html = renderToStaticMarkup(
