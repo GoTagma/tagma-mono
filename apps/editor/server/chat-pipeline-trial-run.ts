@@ -1590,7 +1590,7 @@ export function evaluateTrialExpectation(
               isExternalDriverStreamFailure(
                 state.result?.failureKind ?? null,
                 state.result?.stderr,
-              ),
+              ) || isNestedOpencodeCliFailure(state.result?.failureKind ?? null, state.result?.stderr),
             ) ?? 'pipeline-artifact'),
     };
   }
@@ -1836,6 +1836,27 @@ export function isExternalDriverStreamFailure(
     /\bmode=primary\b/u.test(text) &&
     /\bsmall=false\b/u.test(text)
   );
+}
+
+/**
+ * A command task that shells out to `opencode` runs as a plain PATH-resolved
+ * host command against the machine's own OpenCode installation: OpenCode loads
+ * the user-global config and never sees the workspace's managed provider config,
+ * and the pipeline passes no `--model`. Tagma therefore cannot distinguish a
+ * pipeline defect from that uncontrolled environment, so this failure must not
+ * authorize a YAML repair — the model has nothing to fix and would be pushed to
+ * edit a pipeline that is not the cause.
+ *
+ * Detect OpenCode's own infrastructure error envelope. The two message strings
+ * are OpenCode-specific; the `ref` is optional so a clipped stderr still matches.
+ */
+export function isNestedOpencodeCliFailure(
+  failureKind: string | null,
+  stderr: string | null | undefined,
+): boolean {
+  if (failureKind !== 'exit_nonzero' && failureKind !== 'completion_failed') return false;
+  const text = stderr ?? '';
+  return text.includes('"name": "UnknownError"') && text.includes('Unexpected server error');
 }
 
 export function reconcileCaseExpectationRepairScopes(

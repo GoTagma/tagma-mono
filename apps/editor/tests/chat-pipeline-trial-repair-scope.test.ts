@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import {
   isExternalDriverStreamFailure,
+  isNestedOpencodeCliFailure,
   reconcileCaseExpectationRepairScopes,
   trialTaskRepairScope,
   hasChatPipelineTrialArtifactFailure,
@@ -290,4 +291,46 @@ test('output capture failure is diagnostic-only', () => {
       { stream: 'stdout', stage: 'read', message: 'read failed', capturedBytes: 0, path: null },
     ]),
   ).toBe('diagnostic-only');
+});
+
+// Captured verbatim from a Sandbox Trial case: a command task whose `opencode
+// run` call died inside the machine's own OpenCode installation rather than in
+// the pipeline. The pipeline passes no `--model`, and the nested CLI loads the
+// user-global config instead of the workspace's managed provider config, so the
+// failure is not attributable to the YAML.
+const NESTED_OPENCODE_STDERR =
+  'Error: {   "name": "UnknownError",   "data": {     "message": "Unexpected server error. Check server logs for details.",     "ref": "err_4e59c26d"   } }';
+
+test('a nested opencode CLI infrastructure error is diagnostic-only, not YAML repair evidence', () => {
+  // Both failure kinds were observed for this exact signature across two runs.
+  expect(isNestedOpencodeCliFailure('exit_nonzero', NESTED_OPENCODE_STDERR)).toBe(true);
+  expect(isNestedOpencodeCliFailure('completion_failed', NESTED_OPENCODE_STDERR)).toBe(true);
+  expect(trialTaskRepairScope('failed', 'exit_nonzero', undefined, true)).toBe('diagnostic-only');
+  expect(trialTaskRepairScope('failed', 'completion_failed', undefined, true)).toBe(
+    'diagnostic-only',
+  );
+});
+
+test('a clipped nested opencode stderr still matches without its ref', () => {
+  expect(
+    isNestedOpencodeCliFailure(
+      'exit_nonzero',
+      'Error: {   "name": "UnknownError",   "data": {     "message": "Unexpected server error. Che',
+    ),
+  ).toBe(true);
+});
+
+test('ordinary command task failures keep pipeline-artifact repair authority', () => {
+  expect(isNestedOpencodeCliFailure('exit_nonzero', 'AssertionError: expected 3 to be 4')).toBe(
+    false,
+  );
+  // One OpenCode-shaped string alone is not enough: a user command may print it.
+  expect(isNestedOpencodeCliFailure('exit_nonzero', 'Unexpected server error')).toBe(false);
+  expect(isNestedOpencodeCliFailure('exit_nonzero', '"name": "UnknownError"')).toBe(false);
+  // Failure kinds already classified elsewhere are untouched.
+  expect(isNestedOpencodeCliFailure('timeout', NESTED_OPENCODE_STDERR)).toBe(false);
+  expect(isNestedOpencodeCliFailure('output_error', NESTED_OPENCODE_STDERR)).toBe(false);
+  expect(isNestedOpencodeCliFailure('spawn_error', NESTED_OPENCODE_STDERR)).toBe(false);
+  // And without the flag, the scope stays actionable.
+  expect(trialTaskRepairScope('failed', 'exit_nonzero')).toBe('pipeline-artifact');
 });
