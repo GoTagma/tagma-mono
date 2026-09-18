@@ -10,7 +10,6 @@ import {
 } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { isDeepStrictEqual } from 'node:util';
 import yaml from 'js-yaml';
 import type { PipelineConfig } from '@tagma/sdk';
 import { loadPipeline, parseYaml, serializePipeline } from '@tagma/sdk/yaml';
@@ -24,23 +23,12 @@ import {
   reserveChatPipelineBinding,
   type ChatPipelineBinding,
 } from './chat-pipeline-binding.js';
-import {
-  buildChatPipelineTrialLiveSmokeReadiness,
-  CHAT_PIPELINE_TRIAL_CACHE_VERSION,
-  isChatPipelineTrialLiveSmokeReadiness,
-  type ChatPipelineTrialLiveSmokeReadiness,
-} from './chat-pipeline-trial-cache.js';
-import {
-  resolveChatPipelineDataReadiness,
-  resolveChatPipelineLiveSmokeBaseline,
-} from './chat-pipeline-trial-readiness.js';
+import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import {
   buildChatPipelineTrialabilityReport,
-  ChatPipelineTrialMode,
   ChatPipelineTrialabilityReport,
 } from './chat-pipeline-trialability.js';
 import { readEditorSettings } from './plugins/loader.js';
-import { hasCurrentChatPipelineTrialLiveSmokeTestConsent } from '../shared/chat-pipeline-trial-consent.js';
 import type {
   PreparedTrialHostWitnessInputs,
   TrialHostWitness,
@@ -561,13 +549,10 @@ export function hashChatPipelineTrialTree(rootDir: string | null): string | null
 export function buildChatPipelineTrialInputHash(input: {
   stagedTreeHash: string;
   planHash: string;
-  trialMode: 'sandbox' | 'sandbox-with-live-smoke';
   trialabilityReportHash: string;
 }): string {
   return createHash('sha256')
-    .update(
-      `${input.stagedTreeHash}\0${input.planHash}\0${input.trialMode}\0${input.trialabilityReportHash}`,
-    )
+    .update(`${input.stagedTreeHash}\0${input.planHash}\0${input.trialabilityReportHash}`)
     .digest('hex');
 }
 
@@ -3170,13 +3155,11 @@ interface CachedTrialFinalizeRecord {
   trialabilityReportHash: string;
   verificationHash: string;
   hostWitness: TrialHostWitness;
-  liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null;
   result: {
     version: typeof TRIAL_CACHE_VERSION;
     success: boolean;
     kind: string;
     ran: boolean;
-    trialMode?: ChatPipelineTrialMode;
     trialabilityReport?: ChatPipelineTrialabilityReport;
     repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
     prerequisiteState?: unknown;
@@ -3260,9 +3243,6 @@ async function verifiedTrialDisposition(
 ): Promise<ChatYamlStageFinalizeResult['trialVerification']> {
   const editorSettings = readEditorSettings(ws);
   if (editorSettings.opencodeChatTrialRunEnabled === false) return 'not-required';
-  const trialMode = hasCurrentChatPipelineTrialLiveSmokeTestConsent(editorSettings)
-    ? ('sandbox-with-live-smoke' as const)
-    : ('sandbox' as const);
   const normalizedTrialId = normalizeFinalizeTrialId(trialId);
   if (!normalizedTrialId) return 'not-verified';
   const contentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
@@ -3289,7 +3269,6 @@ async function verifiedTrialDisposition(
       pipelineConfig,
       registry: ws.registry,
       capabilityOwners: ws.pluginCapabilityOwners,
-      mode: trialMode,
     });
   } catch {
     return 'not-verified';
@@ -3298,7 +3277,6 @@ async function verifiedTrialDisposition(
   const inputHash = buildChatPipelineTrialInputHash({
     stagedTreeHash,
     planHash: planRead.planHash,
-    trialMode,
     trialabilityReportHash,
   });
   const cachePath = trialFinalizeCachePath(paths, normalizedTrialId, relativePath, inputHash);
@@ -3325,45 +3303,15 @@ async function verifiedTrialDisposition(
       cachePath,
       stageRecordContext(paths, 'trial-cache', dirname(cachePath)),
     );
-    const currentLiveSmokeReadiness =
-      trialMode === 'sandbox-with-live-smoke'
-        ? (() => {
-            const dataReadiness = resolveChatPipelineDataReadiness(
-              pipelineConfig,
-              ws.workDir,
-              relativePath,
-            );
-            const baseline = resolveChatPipelineLiveSmokeBaseline(
-              pipelineConfig,
-              dataReadiness,
-              ws.workDir,
-              {
-                livePipelineDir: dirname(sourcePath ?? resolve(ws.workDir, '.tagma', relativePath)),
-                stagedPipelineDir: dirname(stagedPath),
-                targetPipelineIsNew: sourcePath === null,
-              },
-              { plan: planRead.plan, relativeYamlPath: relativePath },
-            );
-            return buildChatPipelineTrialLiveSmokeReadiness({
-              targetPipelineIsNew: sourcePath === null,
-              dataReadiness,
-              baseline,
-            });
-          })()
-        : null;
     const authenticated =
       cached.version === TRIAL_CACHE_VERSION &&
       cached.inputHash === inputHash &&
       cached.trialabilityReportHash === trialabilityReportHash &&
       cached.verificationHash === verificationHash &&
       cached.hostWitness?.digest === witness.witness.digest &&
-      (cached.liveSmokeReadiness === null ||
-        isChatPipelineTrialLiveSmokeReadiness(cached.liveSmokeReadiness)) &&
-      isDeepStrictEqual(cached.liveSmokeReadiness, currentLiveSmokeReadiness) &&
       !!cached.result &&
       cached.result.version === TRIAL_CACHE_VERSION &&
-      cached.result.trialMode === trialMode &&
-      cached.result.trialabilityReport?.mode === trialMode &&
+      !!cached.result.trialabilityReport &&
       hashChatPipelineTrialabilityReport(cached.result.trialabilityReport) ===
         trialabilityReportHash;
     if (!authenticated) return 'not-verified';

@@ -718,7 +718,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(JSON.stringify(result.feedback)).not.toContain('PRIVATE_PROVIDER_RESPONSE');
   });
 
-  test('a completed diagnostic-only Live Smoke failure is not described as incomplete execution', async () => {
+  test('a completed diagnostic-only Trial failure is not described as incomplete execution', async () => {
     const value = await readyRuntime();
     value.staging.trialResult = {
       ...value.staging.trialResult,
@@ -726,16 +726,15 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       kind: 'failed',
       ran: true,
       repairAuthorization: 'diagnostic-only',
-      liveSmokeStatus: 'failed',
-      summary: 'Live Smoke failed.',
-      cases: [{ id: 'case-1', success: true }],
+      summary: 'Trial failed.',
+      cases: [{ id: 'case-1', success: false }],
       tasks: [
         {
           taskId: 'main.check',
           status: 'failed',
           failureKind: 'exit_nonzero',
           repairScope: 'diagnostic-only',
-          caseId: null,
+          caseId: 'case-1',
           stderr: 'PRIVATE_PROVIDER_RESPONSE',
         },
       ],
@@ -1707,8 +1706,6 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       caseResultCount: 2,
       notRunCaseCount: 0,
       taskStatusCounts: { success: 4 },
-      trialMode: 'sandbox-with-live-smoke',
-      liveSmokeStatus: 'passed',
       summary: 'All Trial evidence passed.',
       plan: { summary: 'plan' },
     } as unknown as ChatPipelineTrialRunResult;
@@ -1754,7 +1751,6 @@ describe('managed Chat Operation V2 authoring runtime', () => {
           passedCaseCount: 2,
           taskStatusCounts: { success: 4 },
         },
-        liveSmoke: { status: 'passed' },
         reasonCode: null,
         details: 'All Trial evidence passed.',
       },
@@ -1827,15 +1823,12 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       kind: 'blocked',
       ran: true,
       repairAuthorization: 'diagnostic-only',
-      summary:
-        'Trial Interaction Protocol preflight blocked execution because Live Smoke was not authorized.',
+      summary: 'A planned case could not run safely in the Sandbox Trial.',
       cases: [{ id: 'case-1', success: true }],
       plannedCaseCount: 2,
       caseResultCount: 1,
       notRunCaseCount: 1,
       taskStatusCounts: { success: 2, skipped: 14 },
-      trialMode: 'sandbox-with-live-smoke',
-      liveSmokeStatus: 'skipped',
     } as unknown as ChatPipelineTrialRunResult;
 
     const blocked = await value.runtime.verifyStage({
@@ -1856,8 +1849,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       diagnosticCodes: ['trial_blocked'],
       caseCount: 2,
       passedCount: 1,
-      redactedSummary:
-        'Trial Interaction Protocol preflight blocked execution because Live Smoke was not authorized.',
+      redactedSummary: 'A planned case could not run safely in the Sandbox Trial.',
       outcome: {
         sandbox: {
           status: 'partial',
@@ -1866,7 +1858,6 @@ describe('managed Chat Operation V2 authoring runtime', () => {
           notRunCaseCount: 1,
           taskStatusCounts: { skipped: 14, success: 2 },
         },
-        liveSmoke: { status: 'skipped' },
         reasonCode: 'trial_blocked',
       },
       stagedSnapshotHash: value.stage.snapshotHash,

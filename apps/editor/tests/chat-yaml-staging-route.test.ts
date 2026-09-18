@@ -30,10 +30,7 @@ import { pipelineManifestPath } from '../server/pipeline-manifest';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { shouldBlockYamlEditLockMutation } from '../server/yaml-edit-lock';
 import { WorkspaceState } from '../server/workspace-state';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-} from '../shared/chat-pipeline-trial-consent';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 type MockResponse = ReturnType<typeof makeRes>;
@@ -164,7 +161,6 @@ function yamlFor(name: string, prompt: string): string {
 function makeWorkspace(
   authorizeTrial = true,
   trialPlanMaxAttempts?: number,
-  authorizeLiveSmokeTest = true,
 ): { ws: WorkspaceState; sourcePath: string } {
   const root = mkdtempSync(join(tmpdir(), 'tagma-chat-stage-route-'));
   roots.push(root);
@@ -183,13 +179,6 @@ function makeWorkspace(
         ? {
             opencodeChatTrialRunEnabled: true,
             opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-            opencodeChatTrialLiveSmokeTestEnabled: authorizeLiveSmokeTest,
-            ...(authorizeLiveSmokeTest
-              ? {
-                  opencodeChatTrialLiveSmokeTestConsentVersion:
-                    CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-                }
-              : {}),
             ...(trialPlanMaxAttempts === undefined
               ? {}
               : { opencodeChatTrialPlanMaxAttempts: trialPlanMaxAttempts }),
@@ -365,7 +354,6 @@ function trialCacheRecordPath(
 
 afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.captureHostWitnessAsync;
-  delete __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated;
   delete __chatPipelineTrialRunTestHooks.onProgress;
   for (const ws of workspaces.splice(0)) {
     disposeTrialWitnessWorker(ws);
@@ -1049,12 +1037,8 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      verificationMode: 'sandbox-cases-only',
       cases: [{ id: 'virtual-input', success: true }],
     });
-    expect((plannedTrialRes.body as { summary: string }).summary).toContain(
-      'Live Smoke Test was enabled but skipped',
-    );
     expect((plannedTrialRes.body as { summary: string }).summary).toContain(
       'Trial run passed with warnings (success=1).',
     );
@@ -1087,7 +1071,7 @@ describe('chat YAML staging routes', () => {
   });
 
   test('requires an authored Sandbox fixture even when the live trigger input exists', async () => {
-    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const { ws, sourcePath } = makeWorkspace(true, undefined);
     const getRoute = createHarness();
     const liveInputPath = join(ws.workDir, 'input', 'existing.md');
     mkdirSync(dirname(liveInputPath), { recursive: true });
@@ -1264,7 +1248,6 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      verificationMode: 'sandbox-cases-only',
       planTelemetry: { toolAttemptCount: 2, successfulWriteCount: 2 },
       cases: [{ id: 'pipeline-local-input', success: true }],
     });
@@ -1392,7 +1375,9 @@ describe('chat YAML staging routes', () => {
             title: 'Load staged static context',
             objective: 'Prove the isolated prompt receives its pipeline-local context file.',
             runs: 1,
-            targetTaskIds: ['main.capture'],
+            // Every terminal task must be targeted: a Sandbox Trial no longer
+            // executes a real-workspace baseline that would sweep up the rest.
+            targetTaskIds: ['main.capture', 'main.audit'],
             fixtures: [],
             expectations: [
               {
@@ -1419,7 +1404,6 @@ describe('chat YAML staging routes', () => {
       expect(trialRes.body).toMatchObject({
         success: true,
         ran: true,
-        verificationMode: 'sandbox-cases-with-live-smoke',
         cases: [
           {
             id: 'static-context',
@@ -1434,20 +1418,8 @@ describe('chat YAML staging routes', () => {
           },
         ],
       });
-      const baselineTasks = (
-        trialRes.body as {
-          tasks: Array<{ caseId: string | null; taskId: string; status: string }>;
-        }
-      ).tasks.filter((task) => task.caseId === null);
-      expect(baselineTasks.find((task) => task.taskId === 'main.capture')).toMatchObject({
-        status: 'skipped',
-      });
-      expect(baselineTasks.find((task) => task.taskId === 'main.audit')).toMatchObject({
-        status: 'success',
-      });
-      expect((trialRes.body as { summary: string }).summary).toContain(
-        'static_context middleware source is not ready in the real workspace',
-      );
+      const staleContextPath = join(dirname(sourcePath), 'prompts', 'context.md');
+      expect(readFileSync(staleContextPath, 'utf-8')).toBe('LIVE-STALE-CONTEXT');
 
       const finalizeRes = makeRes();
       await getRoute('/api/workspace/chat-yaml-stage/finalize')(
@@ -1475,7 +1447,7 @@ describe('chat YAML staging routes', () => {
   });
 
   test('accepts a declared task failure on every run of a repeated Sandbox case', async () => {
-    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const { ws, sourcePath } = makeWorkspace(true, undefined);
     const getRoute = createHarness();
     const startRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/start')(
@@ -1539,7 +1511,6 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      verificationMode: 'sandbox-cases-only',
       cases: [
         {
           id: 'repeated-fail-fast',
@@ -1556,7 +1527,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('publishes verified Sandbox coverage when real environment requirements skip Live Smoke', async () => {
+  test('publishes verified Sandbox coverage when real environment requirements stay unmet', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -1624,8 +1595,6 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      liveSmokeStatus: 'skipped',
-      verificationMode: 'sandbox-cases-only',
       plannedCaseCount: 1,
       caseResultCount: 1,
       notRunCaseCount: 0,
@@ -1672,9 +1641,6 @@ describe('chat YAML staging routes', () => {
       JSON.stringify({
         opencodeChatTrialRunEnabled: true,
         opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        opencodeChatTrialLiveSmokeTestEnabled: true,
-        opencodeChatTrialLiveSmokeTestConsentVersion:
-          CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
         opencodeChatTrialPlanMaxAttempts: 1,
       }),
       'utf-8',
@@ -1986,9 +1952,10 @@ describe('chat YAML staging routes', () => {
       diagnosticOnlyRes,
     );
     // Blocked coverage is a non-fatal observation limit: the plan no longer
-    // short-circuits, so the Trial actually runs. In this fixture the isolated
-    // case writes to an absolute real-workspace path and is caught as a
-    // diagnostic-only failure; the live-smoke baseline still writes the marker.
+    // short-circuits, so the Trial actually runs. In this fixture the case runs
+    // with normal host authority on an absolute real-workspace path, so the
+    // marker lands outside the temporary copy and is caught as a
+    // diagnostic-only failure rather than a pipeline change.
     expect(diagnosticOnlyRes.body).toMatchObject({
       success: false,
       kind: 'failed',
@@ -2689,7 +2656,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('pins one staged YAML snapshot for baseline and targeted cases within a single trial request', async () => {
+  test('pins one staged YAML snapshot for every targeted case within a single trial request', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -2702,27 +2669,17 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const baselineStartedPath = join(ws.workDir, 'trial-snapshot-baseline-started.txt');
+    // The case must not write into the real workspace: doing so is exactly the
+    // containment breach the workspace mutation monitor reports as a failure.
+    const markerDir = mkdtempSync(join(tmpdir(), 'tagma-trial-snapshot-marker-'));
+    roots.push(markerDir);
+    const firstCaseStartedPath = join(markerDir, 'trial-snapshot-first-case-started.txt');
     const initialScript = [
       `const fs = require('node:fs');`,
-      `const started = ${JSON.stringify(baselineStartedPath)};`,
-      `if (!process.env.TAGMA_TRIAL_CASE_ID) {`,
-      `  fs.writeFileSync(started, 'baseline');`,
-      `  setTimeout(() => process.exit(0), 200);`,
-      `} else {`,
-      `  process.exit(0);`,
-      `}`,
+      `fs.writeFileSync(${JSON.stringify(firstCaseStartedPath)}, 'running');`,
+      `setTimeout(() => process.exit(0), 200);`,
     ].join(' ');
-    const mutatedScript = [
-      `const fs = require('node:fs');`,
-      `const started = ${JSON.stringify(baselineStartedPath)};`,
-      `if (!process.env.TAGMA_TRIAL_CASE_ID) {`,
-      `  fs.writeFileSync(started, 'baseline');`,
-      `  setTimeout(() => process.exit(0), 200);`,
-      `} else {`,
-      `  process.exit(1);`,
-      `}`,
-    ].join(' ');
+    const mutatedScript = `process.exit(1);`;
     const writeTrialYaml = (script: string) =>
       writeFileSync(
         entry.stagedPath,
@@ -2766,9 +2723,18 @@ describe('chat YAML staging routes', () => {
     writeTrialPlan(entry.stagedPath, {
       cases: [
         {
+          id: 'opening-case',
+          title: 'The first case opens the pinned snapshot window',
+          objective: 'Establish that the request is executing before the staged YAML is edited.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+        {
           id: 'snapshot-case',
-          title: 'The case must reuse the same YAML snapshot as baseline',
-          objective: 'A mid-baseline staged YAML edit must not swap the case pipeline.',
+          title: 'The case must reuse the same YAML snapshot as the opening case',
+          objective: 'A mid-trial staged YAML edit must not swap the case pipeline.',
           runs: 1,
           targetTaskIds: ['main.verify'],
           fixtures: [],
@@ -2785,19 +2751,24 @@ describe('chat YAML staging routes', () => {
       ),
       trialRes,
     );
-    for (let attempt = 0; attempt < 500 && !existsSync(baselineStartedPath); attempt += 1) {
+    for (let attempt = 0; attempt < 900 && !existsSync(firstCaseStartedPath); attempt += 1) {
       await Bun.sleep(10);
     }
-    expect(existsSync(baselineStartedPath)).toBe(true);
+    expect(existsSync(firstCaseStartedPath)).toBe(true);
     writeTrialYaml(mutatedScript);
     writeRequirements('TAGMA_TRIAL_SNAPSHOT_MUST_STAY_MISSING');
     await trialPromise;
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: true,
+      // Host commands carry a host-risk warning now that no real-workspace
+      // baseline approves the declaration.
       kind: 'passed-with-warnings',
       ran: true,
-      cases: [{ id: 'snapshot-case', success: true }],
+      cases: [
+        { id: 'opening-case', success: true },
+        { id: 'snapshot-case', success: true },
+      ],
     });
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
@@ -2916,7 +2887,7 @@ describe('chat YAML staging routes', () => {
   });
 
   test('promotes the YAML lease workspace-wide while Trial cases are running', async () => {
-    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const { ws, sourcePath } = makeWorkspace(true, undefined);
     const otherPath = pipelineYamlPath(ws.workDir, 'pipeline-b');
     mkdirSync(dirname(otherPath), { recursive: true });
     writeFileSync(otherPath, yamlFor('Pipeline B', 'manual'), 'utf-8');
@@ -3334,7 +3305,9 @@ describe('chat YAML staging routes', () => {
   });
   test('does not execute an isolated case when the workspace cannot be sealed', async () => {
     const { ws, sourcePath } = makeWorkspace();
-    const caseExecutedPath = join(ws.workDir, 'unsealed-case-executed.txt');
+    const markerDir = mkdtempSync(join(tmpdir(), 'tagma-trial-unsealed-marker-'));
+    roots.push(markerDir);
+    const caseExecutedPath = join(markerDir, 'unsealed-case-executed.txt');
     const getRoute = createHarness();
     const startRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/start')(
@@ -3348,9 +3321,7 @@ describe('chat YAML staging routes', () => {
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     const script = [
       "const fs = require('node:fs');",
-      "const path = require('node:path');",
-      `if (process.env.TAGMA_TRIAL_CASE_ID) fs.writeFileSync(${JSON.stringify(caseExecutedPath)}, 'ran');`,
-      `else fs.writeFileSync(path.join(${JSON.stringify(ws.workDir)}, '.git'), 'invalid git marker');`,
+      `fs.writeFileSync(${JSON.stringify(caseExecutedPath)}, 'ran');`,
     ].join(' ');
     writeFileSync(
       entry.stagedPath,
@@ -3380,6 +3351,11 @@ describe('chat YAML staging routes', () => {
         },
       ],
     });
+    // Seal the real workspace by making its witness unusable: a `.git` marker
+    // that git cannot parse turns the workspace witness into a hard failure, so
+    // the trial must refuse to run an unmonitored isolated case. The refusal
+    // happens while capturing the host witness, before any case is prepared.
+    writeFileSync(join(ws.workDir, '.git'), 'invalid git marker', 'utf-8');
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
@@ -3391,24 +3367,21 @@ describe('chat YAML staging routes', () => {
       trialRes,
     );
 
+    // A workspace that cannot be sealed is not a case failure: the trial stops
+    // before the case is prepared, so the refused case is reported under
+    // notRunCases rather than as an executed case with a failed expectation.
     expect(trialRes.body).toMatchObject({
       success: false,
       kind: 'witness-failed',
-      cases: [
+      ran: false,
+      cases: [],
+      notRunCases: [
         {
           id: 'must-not-run',
-          success: false,
-          runIds: [],
-          tasks: [],
-          expectations: [
-            {
-              type: 'case-execution',
-              passed: false,
-              detail: expect.stringContaining('Could not seal the real workspace after baseline'),
-            },
-          ],
+          reason: 'workspace-verification-failed',
         },
       ],
+      summary: expect.stringContaining('Trial host witness capture failed'),
     });
     expect(existsSync(caseExecutedPath)).toBe(false);
 
@@ -3667,7 +3640,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('refuses a real-workspace baseline without current explicit consent', async () => {
+  test('refuses Sandbox Trial without current explicit consent', async () => {
     const { ws, sourcePath } = makeWorkspace(false);
     const markerPath = join(ws.workDir, 'unconsented-trial-ran.txt');
     writeFileSync(
@@ -3810,8 +3783,8 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('keeps Sandbox Trial cases off the real workspace without Live Smoke Test consent', async () => {
-    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+  test('keeps Sandbox Trial cases off the real workspace', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, undefined);
     const sourceBefore = readFileSync(sourcePath, 'utf-8');
     const revisionBefore = ws.stateRevision;
     const getRoute = createHarness();
@@ -3861,9 +3834,6 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.body).toMatchObject({
       success: true,
       ran: true,
-      trialMode: 'sandbox',
-      verificationMode: 'sandbox-cases-only',
-      trialabilityReport: { mode: 'sandbox' },
       cases: [{ id: 'isolated-probe', success: true }],
     });
     expect(
@@ -3881,81 +3851,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('runs an explicitly authorized Live Smoke Test baseline without publishing staged YAML', async () => {
-    const { ws, sourcePath } = makeWorkspace();
-    const getRoute = createHarness();
-    const startRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/start')(
-      request(ws, { activePath: sourcePath }, 'chat-lock'),
-      startRes,
-    );
-    const stage = startRes.body as {
-      id: string;
-      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
-    };
-    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    writeFileSync(
-      entry.stagedPath,
-      serializePipeline({
-        name: 'Trial Pipeline',
-        tracks: [
-          {
-            id: 'main',
-            name: 'Main',
-            tasks: [
-              {
-                id: 'cwd',
-                command: {
-                  argv: [process.execPath, '-e', 'process.stdout.write(process.cwd())'],
-                },
-              },
-            ],
-          },
-        ],
-      }),
-      'utf-8',
-    );
-    compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.cwd');
-
-    const trialRes = makeRes();
-    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
-      request(
-        ws,
-        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'finished_turn_1' },
-        'chat-lock',
-      ),
-      trialRes,
-    );
-
-    expect(trialRes.statusCode).toBe(200);
-    expect(trialRes.body).toMatchObject({
-      success: true,
-      kind: 'passed-with-warnings',
-      ran: true,
-      trialMode: 'sandbox-with-live-smoke',
-      verificationMode: 'sandbox-cases-with-live-smoke',
-      trialabilityReport: { mode: 'sandbox-with-live-smoke' },
-    });
-    const baselineTask = (
-      trialRes.body as {
-        tasks: Array<{ caseId: string | null; taskId: string; status: string; stdout: string }>;
-      }
-    ).tasks.find((task) => task.caseId === null && task.taskId === 'main.cwd');
-    expect(baselineTask).toMatchObject({ status: 'success', stdout: ws.workDir });
-    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: base');
-    expect(ws.stateRevision).toBe(0);
-
-    const discardRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/discard')(
-      request(ws, { stageId: stage.id }, 'chat-lock'),
-      discardRes,
-    );
-    ws.watcher.stopWatching();
-    ws.layoutWatcher.stopWatching();
-  });
-
-  test('creates a staged-only cwd pipeline after Sandbox covers its Live Smoke exclusions', async () => {
+  test('creates a staged-only cwd pipeline after Sandbox covers its staged-only exclusions', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const sourceBefore = readFileSync(sourcePath, 'utf-8');
     const getRoute = createHarness();
@@ -4039,8 +3935,6 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      trialMode: 'sandbox-with-live-smoke',
-      verificationMode: 'sandbox-cases-only',
       cases: [
         {
           id: 'staged-cwd',
@@ -4055,10 +3949,6 @@ describe('chat YAML staging routes', () => {
         tasks: Array<{ caseId: string | null; taskId: string; status: string }>;
       }>;
     };
-    expect(trialBody.summary).toContain('Live Smoke Test was enabled but skipped');
-    expect(trialBody.summary).toContain(
-      'effective cwd exists only in the staged target pipeline and cannot exist in the real workspace until finalize',
-    );
     expect(
       new Set(trialBody.cases[0]!.tasks.map((task) => `${task.taskId}:${task.status}`)),
     ).toEqual(new Set(['track_cwd.ask:success', 'task_cwd.ask:success']));
@@ -4081,87 +3971,6 @@ describe('chat YAML staging routes', () => {
     expect(readFileSync(sourcePath, 'utf-8')).toBe(sourceBefore);
     expect(readFileSync(primaryPath, 'utf-8')).toContain('name: Staged-only cwd pipeline');
     expect(existsSync(copyPath)).toBe(false);
-    ws.watcher.stopWatching();
-    ws.layoutWatcher.stopWatching();
-  });
-
-  test('rejects staged-only cwd drift after the pre-run host witness', async () => {
-    const { ws, sourcePath } = makeWorkspace();
-    const getRoute = createHarness();
-    const startRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/start')(
-      request(ws, { activePath: sourcePath, requestedAction: 'create-new-pipeline' }, 'chat-lock'),
-      startRes,
-    );
-    const stage = startRes.body as {
-      id: string;
-      activeRelativePath: string;
-      activeStagedPath: string;
-    };
-    const relativePath = stage.activeRelativePath;
-    const stagedPath = stage.activeStagedPath;
-    const reservedStem = relativePath.split('/')[0]!;
-    const livePipelineDir = join(ws.workDir, '.tagma', reservedStem);
-    const liveCwd = join(livePipelineDir, 'task-work');
-
-    mkdirSync(dirname(stagedPath), { recursive: true });
-    writeFileSync(
-      stagedPath,
-      serializePipeline({
-        name: 'Staged cwd witness race',
-        tracks: [
-          {
-            id: 'main',
-            name: 'Main',
-            tasks: [
-              {
-                id: 'ask',
-                cwd: `.tagma/${reservedStem}/task-work`,
-                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
-              },
-            ],
-          },
-        ],
-      }),
-      'utf-8',
-    );
-    mkdirSync(join(dirname(stagedPath), 'task-work'), { recursive: true });
-    compileStage(getRoute, ws, stage.id, relativePath);
-    writeTrialPlan(stagedPath, {
-      cases: [
-        {
-          id: 'staged-cwd',
-          title: 'Staged cwd',
-          objective: 'Exercise the staged cwd in the isolated workspace.',
-          runs: 1,
-          targetTaskIds: ['main.ask'],
-          fixtures: [],
-          expectations: [{ type: 'task-status', taskId: 'main.ask', status: 'success' }],
-        },
-      ],
-    });
-    expect(existsSync(livePipelineDir)).toBe(false);
-
-    __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated = () => {
-      mkdirSync(livePipelineDir, { recursive: true });
-      writeFileSync(liveCwd, 'not a directory', 'utf-8');
-    };
-
-    const trialRes = makeRes();
-    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
-      request(
-        ws,
-        { stageId: stage.id, relativePath, trialId: 'staged_cwd_witness_race' },
-        'chat-lock',
-      ),
-      trialRes,
-    );
-
-    expect(trialRes.statusCode).toBe(200);
-    expect(trialRes.body).toMatchObject({ success: false, kind: 'witness-failed', ran: true });
-    expect((trialRes.body as { summary: string }).summary).toContain(
-      'Live Smoke readiness changed during trial execution',
-    );
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
@@ -4226,10 +4035,7 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath, trialId }, 'chat-lock'),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({
-      success: true,
-      verificationMode: 'sandbox-cases-only',
-    });
+    expect(trialRes.body).toMatchObject({ success: true });
     expect(existsSync(livePipelineDir)).toBe(false);
 
     mkdirSync(livePipelineDir, { recursive: true });
@@ -4248,85 +4054,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('rejects directory-trigger readiness drift after the pre-run host witness', async () => {
-    const { ws, sourcePath } = makeWorkspace();
-    const getRoute = createHarness();
-    const startRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/start')(
-      request(ws, { activePath: sourcePath }, 'chat-lock'),
-      startRes,
-    );
-    const stage = startRes.body as {
-      id: string;
-      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
-    };
-    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const liveInputDir = join(ws.workDir, 'input', 'articles');
-
-    writeFileSync(
-      entry.stagedPath,
-      serializePipeline({
-        name: 'Directory trigger witness race',
-        tracks: [
-          {
-            id: 'main',
-            name: 'Main',
-            tasks: [
-              {
-                id: 'ingest',
-                trigger: { type: 'directory', path: 'input/articles' },
-                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
-              },
-            ],
-          },
-        ],
-      }),
-      'utf-8',
-    );
-    compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writeTrialPlan(entry.stagedPath, {
-      cases: [
-        {
-          id: 'directory-input',
-          title: 'Directory input',
-          objective: 'Exercise the unavailable directory trigger with an isolated fixture.',
-          runs: 1,
-          targetTaskIds: ['main.ingest'],
-          fixtures: [{ path: 'input/articles/example.txt', content: 'fixture' }],
-          expectations: [{ type: 'task-status', taskId: 'main.ingest', status: 'success' }],
-        },
-      ],
-    });
-    expect(existsSync(liveInputDir)).toBe(false);
-
-    __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated = () => {
-      mkdirSync(liveInputDir, { recursive: true });
-    };
-
-    const trialRes = makeRes();
-    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
-      request(
-        ws,
-        {
-          stageId: stage.id,
-          relativePath: entry.relativePath,
-          trialId: 'directory_trigger_witness_race',
-        },
-        'chat-lock',
-      ),
-      trialRes,
-    );
-
-    expect(trialRes.statusCode).toBe(200);
-    expect(trialRes.body).toMatchObject({ success: false, kind: 'witness-failed', ran: true });
-    expect((trialRes.body as { summary: string }).summary).toContain(
-      'Live Smoke readiness changed during trial execution',
-    );
-    ws.watcher.stopWatching();
-    ws.layoutWatcher.stopWatching();
-  });
-
-  test('does not verify a cached trial after an empty directory trigger becomes ready', async () => {
+  test('replays a cached trial after an untracked empty directory appears in the workspace', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const gitInit = Bun.spawnSync(['git', '-C', ws.workDir, 'init', '--quiet']);
     expect(gitInit.exitCode).toBe(0);
@@ -4385,12 +4113,15 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({
-      success: true,
-      verificationMode: 'sandbox-cases-only',
-    });
+    expect(trialRes.body).toMatchObject({ success: true });
     expect(existsSync(liveInputDir)).toBe(false);
 
+    // An untracked empty directory is invisible to the host witness (git does
+    // not track directories), and the Sandbox Trial no longer compares a
+    // live-smoke readiness snapshot that used to treat the newly created
+    // trigger directory as a staleness signal. The cached trial therefore still
+    // verifies. Drift in real files is still caught by the host witness digest,
+    // which is covered by the workspace-root input case below.
     mkdirSync(liveInputDir, { recursive: true });
     const finalizeRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/finalize')(
@@ -4400,8 +4131,8 @@ describe('chat YAML staging routes', () => {
 
     expect(finalizeRes.statusCode).toBe(200);
     expect(finalizeRes.body).toMatchObject({
-      trialVerification: 'not-verified',
-      conflicts: expect.arrayContaining(['trial-run-failed']),
+      conflicts: [],
+      trialVerification: 'verified',
     });
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
@@ -4421,10 +4152,10 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const baselineStartedPath = join(ws.workDir, 'reserved-trial-started.txt');
+    const trialStartedPath = join(ws.workDir, 'reserved-trial-started.txt');
     const script = [
       "const fs = require('node:fs');",
-      `fs.writeFileSync(${JSON.stringify(baselineStartedPath)}, 'started');`,
+      `fs.writeFileSync(${JSON.stringify(trialStartedPath)}, 'started');`,
       'setTimeout(() => {}, 30_000);',
     ].join(' ');
     writeFileSync(
@@ -4464,10 +4195,10 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       activeTrialRes,
     );
-    for (let attempt = 0; attempt < 500 && !existsSync(baselineStartedPath); attempt += 1) {
+    for (let attempt = 0; attempt < 900 && !existsSync(trialStartedPath); attempt += 1) {
       await Bun.sleep(10);
     }
-    expect(existsSync(baselineStartedPath)).toBe(true);
+    expect(existsSync(trialStartedPath)).toBe(true);
 
     const ordinaryRes = makeRes();
     await getRunRoute('/api/run/start')(request(ws, { configSnapshot: 'invalid' }), ordinaryRes);
@@ -4507,7 +4238,11 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const counterPath = join(ws.workDir, 'cancel-trial-counter.txt');
+    // The observer lives outside the real workspace: a case that writes into
+    // the real workspace is a containment breach the mutation monitor reports.
+    const counterDir = mkdtempSync(join(tmpdir(), 'tagma-trial-cancel-counter-'));
+    roots.push(counterDir);
+    const counterPath = join(counterDir, 'cancel-trial-counter.txt');
     const script = [
       `const fs = require('node:fs');`,
       `const path = ${JSON.stringify(counterPath)};`,
@@ -4533,7 +4268,25 @@ describe('chat YAML staging routes', () => {
       'utf-8',
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+    // Both terminal tasks must be targeted so the long-running task executes as
+    // part of the isolated case closure; Sandbox Trial has no baseline run that
+    // would otherwise start it.
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'cancelable-case',
+          title: 'Run the cancelable closure',
+          objective: 'Start the long-running task inside an isolated case so it can be cancelled.',
+          runs: 1,
+          targetTaskIds: ['main.wait', 'main.case_probe'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'main.wait', status: 'success' },
+            { type: 'task-status', taskId: 'main.case_probe', status: 'success' },
+          ],
+        },
+      ],
+    });
 
     const trialId = 'cancel_trial_1';
     const firstRes = makeRes();
@@ -4543,7 +4296,7 @@ describe('chat YAML staging routes', () => {
     );
     for (
       let attempt = 0;
-      attempt < 100 && (!existsSync(counterPath) || !ws.chatPipelineTrialAbort);
+      attempt < 900 && (!existsSync(counterPath) || !ws.chatPipelineTrialAbort);
       attempt += 1
     ) {
       await Bun.sleep(10);
@@ -4594,7 +4347,11 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const counterPath = join(ws.workDir, 'trial-counter.txt');
+    // The counter must live outside the real workspace: a case writing into the
+    // real workspace is a containment breach the mutation monitor reports.
+    const counterDir = mkdtempSync(join(tmpdir(), 'tagma-trial-evidence-counter-'));
+    roots.push(counterDir);
+    const counterPath = join(counterDir, 'trial-counter.txt');
     const script = [
       "const fs = require('node:fs');",
       `const path = ${JSON.stringify(counterPath)};`,
@@ -4622,7 +4379,24 @@ describe('chat YAML staging routes', () => {
       'utf-8',
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+    // Both terminal tasks must be targeted: a Sandbox Trial no longer runs a
+    // real-workspace baseline that would exercise the rest of the pipeline.
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'failing-probe',
+          title: 'Evidence probe',
+          objective: 'Run the failing task in an isolated workspace and bound its evidence.',
+          runs: 1,
+          targetTaskIds: ['main.verify', 'main.case_probe'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'main.verify', status: 'success' },
+            { type: 'task-status', taskId: 'main.case_probe', status: 'success' },
+          ],
+        },
+      ],
+    });
 
     const runTrial = async () => {
       const res = makeRes();
@@ -4641,13 +4415,16 @@ describe('chat YAML staging routes', () => {
 
     expect(first.statusCode).toBe(200);
     expect(second.body).toEqual(first.body);
+    // A failure inside an isolated case is pipeline evidence, so the trial
+    // authorizes a pipeline change (there is no real-workspace baseline whose
+    // failures would only be diagnosable against the host environment).
     expect(first.body).toMatchObject({
       success: false,
       kind: 'failed',
-      repairAuthorization: 'diagnostic-only',
+      repairAuthorization: 'pipeline-change-allowed',
       ran: true,
     });
-    const failedBaselineTask = (
+    const failedCaseTask = (
       first.body as {
         tasks: Array<{
           caseId: string | null;
@@ -4659,12 +4436,13 @@ describe('chat YAML staging routes', () => {
           stderr: string;
         }>;
       }
-    ).tasks.find((task) => task.caseId === null && task.taskId === 'main.verify');
-    expect(failedBaselineTask).toMatchObject({
+    ).tasks.find((task) => task.taskId === 'main.verify');
+    expect(failedCaseTask).toMatchObject({
+      caseId: 'failing-probe',
       status: 'failed',
       exitCode: 7,
       failureKind: 'exit_nonzero',
-      repairScope: 'diagnostic-only',
+      repairScope: 'pipeline-artifact',
       stderr: 'trial assertion failed',
     });
     expect(JSON.stringify(first.body)).not.toContain('json-secret');
@@ -4703,7 +4481,7 @@ describe('chat YAML staging routes', () => {
   });
 
   test('reruns only changed command-case closures across YAML revisions', async () => {
-    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const { ws, sourcePath } = makeWorkspace(true, undefined);
     const getRoute = createHarness();
     const startRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/start')(
@@ -4827,7 +4605,7 @@ describe('chat YAML staging routes', () => {
   });
 
   test('invalidates a signed Trial cache when the capability declaration changes', async () => {
-    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const { ws, sourcePath } = makeWorkspace(true, undefined);
     let watchCount = 0;
     let declaration: TrialInteractionDeclaration = {
       protocolVersion: 1,
@@ -4926,7 +4704,11 @@ describe('chat YAML staging routes', () => {
   test('replays a completed trial response after workspace drift but rejects stale finalize', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
-    const counterPath = join(ws.workDir, 'trial-success-counter.txt');
+    // The helper runs inside an isolated case, which must not write into the
+    // real workspace; only the helper itself is a real-workspace input.
+    const counterDir = mkdtempSync(join(tmpdir(), 'tagma-trial-drift-counter-'));
+    roots.push(counterDir);
+    const counterPath = join(counterDir, 'trial-success-counter.txt');
     const helperPath = join(dirname(sourcePath), 'helper.js');
     const writeHelper = (version: string) =>
       writeFileSync(
@@ -4970,7 +4752,24 @@ describe('chat YAML staging routes', () => {
       'utf-8',
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+    // Both terminal tasks must be targeted so the helper still executes now
+    // that Sandbox Trial no longer runs a real-workspace baseline.
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'helper-probe',
+          title: 'Helper probe',
+          objective: 'Run the real pipeline helper inside an isolated case.',
+          runs: 1,
+          targetTaskIds: ['main.verify_live_helper', 'main.case_probe'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'main.verify_live_helper', status: 'success' },
+            { type: 'task-status', taskId: 'main.case_probe', status: 'success' },
+          ],
+        },
+      ],
+    });
 
     const runTrial = async () => {
       const res = makeRes();
@@ -5059,7 +4858,24 @@ describe('chat YAML staging routes', () => {
       'utf-8',
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+    // Both terminal tasks must be targeted so the pipeline-folder helper still
+    // executes now that Sandbox Trial has no real-workspace baseline run.
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'pipeline-folder-input',
+          title: 'Pipeline-folder input probe',
+          objective: 'Read a pipeline-folder input from inside an isolated case.',
+          runs: 1,
+          targetTaskIds: ['main.verify_live_input', 'main.case_probe'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'main.verify_live_input', status: 'success' },
+            { type: 'task-status', taskId: 'main.case_probe', status: 'success' },
+          ],
+        },
+      ],
+    });
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
@@ -5143,7 +4959,24 @@ describe('chat YAML staging routes', () => {
       'utf-8',
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+    // Both terminal tasks must be targeted so the workspace-root input is still
+    // read now that Sandbox Trial has no real-workspace baseline run.
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'workspace-root-input',
+          title: 'Workspace-root input probe',
+          objective: 'Read a workspace-root input from inside an isolated case.',
+          runs: 1,
+          targetTaskIds: ['main.verify_workspace_input', 'main.case_probe'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'main.verify_workspace_input', status: 'success' },
+            { type: 'task-status', taskId: 'main.case_probe', status: 'success' },
+          ],
+        },
+      ],
+    });
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
@@ -5271,9 +5104,9 @@ describe('chat YAML staging routes', () => {
           manualExecutionGrants: Array<{ taskId: string; approvalCount: number }>;
         }
       ).manualExecutionGrants,
-    ).toEqual([{ taskId: 'main.gated', approvalCount: 2 }]);
+    ).toEqual([{ taskId: 'main.gated', approvalCount: 1 }]);
     expect((trialRes.body as { summary: string }).summary).toContain(
-      'Trial automatically granted run-scoped manual approvals: main.gated (2 approvals).',
+      'Trial automatically granted run-scoped manual approvals: main.gated (1 approval).',
     );
 
     discardStage(getRoute, ws, stage.id);
@@ -5281,7 +5114,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('automatically grants manual terminal tasks during a consented Live Smoke baseline', async () => {
+  test('automatically grants manual terminal tasks inside the Sandbox target closure', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -5294,7 +5127,11 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const sideEffectPath = join(ws.workDir, 'manual-gate-side-effect.txt');
+    // The granted manual task runs inside an isolated case, which must not
+    // write into the real workspace; the side effect is observed outside it.
+    const sideEffectDir = mkdtempSync(join(tmpdir(), 'tagma-trial-manual-gate-'));
+    roots.push(sideEffectDir);
+    const sideEffectPath = join(sideEffectDir, 'manual-gate-side-effect.txt');
     writeFileSync(
       entry.stagedPath,
       serializePipeline({
@@ -5326,7 +5163,24 @@ describe('chat YAML staging routes', () => {
       'utf-8',
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+    // Both terminal tasks must be targeted: the manual terminal task is only
+    // granted inside the closure of a case that targets it.
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'manual-gate-probe',
+          title: 'Manual gate probe',
+          objective: 'Grant the manual terminal task inside the targeted closure.',
+          runs: 1,
+          targetTaskIds: ['main.gated', 'main.case_probe'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'main.gated', status: 'success' },
+            { type: 'task-status', taskId: 'main.case_probe', status: 'success' },
+          ],
+        },
+      ],
+    });
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
@@ -5342,8 +5196,6 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      trialMode: 'sandbox-with-live-smoke',
-      verificationMode: 'sandbox-cases-with-live-smoke',
       manualExecutionGrants: [{ taskId: 'main.gated', approvalCount: 1 }],
     });
     expect((trialRes.body as { summary: string }).summary).toContain(

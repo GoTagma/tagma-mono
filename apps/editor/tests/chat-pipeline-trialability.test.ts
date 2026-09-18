@@ -48,11 +48,9 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
       pipelineConfig: pipelineWithEveryHostSurface(),
       registry: registryWithBuiltins(),
       capabilityOwners: new Map(),
-      mode: 'sandbox',
     });
 
     expect(report.protocolVersion).toBe(1);
-    expect(report.mode).toBe('sandbox');
     expect(report.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ component: 'hook', type: 'pipeline_start' }),
@@ -83,7 +81,7 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
           component: 'driver',
           taskId: 'main.prompt',
           type: 'opencode',
-          disposition: 'live-smoke-only',
+          disposition: 'sandbox-ready-with-host-risk',
         }),
       ]),
     );
@@ -97,9 +95,8 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
         network: 'host-unrestricted',
         process: 'host-unrestricted',
       },
-      liveSmokeBaseline: null,
     });
-    expect(report.runnable).toBe(false);
+    expect(report.runnable).toBe(true);
   });
 
   test('fails fast when a legacy plugin omits the Trial protocol declaration', () => {
@@ -132,7 +129,6 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
       },
       registry,
       capabilityOwners: new Map([['triggers/legacy', '@example/legacy-trigger']]),
-      mode: 'sandbox',
     });
 
     expect(report.runnable).toBe(false);
@@ -182,7 +178,6 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
       },
       registry,
       capabilityOwners: new Map(),
-      mode: 'sandbox',
     });
 
     expect(report.runnable).toBe(false);
@@ -199,7 +194,7 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
     expect(watched).toBe(false);
   });
 
-  test('allows declared real credentials and network only with Live Smoke Test', () => {
+  test('downgrades declared real credentials and network to an explicit host-risk warning', () => {
     const registry = registryWithBuiltins();
     const driver: DriverPlugin = {
       name: 'remote-driver',
@@ -233,36 +228,21 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
       ],
     };
 
-    const sandbox = buildChatPipelineTrialabilityReport({
+    const report = buildChatPipelineTrialabilityReport({
       pipelineConfig,
       registry,
       capabilityOwners: new Map([['drivers/remote', '@example/remote-driver']]),
-      mode: 'sandbox',
-    });
-    const live = buildChatPipelineTrialabilityReport({
-      pipelineConfig,
-      registry,
-      capabilityOwners: new Map([['drivers/remote', '@example/remote-driver']]),
-      mode: 'sandbox-with-live-smoke',
     });
 
-    expect(sandbox.runnable).toBe(false);
-    expect(sandbox.items[0]).toMatchObject({ disposition: 'live-smoke-only' });
-    expect(live.runnable).toBe(true);
-    expect(live.items[0]).toMatchObject({ disposition: 'live-smoke-ready' });
-    expect(live.warnings.join('\n')).toContain('real credentials');
-    expect(live.enforcement.liveSmokeBaseline).toEqual({
-      workspace: 'real-workspace',
-      stdin: 'closed',
-      tty: 'none',
-      secrets: 'real',
-      filesystem: 'host-unrestricted',
-      network: 'host-unrestricted',
-      process: 'host-unrestricted',
-    });
+    expect(report.runnable).toBe(true);
+    expect(report.items[0]).toMatchObject({ disposition: 'sandbox-ready-with-host-risk' });
+    expect(report.blockers).toEqual([]);
+    expect(report.warnings.join('\n')).toContain('real credentials');
+    expect(report.warnings.join('\n')).toContain('external network writes');
+    expect(report.warnings.join('\n')).toContain('with normal host authority');
   });
 
-  test('keeps human interaction and malformed declarations blocked in every mode', () => {
+  test('keeps human interaction and malformed declarations blocked in the Sandbox Trial', () => {
     const registry = registryWithBuiltins();
     const browserDriver: DriverPlugin = {
       name: 'browser-driver',
@@ -315,7 +295,6 @@ describe('chat pipeline Trial Interaction Protocol preflight', () => {
       pipelineConfig,
       registry,
       capabilityOwners: new Map(),
-      mode: 'sandbox-with-live-smoke',
     });
 
     expect(report.runnable).toBe(false);

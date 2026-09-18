@@ -13,7 +13,6 @@ import { createOpencodeClient as createOpencodeV2Client } from '@opencode-ai/sdk
 
 import {
   createChatVerificationOutcome,
-  type ChatLiveSmokeStatus,
   type ChatVerificationOutcome,
 } from '../../shared/chat-verification-outcome.js';
 import { sameFilesystemPathCoordinate } from '../../shared/filesystem-paths.js';
@@ -160,21 +159,6 @@ function verificationOutcomeFromTrial(
         Math.max(0, trial.notRunCaseCount ?? 0),
       )
     : Math.max(0, input.caseCount - resultCaseCount);
-  const declaredLiveSmokeStatus = trial.liveSmokeStatus;
-  const liveSmokeStatus: ChatLiveSmokeStatus = [
-    'passed',
-    'failed',
-    'skipped',
-    'not_enabled',
-  ].includes(String(declaredLiveSmokeStatus))
-    ? (declaredLiveSmokeStatus as ChatLiveSmokeStatus)
-    : trial.trialMode === 'sandbox'
-      ? 'not_enabled'
-      : trial.executionCoverage?.liveSmoke?.executed === true
-        ? trial.success
-          ? 'passed'
-          : 'failed'
-        : 'skipped';
   return createChatVerificationOutcome({
     trialKind: trial.kind,
     ran: trial.ran === true,
@@ -184,7 +168,6 @@ function verificationOutcomeFromTrial(
     failedCaseCount: input.failedCount,
     notRunCaseCount,
     taskStatusCounts: trial.taskStatusCounts ?? {},
-    liveSmokeStatus,
     reasonCode: input.reasonCode,
     details: boundedVerificationDetails(
       trial.summary,

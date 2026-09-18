@@ -1,7 +1,6 @@
-export const CHAT_VERIFICATION_OUTCOME_SCHEMA_VERSION = 1 as const;
+export const CHAT_VERIFICATION_OUTCOME_SCHEMA_VERSION = 2 as const;
 
 export type ChatSandboxTrialStatus = 'passed' | 'partial' | 'failed' | 'skipped';
-export type ChatLiveSmokeStatus = 'passed' | 'failed' | 'skipped' | 'not_enabled';
 export type ChatPublicationStatus = 'published' | 'forked' | 'not_published';
 
 export interface ChatVerificationOutcome {
@@ -15,7 +14,6 @@ export interface ChatVerificationOutcome {
     readonly notRunCaseCount: number;
     readonly taskStatusCounts: Readonly<Record<string, number>>;
   };
-  readonly liveSmoke: { readonly status: ChatLiveSmokeStatus };
   readonly reasonCode: string | null;
   readonly details: string;
 }
@@ -29,7 +27,6 @@ export interface CreateChatVerificationOutcomeInput {
   readonly failedCaseCount: number;
   readonly notRunCaseCount: number;
   readonly taskStatusCounts: Readonly<Record<string, number>>;
-  readonly liveSmokeStatus: ChatLiveSmokeStatus;
   readonly reasonCode: string | null;
   readonly details: string;
 }
@@ -103,7 +100,6 @@ export function createChatVerificationOutcome(
     input.passedCaseCount + input.failedCaseCount > input.caseResultCount ||
     input.notRunCaseCount > input.plannedCaseCount - input.caseResultCount ||
     !taskStatusCounts ||
-    !['passed', 'failed', 'skipped', 'not_enabled'].includes(input.liveSmokeStatus) ||
     (input.reasonCode !== null && !SAFE_CODE_RE.test(input.reasonCode)) ||
     typeof input.details !== 'string' ||
     encoder.encode(input.details).byteLength > 16 * 1024
@@ -121,7 +117,6 @@ export function createChatVerificationOutcome(
       notRunCaseCount: input.notRunCaseCount,
       taskStatusCounts,
     }),
-    liveSmoke: Object.freeze({ status: input.liveSmokeStatus }),
     reasonCode: input.reasonCode,
     details: input.details,
   });
@@ -138,7 +133,7 @@ export function parseChatVerificationOutcome(value: unknown): ChatVerificationOu
   }
   if (
     !isRecord(parsed) ||
-    !hasExactKeys(parsed, ['schemaVersion', 'sandbox', 'liveSmoke', 'reasonCode', 'details']) ||
+    !hasExactKeys(parsed, ['schemaVersion', 'sandbox', 'reasonCode', 'details']) ||
     parsed.schemaVersion !== CHAT_VERIFICATION_OUTCOME_SCHEMA_VERSION ||
     !isRecord(parsed.sandbox) ||
     !hasExactKeys(parsed.sandbox, [
@@ -150,8 +145,6 @@ export function parseChatVerificationOutcome(value: unknown): ChatVerificationOu
       'notRunCaseCount',
       'taskStatusCounts',
     ]) ||
-    !isRecord(parsed.liveSmoke) ||
-    !hasExactKeys(parsed.liveSmoke, ['status']) ||
     !['passed', 'partial', 'failed', 'skipped'].includes(String(parsed.sandbox.status))
   ) {
     return null;
@@ -173,7 +166,6 @@ export function parseChatVerificationOutcome(value: unknown): ChatVerificationOu
       failedCaseCount: parsed.sandbox.failedCaseCount as number,
       notRunCaseCount: parsed.sandbox.notRunCaseCount as number,
       taskStatusCounts: parsed.sandbox.taskStatusCounts as Record<string, number>,
-      liveSmokeStatus: parsed.liveSmoke.status as ChatLiveSmokeStatus,
       reasonCode: parsed.reasonCode as string | null,
       details: parsed.details as string,
     });
@@ -209,7 +201,6 @@ export function formatChatVerificationOutcomeForExport(
     `Publication: ${publication.replace(/_/g, ' ')}`,
     `Sandbox Trial: ${sandboxLine(outcome)}`,
     ...(taskCounts ? [`Tasks: ${taskCounts}`] : []),
-    `Live Smoke: ${outcome.liveSmoke.status.replace(/_/g, ' ')}`,
     ...(outcome.reasonCode ? [`Reason: ${outcome.reasonCode}`] : []),
     ...(outcome.details ? ['', 'Details:', outcome.details] : []),
   ].join('\n');

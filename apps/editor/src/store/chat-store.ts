@@ -642,17 +642,15 @@ export function chatOperationV2Activity(
 
 function chatOperationV2TrialProgressDetail(progress: ChatOperationV2TrialProgress): string {
   const phase =
-    progress.phase === 'running-baseline'
-      ? 'Running Live Smoke'
-      : progress.phase === 'running-case'
-        ? 'Running Sandbox case'
-        : progress.phase === 'capturing-host-witness' ||
-            progress.phase === 'capturing-post-witness' ||
-            progress.phase === 'verifying-workspace'
-          ? 'Verifying workspace safety'
-          : progress.phase === 'sealing-baseline'
-            ? 'Sealing Live Smoke evidence'
-            : 'Preparing Sandbox Trial';
+    progress.phase === 'running-case'
+      ? 'Running Sandbox case'
+      : progress.phase === 'capturing-host-witness' ||
+          progress.phase === 'capturing-post-witness' ||
+          progress.phase === 'verifying-workspace'
+        ? 'Verifying workspace safety'
+        : progress.phase === 'sealing-baseline'
+          ? 'Sealing workspace evidence'
+          : 'Preparing Sandbox Trial';
   const caseCount =
     progress.caseIndex !== null && progress.caseCount !== null
       ? ` · case ${progress.caseIndex}/${progress.caseCount}`

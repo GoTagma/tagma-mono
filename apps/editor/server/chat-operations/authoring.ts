@@ -571,7 +571,6 @@ export interface ChatOperationV2TrialProgressUpdate {
   readonly phase:
     | 'preparing'
     | 'capturing-host-witness'
-    | 'running-baseline'
     | 'sealing-baseline'
     | 'running-case'
     | 'verifying-workspace'

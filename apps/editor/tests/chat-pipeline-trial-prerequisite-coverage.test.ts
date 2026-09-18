@@ -5,10 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-} from '../shared/chat-pipeline-trial-consent';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import {
@@ -49,7 +46,6 @@ test('Trial verifies pipeline-generated downstream inputs without pre-seeding th
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: false,
     }),
     'utf8',
   );
@@ -231,7 +227,6 @@ test('Trial verifies pipeline-generated downstream inputs without pre-seeding th
         ],
       },
     ],
-    liveSmoke: null,
   });
   expect(result.manualExecutionGrants).toEqual([{ taskId: 'main.seed', approvalCount: 1 }]);
   expect(result.tasks).toContainEqual(
@@ -254,7 +249,6 @@ test('Trial rejects a repeated file case when a later run reuses the prior artif
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: false,
     }),
     'utf8',
   );
@@ -406,9 +400,6 @@ test('Trial executes an independent branch before reporting another branch prere
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     }),
     'utf8',
   );

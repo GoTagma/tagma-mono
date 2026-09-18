@@ -523,11 +523,8 @@ describe('temporary diagnostics sessions', () => {
                 taskStatusCounts: { success: 3, failed: 1 },
                 repairAuthorization: 'pipeline-change-allowed',
                 prerequisiteState: 'available',
-                trialMode: 'sandbox-with-live-smoke',
-                verificationMode: 'sandbox-cases-with-live-smoke',
                 trialabilityReport: {
                   protocolVersion: 1,
-                  mode: 'sandbox-with-live-smoke',
                   runnable: false,
                   enforcement: {
                     sandboxCases: {
@@ -539,15 +536,6 @@ describe('temporary diagnostics sessions', () => {
                       network: 'host-unrestricted',
                       process: 'host-unrestricted',
                     },
-                    liveSmokeBaseline: {
-                      workspace: 'real-workspace',
-                      stdin: 'closed',
-                      tty: 'none',
-                      secrets: 'real',
-                      filesystem: 'host-unrestricted',
-                      network: 'host-unrestricted',
-                      process: 'host-unrestricted',
-                    },
                     privateField: 'must not survive',
                   },
                   items: Array.from({ length: 35 }, (_, index) => ({
@@ -556,7 +544,7 @@ describe('temporary diagnostics sessions', () => {
                     type: `driver-${index}`,
                     provider: `provider-${index}`,
                     declaration: null,
-                    disposition: 'live-smoke-only',
+                    disposition: 'sandbox-ready',
                     privatePayload: 'must not survive',
                   })),
                   blockers: Array.from(
@@ -748,8 +736,6 @@ describe('temporary diagnostics sessions', () => {
             success: false,
             taskStatusCounts: { success: 3, failed: 1 },
             repairAuthorization: 'pipeline-change-allowed',
-            trialMode: 'sandbox-with-live-smoke',
-            verificationMode: 'sandbox-cases-with-live-smoke',
             notRunCases: {
               totalCount: 1,
               returnedCount: 1,
@@ -765,11 +751,9 @@ describe('temporary diagnostics sessions', () => {
             },
             trialabilityReport: {
               protocolVersion: 1,
-              mode: 'sandbox-with-live-smoke',
               runnable: false,
               containment: {
                 sandboxCases: { level: 'application', osSandbox: false },
-                liveSmokeBaseline: { level: 'host-authority', osSandbox: false },
               },
               enforcement: {
                 sandboxCases: {
@@ -778,15 +762,6 @@ describe('temporary diagnostics sessions', () => {
                   tty: 'none',
                   secrets: 'synthetic',
                   filesystem: 'host-unrestricted-outside-copy',
-                  network: 'host-unrestricted',
-                  process: 'host-unrestricted',
-                },
-                liveSmokeBaseline: {
-                  workspace: 'real-workspace',
-                  stdin: 'closed',
-                  tty: 'none',
-                  secrets: 'real',
-                  filesystem: 'host-unrestricted',
                   network: 'host-unrestricted',
                   process: 'host-unrestricted',
                 },

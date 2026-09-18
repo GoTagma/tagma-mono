@@ -327,9 +327,6 @@ export function parseEditorSettingsPatch(body: unknown): Partial<EditorSettings>
   if (typeof raw.opencodeChatTrialRunEnabled === 'boolean') {
     patch.opencodeChatTrialRunEnabled = raw.opencodeChatTrialRunEnabled;
   }
-  if (typeof raw.opencodeChatTrialLiveSmokeTestEnabled === 'boolean') {
-    patch.opencodeChatTrialLiveSmokeTestEnabled = raw.opencodeChatTrialLiveSmokeTestEnabled;
-  }
   if (
     typeof raw.opencodeChatTrialPlanMaxAttempts === 'number' &&
     Number.isFinite(raw.opencodeChatTrialPlanMaxAttempts)

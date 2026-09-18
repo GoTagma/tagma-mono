@@ -182,7 +182,7 @@ Do not amend the same commit to include these files after naming them with the c
   assertion semantics before reporting an independently evidenced business-contract defect.
   Diagnostic-only observation limits do not trigger planning. Host-authored freshness failures
   retain their repair scope; a separate failed authored assertion may still require plan review.
-  Signed Trial cache v32 invalidates older assertion-only repair decisions.
+  Signed Trial cache v33 invalidates older assertion-only repair decisions.
 
 - Automatic post-authoring verification failure, repair/Trial-plan no-change, and exhausted repair
   budgets retain the authenticated draft at `trial-running` / `user_retry`; no-change describes the
@@ -218,9 +218,9 @@ Do not amend the same commit to include these files after naming them with the c
 
 - `static_context.file` is a required runtime dependency for prompt tasks. Missing or unreadable
   sources must fail the task; never silently run a prompt after dropping its promised context.
-- Live Smoke may use a target-pipeline static-context source only when its real-workspace bytes
-  match the authenticated staged Trial snapshot. Missing, deleted, or divergent staged sources
-  require Sandbox coverage of the excluded terminal branch. Command tasks ignore middleware.
+- Isolated Trial cases resolve staged `static_context` sources from the copied staged snapshot, so a
+  source that exists only in staging still reaches its case; a case must never fall back to the real
+  workspace. Command tasks ignore middleware.
 
 ## Runtime Abort Listener Capacity
 

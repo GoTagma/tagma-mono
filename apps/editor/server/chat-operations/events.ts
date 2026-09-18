@@ -157,7 +157,6 @@ type UsageStatus = (typeof CHAT_OPERATION_V2_USAGE_STATUSES)[number];
 const CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES = [
   'preparing',
   'capturing-host-witness',
-  'running-baseline',
   'sealing-baseline',
   'running-case',
   'verifying-workspace',

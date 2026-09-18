@@ -16,10 +16,7 @@ import yaml from 'js-yaml';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { serializePipeline } from '@tagma/sdk/yaml';
 import { CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS } from '../server/chat-pipeline-trial-plan';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-} from '../shared/chat-pipeline-trial-consent';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
 import {
@@ -62,9 +59,6 @@ function createFixture(
       JSON.stringify({
         opencodeChatTrialRunEnabled: true,
         opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        opencodeChatTrialLiveSmokeTestEnabled: true,
-        opencodeChatTrialLiveSmokeTestConsentVersion:
-          CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
       }),
     );
   }
@@ -292,7 +286,6 @@ function createFixture(
               failedCaseCount: 0,
               notRunCaseCount: 0,
               taskStatusCounts: { success: taskCount },
-              liveSmokeStatus: 'not_enabled',
               reasonCode: null,
               details: 'Fixture verification passed.',
             }),

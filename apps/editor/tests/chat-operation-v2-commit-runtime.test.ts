@@ -175,7 +175,6 @@ function verification(material: CommitMaterial) {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: {},
-      liveSmokeStatus: 'not_enabled',
       reasonCode: null,
       details: 'Sandbox Trial passed.',
     }),

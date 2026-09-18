@@ -67,7 +67,6 @@ test('a Host V2 edit runs its renamed branch in Sandbox without the original cwd
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: false,
     }),
   );
   const ws = new WorkspaceState(root);

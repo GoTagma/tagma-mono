@@ -467,7 +467,6 @@ describe('Chat Operation V2 activity panel', () => {
       failedCaseCount: 0,
       notRunCaseCount: 1,
       taskStatusCounts: { success: 2, skipped: 14 },
-      liveSmokeStatus: 'skipped',
       reasonCode: 'trial_blocked',
       details,
     });
@@ -479,8 +478,7 @@ describe('Chat Operation V2 activity panel', () => {
     expect(html).toContain('Sandbox Trial');
     expect(html).toContain('Partial');
     expect(html).toContain('1/2 cases passed');
-    expect(html).toContain('Live Smoke');
-    expect(html).toContain('Skipped');
+    expect(html).not.toContain('Live Smoke');
     expect(html).toContain('success=2');
     expect(html).toContain('skipped=14');
     expect(html).toContain('aria-label="Pipeline verification outcome"');
@@ -499,7 +497,6 @@ describe('Chat Operation V2 activity panel', () => {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: { success: 2 },
-      liveSmokeStatus: 'not_enabled',
       reasonCode: null,
       details: 'The complete verification detail remains selectable and copyable.',
     });

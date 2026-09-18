@@ -6,15 +6,13 @@ import type {
 } from '../../../shared/chat-verification-outcome';
 import { CopyButton } from '../run/CopyButton';
 
-type OutcomeStatus =
-  ChatVerificationOutcome['sandbox']['status'] | ChatVerificationOutcome['liveSmoke']['status'];
+type OutcomeStatus = ChatVerificationOutcome['sandbox']['status'];
 
 const STATUS_LABELS: Record<OutcomeStatus, string> = {
   passed: 'Passed',
   partial: 'Partial',
   failed: 'Failed',
   skipped: 'Skipped',
-  not_enabled: 'Not enabled',
 };
 
 function StatusIcon({ status }: { status: OutcomeStatus }) {
@@ -52,7 +50,7 @@ export function ChatVerificationOutcomeView({
     .join(', ');
   const sandboxCounts = `${outcome.sandbox.passedCaseCount}/${outcome.sandbox.plannedCaseCount} cases passed`;
   const borderTone =
-    outcome.sandbox.status === 'failed' || outcome.liveSmoke.status === 'failed'
+    outcome.sandbox.status === 'failed'
       ? 'border-tagma-error/50'
       : outcome.sandbox.status === 'partial' || outcome.sandbox.status === 'skipped'
         ? 'border-tagma-warning/50'
@@ -75,11 +73,6 @@ export function ChatVerificationOutcomeView({
           {outcome.sandbox.notRunCaseCount > 0 && (
             <span className="text-tagma-warning">· {outcome.sandbox.notRunCaseCount} not run</span>
           )}
-        </dd>
-        <dt>Live Smoke</dt>
-        <dd className="flex min-w-0 items-center gap-1.5 text-tagma-text">
-          <StatusIcon status={outcome.liveSmoke.status} />
-          {STATUS_LABELS[outcome.liveSmoke.status]}
         </dd>
       </dl>
       {tasks && <div className="mt-1 break-words text-tagma-muted/80">Tasks: {tasks}</div>}

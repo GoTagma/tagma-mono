@@ -1088,7 +1088,7 @@ test('Trial prompts prioritize a complete positive path and explicit prerequisit
   expect(planner).toContain('baselineCaseId');
   expect(planner).toContain('deniedManualTaskIds');
   expect(planner).toContain('change exactly one prerequisite');
-  expect(planner).toContain('Live Smoke environment unavailability is a warning');
+  expect(planner).toContain('are a warning, not a pipeline logic failure');
   const pipeline = buildTagmaPipelineAgent('Windows');
   expect(pipeline).toContain('configured maximum repair attempts');
   expect(pipeline).toContain('Do not invent a required credential');
@@ -1101,15 +1101,12 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain(
     'Host runs bounded Sandbox cases before release only after explicit opt-in in Editor Settings',
   );
-  expect(doc).toContain('real-workspace Live Smoke Test only under separate consent');
   expect(doc).toContain('trial-run failure evidence');
   expect(doc).toContain('same authorized logical turn');
   expect(doc).toContain('Never remove or weaken a manual approval');
-  expect(doc).toContain('Never claim either mode passed without host evidence');
+  expect(doc).toContain('Never claim the trial passed without host evidence');
   expect(doc).toContain('Task-local paths use `task.cwd ?? track.cwd ?? workspace root`');
-  expect(doc).toContain(
-    'staged pipeline support file does not satisfy the optional Live Smoke baseline',
-  );
+  expect(doc).toContain('a staged pipeline support file is not yet present in the workspace');
   expect(doc).toContain('missing file or directory input is fixture-backed for host Trial');
   expect(doc).toContain('default to a workspace-contained relative trigger path');
   expect(doc).toContain('external trigger coordinate cannot be synthesized inside a Sandbox case');
@@ -1194,12 +1191,8 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
       'temporary workspace copies, closed stdin, no TTY, and synthetic secrets',
     );
     expect(planner).toContain('app-level containment, not an OS permission sandbox');
-    expect(planner).toContain('Live Smoke Test runs only under separate consent');
     expect(planner).toContain(
       'Sandbox cases grant manual tasks only in that explicit target closure',
-    );
-    expect(planner).toContain(
-      'A separately consented Live Smoke baseline grants manual tasks in its selected real-workspace closure',
     );
     expect(planner).toContain('blocking diagnostic-only finding');
     expect(planner).toContain(

@@ -38,18 +38,10 @@ import {
   listChatYamlStage,
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
-import {
-  buildChatPipelineTrialLiveSmokeReadiness,
-  CHAT_PIPELINE_TRIAL_CACHE_VERSION,
-  isChatPipelineTrialLiveSmokeReadiness,
-  type ChatPipelineTrialLiveSmokeReadiness,
-} from './chat-pipeline-trial-cache.js';
+import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import { TRIAL_STREAM_EVIDENCE_BYTES } from '../shared/chat-pipeline-trial-evidence.js';
 import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
-import {
-  hasCurrentChatPipelineTrialConsent,
-  hasCurrentChatPipelineTrialLiveSmokeTestConsent,
-} from '../shared/chat-pipeline-trial-consent.js';
+import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
   buildChatPipelineTrialPlanRequest,
   findChatPipelineTrialRepeatedFileOutputPaths,
@@ -69,10 +61,8 @@ import {
   describeUncoveredTrialCaseFixtureInputs,
   findUncoveredTrialCaseFixtureInputs,
   resolveChatPipelineDataReadiness,
-  resolveChatPipelineLiveSmokeBaseline,
   resolveChatPipelineSandboxFixtureInputs,
   resolveChatPipelineTargetRuntimeReadiness,
-  type ChatPipelineLiveSmokeBaseline,
   type ChatPipelineTrialBlocker,
   type ChatPipelineTrialFixtureInput,
   type ChatPipelineTrialReadiness,
@@ -80,7 +70,6 @@ import {
 } from './chat-pipeline-trial-readiness.js';
 import {
   buildChatPipelineTrialabilityReport,
-  type ChatPipelineTrialMode,
   type ChatPipelineTrialabilityReport,
 } from './chat-pipeline-trialability.js';
 import type {
@@ -106,7 +95,6 @@ import {
 import { withWorkspacePluginMutationLock } from './plugins/locks.js';
 import { atomicWriteFileSync, errorMessage, isPathWithin } from './path-utils.js';
 import { tagmaDirOf } from './pipeline-paths.js';
-import { buildPipelineSecretEnv } from './secrets.js';
 import {
   readAuthenticatedServerRecordSync,
   writeAuthenticatedServerRecordSync,
@@ -270,12 +258,6 @@ export interface ChatPipelineTrialExecutionCoverage {
       mechanism: 'run-scoped-grant' | 'isolated-case-input';
     }>;
   }>;
-  liveSmoke: {
-    targetTaskIds: string[];
-    closureTaskIds: string[];
-    executed: boolean;
-    automaticManualTaskIds: string[];
-  } | null;
 }
 
 export type ChatPipelineTrialNotRunReason =
@@ -309,11 +291,7 @@ export interface ChatPipelineTrialRunResult {
   /** Fresh Host authority for correcting this failed run's Trial Plan in the next physical turn. */
   trialPlanRepairAttemptId?: string;
   prerequisiteState?: ChatPipelineTrialRecordedPrerequisiteState;
-  trialMode?: ChatPipelineTrialMode;
-  /** Host-observed real-workspace baseline outcome; never inferred from warning prose. */
-  liveSmokeStatus?: 'passed' | 'failed' | 'skipped' | 'not_enabled';
   trialabilityReport?: ChatPipelineTrialabilityReport;
-  verificationMode?: 'sandbox-cases-only' | 'sandbox-cases-with-live-smoke';
   executionCoverage?: ChatPipelineTrialExecutionCoverage;
   manualExecutionGrants?: ChatPipelineTrialManualExecutionGrant[];
   planTelemetry?: ChatPipelineTrialPlanToolTelemetry;
@@ -345,7 +323,6 @@ export interface ChatPipelineTrialRunInput {
 export type ChatPipelineTrialProgressPhase =
   | 'preparing'
   | 'capturing-host-witness'
-  | 'running-baseline'
   | 'sealing-baseline'
   | 'running-case'
   | 'verifying-workspace'
@@ -383,7 +360,6 @@ interface CachedTrialResult {
   trialabilityReportHash: string;
   verificationHash: string;
   hostWitness: TrialHostWitness;
-  liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null;
   caseReuse: CachedTrialCaseReuse[];
   result: ChatPipelineTrialRunResult;
 }
@@ -424,7 +400,6 @@ export const __chatPipelineTrialRunTestHooks: {
     ws: WorkspaceState,
     signal?: AbortSignal,
   ) => Promise<TrialWorkspaceWitnessResult>;
-  afterLiveSmokeReadinessRevalidated?: () => void | Promise<void>;
   timeoutMsOverride?: number;
   taskTimeoutMsOverride?: number;
   onProgress?: (progress: ChatPipelineTrialProgress) => void;
@@ -621,8 +596,6 @@ function readCompletedTrialResponse(
       parsed.trialabilityReportHash !== trialabilityReportHash ||
       typeof parsed.verificationHash !== 'string' ||
       typeof parsed.hostWitness?.digest !== 'string' ||
-      (parsed.liveSmokeReadiness !== null &&
-        !isChatPipelineTrialLiveSmokeReadiness(parsed.liveSmokeReadiness)) ||
       !Array.isArray(parsed.caseReuse) ||
       !parsed.result ||
       parsed.result.version !== TRIAL_CACHE_VERSION ||
@@ -646,7 +619,6 @@ function writeCachedTrial(
   trialabilityReportHash: string,
   verificationHash: string,
   hostWitness: TrialHostWitness,
-  liveSmokeReadiness: ChatPipelineTrialLiveSmokeReadiness | null,
   caseReuse: CachedTrialCaseReuse[],
   result: ChatPipelineTrialRunResult,
 ): void {
@@ -657,7 +629,6 @@ function writeCachedTrial(
     trialabilityReportHash,
     verificationHash,
     hostWitness,
-    liveSmokeReadiness,
     caseReuse,
     result,
   } satisfies CachedTrialResult);
@@ -892,10 +863,7 @@ function resultForSetupFailure(
   >,
   message: string,
   startedAt: number,
-  metadata: Pick<
-    ChatPipelineTrialRunResult,
-    'prerequisiteState' | 'trialMode' | 'trialabilityReport'
-  > = {},
+  metadata: Pick<ChatPipelineTrialRunResult, 'prerequisiteState' | 'trialabilityReport'> = {},
 ): ChatPipelineTrialRunResult {
   return {
     version: TRIAL_CACHE_VERSION,
@@ -1246,9 +1214,6 @@ function buildTrialExecutionCoverage(input: {
   plan: ChatPipelineTrialPlan;
   targetTaskIdsByCase: ReadonlyMap<string, string[]>;
   executedCaseIds: ReadonlySet<string>;
-  liveSmokeEnabled: boolean;
-  liveSmokeBaseline: ChatPipelineLiveSmokeBaseline;
-  liveSmokeExecuted: boolean;
 }): ChatPipelineTrialExecutionCoverage {
   const dependedOnTaskIds = new Set(
     [...input.dag.nodes.values()].flatMap((node) => node.dependsOn),
@@ -1287,21 +1252,7 @@ function buildTrialExecutionCoverage(input: {
       automaticTriggerSatisfactions,
     };
   });
-  const liveSmokeTargetTaskIds =
-    !input.liveSmokeEnabled || input.liveSmokeBaseline.mode === 'skip'
-      ? null
-      : input.liveSmokeBaseline.mode === 'run-all'
-        ? terminalTaskIds
-        : input.liveSmokeBaseline.targetTaskIds;
-  const liveSmoke = liveSmokeTargetTaskIds
-    ? {
-        targetTaskIds: [...liveSmokeTargetTaskIds],
-        closureTaskIds: taskIdsInTargetClosure(input.dag, liveSmokeTargetTaskIds),
-        executed: input.liveSmokeExecuted,
-        automaticManualTaskIds: [...input.liveSmokeBaseline.manualGatedTaskIds],
-      }
-    : null;
-  return { terminalTaskIds, sandboxCases, liveSmoke };
+  return { terminalTaskIds, sandboxCases };
 }
 
 function casePath(workDir: string, relativePath: string, relativeYamlPath: string): string {
@@ -1590,7 +1541,8 @@ export function evaluateTrialExpectation(
               isExternalDriverStreamFailure(
                 state.result?.failureKind ?? null,
                 state.result?.stderr,
-              ) || isNestedOpencodeCliFailure(state.result?.failureKind ?? null, state.result?.stderr),
+              ) ||
+                isNestedOpencodeCliFailure(state.result?.failureKind ?? null, state.result?.stderr),
             ) ?? 'pipeline-artifact'),
     };
   }
@@ -1884,11 +1836,9 @@ export function trialTaskRepairScope(
   failureKind: string | null,
   outputDiagnostics?: readonly ChatPipelineTrialOutputDiagnostic[],
   externalDriverStreamFailure = false,
-  evidenceSource: 'sandbox-case' | 'live-smoke' = 'sandbox-case',
 ): ChatPipelineTrialTaskResult['repairScope'] {
   if (status === 'success') return null;
   if (
-    evidenceSource === 'live-smoke' ||
     status === 'skipped' ||
     status === 'blocked' ||
     status === 'timeout' ||
@@ -1920,7 +1870,6 @@ export function trialTaskFailureIsExpected(
 }
 
 export function hasChatPipelineTrialArtifactFailure(
-  baselineTasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[],
   cases: readonly {
     success: boolean;
     tasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[];
@@ -1928,10 +1877,7 @@ export function hasChatPipelineTrialArtifactFailure(
   }[],
 ): boolean {
   return (
-    [
-      ...baselineTasks,
-      ...cases.filter((testCase) => !testCase.success).flatMap((testCase) => testCase.tasks),
-    ].some(
+    [...cases.filter((testCase) => !testCase.success).flatMap((testCase) => testCase.tasks)].some(
       (task) =>
         task.repairScope === 'pipeline-artifact' &&
         !['success', 'skipped', 'blocked'].includes(task.status),
@@ -2102,7 +2048,6 @@ function trialTaskResults(
         failureKind,
         outputDiagnostics,
         isExternalDriverStreamFailure(failureKind, rawStderr),
-        caseId === null ? 'live-smoke' : 'sandbox-case',
       ),
       stdoutTruncation: stdout.truncation,
       stderrTruncation: stderr.truncation,
@@ -2200,11 +2145,8 @@ interface PreparedTrialExecution {
   pipelineConfig: PipelineConfig;
   targetTaskIdsByCase: Map<string, string[]>;
   manualTaskIdsByCase: Map<string, ReadonlySet<string>>;
-  liveSmokeBaseline: ChatPipelineLiveSmokeBaseline;
   dataReadiness: Exclude<ChatPipelineTrialReadiness, { state: 'blocked' }>;
-  trialMode: ChatPipelineTrialMode;
   trialabilityReport: ChatPipelineTrialabilityReport;
-  liveSmokeTestEnabled: boolean;
 }
 
 type TrialExecutionPreparation =
@@ -2220,26 +2162,15 @@ function prerequisitePlanCorrection(
     planTelemetry: ChatPipelineTrialPlanToolTelemetry;
     trialId: string;
     startedAt: number;
-    trialMode: ChatPipelineTrialMode;
     trialabilityReport: ChatPipelineTrialabilityReport;
   },
   message: string,
 ): ChatPipelineTrialRunResult {
-  const {
-    ws,
-    stage,
-    entry,
-    snapshot,
-    planTelemetry,
-    trialId,
-    startedAt,
-    trialMode,
-    trialabilityReport,
-  } = input;
+  const { ws, stage, entry, snapshot, planTelemetry, trialId, startedAt, trialabilityReport } =
+    input;
   if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
     return {
       ...resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
-      trialMode,
       trialabilityReport,
     };
   }
@@ -2262,7 +2193,6 @@ function prerequisitePlanCorrection(
       startedAt,
       trialId,
     ),
-    trialMode,
     trialabilityReport,
   };
 }
@@ -2671,63 +2601,6 @@ export function evaluateChatPipelineTrialCaseSuccess(input: {
   );
 }
 
-/** Match a real baseline only to an unmodified, complete case contract. */
-export function evaluateChatPipelineLiveSmokeExpectedFailure(input: {
-  result: EngineResult;
-  pipelineConfig: PipelineConfig;
-  targetTaskIds: readonly string[];
-  cases: readonly ChatPipelineTrialPlanCase[];
-  workDir: string;
-  relativeYamlPath: string;
-}): string | null {
-  if (input.result.success) return null;
-  const dag = buildDag(input.pipelineConfig);
-  const liveClosure = taskIdsInTargetClosure(dag, [...input.targetTaskIds]);
-  // Runtime/infrastructure failures never become an accepted negative result.
-  for (const taskId of liveClosure) {
-    const state = input.result.states.get(taskId);
-    if (!state || !['success', 'failed', 'skipped'].includes(state.status)) return null;
-    if (
-      state.status === 'failed' &&
-      !['exit_nonzero', 'completion_failed'].includes(state.result?.failureKind ?? '')
-    )
-      return null;
-  }
-  for (const testCase of input.cases) {
-    if (
-      testCase.fixtures.length ||
-      testCase.baselineCaseId ||
-      testCase.environment?.length ||
-      testCase.deniedManualTaskIds?.length
-    )
-      continue;
-    if (!isDeepStrictEqual(taskIdsInTargetClosure(dag, testCase.targetTaskIds), liveClosure))
-      continue;
-    // Do not transplant a negative fixture or a partial branch expectation onto
-    // an unrelated live run. Every task in the actual closure must be declared.
-    if (
-      !liveClosure.every((taskId) =>
-        testCase.expectations.some(
-          (expectation) => expectation.type === 'task-status' && expectation.taskId === taskId,
-        ),
-      )
-    )
-      continue;
-    const expectations = testCase.expectations.map((expectation) =>
-      evaluateTrialExpectation(input.workDir, input.relativeYamlPath, expectation, input.result),
-    );
-    if (
-      evaluateChatPipelineTrialCaseSuccess({
-        testCase: { ...testCase, runs: 1 },
-        runResults: [input.result],
-        expectations,
-      })
-    )
-      return testCase.id;
-  }
-  return null;
-}
-
 export function evaluateTrialTaskStatusExpectations(
   testCase: Pick<ChatPipelineTrialPlanCase, 'expectations'>,
   result: EngineResult,
@@ -2956,22 +2829,19 @@ async function executeTargetedTrialCase(
 }
 
 function buildPlannedTrialSummary(
-  baselineSuccess: boolean,
   blockedByPrerequisites: boolean,
   timedOut: boolean,
   lifecycleTimeoutMs: number,
-  baselineTasks: readonly ChatPipelineTrialTaskResult[],
-  baselineOmittedTaskCount: number,
+  trialTasks: readonly ChatPipelineTrialTaskResult[],
+  omittedTaskCount: number,
   taskStatusCounts: Readonly<Record<string, number>>,
   cases: readonly ChatPipelineTrialCaseResult[],
   notRunCases: readonly ChatPipelineTrialNotRunCase[],
   plannedCaseCount: number,
-  trialMode: ChatPipelineTrialMode,
   warnings: readonly string[],
   manualExecutionGrants: readonly ChatPipelineTrialManualExecutionGrant[],
 ): string {
-  const allPassed =
-    baselineSuccess && notRunCases.length === 0 && cases.every((item) => item.success);
+  const allPassed = notRunCases.length === 0 && cases.every((item) => item.success);
   const countText = Object.entries(taskStatusCounts)
     .map(([status, count]) => `${status}=${count}`)
     .join(', ');
@@ -2979,8 +2849,8 @@ function buildPlannedTrialSummary(
     allPassed ? 'passed' : blockedByPrerequisites ? 'blocked' : 'failed',
     timedOut,
     lifecycleTimeoutMs,
-    baselineTasks,
-    baselineOmittedTaskCount,
+    trialTasks,
+    omittedTaskCount,
     countText,
   );
   const lines = [
@@ -2988,9 +2858,6 @@ function buildPlannedTrialSummary(
       ? baseSummary.replace('Trial run passed', 'Trial run passed with warnings')
       : baseSummary,
     '',
-    trialMode === 'sandbox'
-      ? 'Trial mode: Sandbox Trial only; Live Smoke Test was not requested.'
-      : 'Trial mode: Sandbox Trial with an explicitly enabled Live Smoke Test.',
     `Targeted cases: ${cases.filter((item) => item.success).length}/${plannedCaseCount} passed; ${cases.length} result(s) returned; ${Math.max(0, plannedCaseCount - cases.length)} not run.`,
   ];
   for (const testCase of cases) {
@@ -3053,31 +2920,6 @@ async function loadTrialPipelineConfig(
   return pipelineConfig;
 }
 
-function trialLiveSmokeArtifactProjection(
-  ws: WorkspaceState,
-  entry: ReturnType<typeof listChatYamlStage>['entries'][number],
-  snapshot: TrialPipelineSnapshot,
-) {
-  return {
-    livePipelineDir: dirname(entry.sourcePath ?? resolve(ws.workDir, '.tagma', entry.relativePath)),
-    stagedPipelineDir: dirname(snapshot.yamlPath),
-    targetPipelineIsNew: entry.sourcePath === null,
-  };
-}
-
-function trialLiveSmokeReadiness(
-  prepared: PreparedTrialExecution,
-  entry: ReturnType<typeof listChatYamlStage>['entries'][number],
-): ChatPipelineTrialLiveSmokeReadiness | null {
-  return prepared.liveSmokeTestEnabled
-    ? buildChatPipelineTrialLiveSmokeReadiness({
-        targetPipelineIsNew: entry.sourcePath === null,
-        dataReadiness: prepared.dataReadiness,
-        baseline: prepared.liveSmokeBaseline,
-      })
-    : null;
-}
-
 async function prepareTrialExecution(
   ws: WorkspaceState,
   stage: ReturnType<typeof listChatYamlStage>,
@@ -3089,12 +2931,9 @@ async function prepareTrialExecution(
   planTelemetry: ChatPipelineTrialPlanToolTelemetry,
   trialId: string,
   startedAt: number,
-  trialMode: ChatPipelineTrialMode,
-  liveSmokeTestEnabled: boolean,
 ): Promise<TrialExecutionPreparation> {
   const withTrialability = (result: ChatPipelineTrialRunResult): ChatPipelineTrialRunResult => ({
     ...result,
-    trialMode,
     trialabilityReport,
   });
 
@@ -3153,7 +2992,6 @@ async function prepareTrialExecution(
           planTelemetry,
           trialId,
           startedAt,
-          trialMode,
           trialabilityReport,
         },
         prerequisitePlanErrors.join(' ') +
@@ -3174,7 +3012,7 @@ async function prepareTrialExecution(
         'blocked',
         `Trial Interaction Protocol preflight blocked execution: ${trialabilityReport.blockers.join('; ')}`,
         startedAt,
-        { trialMode, trialabilityReport },
+        { trialabilityReport },
       ),
     };
   }
@@ -3195,7 +3033,7 @@ async function prepareTrialExecution(
         'blocked',
         `Trial cannot safely create isolated fixtures for file or directory trigger coordinates that are not addressable from its case workspace: ${describeTrialBlockers(sandboxFixtureAnalysis.blockers)}. This includes intentional external production paths and host-private or sibling-pipeline .tagma namespaces; use a workspace-contained or current-pipeline coordinate when the pipeline must be Sandbox-testable.`,
         startedAt,
-        { prerequisiteState, trialMode, trialabilityReport },
+        { prerequisiteState, trialabilityReport },
       ),
     };
   }
@@ -3212,28 +3050,13 @@ async function prepareTrialExecution(
         'blocked',
         `Trial cannot safely virtualize its data prerequisites: ${describeTrialBlockers(dataReadiness.blockers)}. Preserve the declared paths; do not write placeholders outside the isolated Trial workspace.`,
         startedAt,
-        { prerequisiteState: dataReadiness, trialMode, trialabilityReport },
+        { prerequisiteState: dataReadiness, trialabilityReport },
       ),
     };
   }
-  const liveSmokeBaseline = resolveChatPipelineLiveSmokeBaseline(
-    pipelineConfig,
-    dataReadiness,
-    ws.workDir,
-    trialLiveSmokeArtifactProjection(ws, entry, snapshot),
-    { plan, relativeYamlPath: entry.relativePath },
-  );
-  const liveSmokeCoveredTaskIds = new Set<string>(
-    !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip'
-      ? []
-      : liveSmokeBaseline.mode === 'run-all'
-        ? dag.nodes.keys()
-        : liveSmokeBaseline.targetTaskIds,
-  );
   const uncoveredTerminalTaskIds = findUncoveredChatPipelineTrialTerminalTaskIds(
     plan,
     pipelineConfig,
-    liveSmokeCoveredTaskIds,
   );
   if (uncoveredTerminalTaskIds.length > 0) {
     if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
@@ -3248,11 +3071,7 @@ async function prepareTrialExecution(
       yamlHash: snapshot.contentHash,
       attemptId: trialId,
     });
-    const reason = !liveSmokeTestEnabled
-      ? 'Sandbox Trial does not execute a real-workspace baseline'
-      : liveSmokeBaseline.mode === 'skip'
-        ? 'The requested Live Smoke Test has no runnable real-workspace branch'
-        : 'The requested Live Smoke Test excludes terminal branches that are not runnable in the real workspace';
+    const reason = 'Sandbox Trial does not execute a real-workspace baseline';
     return {
       status: 'result',
       result: withTrialability(
@@ -3319,11 +3138,8 @@ async function prepareTrialExecution(
       pipelineConfig,
       targetTaskIdsByCase,
       manualTaskIdsByCase,
-      liveSmokeBaseline,
       dataReadiness,
-      trialMode,
       trialabilityReport,
-      liveSmokeTestEnabled,
     },
   };
 }
@@ -3347,9 +3163,7 @@ async function executeTrial(
   const startedAt = Date.now();
   progress.update({
     phase: 'preparing',
-    detail: prepared.liveSmokeTestEnabled
-      ? 'Preparing Sandbox Trial cases and the optional Live Smoke Test.'
-      : 'Preparing Sandbox Trial cases without a real-workspace baseline.',
+    detail: 'Preparing Sandbox Trial cases.',
     caseId: null,
     caseTitle: null,
     caseIndex: null,
@@ -3363,11 +3177,8 @@ async function executeTrial(
     pipelineConfig,
     targetTaskIdsByCase,
     manualTaskIdsByCase,
-    liveSmokeBaseline,
     dataReadiness,
-    trialMode,
     trialabilityReport,
-    liveSmokeTestEnabled,
   } = prepared;
   const fixtureInputs = dataReadiness.state === 'fixture-backed' ? dataReadiness.inputs : [];
   const repeatedFileOutputCaseIds = new Set(
@@ -3405,7 +3216,6 @@ async function executeTrial(
           planTelemetry,
           trialId,
           startedAt,
-          trialMode,
           trialabilityReport,
         },
         `${testCase.id}: test environment controls must name declared requirements or secrets: ${undeclared.map((item) => item.name).join(', ')}. Correct the test controls without changing the pipeline.`,
@@ -3414,33 +3224,13 @@ async function executeTrial(
   }
   const sandboxScopedSecretEnv = syntheticTrialSecretEnv(allSecretNames);
   const sandboxGlobalSecretEnv = selectTrialSecretEnv(sandboxScopedSecretEnv, preflight.envKeys);
-  let liveScopedSecretEnv: Record<string, string> = {};
-  if (liveSmokeTestEnabled) {
-    try {
-      liveScopedSecretEnv = buildPipelineSecretEnv(ws.workDir, logicalYamlPath, allSecretNames);
-    } catch (err) {
-      return resultForSetupFailure(
-        'setup-failed',
-        `Secret manager error: ${errorMessage(err)}`,
-        startedAt,
-        { trialMode, trialabilityReport },
-      );
-    }
-  }
-  const liveGlobalSecretEnv = selectTrialSecretEnv(liveScopedSecretEnv, preflight.envKeys);
   const missingSandboxRuntimeRequirements = {
     pipelineConfig,
     missingBinaries: preflight.missingBinaryRequirements,
     // Every declared or required Sandbox input already has a synthetic value.
-    // Real environment availability belongs only to the optional Live Smoke run.
+    // Sandbox Trial runs no real-workspace baseline, so real environment
+    // availability never gates it.
     missingEnvironment: [],
-  };
-  const missingLiveEnvironment = liveSmokeTestEnabled
-    ? preflight.missing.envs.filter((name) => !liveGlobalSecretEnv[name])
-    : [];
-  const missingLiveRuntimeRequirements = {
-    ...missingSandboxRuntimeRequirements,
-    missingEnvironment: missingLiveEnvironment,
   };
   const globalRuntimeReadiness = resolveChatPipelineTargetRuntimeReadiness({
     ...missingSandboxRuntimeRequirements,
@@ -3451,50 +3241,25 @@ async function executeTrial(
       'blocked',
       `Trial run requirements are unavailable: ${describeTrialBlockers(globalRuntimeReadiness.blockers)}. Preserve legitimate requirements and safety gates; do not invent or remove them merely to make the trial pass.`,
       startedAt,
-      { prerequisiteState: globalRuntimeReadiness, trialMode, trialabilityReport },
+      { prerequisiteState: globalRuntimeReadiness, trialabilityReport },
     );
   }
 
   const dag = buildDag(pipelineConfig);
-  const requestedBaselineTaskIds =
-    !liveSmokeTestEnabled || liveSmokeBaseline.mode === 'skip'
-      ? []
-      : liveSmokeBaseline.mode === 'targeted'
-        ? liveSmokeBaseline.targetTaskIds
-        : [...dag.nodes.keys()];
-  const baselineRuntimeBlockers: ChatPipelineTrialBlocker[] = [];
-  const runtimeReadyBaselineTaskIds = requestedBaselineTaskIds.filter((taskId) => {
-    const readiness = resolveChatPipelineTargetRuntimeReadiness({
-      ...missingLiveRuntimeRequirements,
-      targetTaskIds: [taskId],
-    });
-    if (readiness.state === 'runnable') return true;
-    baselineRuntimeBlockers.push(...readiness.blockers);
-    return false;
-  });
-  const baselineSkipped = runtimeReadyBaselineTaskIds.length === 0;
-  const baselineManualApprovalTaskIds = baselineSkipped
-    ? new Set<string>()
-    : manualTaskIdsInTargetClosure(dag, runtimeReadyBaselineTaskIds);
-  const baselineTargetTaskIds =
-    baselineSkipped ||
-    (liveSmokeBaseline.mode === 'run-all' &&
-      runtimeReadyBaselineTaskIds.length === requestedBaselineTaskIds.length)
-      ? undefined
-      : runtimeReadyBaselineTaskIds;
 
-  // A data-ready baseline may still be unavailable because real credentials or
-  // binaries are missing. Its planned targets cannot stand in for actual coverage.
+  // Sandbox Trial runs no real-workspace baseline, so a terminal branch is
+  // covered only by a case that targets it. Every planned terminal task must
+  // therefore be reachable from the Trial Plan. This restates the gate that
+  // prepareTrialExecution already applied, re-checked here against the runtime
+  // prerequisites that are only resolved at execution time.
   const uncoveredTerminalTaskIds = findUncoveredChatPipelineTrialTerminalTaskIds(
     plan,
     pipelineConfig,
-    new Set(runtimeReadyBaselineTaskIds),
   );
   if (uncoveredTerminalTaskIds.length > 0) {
     if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
       return {
         ...resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
-        trialMode,
         trialabilityReport,
       };
     }
@@ -3510,7 +3275,7 @@ async function executeTrial(
           'invalid',
           entry.relativePath,
           snapshot.contentHash,
-          `The Live Smoke Test cannot execute every planned terminal branch with the available runtime prerequisites. Add Sandbox cases targeting these uncovered terminal tasks so their full dependency closures are tested: ${uncoveredTerminalTaskIds.join(', ')}. Sandbox uses synthetic environment values and run-scoped manual grants; preserve the authored production requirements.`,
+          `Sandbox Trial does not execute a real-workspace baseline, and the targeted cases do not execute every uncovered terminal task: ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting each terminal task so its full dependency closure is tested. Sandbox uses synthetic environment values and run-scoped manual grants; preserve the authored production requirements.`,
           stage.trialPlanMaxAttempts,
         ),
         planTelemetry,
@@ -3520,23 +3285,9 @@ async function executeTrial(
         resolveChatPipelineSandboxFixtureInputs(pipelineConfig, ws.workDir, entry.relativePath)
           .inputs,
       ),
-      trialMode,
       trialabilityReport,
     };
   }
-  const baselineMetadata = {
-    manualGatedTaskIds: [...baselineManualApprovalTaskIds],
-    middlewareUnavailableTaskIds: liveSmokeBaseline.middlewareUnavailableTaskIds,
-    cwdUnavailableTaskIds: liveSmokeBaseline.cwdUnavailableTaskIds,
-    commandFileUnavailableTaskIds: liveSmokeBaseline.commandFileUnavailableTaskIds,
-    pipelineOutputTaskIds: liveSmokeBaseline.pipelineOutputTaskIds,
-  };
-  const executedLiveSmokeBaseline: ChatPipelineLiveSmokeBaseline = baselineSkipped
-    ? { mode: 'skip', ...baselineMetadata }
-    : baselineTargetTaskIds
-      ? { mode: 'targeted', targetTaskIds: baselineTargetTaskIds, ...baselineMetadata }
-      : { mode: 'run-all', ...baselineMetadata };
-
   const approvalGateway = new InMemoryApprovalGateway();
   const manualApprovalScopesByRunId: RunTrialPipelineInput['manualApprovalScopesByRunId'] =
     new Map();
@@ -3575,7 +3326,7 @@ async function executeTrial(
       outcome: 'rejected',
       actor: 'chat-trial-run',
       reason:
-        "Chat Trial runs auto-approve only manual tasks in the run's Host-authorized Sandbox or Live Smoke target closure.",
+        "Chat Trial runs auto-approve only manual tasks in the run's Host-authorized Sandbox target closure.",
     });
   });
   const runId = generateRunId();
@@ -3583,67 +3334,7 @@ async function executeTrial(
   let hostWitnessCaptureFailure = false;
 
   try {
-    const secretValues = Object.values({
-      ...sandboxScopedSecretEnv,
-      ...liveScopedSecretEnv,
-    }).filter(Boolean);
-    let baselineSuccess = true;
-    let baselineExpectedFailureCaseId: string | null = null;
-    let baselineEvidence = {
-      tasks: [] as ChatPipelineTrialTaskResult[],
-      totalTaskCount: 0,
-      omittedTaskCount: 0,
-      taskStatusCounts: {} as Record<string, number>,
-      omittedTaskStatusCounts: {} as Record<string, number>,
-      countText: '',
-    };
-    if (!baselineSkipped) {
-      progress.update({
-        phase: 'running-baseline',
-        detail: 'Running the optional Live Smoke Test in the real workspace.',
-        caseId: null,
-        caseTitle: null,
-        caseIndex: null,
-        caseCount: null,
-        runNumber: 1,
-        runCount: 1,
-        taskId: null,
-        taskStatus: null,
-      });
-      const baseline = await runTrialPipelineOnce({
-        ws,
-        pipelineConfig,
-        workDir: ws.workDir,
-        logicalYamlPath,
-        approvalGateway,
-        controller,
-        pythonRunEnv,
-        globalSecretEnv: liveGlobalSecretEnv,
-        scopedSecretEnv: liveScopedSecretEnv,
-        secretValues,
-        preflightEnvKeys: preflight.envKeys,
-        taskTimeoutMs: budgets.taskTimeoutMs,
-        runtimeMode,
-        runId,
-        manualApprovalScopesByRunId,
-        // Separate Live Smoke consent authorizes this baseline to satisfy
-        // manual triggers with exact run-scoped grants. Ordinary runs retain
-        // their human approval boundary.
-        manualApprovalTaskIds: baselineManualApprovalTaskIds,
-        ...(baselineTargetTaskIds ? { targetTaskIds: baselineTargetTaskIds } : {}),
-        onEvent: (event) => updateTrialTaskProgress(progress, event),
-      });
-      baselineExpectedFailureCaseId = evaluateChatPipelineLiveSmokeExpectedFailure({
-        result: baseline,
-        pipelineConfig,
-        targetTaskIds: runtimeReadyBaselineTaskIds,
-        cases: plan.cases,
-        workDir: ws.workDir,
-        relativeYamlPath: entry.relativePath,
-      });
-      baselineSuccess = baseline.success || baselineExpectedFailureCaseId !== null;
-      baselineEvidence = trialTaskResults(baseline, pipelineConfig, null, 1);
-    }
+    const secretValues = Object.values(sandboxScopedSecretEnv).filter(Boolean);
     const cases: ChatPipelineTrialCaseResult[] = [];
     const runtimePrerequisiteBlockers = new Map<string, ChatPipelineTrialBlocker>();
     const recordRuntimeBlockers = (blockers: readonly ChatPipelineTrialBlocker[]): void => {
@@ -3654,22 +3345,15 @@ async function executeTrial(
         );
       }
     };
-    // Live-only environment blockers are reported separately from prerequisites
-    // that can prevent an isolated case from executing.
-    recordRuntimeBlockers(
-      baselineRuntimeBlockers.filter((blocker) => blocker.kind !== 'environment'),
-    );
     const prerequisiteBlockedCases = new Map<string, ChatPipelineTrialBlocker[]>();
     const negativeCasesWithoutBaseline = new Set<string>();
     let executedCaseCount = 0;
     let reusedCaseCount = 0;
     let caseLoopStop: { reason: ChatPipelineTrialNotRunReason; detail: string } | null = null;
-    let totalTaskCount = baselineEvidence.totalTaskCount;
+    let totalTaskCount = 0;
     progress.update({
       phase: 'sealing-baseline',
-      detail: baselineSkipped
-        ? 'Sealing the real workspace before Sandbox Trial cases.'
-        : 'Sealing the real workspace after the Live Smoke Test.',
+      detail: 'Sealing the real workspace before Sandbox Trial cases.',
       caseId: null,
       caseTitle: null,
       caseIndex: null,
@@ -3687,7 +3371,7 @@ async function executeTrial(
     let expectedWorkspaceMutationRevision = baselineMutationState?.revision ?? null;
     let pendingWorkspaceWitnessFailure = baselineWorkspace.digest
       ? null
-      : `Could not seal the real workspace ${baselineSkipped ? 'before isolated cases' : 'after baseline'}: ${baselineWorkspace.reason ?? 'unknown witness failure'}.`;
+      : `Could not seal the real workspace before isolated cases: ${baselineWorkspace.reason ?? 'unknown witness failure'}.`;
     pendingWorkspaceWitnessFailure ??= mutationMonitorStart.reason
       ? `Could not verify that isolated cases left the real workspace unchanged: ${mutationMonitorStart.reason}`
       : baselineMutationState && !baselineMutationState.healthy
@@ -3940,38 +3624,14 @@ async function executeTrial(
       plan,
       targetTaskIdsByCase,
       executedCaseIds,
-      liveSmokeEnabled: liveSmokeTestEnabled,
-      liveSmokeBaseline: executedLiveSmokeBaseline,
-      liveSmokeExecuted: !baselineSkipped,
     });
     const success =
-      baselineSuccess &&
       !abortState.timedOut &&
       cases.length === plan.cases.length &&
       cases.every((item) => item.success);
     const planWarnings = [
       ...planWarningDiagnostics(plan),
       ...trialabilityReport.warnings,
-      ...(baselineExpectedFailureCaseId
-        ? [
-            `The Live Smoke Test verified an expected failure against every assertion of case ${baselineExpectedFailureCaseId}. The pipeline run remains failed; verification passed because its declared rejection behavior matched.`,
-          ]
-        : []),
-      ...(liveSmokeTestEnabled && liveSmokeBaseline.commandFileUnavailableTaskIds.length > 0
-        ? [
-            `The Live Smoke Test excluded tasks whose command or completion/hook file is missing, deleted, or differs from the staged pipeline: ${liveSmokeBaseline.commandFileUnavailableTaskIds.join(', ')}. Their terminal branches require Sandbox coverage. No staged file was copied into the real workspace before publication.`,
-          ]
-        : []),
-      ...(liveSmokeTestEnabled && liveSmokeBaseline.pipelineOutputTaskIds.length > 0
-        ? [
-            `Live Smoke excluded branches that may generate or rewrite target-pipeline files before publication: ${liveSmokeBaseline.pipelineOutputTaskIds.join(', ')}. Sandbox must verify these branches in isolated copies; the target's commit baseline remains unchanged.`,
-          ]
-        : []),
-      ...(missingLiveEnvironment.length > 0
-        ? [
-            `The Live Smoke Test was skipped because its required real environment is unavailable: ${missingLiveEnvironment.join(', ')}. Sandbox cases use synthetic values to validate pipeline logic; they do not verify real credentials or production readiness.`,
-          ]
-        : []),
       ...(runtimeBlockers.length > 0
         ? [
             `Trial executed only prerequisite-ready target closures. Other branches retained their runtime blockers without weakening requirements: ${describeTrialBlockers(runtimeBlockers)}.`,
@@ -3979,28 +3639,7 @@ async function executeTrial(
         : []),
       ...(fixtureInputs.length > 0
         ? [
-            baselineSkipped
-              ? `The Live Smoke Test was enabled but skipped. Sandbox cases covered its unavailable real-workspace data inputs with isolated fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`
-              : `The Live Smoke Test ran only prerequisite-ready tasks. Tasks depending on unavailable data were exercised through Sandbox fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`,
-          ]
-        : []),
-      ...(baselineManualApprovalTaskIds.size > 0 && liveSmokeTestEnabled
-        ? [
-            `The explicitly consented Live Smoke Test automatically granted run-scoped manual approvals for: ${[...baselineManualApprovalTaskIds].sort().join(', ')}. Ordinary pipeline runs still require human approval.`,
-          ]
-        : []),
-      ...(liveSmokeBaseline.middlewareUnavailableTaskIds.length > 0 && liveSmokeTestEnabled
-        ? [
-            liveSmokeBaseline.mode === 'skip'
-              ? `The Live Smoke Test was enabled but skipped. Sandbox cases exercised branches whose static_context source is missing from the real workspace or differs from the staged artifact, which merges only after the Trial: ${liveSmokeBaseline.middlewareUnavailableTaskIds.join(', ')}. No placeholder was written to the real workspace.`
-              : `The Live Smoke Test excluded tasks whose static_context middleware source is not ready in the real workspace (the source is missing or differs from the staged artifact, which merges only after the Trial). Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.middlewareUnavailableTaskIds.join(', ')}. No placeholder was written to the real workspace.`,
-          ]
-        : []),
-      ...(liveSmokeBaseline.cwdUnavailableTaskIds.length > 0 && liveSmokeTestEnabled
-        ? [
-            liveSmokeBaseline.mode === 'skip'
-              ? `The Live Smoke Test was enabled but skipped. Sandbox cases exercised tasks whose effective cwd exists only in the staged target pipeline and cannot exist in the real workspace until finalize: ${liveSmokeBaseline.cwdUnavailableTaskIds.join(', ')}. No placeholder directory was written to the real workspace.`
-              : `The Live Smoke Test excluded tasks whose effective cwd exists only in the staged target pipeline and cannot exist in the real workspace until finalize. Their terminal branches were exercised through Sandbox cases instead: ${liveSmokeBaseline.cwdUnavailableTaskIds.join(', ')}. No placeholder directory was written to the real workspace.`,
+            `Tasks depending on data that is unavailable in the real workspace were exercised through Sandbox fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`,
           ]
         : []),
     ];
@@ -4009,17 +3648,14 @@ async function executeTrial(
     ]
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([taskId, approvalCount]) => ({ taskId, approvalCount }));
-    const allTaskEvidenceCandidates = [
-      ...baselineEvidence.tasks,
-      ...cases.flatMap((item) => item.tasks),
-    ];
+    const allTaskEvidenceCandidates = cases.flatMap((item) => item.tasks);
     const failedCaseIds = new Set(cases.filter((item) => !item.success).map((item) => item.id));
     const visibleTasks = selectChatPipelineTrialTaskEvidence(
       allTaskEvidenceCandidates,
       failedCaseIds,
     );
     const omittedTaskCount = Math.max(0, totalTaskCount - visibleTasks.length);
-    const taskStatusCounts = { ...baselineEvidence.taskStatusCounts };
+    const taskStatusCounts: Record<string, number> = {};
     for (const testCase of cases) {
       mergeTrialTaskStatusCounts(taskStatusCounts, testCase.taskStatusCounts);
     }
@@ -4057,8 +3693,8 @@ async function executeTrial(
             : 'failed';
     const needsPlanReview = kind === 'failed' && trialNeedsPlanReview(cases);
     const hasPipelineArtifactFailure =
-      !needsPlanReview && hasChatPipelineTrialArtifactFailure(baselineEvidence.tasks, cases);
-    const ran = !baselineSkipped || executedCaseCount > 0 || reusedCaseCount > 0;
+      !needsPlanReview && hasChatPipelineTrialArtifactFailure(cases);
+    const ran = executedCaseCount > 0 || reusedCaseCount > 0;
     const trialPlanRepairAttempt =
       kind === 'failed' &&
       (hasPipelineArtifactFailure || needsPlanReview) &&
@@ -4080,17 +3716,15 @@ async function executeTrial(
       !hasExecutableFailure &&
       !hasUnrelatedCaseFailure;
     const plannedSummary = buildPlannedTrialSummary(
-      baselineSuccess,
       kind === 'blocked' || manualApprovalPrerequisiteOnly,
       abortState.timedOut,
       budgets.lifecycleTimeoutMs,
-      baselineEvidence.tasks,
-      baselineEvidence.omittedTaskCount,
+      visibleTasks,
+      omittedTaskCount,
       taskStatusCounts,
       cases,
       notRunCases,
       plan.cases.length,
-      trialMode,
       planWarnings,
       manualExecutionGrants,
     );
@@ -4115,7 +3749,7 @@ async function executeTrial(
           ? { repairAuthorization: 'diagnostic-only' as const }
           : {}),
       ran,
-      runId: baselineSkipped ? (cases.flatMap((item) => item.runIds)[0] ?? null) : runId,
+      runId,
       ...(runtimeBlockers.length > 0
         ? {
             prerequisiteState: {
@@ -4126,17 +3760,7 @@ async function executeTrial(
         : dataReadiness.state === 'fixture-backed'
           ? { prerequisiteState: dataReadiness }
           : {}),
-      trialMode,
-      liveSmokeStatus:
-        trialMode === 'sandbox'
-          ? 'not_enabled'
-          : baselineSkipped
-            ? 'skipped'
-            : baselineSuccess
-              ? 'passed'
-              : 'failed',
       trialabilityReport,
-      verificationMode: baselineSkipped ? 'sandbox-cases-only' : 'sandbox-cases-with-live-smoke',
       executionCoverage,
       ...(manualExecutionGrants.length > 0 ? { manualExecutionGrants } : {}),
       summary:
@@ -4225,8 +3849,6 @@ async function executeTrial(
       repairAuthorization: 'diagnostic-only',
       ran: true,
       runId,
-      trialMode,
-      liveSmokeStatus: trialMode === 'sandbox' ? 'not_enabled' : 'failed',
       trialabilityReport,
       summary: boundedTrialText(
         abortState.timedOut
@@ -4261,10 +3883,6 @@ export async function trialRunChatYamlStage(
       'Explicit consent is required in Editor Settings before Sandbox Trial can run AI-authored commands with host process authority.',
     );
   }
-  const liveSmokeTestEnabled = hasCurrentChatPipelineTrialLiveSmokeTestConsent(editorSettings);
-  const trialMode: ChatPipelineTrialMode = liveSmokeTestEnabled
-    ? 'sandbox-with-live-smoke'
-    : 'sandbox';
   const timeoutMsOverride = __chatPipelineTrialRunTestHooks.timeoutMsOverride;
   const taskTimeoutMsOverride = __chatPipelineTrialRunTestHooks.taskTimeoutMsOverride;
   const budgets: TrialExecutionBudgets = {
@@ -4321,7 +3939,6 @@ export async function trialRunChatYamlStage(
           'setup-failed',
           `Trial run configuration error: ${errorMessage(err)}`,
           startedAt,
-          { trialMode },
         ),
         planTelemetry,
       };
@@ -4329,9 +3946,7 @@ export async function trialRunChatYamlStage(
     const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
     if (pluginError) {
       return {
-        ...resultForSetupFailure('setup-failed', `Plugin load error: ${pluginError}`, startedAt, {
-          trialMode,
-        }),
+        ...resultForSetupFailure('setup-failed', `Plugin load error: ${pluginError}`, startedAt),
         planTelemetry,
       };
     }
@@ -4339,9 +3954,8 @@ export async function trialRunChatYamlStage(
       pipelineConfig,
       registry: ws.registry,
       capabilityOwners: ws.pluginCapabilityOwners,
-      mode: trialMode,
     });
-    const preflightMetadata = { trialMode, trialabilityReport };
+    const preflightMetadata = { trialabilityReport };
     if (!trialabilityReport.runnable) {
       return {
         ...resultForSetupFailure(
@@ -4417,7 +4031,6 @@ export async function trialRunChatYamlStage(
     const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
       planHash: planRead.planHash,
-      trialMode,
       trialabilityReportHash,
     });
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
@@ -4446,8 +4059,6 @@ export async function trialRunChatYamlStage(
       planTelemetry,
       trialId,
       startedAt,
-      trialMode,
-      liveSmokeTestEnabled,
     );
     if (preparation.status === 'result') {
       return { ...resultWithTrialPlan(preparation.result, plan), planTelemetry };
@@ -4576,7 +4187,7 @@ export async function trialRunChatYamlStage(
         // Readiness inspects mutable real-workspace coordinates. Recompute it
         // after the pre-run witness so a path that appeared, disappeared, or
         // changed type while the witness was being established cannot inherit
-        // a stale Live Smoke exclusion. The post witness seals later changes.
+        // a stale readiness projection. The post witness seals later changes.
         const revalidatedPreparation = await prepareTrialExecution(
           ws,
           stage,
@@ -4588,8 +4199,6 @@ export async function trialRunChatYamlStage(
           planTelemetry,
           trialId,
           startedAt,
-          trialMode,
-          liveSmokeTestEnabled,
         );
         if (controller.signal.aborted) {
           return {
@@ -4600,7 +4209,6 @@ export async function trialRunChatYamlStage(
         if (revalidatedPreparation.status === 'result') {
           return revalidatedPreparation.result;
         }
-        await __chatPipelineTrialRunTestHooks.afterLiveSmokeReadinessRevalidated?.();
         if (controller.signal.aborted) {
           return {
             ...resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs),
@@ -4615,7 +4223,6 @@ export async function trialRunChatYamlStage(
             testCase,
             supportTreeHash: executionSnapshot.supportTreeHash,
             trialabilityReportHash,
-            trialMode,
             runtimeMode,
           });
           if (fingerprint) caseReuseFingerprints.set(testCase.id, fingerprint);
@@ -4703,37 +4310,6 @@ export async function trialRunChatYamlStage(
               'Host prerequisites changed during trial execution; rerun is required before finalize.',
             );
           }
-          if (result.success) {
-            const currentDataReadiness = resolveChatPipelineDataReadiness(
-              pipelineConfig,
-              ws.workDir,
-              entry.relativePath,
-            );
-            const currentLiveSmokeBaseline = resolveChatPipelineLiveSmokeBaseline(
-              pipelineConfig,
-              currentDataReadiness,
-              ws.workDir,
-              trialLiveSmokeArtifactProjection(ws, entry, executionSnapshot),
-              { plan, relativeYamlPath: entry.relativePath },
-            );
-            const sealedLiveSmokeReadiness = trialLiveSmokeReadiness(
-              revalidatedPreparation.prepared,
-              entry,
-            );
-            const currentLiveSmokeReadiness = liveSmokeTestEnabled
-              ? buildChatPipelineTrialLiveSmokeReadiness({
-                  targetPipelineIsNew: entry.sourcePath === null,
-                  dataReadiness: currentDataReadiness,
-                  baseline: currentLiveSmokeBaseline,
-                })
-              : null;
-            if (!isDeepStrictEqual(sealedLiveSmokeReadiness, currentLiveSmokeReadiness)) {
-              return resultForHostWitnessFailure(
-                result,
-                'Live Smoke readiness changed during trial execution; rerun is required before finalize.',
-              );
-            }
-          }
           const postVerificationHash = buildChatPipelineTrialVerificationHash({
             inputHash,
             hostWitnessDigest: postWitness.witness.digest,
@@ -4746,7 +4322,6 @@ export async function trialRunChatYamlStage(
             trialabilityReportHash,
             postVerificationHash,
             postWitness.witness,
-            trialLiveSmokeReadiness(revalidatedPreparation.prepared, entry),
             reusableCaseRecords(
               result,
               caseReuseFingerprints,

@@ -32,7 +32,7 @@ export function OperationTimingDetails({
             AI request processing
           </dt>
           <dd>{formatDurationShort(durations.ai)}</dd>
-          <dt title="Sandbox cases and Live Smoke execution, including case setup and assertions.">
+          <dt title="Sandbox case execution, including case setup and assertions.">
             Trial execution
           </dt>
           <dd>{formatDurationShort(durations.execution)}</dd>

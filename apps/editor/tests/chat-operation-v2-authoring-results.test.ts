@@ -120,16 +120,15 @@ describe('Chat Operation V2 authoring result persistence adapter', () => {
       failedCaseCount: 0,
       notRunCaseCount: 1,
       taskStatusCounts: { success: 2, skipped: 14 },
-      liveSmokeStatus: 'skipped',
       reasonCode: 'trial_blocked',
-      details: 'Trial requires an explicitly authorized Live Smoke Test.',
+      details: 'A planned case could not run safely in the Sandbox Trial.',
     });
     const result = await fixture.persistence.persistCompletedInvocationResult({
       ...input(),
       verificationNotice: {
         status: 'unverified',
         code: 'trial_blocked',
-        summary: 'Trial requires an explicitly authorized Live Smoke Test.',
+        summary: 'A planned case could not run safely in the Sandbox Trial.',
         outcome,
       },
     });
@@ -145,7 +144,7 @@ describe('Chat Operation V2 authoring result persistence adapter', () => {
     expect(parseChatVerificationOutcome(result.message?.attachments[0]?.content)).toEqual(outcome);
   });
 
-  test('seals a successful Sandbox and Live Smoke outcome with the same typed authority', async () => {
+  test('seals a successful Sandbox outcome with the same typed authority', async () => {
     const fixture = harness();
     const outcome = createChatVerificationOutcome({
       trialKind: 'passed',
@@ -156,16 +155,15 @@ describe('Chat Operation V2 authoring result persistence adapter', () => {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: { success: 6 },
-      liveSmokeStatus: 'passed',
       reasonCode: null,
-      details: 'Sandbox Trial and Live Smoke passed.',
+      details: 'Sandbox Trial passed.',
     });
     const result = await fixture.persistence.persistCompletedInvocationResult({
       ...input(),
       verificationNotice: {
         status: 'verified',
         code: 'trial_passed',
-        summary: 'Sandbox Trial and Live Smoke passed.',
+        summary: 'Sandbox Trial passed.',
         outcome,
       },
     });

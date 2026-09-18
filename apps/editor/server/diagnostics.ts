@@ -346,13 +346,7 @@ function prerequisiteTimelineSummary(value: unknown): unknown {
   const prerequisite = record(value);
   if (Object.keys(prerequisite).length === 0) return null;
   return {
-    ...selectedFields(prerequisite, [
-      'state',
-      'baselineMode',
-      'baselineTargetTaskCount',
-      'inputCount',
-      'blockerCount',
-    ]),
+    ...selectedFields(prerequisite, ['state', 'inputCount', 'blockerCount']),
     blockerKindCounts: numericRecord(prerequisite.blockerKindCounts),
   };
 }
@@ -436,21 +430,11 @@ function trialabilityTimelineSummary(value: unknown): UnknownRecord | null {
   if (Object.keys(report).length === 0) return null;
   const enforcement = record(report.enforcement);
   const sandboxCases = record(enforcement.sandboxCases);
-  const liveSmokeBaselineValue = enforcement.liveSmokeBaseline;
-  const liveSmokeBaseline = record(liveSmokeBaselineValue);
-  const hasLiveSmokeBaseline =
-    liveSmokeBaselineValue !== null &&
-    liveSmokeBaselineValue !== undefined &&
-    Object.keys(liveSmokeBaseline).length > 0;
   return {
     protocolVersion: finiteDiagnosticNumber(report.protocolVersion),
-    mode: conciseDiagnosticText(report.mode, 64),
     runnable: typeof report.runnable === 'boolean' ? report.runnable : null,
     containment: {
       sandboxCases: { level: 'application', osSandbox: false },
-      liveSmokeBaseline: hasLiveSmokeBaseline
-        ? { level: 'host-authority', osSandbox: false }
-        : null,
     },
     enforcement: {
       sandboxCases: {
@@ -462,17 +446,6 @@ function trialabilityTimelineSummary(value: unknown): UnknownRecord | null {
         network: conciseDiagnosticText(sandboxCases.network, 64),
         process: conciseDiagnosticText(sandboxCases.process, 64),
       },
-      liveSmokeBaseline: hasLiveSmokeBaseline
-        ? {
-            workspace: conciseDiagnosticText(liveSmokeBaseline.workspace, 64),
-            stdin: conciseDiagnosticText(liveSmokeBaseline.stdin, 64),
-            tty: conciseDiagnosticText(liveSmokeBaseline.tty, 64),
-            secrets: conciseDiagnosticText(liveSmokeBaseline.secrets, 64),
-            filesystem: conciseDiagnosticText(liveSmokeBaseline.filesystem, 128),
-            network: conciseDiagnosticText(liveSmokeBaseline.network, 64),
-            process: conciseDiagnosticText(liveSmokeBaseline.process, 64),
-          }
-        : null,
     },
     items: trialTimelineCollection(report.items, MAX_TIMELINE_TRIALABILITY_ITEMS, (rawItem) => {
       const item = record(rawItem);
@@ -533,8 +506,6 @@ function trialTimelineSummary(value: unknown): UnknownRecord | null {
       'omittedTaskCount',
       'repairAuthorization',
       'trialPlanRepairAttemptId',
-      'trialMode',
-      'verificationMode',
       'plannedCaseCount',
       'caseResultCount',
       'notRunCaseCount',

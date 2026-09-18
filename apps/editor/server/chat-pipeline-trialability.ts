@@ -8,14 +8,11 @@ import {
   type TrialInteractionDeclaration,
 } from '@tagma/types';
 
-export type ChatPipelineTrialMode = 'sandbox' | 'sandbox-with-live-smoke';
 export type ChatPipelineTrialabilityComponent =
   'hook' | 'command' | 'driver' | 'trigger' | 'middleware' | 'completion';
 export type ChatPipelineTrialabilityDisposition =
   | 'sandbox-ready'
   | 'sandbox-ready-with-host-risk'
-  | 'live-smoke-only'
-  | 'live-smoke-ready'
   | 'human-required'
   | 'unsupported-in-unattended-trial';
 
@@ -32,7 +29,6 @@ export interface ChatPipelineTrialabilityItem {
 
 export interface ChatPipelineTrialabilityReport {
   readonly protocolVersion: typeof TRIAL_INTERACTION_PROTOCOL_VERSION;
-  readonly mode: ChatPipelineTrialMode;
   readonly runnable: boolean;
   readonly enforcement: {
     readonly sandboxCases: {
@@ -44,15 +40,6 @@ export interface ChatPipelineTrialabilityReport {
       readonly network: 'host-unrestricted';
       readonly process: 'host-unrestricted';
     };
-    readonly liveSmokeBaseline: {
-      readonly workspace: 'real-workspace';
-      readonly stdin: 'closed';
-      readonly tty: 'none';
-      readonly secrets: 'real';
-      readonly filesystem: 'host-unrestricted';
-      readonly network: 'host-unrestricted';
-      readonly process: 'host-unrestricted';
-    } | null;
   };
   readonly items: readonly ChatPipelineTrialabilityItem[];
   readonly blockers: readonly string[];
@@ -63,7 +50,6 @@ export interface BuildChatPipelineTrialabilityReportInput {
   readonly pipelineConfig: PipelineConfig;
   readonly registry: PluginRegistry;
   readonly capabilityOwners: ReadonlyMap<string, string>;
-  readonly mode: ChatPipelineTrialMode;
 }
 
 const HOST_PROVIDER = '@tagma/editor/host';
@@ -77,16 +63,6 @@ const SANDBOX_CASE_ENFORCEMENT = {
   tty: 'none',
   secrets: 'synthetic',
   filesystem: 'host-unrestricted-outside-copy',
-  network: 'host-unrestricted',
-  process: 'host-unrestricted',
-} as const;
-
-const LIVE_SMOKE_BASELINE_ENFORCEMENT = {
-  workspace: 'real-workspace',
-  stdin: 'closed',
-  tty: 'none',
-  secrets: 'real',
-  filesystem: 'host-unrestricted',
   network: 'host-unrestricted',
   process: 'host-unrestricted',
 } as const;
@@ -143,7 +119,6 @@ function itemLabel(
 function classifyDeclaration(
   item: Pick<ChatPipelineTrialabilityItem, 'component' | 'taskId' | 'type'>,
   declaration: TrialInteractionDeclaration,
-  mode: ChatPipelineTrialMode,
   blockers: string[],
   warnings: string[],
 ): ChatPipelineTrialabilityDisposition {
@@ -175,12 +150,12 @@ function classifyDeclaration(
     return 'unsupported-in-unattended-trial';
   }
 
-  const needsLiveSmoke =
+  const hasHostRisk =
     declaration.secrets === 'real-required' ||
     declaration.network === 'read' ||
     declaration.network === 'write' ||
     declaration.filesystem === 'external-write';
-  if (!needsLiveSmoke) return 'sandbox-ready';
+  if (!hasHostRisk) return 'sandbox-ready';
 
   const risks = [
     declaration.secrets === 'real-required' ? 'real credentials' : null,
@@ -189,10 +164,7 @@ function classifyDeclaration(
     declaration.filesystem === 'external-write' ? 'writes outside the temporary copy' : null,
   ].filter((risk): risk is string => risk !== null);
   warnings.push(bounded(label + ' may use ' + risks.join(', ') + ' with normal host authority.'));
-
-  if (mode === 'sandbox-with-live-smoke') return 'live-smoke-ready';
-  blockers.push(bounded(label + ' requires an explicitly authorized Live Smoke Test.'));
-  return 'live-smoke-only';
+  return 'sandbox-ready-with-host-risk';
 }
 
 /**
@@ -203,7 +175,6 @@ export function buildChatPipelineTrialabilityReport({
   pipelineConfig,
   registry,
   capabilityOwners,
-  mode,
 }: BuildChatPipelineTrialabilityReportInput): ChatPipelineTrialabilityReport {
   const items: ChatPipelineTrialabilityItem[] = [];
   const blockers: string[] = [];
@@ -312,7 +283,7 @@ export function buildChatPipelineTrialabilityReport({
       ...baseItem,
       provider,
       declaration,
-      disposition: classifyDeclaration(baseItem, declaration, mode, blockers, warnings),
+      disposition: classifyDeclaration(baseItem, declaration, blockers, warnings),
       ...(occurrence === undefined ? {} : { occurrence }),
     });
   };
@@ -363,12 +334,9 @@ export function buildChatPipelineTrialabilityReport({
 
   return {
     protocolVersion: TRIAL_INTERACTION_PROTOCOL_VERSION,
-    mode,
     runnable: blockers.length === 0,
     enforcement: {
       sandboxCases: { ...SANDBOX_CASE_ENFORCEMENT },
-      liveSmokeBaseline:
-        mode === 'sandbox-with-live-smoke' ? { ...LIVE_SMOKE_BASELINE_ENFORCEMENT } : null,
     },
     items,
     blockers: [...new Set(blockers)],

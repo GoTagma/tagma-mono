@@ -8,11 +8,7 @@ import {
   writeEditorSettings,
 } from '../server/plugins/loader.js';
 import type { WorkspaceState } from '../server/workspace-state.js';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-  hasCurrentChatPipelineTrialLiveSmokeTestConsent,
-} from '../shared/chat-pipeline-trial-consent.js';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent.js';
 
 interface MinimalWs {
   workDir: string;
@@ -43,8 +39,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion).toBe(
       CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
     );
-    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
-    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialLiveSmokeTestConsentVersion).toBe(0);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(DEFAULT_EDITOR_SETTINGS.pipelineDefaultTaskTimeoutMinutes).toBe(120);
@@ -64,8 +58,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.opencodeChatReasoningEffort).toBeNull();
     expect(s.opencodeChatTrialRunEnabled).toBe(true);
     expect(s.opencodeChatTrialRunConsentVersion).toBe(CHAT_PIPELINE_TRIAL_CONSENT_VERSION);
-    expect(s.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
-    expect(s.opencodeChatTrialLiveSmokeTestConsentVersion).toBe(0);
     expect(s.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(s.pipelineDefaultTaskTimeoutMinutes).toBe(120);
@@ -123,8 +115,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
     });
     expect(s.opencodeChatReasoningEffort).toBe('max');
     expect(s.opencodeChatTrialRunEnabled).toBe(false);
-    expect(s.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
-    expect(s.opencodeChatTrialLiveSmokeTestConsentVersion).toBe(0);
     expect(s.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(5);
     expect(s.pipelineDefaultTaskTimeoutMinutes).toBe(180);
@@ -173,8 +163,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.opencodeChatReasoningEffort).toBeNull();
     expect(s.opencodeChatTrialRunEnabled).toBe(false);
     expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
-    expect(s.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
-    expect(s.opencodeChatTrialLiveSmokeTestConsentVersion).toBe(0);
     expect(s.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(s.pipelineDefaultTaskTimeoutMinutes).toBe(120);
@@ -221,15 +209,13 @@ describe('EditorSettings autosave + viewMode fields', () => {
     writeFileSync(resolve(tmp, '.tagma', 'editor-settings.json'), '{not-json');
 
     const next = writeEditorSettings(ws as unknown as WorkspaceState, {
-      opencodeChatTrialLiveSmokeTestEnabled: true,
+      autoSaveEnabled: false,
     });
 
     expect(next).toMatchObject({
+      autoSaveEnabled: false,
       opencodeChatTrialRunEnabled: false,
       opencodeChatTrialRunConsentVersion: 0,
-      opencodeChatTrialLiveSmokeTestEnabled: false,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     });
   });
 
@@ -246,96 +232,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
     ).toMatchObject({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-    });
-  });
-
-  test('live smoke consent is current only while Sandbox Trial consent is current', () => {
-    const settingsPath = resolve(tmp, '.tagma', 'editor-settings.json');
-    writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        opencodeChatTrialRunEnabled: false,
-        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        opencodeChatTrialLiveSmokeTestEnabled: true,
-        opencodeChatTrialLiveSmokeTestConsentVersion:
-          CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-      }),
-    );
-    const sandboxDisabled = readEditorSettings(ws as unknown as WorkspaceState);
-    expect(sandboxDisabled.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
-    expect(hasCurrentChatPipelineTrialLiveSmokeTestConsent(sandboxDisabled)).toBe(false);
-
-    writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        opencodeChatTrialRunEnabled: true,
-        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        opencodeChatTrialLiveSmokeTestEnabled: true,
-        opencodeChatTrialLiveSmokeTestConsentVersion:
-          CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-      }),
-    );
-    const bothCurrent = readEditorSettings(ws as unknown as WorkspaceState);
-    expect(bothCurrent.opencodeChatTrialLiveSmokeTestEnabled).toBe(true);
-    expect(hasCurrentChatPipelineTrialLiveSmokeTestConsent(bothCurrent)).toBe(true);
-
-    writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        opencodeChatTrialRunEnabled: true,
-        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        opencodeChatTrialLiveSmokeTestEnabled: true,
-        opencodeChatTrialLiveSmokeTestConsentVersion:
-          CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION + 1,
-      }),
-    );
-    const staleLiveConsent = readEditorSettings(ws as unknown as WorkspaceState);
-    expect(staleLiveConsent.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
-    expect(staleLiveConsent.opencodeChatTrialLiveSmokeTestConsentVersion).toBe(
-      CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION + 1,
-    );
-  });
-
-  test('first sparse write can enable Live Smoke without dropping the default Sandbox consent', () => {
-    const next = writeEditorSettings(ws as unknown as WorkspaceState, {
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-    });
-    expect(next).toMatchObject({
-      opencodeChatTrialRunEnabled: true,
-      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-    });
-    expect(
-      JSON.parse(readFileSync(resolve(tmp, '.tagma', 'editor-settings.json'), 'utf-8')),
-    ).toMatchObject({
-      opencodeChatTrialRunEnabled: true,
-      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-    });
-  });
-
-  test('first unrelated sparse write materializes defaults for a later Live Smoke opt-in', () => {
-    const first = writeEditorSettings(ws as unknown as WorkspaceState, {
-      autoSaveEnabled: false,
-    });
-    expect(first).toMatchObject({
-      autoSaveEnabled: false,
-      opencodeChatTrialRunEnabled: true,
-      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-    });
-
-    const live = writeEditorSettings(ws as unknown as WorkspaceState, {
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-    });
-    expect(live).toMatchObject({
-      opencodeChatTrialRunEnabled: true,
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     });
   });
 
@@ -358,7 +254,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
       },
       opencodeChatReasoningEffort: 'xhigh',
       opencodeChatTrialRunEnabled: false,
-      opencodeChatTrialLiveSmokeTestEnabled: false,
       opencodeChatTrialPlanMaxAttempts: 3,
       opencodeChatPipelineRepairMaxAttempts: 4,
       pipelineDefaultTaskTimeoutMinutes: 240,
@@ -378,7 +273,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
     });
     expect(next.opencodeChatReasoningEffort).toBe('xhigh');
     expect(next.opencodeChatTrialRunEnabled).toBe(false);
-    expect(next.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
     expect(next.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(next.opencodeChatPipelineRepairMaxAttempts).toBe(4);
     expect(next.pipelineDefaultTaskTimeoutMinutes).toBe(240);
@@ -399,7 +293,6 @@ describe('EditorSettings autosave + viewMode fields', () => {
     });
     expect(onDisk.opencodeChatReasoningEffort).toBe('xhigh');
     expect(onDisk.opencodeChatTrialRunEnabled).toBe(false);
-    expect(onDisk.opencodeChatTrialLiveSmokeTestEnabled).toBe(false);
     expect(onDisk.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(onDisk.opencodeChatPipelineRepairMaxAttempts).toBe(4);
     expect(onDisk.pipelineDefaultTaskTimeoutMinutes).toBe(240);

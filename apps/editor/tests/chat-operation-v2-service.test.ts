@@ -1332,7 +1332,7 @@ describe('ChatTurn Operation V2 service activation', () => {
     };
     const samples: TrialProgress[] = [
       preparing,
-      { ...preparing, phase: 'running-baseline', semanticUpdatedAt: 150, heartbeatAt: 150 },
+      { ...preparing, phase: 'sealing-baseline', semanticUpdatedAt: 150, heartbeatAt: 150 },
       running,
       { ...running, heartbeatAt: 250 },
       { ...running, semanticUpdatedAt: 300, heartbeatAt: 300, runNumber: 2 },
@@ -1460,9 +1460,7 @@ describe('ChatTurn Operation V2 service activation', () => {
     // A rejected optional field must never drop the event that carried it.
     const trialEvents = summaries.filter((entry) => entry.type === 'trial_status_changed');
     expect(trialEvents).toHaveLength(1 + 1 + 9);
-    expect(
-      trialEvents.every((entry) => entry.diagnostic.errorCode === 'trial_blocked'),
-    ).toBe(true);
+    expect(trialEvents.every((entry) => entry.diagnostic.errorCode === 'trial_blocked')).toBe(true);
     const withFeedback = summaries.filter((entry) => 'trialFeedback' in entry);
     expect(withFeedback).toHaveLength(1);
     expect(withFeedback[0]!.trialFeedback).toEqual(blocked);

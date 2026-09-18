@@ -15,10 +15,7 @@ import {
 import { trialRunChatYamlStage } from '../server/chat-pipeline-trial-run';
 import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
 import { CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS } from '../server/chat-pipeline-trial-plan';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-} from '../shared/chat-pipeline-trial-consent';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 test('an edit that regenerates pipeline artifacts verifies and retries without changing commit before-images', async () => {
@@ -62,9 +59,6 @@ test('an edit that regenerates pipeline artifacts verifies and retries without c
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     }),
   );
   const ws = new WorkspaceState(root);
@@ -119,8 +113,6 @@ test('an edit that regenerates pipeline artifacts verifies and retries without c
         success: true,
         summary: '',
       });
-      expect(result.liveSmokeStatus).toBe('skipped');
-      expect(result.verificationMode).toBe('sandbox-cases-only');
       expect(readFileSync(join(dirname(sourcePath), 'ledger.txt'), 'utf8')).toBe('old');
       expect(readFileSync(sourcePath, 'utf8')).toBe(sourceYaml);
     }

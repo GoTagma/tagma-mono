@@ -102,7 +102,6 @@ export const CHAT_OPERATION_V2_PHASES = [
 export const CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES = [
   'preparing',
   'capturing-host-witness',
-  'running-baseline',
   'sealing-baseline',
   'running-case',
   'verifying-workspace',

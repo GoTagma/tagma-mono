@@ -2591,7 +2591,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('finalizes authored changes when Live Smoke leaves managed OpenCode project state in the live pipeline folder', async () => {
+  test('finalizes authored changes when managed OpenCode project state exists in the live pipeline folder', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;

@@ -13,10 +13,7 @@ import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import { __workspaceRegistryTestHooks, workspaceRegistry } from '../server/workspace-registry';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-} from '../shared/chat-pipeline-trial-consent';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 type MockResponse = ReturnType<typeof makeRes>;
@@ -71,9 +68,6 @@ function makeWorkspace(commandScript = 'process.exit(0)'): {
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     }),
     'utf-8',
   );
@@ -253,7 +247,7 @@ describe('chat YAML staging async witness ordering', () => {
         {
           id: 'case_probe',
           title: 'Case probe',
-          objective: 'Exercise the selected task after the real-workspace baseline.',
+          objective: 'Exercise the selected task inside an isolated Sandbox case.',
           runs: 1,
           targetTaskIds: ['main.verify'],
           fixtures: [],
@@ -335,7 +329,7 @@ describe('chat YAML staging async witness ordering', () => {
       );
       const progress = (progressRes.body as { progress?: Record<string, unknown> | null }).progress;
       if (
-        progress?.phase === 'running-baseline' &&
+        progress?.phase === 'running-case' &&
         progress.taskId === 'main.verify' &&
         progress.taskStatus === 'running'
       ) {
@@ -345,8 +339,8 @@ describe('chat YAML staging async witness ordering', () => {
       await Bun.sleep(10);
     }
     expect(runningProgress).toMatchObject({
-      phase: 'running-baseline',
-      detail: 'Running the optional Live Smoke Test in the real workspace.',
+      phase: 'running-case',
+      detail: 'Running targeted case 1/1: Case probe.',
       runNumber: 1,
       runCount: 1,
       taskId: 'main.verify',
@@ -370,7 +364,9 @@ describe('chat YAML staging async witness ordering', () => {
       completedProgressRes,
     );
     expect(completedProgressRes.body).toEqual({ progress: null });
-  });
+    // The hanging case task needs room for the runner's 3s SIGKILL escalation
+    // after cancellation clears the progress record.
+  }, 15_000);
 
   test('reports ordered baseline, case, verification, and post-witness progress', async () => {
     const { ws, sourcePath } = makeWorkspace();
@@ -433,8 +429,7 @@ describe('chat YAML staging async witness ordering', () => {
       progressUpdates.findIndex((progress) => progress.phase === phase);
     expect(firstIndex('preparing')).toBe(0);
     expect(firstIndex('capturing-host-witness')).toBeGreaterThan(firstIndex('preparing'));
-    expect(firstIndex('running-baseline')).toBeGreaterThan(firstIndex('capturing-host-witness'));
-    expect(firstIndex('sealing-baseline')).toBeGreaterThan(firstIndex('running-baseline'));
+    expect(firstIndex('sealing-baseline')).toBeGreaterThan(firstIndex('capturing-host-witness'));
     expect(firstIndex('running-case')).toBeGreaterThan(firstIndex('sealing-baseline'));
     expect(firstIndex('verifying-workspace')).toBeGreaterThan(firstIndex('running-case'));
     expect(firstIndex('capturing-post-witness')).toBeGreaterThan(firstIndex('verifying-workspace'));
@@ -545,8 +540,8 @@ describe('chat YAML staging async witness ordering', () => {
         },
       ],
     });
-    // Live Smoke and Sandbox each need room for the runner's 3s SIGKILL
-    // escalation. Keep the total below the child's 10s natural lifetime:
+    // Each Sandbox case needs room for the runner's 3s SIGKILL escalation.
+    // Keep the total below the child's 10s natural lifetime:
     // missing per-task timeout must still fail with a whole-Trial timeout.
     __chatPipelineTrialRunTestHooks.timeoutMsOverride = 8_000;
     (
@@ -671,7 +666,6 @@ describe('chat YAML staging async witness ordering', () => {
       totalTaskCount: 0,
       prerequisiteState: {
         state: 'fixture-backed',
-        baseline: { mode: 'skip' },
         inputs: [
           {
             taskId: 'main.verify',
@@ -870,6 +864,14 @@ describe('chat YAML staging async witness ordering', () => {
                 omittedPathEventCount: 0,
                 paths: ['isolated-case-leak.txt'],
               },
+            },
+            {
+              // The case created the leaked path in the real workspace, so the
+              // trial-level digest witness also reports containment as unverified.
+              type: 'case-execution',
+              passed: false,
+              repairScope: 'diagnostic-only',
+              detail: expect.stringContaining('case containment could not be verified'),
             },
           ],
         },

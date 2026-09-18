@@ -5,7 +5,6 @@ import { basename, dirname, join, relative } from 'node:path';
 import { buildDag } from '@tagma/sdk/config';
 import type { PipelineConfig } from '@tagma/sdk';
 
-import type { ChatPipelineTrialMode } from './chat-pipeline-trialability.js';
 import type { ChatPipelineTrialPlanCase } from './chat-pipeline-trial-plan.js';
 import type { WorkspaceRuntimeMode } from './execution/native-broker.js';
 
@@ -15,7 +14,6 @@ interface ChatPipelineTrialCaseReuseFingerprintInput {
   testCase: ChatPipelineTrialPlanCase;
   supportTreeHash: string;
   trialabilityReportHash: string;
-  trialMode: ChatPipelineTrialMode;
   runtimeMode: WorkspaceRuntimeMode;
 }
 
@@ -101,7 +99,6 @@ export function buildChatPipelineTrialCaseReuseFingerprint(
     testCase: input.testCase,
     supportTreeHash: input.supportTreeHash,
     trialabilityReportHash: input.trialabilityReportHash,
-    trialMode: input.trialMode,
     runtimeMode: input.runtimeMode,
   });
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');

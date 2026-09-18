@@ -198,7 +198,7 @@ credentials and copied token instructions must not enter committed artifacts.
 - The next creation, operation `operation-5ae6a691-4dda-48a9-a6d3-8f66aff47490`, accepted
   six public once-only staged-file permission replies, ran real Sandbox Trial, and ended
   `completed_published` at version 28. The actual UI shows Passed (1/1 cases), two successful
-  task executions, Live Smoke not enabled and verification warnings. Output is an independent
+  task executions, and verification warnings. Output is an independent
   `chat-abb550bb2b1a9fa449ac258f` pipeline; baseline remained unchanged. The five-minute observer
   timed out before completion; later explicit observation confirmed the terminal result.
 - This creation exposed an observation defect: asynchronous child rendering added the assistant
@@ -382,8 +382,8 @@ compatibility. Already-lost legacy credentials remain read-only, never regenerat
   with zero Host/model admissions. Three publication regions scroll (1142.5 → 3159.17), and the
   Composer is inside the viewport. `release-native-frame.png` was inspected at full native size.
 - Both modes visibly show Coding Agent Diagnostics as Disabled while Chat Control operates.
-  Their Sandbox Trial consent is version 3 and Live Smoke stays off. Both baseline YAML files retain
-  SHA256 `467DD2B432C349AC8EEB75B5D6A45AD285B65488141C2C1F3A8B0C8B052CD9D9`.
+  Their Sandbox Trial consent is version 3, and Trial runs Sandbox cases only. Both baseline YAML
+  files retain SHA256 `467DD2B432C349AC8EEB75B5D6A45AD285B65488141C2C1F3A8B0C8B052CD9D9`.
 - Final cleanup rechecks confirm zero task-owned QA app/lab processes, installed executables,
   matching per-user uninstall registrations and copied provider/token files. All three uninstallers
   exited 0. The existing user's provider configuration and production Tagma installation were not modified.
@@ -394,7 +394,8 @@ compatibility. Already-lost legacy credentials remain read-only, never regenerat
   with explicit truncation. Commands cap at 2 MiB; durable command/event records cap at 8 MiB.
   Event reads default to 200 records (maximum 1000). Sustained retention and maximum-size history
   throughput were reviewed for these bounds, not load-tested; no unbounded-capacity claim is made.
-- Validation limits: native OS IME candidate windows, macOS/Linux installers, Live Smoke, production
-  signing/identity and remote CI were not exercised. The browser composition guard and Windows QA
-  installer flows were exercised. The earlier custom-QA upgrade failure remains recorded above.
+- Validation limits: native OS IME candidate windows, macOS/Linux installers, components that need
+  real credentials or external network/filesystem access, production signing/identity and remote CI
+  were not exercised. The browser composition guard and Windows QA installer flows were exercised.
+  The earlier custom-QA upgrade failure remains recorded above.
   Validation did not push changes, publish a release or modify a production installation.

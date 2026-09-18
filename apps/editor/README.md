@@ -105,24 +105,24 @@ prompt and triggered closures always run again. The live Trial status includes a
 and elapsed time during long, otherwise-silent model tasks.
 
 Sandbox Trial validates pipeline logic with synthetic environment values, isolated input fixtures,
-and automatic manual-trigger grants limited to each case's selected dependency closure. Missing real
-environment values skip the optional Live Smoke baseline without preventing Sandbox cases from
-running. Every terminal branch excluded from Live Smoke must be covered by a Sandbox case before
-Trial can pass. Results distinguish Sandbox coverage from real-environment readiness: a Sandbox pass
-with Live Smoke skipped does not satisfy the environment or approval requirements of an ordinary Run.
-Missing executables and actual task, output, or assertion failures remain visible verification failures.
+and automatic manual-trigger grants limited to each case's selected dependency closure. It is the
+only verification mode, so every terminal branch the pipeline needs verified must be covered by a
+Sandbox case before Trial can pass. Results distinguish Sandbox coverage from real-environment
+readiness: a Sandbox pass does not satisfy the environment or approval requirements of an ordinary
+Run. Components that need real environment values run with normal host authority and are reported as
+warnings and coverage limitations, never as verified environment-dependent behavior. Missing
+executables and actual task, output, or assertion failures remain visible verification failures.
 
-Live Smoke checks literal pipeline-file arguments in commands, completion checks, and hooks against
-the staged snapshot. A referenced script or input that is new, changed, deleted, or unreadable in the
-real directory excludes that task and its dependents until publication; Sandbox must cover those
-terminal branches. Tagma does not copy staged scripts into the real directory to make a Smoke pass.
-This argument check does not infer dynamic paths or transitive imports.
+Isolated cases run inside the copied staged snapshot, so a script or input that exists only in
+staging still reaches its case; cases never fall back to the real workspace. Tagma never writes
+staged content into the real workspace to make a case pass.
 
-A deliberately failing pipeline can pass verification when a complete, fixture-free case declares
-every task's outcome and all assertions also match the actual Live Smoke run. Cases with test
-environment overrides or denied approvals cannot reinterpret a live failure. Runtime interruption,
-missing executables, and incomplete output remain failures. The pipeline's run history keeps its
-actual failed status even when expected-failure verification passes.
+A deliberately failing pipeline can pass verification only through a complete, fixture-free case
+that declares every task's outcome and whose assertions all match the actual case result and files.
+Timeout, abort, spawn, and incomplete-output failures never qualify, and cases with test environment
+overrides or denied approvals cannot reinterpret a failed result. Every other case must still pass.
+The pipeline's run history keeps its actual failed status even when expected-failure verification
+passes.
 
 Sandbox copies resolve pipeline-local relative working directories from the original workspace,
 then relocate them into the copied pipeline directory. This also covers task-level cwd overrides
@@ -137,13 +137,14 @@ declared test environment input (`environment: [{ name, value: null }]`) or reje
 with `environment: [{ name, value: "example" }]`. A negative case inherits the other defaults and must
 declare the expected target statuses, including the blocked gate and skipped downstream work. A
 rejection that matches those assertions passes its test. No negative probe runs until its positive
-baseline passes, and no override changes ordinary Run behavior or Live Smoke credentials.
+baseline passes, and no override carries into ordinary Run behavior.
 
 The Host repeats test, authorized repair, and verification using **Maximum pipeline repair attempts**
-from Editor Settings. Actual logic failures require another test after repair. Missing real Live Smoke
-conditions are warnings when Sandbox coverage passes; they never become a claimed live pass. An
-enabled Sandbox that remains untested or failing cannot complete as a published Chat result. Trial
-Plan corrections retain their separate bounded planning budget.
+from Editor Settings. Actual logic failures require another test after repair. Components that need
+unavailable real environment values are warnings when Sandbox coverage passes; they are reported as
+a coverage limitation and never as a claimed real-environment pass. An enabled Sandbox that remains
+untested or failing cannot complete as a published Chat result. Trial Plan corrections retain their
+separate bounded planning budget.
 
 Desktop Chat routes pipeline work in two phases. A tool-free text invocation first returns one small
 JSON decision: discussion, read-only diagnosis, create, edit of one Host-issued pipeline candidate,

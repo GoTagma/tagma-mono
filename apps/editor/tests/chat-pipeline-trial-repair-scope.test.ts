@@ -152,10 +152,9 @@ test('a repeated negative case that unexpectedly succeeds on an earlier run keep
     reconcileCaseExpectationRepairScopes(expectations, ['diagnostic-only'])[0]?.repairScope,
   ).toBe('pipeline-artifact');
   expect(
-    hasChatPipelineTrialArtifactFailure(
-      [],
-      [{ success: false, tasks: [{ status: 'failed', repairScope: null }], expectations }],
-    ),
+    hasChatPipelineTrialArtifactFailure([
+      { success: false, tasks: [{ status: 'failed', repairScope: null }], expectations },
+    ]),
   ).toBe(true);
 });
 
@@ -170,28 +169,24 @@ test('successful negative cases never turn unrelated diagnostic failures into re
     tasks: [{ status: 'failed', repairScope: 'diagnostic-only' as const }],
     expectations: [{ passed: false, repairScope: 'diagnostic-only' as const }],
   };
-  expect(hasChatPipelineTrialArtifactFailure([], [external])).toBe(false);
-  expect(hasChatPipelineTrialArtifactFailure([], [negative, external])).toBe(false);
+  expect(hasChatPipelineTrialArtifactFailure([external])).toBe(false);
+  expect(hasChatPipelineTrialArtifactFailure([negative, external])).toBe(false);
   expect(
-    hasChatPipelineTrialArtifactFailure(
-      [],
-      [
-        {
-          ...negative,
-          tasks: [...negative.tasks, { status: 'skipped', repairScope: 'diagnostic-only' }],
-        },
-        external,
-      ],
-    ),
+    hasChatPipelineTrialArtifactFailure([
+      {
+        ...negative,
+        tasks: [...negative.tasks, { status: 'skipped', repairScope: 'diagnostic-only' }],
+      },
+      external,
+    ]),
   ).toBe(false);
-  expect(hasChatPipelineTrialArtifactFailure([], [{ ...negative, success: false }, external])).toBe(
+  expect(hasChatPipelineTrialArtifactFailure([{ ...negative, success: false }, external])).toBe(
     true,
   );
   expect(
-    hasChatPipelineTrialArtifactFailure(
-      [],
-      [{ ...external, expectations: [{ passed: false, repairScope: 'pipeline-artifact' }] }],
-    ),
+    hasChatPipelineTrialArtifactFailure([
+      { ...external, expectations: [{ passed: false, repairScope: 'pipeline-artifact' }] },
+    ]),
   ).toBe(true);
 });
 
@@ -214,12 +209,6 @@ test('an expected rejection in a mixed case is not a second repair cause', () =>
 
 test('command task non-zero exit stays a pipeline-artifact defect', () => {
   expect(trialTaskRepairScope('failed', 'exit_nonzero')).toBe('pipeline-artifact');
-});
-
-test('real-workspace Live Smoke failures are diagnostic-only evidence', () => {
-  expect(trialTaskRepairScope('failed', 'exit_nonzero', undefined, false, 'live-smoke')).toBe(
-    'diagnostic-only',
-  );
 });
 
 test('managed opencode primary stream error is diagnostic-only (external billing/network)', () => {

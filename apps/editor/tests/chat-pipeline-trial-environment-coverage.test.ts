@@ -1,14 +1,11 @@
-import { afterAll, afterEach, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-} from '../shared/chat-pipeline-trial-consent';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 const ENV_NAME = 'TAGMA_TEST_LOGIC_TRIAL_INPUT';
@@ -17,20 +14,6 @@ const SYNTHETIC_VALUE = `tagma-sandbox-trial-synthetic-${createHash('sha256')
   .update(ENV_NAME)
   .digest('hex')
   .slice(0, 24)}`;
-let realEnvironmentAvailable = false;
-
-mock.module('../server/secrets', () => ({
-  buildPipelineSecretEnv(
-    _workDir: string,
-    _yamlPath: string,
-    names?: readonly string[],
-  ): Record<string, string> {
-    return realEnvironmentAvailable && (!names || names.includes(ENV_NAME))
-      ? { [ENV_NAME]: REAL_VALUE }
-      : {};
-  },
-}));
-
 const { pipelineYamlPath } = await import('../server/pipeline-paths');
 const { WorkspaceState } = await import('../server/workspace-state');
 const { compileChatYamlStage, createChatYamlStage, discardChatYamlStage } =
@@ -53,7 +36,7 @@ afterAll(() => {
 });
 
 afterEach(() => {
-  realEnvironmentAvailable = false;
+  delete process.env[ENV_NAME];
   for (const fixture of fixtures.splice(0)) {
     discardChatYamlStage(fixture.ws, fixture.stageId);
     fixture.ws.watcher.stopWatching();
@@ -62,7 +45,6 @@ afterEach(() => {
 });
 
 function createFixture(options: {
-  liveSmoke: boolean;
   branch?: boolean;
   omitBranchTarget?: boolean;
   failSink?: boolean;
@@ -78,9 +60,6 @@ function createFixture(options: {
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: options.liveSmoke,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     }),
   );
   const ws = testWorkspace?.ws ?? new WorkspaceState(root);
@@ -94,10 +73,8 @@ function createFixture(options: {
   const stage = createChatYamlStage(ws, { activePath: sourcePath });
   fixtures.push({ root, ws, stageId: stage.id });
   const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-  const envCheck = [
-    `const expected = process.env.TAGMA_TRIAL_CASE_ID ? ${JSON.stringify(SYNTHETIC_VALUE)} : ${JSON.stringify(REAL_VALUE)};`,
-    `if (process.env.${ENV_NAME} !== expected) process.exit(9);`,
-  ].join(' ');
+  // Every case runs with the synthetic substitution and nothing else.
+  const envCheck = `if (process.env.${ENV_NAME} !== ${JSON.stringify(SYNTHETIC_VALUE)}) process.exit(9);`;
   writeFileSync(
     entry.stagedPath,
     serializePipeline({
@@ -239,63 +216,54 @@ function createFixture(options: {
   return { ws, stage, entry };
 }
 
-test.each([
-  { liveSmoke: false, branch: false },
-  { liveSmoke: true, branch: false },
-  { liveSmoke: true, branch: true },
-])('Sandbox completes gated dataflow despite unavailable real environment: %j', async (options) => {
-  const { ws, stage, entry } = createFixture(options);
-  expect(runPreflight(entry.stagedPath).missing.envs).toContain(ENV_NAME);
-  const result = await trialRunChatYamlStage(ws, {
-    stageId: stage.id,
-    relativePath: entry.relativePath,
-    trialId: 'missing_live_environment',
-  });
-  expect(result).toMatchObject({
-    success: true,
-    ran: true,
-    plannedCaseCount: 1,
-    caseResultCount: 1,
-    notRunCaseCount: 0,
-    liveSmokeStatus: options.liveSmoke ? 'skipped' : 'not_enabled',
-    verificationMode: 'sandbox-cases-only',
-  });
-  expect(
-    result.tasks.every((task) => task.caseId === 'complete-logic' && task.status === 'success'),
-  ).toBe(true);
-  expect(result.tasks).toHaveLength(options.branch ? 3 : 2);
-  expect(result.manualExecutionGrants).toEqual([
-    { taskId: 'main.sink', approvalCount: 1 },
-    { taskId: 'main.source', approvalCount: 1 },
-  ]);
-  expect(result.tasks.find((task) => task.taskId === 'main.sink')?.stdout).toBe('logic-ok');
-  expect(result.executionCoverage?.liveSmoke?.executed ?? false).toBe(false);
-  expect(JSON.stringify(result)).not.toContain(SYNTHETIC_VALUE);
-  // Test substitution is transient: ordinary-run requirements still need the real input.
-  expect(runPreflight(entry.stagedPath).missing.envs).toContain(ENV_NAME);
-});
+test.each([{ branch: false }, { branch: true }])(
+  'Sandbox completes gated dataflow despite unavailable real environment: %j',
+  async (options) => {
+    const { ws, stage, entry } = createFixture(options);
+    expect(runPreflight(entry.stagedPath).missing.envs).toContain(ENV_NAME);
+    const result = await trialRunChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      trialId: 'missing_live_environment',
+    });
+    expect(result).toMatchObject({
+      success: true,
+      ran: true,
+      plannedCaseCount: 1,
+      caseResultCount: 1,
+      notRunCaseCount: 0,
+    });
+    expect(
+      result.tasks.every((task) => task.caseId === 'complete-logic' && task.status === 'success'),
+    ).toBe(true);
+    expect(result.tasks).toHaveLength(options.branch ? 3 : 2);
+    expect(result.manualExecutionGrants).toEqual([
+      { taskId: 'main.sink', approvalCount: 1 },
+      { taskId: 'main.source', approvalCount: 1 },
+    ]);
+    expect(result.tasks.find((task) => task.taskId === 'main.sink')?.stdout).toBe('logic-ok');
+    expect(JSON.stringify(result)).not.toContain(SYNTHETIC_VALUE);
+    // Test substitution is transient: ordinary-run requirements still need the real input.
+    expect(runPreflight(entry.stagedPath).missing.envs).toContain(ENV_NAME);
+  },
+);
 
-test('available real environment retains Live Smoke and synthetic Sandbox execution', async () => {
-  realEnvironmentAvailable = true;
-  const { ws, stage, entry } = createFixture({ liveSmoke: true, branch: true });
+test('Sandbox cases keep synthetic values when the host environment has the real one', async () => {
+  process.env[ENV_NAME] = REAL_VALUE;
+  const { ws, stage, entry } = createFixture({ branch: true });
   const result = await trialRunChatYamlStage(ws, {
     stageId: stage.id,
     relativePath: entry.relativePath,
     trialId: 'available_live_environment',
   });
-  expect(result).toMatchObject({ success: true, liveSmokeStatus: 'passed', caseResultCount: 1 });
-  expect(result.tasks.filter((task) => task.caseId === null)).toHaveLength(3);
+  // Every case task exits 9 unless its environment carried the synthetic value.
+  expect(result).toMatchObject({ success: true, caseResultCount: 1 });
   expect(result.tasks.filter((task) => task.caseId === 'complete-logic')).toHaveLength(3);
   expect(JSON.stringify(result)).not.toContain(REAL_VALUE);
-  expect(JSON.stringify(result)).not.toContain(SYNTHETIC_VALUE);
 });
 
-test('unavailable Live Smoke cannot stand in for an uncovered terminal Sandbox branch', async () => {
-  const { ws, stage, entry } = createFixture({
-    liveSmoke: true,
-    branch: true,
-    omitBranchTarget: true,
-  });
+test('an uncovered terminal branch forces a bounded plan correction before execution', async () => {
+  const { ws, stage, entry } = createFixture({ branch: true, omitBranchTarget: true });
   const result = await trialRunChatYamlStage(ws, {
     stageId: stage.id,
     relativePath: entry.relativePath,
@@ -306,7 +274,7 @@ test('unavailable Live Smoke cannot stand in for an uncovered terminal Sandbox b
 });
 
 test('synthetic prerequisites do not hide an actual downstream logic failure', async () => {
-  const { ws, stage, entry } = createFixture({ liveSmoke: true, failSink: true });
+  const { ws, stage, entry } = createFixture({ failSink: true });
   const result = await trialRunChatYamlStage(ws, {
     stageId: stage.id,
     relativePath: entry.relativePath,
@@ -317,7 +285,6 @@ test('synthetic prerequisites do not hide an actual downstream logic failure', a
     kind: 'failed',
     ran: true,
     caseResultCount: 1,
-    liveSmokeStatus: 'skipped',
     repairAuthorization: 'pipeline-change-allowed',
   });
   expect(result.tasks).toContainEqual(
@@ -328,7 +295,7 @@ test('synthetic prerequisites do not hide an actual downstream logic failure', a
 test.each(['manual', 'environment'] as const)(
   'Trial runs the positive closure before a single %s prerequisite rejection',
   async (negativeCase) => {
-    const { ws, stage, entry } = createFixture({ liveSmoke: true, negativeCase });
+    const { ws, stage, entry } = createFixture({ negativeCase });
     const result = await trialRunChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: entry.relativePath,
@@ -380,11 +347,7 @@ test.each(['manual', 'environment'] as const)(
 );
 
 test('Trial repairs a failed positive baseline before running its negative probes', async () => {
-  const { ws, stage, entry } = createFixture({
-    liveSmoke: true,
-    failSink: true,
-    negativeCase: 'manual',
-  });
+  const { ws, stage, entry } = createFixture({ failSink: true, negativeCase: 'manual' });
   const result = await trialRunChatYamlStage(ws, {
     stageId: stage.id,
     relativePath: entry.relativePath,
@@ -405,7 +368,7 @@ test('Trial repairs a failed positive baseline before running its negative probe
 });
 
 test('undeclared environment controls request a bounded plan correction without executing', async () => {
-  const { ws, stage, entry } = createFixture({ liveSmoke: true });
+  const { ws, stage, entry } = createFixture({});
   const planPath = entry.stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json');
   const plan = JSON.parse(readFileSync(planPath, 'utf8'));
   plan.cases[0].environment = [{ name: 'UNDECLARED_TEST_INPUT', value: 'example' }];

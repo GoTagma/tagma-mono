@@ -249,22 +249,12 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
           <div className="mt-2 space-y-2 border border-tagma-border bg-tagma-bg p-2.5">
             <ToggleRow
               label="Sandbox Trial"
-              description="Validates pipeline logic in fresh temporary copies using synthetic environment values and automatic grants for selected manual-trigger tasks. Missing real environment values do not block Sandbox cases. Stdin/TTY are closed; filesystem, network, and process isolation outside each copy is application-level rather than OS-enforced. Normal runs still require their real environment and manual approvals."
+              description="The only way a pipeline is verified before publication. Validates pipeline logic in fresh temporary copies using synthetic environment values and automatic grants for selected manual-trigger tasks. Missing real environment values do not block Sandbox cases; components that would need them run with normal host authority instead, which is application-level rather than OS-enforced. Stdin/TTY are closed. Normal runs still require their real environment and manual approvals."
               checked={settings.opencodeChatTrialRunEnabled}
               disabled={settingsInputsDisabled}
               onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}
               borderless
             />
-            <div className="ml-4 border-l border-tagma-border pl-3">
-              <ToggleRow
-                label="Live Smoke Test"
-                description="Runs one additional baseline in the real workspace with normal host command authority, real credentials and network access, and automatically grants its manual triggers for that run only. Missing required environment values skip this baseline while Sandbox continues. It may mutate external state or workspace files; ordinary runs still require manual approval."
-                checked={settings.opencodeChatTrialLiveSmokeTestEnabled}
-                disabled={settingsInputsDisabled || !settings.opencodeChatTrialRunEnabled}
-                onChange={(v) => updateField('opencodeChatTrialLiveSmokeTestEnabled', v)}
-                borderless
-              />
-            </div>
             <div className={'flex items-center gap-2 text-body'}>
               <label
                 htmlFor={'chat-trial-plan-attempts'}

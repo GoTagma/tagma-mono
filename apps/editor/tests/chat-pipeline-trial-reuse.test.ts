@@ -72,7 +72,6 @@ const common = {
   relativeYamlPath: 'fact-checker/fact-checker.yaml',
   supportTreeHash: 'support-v1',
   trialabilityReportHash: 'trialability-v1',
-  trialMode: 'sandbox' as const,
   runtimeMode: 'broker' as const,
 };
 

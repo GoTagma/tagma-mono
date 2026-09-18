@@ -566,9 +566,8 @@ test('projects a terminal Host result notice once in transcript and export witho
     failedCaseCount: 0,
     notRunCaseCount: 1,
     taskStatusCounts: { success: 2, skipped: 14 },
-    liveSmokeStatus: 'skipped',
     reasonCode: 'trial_blocked',
-    details: 'Trial requires an explicitly authorized Live Smoke Test.',
+    details: 'A planned case could not run safely in the Sandbox Trial.',
   });
   const projectedResult = () => ({
     schemaVersion: 2,
@@ -647,7 +646,6 @@ test('projects a terminal Host result notice once in transcript and export witho
     chatPublicationStatus?: unknown;
   };
   expect(noticePart.text).toContain('Sandbox Trial: partial (1/2 cases passed; 1 not run)');
-  expect(noticePart.text).toContain('Live Smoke: skipped');
   expect(noticePart.chatVerificationOutcome).toEqual(verificationOutcome);
   expect(noticePart.chatPublicationStatus).toBe('not_published');
   expect(projected.completionWarning).toBeNull();
@@ -658,7 +656,7 @@ test('projects a terminal Host result notice once in transcript and export witho
     exportedAt: new Date('2026-09-02T00:00:00.000Z'),
   });
   expect(
-    exported.content.match(/Trial requires an explicitly authorized Live Smoke Test\./g),
+    exported.content.match(/A planned case could not run safely in the Sandbox Trial\./g),
   ).toHaveLength(1);
 });
 

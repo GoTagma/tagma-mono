@@ -322,7 +322,7 @@
 
 - Seal terminal authoring verification as the fixed-schema JSON `Pipeline verification outcome`
   result attachment. The Renderer may parse only that typed attachment, renders its compact
-  publication/Sandbox/Live Smoke summary with collapsed copyable detail, and formats the same
+  publication/Sandbox summary with collapsed copyable detail, and formats the same
   evidence once for export. Never infer outcome from English prose or also promote a result notice
   into `completionWarning`; that composer channel remains for live clarification, question,
   permission/recovery, and send-error warnings.
@@ -648,29 +648,28 @@
   preserved as a numbered copy, but companion drift from the first Host finalize must never move
   or duplicate the already-claimed renderer branch.
 - Chat pipeline Trial is fail-closed and default-off. `opencodeChatTrialRunEnabled` plus its
-  current server-stamped consent authorizes Sandbox Trial only. Live Smoke Test is a separate,
-  default-off setting with its own current consent, and is effective only while Sandbox Trial is
-  currently consented. Never inherit either authorization from a legacy boolean alone; the
-  renderer and server entry point must both enforce versioned consent. Disclose that Sandbox uses
-  a temporary workspace copy, closed stdin, no TTY, and synthetic secrets, but does not yet
-  OS-enforce filesystem, network, or child-process isolation. Live Smoke disclosure must separately
-  state that it runs in the real workspace with real credentials and normal host authority and may
-  change files or external state. When Sandbox Trial is disabled or unconsented, compile success is
-  sufficient for finalization; do not fabricate Trial evidence.
+  current server-stamped consent authorizes Sandbox Trial, which is the only trial mode. There is
+  no separate real-workspace baseline to consent to. Never inherit that authorization from a
+  legacy boolean alone; the renderer and server entry point must both enforce versioned consent.
+  Disclose that Sandbox uses a temporary workspace copy, closed stdin, no TTY, and synthetic
+  secrets, but does not OS-enforce filesystem, network, or child-process isolation, so a component
+  that needs real environment values runs with normal host authority instead. When Sandbox Trial
+  is disabled or unconsented, compile success is sufficient for finalization; do not fabricate
+  Trial evidence.
 - Before issuing a Trial Plan attempt, checking readiness, reserving a run, capturing a host
   witness, or executing a capability, build a complete Trial Interaction Protocol v1 report for
   every hook, command, driver, trigger, middleware, and completion in the compiled pipeline.
   Capability declarations must be exact v1
   objects. Fail closed on missing or malformed declarations, unknown interactions, unsupported
   unattended operation, interactive stdio, browser authentication, and long-lived runtimes.
-  Real-required secrets, external network access, and external filesystem writes require a
-  separately authorized Live Smoke Test. Host commands and hooks may remain Sandbox-runnable only
-  when the report explicitly records their non-OS-enforced host risk; never describe this
-  app-level containment as a permission sandbox. The report must keep Sandbox-case enforcement
-  separate from the optional Live Smoke baseline's real-workspace, real-secret, unrestricted-host
-  authority; never reuse the Sandbox enforcement block as a whole-mode disclosure. Bind the
-  selected Trial mode and a deterministic hash of the full report into the authenticated cache
-  key and result, and recompute that report before finalize accepts cached evidence.
+  Host commands and hooks may remain Sandbox-runnable only when the report explicitly records
+  their non-OS-enforced host risk; never describe this app-level containment as a permission
+  sandbox. Real-required secrets, external network access, and external filesystem writes are not
+  blockers: they classify the component as `sandbox-ready-with-host-risk` and add a warning that it
+  may run with normal host authority. The report's `enforcement` block describes Sandbox cases
+  only; never present it as a whole-mode disclosure. Bind a deterministic hash of the full report
+  into the authenticated cache key and result, and recompute that report before finalize accepts
+  cached evidence.
 - Before an enabled trial executes, require a transient sibling trial-plan JSON file authored
   from the final compiled YAML and bound to its SHA-1, except for the Host-owned fixed tool-free
   single-prompt fast lane described below. Missing, stale, or invalid ordinary plans trigger a
@@ -757,63 +756,46 @@
   therefore be directly targeted by an isolated case so each sink's full dependency closure
   executes. A sink that is unsafe or impossible to run requires a blocking `diagnostic-only`
   finding; warning or accepted-risk text must never turn an unexecuted sink into a passing Trial.
-- When Live Smoke Test is separately consented, preserve its real-workspace baseline when at least
-  one DAG root is runnable. That separate consent grants each manual trigger in the selected
-  baseline closure automatically for that run id only; ordinary pipeline runs still require human
-  approval. When every root is waiting for a missing workspace-local file or
+- Sandbox Trial is the only verification mode, and its run-scoped grant covers each manual trigger
+  in the explicitly selected case target closure for that run id only; ordinary pipeline runs still
+  require human approval. When every root is waiting for a missing workspace-local file or
   directory input, request the targeted plan first and require representative data only as an
-  isolated case fixture; do not create placeholder inputs in the real workspace. Skip that
-  unavailable Live Smoke baseline, retain pre/post host witness and mutation monitoring, execute
-  the Sandbox fixture cases for real, and report `sandbox-cases-only` rather than claiming a
-  live-data baseline. A completed Live Smoke baseline plus Sandbox cases reports
-  `sandbox-cases-with-live-smoke`. Execute every targeted case in a fresh stage-owned temporary
-  workspace with bounded helpers/fixtures, contained portable paths, selected task targets,
-  repeated-run support, and host-evaluated assertions. Case workspaces must be removed afterward
-  and their fixtures/outputs must never leak into the live workspace.
-- A partial Live Smoke target set proves only the terminal tasks it actually contains. Every
-  terminal branch excluded by missing data or a staged-only/divergent dependency must be directly
-  targeted by a Sandbox case; otherwise request a corrected plan before execution
-  and never finalize the result as verified.
+  isolated case fixture; do not create placeholder inputs in the real workspace. Retain pre/post
+  host witness and mutation monitoring, and execute every targeted case in a fresh stage-owned
+  temporary workspace with bounded helpers/fixtures, contained portable paths, selected task
+  targets, repeated-run support, and host-evaluated assertions. Case workspaces must be removed
+  afterward and their fixtures/outputs must never leak into the live workspace.
+- A case target set proves only the terminal tasks it actually contains. Every terminal task
+  excluded by missing data or by a staged-only/divergent dependency must be directly targeted by
+  another case; otherwise request a corrected plan before execution and never finalize the result
+  as verified.
 - Resolve staged pipeline support files identically in isolated Trial and after publication.
   When a short relative file/directory trigger, `file_exists` completion, or `static_context`
   path names an existing regular staged support-tree entry, relocate it to the copied or published
   `.tagma/<pipeline>/` directory before loading the YAML. Never make Trial find an asset that the
   finalized pipeline cannot resolve, or vice versa.
-- Only prompt tasks execute middleware. Live Smoke readiness must ignore inert command-task
-  middleware and compare target-pipeline `static_context` sources in the real workspace with the
-  exact staged Trial snapshot. Missing, deleted, or byte-divergent staged sources exclude that
-  branch from Live Smoke and require Sandbox coverage.
-- Live Smoke must also compare literal target-pipeline file arguments in task commands,
-  output-check completions, and hooks against the immutable staged snapshot. Added, changed,
-  deleted, or unreadable referenced files exclude the affected task and its dependents; hooks
-  exclude the whole baseline. Bind these exclusions into signed readiness at execution and
-  publication verification. Same-id completed-response replay remains read-only and must not
-  re-execute or issue a different plan; Finalize still revalidates the current witness/readiness.
-  This is literal argument evidence, not transitive import analysis.
-- Before publication, exclude branches that may produce target-pipeline files from Live Smoke.
-  Derive this conservatively from file completions and non-fixture file assertions; an assertion
-  without producer identity fences its complete case closure. Require Sandbox terminal coverage,
-  report the skipped Live Smoke scope, and bind output exclusions into signed readiness. Never
-  adopt or restore Smoke-written bytes as a new commit baseline. Dynamic unasserted writes remain
-  outside static analysis; ordinary dependency/witness and third-party conflict checks still apply.
-- A failed Live Smoke baseline may satisfy only a complete case over the identical task closure,
-  with explicit status assertions for every task and no fixtures or prerequisite overrides.
-  Evaluate every assertion against the actual live result/files; timeout, abort, spawn, and
-  incomplete-output failures never qualify. All Sandbox cases must still pass. Keep the actual
-  pipeline run failed and report expected-failure verification separately. Cache v29 fences the
-  earlier raw-success-only verdict and command-file readiness semantics.
+- Only prompt tasks execute middleware. Readiness must ignore inert command-task middleware, and
+  isolated cases resolve `static_context` sources from the copied staged snapshot rather than from
+  the real workspace, so a source that exists only in staging still reaches its case.
+- Same-id completed-response replay remains read-only and must not re-execute or issue a
+  different plan; Finalize still revalidates the current witness and readiness.
+- A deliberately failing pipeline may satisfy verification only through a complete case over the
+  identical task closure, with explicit status assertions for every task and no fixtures or
+  prerequisite overrides. Evaluate every assertion against the actual case result and files;
+  timeout, abort, spawn, and incomplete-output failures never qualify. Every other case must still
+  pass. Keep the actual pipeline run failed and report expected-failure verification separately.
+  Cache v33 fences the earlier raw-success-only verdict and command-file readiness semantics.
 - Before finalize, a new target pipeline directory cannot exist in the real workspace. When a
   task's effective cwd is inside that target directory, the live cwd is verifiably absent, and the
-  exact projected directory exists in the authenticated staged snapshot, exclude that task and its
-  dependents from Live Smoke and require Sandbox coverage. Only a staged target with no live source
+  exact projected directory exists in the authenticated staged snapshot, that directory reaches
+  isolated cases through the copied staged snapshot. Only a staged target with no live source
   at stage start is eligible for this classification; an existing pipeline losing its cwd remains a
   runtime error. A file, broken symlink, unreadable path, or missing cwd without a corresponding
-  staged directory also remains a runtime error. Do not create a real-workspace placeholder or run
-  the task from staging as if it were Live Smoke. Recompute mutable Live Smoke readiness after the
-  pre-run host witness is captured, and compare the complete canonical execution projection again
-  after the post witness before caching success: data-readiness state and unavailable task ids,
-  baseline mode and target ids, manual auto-grant ids, middleware/cwd exclusion ids, and new-target
-  identity.
+  staged directory also remains a runtime error. Do not create a real-workspace placeholder.
+  Recompute mutable readiness after the pre-run host witness is captured, and compare the complete
+  canonical execution projection again after the post witness before caching success: data-readiness
+  state and unavailable task ids, target ids, manual run-scoped grant ids, middleware/cwd handling
+  ids, and new-target identity.
   Persist that entire projection in the authenticated Trial cache, then re-resolve it on cache reuse
   and Finalize; Git witnesses do not represent empty directories. Never carry a stale readiness
   decision across either witness boundary or Finalize into execution or cached verification.
@@ -830,8 +812,9 @@
   plus status breakdowns, and report planned/result/not-run case counts, so the bounded view cannot
   silently imply that omitted tasks or cases did not exist. Also return a credential-free execution
   coverage summary containing terminal task ids, each Sandbox case's targets and full dependency
-  closure, whether it ran, built-in manual/file/directory auto-satisfaction types, and optional Live
-  Smoke closure/manual grants. Render that summary in a collapsed result detail and expose only
+  closure, whether it ran, and each built-in manual/file/directory auto-satisfaction's type and
+  `run-scoped-grant` or `isolated-case-input` mechanism. Render that summary in a collapsed result
+  detail and expose only
   bounded aggregate counts through production diagnostics.
 - Every planned case without a result must retain its id, title, bounded reason category, and safe
   detail in the Trial result, repair evidence, diagnostics, and conversation export. A count alone
@@ -886,40 +869,36 @@
 - Model Trial prerequisite readiness in one host-owned discriminated state:
   `runnable | fixture-backed | blocked`. Missing workspace-contained built-in file/directory
   inputs are fixture-backed data, not pipeline failures, whether the trigger task is a DAG root or
-  has dependencies. Keep Live Smoke availability separate from Sandbox input synthesis: every
-  workspace-contained built-in file/directory trigger is a Host-derived Sandbox fixture
-  requirement even when its live path exists, because fresh case workspaces never inherit live
-  user data. Require the exact file fixture, or a descendant file for a directory trigger, in every
-  case whose target closure executes that task; accept `generatedInputPaths` only when the same
-  case's upstream closure genuinely creates and exactly asserts the path. For a mixed DAG with Live
-  Smoke enabled, its real-workspace baseline must target only tasks whose dependency closure
-  excludes every unavailable input; test the fixture-dependent branches in Sandbox cases. When
-  every branch depends on unavailable data, skip Live Smoke instead of starting an all-skipped
-  run. Expose both the exact Sandbox fixture contract and the unavailable Live Smoke inputs to the
-  planner. Validate this pure plan/readiness phase before reserving a run session or capturing a
-  host witness. An incomplete fixture plan requests another bounded, host-issued plan continuation
-  as `diagnostic-only`; it must not execute, authorize pipeline repair, or write a placeholder into
-  the live workspace. External trigger paths remain valid production coordinates but cannot be
-  synthesized without leaving the case workspace, so Trial must block them rather than touch live
-  data. Never fabricate binaries, services, or real credentials to make Live Smoke appear ready;
-  only the separately consented, run-scoped manual-trigger grant is allowed. Sandbox's
-  deterministic synthetic-secret substitution is execution isolation, not evidence that a real
-  credential exists. Authenticated
-  absence needed by Live Smoke is a structured, diagnostic-only `blocked` prerequisite state.
-  Preserve task ownership from requirements `usedBy`: a missing task-owned binary blocks only Live
-  Smoke or Sandbox target closures that execute that task. Run every independent prerequisite-ready
+  has dependencies. Every workspace-contained built-in file/directory trigger is a Host-derived
+  Sandbox fixture requirement even when its live path exists, because fresh case workspaces never
+  inherit live user data. Require the exact file fixture, or a descendant file for a directory
+  trigger, in every case whose target closure executes that task; accept `generatedInputPaths` only
+  when the same case's upstream closure genuinely creates and exactly asserts the path. Expose the
+  exact Sandbox fixture contract to the planner. Validate this pure plan/readiness phase before
+  reserving a run session or capturing a host witness. An incomplete fixture plan requests another
+  bounded, host-issued plan continuation as `diagnostic-only`; it must not execute, authorize
+  pipeline repair, or write a placeholder into the live workspace. External trigger paths remain
+  valid production coordinates but cannot be synthesized without leaving the case workspace, so
+  Trial must block them rather than touch live data. Never fabricate binaries, services, or real
+  credentials to make a case appear ready; only the host-owned, run-scoped manual-trigger grant is
+  allowed. Sandbox's deterministic synthetic-secret substitution is execution isolation, not
+  evidence that a real credential exists. Authenticated absence of a required prerequisite is a
+  structured, diagnostic-only `blocked` prerequisite state.
+  Preserve task ownership from requirements `usedBy`: a missing task-owned binary blocks only the
+  Sandbox target closures that execute that task. Run every independent prerequisite-ready
   closure, retain blocked cases as `prerequisite-unavailable`, and return a blocked diagnostic result
   with real task evidence when partial execution occurred. Hook-owned, malformed/unscoped binary
-  requirements remain global blockers. Required real environment declarations block only the Live
-  Smoke baseline; Sandbox supplies its deterministic synthetic values and must still run. Before
-  execution, recheck terminal coverage against the runtime-ready Live Smoke targets, not just the
-  data-ready baseline. Request a corrected plan for every newly uncovered sink. Report unavailable
-  real environment separately from Sandbox prerequisites, and derive execution coverage from the
-  actual baseline target set. Never execute a blocked closure or reinterpret partial coverage as a pass.
+  requirements remain global blockers. Missing real environment values are a warning, not a
+  pipeline logic failure: Sandbox supplies its deterministic synthetic values, the run must still
+  proceed, and the gap is reported as a coverage limitation rather than as verified
+  environment-dependent behavior. Before execution, recheck terminal coverage against the
+  runtime-ready case targets, not just the data-ready plan. Request a corrected plan for every
+  newly uncovered sink. Report unavailable real environment separately from Sandbox prerequisites,
+  and derive execution coverage from the actual case target set. Never execute a blocked closure or
+  reinterpret partial coverage as a pass.
   Approval exceptions are host-owned and run-ID-scoped: Sandbox grants manual tasks only in an
-  explicitly selected case target dependency closure, while a separately consented Live Smoke
-  baseline grants manual tasks in its selected real-workspace closure. Neither is human approval and
-  neither changes ordinary-run approval behavior. Changing this grant policy requires the applicable
+  explicitly selected case target dependency closure. That grant is not human approval and
+  does not change ordinary-run approval behavior. Changing this grant policy requires the applicable
   Trial consent version bump and updated user-facing disclosure.
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
@@ -971,8 +950,9 @@
   prerequisite was unavailable. It may be discovered before execution (`ran: false`) or after safe
   branches began, such as a manual approval gate (`ran: true`); an independent executable failure
   must still take precedence over the blocker. Desktop Chat V2 must not publish an unverified
-  Sandbox result. A passed Sandbox with unavailable real Live Smoke prerequisites completes with
-  an explicit warning and skipped Live Smoke status, never a claimed live pass. Actionable pipeline
+  Sandbox result. A passed Sandbox whose components need unavailable real environment values
+  completes with an explicit warning and a coverage limitation, never as a claim that its
+  environment-dependent behavior was verified. Actionable pipeline
   failures use the operation's frozen Settings repair limit and must reverify after each repair;
   diagnostic-only blockers do not authorize fabricated credentials or unrelated YAML changes.
   The renderer may report only renderer-owned path-move or
@@ -1623,7 +1603,7 @@
 
 ## Focused Editor Tests
 
-- Timeout-order fixtures must leave room for both Live Smoke and Sandbox process-termination
+- Timeout-order fixtures must leave room for Sandbox process-termination
   grace while keeping the Trial deadline below the child's natural lifetime; retain the tight
   per-task deadline and assert Sandbox execution. Managed-tools isolation tests copy pinned
   dependencies and import generated modules, so give them an explicit finite integration-test
@@ -1683,7 +1663,8 @@
   Windows fixture cleanup failing with `EBUSY`.
 - Trial settings disclosures are checked by `tests/editor-settings-chat-trial-run.test.ts`.
   Update those assertions with copy changes while retaining coverage of synthetic Sandbox inputs,
-  closed stdin/TTY, application-level isolation, Live Smoke prerequisites, and ordinary-run approvals.
+  closed stdin/TTY, application-level isolation, real-environment components running with normal
+  host authority, and ordinary-run approvals.
 - Keep prerequisite assertions independent of unrelated CLI availability. Prompt tasks default to
   the `opencode` driver, so use a command task when a test intends to isolate another blocker. When
   an integration test must execute a prompt through a stubbed `opencode` driver, put a fake
@@ -1721,7 +1702,7 @@
 - Plan-review eligibility must inspect expectation authority, not just task success. Observation
   limits remain diagnostic-only without planner invocation; Host freshness probes preserve their
   own verdict. Typed `planError: invalid-array-index` identifies an actionable assertion defect
-  without parsing diagnostic prose or conflating it with reader truncation. Cache v32 seals this
+  without parsing diagnostic prose or conflating it with reader truncation. Cache v33 seals this
   distinction. Run the full editor suite when changing Trial result kinds or repair authority.
 - Prompt output inference must follow raw input-source semantics: `task.stdout`, `task.stderr`,
   `task.normalizedOutput`, and `task.exitCode` cannot infer JSON keys. Explicit

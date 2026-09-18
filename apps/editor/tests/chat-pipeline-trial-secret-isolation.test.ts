@@ -5,10 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
-import {
-  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
-} from '../shared/chat-pipeline-trial-consent';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 const SECRET_NAME = 'TAGMA_TRIAL_TASK_ONLY_SECRET';
@@ -106,7 +103,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-test('Trial injects declared secrets only into their task and still redacts declared output', async () => {
+test('Sandbox Trial injects the synthetic secret only into its declared task and still redacts its output', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-secret-scope-'));
   roots.push(root);
   const sourcePath = pipelineYamlPath(root, 'pipeline');
@@ -118,9 +115,6 @@ test('Trial injects declared secrets only into their task and still redacts decl
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: true,
-      opencodeChatTrialLiveSmokeTestConsentVersion:
-        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     }),
     'utf-8',
   );
@@ -169,7 +163,12 @@ test('Trial injects declared secrets only into their task and still redacts decl
     'utf-8',
   );
   expect(compileChatYamlStage(ws, stage.id, entry.relativePath).success).toBe(true);
-  writeTrialPlan(entry.stagedPath);
+  writeTrialPlan(entry.stagedPath, {
+    caseId: 'declared-secret-scope',
+    targetTaskIds: ['main.declared', 'main.undeclared'],
+    title: 'Declared secret scope probe',
+    objective: 'Confirm the sandbox secret reaches only its declaring task and is redacted.',
+  });
 
   const result = await trialRunChatYamlStage(ws, {
     stageId: stage.id,
@@ -177,16 +176,12 @@ test('Trial injects declared secrets only into their task and still redacts decl
     trialId: 'task_secret_scope',
   });
 
-  expect(result).toMatchObject({ success: true, kind: 'passed-with-warnings', ran: true });
-  expect(result).toMatchObject({
-    trialMode: 'sandbox-with-live-smoke',
-    verificationMode: 'sandbox-cases-with-live-smoke',
-  });
+  expect(result).toMatchObject({ success: true, ran: true });
   const declared = result.tasks.find(
-    (task) => task.caseId === null && task.taskId === 'main.declared',
+    (task) => task.caseId === 'declared-secret-scope' && task.taskId === 'main.declared',
   );
   const undeclared = result.tasks.find(
-    (task) => task.caseId === null && task.taskId === 'main.undeclared',
+    (task) => task.caseId === 'declared-secret-scope' && task.taskId === 'main.undeclared',
   );
   expect(declared).toMatchObject({ status: 'success' });
   expect(declared?.stdout.toLowerCase()).toContain('redacted');
@@ -198,7 +193,7 @@ test('Trial injects declared secrets only into their task and still redacts decl
   ws.layoutWatcher.stopWatching();
 });
 
-test('Sandbox Trial injects only deterministic synthetic secrets and skips the live baseline', async () => {
+test('Sandbox Trial injects only deterministic synthetic secrets', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-synthetic-secret-'));
   roots.push(root);
   const sourcePath = pipelineYamlPath(root, 'pipeline');
@@ -210,8 +205,6 @@ test('Sandbox Trial injects only deterministic synthetic secrets and skips the l
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: false,
-      opencodeChatTrialLiveSmokeTestConsentVersion: 0,
     }),
     'utf-8',
   );
@@ -268,13 +261,7 @@ test('Sandbox Trial injects only deterministic synthetic secrets and skips the l
     trialId: 'sandbox_synthetic_secret',
   });
 
-  expect(result).toMatchObject({
-    success: true,
-    ran: true,
-    trialMode: 'sandbox',
-    verificationMode: 'sandbox-cases-only',
-  });
-  expect(result.tasks.some((task) => task.caseId === null)).toBe(false);
+  expect(result).toMatchObject({ success: true, ran: true });
   expect(result.tasks).toContainEqual(
     expect.objectContaining({
       caseId: 'synthetic-secret-probe',

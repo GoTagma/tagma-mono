@@ -231,7 +231,6 @@ export interface ChatOperationV2RendererTrialProgress {
   readonly phase:
     | 'preparing'
     | 'capturing-host-witness'
-    | 'running-baseline'
     | 'sealing-baseline'
     | 'running-case'
     | 'verifying-workspace'
@@ -1309,7 +1308,6 @@ export function projectChatOperationV2OperationDetail(
 const TRIAL_PROGRESS_PHASES = new Set([
   'preparing',
   'capturing-host-witness',
-  'running-baseline',
   'sealing-baseline',
   'running-case',
   'verifying-workspace',

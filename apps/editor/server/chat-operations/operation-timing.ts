@@ -85,8 +85,7 @@ export function buildChatOperationTiming(input: {
         event.waitReason === 'user_retry');
     if (event.phase !== 'trial-running' || event.type === 'trial_status_changed') executing = false;
     else if (event.type === 'trial_progressed') {
-      executing =
-        event.payload.phase === 'running-baseline' || event.payload.phase === 'running-case';
+      executing = event.payload.phase === 'running-case';
     }
     cursor = at;
   }

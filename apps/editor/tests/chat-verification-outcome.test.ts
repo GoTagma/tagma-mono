@@ -18,7 +18,6 @@ describe('Chat verification outcome', () => {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: { success: 4 },
-      liveSmokeStatus: 'passed',
       reasonCode: null,
       details: 'All verification evidence is available.',
     });
@@ -31,18 +30,15 @@ describe('Chat verification outcome', () => {
       failedCaseCount: 0,
       notRunCaseCount: 1,
       taskStatusCounts: { success: 2, skipped: 14 },
-      liveSmokeStatus: 'skipped',
       reasonCode: 'trial_blocked',
       details: 'One case could not run safely.',
     });
 
     expect(passed).toMatchObject({
       sandbox: { status: 'passed', passedCaseCount: 2, plannedCaseCount: 2 },
-      liveSmoke: { status: 'passed' },
     });
     expect(partial).toMatchObject({
       sandbox: { status: 'partial', passedCaseCount: 1, notRunCaseCount: 1 },
-      liveSmoke: { status: 'skipped' },
       reasonCode: 'trial_blocked',
     });
 
@@ -53,7 +49,7 @@ describe('Chat verification outcome', () => {
     );
   });
 
-  test('distinguishes disabled Trial from failed Trial and Live Smoke failure', () => {
+  test('distinguishes disabled Trial from failed Trial', () => {
     const disabled = createChatVerificationOutcome({
       trialKind: 'blocked',
       ran: false,
@@ -63,7 +59,6 @@ describe('Chat verification outcome', () => {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: {},
-      liveSmokeStatus: 'not_enabled',
       reasonCode: 'trial_disabled',
       details: 'Sandbox Trial consent is not enabled.',
     });
@@ -76,18 +71,15 @@ describe('Chat verification outcome', () => {
       failedCaseCount: 1,
       notRunCaseCount: 0,
       taskStatusCounts: { failed: 1 },
-      liveSmokeStatus: 'failed',
       reasonCode: 'trial_failed',
       details: 'The executed case failed.',
     });
 
     expect(disabled).toMatchObject({
       sandbox: { status: 'skipped' },
-      liveSmoke: { status: 'not_enabled' },
     });
     expect(failed).toMatchObject({
       sandbox: { status: 'failed', failedCaseCount: 1 },
-      liveSmoke: { status: 'failed' },
     });
   });
 
@@ -102,7 +94,6 @@ describe('Chat verification outcome', () => {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: { success: 1 },
-      liveSmokeStatus: 'not_enabled',
       reasonCode: 'trial_passed_with_warnings',
       details,
     });
@@ -116,9 +107,29 @@ describe('Chat verification outcome', () => {
   test('rejects prose and unknown structured fields instead of guessing semantics', () => {
     expect(
       parseChatVerificationOutcome(
-        'Sandbox Trial passed but Live Smoke was skipped because data was unavailable.',
+        'Sandbox Trial passed but a baseline was skipped because data was unavailable.',
       ),
     ).toBeNull();
+    expect(
+      parseChatVerificationOutcome({
+        schemaVersion: 2,
+        sandbox: {
+          status: 'passed',
+          plannedCaseCount: 1,
+          resultCaseCount: 1,
+          passedCaseCount: 1,
+          failedCaseCount: 0,
+          notRunCaseCount: 0,
+          taskStatusCounts: { success: 1 },
+        },
+        reasonCode: null,
+        details: 'ok',
+        inferredFromEnglish: true,
+      }),
+    ).toBeNull();
+  });
+
+  test('rejects a superseded schema version so legacy outcomes render nothing', () => {
     expect(
       parseChatVerificationOutcome({
         schemaVersion: 1,
@@ -131,10 +142,10 @@ describe('Chat verification outcome', () => {
           notRunCaseCount: 0,
           taskStatusCounts: { success: 1 },
         },
-        liveSmoke: { status: 'not_enabled' },
+        // Version 1 carried the removed real-workspace baseline verdict.
+        liveSmoke: { status: 'passed' },
         reasonCode: null,
         details: 'ok',
-        inferredFromEnglish: true,
       }),
     ).toBeNull();
   });
@@ -149,7 +160,6 @@ describe('Chat verification outcome', () => {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: {},
-      liveSmokeStatus: 'failed',
       reasonCode: 'trial_failed',
       details: 'The harness failed before a case result was available.',
     });

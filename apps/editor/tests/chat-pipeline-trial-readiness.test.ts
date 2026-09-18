@@ -85,7 +85,6 @@ describe('chat pipeline Trial readiness', () => {
 
       expect(readiness).toEqual({
         state: 'fixture-backed',
-        baseline: { mode: 'targeted', targetTaskIds: ['main.independent'] },
         inputs: [
           {
             taskId: 'main.ingest',

@@ -175,7 +175,6 @@ export interface ChatPipelineTrialPlan {
 export function findUncoveredChatPipelineTrialTerminalTaskIds(
   plan: ChatPipelineTrialPlan,
   pipelineConfig: PipelineConfig,
-  liveSmokeCoveredTaskIds: ReadonlySet<string> = new Set<string>(),
 ): string[] {
   const dag = buildDag(pipelineConfig);
   const dependedOnTaskIds = new Set([...dag.nodes.values()].flatMap((node) => node.dependsOn));
@@ -185,10 +184,7 @@ export function findUncoveredChatPipelineTrialTerminalTaskIds(
       .flatMap((testCase) => testCase.targetTaskIds),
   );
   return [...dag.nodes.keys()].filter(
-    (taskId) =>
-      !dependedOnTaskIds.has(taskId) &&
-      !targetedTaskIds.has(taskId) &&
-      !liveSmokeCoveredTaskIds.has(taskId),
+    (taskId) => !dependedOnTaskIds.has(taskId) && !targetedTaskIds.has(taskId),
   );
 }
 

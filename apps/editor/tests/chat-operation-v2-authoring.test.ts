@@ -45,6 +45,7 @@ import {
 import { createInitialChatOperationV2State } from '../server/chat-operations/types.js';
 import { appendChatOperationV2ResultMessage } from '../server/chat-operations/results.js';
 import type { ChatOperationV2SubmissionUnknownReason } from '../server/chat-operations/submission-diagnostics.js';
+import { CHAT_VERIFICATION_OUTCOME_SCHEMA_VERSION } from '../shared/chat-verification-outcome';
 
 setDefaultTimeout(30_000);
 
@@ -532,9 +533,8 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         failedCaseCount: 0,
         notRunCaseCount: 0,
         taskStatusCounts: {},
-        liveSmokeStatus: 'not_enabled',
         reasonCode: 'trial_blocked',
-        details: 'Trial requires an explicitly authorized Live Smoke Test.',
+        details: 'A planned case could not run safely in the Sandbox Trial.',
       });
       return {
         kind: 'unverified',
@@ -547,7 +547,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         trialStatus: 'blocked',
         errorCode: 'trial_blocked',
         diagnosticCodes: ['trial_blocked'],
-        redactedSummary: 'Trial requires an explicitly authorized Live Smoke Test.',
+        redactedSummary: 'A planned case could not run safely in the Sandbox Trial.',
         feedback: {
           schemaVersion: 1,
           stage: 'trial',
@@ -570,7 +570,6 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       failedCaseCount: 0,
       notRunCaseCount: 0,
       taskStatusCounts: { success: 2 },
-      liveSmokeStatus: 'not_enabled',
       reasonCode: null,
       details: 'Sandbox Trial passed.',
     });
@@ -907,7 +906,6 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
           code: 'trial_passed',
           outcome: expect.objectContaining({
             sandbox: expect.objectContaining({ status: 'passed' }),
-            liveSmoke: { status: 'not_enabled' },
           }),
         }),
       }),
@@ -1036,7 +1034,7 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
         mediaType: 'application/json',
       });
       expect(JSON.parse(pending.message.attachments[0]!.content)).toMatchObject({
-        schemaVersion: 1,
+        schemaVersion: CHAT_VERIFICATION_OUTCOME_SCHEMA_VERSION,
         sandbox: { status: 'passed' },
       });
       expect(pending.message.text).toBe(before.message.text);

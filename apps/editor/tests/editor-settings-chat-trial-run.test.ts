@@ -38,7 +38,7 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(trialSource).not.toContain('CHAT_PIPELINE_TRIAL_TIMEOUT_MS');
   });
 
-  test('renders Sandbox Trial and its independently consented Live Smoke Test', () => {
+  test('renders the Sandbox Trial opt-in with an accurate containment disclosure', () => {
     const source = readFileSync(
       join(import.meta.dir, '..', 'src', 'components', 'settings', 'EditorSettingsSections.tsx'),
       'utf8',
@@ -49,31 +49,20 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     );
 
     expect(source).toContain('Sandbox Trial');
+    expect(source).toContain('The only way a pipeline is verified before publication');
     expect(source).toContain('fresh temporary copies');
     expect(source).toContain('Stdin/TTY are closed');
     expect(source).toContain('synthetic environment values');
     expect(source).toContain('application-level rather than OS-enforced');
     expect(source).toContain('selected manual-trigger tasks');
     expect(source).toContain('Missing real environment values do not block Sandbox cases');
+    expect(source).toContain('components that would need them run with normal host authority');
     expect(source).toContain(
       'Normal runs still require their real environment and manual approvals',
     );
-    expect(source).toContain('Live Smoke Test');
-    expect(source).toContain('baseline in the real workspace');
-    expect(source).toContain('automatically grants its manual triggers');
-    expect(source).toContain('normal host command authority');
-    expect(source).toContain('real credentials and network access');
-    expect(source).toContain(
-      'Missing required environment values skip this baseline while Sandbox continues',
-    );
-    expect(source).toContain('may mutate external state');
+    expect(source).not.toContain('Live Smoke');
     expect(consentSource).toContain('CHAT_PIPELINE_TRIAL_CONSENT_VERSION = 3');
-    expect(consentSource).toContain('CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION = 2');
     expect(source).toContain('checked={settings.opencodeChatTrialRunEnabled}');
-    expect(source).toContain('checked={settings.opencodeChatTrialLiveSmokeTestEnabled}');
-    expect(source).toContain(
-      'disabled={settingsInputsDisabled || !settings.opencodeChatTrialRunEnabled}',
-    );
     expect(source).toContain('Trial Plan attempts per revision:');
     expect(source).toContain('min={MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}');
     expect(source).toContain('max={MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}');
@@ -90,20 +79,15 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     );
 
     const toggleIndex = source.indexOf('checked={settings.opencodeChatTrialRunEnabled}');
-    const liveSmokeIndex = source.indexOf(
-      'checked={settings.opencodeChatTrialLiveSmokeTestEnabled}',
-    );
     const trialPlanLimitIndex = source.indexOf('value={settings.opencodeChatTrialPlanMaxAttempts}');
     const repairLimitIndex = source.indexOf(
       'value={settings.opencodeChatPipelineRepairMaxAttempts}',
     );
     const memoryToggleIndex = source.indexOf('checked={settings.chatContextLimitEnabled}');
     expect(toggleIndex).toBeGreaterThan(-1);
-    expect(liveSmokeIndex).toBeGreaterThan(toggleIndex);
-    expect(trialPlanLimitIndex).toBeGreaterThan(liveSmokeIndex);
+    expect(trialPlanLimitIndex).toBeGreaterThan(toggleIndex);
     expect(repairLimitIndex).toBeGreaterThan(trialPlanLimitIndex);
     expect(memoryToggleIndex).toBeGreaterThan(repairLimitIndex);
-    expect(source).toContain(`updateField('opencodeChatTrialLiveSmokeTestEnabled', v)`);
     expect(source).toContain("updateField('opencodeChatTrialRunEnabled', v)");
   });
 

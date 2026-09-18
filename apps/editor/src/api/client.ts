@@ -293,7 +293,6 @@ export interface ChatPipelineTrialFixtureInput {
 export type ChatPipelineTrialPrerequisiteState =
   | {
       state: 'fixture-backed';
-      baseline: { mode: 'targeted'; targetTaskIds: string[] } | { mode: 'skip' };
       inputs: ChatPipelineTrialFixtureInput[];
     }
   | {
@@ -413,15 +412,7 @@ export interface ChatPipelineTrialExecutionCoverage {
       mechanism: 'run-scoped-grant' | 'isolated-case-input';
     }>;
   }>;
-  liveSmoke: {
-    targetTaskIds: string[];
-    closureTaskIds: string[];
-    executed: boolean;
-    automaticManualTaskIds: string[];
-  } | null;
 }
-
-export type ChatPipelineTrialMode = 'sandbox' | 'sandbox-with-live-smoke';
 
 export type ChatPipelineTrialabilityComponent =
   'hook' | 'command' | 'driver' | 'trigger' | 'middleware' | 'completion';
@@ -429,8 +420,6 @@ export type ChatPipelineTrialabilityComponent =
 export type ChatPipelineTrialabilityDisposition =
   | 'sandbox-ready'
   | 'sandbox-ready-with-host-risk'
-  | 'live-smoke-only'
-  | 'live-smoke-ready'
   | 'human-required'
   | 'unsupported-in-unattended-trial';
 
@@ -446,7 +435,6 @@ export interface ChatPipelineTrialabilityItem {
 
 export interface ChatPipelineTrialabilityReport {
   protocolVersion: 1;
-  mode: ChatPipelineTrialMode;
   runnable: boolean;
   enforcement: {
     sandboxCases: {
@@ -458,15 +446,6 @@ export interface ChatPipelineTrialabilityReport {
       network: 'host-unrestricted';
       process: 'host-unrestricted';
     };
-    liveSmokeBaseline: {
-      workspace: 'real-workspace';
-      stdin: 'closed';
-      tty: 'none';
-      secrets: 'real';
-      filesystem: 'host-unrestricted';
-      network: 'host-unrestricted';
-      process: 'host-unrestricted';
-    } | null;
   };
   items: ChatPipelineTrialabilityItem[];
   blockers: string[];
@@ -529,9 +508,7 @@ export interface ChatPipelineTrialRunResult {
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
   trialPlanRepairAttemptId?: string;
   prerequisiteState?: ChatPipelineTrialPrerequisiteState;
-  trialMode?: ChatPipelineTrialMode;
   trialabilityReport?: ChatPipelineTrialabilityReport;
-  verificationMode?: 'sandbox-cases-only' | 'sandbox-cases-with-live-smoke';
   executionCoverage?: ChatPipelineTrialExecutionCoverage;
   manualExecutionGrants?: ChatPipelineTrialManualExecutionGrant[];
   planTelemetry?: {
@@ -561,7 +538,6 @@ export interface ChatPipelineTrialRunResult {
 export type ChatPipelineTrialProgressPhase =
   | 'preparing'
   | 'capturing-host-witness'
-  | 'running-baseline'
   | 'sealing-baseline'
   | 'running-case'
   | 'verifying-workspace'
@@ -1264,10 +1240,6 @@ export interface EditorSettings {
   opencodeChatTrialRunEnabled: boolean;
   /** Server-stamped acknowledgement version for the Sandbox Trial policy. */
   opencodeChatTrialRunConsentVersion: number;
-  /** Adds a real-workspace baseline while Sandbox Trial remains consented. Default false. */
-  opencodeChatTrialLiveSmokeTestEnabled: boolean;
-  /** Server-stamped acknowledgement version for the Live Smoke Test policy. */
-  opencodeChatTrialLiveSmokeTestConsentVersion: number;
   /** Per-revision Trial Plan tool budget. Default 2; server clamps to [1, 3]. */
   opencodeChatTrialPlanMaxAttempts: number;
   /** Shared compile/trial repair budget. Default 25; 0 disables; server clamps to [0, 50]. */

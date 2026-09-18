@@ -68,7 +68,6 @@ test('Sandbox Trial sends prompt tasks the same business prompt as production', 
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-      opencodeChatTrialLiveSmokeTestEnabled: false,
     }),
     'utf8',
   );

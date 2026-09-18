@@ -121,7 +121,6 @@ test.skipIf(process.platform !== 'win32')(
       JSON.stringify({
         opencodeChatTrialRunEnabled: true,
         opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        opencodeChatTrialLiveSmokeTestEnabled: false,
       }),
     );
     const ws = new WorkspaceState(root);
