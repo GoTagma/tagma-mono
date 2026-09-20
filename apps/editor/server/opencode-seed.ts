@@ -855,6 +855,7 @@ Every turn may include \`<editor-context>\`; re-read it.
 - \`<requested-action kind="create-new-pipeline">\`: Host-selected fresh target; creation wins over name matches.
 - \`<requested-action kind="fill-manual-new-pipeline">\`: Host-selected manual New draft at \`<current-file>\`.
 - \`<pipeline-binding intent="create|edit">\`: Host-classified, session-owned write authority. For \`edit\`, modify only the supplied existing \`<current-file>\`; the Host publishes those bytes to the session's unique branch, so never copy or retarget it yourself. For \`create\`, author only the supplied fresh \`<current-file>\`. The binding wins over prose and needs no model-authored stage marker.
+- Use the bound target; do not enumerate or open unrelated inventoried pipelines unless comparison or reuse is explicit.
 - Without a Host action or pipeline-binding marker, never repurpose an existing \`<current-file>\` as a new pipeline. A legacy router-classified create may use only a fresh unused sibling path and must not modify \`<current-file>\` or any inventoried YAML. Obey a legacy \`TAGMA_ROUTE_MODE: <stage-id> create|edit\` over prose. If intent is ambiguous, return \`ROUTE_MISMATCH: pipeline_work\` without writing.
 - \`<current-file>\`: relative outside staging; absolute inside \`<agent-root>\` during staging.
 - \`<workspace-yaml-folders>\`: known pipelines with \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`. Paths are relative outside staging and absolute inside \`<agent-root>\` during staging; match by folder, YAML, or pipeline name. \`legacy="flat"\` paths are exact.
@@ -982,7 +983,7 @@ Rely on \`tagma-yaml-contract\`, \`tagma-native-primitives\`, and compile.log fo
 - Command-only tracks are layout/cwd/on_failure lanes. Do not set inert AI fields on them.
 - Prefer fully qualified refs \`trackId.taskId\` when ambiguity is possible. \`continue_from\` is prompt-to-prompt and should usually stay in the same track.
 - Use only plugin types listed in \`<plugins>\`. Built-in driver \`opencode\` needs no plugin entry.
-- Tagma has no task \`env\` field and does not shell-escape \`{{inputs.name}}\`; quote placeholders. For secrets, declare \`secrets:\` and use host env syntax (Windows: \`$env:NAME\`, POSIX: \`$NAME\`).
+- In command strings, pass string inputs as \`{{inputs.name | shellquote}}\`; use \`secrets:\` for secrets. Tagma has no task \`env\` field.
 
 ## Runnable Command Policy
 
@@ -1080,6 +1081,14 @@ function buildTagmaYamlContractSkillBase(): string {
     )
     .replace('`timeout?` (default `30s`).', '`timeout?` (default `2h`).')
     .replace(
+      '**Quote your placeholders in command lines:** `weather.sh --city "{{inputs.city}}"`. The engine does **not** shell-escape.',
+      '**Shell-escape string inputs in command lines:** `weather.sh --city {{inputs.city | shellquote}}`. Bare placeholders are verbatim; surrounding one with quotes is not escaping.',
+    )
+    .replace(
+      '`permissions={read:true, write:false, execute:false}`.',
+      '`permissions={read:true, write:false, execute:false}`. Optional `web: true` allows OpenCode websearch/webfetch without shell execution.',
+    )
+    .replace(
       'Each command has a hard\n30-second timeout',
       'Each command has a hard\n2-hour timeout',
     )
@@ -1131,6 +1140,10 @@ Use Tagma YAML fields before helper scripts or custom tool creation:
 6. hooks
 7. permissions, on_failure, driver, model, reasoning_effort
 
+The built-in driver already defaults to \`opencode\`. Do not add \`driver: opencode\` merely to
+restate that default, and do not manufacture any other default-only byte change when an existing
+pipeline already satisfies the request. Leave the staged artifacts unchanged and report a no-op.
+
 ## YAML contract
 
 - The root object is \`pipeline:\` with non-empty \`name\` and \`tracks\`.
@@ -1147,14 +1160,15 @@ Use Tagma YAML fields before helper scripts or custom tool creation:
 - Use \`inputs\` / \`outputs\` maps for dataflow. There is no \`ports:\` key and no
   task-level \`env:\` field.
 - An output binding name does not select a stream. Omitting \`from\` means \`json.<outputName>\` and therefore requires a final-line JSON object. Use \`from: stdout\` explicitly to capture raw command stdout. If no downstream task consumes command output, omit \`outputs\` entirely.
-- Quote \`{{inputs.name}}\` placeholders inside command strings; Tagma does not
-  shell-escape substituted values.
+- Use \`{{inputs.name | shellquote}}\` for string inputs inside command strings. Bare
+  placeholders are verbatim; surrounding one with quotes is not escaping.
 - After every YAML write, read the same-folder \`.compile.log\`; the validator is
   the source of truth for detailed schema errors.
 
 ## Command tasks
 
 - Use command for deterministic shell work where the exact command is known.
+- When the user explicitly requires a headless \`opencode\` command and does not name a model, read the \`<opencode-chat-model>\` marker and pass its exact \`provider-id/model-id\` through \`opencode run --model\`. Never let an authored command silently fall back to OpenCode's ambient default model.
 - Match the command dialect to Tagma's actual host shell contract:
 ${WINDOWS_COMMAND_AUTHORING_CONTRACT}
 - On macOS and Linux, plain \`command\` strings and \`{ shell: ... }\` commands run under \`sh -c\` by default; use POSIX shell syntax unless the user explicitly configures \`PIPELINE_SHELL\`.
@@ -1169,6 +1183,9 @@ ${WINDOWS_COMMAND_AUTHORING_CONTRACT}
 - Use prompt when the work requires an AI to decide, write, review, summarize, diagnose, or edit.
 - For a fixed conversational question with no downstream data contract, use the user's question itself as the prompt; do not add meta-instructions, a typed output, or a companion file unless the user asks for that contract.
 - For a fixed conversational prompt with no workspace or tool dependency, set all three permissions to false. This gives OpenCode a no-read/no-write/no-execute execution profile instead of Coding Agent authority.
+- For native web work, set \`web: true\`; this allows websearch and webfetch without granting shell execution. Never add execute permission merely for web access.
+- Preserve an explicit CLI requirement during repair. When CLI mechanics were not required, prefer a managed prompt task whose scoped tools satisfy the outcome.
+- Do not invent source-count or page-fetch requirements. Fit web work to the requested evidence and authored timeout, and tolerate unavailable pages within that contract.
 - Prefer native outputs for generated values; Tagma injects the Output Format contract and validates its final-line JSON. Do not duplicate or contradict that contract in the prompt or invent a companion file just to capture, return, or observe the value.
 - Put permission intent on the prompt task: read-only for planning/review, write for editing, execute only when the runtime agent truly needs tools or tests. A prompt task that must create or edit files needs write permission; the default read-only task cannot satisfy a file contract.
 - In the prompt text, tell the runtime OpenCode agent to use native file/search/edit/bash tools, native subagents, approved skills, and the host-native-command-then-Python rule before creating ad hoc scripts.
@@ -1272,7 +1289,7 @@ The chat authoring agent writes YAML. It does not press the editor Run button, c
 4. If a task accepts several filenames or extensions, do not gate several accepted filenames or extensions on one arbitrary canonical file. Omit the trigger and rely on Run, use a manual gate, or use a directory trigger only when creation of that directory is the real readiness event. After authoring, the trigger acceptance set must match the input contract described to the user.
 5. If a task should wait until a local or external folder is created, use the native directory trigger.
 6. If an external system should start or unblock work, use a webhook or similar trigger only when it appears in the current editor context plugins list.
-7. If the user asks for cron, recurring, delayed, or calendar scheduling, use a schedule/cron trigger only when that installed plugin appears in editor context. If no such plugin is listed, do not invent it; write a manual/file/directory-triggered pipeline and tell the user which trigger capability is missing.
+7. If the user asks for cron, recurring, delayed, or calendar scheduling, use a schedule/cron trigger only when that installed plugin appears in editor context. If no such plugin is listed, write a manual/file/directory-triggered pipeline and state that a compatible schedule trigger capability is missing. Never name or recommend a package, install command, trigger type, or field schema that is absent from the Host plugin list, including in requirements prose.
 8. Pair non-trivial triggers with meaningful completion checks. Rely on the workspace task timeout by default; add a shorter trigger timeout only when the user or workflow semantics require one.
 9. file/directory trigger watch paths may be absolute or outside the workspace; authoring the reference is allowed without reading or writing that external path.
 
@@ -1526,6 +1543,7 @@ function buildTask(section) {
         read: permissions.read,
         write: permissions.write,
         execute: permissions.execute,
+        ...(typeof permissions.web === "boolean" ? { web: permissions.web } : {}),
       }
     : !isCommand && resultContract === "none"
       ? { read: false, write: false, execute: false }
@@ -1697,6 +1715,9 @@ function buildYamlSkeleton(manifest) {
         lines.push("            read: " + task.permissions.read);
         lines.push("            write: " + task.permissions.write);
         lines.push("            execute: " + task.permissions.execute);
+        if (typeof task.permissions.web === "boolean") {
+          lines.push("            web: " + task.permissions.web);
+        }
       }
       if (task.depends_on.length > 0) {
         lines.push("          depends_on:");
@@ -1765,6 +1786,7 @@ export default tool({
                 read: tool.schema.boolean(),
                 write: tool.schema.boolean(),
                 execute: tool.schema.boolean(),
+                web: tool.schema.boolean().optional(),
               })
               .optional(),
             trigger: tool.schema

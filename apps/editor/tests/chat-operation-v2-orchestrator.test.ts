@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import {
   ChatOperationV2ReadonlyOrchestrator,
+  requestedCreateTargetRelativePath,
   type ChatOperationV2DurableInvocationRequest,
   type ChatOperationV2DurableInvocationRecoveryRequest,
   type ChatOperationV2DurableInvocationRecoveryResult,
@@ -21,6 +22,22 @@ import {
 
 const roots: string[] = [];
 const stores: ChatOperationV2Store[] = [];
+
+test('Host derives one explicit safe YAML filename as a create target hint', () => {
+  expect(requestedCreateTargetRelativePath('Create document_audit.yaml for this workflow.')).toBe(
+    'document_audit/document_audit.yaml',
+  );
+  expect(requestedCreateTargetRelativePath('Build QUICK.yml now.')).toBe('QUICK/QUICK.yaml');
+  expect(requestedCreateTargetRelativePath('Build release.v2.yaml now.')).toBe(
+    'release.v2/release.v2.yaml',
+  );
+  expect(requestedCreateTargetRelativePath('创建 报告.yaml。')).toBe('报告/报告.yaml');
+  expect(requestedCreateTargetRelativePath('Compare alpha.yaml with beta.yaml.')).toBeNull();
+  expect(requestedCreateTargetRelativePath('Compare Alpha.yaml with alpha.yaml.')).toBeNull();
+  expect(requestedCreateTargetRelativePath('Create ../outside.yaml.')).toBeNull();
+  expect(requestedCreateTargetRelativePath('Create report.yaml.bak for safekeeping.')).toBeNull();
+  expect(requestedCreateTargetRelativePath('Create logs.yaml.')).toBeNull();
+});
 
 setDefaultTimeout(30_000);
 

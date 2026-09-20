@@ -795,6 +795,43 @@ describe('chat pipeline trial plan', () => {
     }
   });
 
+  test('keeps web-enabled prompt pipelines on the authored Trial Plan path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-web-host-fast-trial-plan-'));
+    try {
+      const stagedYamlPath = join(root, 'research.yaml');
+      const pipelineConfig: PipelineConfig = {
+        name: 'Research',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'research',
+                name: 'Research',
+                prompt: 'Research the current evidence.',
+                permissions: { read: false, write: false, execute: false, web: true },
+              },
+            ],
+          },
+        ],
+      };
+
+      expect(
+        readChatPipelineTrialPlan(
+          stagedYamlPath,
+          'research/research.yaml',
+          'd'.repeat(40),
+          3,
+          pipelineConfig,
+          root,
+        ),
+      ).toMatchObject({ status: 'required', request: { reason: 'missing' } });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('host reader rejects staged-artifact expectations before a trial can run', () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-trial-plan-reader-'));
     try {

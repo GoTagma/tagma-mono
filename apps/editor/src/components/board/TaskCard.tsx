@@ -849,17 +849,18 @@ export const TaskCard = memo(function TaskCard({
           )}
           {perms && (
             <span className="flex items-center h-[14px] gap-[1px] shrink-0">
-              {(['read', 'write', 'execute'] as const).map((k) => (
+              {(['read', 'write', 'execute', 'web'] as const).map((k) => (
                 <span
                   key={k}
                   className={`text-micro font-mono font-bold w-[10px] text-center leading-[14px]
                   ${k === 'read' && perms.read ? 'text-tagma-success' : ''}
                   ${k === 'write' && perms.write ? 'text-tagma-warning' : ''}
                   ${k === 'execute' && perms.execute ? 'text-tagma-error' : ''}
+                  ${k === 'web' && perms.web ? 'text-tagma-accent' : ''}
                   ${!perms[k] ? 'text-tagma-muted/20' : ''}
                 `}
                 >
-                  {k[0].toUpperCase()}
+                  {k === 'web' ? 'N' : k[0].toUpperCase()}
                 </span>
               ))}
             </span>

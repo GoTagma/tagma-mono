@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sealChatOperationV2Admission } from '../server/chat-operations/admission.js';
@@ -13,6 +13,7 @@ import {
   createManagedChatOperationV2AuthoringRuntime,
   isOpenCodeSessionStatusActive,
   reconcileManagedChatOperationV2AdmissionSource,
+  tryAutoApproveChatOperationV2StagedPermission,
   type ManagedChatOperationV2AuthoringAuthorityRecord,
   type ManagedChatOperationV2AuthoringExecutionResult,
   type ManagedChatOperationV2AuthoringOpenCodeAdapter,
@@ -242,6 +243,7 @@ class FakeOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCodeAdap
   };
   activity: 'busy' | 'idle' | 'missing' = 'idle';
   settlement: 'settled' | 'unavailable' = 'settled';
+  settlementFinishCode = 'recovered';
   onExecute: (() => void) | null = null;
   interactive: ChatOperationV2RuntimeInteractiveRequest | null = null;
 
@@ -331,7 +333,7 @@ class FakeOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCodeAdap
     return {
       kind: 'settled' as const,
       executionMessageId: input.executionMessageId,
-      finishCode: 'recovered',
+      finishCode: this.settlementFinishCode,
       text: null,
       usage: null,
       source: { aggregateSeq: 8, eventId: 'event-settled-1' },
@@ -433,6 +435,140 @@ function invocationRequest(
 }
 
 describe('managed Chat Operation V2 authoring runtime', () => {
+  test('auto-approves only authenticated staged filesystem requests', async () => {
+    const { root, stageDirectory } = harness();
+    const target = join(stageDirectory, 'pipeline', 'pipeline.yaml');
+    let replyCount = 0;
+    const base = {
+      workDir: stageDirectory,
+      agentRoot: stageDirectory,
+      replyOnce: async () => {
+        replyCount += 1;
+      },
+    };
+
+    await expect(
+      tryAutoApproveChatOperationV2StagedPermission({
+        ...base,
+        permission: 'read',
+        patterns: [relative(stageDirectory, target)],
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      tryAutoApproveChatOperationV2StagedPermission({
+        ...base,
+        permission: 'edit',
+        patterns: [relative(stageDirectory, target)],
+        metadata: { filepath: target },
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      tryAutoApproveChatOperationV2StagedPermission({
+        ...base,
+        permission: 'bash',
+        patterns: ['Set-Content pipeline.yaml'],
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      tryAutoApproveChatOperationV2StagedPermission({
+        ...base,
+        permission: 'external_directory',
+        patterns: [target],
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      tryAutoApproveChatOperationV2StagedPermission({
+        ...base,
+        permission: 'read',
+        patterns: [join(root, '.tagma', 'live.yaml')],
+      }),
+    ).resolves.toBe(false);
+    expect(replyCount).toBe(2);
+  });
+
+  test('retains authoring work when OpenCode stops at the model output limit', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-output-limit',
+      stage: value.stage,
+    });
+    value.openCode.execution = {
+      kind: 'completed',
+      text: null,
+      finishCode: 'length',
+      usage: null,
+    };
+
+    await expect(
+      value.runtime.runInvocation(invocationRequest(value.stage, relocation)),
+    ).resolves.toEqual({ kind: 'provider_unavailable', code: 'model_output_length' });
+  });
+
+  test('recovery does not turn an output-limited authoring response into a completed no-op', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-output-limit-recovery',
+      stage: value.stage,
+    });
+    const request = invocationRequest(value.stage, relocation);
+    value.openCode.execution = {
+      kind: 'provider_unavailable',
+      code: 'provider_transport_unavailable',
+    };
+    await expect(value.runtime.runInvocation(request)).resolves.toMatchObject({
+      kind: 'provider_unavailable',
+    });
+    value.openCode.settlementFinishCode = 'length';
+
+    await expect(
+      value.runtime.reconcileInvocation({
+        ...request,
+        signal: undefined,
+        requestInteractive: undefined,
+      } as never),
+    ).resolves.toEqual({ kind: 'provider_unavailable', code: 'model_output_length' });
+  });
+
+  test('an authoring retry cannot discard cumulative stage changes as a last-invocation no-op', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-authoring-retry',
+      stage: value.stage,
+    });
+    const first = invocationRequest(value.stage, relocation);
+    value.openCode.onExecute = () => value.staging.mutate(sha256('cumulative-change'));
+    value.openCode.execution = {
+      kind: 'provider_unavailable',
+      code: 'provider_transport_unavailable',
+    };
+    await expect(value.runtime.runInvocation(first)).resolves.toMatchObject({
+      kind: 'provider_unavailable',
+    });
+
+    value.openCode.onExecute = null;
+    value.openCode.execution = { kind: 'completed', text: null, finishCode: 'stop', usage: null };
+    await expect(
+      value.runtime.runInvocation({
+        ...first,
+        invocationId: 'authoring-invocation-2',
+        inputId: 'authoring-input-2',
+        canonicalRequestBytes: new TextEncoder().encode('{"request":"two"}'),
+      }),
+    ).resolves.toMatchObject({ kind: 'completed', disposition: 'changed' });
+  });
+
   test('mixed external failures do not hide actionable failed expectations from repair feedback', async () => {
     const value = await readyRuntime();
     value.staging.trialResult = {

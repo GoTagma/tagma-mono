@@ -73,6 +73,7 @@ export interface AgentChatCommandParameters {
   'model.variant': { variant: string | null };
   'context.select': { candidateId: string; discardChanges: boolean };
   'clarification.reply': Request & { candidateId: string };
+  'clarification.reply_text': Request & { text: string };
   'question.reply': Request & { choice: 'reply' | 'reject'; answers: string[] };
   'permission.reply': Request & { choice: 'once' | 'always' | 'reject' };
   'interaction.recover': Request & {
@@ -145,6 +146,13 @@ export const AGENT_CHAT_COMMAND_DEFINITIONS = {
     parameters: { candidateId: id, discardChanges: decision },
   },
   'clarification.reply': { scope: 'conversation', parameters: { ...request, candidateId: id } },
+  'clarification.reply_text': {
+    scope: 'conversation',
+    parameters: {
+      ...request,
+      text: { type: 'string', minBytes: 1, maxBytes: 256 * 1024 },
+    },
+  },
   'question.reply': {
     scope: 'conversation',
     parameters: {

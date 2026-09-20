@@ -632,7 +632,10 @@ function chatOperationV2WorkspaceFor(workDir: string) {
   throw new Error('The authenticated Chat Operation workspace is unavailable.');
 }
 
-function chatOperationV2HostInventoryFor(workDir: string) {
+function chatOperationV2HostInventoryFor(
+  workDir: string,
+  sessionOwnedCoordinates: readonly string[] = [],
+) {
   const workspace = chatOperationV2WorkspaceFor(workDir);
   return {
     workspace,
@@ -641,6 +644,9 @@ function chatOperationV2HostInventoryFor(workDir: string) {
       revision: workspace.stateRevision,
       currentCanvasPath: workspace.yamlPath,
       sessionOwnedPath: null,
+      sessionOwnedPaths: sessionOwnedCoordinates.map((coordinate) =>
+        join(ensureRealTagmaDirectory(workDir), coordinate),
+      ),
       manualNewDraftPath: workspace.manualNewPipelineYamlPath,
     }),
   };
@@ -673,7 +679,17 @@ registerChatOperationV2Routes(
           mutationsEnabled: true,
           service: chatOperationV2Service,
           createInputResolver: async (workDir, request) => {
-            const { workspace, inventory } = chatOperationV2HostInventoryFor(workDir);
+            const sessionOwnedCoordinates = request.payload.conversationKey
+              ? chatOperationV2Service.agentChatConversationOwnedTargetCoordinates(workDir, {
+                  rendererInstanceId: request.payload.rendererInstanceId,
+                  conversationId: request.payload.conversationId,
+                  conversationKey: request.payload.conversationKey,
+                })
+              : [];
+            const { workspace, inventory } = chatOperationV2HostInventoryFor(
+              workDir,
+              sessionOwnedCoordinates,
+            );
             const seedOptions = buildOpencodeSeedOptions(workspace);
             const editorSettings = readEditorSettings(workspace);
             const tagmaCwd = ensureRealTagmaDirectory(workDir);

@@ -896,6 +896,24 @@ export class ChatOperationV2Service {
     };
   }
 
+  agentChatConversationOwnedTargetCoordinates(
+    workspacePath: string,
+    input: {
+      rendererInstanceId: string;
+      conversationId: string;
+      conversationKey: string;
+    },
+  ): readonly string[] {
+    const owner = this.authenticateAgentChatConversation(workspacePath, {
+      ...input,
+      operationId: null,
+    });
+    const authority = this.#readonlyAuthorityForWorkspace(workspacePath);
+    return this.#ownedTargetsForOwner(authority, owner.ownerId)
+      .filter(({ activeLease }) => activeLease !== null)
+      .map(({ target }) => target.coordinate);
+  }
+
   getWorkspaceMigrationContext(workspacePath: string): ChatOperationV2WorkspaceMigrationContext {
     const scope = this.#resolveWorkspaceScope(workspacePath);
     return Object.freeze({
@@ -2334,11 +2352,18 @@ export class ChatOperationV2Service {
   ): readonly ChatOperationV2OwnedTarget[] {
     const owner = this.#conversationContext(authority, operationId);
     if (owner === null) return [];
+    return this.#ownedTargetsForOwner(authority, owner.ownerId);
+  }
+
+  #ownedTargetsForOwner(
+    authority: ChatOperationV2ReadonlyWorkspaceAuthority,
+    ownerId: string,
+  ): readonly ChatOperationV2OwnedTarget[] {
     const owned = new Map<string, ChatOperationV2OwnedTarget>();
     for (const { record } of authority.store.listBindingLeases(authority.scope.workspaceScopeId)) {
       if (record.status !== 'published') continue;
       const publicationOwner = this.#conversationContext(authority, record.publishedByOperationId);
-      if (publicationOwner?.ownerId !== owner.ownerId) continue;
+      if (publicationOwner?.ownerId !== ownerId) continue;
       const result = authority.store.getResult(record.resultId);
       const operation = authority.store.getOperation(record.publishedByOperationId);
       if (
@@ -2357,7 +2382,7 @@ export class ChatOperationV2Service {
       if (
         active?.record.status === 'published' &&
         this.#conversationContext(authority, active.record.publishedByOperationId)?.ownerId !==
-          owner.ownerId
+          ownerId
       )
         conversationAuthorityError();
       owned.set(`${record.target.platform}:${record.target.identity}`, {

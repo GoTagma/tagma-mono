@@ -62,6 +62,7 @@ export const YAML_FEATURE_MIN_SDK = {
   workflow_lifecycle: '0.7.0',
   workflow_self_repair: '0.7.52',
   task_bindings: '0.7.0',
+  web_permissions: '0.7.111',
 } as const;
 
 const FEATURE_DESCRIPTIONS: Record<keyof typeof YAML_FEATURE_MIN_SDK, string> = {
@@ -70,6 +71,7 @@ const FEATURE_DESCRIPTIONS: Record<keyof typeof YAML_FEATURE_MIN_SDK, string> = 
   workflow_lifecycle: 'Workflow pipeline declares lifecycle retry policy',
   workflow_self_repair: 'Workflow pipeline retries with prior failure context',
   task_bindings: 'Pipeline tasks declare inputs/outputs bindings or input placeholders',
+  web_permissions: 'Pipeline permissions explicitly allow or deny native web tools',
 };
 
 export function compareSemver(a: string, b: string): number {
@@ -269,14 +271,21 @@ function collectPipelineFeatures(
 ): YamlCompatibilityFeature[] {
   const features = new Map<string, YamlCompatibilityFeature>();
   if (config.requires !== undefined) addFeature(features, 'requires');
+  if (permissionsUseWebField(config.permissions)) addFeature(features, 'web_permissions');
   const tracks = Array.isArray(config.tracks) ? config.tracks : [];
   for (const track of tracks) {
+    if (permissionsUseWebField(track.permissions)) addFeature(features, 'web_permissions');
     const tasks = Array.isArray(track.tasks) ? track.tasks : [];
     for (const task of tasks) {
       if (taskUsesBindings(task as RawTaskConfig)) addFeature(features, 'task_bindings');
+      if (permissionsUseWebField(task.permissions)) addFeature(features, 'web_permissions');
     }
   }
   return [...features.values()];
+}
+
+function permissionsUseWebField(value: unknown): boolean {
+  return isRecord(value) && Object.prototype.hasOwnProperty.call(value, 'web');
 }
 
 function collectWorkflowFeatures(

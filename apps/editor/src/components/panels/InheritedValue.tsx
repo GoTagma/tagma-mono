@@ -35,14 +35,20 @@ export function resolvePermissions(
 ): { value: Permissions; source: ResolvedValue['source'] } {
   if (taskPerms) return { value: taskPerms, source: 'task' };
   if (trackPerms) return { value: trackPerms, source: 'track' };
-  return { value: { read: true, write: false, execute: false }, source: 'default' };
+  return {
+    value: { read: true, write: false, execute: false, web: false },
+    source: 'default',
+  };
 }
 
 export function permsToString(p: Permissions | undefined): string {
   if (!p) return 'none';
-  const parts = [p.read && 'read', p.write && 'write', p.execute && 'execute'].filter(
-    Boolean,
-  ) as string[];
+  const parts = [
+    p.read && 'read',
+    p.write && 'write',
+    p.execute && 'execute',
+    p.web && 'web',
+  ].filter(Boolean) as string[];
   return parts.length > 0 ? parts.join(', ') : 'none';
 }
 

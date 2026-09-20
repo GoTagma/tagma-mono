@@ -100,8 +100,12 @@ function durationErrorMessage(
 const isValidId = isValidTaskId;
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
-const PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
-const PERMISSION_FIELD_SET: ReadonlySet<string> = new Set(PERMISSION_FIELDS);
+const REQUIRED_PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
+const OPTIONAL_PERMISSION_FIELDS = ['web'] as const;
+const PERMISSION_FIELD_SET: ReadonlySet<string> = new Set([
+  ...REQUIRED_PERMISSION_FIELDS,
+  ...OPTIONAL_PERMISSION_FIELDS,
+]);
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const PIPELINE_FIELDS: ReadonlySet<string> = new Set([
@@ -260,6 +264,34 @@ function commandInputReferences(command: CommandConfig): string[] {
     for (const ref of extractInputReferences(arg)) refs.add(ref);
   }
   return [...refs];
+}
+
+const COMMAND_INPUT_PLACEHOLDER_RE =
+  /\{\{\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)(?:\s*\|\s*([A-Za-z_][A-Za-z0-9_]*))?\s*\}\}/g;
+
+function shellCommandText(command: CommandConfig): string | null {
+  if (typeof command === 'string') return command;
+  return 'shell' in command ? command.shell : null;
+}
+
+function bindingIsString(value: unknown): boolean {
+  if (!isRecord(value)) return typeof value === 'string';
+  return (
+    value.type === 'string' || typeof value.value === 'string' || typeof value.default === 'string'
+  );
+}
+
+function unsafeStringCommandInputs(task: RawTaskConfig): string[] {
+  if (commandConfigKind(task.command) === null) return [];
+  const text = shellCommandText(task.command as CommandConfig);
+  if (text === null || !isRecord(task.inputs)) return [];
+  const unsafe = new Set<string>();
+  for (const match of text.matchAll(COMMAND_INPUT_PLACEHOLDER_RE)) {
+    const name = match[1]!;
+    const filter = match[2];
+    if (filter === undefined && bindingIsString(task.inputs[name])) unsafe.add(name);
+  }
+  return [...unsafe];
 }
 
 /**
@@ -1018,7 +1050,7 @@ function validatePermissions(value: unknown, basePath: string, errors: Validatio
   }
   const p = value as Record<string, unknown>;
   validateUnknownFields(p, PERMISSION_FIELD_SET, basePath, 'permissions', errors);
-  for (const field of PERMISSION_FIELDS) {
+  for (const field of REQUIRED_PERMISSION_FIELDS) {
     const path = `${basePath}.${field}`;
     if (!(field in p)) {
       errors.push({ path, message: `permissions.${field} is required` });
@@ -1026,6 +1058,14 @@ function validatePermissions(value: unknown, basePath: string, errors: Validatio
     }
     if (typeof p[field] !== 'boolean') {
       errors.push({ path, message: `permissions.${field} must be a boolean` });
+    }
+  }
+  for (const field of OPTIONAL_PERMISSION_FIELDS) {
+    if (field in p && typeof p[field] !== 'boolean') {
+      errors.push({
+        path: `${basePath}.${field}`,
+        message: `permissions.${field} must be a boolean`,
+      });
     }
   }
 }
@@ -1436,6 +1476,14 @@ function validateTaskPorts(
         message: `Task "${task.id}": references "{{inputs.${name}}}" but ${hint}`,
       });
     }
+  }
+
+  for (const name of unsafeStringCommandInputs(task)) {
+    errors.push({
+      path: `${taskPath}.command`,
+      message: `Task "${task.id}": string input "${name}" is interpolated verbatim in a shell command; use "{{inputs.${name} | shellquote}}" instead of quoting a bare placeholder`,
+      severity: 'warning',
+    });
   }
 
   // Prompt-task inferred-port conflict checks

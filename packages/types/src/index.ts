@@ -45,6 +45,11 @@ export interface Permissions {
   readonly read: boolean;
   readonly write: boolean;
   readonly execute: boolean;
+  /**
+   * Allow the built-in OpenCode websearch and webfetch tools without also
+   * granting shell execution. Omitted preserves the legacy three-bit policy.
+   */
+  readonly web?: boolean;
 }
 
 // Trial Interaction Protocol v1

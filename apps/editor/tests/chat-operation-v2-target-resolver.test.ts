@@ -25,10 +25,10 @@ function operation(operationId = 'operation-1') {
   } as const;
 }
 
-function hostInventory() {
+function hostInventory(relativePath = 'alpha/alpha.yaml') {
   const resolved = Object.freeze({
     id: 'pipeline_1',
-    relativePath: 'alpha/alpha.yaml',
+    relativePath,
     yamlPath: 'D:\\repo\\.tagma\\alpha\\alpha.yaml',
     contentHash: 'a'.repeat(64),
     content: 'pipeline: {}\n',
@@ -109,6 +109,49 @@ describe('Chat Operation V2 Host authoring target resolver', () => {
     expect(first.target.coordinate).toMatch(/^chat-[a-f0-9]{24}\/chat-[a-f0-9]{24}\.yaml$/);
     expect(JSON.stringify(first)).not.toContain('conversation-1');
     expect(first.originHash).toBeNull();
+  });
+
+  test('uses one Host-derived explicit YAML filename when that contained target is free', async () => {
+    const resolver = createChatOperationV2AuthoringTargetResolver({
+      getCurrentInventory: hostInventory,
+      platform: 'posix',
+    });
+    const resolved = await resolver.resolveTarget({
+      operation: operation(),
+      conversationId: 'conversation-1',
+      evidence: {
+        kind: 'create',
+        requestId: 'request-1',
+        requestHash: 'c'.repeat(64),
+        inventoryDigest: 'b'.repeat(64),
+        requestedTargetRelativePath: 'document_audit/document_audit.yaml',
+      },
+    });
+
+    expect(resolved.target.coordinate).toBe('document_audit/document_audit.yaml');
+    expect(resolved.targetId).toMatch(/^target_[a-f0-9]{24}$/);
+    expect(resolved.originHash).toBeNull();
+  });
+
+  test('does not reuse an occupied requested filename through a Windows case alias', async () => {
+    const inventory = hostInventory('DOCUMENT_AUDIT/DOCUMENT_AUDIT.yaml');
+    const resolver = createChatOperationV2AuthoringTargetResolver({
+      getCurrentInventory: () => inventory,
+      platform: 'win32',
+    });
+    const resolved = await resolver.resolveTarget({
+      operation: operation(),
+      conversationId: 'conversation-1',
+      evidence: {
+        kind: 'create',
+        requestId: 'request-1',
+        requestHash: 'c'.repeat(64),
+        inventoryDigest: 'b'.repeat(64),
+        requestedTargetRelativePath: 'document_audit/document_audit.yaml',
+      },
+    });
+
+    expect(resolved.target.coordinate).toMatch(/^chat-[a-f0-9]{24}\/chat-[a-f0-9]{24}\.yaml$/);
   });
 
   test('fails closed on inventory or origin drift', async () => {

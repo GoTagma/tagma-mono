@@ -3,7 +3,7 @@ import type { RawPipelineConfig, RawTaskConfig } from '@tagma/types';
 import { validateRaw } from './validate-raw';
 
 function commandTask(overrides: Partial<RawTaskConfig> & { id: string }): RawTaskConfig {
-  return { command: 'echo {{inputs.city}}', ...overrides };
+  return { command: 'echo {{inputs.city | shellquote}}', ...overrides };
 }
 
 function promptTask(overrides: Partial<RawTaskConfig> & { id: string }): RawTaskConfig {
@@ -37,7 +37,7 @@ describe('validateRaw - unified typed bindings', () => {
     const errors = errorsFor(
       commandTask({
         id: 'a',
-        command: 'echo {{inputs.city}}',
+        command: 'echo {{inputs.city | shellquote}}',
         inputs: {
           'bad-name': { value: 'x' },
           city: { type: 'made-up' as never },
@@ -284,7 +284,7 @@ describe('validateRaw - unified typed bindings', () => {
     const errors = errorsFor(
       commandTask({
         id: 'report',
-        command: 'echo {{inputs.city}}',
+        command: 'echo {{inputs.city | shellquote}}',
         inputs: { city: { from: 'outputs.city', default: 'fallback' } },
       }),
     );

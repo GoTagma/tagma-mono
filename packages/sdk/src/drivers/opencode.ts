@@ -17,7 +17,9 @@ const DEFAULT_PERMISSIONS: Permissions = { read: true, write: false, execute: fa
 type OpenCodePermission = Record<string, unknown>;
 
 function buildPermissionRestrictions(permissions: Permissions): OpenCodePermission {
-  if (permissions.read && permissions.write && permissions.execute) return {};
+  const hasExplicitWebPolicy = permissions.web !== undefined;
+  if (!hasExplicitWebPolicy && permissions.read && permissions.write && permissions.execute)
+    return {};
 
   // OpenCode gains tools over time and can also discover plugin/MCP tools. A
   // denylist therefore cannot represent Tagma's three-bit permission model:
@@ -30,6 +32,10 @@ function buildPermissionRestrictions(permissions: Permissions): OpenCodePermissi
   }
   if (permissions.write) policy.edit = 'allow';
   if (permissions.execute) policy.bash = 'allow';
+  if (permissions.web) {
+    policy.webfetch = 'allow';
+    policy.websearch = 'allow';
+  }
 
   // Keep these denials explicit as defense in depth against configuration
   // merge-order changes. Delegation has its own policy and external-directory

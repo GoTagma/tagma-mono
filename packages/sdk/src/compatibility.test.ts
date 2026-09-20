@@ -111,6 +111,20 @@ describe('YAML SDK compatibility', () => {
     expect(compatibility.features.map((feature) => feature.id)).toContain('task_bindings');
   });
 
+  test('adds requires.sdk when pipeline uses explicit web permissions', () => {
+    const serialized = serializePipeline(
+      basicPipeline({
+        permissions: { read: true, write: true, execute: false, web: true },
+      }),
+    );
+    const parsed = parseSerializedPipeline(serialized);
+    expect(YAML_FEATURE_MIN_SDK.web_permissions).toBe('0.7.111');
+    expect(parsed.requires).toEqual({ sdk: '>=0.7.111' });
+    expect(inferYamlCompatibility(serialized).features.map((feature) => feature.id)).toContain(
+      'web_permissions',
+    );
+  });
+
   test('preserves a higher declared SDK requirement during serialization', () => {
     const serialized = serializePipeline(
       basicPipeline({

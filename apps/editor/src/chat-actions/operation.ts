@@ -11,6 +11,7 @@ export type ChatOperationAction =
   | { type: 'operation.stop' | 'operation.retry'; operationId: string }
   | { type: 'operation.discard'; operationId: string; confirmed: boolean }
   | { type: 'clarification.reply'; operationId: string; requestId: string; candidateId: string }
+  | { type: 'clarification.reply_text'; operationId: string; requestId: string; text: string }
   | {
       type: 'permission.reply';
       operationId: string;
@@ -126,6 +127,15 @@ export function getChatOperationActionAvailability(
         ? null
         : 'request_unavailable';
     }
+    case 'clarification.reply_text': {
+      const pending = state.chatOperationV2ThreadDetails[action.operationId]?.pendingInput;
+      return operation.executionState === 'waiting_for_user' &&
+        pending?.kind === 'clarification' &&
+        pending.clarificationId === action.requestId &&
+        action.text.trim().length > 0
+        ? null
+        : 'request_unavailable';
+    }
     case 'permission.reply':
       return operation.executionState === 'waiting_for_user' &&
         !state.chatOperationV2InteractiveRecoveryRequests[action.operationId] &&
@@ -194,6 +204,13 @@ export async function performChatOperationAction(
           action.operationId,
           action.requestId,
           action.candidateId,
+        );
+        break;
+      case 'clarification.reply_text':
+        applied = await state.replyActiveChatOperationV2ClarificationText(
+          action.operationId,
+          action.requestId,
+          action.text,
         );
         break;
       case 'question.reply':

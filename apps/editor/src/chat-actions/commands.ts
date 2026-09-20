@@ -41,6 +41,8 @@ function operationAction(command: AgentChatCommand): ChatOperationAction | null 
       return { type: command.type, ...command.parameters };
     case 'clarification.reply':
       return { type: command.type, ...command.parameters };
+    case 'clarification.reply_text':
+      return { type: command.type, ...command.parameters };
     case 'interaction.recover':
       return { type: command.type, ...command.parameters };
     default:

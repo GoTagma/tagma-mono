@@ -1299,6 +1299,22 @@ test.each(['ui', 'http'] as const)(
         attachments: [],
       },
     });
+    await performThroughEntry(entry, {
+      type: 'clarification.reply_text',
+      operationId: waiting.operationId,
+      requestId: 'clarification-01',
+      text: 'Edit the existing Document Audit pipeline.',
+    });
+    expect(replies[1]).toMatchObject({
+      protocolVersion: 2,
+      operationId: waiting.operationId,
+      payload: {
+        requestId: 'clarification-01',
+        text: 'Edit the existing Document Audit pipeline.',
+        candidateIds: [],
+        attachments: [],
+      },
+    });
     expect(useChatStore.getState()).toMatchObject({ composerDraft, composerAttachments });
     const invalid = {
       type: 'clarification.reply' as const,
@@ -1312,7 +1328,7 @@ test.each(['ui', 'http'] as const)(
         ? await performChatOperationAction(invalid)
         : (await submitThroughControlHttp(workspace, { type, parameters })).result;
     expect(result).toMatchObject({ executed: false, reason: 'request_unavailable' });
-    expect(replies).toHaveLength(1);
+    expect(replies).toHaveLength(2);
   },
 );
 

@@ -421,11 +421,30 @@ function isPowerShellExpressionStartToken(tok: string): boolean {
   );
 }
 
+function locallyDefinedCommandNames(command: string): {
+  readonly caseInsensitive: ReadonlySet<string>;
+  readonly caseSensitive: ReadonlySet<string>;
+} {
+  const caseInsensitive = new Set<string>();
+  const caseSensitive = new Set<string>();
+  const powerShellDefinition =
+    /(?:^|[;{}]\s*)(?:function|filter)\s+(?:(?:global|local|private|script):)?([A-Za-z_][A-Za-z0-9_-]*)\s*(?=[({])/giu;
+  for (const match of command.matchAll(powerShellDefinition)) {
+    caseInsensitive.add(match[1]!.toLowerCase());
+  }
+  const posixDefinition = /(?:^|[;{}]\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*\(\s*\)\s*\{/gu;
+  for (const match of command.matchAll(posixDefinition)) {
+    caseSensitive.add(match[1]!);
+  }
+  return { caseInsensitive, caseSensitive };
+}
+
 function shellCommandTokens(s: string): string[] {
   const bins: string[] = [];
   let expectingCommand = true;
 
   const command = s.trim().replace(TAGMA_INPUT_PLACEHOLDER_RE, TAGMA_INPUT_SENTINEL);
+  const localCommands = locallyDefinedCommandNames(command);
   const tokens = splitShellTokens(command);
   for (const [index, rawTok] of tokens.entries()) {
     const tok = rawTok.trim();
@@ -487,6 +506,14 @@ function shellCommandTokens(s: string): string[] {
       continue;
     }
     if (SHELL_BUILTINS.has(lower)) {
+      expectingCommand = false;
+      continue;
+    }
+    const localCommandCandidate = withoutLeadingGrouping(tok).replace(/\(\)$/u, '');
+    if (
+      localCommands.caseInsensitive.has(localCommandCandidate.toLowerCase()) ||
+      localCommands.caseSensitive.has(localCommandCandidate)
+    ) {
       expectingCommand = false;
       continue;
     }

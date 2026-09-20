@@ -353,6 +353,11 @@ interface ChatStore {
     requestId: string,
     candidateId: string,
   ) => Promise<boolean>;
+  replyActiveChatOperationV2ClarificationText: (
+    operationId: string,
+    requestId: string,
+    text: string,
+  ) => Promise<boolean>;
   discardActiveChatOperationV2: () => Promise<void>;
   changeProviderForActiveChatOperationV2: () => Promise<void>;
   replyActiveChatOperationV2Question: (
@@ -2095,6 +2100,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         requestId,
         text: '',
         candidateIds: [candidateId],
+        attachments: [],
+      }),
+    );
+  },
+
+  async replyActiveChatOperationV2ClarificationText(operationId, requestId, text) {
+    const state = get();
+    const request = state.chatOperationV2ThreadDetails[operationId]?.pendingInput;
+    if (
+      state.chatExecutionMode !== 'operation-v2' ||
+      state.activeChatOperationV2?.operationId !== operationId ||
+      state.activeChatOperationV2.executionState !== 'waiting_for_user' ||
+      request?.kind !== 'clarification' ||
+      request.clarificationId !== requestId ||
+      text.trim().length === 0
+    )
+      return false;
+    set({ sendError: null });
+    return runChatOperationV2UiMutation(set, "Couldn't answer the clarification", (controller) =>
+      controller.replyClarification(operationId, {
+        requestId,
+        text,
+        candidateIds: [],
         attachments: [],
       }),
     );

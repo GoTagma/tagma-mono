@@ -124,6 +124,76 @@ pipeline:
     });
   });
 
+  test('accepts an optional web permission and validates its type', () => {
+    const valid = compileYamlContent(`
+pipeline:
+  name: Web Permissions
+  permissions: { read: true, write: true, execute: false, web: true }
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          prompt: gather evidence
+`);
+    expect(valid.success).toBe(true);
+
+    const invalid = compileYamlContent(`
+pipeline:
+  name: Bad Web Permission
+  permissions: { read: true, write: true, execute: false, web: "yes" }
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          prompt: gather evidence
+`);
+    expect(invalid.validation.errors).toContainEqual({
+      path: 'permissions.web',
+      message: 'permissions.web must be a boolean',
+    });
+  });
+
+  test('warns when a string input is interpolated verbatim into a shell command', () => {
+    const unsafe = compileYamlContent(`
+pipeline:
+  name: Unsafe command input
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: read_file
+          command: 'Get-Content "{{inputs.path}}"'
+          inputs:
+            path:
+              type: string
+              default: inputs/draft.md
+`);
+    expect(unsafe.success).toBe(true);
+    expect(unsafe.validation.warnings).toContainEqual({
+      path: 'tracks[0].tasks[0].command',
+      message:
+        'Task "read_file": string input "path" is interpolated verbatim in a shell command; use "{{inputs.path | shellquote}}" instead of quoting a bare placeholder',
+    });
+
+    const safe = compileYamlContent(`
+pipeline:
+  name: Safe command input
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: read_file
+          command: 'Get-Content {{inputs.path | shellquote}}'
+          inputs:
+            path:
+              type: string
+              default: inputs/draft.md
+`);
+    expect(safe.validation.warnings).toEqual([]);
+  });
+
   test('reports invalid pipeline timeout before runtime starts', () => {
     const result = compileYamlContent(`
 pipeline:

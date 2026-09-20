@@ -521,7 +521,7 @@ describe('permissions inheritance', () => {
   test('resolveConfig applies pipeline-level permissions to tracks and tasks', () => {
     const raw: RawPipelineConfig = {
       name: 'Pipeline Permissions',
-      permissions: { read: true, write: true, execute: false },
+      permissions: { read: true, write: true, execute: false, web: true },
       tracks: [
         {
           id: 'track_a',
@@ -532,30 +532,36 @@ describe('permissions inheritance', () => {
     };
 
     const resolved = resolveConfig(raw, 'D:/workspace');
-    expect(resolved.tracks[0].permissions).toEqual({ read: true, write: true, execute: false });
+    expect(resolved.tracks[0].permissions).toEqual({
+      read: true,
+      write: true,
+      execute: false,
+      web: true,
+    });
     expect(resolved.tracks[0].tasks[0].permissions).toEqual({
       read: true,
       write: true,
       execute: false,
+      web: true,
     });
   });
 
   test('deresolvePipeline preserves pipeline-level permissions without repeating inherited values', () => {
     const resolved: PipelineConfig = {
       name: 'Deresolve Permissions',
-      permissions: { read: true, write: true, execute: false },
+      permissions: { read: true, write: true, execute: false, web: true },
       tracks: [
         {
           id: 'track_a',
           name: 'Track A',
-          permissions: { read: true, write: true, execute: false },
+          permissions: { read: true, write: true, execute: false, web: true },
           cwd: 'D:/workspace',
           tasks: [
             {
               id: 'task_1',
               name: 'Task 1',
               prompt: 'hello',
-              permissions: { read: true, write: true, execute: false },
+              permissions: { read: true, write: true, execute: false, web: true },
               cwd: 'D:/workspace',
             },
           ],
@@ -565,7 +571,7 @@ describe('permissions inheritance', () => {
 
     const raw = deresolvePipeline(resolved, 'D:/workspace');
 
-    expect(raw.permissions).toEqual({ read: true, write: true, execute: false });
+    expect(raw.permissions).toEqual({ read: true, write: true, execute: false, web: true });
     expect(raw.tracks[0].permissions).toBeUndefined();
     expect(raw.tracks[0].tasks[0].permissions).toBeUndefined();
   });

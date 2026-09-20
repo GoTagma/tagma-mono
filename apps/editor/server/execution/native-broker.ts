@@ -178,6 +178,8 @@ const TAGMA_PIPELINE_TASK_PERMISSION_KEYS = new Set([
   'skill',
   'edit',
   'bash',
+  'webfetch',
+  'websearch',
   'task',
   'external_directory',
   'tagma_yaml_skeleton',
@@ -193,6 +195,8 @@ const TAGMA_PIPELINE_TASK_ALLOWED_PERMISSION_KEYS = new Set([
   'skill',
   'edit',
   'bash',
+  'webfetch',
+  'websearch',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {

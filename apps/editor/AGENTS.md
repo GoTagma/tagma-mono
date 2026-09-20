@@ -294,6 +294,9 @@
 - Render clarification candidates from the operation's Host-projected pending input, with names,
   relative coordinates, and the available canvas/ownership markers. Submit only the selected
   candidate id through that pending request's CAS action, preserving the ordinary Composer draft.
+- Chat Control must also expose a bounded text clarification reply tied to the same operation and
+  Host request id. Empty candidate lists are valid for open questions and must never make the
+  pending operation unreachable or force an unrelated Composer submission workaround.
 - Restore a retryable request once per failed invocation identity, not once per operation update
   timestamp. Discard cleanup can advance the old operation while the replacement Send is pending;
   re-projecting that same failure must never refill submitted text or attachments.
@@ -478,6 +481,14 @@
   reservation under `.tagma/.chat-pipeline-bindings/`. A session reuses only its own published target;
   selecting any other session's branch creates another unique target. Names and paths are display
   coordinates, not ownership. Exclude this Host control registry from Trial workspace witnesses.
+- For create intent, one unambiguous valid YAML basename explicitly present in the authenticated
+  user request is a Host-derived target hint. Seal it into create-target authority and use its
+  contained `<stem>/<stem>.yaml` coordinate when free; ambiguous, invalid, or occupied hints retain
+  the deterministic isolated target without granting the model path authority.
+- Before freezing classifier inventory, authenticate the submitted conversation credential and join
+  every active published binding owned by that Host owner into the candidate `sessionOwned` flags.
+  Never hard-code this coordinate to null: the classifier otherwise turns an authorized follow-up
+  edit into a fresh create even though commit-time ownership remains valid.
 - Start every mutating workspace-backed logical chat turn with an isolated
   `.tagma/.chat-staging/<id>/` branch. Copy each pipeline's YAML, layout, requirements,
   manifest, compile log, and bounded regular-file support tree into separate base and agent
@@ -969,6 +980,10 @@
 - Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
   or transient trial-plan hash changed. A report-only/external-boundary response must reuse the
   prior failed evidence and end that repair chain instead of consuming another attempt.
+- An explicit provider retry of the initial authoring phase keeps the same cumulative stage. Decide
+  its final `changed`/`no_change` disposition against the immutable operation staging baseline, not
+  the retry invocation's start snapshot; a no-op retry must never discard bytes written by the
+  earlier provider-failed invocation.
 - `plan-required` is a Host Trial Plan phase, never YAML-repair evidence. Dispatch one internal
   `trial_plan` invocation to the dedicated Trial Plan agent with the exact Host-issued staged path,
   YAML hash, attempt id, and bounded request; do not consume the pipeline-repair budget or expose
@@ -1300,8 +1315,10 @@
   `OPENCODE_PERMISSION` allowlist and a fresh, unpredictable primary agent selected by both
   `--agent` and `default_agent`. Apply the same policy to that agent because OpenCode merges
   agent-specific rules after top-level rules. Allow only read/search/list/LSP/skill for `read`, edit
-  for `write`, and Bash for `execute`; unrepresented tools such as webfetch, todowrite, MCP tools,
-  and future OpenCode tools remain denied. A restricted task must explicitly deny both `task` and
+  for `write`, Bash for `execute`, and built-in websearch/webfetch for an explicit `web: true`.
+  Omitted `web` preserves legacy permission behavior; explicit `web: false` keeps those tools denied
+  even when read/write/execute are true. Unrepresented tools such as todowrite, MCP tools, and future
+  OpenCode tools remain denied. A restricted task must explicitly deny both `task` and
   `external_directory`; its effective cwd is the filesystem boundary and parent exploration must
   never become an unattended permission request. Author fixed conversational prompts with no
   workspace/tool dependency using all three permissions false. Do not copy ambient
@@ -1413,6 +1430,9 @@
 - Keep balanced `$((...))` arithmetic expansions inside one lexical token, including whitespace,
   nested grouping, bitwise, and boolean operators; still discover commands after the expansion.
   Do not turn arithmetic operands into PATH requirements.
+- A function declared inside a folded PowerShell or POSIX command is local script syntax, not a
+  PATH prerequisite. Record its declared name before scanning command positions and suppress only
+  invocations of that exact local name; keep discovering unrelated external commands on the line.
 - Multiple live `RunSession`s in one workspace are for distinct YAML sources. An equivalent request
   for the same normalized YAML while its session is running or waiting must return that session's
   `runId` with `alreadyRunning`; reject a different config/target request with 409, and allow a new
@@ -1724,6 +1744,10 @@
 - An output binding name never implies its source. Omitted `from` selects `json.<outputName>` and
   needs final-line JSON; raw command output requires explicit `from: stdout`. Omit outputs entirely
   when no downstream consumer needs them.
+- A string input interpolated into a command string or `command.shell` must use
+  `{{inputs.name | shellquote}}`; surrounding a bare placeholder with shell quotes is still unsafe.
+  Emit an author-time warning for that case. `command.argv` passes arguments without a shell and is
+  exempt from this warning.
 - Requirements synchronization must be byte-idempotent when generated requirements semantics are
   unchanged. Preserve `generatedAt` and skip the atomic write in that case, or a YAML-triggered
   watcher can manufacture a companion hash conflict against Chat commit CAS and force a needless

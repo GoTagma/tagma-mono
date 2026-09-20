@@ -253,6 +253,56 @@ test('extractBinariesFromYaml preserves PascalCase hyphenated binaries outside P
   expect(binaries!.map((binary) => binary.name)).toEqual(['Acme-Tool']);
 });
 
+test('extractBinariesFromYaml does not treat locally defined shell functions as binaries', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'local-functions.yaml',
+    [
+      'pipeline:',
+      '  name: Local functions',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: validate',
+      '          command: >-',
+      '            function Fail($message) { Write-Error $message; exit 1 };',
+      '            if ($env:INVALID) { Fail "invalid" };',
+      '            helper_fn() { printf "ok"; };',
+      '            helper_fn;',
+      '            bun test',
+      '',
+    ].join('\n'),
+  );
+
+  expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(['bun']);
+});
+
+test('POSIX local function matching remains case-sensitive', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'case-sensitive-functions.yaml',
+    [
+      'pipeline:',
+      '  name: Case-sensitive functions',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: validate',
+      '          command: >-',
+      '            Build() { printf "local"; };',
+      '            Build;',
+      '            build --version',
+      '',
+    ].join('\n'),
+  );
+
+  expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(['build']);
+});
+
 test('shell arithmetic stays one expansion while subsequent external commands are discovered', () => {
   const { tagmaDir } = makeWorkspace();
   for (const expression of [

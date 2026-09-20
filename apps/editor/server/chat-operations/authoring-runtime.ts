@@ -46,6 +46,7 @@ import {
 import { createStreamingLoopbackFetch } from '../loopback-fetch.js';
 import { ensureOpencode, ensureRealTagmaDirectory } from '../opencode-lifecycle.js';
 import { describeChatPermissionTargets } from './permission-targets';
+import { authorizeChatYamlStageRootPaths } from '../chat-yaml-write-policy.js';
 import { TAGMA_PIPELINE_AGENT, TAGMA_TRIAL_PLANNER_AGENT } from '../opencode-seed.js';
 import {
   assertPipelineYamlPath,
@@ -139,6 +140,46 @@ function safeCode(value: string, fallback: string): string {
     .replace(/^_+|_+$/g, '')
     .slice(0, 64);
   return SAFE_CODE_RE.test(normalized) ? normalized : fallback;
+}
+
+function incompleteAuthoringFinishCode(value: string): string | null {
+  switch (safeCode(value, 'unknown')) {
+    case 'length':
+      return 'model_output_length';
+    case 'content_filter':
+      return 'provider_content_filtered';
+    case 'error':
+      return 'provider_invocation_failed';
+    case 'unknown':
+      return 'model_error';
+    default:
+      return null;
+  }
+}
+
+export async function tryAutoApproveChatOperationV2StagedPermission(input: {
+  readonly workDir: string;
+  readonly agentRoot: string;
+  readonly permission: string;
+  readonly patterns: readonly string[];
+  readonly metadata?: unknown;
+  readonly replyOnce: () => Promise<void>;
+}): Promise<boolean> {
+  if (!['read', 'edit', 'write'].includes(input.permission.trim().toLowerCase())) return false;
+  const authorization = authorizeChatYamlStageRootPaths({
+    workDir: input.workDir,
+    agentRoot: input.agentRoot,
+    permission: input.permission,
+    patterns: input.patterns,
+    metadata: input.metadata,
+  });
+  if (!authorization.allowed) return false;
+  try {
+    await input.replyOnce();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function verificationOutcomeFromTrial(
@@ -1343,21 +1384,42 @@ class ProductionOpenCodeAdapter implements ManagedChatOperationV2AuthoringOpenCo
           continue;
         seen.add(`permission:${permission.id}`);
         this.activeInteractive.get(input.invocationId)?.pending.set(permission.id, 'permission');
-        const targetSummary = describeChatPermissionTargets({
-          permission: String(permission.permission ?? 'tool'),
-          patterns:
-            Array.isArray(permission.patterns) &&
-            permission.patterns.every((pattern: unknown) => typeof pattern === 'string')
-              ? permission.patterns
-              : [],
+        const permissionName = String(permission.permission ?? 'tool');
+        const patterns =
+          Array.isArray(permission.patterns) &&
+          permission.patterns.every((pattern: unknown) => typeof pattern === 'string')
+            ? (permission.patterns as string[])
+            : [];
+        const autoApproved = await tryAutoApproveChatOperationV2StagedPermission({
+          workDir: input.stageDirectory,
+          agentRoot: input.stageDirectory,
+          permission: permissionName,
+          patterns,
           metadata: permission.metadata,
-          workDir: dirname(this.sourceDirectory),
+          replyOnce: async () => {
+            const result = await client.permission.reply({
+              requestID: permission.id,
+              directory: input.stageDirectory,
+              reply: 'once',
+            });
+            if (result.response?.status !== 404) await unwrapSdk(Promise.resolve(result));
+          },
+        });
+        if (autoApproved) {
+          this.activeInteractive.get(input.invocationId)?.pending.delete(permission.id);
+          continue;
+        }
+        const targetSummary = describeChatPermissionTargets({
+          permission: permissionName,
+          patterns,
+          metadata: permission.metadata,
+          workDir: input.stageDirectory,
           agentRoot: input.stageDirectory,
         });
         await input.requestInteractive({
           kind: 'permission',
           content: {
-            actionCode: safeCode(String(permission.permission ?? 'tool'), 'tool'),
+            actionCode: safeCode(permissionName, 'tool'),
             resourceCode: targetSummary ? 'staged_files' : 'workspace_resource',
             ...(targetSummary ? { targetSummary } : {}),
           },
@@ -2612,10 +2674,16 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       requestInteractive: request.requestInteractive,
     });
     if (execution.kind !== 'completed') return execution;
+    const finishFailure = incompleteAuthoringFinishCode(execution.finishCode);
+    if (finishFailure) return { kind: 'provider_unavailable', code: finishFailure };
     const current = await this.requireCurrentSnapshot(authority);
+    const dispositionBaselineHash =
+      request.purpose === 'authoring'
+        ? authority.stage.snapshotHash
+        : invocation.baselineSnapshotHash;
     const completed = completedFromExecution(
       execution,
-      current.snapshotHash === invocation.baselineSnapshotHash ? 'no_change' : 'changed',
+      current.snapshotHash === dispositionBaselineHash ? 'no_change' : 'changed',
       admitted,
       invocation.executionMessageId,
     );
@@ -2686,11 +2754,18 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     if (settlement.executionMessageId !== invocation.executionMessageId) {
       return { kind: 'provider_unavailable' as const, code: 'execution_identity_conflict' };
     }
+    const finishFailure = incompleteAuthoringFinishCode(settlement.finishCode);
+    if (finishFailure) {
+      return { kind: 'provider_unavailable' as const, code: finishFailure };
+    }
     const current = await this.requireCurrentSnapshot(authority);
+    const dispositionBaselineHash =
+      request.purpose === 'authoring'
+        ? authority.stage.snapshotHash
+        : invocation.baselineSnapshotHash;
     const completed: Extract<ChatOperationV2AuthoringInvocationResult, { kind: 'completed' }> = {
       kind: 'completed',
-      disposition:
-        current.snapshotHash === invocation.baselineSnapshotHash ? 'no_change' : 'changed',
+      disposition: current.snapshotHash === dispositionBaselineHash ? 'no_change' : 'changed',
       executionMessageId: invocation.executionMessageId,
       text: settlement.text,
       finishCode: settlement.finishCode,

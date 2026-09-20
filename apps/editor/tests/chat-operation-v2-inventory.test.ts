@@ -59,6 +59,7 @@ describe('ChatTurn Operation V2 Host pipeline inventory', () => {
       revision: 41,
       currentCanvasPath: alphaPath,
       sessionOwnedPath: legacyPath,
+      sessionOwnedPaths: [alphaPath],
       manualNewDraftPath: zetaPath,
     });
 
@@ -78,7 +79,7 @@ describe('ChatTurn Operation V2 Host pipeline inventory', () => {
         id: expect.stringMatching(/^pipeline_[a-f0-9]{64}$/),
         pipelineName: 'Alpha Pipeline',
         currentCanvas: true,
-        sessionOwned: false,
+        sessionOwned: true,
         manualNewDraft: false,
       }),
       expect.objectContaining({

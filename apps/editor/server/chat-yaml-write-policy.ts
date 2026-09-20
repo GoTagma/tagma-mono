@@ -17,6 +17,14 @@ export interface ChatYamlStagePathAuthorizationResult {
   reason: string | null;
 }
 
+export interface ChatYamlStageRootPathAuthorizationInput {
+  workDir: string;
+  agentRoot: string;
+  permission: string;
+  patterns: readonly string[];
+  metadata?: unknown;
+}
+
 const PATH_SCOPED_PERMISSIONS = new Set(['read', 'edit', 'write', 'external_directory']);
 const UNSCOPED_FILESYSTEM_PERMISSIONS = new Set(['bash', 'shell']);
 const INVALID_EXECUTION_METADATA_REASON =
@@ -173,9 +181,8 @@ export function containsSymlinkAncestor(target: string, root: string): boolean {
   return false;
 }
 
-export function authorizeChatYamlStagePaths(
-  ws: WorkspaceState,
-  input: ChatYamlStagePathAuthorizationInput,
+export function authorizeChatYamlStageRootPaths(
+  input: ChatYamlStageRootPathAuthorizationInput,
 ): ChatYamlStagePathAuthorizationResult {
   const permission = input.permission.trim().toLowerCase();
   if (UNSCOPED_FILESYSTEM_PERMISSIONS.has(permission)) {
@@ -190,7 +197,8 @@ export function authorizeChatYamlStagePaths(
       reason: `Unsupported staged filesystem permission: ${permission || 'unknown'}.`,
     };
   }
-  const agentRoot = resolveChatYamlStageAgentRoot(ws, input.stageId);
+  const agentRoot = resolve(input.agentRoot);
+  const workDir = resolve(input.workDir);
   const metadataTargets =
     permission === 'edit' || permission === 'write'
       ? executionTargetsFromMetadata(input.metadata)
@@ -210,7 +218,7 @@ export function authorizeChatYamlStagePaths(
     for (const pattern of input.patterns) {
       const target =
         permission === 'read'
-          ? readTargetFromPattern(pattern, ws.workDir, agentRoot)
+          ? readTargetFromPattern(pattern, workDir, agentRoot)
           : targetFromPattern(pattern);
       if (!target) {
         return {
@@ -240,4 +248,17 @@ export function authorizeChatYamlStagePaths(
     }
   }
   return { allowed: true, reason: null };
+}
+
+export function authorizeChatYamlStagePaths(
+  ws: WorkspaceState,
+  input: ChatYamlStagePathAuthorizationInput,
+): ChatYamlStagePathAuthorizationResult {
+  return authorizeChatYamlStageRootPaths({
+    workDir: ws.workDir,
+    agentRoot: resolveChatYamlStageAgentRoot(ws, input.stageId),
+    permission: input.permission,
+    patterns: input.patterns,
+    metadata: input.metadata,
+  });
 }

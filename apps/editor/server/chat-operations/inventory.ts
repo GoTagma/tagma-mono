@@ -63,6 +63,8 @@ export interface ChatOperationV2HostCoordinates {
   readonly currentCanvasPath?: string | null;
   /** Trusted binding registry coordinate only. */
   readonly sessionOwnedPath?: string | null;
+  /** Trusted binding registry coordinates only. */
+  readonly sessionOwnedPaths?: readonly string[];
   /** Trusted sidecar manual-draft coordinate only. */
   readonly manualNewDraftPath?: string | null;
 }
@@ -76,6 +78,8 @@ export interface BuildChatOperationV2HostInventoryInput {
   readonly currentCanvasPath?: string | null;
   /** Trusted binding registry coordinate only. */
   readonly sessionOwnedPath?: string | null;
+  /** Trusted binding registry coordinates only. */
+  readonly sessionOwnedPaths?: readonly string[];
   /** Trusted sidecar manual-draft coordinate only. */
   readonly manualNewDraftPath?: string | null;
 }
@@ -390,7 +394,9 @@ function readCandidate(
     content,
     pipelineName: pipelineNameFromYaml(content),
     currentCanvas: candidateCoordinateMatches(canonicalPath, coordinates.currentCanvasPath),
-    sessionOwned: candidateCoordinateMatches(canonicalPath, coordinates.sessionOwnedPath),
+    sessionOwned: [coordinates.sessionOwnedPath, ...(coordinates.sessionOwnedPaths ?? [])].some(
+      (coordinate) => candidateCoordinateMatches(canonicalPath, coordinate),
+    ),
     manualNewDraft: candidateCoordinateMatches(canonicalPath, coordinates.manualNewDraftPath),
   });
 }
@@ -406,6 +412,7 @@ export function buildChatOperationV2HostInventory(
   const coordinates: ChatOperationV2HostCoordinates = {
     currentCanvasPath: input.currentCanvasPath,
     sessionOwnedPath: input.sessionOwnedPath,
+    sessionOwnedPaths: input.sessionOwnedPaths,
     manualNewDraftPath: input.manualNewDraftPath,
   };
   const entries = [

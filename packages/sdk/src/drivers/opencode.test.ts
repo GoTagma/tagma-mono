@@ -103,6 +103,51 @@ describe('OpenCodeDriver buildCommand', () => {
     });
   });
 
+  test('allows native web reads without granting shell execution', async () => {
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ permissions: { read: true, write: true, execute: false, web: true } }),
+      track,
+      ctx,
+    );
+
+    expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
+      '*': 'deny',
+      read: 'allow',
+      glob: 'allow',
+      grep: 'allow',
+      list: 'allow',
+      lsp: 'allow',
+      skill: 'allow',
+      edit: 'allow',
+      webfetch: 'allow',
+      websearch: 'allow',
+      task: 'deny',
+      external_directory: 'deny',
+    });
+  });
+
+  test('keeps an explicit web denial scoped when legacy permissions are otherwise open', async () => {
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ permissions: { read: true, write: true, execute: true, web: false } }),
+      track,
+      ctx,
+    );
+
+    expect(JSON.parse(spec.env?.OPENCODE_PERMISSION ?? '{}')).toEqual({
+      '*': 'deny',
+      read: 'allow',
+      glob: 'allow',
+      grep: 'allow',
+      list: 'allow',
+      lsp: 'allow',
+      skill: 'allow',
+      edit: 'allow',
+      bash: 'allow',
+      task: 'deny',
+      external_directory: 'deny',
+    });
+  });
+
   test('does not copy ambient OpenCode config or permissions past the runtime env policy', async () => {
     const originalConfig = process.env.OPENCODE_CONFIG_CONTENT;
     const originalPermission = process.env.OPENCODE_PERMISSION;

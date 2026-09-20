@@ -777,6 +777,26 @@ test('legacy correlation-only publication is a read-only origin for a new authen
   expect((await fixture.send({ target: result.path, taskCount: 4 })).path).toBe(result.path);
 }, 60_000);
 
+test('an authenticated conversation exposes its active published target for the next inventory', async () => {
+  const fixture = createFixture();
+  const first = await fixture.send();
+
+  expect(
+    fixture.service.agentChatConversationOwnedTargetCoordinates(fixture.workspaceRoot, {
+      rendererInstanceId: 'renderer',
+      conversationId: 'conversation-a',
+      conversationKey: 'a'.repeat(64),
+    }),
+  ).toEqual([first.path!]);
+  expect(() =>
+    fixture.service.agentChatConversationOwnedTargetCoordinates(fixture.workspaceRoot, {
+      rendererInstanceId: 'renderer',
+      conversationId: 'conversation-a',
+      conversationKey: 'b'.repeat(64),
+    }),
+  ).toThrow();
+}, 60_000);
+
 test('a deleted owned target stays deleted when deletion occurs after staging', async () => {
   const fixture = createFixture();
   const first = await fixture.send();

@@ -57,6 +57,7 @@ import {
   normalizeChatOperationV2SubmissionUnknownReason,
   type ChatOperationV2SubmissionUnknownReason,
 } from './submission-diagnostics.js';
+import { isValidPipelineStem } from '../pipeline-paths.js';
 
 const encoder = new TextEncoder();
 const MAX_CLASSIFIER_PROTOCOL_ATTEMPTS = 2 as const;
@@ -196,6 +197,7 @@ export type ChatOperationV2AuthoringTargetEvidence =
       readonly requestId: string;
       readonly requestHash: string;
       readonly inventoryDigest: string;
+      readonly requestedTargetRelativePath?: string | null;
     }
   | {
       readonly kind: 'edit';
@@ -203,6 +205,23 @@ export type ChatOperationV2AuthoringTargetEvidence =
       readonly candidateContentHash: string;
       readonly inventoryDigest: string;
     };
+
+export function requestedCreateTargetRelativePath(text: string): string | null {
+  const matches = new Map<string, string>();
+  const yamlName =
+    /(?:^|[\s"'`()\x5B\x5D{},;:=，；：])([^\s"'`/\\]+)\.(?:yaml|yml)(?=$|[\s"'`()\x5B\x5D{},;:!?，。；：！？]|\.(?=$|[\s"'`()\x5B\x5D{},.;:!?，。；：！？]))/giu;
+  for (const match of text.matchAll(yamlName)) {
+    const stem = match[1]!;
+    if (!isValidPipelineStem(stem)) continue;
+    const key = stem.toLowerCase();
+    const existing = matches.get(key);
+    if (existing !== undefined && existing !== stem) return null;
+    matches.set(key, stem);
+  }
+  if (matches.size !== 1) return null;
+  const stem = [...matches.values()][0]!;
+  return `${stem}/${stem}.yaml`;
+}
 
 export type ChatOperationV2ReadonlyDispatchResult =
   | {
@@ -445,6 +464,7 @@ function authoringTargetEvidence(
       inventoryDigest: context.inventory.digest,
     });
   }
+  const requestedTargetRelativePath = requestedCreateTargetRelativePath(admission.request.text);
   const requestAuthority = {
     schemaVersion: 1,
     operationId: operation.operationId,
@@ -452,6 +472,7 @@ function authoringTargetEvidence(
     operationGeneration: operation.generation,
     admissionDigest: admission.requestDigest,
     inventoryDigest: context.inventory.digest,
+    ...(requestedTargetRelativePath === null ? {} : { requestedTargetRelativePath }),
   } as const;
   const requestHash = sha256(canonicalBytes(requestAuthority));
   return Object.freeze({
@@ -459,6 +480,7 @@ function authoringTargetEvidence(
     requestId: `create_target_${requestHash}`,
     requestHash,
     inventoryDigest: context.inventory.digest,
+    ...(requestedTargetRelativePath === null ? {} : { requestedTargetRelativePath }),
   });
 }
 

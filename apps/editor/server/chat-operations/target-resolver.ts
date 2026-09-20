@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { isValidPipelineStem } from '../pipeline-paths.js';
 import { normalizeChatOperationV2TargetCoordinate } from './binding.js';
 import type { ChatOperationV2HostInventory } from './inventory.js';
 import type {
@@ -21,17 +22,40 @@ function digest(...values: readonly string[]): string {
 
 function isolatedTargetCoordinate(
   inventory: ChatOperationV2HostInventory,
+  platform: 'win32' | 'posix',
   ...authority: readonly string[]
 ): { readonly suffix: string; readonly relativePath: string } {
   const suffix = digest(...authority).slice(0, 24);
   const stem = `chat-${suffix}`;
   const relativePath = `${stem}/${stem}.yaml`;
-  if (inventory.inventory.candidates.some((candidate) => candidate.relativePath === relativePath)) {
+  if (inventoryHasTargetCoordinate(inventory, relativePath, platform)) {
     throw Object.assign(new Error('Authoring branch target is already present.'), {
       code: 'host_inventory_conflict',
     });
   }
   return { suffix, relativePath };
+}
+
+function inventoryHasTargetCoordinate(
+  inventory: ChatOperationV2HostInventory,
+  relativePath: string,
+  platform: 'win32' | 'posix',
+): boolean {
+  const target = normalizeChatOperationV2TargetCoordinate(relativePath, platform);
+  return inventory.inventory.candidates.some((candidate) => {
+    const existing = normalizeChatOperationV2TargetCoordinate(candidate.relativePath, platform);
+    return existing.platform === target.platform && existing.identity === target.identity;
+  });
+}
+
+function requestedTargetCoordinate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  if (segments.length !== 2) return null;
+  const [folder, filename] = segments;
+  const match = /^(.+)\.yaml$/iu.exec(filename ?? '');
+  return folder && match?.[1] === folder && isValidPipelineStem(folder) ? normalized : null;
 }
 
 class HostInventoryAuthoringTargetResolver implements ChatOperationV2AuthoringTargetResolver {
@@ -81,6 +105,7 @@ class HostInventoryAuthoringTargetResolver implements ChatOperationV2AuthoringTa
         });
       const { relativePath } = isolatedTargetCoordinate(
         inventory,
+        this.#platform,
         'tagma-chat-operation-v2-edit-target',
         input.operation.operationId,
         candidate.id,
@@ -93,15 +118,21 @@ class HostInventoryAuthoringTargetResolver implements ChatOperationV2AuthoringTa
       });
     }
 
-    const { suffix, relativePath } = isolatedTargetCoordinate(
+    const isolated = isolatedTargetCoordinate(
       inventory,
+      this.#platform,
       'tagma-chat-operation-v2-create-target',
       input.operation.operationId,
       input.evidence.requestId,
       input.evidence.requestHash,
     );
+    const requested = requestedTargetCoordinate(input.evidence.requestedTargetRelativePath);
+    const relativePath =
+      requested && !inventoryHasTargetCoordinate(inventory, requested, this.#platform)
+        ? requested
+        : isolated.relativePath;
     return Object.freeze({
-      targetId: `target_${suffix}`,
+      targetId: `target_${isolated.suffix}`,
       target: normalizeChatOperationV2TargetCoordinate(relativePath, this.#platform),
       originHash: null,
     });

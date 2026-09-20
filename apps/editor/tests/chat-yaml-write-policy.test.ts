@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 
 import { createChatYamlStage, discardChatYamlStage } from '../server/chat-yaml-staging';
-import { authorizeChatYamlStagePaths } from '../server/chat-yaml-write-policy';
+import {
+  authorizeChatYamlStagePaths,
+  authorizeChatYamlStageRootPaths,
+} from '../server/chat-yaml-write-policy';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 
@@ -31,6 +34,37 @@ afterEach(() => {
 });
 
 describe('staged child write policy', () => {
+  test('authorizes the V2 runtime directly from authenticated source and stage roots', () => {
+    const { root, agentRoot } = setupStage();
+    const target = join(agentRoot, 'sample', 'sample.yaml');
+
+    expect(
+      authorizeChatYamlStageRootPaths({
+        workDir: root,
+        agentRoot,
+        permission: 'read',
+        patterns: [relative(root, target)],
+      }),
+    ).toEqual({ allowed: true, reason: null });
+    expect(
+      authorizeChatYamlStageRootPaths({
+        workDir: root,
+        agentRoot,
+        permission: 'edit',
+        patterns: [relative(root, target)],
+        metadata: { filepath: target },
+      }),
+    ).toEqual({ allowed: true, reason: null });
+    expect(
+      authorizeChatYamlStageRootPaths({
+        workDir: root,
+        agentRoot,
+        permission: 'bash',
+        patterns: ['Set-Content sample.yaml'],
+      }),
+    ).toEqual({ allowed: false, reason: expect.stringContaining('cannot be safely scoped') });
+  });
+
   test('allows normalized Windows aliases inside the authenticated agent root', () => {
     const { ws, stageId, agentRoot } = setupStage();
     try {

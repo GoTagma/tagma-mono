@@ -587,6 +587,7 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('Create/fill new');
   expect(doc).toContain('`<pipeline-binding intent="create|edit">`');
   expect(doc).toContain("session's unique branch");
+  expect(doc).toContain('do not enumerate or open unrelated inventoried pipelines');
   expect(doc).toContain(
     'A legacy router-classified create may use only a fresh unused sibling path',
   );
@@ -648,6 +649,7 @@ test('tagma-pipeline requires independently diagnosable task boundaries and trac
 test('pipeline authoring uses native prompt outputs without inventing duplicate files', () => {
   const pipeline = buildTagmaPipelineAgent('Windows');
   const nativePrimitives = buildTagmaNativePrimitivesSkill();
+  const yamlContract = buildTagmaYamlContractSkill();
 
   expect(pipeline).toContain(
     'Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient',
@@ -681,6 +683,14 @@ test('pipeline authoring uses native prompt outputs without inventing duplicate 
   expect(nativePrimitives).toContain(
     'For a fixed conversational prompt with no workspace or tool dependency, set all three permissions to false',
   );
+  expect(nativePrimitives).toContain(
+    'pass its exact `provider-id/model-id` through `opencode run --model`',
+  );
+  expect(nativePrimitives).toContain('`{{inputs.name | shellquote}}` for string inputs');
+  expect(nativePrimitives).toContain('Do not add `driver: opencode` merely to');
+  expect(nativePrimitives).toContain('Leave the staged artifacts unchanged and report a no-op');
+  expect(pipeline).toContain('pass string inputs as `{{inputs.name | shellquote}}`');
+  expect(yamlContract).toContain('Shell-escape string inputs in command lines');
   expect(nativePrimitives).toContain(
     'Host regenerates the manifest, basic layout positions, and requirements frontmatter',
   );
@@ -746,6 +756,27 @@ test('schema-driven YAML generation emits least-authority prompt tasks and rejec
   expect(result.yaml).toContain('read: false');
   expect(result.yaml).toContain('write: false');
   expect(result.yaml).toContain('execute: false');
+
+  const webResult = JSON.parse(
+    await tool.execute({
+      manifest: {
+        pipeline: {
+          name: 'Web evidence',
+          atomicity_rationale: 'There is no useful intermediate verification boundary.',
+        },
+        sections: [
+          baseTrack,
+          {
+            ...baseSection,
+            result_contract: 'native-output',
+            outputs: ['evidence'],
+            permissions: { read: true, write: false, execute: false, web: true },
+          },
+        ],
+      },
+    }),
+  ) as { yaml: string };
+  expect(webResult.yaml).toContain('web: true');
 
   await expect(
     tool.execute({
@@ -1274,12 +1305,17 @@ test('tagma-pipeline agent treats explicit creation as higher priority than exis
 test('tagma-pipeline applies Chat AI defaults only while creating a new pipeline', () => {
   const doc = buildTagmaPipelineAgent('Windows');
   const router = buildTagmaRouterAgent();
+  const nativePrimitives = buildTagmaNativePrimitivesSkill();
 
   expect(doc).toContain('## New-Pipeline Prompt Defaults');
   expect(doc).toContain('<requested-action kind="create-new-pipeline">');
   expect(doc).toContain('<requested-action kind="fill-manual-new-pipeline">');
   expect(doc).toContain('An explicit user CLI/driver choice wins');
   expect(doc).toContain('Otherwise use the built-in `opencode` driver');
+  expect(nativePrimitives).toContain('`web: true`');
+  expect(nativePrimitives).toContain('websearch and webfetch without granting shell execution');
+  expect(nativePrimitives).toContain('Preserve an explicit CLI requirement during repair');
+  expect(nativePrimitives).toContain('Do not invent source-count or page-fetch requirements');
   expect(doc).toContain('An explicit user provider/model choice wins');
   expect(doc).toContain('persist `model: <provider-id>/<model-id>`');
   expect(doc).toContain('Never copy the OpenCode Chat model to a non-`opencode` driver');
@@ -2493,6 +2529,9 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(triggerSkill, 'utf8')).toContain('name: tagma-trigger-strategy');
   expect(readFileSync(triggerSkill, 'utf8')).toContain('Trigger strategy');
   expect(readFileSync(triggerSkill, 'utf8')).toContain('workspace task timeout by default');
+  expect(readFileSync(triggerSkill, 'utf8')).toContain(
+    'Never name or recommend a package, install command, trigger type, or field schema',
+  );
   expect(readFileSync(safetySkill, 'utf8')).toContain('Best-effort rollback pattern');
   expect(planSkillDoc).toContain('Decide track boundaries by agent identity, not by parallelism');
   expect(planSkillDoc).toContain('command-only track');

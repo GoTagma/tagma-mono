@@ -420,10 +420,15 @@ export function TaskConfigPanel({
   );
 
   const handlePermToggle = useCallback(
-    (key: 'read' | 'write' | 'execute') => {
-      const current = task.permissions ?? { read: false, write: false, execute: false };
+    (key: 'read' | 'write' | 'execute' | 'web') => {
+      const current = task.permissions ?? {
+        read: false,
+        write: false,
+        execute: false,
+        web: false,
+      };
       const next = { ...current, [key]: !current[key] };
-      if (!next.read && !next.write && !next.execute) {
+      if (!next.read && !next.write && !next.execute && !next.web) {
         commitField({ permissions: undefined });
       } else {
         commitField({ permissions: next });
@@ -828,8 +833,9 @@ export function TaskConfigPanel({
                 />
               </div>
               <div className="flex gap-3">
-                {(['read', 'write', 'execute'] as const).map((key) => {
+                {(['read', 'write', 'execute', 'web'] as const).map((key) => {
                   const isExecute = key === 'execute';
+                  const isWeb = key === 'web';
                   return (
                     <label
                       key={key}
@@ -837,7 +843,9 @@ export function TaskConfigPanel({
                       title={
                         isExecute
                           ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.'
-                          : undefined
+                          : isWeb
+                            ? 'Allows the built-in OpenCode websearch and webfetch tools without granting shell execution.'
+                            : undefined
                       }
                     >
                       <input

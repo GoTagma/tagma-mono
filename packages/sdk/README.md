@@ -221,11 +221,12 @@ CLIXML is omitted; mixed output and CLIXML error records remain visible.
 
 ### Permissions
 
-| Field     | Type      | Default | Description                                        |
-| --------- | --------- | ------- | -------------------------------------------------- |
-| `read`    | `boolean` | `true`  | Allow the AI driver/agent to read files            |
-| `write`   | `boolean` | `false` | Allow the AI driver/agent to write files           |
-| `execute` | `boolean` | `false` | Allow the AI driver/agent to execute tool commands |
+| Field     | Type      | Default | Description                                                       |
+| --------- | --------- | ------- | ----------------------------------------------------------------- |
+| `read`    | `boolean` | `true`  | Allow the AI driver/agent to read files                           |
+| `write`   | `boolean` | `false` | Allow the AI driver/agent to write files                          |
+| `execute` | `boolean` | `false` | Allow the AI driver/agent to execute tool commands                |
+| `web`     | `boolean` | omitted | Allow OpenCode `websearch` and `webfetch` without shell execution |
 
 `permissions` are passed to AI drivers that support them. They do not sandbox
 YAML `command` tasks; command tasks execute through the host shell.
@@ -829,7 +830,7 @@ Custom drivers that wrap the prompt in their own envelope can read `DriverContex
 
 Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message, severity? }` objects - empty array means valid. `severity` is `'error'` (default, fatal) or `'warning'` (soft hint; non-blocking).
 
-Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks - use `trackId.taskId` to disambiguate), circular dependency detection, binding shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array), binding source availability and uniqueness across direct dependencies, `{{inputs.<name>}}` references resolving to a declared or inferred input binding, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs - non-array `tracks` or `tasks` produce a structured error instead of throwing.
+Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks - use `trackId.taskId` to disambiguate), circular dependency detection, binding shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array), binding source availability and uniqueness across direct dependencies, `{{inputs.<name>}}` references resolving to a declared or inferred input binding, and `permissions` shape (required boolean `read`/`write`/`execute`, optional boolean `web`). Tolerant of half-built configs - non-array `tracks` or `tasks` produce a structured error instead of throwing.
 
 Plugin-type checks are opt-in via `knownTypes`: when provided, references to trigger/completion/middleware/driver types that are neither built-in nor in the supplied set produce a **warning** (`severity: 'warning'`) so editors can light up uninstalled plugins without blocking save / run. Omit `knownTypes` for offline / pre-load validation - no plugin warnings are emitted in that case.
 

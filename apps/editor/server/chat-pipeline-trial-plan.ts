@@ -1163,7 +1163,7 @@ function hostFixedPromptTrialPlan(
     track.permissions ??
     pipelineConfig.permissions ??
     ({ read: true, write: false, execute: false } as const);
-  if (permissions.read || permissions.write || permissions.execute) return null;
+  if (permissions.read || permissions.write || permissions.execute || permissions.web) return null;
   const driver = task.driver ?? track.driver ?? pipelineConfig.driver ?? 'opencode';
   if (driver !== 'opencode') return null;
   if ((task.depends_on?.length ?? 0) > 0 || task.continue_from) return null;

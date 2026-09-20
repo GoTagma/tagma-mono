@@ -210,7 +210,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
 function permissionsEqual(a: Permissions | undefined, b: Permissions | undefined): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return a.read === b.read && a.write === b.write && a.execute === b.execute;
+  return a.read === b.read && a.write === b.write && a.execute === b.execute && a.web === b.web;
 }
 
 function isDefaultExitCodeCompletion(completion: CompletionConfig | undefined): boolean {

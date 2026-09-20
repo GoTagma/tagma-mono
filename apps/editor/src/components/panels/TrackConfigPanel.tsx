@@ -141,11 +141,16 @@ export function TrackConfigPanel({
   );
 
   const handlePermToggle = useCallback(
-    (key: 'read' | 'write' | 'execute') => {
-      const current = track.permissions ?? { read: false, write: false, execute: false };
+    (key: 'read' | 'write' | 'execute' | 'web') => {
+      const current = track.permissions ?? {
+        read: false,
+        write: false,
+        execute: false,
+        web: false,
+      };
       const next = { ...current, [key]: !current[key] };
       // If all are falsy, remove permissions entirely
-      if (!next.read && !next.write && !next.execute) {
+      if (!next.read && !next.write && !next.execute && !next.web) {
         commit({ permissions: undefined });
       } else {
         commit({ permissions: next });
@@ -500,8 +505,9 @@ export function TrackConfigPanel({
                 />
               </div>
               <div className="flex gap-3">
-                {(['read', 'write', 'execute'] as const).map((key) => {
+                {(['read', 'write', 'execute', 'web'] as const).map((key) => {
                   const isExecute = key === 'execute';
+                  const isWeb = key === 'web';
                   return (
                     <label
                       key={key}
@@ -509,7 +515,9 @@ export function TrackConfigPanel({
                       title={
                         isExecute
                           ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.'
-                          : undefined
+                          : isWeb
+                            ? 'Allows the built-in OpenCode websearch and webfetch tools without granting shell execution.'
+                            : undefined
                       }
                     >
                       <input

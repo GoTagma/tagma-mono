@@ -77,6 +77,20 @@ test('parameters use bounded UTF-8 and exact enums, including explicit discard d
       .parameters,
   ).toEqual({ discardChanges: false });
   expect(() => parseAgentChatCommand({ ...submit, type: 'draft.close', parameters: {} })).toThrow();
+  expect(
+    parseAgentChatCommand({
+      ...submit,
+      type: 'clarification.reply_text',
+      parameters: { operationId: 'op', requestId: 'clarification', text: 'Edit Document Audit.' },
+    }).parameters,
+  ).toEqual({ operationId: 'op', requestId: 'clarification', text: 'Edit Document Audit.' });
+  expect(() =>
+    parseAgentChatCommand({
+      ...submit,
+      type: 'clarification.reply_text',
+      parameters: { operationId: 'op', requestId: 'clarification', text: '' },
+    }),
+  ).toThrow();
 });
 
 test('the manifest describes every field accepted by every command', () => {
