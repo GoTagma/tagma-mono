@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { YamlCompileResult } from '@tagma/sdk/yaml';
 
-import { __compileLogTestHooks, compileLogPath, runCompileAndWriteLog } from '../server/compile-log';
+import {
+  __compileLogTestHooks,
+  compileLogPath,
+  runCompileAndWriteLog,
+} from '../server/compile-log';
 
 const { mergeCompileDiagnostics } = __compileLogTestHooks;
 
