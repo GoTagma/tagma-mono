@@ -486,9 +486,11 @@
   contained `<stem>/<stem>.yaml` coordinate when free; ambiguous, invalid, or occupied hints retain
   the deterministic isolated target without granting the model path authority.
 - Before freezing classifier inventory, authenticate the submitted conversation credential and join
-  every active published binding owned by that Host owner into the candidate `sessionOwned` flags.
-  Never hard-code this coordinate to null: the classifier otherwise turns an authorized follow-up
-  edit into a fresh create even though commit-time ownership remains valid.
+  every published target owned by that Host owner into the candidate `sessionOwned` flags. Ownership
+  survives a released no-op/failed successor reservation even when there is no current active lease;
+  `activeLease` is successor-CAS authority, not ownership authority. Never hard-code or filter this
+  coordinate to null: the classifier otherwise turns an authorized follow-up edit into a fresh create
+  even though commit-time ownership remains valid.
 - Start every mutating workspace-backed logical chat turn with an isolated
   `.tagma/.chat-staging/<id>/` branch. Copy each pipeline's YAML, layout, requirements,
   manifest, compile log, and bounded regular-file support tree into separate base and agent

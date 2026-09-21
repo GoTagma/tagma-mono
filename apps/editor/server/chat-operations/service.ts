@@ -909,9 +909,9 @@ export class ChatOperationV2Service {
       operationId: null,
     });
     const authority = this.#readonlyAuthorityForWorkspace(workspacePath);
-    return this.#ownedTargetsForOwner(authority, owner.ownerId)
-      .filter(({ activeLease }) => activeLease !== null)
-      .map(({ target }) => target.coordinate);
+    return this.#ownedTargetsForOwner(authority, owner.ownerId).map(
+      ({ target }) => target.coordinate,
+    );
   }
 
   getWorkspaceMigrationContext(workspacePath: string): ChatOperationV2WorkspaceMigrationContext {

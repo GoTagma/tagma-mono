@@ -504,6 +504,20 @@ test('owned no-op publishes nothing and preserves ownership for a later edit', a
   expect(noop.path).toBeNull();
   expect(fixture.read(first.path!)).toBe(bytes);
   expect(fixture.store.listCommitWal(first.operation.workspaceScopeId)).toHaveLength(1);
+  expect(
+    fixture.service.agentChatConversationOwnedTargetCoordinates(fixture.workspaceRoot, {
+      rendererInstanceId: 'renderer',
+      conversationId: 'conversation-a',
+      conversationKey: 'a'.repeat(64),
+    }),
+  ).toEqual([first.path!]);
+  expect(
+    fixture.service.agentChatConversationOwnedTargetCoordinates(fixture.workspaceRoot, {
+      rendererInstanceId: 'renderer',
+      conversationId: 'conversation-b',
+      conversationKey: 'a'.repeat(64),
+    }),
+  ).toEqual([]);
   await fixture.restart();
   expect((await fixture.send({ target: first.path, taskCount: 4 })).path).toBe(first.path!);
   expect(fixture.store.getResultProjection(first.operation.operationId)).toEqual(first.projection);
