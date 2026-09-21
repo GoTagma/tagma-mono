@@ -62,6 +62,9 @@ function buildRestrictedTaskEnv(
   return {
     OPENCODE_PERMISSION: JSON.stringify(restrictions),
     OPENCODE_CONFIG_CONTENT: JSON.stringify(config),
+    // OpenCode 1.18.x registers its native websearch tool only when the Exa
+    // feature is enabled. Permission alone does not make the tool available.
+    ...(restrictions.websearch === 'allow' ? { OPENCODE_ENABLE_EXA: 'true' } : {}),
   };
 }
 

@@ -1931,6 +1931,7 @@ function trialId(input: {
   operationGeneration: number;
   stageId: string;
   repairAttempts: number;
+  verificationAttemptVersion?: number;
 }): string {
   return `trial-${sha256(canonicalJson(input)).slice(0, 40)}`;
 }
@@ -2866,6 +2867,9 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       operationGeneration: input.operationGeneration,
       stageId: input.stage.stageId,
       repairAttempts: input.repairAttempts,
+      ...(input.verificationAttemptVersion === undefined
+        ? {}
+        : { verificationAttemptVersion: input.verificationAttemptVersion }),
     });
     if (input.signal.aborted) return verificationDiscard(id, 'verification_cancelled', []);
     let compile: ManagedChatOperationV2CompileResult;

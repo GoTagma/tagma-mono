@@ -607,6 +607,76 @@ test('runSpawn keeps task timeout classified as timeout', async () => {
   expect(result.failureKind).toBe('timeout');
 });
 
+test('runSpawn bounds slow Windows process-tree cleanup without blocking the host', async () => {
+  if (process.platform !== 'win32') return;
+
+  let resolveExit!: (code: number) => void;
+  const exited = new Promise<number>((resolve) => {
+    resolveExit = resolve;
+  });
+  let closeStdout!: () => void;
+  let closeStderr!: () => void;
+  const stdout = new ReadableStream<Uint8Array>({
+    start(controller) {
+      closeStdout = () => controller.close();
+    },
+  });
+  const stderr = new ReadableStream<Uint8Array>({
+    start(controller) {
+      closeStderr = () => controller.close();
+    },
+  });
+  let settled = false;
+  const settleProcess = () => {
+    if (settled) return;
+    settled = true;
+    closeStdout();
+    closeStderr();
+    resolveExit(1);
+  };
+  const killSignals: string[] = [];
+  const spawnProcess = (() =>
+    ({
+      pid: 2_000_000_001,
+      stdout,
+      stderr,
+      stdin: undefined,
+      exited,
+      kill(signal?: string) {
+        killSignals.push(signal ?? 'SIGTERM');
+        settleProcess();
+      },
+    }) as unknown as ReturnType<typeof Bun.spawn>) satisfies BunSpawnForRunner;
+
+  let finishTreeKill!: (value: boolean) => void;
+  const slowTreeKill = () =>
+    new Promise<boolean>((resolve) => {
+      finishTreeKill = resolve;
+    });
+  const safety = setTimeout(() => {
+    finishTreeKill(true);
+    settleProcess();
+  }, 2_500);
+  const startedAt = performance.now();
+  try {
+    const result = await runSpawnWith(
+      { args: [process.execPath] },
+      null,
+      { timeoutMs: 20 },
+      spawnProcess,
+      slowTreeKill,
+    );
+
+    expect(result.failureKind).toBe('timeout');
+    expect(performance.now() - startedAt).toBeLessThan(2_000);
+    expect(killSignals).toContain('SIGTERM');
+  } finally {
+    clearTimeout(safety);
+    finishTreeKill?.(true);
+    settleProcess();
+  }
+}, 5_000);
+
 test('runSpawn timeout terminates the descendant process tree', async () => {
   if (
     process.platform !== 'win32' &&

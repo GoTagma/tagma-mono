@@ -121,6 +121,9 @@ class FakeStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapte
     plan: { summary: 'plan' },
   } as unknown as ChatPipelineTrialRunResult;
   trialProgress: ChatPipelineTrialProgress | null = null;
+  readonly trialInputs: Array<
+    Parameters<ManagedChatOperationV2AuthoringStagingAdapter['runTrial']>[0]
+  > = [];
 
   constructor(
     readonly sourceDirectory: string,
@@ -204,6 +207,7 @@ class FakeStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapte
   }
 
   async runTrial(input: Parameters<ManagedChatOperationV2AuthoringStagingAdapter['runTrial']>[0]) {
+    this.trialInputs.push(input);
     if (this.trialProgress) input.onProgress?.(this.trialProgress);
     return this.trialResult;
   }
@@ -1794,6 +1798,30 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     waiting.resolve();
     await expect(running).resolves.toMatchObject({ kind: 'completed' });
     expect(value.openCode.forwarded).toEqual([command]);
+  });
+
+  test('explicit verification retries use a fresh Trial identity while exact attempt replay is stable', async () => {
+    const value = await readyRuntime();
+    const request = {
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    };
+
+    await value.runtime.verifyStage(request);
+    await value.runtime.verifyStage(request);
+    await value.runtime.verifyStage({ ...request, verificationAttemptVersion: 42 });
+    await value.runtime.verifyStage({ ...request, verificationAttemptVersion: 42 });
+
+    const ids = value.staging.trialInputs.map(({ trialId }) => trialId);
+    expect(ids[0]).toBe(ids[1]);
+    expect(ids[2]).toBe(ids[3]);
+    expect(ids[2]).not.toBe(ids[0]);
   });
 
   test('maps compile and Trial evidence into bounded repair or passed results', async () => {

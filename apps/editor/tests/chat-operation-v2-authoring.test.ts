@@ -177,6 +177,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
   readonly interruptedInvocationIds: string[] = [];
   readonly ensureStageCalls: string[] = [];
   readonly verifyCalls: string[] = [];
+  readonly verificationAttemptVersions: Array<number | null> = [];
   readonly relocationIds: string[] = [];
 
   stage: ChatOperationV2AuthoringStage | null = null;
@@ -402,6 +403,7 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     input: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0],
   ): Promise<ChatOperationV2AuthoringVerificationResult> {
     this.verifyCalls.push(input.stage.stageId);
+    this.verificationAttemptVersions.push(input.verificationAttemptVersion ?? null);
     if (this.options.waitForVerificationAbort) {
       await new Promise<void>((resolve) => {
         if (input.signal.aborted) resolve();
@@ -1025,6 +1027,10 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       });
       expect(result.kind).toBe('commit_preparing');
       expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+      expect(runtime.verificationAttemptVersions).toHaveLength(2);
+      expect(runtime.verificationAttemptVersions[0]).toBeNull();
+      expect(Number.isSafeInteger(runtime.verificationAttemptVersions[1])).toBe(true);
+      expect(new Set(runtime.verificationAttemptVersions).size).toBe(2);
       expect(resultPersistence.calls).toHaveLength(1);
       const pending = store.getPendingResultMessage('operation-1')!;
       expect(pending.message.attachments).toHaveLength(1);

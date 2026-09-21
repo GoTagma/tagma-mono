@@ -14,6 +14,12 @@ import { commandToSpawnSpec } from '@tagma/core';
 
 // Delay before escalating SIGTERM to SIGKILL when killing a timed-out process.
 const SIGKILL_DELAY_MS = 3_000;
+// taskkill can spend seconds waiting on Windows process bookkeeping. Give it a
+// short head start to capture descendants, then ensure the direct child cannot
+// keep the task open indefinitely. The tree killer itself gets a longer bound
+// so it can still finish descendant cleanup in the background.
+const WINDOWS_DIRECT_KILL_FALLBACK_MS = 1_000;
+const WINDOWS_TASKKILL_TIMEOUT_MS = 15_000;
 
 /**
  * Default cap for the in-memory tail retained for each stream. Picked so that
@@ -133,26 +139,52 @@ function buildChildEnv(
  * cmd.exe spawns the real process as a grandchild — proc.kill misses it entirely.
  * `taskkill /F /T /PID` kills the entire process tree rooted at the given PID.
  */
-function killProcessTree(pid: number): boolean {
+async function killProcessTree(pid: number): Promise<boolean> {
   if (process.platform !== 'win32') return false;
+  let taskkill: ReturnType<typeof Bun.spawn>;
   try {
-    const result = Bun.spawnSync(['taskkill', '/F', '/T', '/PID', String(pid)], {
-      stdout: 'pipe',
+    taskkill = Bun.spawn(['taskkill', '/F', '/T', '/PID', String(pid)], {
+      stdout: 'ignore',
       stderr: 'pipe',
     });
-    if (result.exitCode === 0 || result.exitCode === 128) return true;
-    if (result.exitCode !== 0) {
-      const stderr = new TextDecoder().decode(result.stderr);
-      // Exit code 128 = process not found (already exited) — not worth warning about
-      if (result.exitCode !== 128) {
-        console.warn(
-          `[killProcessTree] taskkill exited ${result.exitCode} for PID ${pid}: ${stderr.trim()}`,
-        );
-      }
-    }
+    taskkill.unref();
   } catch {
     /* best-effort — process may have already exited */
+    return false;
   }
+
+  const taskkillStderr = typeof taskkill.stderr === 'object' ? taskkill.stderr : undefined;
+  const stderrPromise = taskkillStderr
+    ? new Response(taskkillStderr).text().catch(() => '')
+    : Promise.resolve('');
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const outcome = await Promise.race([
+    taskkill.exited.then((exitCode) => ({ kind: 'exited' as const, exitCode })),
+    new Promise<{ kind: 'timed-out' }>((resolve) => {
+      timeout = setTimeout(
+        () => resolve({ kind: 'timed-out' as const }),
+        WINDOWS_TASKKILL_TIMEOUT_MS,
+      );
+      timeout.unref?.();
+    }),
+  ]);
+  if (timeout) clearTimeout(timeout);
+  if (outcome.kind === 'timed-out') {
+    try {
+      taskkill.kill('SIGKILL');
+    } catch {
+      /* already exited */
+    }
+    console.warn(`[killProcessTree] taskkill timed out for PID ${pid}`);
+    return false;
+  }
+
+  const stderr = await stderrPromise;
+  // Exit code 128 = process not found (already exited) — not worth warning about.
+  if (outcome.exitCode === 0 || outcome.exitCode === 128) return true;
+  console.warn(
+    `[killProcessTree] taskkill exited ${outcome.exitCode} for PID ${pid}: ${stderr.trim()}`,
+  );
   return false;
 }
 
@@ -757,7 +789,7 @@ export async function runSpawnWith(
   driver: DriverPlugin | null,
   opts: RunOptions,
   spawnProcess: BunSpawnForRunner,
-  killWindowsProcessTree: (pid: number) => boolean = killProcessTree,
+  killWindowsProcessTree: (pid: number) => boolean | Promise<boolean> = killProcessTree,
 ): Promise<TaskResult> {
   const { timeoutMs, signal } = opts;
   const start = performance.now();
@@ -839,32 +871,38 @@ export async function runSpawnWith(
   let killReason: 'timeout' | 'aborted' | 'output_error' | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let forceTimer: ReturnType<typeof setTimeout> | null = null;
+  let windowsFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const killDirectChild = (signal: 'SIGTERM' | 'SIGKILL') => {
+    try {
+      proc.kill(signal);
+    } catch {
+      /* already exited */
+    }
+  };
 
   const killGracefully = (reason: 'timeout' | 'aborted' | 'output_error') => {
     if (killReason !== null) return;
     killReason = reason;
 
     if (process.platform === 'win32') {
-      // On Windows, kill the entire process tree via taskkill. This handles
-      // .cmd wrappers and nested child processes that proc.kill() misses.
-      const treeKilled = killWindowsProcessTree(proc.pid);
-      // Some restricted Windows environments deny taskkill even for direct
-      // children. Fall back to Bun's direct-child kill so abort/timeout paths
-      // can still make progress for non-wrapper commands.
-      if (!treeKilled) {
-        try {
-          proc.kill('SIGTERM');
-        } catch {
-          /* already exited */
-        }
-        forceTimer = setTimeout(() => {
-          try {
-            proc.kill('SIGKILL');
-          } catch {
-            /* already exited */
-          }
-        }, SIGKILL_DELAY_MS);
-      }
+      // Start taskkill without blocking the Host event loop. It retains the
+      // process-tree semantics needed for .cmd wrappers and grandchildren.
+      // If Windows bookkeeping is slow or taskkill is denied, bound how long
+      // the direct child can keep this task open while tree cleanup continues.
+      void Promise.resolve()
+        .then(() => killWindowsProcessTree(proc.pid))
+        .then((treeKilled) => {
+          if (windowsFallbackTimer) clearTimeout(windowsFallbackTimer);
+          windowsFallbackTimer = null;
+          if (!treeKilled) killDirectChild('SIGTERM');
+        })
+        .catch(() => killDirectChild('SIGTERM'));
+      windowsFallbackTimer = setTimeout(
+        () => killDirectChild('SIGTERM'),
+        WINDOWS_DIRECT_KILL_FALLBACK_MS,
+      );
+      forceTimer = setTimeout(() => killDirectChild('SIGKILL'), SIGKILL_DELAY_MS);
     } else {
       if (!killUnixProcessGroup(proc.pid, 'SIGTERM')) {
         proc.kill('SIGTERM');
@@ -975,6 +1013,7 @@ export async function runSpawnWith(
   // ── 6. Cleanup timers & listeners ──────────────────────────────────────
   if (timer) clearTimeout(timer);
   if (forceTimer) clearTimeout(forceTimer);
+  if (windowsFallbackTimer) clearTimeout(windowsFallbackTimer);
   if (signal) signal.removeEventListener('abort', onAbort);
 
   const durationMs = elapsed();

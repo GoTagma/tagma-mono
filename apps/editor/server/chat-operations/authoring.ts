@@ -676,6 +676,8 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly targetId: string;
     readonly stage: ChatOperationV2AuthoringStage;
     readonly repairAttempts: number;
+    /** Present only for an explicit retry of an unchanged retained draft. */
+    readonly verificationAttemptVersion?: number;
     readonly signal: AbortSignal;
     readonly onTrialProgress?: (progress: ChatOperationV2TrialProgressUpdate) => void;
   }): Promise<ChatOperationV2AuthoringVerificationResult>;
@@ -2510,6 +2512,7 @@ export class ChatOperationV2AuthoringEngine {
   private async verifyAndRepair(
     context: OperationContext,
     operation: StoredChatOperationV2,
+    verificationAttemptVersion?: number,
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
     if (!context.stage || !context.relocation) {
       throw new ChatOperationV2AuthoringProtocolError(
@@ -2549,6 +2552,7 @@ export class ChatOperationV2AuthoringEngine {
           targetId: context.targetId,
           stage: context.stage,
           repairAttempts: operation.repairAttempts,
+          ...(verificationAttemptVersion === undefined ? {} : { verificationAttemptVersion }),
           signal: controller.signal,
           onTrialProgress: (progress) =>
             this.appendEvent(context.operationId, 'trial_progressed', {
@@ -3421,7 +3425,11 @@ export class ChatOperationV2AuthoringEngine {
         return resumed.reason === 'terminal'
           ? terminalResult(resumed.operation)
           : { kind: 'stale', operation: resumed.operation };
-      const verification = this.verifyAndRepair(context, resumed.operation).finally(() => {
+      const verification = this.verifyAndRepair(
+        context,
+        resumed.operation,
+        resumed.operation.version,
+      ).finally(() => {
         if (this.dispatches.get(current.operationId) === verification)
           this.dispatches.delete(current.operationId);
       });

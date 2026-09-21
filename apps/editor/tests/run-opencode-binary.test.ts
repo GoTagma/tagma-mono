@@ -159,6 +159,7 @@ describe('editor OpenCode runtime selection', () => {
             task: 'deny',
             external_directory: 'deny',
           }),
+          OPENCODE_ENABLE_EXA: 'true',
           OPENCODE_CONFIG_CONTENT: JSON.stringify({
             plugin: ['unmanaged-plugin'],
             arbitrary: 'must-not-survive',
@@ -204,6 +205,7 @@ describe('editor OpenCode runtime selection', () => {
       task: 'deny',
       external_directory: 'deny',
     });
+    expect(env?.OPENCODE_ENABLE_EXA).toBe('true');
   });
 
   test('fails closed before spawn when a managed task agent policy is contaminated', async () => {

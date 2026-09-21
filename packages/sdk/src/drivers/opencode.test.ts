@@ -124,6 +124,7 @@ describe('OpenCodeDriver buildCommand', () => {
       task: 'deny',
       external_directory: 'deny',
     });
+    expect(spec.env?.OPENCODE_ENABLE_EXA).toBe('true');
   });
 
   test('keeps an explicit web denial scoped when legacy permissions are otherwise open', async () => {
@@ -146,6 +147,7 @@ describe('OpenCodeDriver buildCommand', () => {
       task: 'deny',
       external_directory: 'deny',
     });
+    expect(spec.env?.OPENCODE_ENABLE_EXA).toBeUndefined();
   });
 
   test('does not copy ambient OpenCode config or permissions past the runtime env policy', async () => {

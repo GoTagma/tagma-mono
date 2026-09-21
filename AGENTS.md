@@ -70,6 +70,15 @@ Do not amend the same commit to include these files after naming them with the c
 - Bun subprocess readers may omit cleanup methods under concurrency. Treat missing or throwing
   reader cleanup as compatibility cleanup after a completed drain; distinguish it from a `read()`
   failure, which means output completeness is unknown.
+- Windows task timeout and abort handling must start process-tree cleanup asynchronously. Keep a
+  bounded direct-child fallback and a bounded tree-killer lifetime while preserving descendant
+  cleanup coverage; never run synchronous `taskkill` from a run-owned timer callback.
+
+## Managed Prompt Web Capability
+
+- OpenCode 1.18.x native `websearch` requires both an allow permission and
+  `OPENCODE_ENABLE_EXA=true`. Add the feature flag only to prompt tasks whose resolved policy
+  explicitly enables web access; managed ambient environment must not enable search by itself.
 
 ## Chat-Authored Pipeline Path Coordinates
 
@@ -213,6 +222,9 @@ Do not amend the same commit to include these files after naming them with the c
   target, before the Host persists commit preparation. A pre-prepare external edit or deletion
   discards with `target_changed_before_commit`; after `commit_decided`, recovery rolls forward or
   forks using the existing WAL and never overwrites third-party bytes.
+- An explicit retry of a retained, unchanged draft must derive a fresh Trial attempt coordinate
+  from durable operation state. Keep this separate from same-request transport replay, which may
+  continue returning the authenticated cached Trial response.
 
 ## Static Context Source Integrity
 
