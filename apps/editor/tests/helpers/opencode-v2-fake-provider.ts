@@ -46,7 +46,7 @@ export interface FakeProviderDiagnostic {
 export interface OpencodeV2FakeProvider {
   baseUrl: string;
   diagnostics(): readonly FakeProviderDiagnostic[];
-  setReadPath(path: string): void;
+  deferNextResponse(): { readonly observed: Promise<void>; release(): void };
   stop(): Promise<void>;
 }
 
@@ -216,7 +216,6 @@ function chatCompletionResponse(
   sequence: number,
   behavior: ProviderBehavior,
   classifierResult: OpencodeV2FakeClassifierResult,
-  readPath: string,
 ): Response {
   const id = `chatcmpl-tagma-${sequence}`;
   const model =
@@ -355,7 +354,7 @@ function chatCompletionResponse(
   const callID = `call_tagma_${toolName}_${sequence}`;
   const argumentsJson = JSON.stringify(
     behavior === 'read'
-      ? { filePath: readPath }
+      ? { filePath: '.' }
       : { questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS },
   );
   if (body.stream === true) {
@@ -432,7 +431,6 @@ function responsesApiResponse(
   sequence: number,
   behavior: ProviderBehavior,
   classifierResult: OpencodeV2FakeClassifierResult,
-  readPath: string,
 ): Response {
   const responseID = `resp_tagma_${sequence}`;
   const model =
@@ -606,7 +604,7 @@ function responsesApiResponse(
   const itemID = `fc_tagma_${sequence}`;
   const argumentsJson = JSON.stringify(
     behavior === 'read'
-      ? { filePath: readPath }
+      ? { filePath: '.' }
       : { questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS },
   );
   const item = {
@@ -686,7 +684,8 @@ export function startOpencodeV2FakeProvider(
   const diagnostics: FakeProviderDiagnostic[] = [];
   let sequence = 0;
   let classifierResultIndex = 0;
-  let readPath = '.';
+  let nextResponseGate: { readonly observe: () => void; readonly wait: Promise<void> } | null =
+    null;
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -761,6 +760,13 @@ export function startOpencodeV2FakeProvider(
         return jsonResponse({ error: { message: 'invalid fake-provider request shape' } }, 400);
       }
 
+      const responseGate = nextResponseGate;
+      if (responseGate) {
+        nextResponseGate = null;
+        responseGate.observe();
+        await responseGate.wait;
+      }
+
       const toolResult = isToolResultTurn(body, transport);
       const formatShape = structuredFormatShape(body, transport);
       const classifierMarker = hasClassifierMarker(body);
@@ -817,16 +823,26 @@ export function startOpencodeV2FakeProvider(
 
       sequence += 1;
       return transport === 'chat-completions'
-        ? chatCompletionResponse(body, sequence, behavior, classifierResult, readPath)
-        : responsesApiResponse(body, sequence, behavior, classifierResult, readPath);
+        ? chatCompletionResponse(body, sequence, behavior, classifierResult)
+        : responsesApiResponse(body, sequence, behavior, classifierResult);
     },
   });
 
   return {
     baseUrl: new URL('/v1', server.url).toString().replace(/\/$/, ''),
     diagnostics: () => diagnostics.map((entry) => ({ ...entry })),
-    setReadPath(path: string): void {
-      readPath = path;
+    deferNextResponse() {
+      if (nextResponseGate) throw new Error('A fake provider response is already deferred.');
+      let observe!: () => void;
+      let release!: () => void;
+      const observed = new Promise<void>((resolve) => {
+        observe = resolve;
+      });
+      const wait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      nextResponseGate = { observe, wait };
+      return { observed, release };
     },
     async stop(): Promise<void> {
       await server.stop(true);

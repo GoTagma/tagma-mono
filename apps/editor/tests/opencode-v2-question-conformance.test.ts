@@ -709,15 +709,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         ).kind,
       ).toBe('admitted');
       const cancelController = new AbortController();
-      let observePending!: () => void;
-      let releasePending!: () => void;
-      const pendingObserved = new Promise<void>((resolve) => {
-        observePending = resolve;
-      });
-      const pendingReleased = new Promise<void>((resolve) => {
-        releasePending = resolve;
-      });
-      provider.setReadPath(join(root, 'outside-staged-cancellation.txt'));
+      const deferredProviderResponse = provider.deferNextResponse();
       const cancelExecution = productionAdapter.execute({
         invocationId: cancelInvocationID,
         sessionId: cancelSessionID,
@@ -732,17 +724,16 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         canonicalRequestBytes: cancelBytes,
         signal: cancelController.signal,
         requestInteractive: async () => {
-          observePending();
-          await pendingReleased;
+          throw new Error('Cancellation conformance unexpectedly requested Renderer input.');
         },
       });
       let pendingTimeout: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([
-          pendingObserved,
+          deferredProviderResponse.observed,
           new Promise<never>((_resolve, reject) => {
             pendingTimeout = setTimeout(
-              () => reject(new Error('Cancellation conformance did not reach a pending request.')),
+              () => reject(new Error('Cancellation conformance did not reach the provider.')),
               15_000,
             );
           }),
@@ -755,8 +746,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       } finally {
         clearTimeout(pendingTimeout);
         cancelController.abort();
-        releasePending();
-        provider.setReadPath('.');
+        deferredProviderResponse.release();
       }
       expect(await cancelExecution).toMatchObject({ kind: 'cancelled' });
       let cancelActivity = await productionAdapter.getSessionActivity({
