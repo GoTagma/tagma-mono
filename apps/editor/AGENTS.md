@@ -625,6 +625,10 @@
   chain; prompt policy is defense in depth,
   not the filesystem fence. A direct live `.tagma` access must fail with an access diagnostic and
   must never be converted into a reconcile result.
+- Host-auto-approve authenticated read/edit/write requests confined to the staged agent root;
+  unsafe or non-filesystem requests still require Renderer arbitration. Native conformance must
+  prove the provider tool rounds occurred while expecting zero Renderer callbacks for safe staged
+  filesystem requests.
 - When one turn mutates multiple pipelines, finalize every changed relative path independently and
   retain the authenticated stage until the last target. Persist an authenticated per-target
   finalize record so response-loss retries are idempotent and skip already-published targets on

@@ -630,7 +630,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         purpose: 'authoring',
         admittedAt: Date.now(),
       });
-      let productionInteractionCount = 0;
+      let productionEscalatedInteractionCount = 0;
       const productionExecution = await productionAdapter.execute({
         invocationId: productionAuthoringInvocationID,
         sessionId: productionSessionID,
@@ -645,7 +645,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         canonicalRequestBytes: productionAuthoringBytes,
         signal: new AbortController().signal,
         requestInteractive: async (request) => {
-          productionInteractionCount += 1;
+          productionEscalatedInteractionCount += 1;
           if (request.kind === 'permission') {
             await productionAdapter.forwardInteractive({
               kind: 'forward_permission_reply',
@@ -671,7 +671,14 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         );
       }
       expect(productionExecution).toMatchObject({ kind: 'completed', finishCode: 'stop' });
-      expect(productionInteractionCount).toBe(5);
+      const productionProviderTurns = providerTurnDiagnostics(provider);
+      expect(productionProviderTurns.filter(({ turnShape }) => turnShape === 'read')).toHaveLength(
+        5,
+      );
+      expect(productionProviderTurns.at(-1)?.turnShape).toBe('tool-result');
+      // Authenticated read/edit/write requests confined to the staged agent root are
+      // Host-approved and must not become Renderer permission prompts.
+      expect(productionEscalatedInteractionCount).toBe(0);
 
       // A native admission interrupt alone does not drain the compatibility prompt's pending
       // permission. Exercise the production adapter against the pinned binary before relocation.
