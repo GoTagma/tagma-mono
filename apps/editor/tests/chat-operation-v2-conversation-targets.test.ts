@@ -45,7 +45,10 @@ afterEach(async () => {
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 
 function createFixture(
-  options: { realTrialAuthor?: (path: string, taskCount: number) => void } = {},
+  options: {
+    realTrialAuthor?: (path: string, taskCount: number) => void;
+    authoringText?: string;
+  } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'tagma-conversation-targets-'));
   const workspaceRoot = join(root, 'workspace');
@@ -230,7 +233,7 @@ function createFixture(
           return {
             kind: 'completed',
             disposition: noChange ? 'no_change' : 'changed',
-            text: noChange ? null : 'Authored requested tasks.',
+            text: noChange ? null : (options.authoringText ?? 'Authored requested tasks.'),
             executionMessageId: `authoring-message-${invocationCount}`,
             finishCode: 'stop',
             admittedAggregateSeq: invocationCount,
@@ -310,6 +313,10 @@ function createFixture(
       },
       authoringTargetResolverFactory: () =>
         createChatOperationV2AuthoringTargetResolver({ getCurrentInventory: inventory }),
+      projectionInventoryResolverFactory: () => ({ getCurrentInventory: inventory }),
+      projectionResultResolverFactory: ({ store }) => ({
+        getResultProjection: (operationId) => store.getResultProjection(operationId),
+      }),
     });
   let service = construct();
   let turn = 0;
@@ -809,6 +816,57 @@ test('an authenticated conversation exposes its active published target for the 
       conversationKey: 'b'.repeat(64),
     }),
   ).toThrow();
+}, 60_000);
+
+test('operation inventory projects ownership for its conversation after a no-op and Host restart', async () => {
+  const fixture = createFixture();
+  const a = await fixture.send();
+  const b = await fixture.send({ conversationId: 'conversation-b' });
+  await fixture.send({ target: a.path, noChange: true });
+  await fixture.restart();
+  for (const [own, other] of [
+    [a, b],
+    [b, a],
+  ]) {
+    const detail = fixture.service.getOperationProjection(
+      fixture.workspaceRoot,
+      own!.operation.operationId,
+    );
+    expect(
+      detail.inventory.candidates.find((c) => c.relativeCoordinate === own!.path)?.sessionOwned,
+    ).toBe(true);
+    expect(
+      detail.inventory.candidates.find((c) => c.relativeCoordinate === other!.path)?.sessionOwned,
+    ).toBe(false);
+  }
+  expect(
+    fixture.service
+      .getWorkspaceProjection(fixture.workspaceRoot)
+      .inventory.candidates.every((c) => !c.sessionOwned),
+  ).toBe(true);
+}, 60_000);
+
+test('frozen conversation history preserves Host publication and Trial outcome ahead of long authoring prose', async () => {
+  const fixture = createFixture({
+    authoringText: 'Authoring complete; host verification pending.\n' + 'long prose '.repeat(2000),
+  });
+  const first = await fixture.send();
+  await fixture.send({ conversationId: 'conversation-b' });
+  await fixture.restart();
+  const second = await fixture.send({ target: first.path, noChange: true });
+  const history = fixture.store.getOperationConversationContext(second.operation.operationId)!
+    .context.history;
+  expect(history.turns).toHaveLength(1);
+  expect(history.turns[0]!.assistantText).toContain('completed_published');
+  expect(history.turns[0]!.assistantText).toContain(first.path!);
+  expect(history.turns[0]!.assistantText).toContain('Sandbox Trial: passed');
+  expect(history.turns[0]!.truncated).toBe(true);
+  expect(Buffer.byteLength(history.turns[0]!.assistantText)).toBeLessThanOrEqual(8192);
+  const frozen = fixture.store.getOperationConversationContext(second.operation.operationId);
+  await fixture.send({ target: first.path, taskCount: 3 });
+  expect(fixture.store.getOperationConversationContext(second.operation.operationId)).toEqual(
+    frozen,
+  );
 }, 60_000);
 
 test('a deleted owned target stays deleted when deletion occurs after staging', async () => {

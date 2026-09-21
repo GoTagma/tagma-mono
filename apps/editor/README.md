@@ -81,6 +81,18 @@ curl -fsSL https://bun.sh/install | bash
 
 ## Workflow editor and run behavior
 
+Chat follow-up context includes the prior turn's final Host publication target and Sandbox Trial
+summary, as well as its authored response. This is historical evidence: it does not establish that
+the files still exist or are unchanged. Conversation-scoped operation details identify that
+conversation's owned targets; workspace inventories have no conversation ownership. Both inventories
+describe the current workspace, not the classifier's frozen input from an earlier turn.
+
+Command-task start logs show the authored command template; execution substitutes resolved inputs
+before spawning. A task timeout initiates cancellation, while the reported duration also includes
+process-tree teardown and output capture. An explicit `opencode` shell command uses the executable
+on PATH, which can differ from the bundled OpenCode used by managed Chat. A healthy managed Chat
+runtime therefore does not establish the version or completion time of a nested CLI command.
+
 Generated requirements documents use `Verify (macOS / Linux)` and `Verify (Windows)`
 instructions to locate external executables on PATH (`command -v` and `where.exe`). These
 checks establish availability, not a version or feature guarantee. Runtime preflight independently

@@ -472,9 +472,11 @@ class Controller implements ChatOperationV2Controller {
       throw new Error('Chat Operation V2 conversation id is invalid.');
     }
     this.#selectionEpoch += 1;
+    const conversationChanged = this.#conversationId !== conversationId;
     this.#conversationId = conversationId;
     this.#snapshot = {
       ...this.#snapshot,
+      inventory: conversationChanged ? null : this.#snapshot.inventory,
       activeOperation: latestOperation(
         this.#snapshot.operations.filter((operation) => this.#matchesCorrelation(operation)),
       ),
@@ -505,7 +507,7 @@ class Controller implements ChatOperationV2Controller {
       throw new Error('Host returned a different Chat Operation for the selected history.');
     }
     this.#conversationId = detail.operation.conversationId;
-    if (!this.#applyOperation(detail.operation, true)) return;
+    if (!this.#applyOperation(detail.operation, true, detail.inventory)) return;
     this.#onDetail?.(detail);
   }
 
@@ -518,7 +520,7 @@ class Controller implements ChatOperationV2Controller {
       throw new Error('A live Chat Operation must finish or be cancelled before starting another.');
     }
     this.#selectionEpoch += 1;
-    this.#snapshot = { ...this.#snapshot, activeOperation: null };
+    this.#snapshot = { ...this.#snapshot, activeOperation: null, inventory: null };
     this.#emit();
   }
 
@@ -721,7 +723,11 @@ class Controller implements ChatOperationV2Controller {
     });
   }
 
-  #applyOperation(operation: ChatOperationV2Projection, makeActive: boolean): boolean {
+  #applyOperation(
+    operation: ChatOperationV2Projection,
+    makeActive: boolean,
+    inventory?: ChatOperationV2Inventory,
+  ): boolean {
     const byId = new Map(
       this.#snapshot.operations.map((candidate) => [candidate.operationId, candidate] as const),
     );
@@ -741,6 +747,7 @@ class Controller implements ChatOperationV2Controller {
           left.createdAt - right.createdAt || left.operationId.localeCompare(right.operationId),
       ),
       activeOperation: makeActive ? operation : this.#snapshot.activeOperation,
+      inventory: makeActive && inventory ? inventory : this.#snapshot.inventory,
       error: null,
     };
     this.#emit();
@@ -769,7 +776,7 @@ class Controller implements ChatOperationV2Controller {
       selectionEpoch === this.#selectionEpoch &&
       (selected || this.#matchesCorrelation(detail.operation)) &&
       shouldActivateOperation(this.#snapshot.activeOperation, detail.operation);
-    if (!this.#applyOperation(detail.operation, makeActive)) return null;
+    if (!this.#applyOperation(detail.operation, makeActive, detail.inventory)) return null;
     if (!makeActive) return null;
     this.#onDetail?.(detail);
     return detail;

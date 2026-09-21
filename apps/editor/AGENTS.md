@@ -2,6 +2,17 @@
 
 ## Shared Chat Product Actions
 
+- Operation-detail inventory projects `sessionOwned` from that operation's authenticated
+  conversation owner, including published targets without an active successor lease. Workspace
+  inventory has no conversation owner. These are current inventories, not frozen classifier
+  inputs. Refresh the selected Renderer inventory with its accepted detail; foreign wakes and
+  new conversations must never inherit another conversation's ownership flags.
+- Frozen conversation history must include the sealed Host publication outcome, final target,
+  and validated Trial summary before authoring prose so byte bounds cannot leave only an obsolete
+  "verification pending" report. Preserve visible attachments within the existing history bounds,
+  keep historical outcomes distinct from current filesystem evidence, and never rewrite an
+  already-sealed turn's history during recovery.
+
 - Composer button/Enter submission uses `src/chat-actions/composer.ts`; preserve that common
   availability, text normalization, submission fence and failure restoration when wiring external
   control. The existing Chat store/controller alone freezes canvas/context and serializes V2.

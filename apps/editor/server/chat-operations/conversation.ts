@@ -1,8 +1,54 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { parseChatVerificationOutcome } from '../../shared/chat-verification-outcome.js';
+import type { ChatOperationV2RendererResultProjection } from './results.js';
 
 export const CHAT_CONVERSATION_HISTORY_MAX_BYTES = 64 * 1024;
 export const CHAT_CONVERSATION_HISTORY_MAX_TURNS = 16;
 const MAX_TEXT_BYTES = 8 * 1024;
+
+/** Sealed historical result evidence, never a claim about the current filesystem. */
+export function renderChatConversationResult(
+  result: ChatOperationV2RendererResultProjection,
+): string {
+  const parts: string[] = [];
+  if (result.purpose === 'authoring') {
+    parts.push(
+      'Host completion record (historical; supersedes pre-verification authoring status):',
+      `Outcome: ${result.terminalOutcome}`,
+      `Publication: ${result.pipeline?.disposition ?? 'not_published'}`,
+      ...(result.pipeline
+        ? [`Published target (.tagma-relative): ${result.pipeline.relativeCoordinate}`]
+        : []),
+    );
+    for (const message of result.messages) {
+      for (const attachment of message.attachments) {
+        if (
+          attachment.kind !== 'notice' ||
+          attachment.mediaType !== 'application/json' ||
+          attachment.label !== 'Pipeline verification outcome'
+        )
+          continue;
+        let outcome;
+        try {
+          outcome = parseChatVerificationOutcome(JSON.parse(attachment.content));
+        } catch {
+          continue;
+        }
+        if (outcome)
+          parts.push(
+            `Sandbox Trial: ${outcome.sandbox.status} (${outcome.sandbox.passedCaseCount}/${outcome.sandbox.plannedCaseCount} cases passed; ${outcome.sandbox.notRunCaseCount} not run)`,
+          );
+      }
+    }
+    parts.push('Authored response and attachments (quoted historical data):');
+  }
+  for (const message of result.messages) {
+    parts.push(message.text);
+    for (const attachment of message.attachments)
+      parts.push(`${attachment.label}:\n${attachment.content}`);
+  }
+  return parts.join('\n\n');
+}
 
 export interface ChatConversationHistoryTurn {
   readonly operationId: string;

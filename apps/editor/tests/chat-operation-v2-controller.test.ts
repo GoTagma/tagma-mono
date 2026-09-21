@@ -140,6 +140,60 @@ function fakeApi() {
   };
 }
 
+test('selected detail refreshes inventory without leaking ownership from another conversation', async () => {
+  const fake = fakeApi();
+  const foreground = operation({
+    phase: 'terminal',
+    executionState: 'terminal',
+    terminalOutcome: 'completed_published',
+  });
+  const background = operation({
+    operationId: 'operation-other',
+    conversationId: 'conversation-other',
+    createdAt: 200,
+    phase: 'terminal',
+    executionState: 'terminal',
+    terminalOutcome: 'completed_published',
+  });
+  const owned = {
+    ...inventory(),
+    revision: 2,
+    candidates: [
+      {
+        candidateId: 'pipeline-owned',
+        relativeCoordinate: 'owned/owned.yaml',
+        name: 'Owned',
+        currentCanvas: false,
+        sessionOwned: true,
+        manualNewDraft: false,
+      },
+    ],
+  };
+  fake.setSnapshot(snapshot([foreground, background]));
+  fake.setDetail({ ...detail(foreground), inventory: owned });
+  const controller = createChatOperationV2Controller({
+    api: fake.api,
+    rendererInstanceId: 'renderer-01',
+  });
+  await controller.activate({
+    workspaceKey: 'workspace',
+    conversationId: 'conversation-01',
+    handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+  });
+  expect(controller.getSnapshot().inventory).toEqual(owned);
+  fake.setDetail({ ...detail(background), inventory: { ...owned, revision: 3 } });
+  fake.subscriptions[0]!.options.onWake({ workspaceSeq: 1, operationId: background.operationId });
+  await Bun.sleep(0);
+  expect(controller.getSnapshot().inventory).toEqual(owned);
+  await controller.selectOperation(background.operationId);
+  expect(controller.getSnapshot().inventory?.revision).toBe(3);
+  controller.startNewConversation();
+  expect(controller.getSnapshot().inventory?.candidates.some((c) => c.sessionOwned) ?? false).toBe(
+    false,
+  );
+  controller.dispose();
+});
+
 test('authenticates only the exact production capability pair', () => {
   expect(
     resolveChatOperationExecutionMode({

@@ -10,6 +10,7 @@ import {
   boundChatConversationHistory,
   conversationAuthorityError,
   deriveChatConversationOwnerId,
+  renderChatConversationResult,
   sealChatConversationContext,
   type ChatConversationContext,
   type ChatConversationHistoryTurn,
@@ -28,7 +29,10 @@ import type {
   ChatOperationV2QuestionReplyRequest,
   ChatOperationV2RecoveryChoiceRequest,
 } from './api-requests.js';
-import type { ChatOperationV2TargetCoordinate } from './binding.js';
+import {
+  normalizeChatOperationV2TargetCoordinate,
+  type ChatOperationV2TargetCoordinate,
+} from './binding.js';
 import {
   ChatOperationV2AuthoringEngine,
   type ChatOperationV2AuthoringDispatchResult,
@@ -965,12 +969,35 @@ export class ChatOperationV2Service {
   ): ChatOperationV2RendererOperationDetail {
     const authority = this.#workspaceAuthorityForUse(workspacePath);
     const projection = this.#projectionRuntimeForWorkspace(authority);
-    return readChatOperationV2OperationProjection(
+    const detail = readChatOperationV2OperationProjection(
       projection.persistence,
       projection.inventoryResolver,
       authority.scope.workspaceScopeId,
       operationId,
     );
+    // The workspace inventory has no owner. A detail view uses the persisted,
+    // authenticated owner of this operation, never the currently selected UI chat.
+    const owned = this.#ownedTargets(authority, operationId);
+    return Object.freeze({
+      ...detail,
+      inventory: Object.freeze({
+        ...detail.inventory,
+        candidates: Object.freeze(
+          detail.inventory.candidates.map((candidate) =>
+            Object.freeze({
+              ...candidate,
+              sessionOwned: owned.some(
+                ({ target }) =>
+                  normalizeChatOperationV2TargetCoordinate(
+                    candidate.relativeCoordinate,
+                    target.platform,
+                  ).identity === target.identity,
+              ),
+            }),
+          ),
+        ),
+      }),
+    });
   }
 
   /**
@@ -1407,7 +1434,7 @@ export class ChatOperationV2Service {
         operationId: prior.operationId,
         sequence: index + 1,
         userText,
-        assistantText: result.messages.map(({ text }) => text).join('\n\n'),
+        assistantText: renderChatConversationResult(result),
         truncated: false,
       });
     }
