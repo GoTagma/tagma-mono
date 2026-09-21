@@ -46,6 +46,7 @@ export interface FakeProviderDiagnostic {
 export interface OpencodeV2FakeProvider {
   baseUrl: string;
   diagnostics(): readonly FakeProviderDiagnostic[];
+  setReadPath(path: string): void;
   stop(): Promise<void>;
 }
 
@@ -215,6 +216,7 @@ function chatCompletionResponse(
   sequence: number,
   behavior: ProviderBehavior,
   classifierResult: OpencodeV2FakeClassifierResult,
+  readPath: string,
 ): Response {
   const id = `chatcmpl-tagma-${sequence}`;
   const model =
@@ -353,7 +355,7 @@ function chatCompletionResponse(
   const callID = `call_tagma_${toolName}_${sequence}`;
   const argumentsJson = JSON.stringify(
     behavior === 'read'
-      ? { filePath: '.' }
+      ? { filePath: readPath }
       : { questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS },
   );
   if (body.stream === true) {
@@ -430,6 +432,7 @@ function responsesApiResponse(
   sequence: number,
   behavior: ProviderBehavior,
   classifierResult: OpencodeV2FakeClassifierResult,
+  readPath: string,
 ): Response {
   const responseID = `resp_tagma_${sequence}`;
   const model =
@@ -603,7 +606,7 @@ function responsesApiResponse(
   const itemID = `fc_tagma_${sequence}`;
   const argumentsJson = JSON.stringify(
     behavior === 'read'
-      ? { filePath: '.' }
+      ? { filePath: readPath }
       : { questions: OPENCODE_QUESTION_CONFORMANCE_QUESTIONS },
   );
   const item = {
@@ -683,6 +686,7 @@ export function startOpencodeV2FakeProvider(
   const diagnostics: FakeProviderDiagnostic[] = [];
   let sequence = 0;
   let classifierResultIndex = 0;
+  let readPath = '.';
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -813,14 +817,17 @@ export function startOpencodeV2FakeProvider(
 
       sequence += 1;
       return transport === 'chat-completions'
-        ? chatCompletionResponse(body, sequence, behavior, classifierResult)
-        : responsesApiResponse(body, sequence, behavior, classifierResult);
+        ? chatCompletionResponse(body, sequence, behavior, classifierResult, readPath)
+        : responsesApiResponse(body, sequence, behavior, classifierResult, readPath);
     },
   });
 
   return {
     baseUrl: new URL('/v1', server.url).toString().replace(/\/$/, ''),
     diagnostics: () => diagnostics.map((entry) => ({ ...entry })),
+    setReadPath(path: string): void {
+      readPath = path;
+    },
     async stop(): Promise<void> {
       await server.stop(true);
     },

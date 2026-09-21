@@ -717,6 +717,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       const pendingReleased = new Promise<void>((resolve) => {
         releasePending = resolve;
       });
+      provider.setReadPath(join(root, 'outside-staged-cancellation.txt'));
       const cancelExecution = productionAdapter.execute({
         invocationId: cancelInvocationID,
         sessionId: cancelSessionID,
@@ -755,6 +756,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         clearTimeout(pendingTimeout);
         cancelController.abort();
         releasePending();
+        provider.setReadPath('.');
       }
       expect(await cancelExecution).toMatchObject({ kind: 'cancelled' });
       let cancelActivity = await productionAdapter.getSessionActivity({
