@@ -39,6 +39,14 @@ type GeneratedTrialPlanTool = {
   execute(args: Record<string, unknown>, context: { directory: string }): Promise<string>;
 };
 
+test('native command guidance enables Exa only for explicitly requested headless web search', () => {
+  const skill = buildTagmaNativePrimitivesSkill();
+  expect(skill).toContain('OPENCODE_ENABLE_EXA=true');
+  expect(skill).toContain("$env:OPENCODE_ENABLE_EXA = 'true'");
+  expect(skill).toContain('websearch: allow');
+  expect(skill).toContain('Do not enable Exa for commands that do not request web access');
+});
+
 function fakeSchemaNode(): Record<string, (...args: unknown[]) => unknown> {
   const node: Record<string, (...args: unknown[]) => unknown> = {};
   for (const method of ['describe', 'optional', 'int', 'min', 'max']) {

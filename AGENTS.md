@@ -73,12 +73,19 @@ Do not amend the same commit to include these files after naming them with the c
 - Windows task timeout and abort handling must start process-tree cleanup asynchronously. Keep a
   bounded direct-child fallback and a bounded tree-killer lifetime while preserving descendant
   cleanup coverage; never run synchronous `taskkill` from a run-owned timer callback.
+- Do not kill the Windows tree root before the bounded tree-kill attempt finishes: a short
+  parallel parent-kill timer races descendant discovery. After termination, bound inherited-pipe
+  draining and blocked stdin/exit waits; retain partial child bytes with structured capture
+  diagnostics and preserve timeout/abort classification. Cover slow cleanup with real PowerShell
+  descendants that inherit stdout/stderr, not only children with ignored output.
 
 ## Managed Prompt Web Capability
 
 - OpenCode 1.18.x native `websearch` requires both an allow permission and
   `OPENCODE_ENABLE_EXA=true`. Add the feature flag only to prompt tasks whose resolved policy
   explicitly enables web access; managed ambient environment must not enable search by itself.
+- Seeded headless-command guidance must teach the same Exa requirement using a process-scoped
+  shell environment assignment (PowerShell or POSIX), never a nonexistent task-level `env` field.
 
 ## Chat-Authored Pipeline Path Coordinates
 

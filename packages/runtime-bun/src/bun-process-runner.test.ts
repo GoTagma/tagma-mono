@@ -103,7 +103,11 @@ async function waitForHeartbeatToStop(path: string): Promise<number> {
   throw new Error(`grandchild heartbeat did not stop within ${HEARTBEAT_STOP_TIMEOUT_MS}ms`);
 }
 
-function processTreeFixtureScript(heartbeatPath: string, pidPath: string): string {
+function processTreeFixtureScript(
+  heartbeatPath: string,
+  pidPath: string,
+  inheritOutput = false,
+): string {
   const grandchildScript = `
     const { appendFileSync, writeFileSync } = require('node:fs');
     const heartbeatPath = ${JSON.stringify(heartbeatPath)};
@@ -116,7 +120,7 @@ function processTreeFixtureScript(heartbeatPath: string, pidPath: string): strin
   return `
     const { spawn } = require('node:child_process');
     const grandchild = spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], {
-      stdio: 'ignore',
+      stdio: ${JSON.stringify(inheritOutput ? 'inherit' : 'ignore')},
       windowsHide: true,
     });
     grandchild.once('error', (error) => {
@@ -369,7 +373,7 @@ test('runSpawn classifies an incomplete stream as output_error without parsing p
   expect(Object.isFrozen(result.outputDiagnostics)).toBe(true);
   expect(Object.isFrozen(result.outputDiagnostics?.[0])).toBe(true);
   expect(parseCalls).toBe(0);
-  expect(killSignals).toEqual(['SIGTERM']);
+  expect(killSignals).toEqual([process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM']);
   expect(stderrSettledByKill).toBe(true);
 });
 
@@ -607,7 +611,7 @@ test('runSpawn keeps task timeout classified as timeout', async () => {
   expect(result.failureKind).toBe('timeout');
 });
 
-test('runSpawn bounds slow Windows process-tree cleanup without blocking the host', async () => {
+test('runSpawn preserves the Windows parent until slow tree cleanup finishes without blocking the host', async () => {
   if (process.platform !== 'win32') return;
 
   let resolveExit!: (code: number) => void;
@@ -653,10 +657,14 @@ test('runSpawn bounds slow Windows process-tree cleanup without blocking the hos
     new Promise<boolean>((resolve) => {
       finishTreeKill = resolve;
     });
+  let heartbeat = false;
+  const heartbeatTimer = setTimeout(() => {
+    heartbeat = true;
+  }, 100);
   const safety = setTimeout(() => {
     finishTreeKill(true);
     settleProcess();
-  }, 2_500);
+  }, 3_500);
   const startedAt = performance.now();
   try {
     const result = await runSpawnWith(
@@ -668,14 +676,136 @@ test('runSpawn bounds slow Windows process-tree cleanup without blocking the hos
     );
 
     expect(result.failureKind).toBe('timeout');
-    expect(performance.now() - startedAt).toBeLessThan(2_000);
-    expect(killSignals).toContain('SIGTERM');
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(3_400);
+    expect(heartbeat).toBe(true);
+    expect(killSignals).toEqual([]);
   } finally {
     clearTimeout(safety);
+    clearTimeout(heartbeatTimer);
     finishTreeKill?.(true);
     settleProcess();
   }
 }, 5_000);
+
+for (const cleanup of ['failed', 'rejected', 'hung'] as const) {
+  test(`runSpawn bounds inherited pipes after Windows tree cleanup ${cleanup}`, async () => {
+    if (process.platform !== 'win32') return;
+    let resolveExit!: (code: number) => void;
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+    const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+    let cancelled = 0;
+    const stream = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controllers.push(controller);
+          controller.enqueue(new TextEncoder().encode('child bytes'));
+        },
+        cancel() {
+          cancelled++;
+        },
+      });
+    const spawn = (() =>
+      ({
+        pid: 2_000_000_001,
+        stdout: stream(),
+        stderr: stream(),
+        stdin: cleanup === 'hung' ? { write: () => new Promise(() => {}), end() {} } : undefined,
+        exited,
+        kill() {
+          if (cleanup !== 'hung') resolveExit(1);
+        },
+      }) as unknown as ReturnType<typeof Bun.spawn>) satisfies BunSpawnForRunner;
+    const safety = setTimeout(() => {
+      for (const controller of controllers) {
+        try {
+          controller.close();
+        } catch {
+          // The bounded drain may already have cancelled this stream.
+        }
+      }
+      resolveExit(1);
+    }, 20_000);
+    try {
+      const result = await runSpawnWith(
+        { args: [process.execPath], stdin: 'input' },
+        null,
+        { timeoutMs: 20 },
+        spawn,
+        async () => {
+          if (cleanup === 'hung') return new Promise<boolean>(() => {});
+          if (cleanup === 'rejected') throw new Error('cleanup failed');
+          return false;
+        },
+      );
+      expect(result.durationMs).toBeLessThan(19_000);
+      expect(result.failureKind).toBe('timeout');
+      expect(result.stdout).toBe('child bytes');
+      expect(result.stderr).toBe('child bytes');
+      expect(result.outputDiagnostics?.map((item) => item.stream)).toEqual(['stdout', 'stderr']);
+      expect(cancelled).toBe(2);
+    } finally {
+      clearTimeout(safety);
+    }
+  }, 25_000);
+}
+
+for (const reason of ['timeout', 'aborted'] as const) {
+  test(`runSpawn ${reason} cleans up PowerShell descendants with inherited pipes and delayed taskkill`, async () => {
+    if (process.platform !== 'win32') return;
+    const dir = mkdtempSync(join(tmpdir(), 'tagma-powershell-tree-'));
+    const heartbeatPath = join(dir, 'heartbeat.log');
+    const pidPath = join(dir, 'grandchild.pid');
+    const scriptPath = join(dir, 'child.cjs');
+    writeFileSync(scriptPath, processTreeFixtureScript(heartbeatPath, pidPath, true));
+    const controller = new AbortController();
+    let taskkillCode: number | undefined;
+    const running = runSpawnWith(
+      {
+        args: [
+          'powershell.exe',
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `& node '${scriptPath.replace(/'/g, "''")}'`,
+        ],
+      },
+      null,
+      { timeoutMs: reason === 'timeout' ? 3_000 : undefined, signal: controller.signal },
+      (args, options) => Bun.spawn(args, options),
+      async (pid) => {
+        // Model slow Windows process enumeration, beyond both former parent-kill timers.
+        await delay(3_500);
+        const killer = Bun.spawn(['taskkill', '/F', '/T', '/PID', String(pid)], {
+          stdout: 'ignore',
+          stderr: 'ignore',
+        });
+        taskkillCode = await killer.exited;
+        return taskkillCode === 0;
+      },
+    );
+    try {
+      await waitForHeartbeatCount(heartbeatPath, 3, 2_500);
+      if (reason === 'aborted') controller.abort();
+      const result = await running;
+      expect(result.failureKind).toBe(reason);
+      expect(result.durationMs).toBeLessThan(10_000);
+      expect(result.stdout).toContain('grandchild-started');
+      expect(result.outputDiagnostics).toBeUndefined();
+      expect(taskkillCode).toBe(0);
+      const pid = fixturePid(pidPath);
+      if (pid === null) throw new Error('missing descendant pid');
+      await waitForProcessExit(pid);
+      await waitForHeartbeatToStop(heartbeatPath);
+    } finally {
+      controller.abort();
+      await cleanupFixtureProcess(pidPath);
+      await running;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 25_000);
+}
 
 test('runSpawn timeout terminates the descendant process tree', async () => {
   if (

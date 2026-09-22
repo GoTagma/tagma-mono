@@ -14,12 +14,11 @@ import { commandToSpawnSpec } from '@tagma/core';
 
 // Delay before escalating SIGTERM to SIGKILL when killing a timed-out process.
 const SIGKILL_DELAY_MS = 3_000;
-// taskkill can spend seconds waiting on Windows process bookkeeping. Give it a
-// short head start to capture descendants, then ensure the direct child cannot
-// keep the task open indefinitely. The tree killer itself gets a longer bound
-// so it can still finish descendant cleanup in the background.
-const WINDOWS_DIRECT_KILL_FALLBACK_MS = 1_000;
 const WINDOWS_TASKKILL_TIMEOUT_MS = 15_000;
+// Never destroy the tree root while taskkill is still discovering descendants.
+// The caller's watchdog also covers an unexpectedly unsettled cleanup promise.
+const WINDOWS_DIRECT_KILL_FALLBACK_MS = WINDOWS_TASKKILL_TIMEOUT_MS + 1_000;
+const TERMINATED_OUTPUT_DRAIN_MS = 1_000;
 
 /**
  * Default cap for the in-memory tail retained for each stream. Picked so that
@@ -145,7 +144,7 @@ async function killProcessTree(pid: number): Promise<boolean> {
   try {
     taskkill = Bun.spawn(['taskkill', '/F', '/T', '/PID', String(pid)], {
       stdout: 'ignore',
-      stderr: 'pipe',
+      stderr: 'ignore',
     });
     taskkill.unref();
   } catch {
@@ -153,10 +152,6 @@ async function killProcessTree(pid: number): Promise<boolean> {
     return false;
   }
 
-  const taskkillStderr = typeof taskkill.stderr === 'object' ? taskkill.stderr : undefined;
-  const stderrPromise = taskkillStderr
-    ? new Response(taskkillStderr).text().catch(() => '')
-    : Promise.resolve('');
   let timeout: ReturnType<typeof setTimeout> | null = null;
   const outcome = await Promise.race([
     taskkill.exited.then((exitCode) => ({ kind: 'exited' as const, exitCode })),
@@ -179,12 +174,9 @@ async function killProcessTree(pid: number): Promise<boolean> {
     return false;
   }
 
-  const stderr = await stderrPromise;
   // Exit code 128 = process not found (already exited) — not worth warning about.
   if (outcome.exitCode === 0 || outcome.exitCode === 128) return true;
-  console.warn(
-    `[killProcessTree] taskkill exited ${outcome.exitCode} for PID ${pid}: ${stderr.trim()}`,
-  );
+  console.warn(`[killProcessTree] taskkill exited ${outcome.exitCode} for PID ${pid}`);
   return false;
 }
 
@@ -228,6 +220,7 @@ export async function collectStream(
   onChunk?: (text: string) => void,
   outputRedactor?: OutputRedactor,
   onReadError?: (error: Error) => void,
+  drainSignal?: AbortSignal,
 ): Promise<{
   text: string;
   totalBytes: number;
@@ -347,7 +340,7 @@ export async function collectStream(
     // step and a cleanup-shape defect cannot masquerade as truncated output.
     reader = stream.getReader();
     for (;;) {
-      const next = await reader.read();
+      const next = await waitForDrain(reader.read(), drainSignal);
       if (next.done) {
         streamComplete = true;
         break;
@@ -380,6 +373,14 @@ export async function collectStream(
       // pipe and must not replace the original stream error.
     }
   } finally {
+    if (!streamComplete && reader && typeof reader.cancel === 'function') {
+      try {
+        // Cancellation can itself wait on a broken native pipe. Do not await it.
+        void Promise.resolve(reader.cancel()).catch(() => {});
+      } catch {
+        /* compatibility cleanup */
+      }
+    }
     if (reader && typeof reader.releaseLock === 'function') {
       try {
         reader.releaseLock();
@@ -784,6 +785,26 @@ export type BunSpawnForRunner = (
   },
 ) => ReturnType<typeof Bun.spawn>;
 
+function waitForDrain<T>(pending: T | PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return Promise.resolve(pending);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () =>
+      reject(new Error('Process cleanup deadline reached before output completed'));
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
+    Promise.resolve(pending).then(
+      (value) => {
+        signal.removeEventListener('abort', abort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export async function runSpawnWith(
   spec: SpawnSpec,
   driver: DriverPlugin | null,
@@ -872,8 +893,12 @@ export async function runSpawnWith(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let forceTimer: ReturnType<typeof setTimeout> | null = null;
   let windowsFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let drainTimer: ReturnType<typeof setTimeout> | null = null;
+  const drainController = new AbortController();
+  let processFinished = false;
 
   const killDirectChild = (signal: 'SIGTERM' | 'SIGKILL') => {
+    if (processFinished) return;
     try {
       proc.kill(signal);
     } catch {
@@ -881,28 +906,34 @@ export async function runSpawnWith(
     }
   };
 
+  const boundDrain = () => {
+    if (processFinished || drainTimer) return;
+    drainTimer = setTimeout(() => drainController.abort(), TERMINATED_OUTPUT_DRAIN_MS);
+  };
+
   const killGracefully = (reason: 'timeout' | 'aborted' | 'output_error') => {
     if (killReason !== null) return;
     killReason = reason;
 
     if (process.platform === 'win32') {
-      // Start taskkill without blocking the Host event loop. It retains the
-      // process-tree semantics needed for .cmd wrappers and grandchildren.
-      // If Windows bookkeeping is slow or taskkill is denied, bound how long
-      // the direct child can keep this task open while tree cleanup continues.
+      // Preserve the root until the bounded tree killer finishes. Killing it
+      // after a short head start races taskkill's descendant discovery.
+      let cleanupFinished = false;
+      const finishCleanup = (treeKilled: boolean) => {
+        if (cleanupFinished) return;
+        cleanupFinished = true;
+        if (windowsFallbackTimer) clearTimeout(windowsFallbackTimer);
+        windowsFallbackTimer = null;
+        if (!treeKilled) killDirectChild('SIGKILL');
+        boundDrain();
+      };
       void Promise.resolve()
         .then(() => killWindowsProcessTree(proc.pid))
-        .then((treeKilled) => {
-          if (windowsFallbackTimer) clearTimeout(windowsFallbackTimer);
-          windowsFallbackTimer = null;
-          if (!treeKilled) killDirectChild('SIGTERM');
-        })
-        .catch(() => killDirectChild('SIGTERM'));
+        .then(finishCleanup, () => finishCleanup(false));
       windowsFallbackTimer = setTimeout(
-        () => killDirectChild('SIGTERM'),
+        () => finishCleanup(false),
         WINDOWS_DIRECT_KILL_FALLBACK_MS,
       );
-      forceTimer = setTimeout(() => killDirectChild('SIGKILL'), SIGKILL_DELAY_MS);
     } else {
       if (!killUnixProcessGroup(proc.pid, 'SIGTERM')) {
         proc.kill('SIGTERM');
@@ -916,6 +947,7 @@ export async function runSpawnWith(
         } catch {
           /* already exited */
         }
+        boundDrain();
       }, SIGKILL_DELAY_MS);
     }
   };
@@ -952,6 +984,7 @@ export async function runSpawnWith(
     sink ? (text) => sink('stdout', text) : undefined,
     opts.outputRedactor,
     () => killGracefully('output_error'),
+    drainController.signal,
   );
   const stderrPromise = collectStream(
     stderrStream,
@@ -961,8 +994,9 @@ export async function runSpawnWith(
     sink ? (text) => sink('stderr', text) : undefined,
     opts.outputRedactor,
     () => killGracefully('output_error'),
+    drainController.signal,
   );
-  const exitPromise = proc.exited;
+  const exitPromise = waitForDrain(proc.exited, drainController.signal).catch(() => -1);
 
   // ── 4. Write stdin ─────────────────────────────────────────────────────
   // Cancellation and output draining must already be armed here: a child
@@ -971,8 +1005,8 @@ export async function runSpawnWith(
   // intentionally non-fatal.
   if (spec.stdin && proc.stdin && typeof proc.stdin !== 'number') {
     try {
-      await proc.stdin.write(spec.stdin);
-      await proc.stdin.end();
+      await waitForDrain(proc.stdin.write(spec.stdin), drainController.signal);
+      await waitForDrain(proc.stdin.end(), drainController.signal);
     } catch {
       /* ignore EPIPE / closed-pipe errors */
     }
@@ -1009,11 +1043,16 @@ export async function runSpawnWith(
       path: stderrPath,
     });
   }
+  const immutableOutputDiagnostics = Object.freeze(
+    outputDiagnostics.map((diagnostic) => Object.freeze({ ...diagnostic })),
+  );
 
   // ── 6. Cleanup timers & listeners ──────────────────────────────────────
   if (timer) clearTimeout(timer);
   if (forceTimer) clearTimeout(forceTimer);
   if (windowsFallbackTimer) clearTimeout(windowsFallbackTimer);
+  if (drainTimer) clearTimeout(drainTimer);
+  processFinished = true;
   if (signal) signal.removeEventListener('abort', onAbort);
 
   const durationMs = elapsed();
@@ -1039,6 +1078,7 @@ export async function runSpawnWith(
       // H2: explicit kind so engine.ts no longer has to guess "is exitCode -1
       // a timeout or a spawn-failure?" Both used to share the same code.
       failureKind: killReason,
+      ...(outputDiagnostics.length > 0 ? { outputDiagnostics: immutableOutputDiagnostics } : {}),
     };
   }
 
@@ -1047,9 +1087,6 @@ export async function runSpawnWith(
   // stream: return the raw captured prefix/tail plus structured diagnostics,
   // with no runner text injected into either child stream.
   if (outputDiagnostics.length > 0) {
-    const immutableOutputDiagnostics = Object.freeze(
-      outputDiagnostics.map((diagnostic) => Object.freeze({ ...diagnostic })),
-    );
     return {
       exitCode,
       stdout,
