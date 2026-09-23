@@ -1,0 +1,173 @@
+{
+  "oldestCursor": 1,
+  "latestCursor": 2,
+  "nextCursor": 2,
+  "droppedBeforeCursor": false,
+  "retainedEventCount": 2,
+  "availableEventCount": 2,
+  "returnedEventCount": 2,
+  "omittedEventCount": 0,
+  "hasMore": false,
+  "retention": {
+    "layer": "diagnostics-timeline-buffer",
+    "droppedEventCount": 0,
+    "requestedEventLossCount": 0,
+    "truncated": false
+  },
+  "page": {
+    "layer": "diagnostics-timeline-page",
+    "limit": 500,
+    "omittedEventCount": 0,
+    "truncated": false
+  },
+  "events": [
+    {
+      "cursor": 1,
+      "timestamp": 1789544548251,
+      "source": "renderer.snapshot",
+      "instanceId": "ce52e8a0-ac0b-4f14-8b9c-a70b8c33856f",
+      "workspaceKey": "d:\\Temp\\tagma-cc-lab\\workspace",
+      "changedSections": ["page", "chat", "pipeline", "run", "features"],
+      "state": {
+        "page": { "href": "http://localhost:5173/", "visibilityState": "visible", "online": true },
+        "chat": {
+          "bootstrapStatus": "idle",
+          "reasoningEffort": null,
+          "messageCount": 0,
+          "returnedMessageCount": 0,
+          "omittedMessageCount": 0,
+          "toolCallCount": 0,
+          "returnedToolCallCount": 0,
+          "omittedToolCallCount": 0,
+          "sending": false,
+          "pendingPermissionCount": 0,
+          "bootstrapError": null,
+          "model": {},
+          "sessionEvidence": {},
+          "messageEvidence": {
+            "layer": "renderer-diagnostics-message-window",
+            "limit": 25,
+            "truncated": false,
+            "omittedMessageCount": 0
+          },
+          "messageSummaries": [],
+          "toolCallEvidence": {
+            "layer": "renderer-diagnostics-tool-call-window",
+            "limit": 100,
+            "truncated": false,
+            "omittedToolCallCount": 0
+          },
+          "toolCallSummaries": [],
+          "backgroundSessions": [],
+          "abortRecovery": null,
+          "pendingUserTextSummary": { "present": false },
+          "sessionStatus": {},
+          "turnHealth": null,
+          "activeChatYamlLifecycle": null,
+          "postChatYamlActionSummary": null,
+          "sendError": null,
+          "completionWarning": null,
+          "lastFinishedTurnSummary": null,
+          "sessionYamlResultSummary": null
+        },
+        "pipeline": {
+          "workDir": "d:\\Temp\\tagma-cc-lab\\workspace",
+          "yamlPath": "d:\\Temp\\tagma-cc-lab\\workspace\\.tagma\\baseline\\baseline.yaml",
+          "manualNewPipelineYamlPath": null,
+          "yamlRunVersion": 0,
+          "isDirty": false,
+          "layoutDirty": false,
+          "loading": false,
+          "selectedTaskId": null,
+          "selectedTaskIds": [],
+          "selectedTrackId": null,
+          "pipelineName": "Chat Control baseline",
+          "trackCount": 1,
+          "taskCount": 1,
+          "undoDepth": 0,
+          "redoDepth": 0,
+          "errorMessage": null,
+          "validationSummary": {
+            "totalCount": 0,
+            "returnedCount": 0,
+            "omittedCount": 0,
+            "summaries": [],
+            "evidence": {
+              "layer": "renderer-diagnostics-validation-window",
+              "limit": 100,
+              "truncated": false,
+              "omittedCount": 0
+            }
+          }
+        },
+        "run": {
+          "active": false,
+          "viewMode": "live",
+          "runId": null,
+          "status": "idle",
+          "selectedTaskId": null,
+          "selectedTrackId": null,
+          "abortReason": null,
+          "lastEventSeq": 0,
+          "taskCount": 0,
+          "returnedTaskStatusCount": 0,
+          "omittedTaskStatusCount": 0,
+          "pendingApprovalCount": 0,
+          "returnedPendingApprovalCount": 0,
+          "omittedPendingApprovalCount": 0,
+          "logCount": 0,
+          "returnedLogCount": 0,
+          "omittedLogCount": 0,
+          "pipelineLogCount": 0,
+          "returnedPipelineLogCount": 0,
+          "omittedPipelineLogCount": 0,
+          "yamlPath": null,
+          "replayFromRunId": null,
+          "error": null,
+          "taskStatusCounts": {},
+          "taskStatuses": [],
+          "taskStatusEvidence": {
+            "layer": "renderer-diagnostics-task-status-window",
+            "limit": 250,
+            "truncated": false,
+            "omittedTaskStatusCount": 0
+          },
+          "pendingApprovals": [],
+          "pendingApprovalEvidence": {
+            "layer": "renderer-diagnostics-pending-approval-window",
+            "limit": 100,
+            "truncated": false,
+            "omittedPendingApprovalCount": 0
+          },
+          "latestLog": null,
+          "logEvidence": {
+            "layer": "renderer-diagnostics-log-window",
+            "limit": 250,
+            "truncated": false,
+            "omittedLogCount": 0
+          },
+          "latestPipelineLog": null,
+          "pipelineLogEvidence": {
+            "layer": "renderer-diagnostics-pipeline-log-window",
+            "limit": 250,
+            "truncated": false,
+            "omittedLogCount": 0
+          },
+          "requirementsSummary": { "present": false, "missingCount": 0, "kindCounts": {} }
+        },
+        "features": { "chatOperationV2": { "present": true, "fieldCount": 2 } }
+      }
+    },
+    {
+      "cursor": 2,
+      "timestamp": 1789544560851,
+      "source": "renderer.snapshot",
+      "instanceId": "ce52e8a0-ac0b-4f14-8b9c-a70b8c33856f",
+      "workspaceKey": "d:\\Temp\\tagma-cc-lab\\workspace",
+      "changedSections": ["page"],
+      "state": {
+        "page": { "href": "http://localhost:5173/", "visibilityState": "hidden", "online": true }
+      }
+    }
+  ]
+}

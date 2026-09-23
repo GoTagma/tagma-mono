@@ -1,6 +1,6 @@
 {
   "name": "@tagma/middleware-lightrag",
-  "version": "0.2.99",
+  "version": "0.2.100",
   "description": "LightRAG knowledge-graph retrieval middleware for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {
