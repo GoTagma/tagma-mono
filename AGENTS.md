@@ -87,6 +87,10 @@ Do not amend the same commit to include these files after naming them with the c
 - Seeded headless-command guidance must teach the same Exa requirement using a process-scoped
   shell environment assignment (PowerShell or POSIX), never a nonexistent task-level `env` field.
 
+## Command Shell Quoting
+
+- On Windows, `{{inputs.X | shellquote}}` quotes an argument for a native command. Its escaped double quotes become data if passed directly as a PowerShell/.NET string expression such as `WriteAllText(path, ..., encoding)`. Keep file-backed input in its file when possible; do not round-trip it through that expression.
+
 ## Chat-Authored Pipeline Path Coordinates
 
 - Built-in trigger, completion, and static-context relative paths resolve from the task's effective

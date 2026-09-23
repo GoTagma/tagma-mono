@@ -47,6 +47,39 @@ test('native command guidance enables Exa only for explicitly requested headless
   expect(skill).toContain('Do not enable Exa for commands that do not request web access');
 });
 
+test('command guidance keeps PowerShell data literals distinct from native arguments', () => {
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  const nativePrimitives = buildTagmaNativePrimitivesSkill();
+  expect(pipeline).toContain('for CLI args, never PowerShell/.NET data expressions');
+  expect(pipeline).toContain('Read file-backed input directly; refresh generated files per run');
+  expect(nativePrimitives).toContain('shellquote is for a native command argument');
+  expect(nativePrimitives).toContain(
+    'Do not pass its result to a PowerShell/.NET method as a string expression',
+  );
+  expect(nativePrimitives).toContain(
+    'Read file-backed input from its file instead of round-tripping it through a command placeholder',
+  );
+  expect(nativePrimitives).toContain(
+    'refresh a generated input file on each repeat run without changing its decoded content',
+  );
+});
+
+test('headless artifact guidance requires file contracts instead of stdout JSON guesses', () => {
+  const guidance = buildTagmaNativePrimitivesSkill();
+  expect(guidance).toContain('For headless AI commands that promise structured files');
+  expect(guidance).toContain('write those files directly and validate their schema and content');
+  expect(guidance).toContain('Do not rely on free-form CLI stdout as a JSON transport');
+});
+
+test('Trial planner recommits a plan whenever the staged YAML revision changes', () => {
+  const guidance = buildTagmaTrialPlannerAgent();
+  expect(guidance).toContain('A new YAML hash always requires a new committed Trial Plan');
+  expect(guidance).toContain(
+    'Even when every case remains applicable, begin with the new hash and commit the preserved cases',
+  );
+  expect(guidance).toContain('Never answer no-change while the current plan yamlHash is stale');
+});
+
 function fakeSchemaNode(): Record<string, (...args: unknown[]) => unknown> {
   const node: Record<string, (...args: unknown[]) => unknown> = {};
   for (const method of ['describe', 'optional', 'int', 'min', 'max']) {

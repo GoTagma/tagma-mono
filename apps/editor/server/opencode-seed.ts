@@ -246,6 +246,7 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 - An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error. Do not vary the path, reset flag, or attempt id; report it and stop after the first rejection.
 - The host enforces a configured finite commit budget for each exact staged path and YAML hash. A subsequent same-key request continues this planner work through the matching draft (reopened with \`begin\`, never by reusing a \`task_id\`); use its prior rejection evidence, update the bounded draft or explicitly reset and rebuild it, commit exactly once, and stop. Never evade the stated budget with path aliases, copies, or a fresh task.
 - On a new YAML hash, \`begin\` may seed the draft from the prior authenticated plan. Treat \`seededFromYamlHash\` as reusable evidence, compare it with the current YAML, preserve unaffected cases/coverage, and update only changed contracts. Use \`reset: true\` only when the graph or behavior requires a full redesign.
+- A new YAML hash always requires a new committed Trial Plan. Even when every case remains applicable, begin with the new hash and commit the preserved cases so \`yamlHash\` matches the current compiled YAML. Never answer no-change while the current plan yamlHash is stale.
 
 - The begin operation requires a non-empty summary and a non-empty string-array goals; resubmit both fields when resuming a matching draft. Every operation also requires the exact staged pipeline_path.
 
@@ -983,7 +984,7 @@ Rely on \`tagma-yaml-contract\`, \`tagma-native-primitives\`, and compile.log fo
 - Command-only tracks are layout/cwd/on_failure lanes. Do not set inert AI fields on them.
 - Prefer fully qualified refs \`trackId.taskId\` when ambiguity is possible. \`continue_from\` is prompt-to-prompt and should usually stay in the same track.
 - Use only plugin types listed in \`<plugins>\`. Built-in driver \`opencode\` needs no plugin entry.
-- In command strings, pass string inputs as \`{{inputs.name | shellquote}}\`; use \`secrets:\` for secrets. Tagma has no task \`env\` field.
+- In command strings, pass string inputs as \`{{inputs.name | shellquote}}\` for CLI args, never PowerShell/.NET data expressions. Read file-backed input directly; refresh generated files per run.
 
 ## Runnable Command Policy
 
@@ -1162,6 +1163,7 @@ pipeline already satisfies the request. Leave the staged artifacts unchanged and
 - An output binding name does not select a stream. Omitting \`from\` means \`json.<outputName>\` and therefore requires a final-line JSON object. Use \`from: stdout\` explicitly to capture raw command stdout. If no downstream task consumes command output, omit \`outputs\` entirely.
 - Use \`{{inputs.name | shellquote}}\` for string inputs inside command strings. Bare
   placeholders are verbatim; surrounding one with quotes is not escaping.
+- On Windows, shellquote is for a native command argument. Do not pass its result to a PowerShell/.NET method as a string expression: the native-argument escaping of double quotes then becomes literal data. Read file-backed input from its file instead of round-tripping it through a command placeholder. Validate empty input before writing; if the pipeline creates an input file on the first run, refresh a generated input file on each repeat run without changing its decoded content so repeated-run freshness and byte-preservation checks agree.
 - After every YAML write, read the same-folder \`.compile.log\`; the validator is
   the source of truth for detailed schema errors.
 
@@ -1170,6 +1172,7 @@ pipeline already satisfies the request. Leave the staged artifacts unchanged and
 - Use command for deterministic shell work where the exact command is known.
 - When the user explicitly requires a headless \`opencode\` command and does not name a model, read the \`<opencode-chat-model>\` marker and pass its exact \`provider-id/model-id\` through \`opencode run --model\`. Never let an authored command silently fall back to OpenCode's ambient default model.
 - When an explicitly requested headless OpenCode command needs native websearch, OpenCode 1.18.x requires both \`websearch: allow\` in its effective permission configuration and \`OPENCODE_ENABLE_EXA=true\` in that command's process environment. Permission alone does not register the tool. On Windows set \`$env:OPENCODE_ENABLE_EXA = 'true'\` in the task's PowerShell command before invoking OpenCode; on POSIX prefix that invocation with \`OPENCODE_ENABLE_EXA=true opencode run --model ...\`. There is no task-level \`env:\` field. Do not enable Exa for commands that do not request web access or change global settings. If native websearch is required but unavailable, report that capability failure instead of silently substituting WebFetch or curl. Managed prompt tasks should use \`permissions.web: true\`; Tagma supplies their scoped feature flag.
+- For headless AI commands that promise structured files, have the model write those files directly and validate their schema and content with deterministic downstream commands. Do not rely on free-form CLI stdout as a JSON transport; model prose, terminal control codes, and malformed JSON must not be accepted as a structured verdict. Keep missing or invalid files as task failures.
 - Match the command dialect to Tagma's actual host shell contract:
 ${WINDOWS_COMMAND_AUTHORING_CONTRACT}
 - On macOS and Linux, plain \`command\` strings and \`{ shell: ... }\` commands run under \`sh -c\` by default; use POSIX shell syntax unless the user explicitly configures \`PIPELINE_SHELL\`.

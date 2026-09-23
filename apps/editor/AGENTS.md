@@ -1765,6 +1765,12 @@
   `{{inputs.name | shellquote}}`; surrounding a bare placeholder with shell quotes is still unsafe.
   Emit an author-time warning for that case. `command.argv` passes arguments without a shell and is
   exempt from this warning.
+- PowerShell `shellquote` protects native CLI arguments, not strings passed to .NET methods.
+  Keep file-backed data in the file or pass a PowerShell variable; otherwise the native quote
+  escapes become data. For headless AI commands promising structured files, write and validate
+  those files instead of treating free-form CLI stdout as a JSON contract.
+- After any staged YAML change, the Trial planner must commit a plan bound to the new YAML hash,
+  even if its cases are otherwise unchanged. A stale plan cannot proceed to Trial.
 - Requirements synchronization must be byte-idempotent when generated requirements semantics are
   unchanged. Preserve `generatedAt` and skip the atomic write in that case, or a YAML-triggered
   watcher can manufacture a companion hash conflict against Chat commit CAS and force a needless
