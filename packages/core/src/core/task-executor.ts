@@ -741,9 +741,15 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   }
 
   let inferredPromptInputs: Readonly<Record<string, unknown>> = {};
-  if (isPromptTask && effectivePorts?.inputs && effectivePorts.inputs.length > 0) {
+  // Explicit bindings (including literal values) were resolved above. Only
+  // resolve ports inferred from upstream command outputs through the port
+  // path; resolving explicit names again would lose binding-only values.
+  const inferredInputPorts = effectivePorts?.inputs?.filter(
+    (port) => !task.inputs || !Object.prototype.hasOwnProperty.call(task.inputs, port.name),
+  );
+  if (isPromptTask && inferredInputPorts && inferredInputPorts.length > 0) {
     const inputResolution = resolveTaskInputs(
-      { ...task, ports: effectivePorts },
+      { ports: { inputs: inferredInputPorts } },
       ctx.outputValuesMap,
       node.dependsOn,
     );

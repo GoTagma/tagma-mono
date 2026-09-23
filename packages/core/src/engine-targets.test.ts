@@ -250,6 +250,116 @@ describe('targeted pipeline runs', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('prompt drivers receive explicit literal inputs alongside inferred upstream inputs', async () => {
+    const dir = makeDir();
+    const claim = 'The "Great Wall" costs ¥5 & $4.';
+    const seenInputs: Array<Readonly<Record<string, unknown>>> = [];
+    const registry = new PluginRegistry();
+    registry.registerPlugin('drivers', 'mock', {
+      name: 'mock',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand(_task, _track, ctx) {
+        seenInputs.push(ctx.inputs);
+        return { args: ['mock'] };
+      },
+    } satisfies DriverPlugin);
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'prompt-literal-input',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [
+                {
+                  id: 'prepare',
+                  command: 'prepare',
+                  outputs: { source: { type: 'string', from: 'json.source' } },
+                },
+                {
+                  id: 'review',
+                  prompt: 'Review the claim and source.',
+                  driver: 'mock',
+                  depends_on: ['prepare'],
+                  inputs: { claim: { type: 'string', required: true, value: claim } },
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        {
+          registry,
+          runtime: {
+            ...fakeRuntime([]),
+            async runCommand() {
+              return taskResult('{"source":"official record"}');
+            },
+            async runSpawn() {
+              return taskResult('reviewed');
+            },
+          },
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(seenInputs).toEqual([{ claim, source: 'official record' }]);
+      expect(result.states.get('main.review')?.status).toBe('success');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('prompt tasks still block when a required explicit binding has no value', async () => {
+    const dir = makeDir();
+    let driverCalls = 0;
+    const registry = new PluginRegistry();
+    registry.registerPlugin('drivers', 'mock', {
+      name: 'mock',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand() {
+        driverCalls++;
+        return { args: ['mock'] };
+      },
+    } satisfies DriverPlugin);
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'missing-prompt-binding',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [
+                {
+                  id: 'review',
+                  prompt: 'Review the claim.',
+                  driver: 'mock',
+                  inputs: { claim: { type: 'string', required: true } },
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        { registry, runtime: fakeRuntime([]), skipPluginLoading: true },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('main.review')?.status).toBe('blocked');
+      expect(result.states.get('main.review')?.result?.stderr).toContain(
+        'missing required binding input(s): claim',
+      );
+      expect(driverCalls).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('task hooks run in the task effective cwd', async () => {
     const dir = makeDir();
     const seen: Array<{ kind: 'hook' | 'task'; command: string; cwd: string | undefined }> = [];

@@ -91,6 +91,10 @@ Do not amend the same commit to include these files after naming them with the c
 
 - On Windows, `{{inputs.X | shellquote}}` quotes an argument for a native command. Its escaped double quotes become data if passed directly as a PowerShell/.NET string expression such as `WriteAllText(path, ..., encoding)`. Keep file-backed input in its file when possible; do not round-trip it through that expression.
 
+## Prompt Input Binding Resolution
+
+- Resolve explicit prompt `inputs` through the binding resolver once. Infer only unbound names from upstream command ports: inferred port metadata does not carry an authored `value`. Preserve literal/default/from values in the driver input, while missing required explicit bindings must still block.
+
 ## Chat-Authored Pipeline Path Coordinates
 
 - Built-in trigger, completion, and static-context relative paths resolve from the task's effective
@@ -108,6 +112,9 @@ Do not amend the same commit to include these files after naming them with the c
   the fixed decision fields and Host-issued candidate ids, then resolves and atomically binds
   create/edit. Never require provider-native structured output or model tool capability for
   classification, discussion, or diagnosis. Discussion and diagnosis own no pipeline.
+- When a request states a desired editor outcome but leaves the action type unclear, clarify
+  whether the user wants an explanation, a one-off action, or a pipeline change. Do not infer
+  write authority from the stated desire; explicit conceptual questions stay read-only.
 - Different sessions may share one read-only origin but must never share a writable target. Persist
   Host-authenticated binding identity separately from names/paths, reuse a target only for its owning
   session, and publish edits to the branch rather than overwriting the origin.
@@ -203,6 +210,9 @@ Do not amend the same commit to include these files after naming them with the c
   Diagnostic-only observation limits do not trigger planning. Host-authored freshness failures
   retain their repair scope; a separate failed authored assertion may still require plan review.
   Signed Trial cache v33 invalidates older assertion-only repair decisions.
+- A missing-file Trial negative case must use an explicit `content: null` fixture; omitting a
+  fixture preserves the staged copy. After Host rejects a plan, the next authorized planning
+  attempt must revise and commit the affected case rather than report no change.
 
 - Automatic post-authoring verification failure, repair/Trial-plan no-change, and exhausted repair
   budgets retain the authenticated draft at `trial-running` / `user_retry`; no-change describes the

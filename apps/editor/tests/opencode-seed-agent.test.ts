@@ -738,6 +738,25 @@ test('pipeline authoring uses native prompt outputs without inventing duplicate 
   expect(nativePrimitives).toContain('does not require the full YAML contract skill');
 });
 
+test('reusable human-facing analysis pipelines have one durable deliverable', () => {
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  const nativePrimitives = buildTagmaNativePrimitivesSkill();
+
+  expect(pipeline).toContain('For a reusable analysis pipeline delivering a result to a person');
+  expect(pipeline).toContain('one durable, human-readable workspace deliverable');
+  expect(pipeline).toContain('unless the user requests transient or binding-only output');
+  expect(pipeline).toContain('That report is the primary result, not a port duplicate');
+  expect(nativePrimitives).toContain(
+    'A typed dataflow output is not a substitute for the primary human-facing deliverable',
+  );
+  expect(nativePrimitives).toContain(
+    'give that file a completion check and test its content in Trial',
+  );
+  expect(pipeline).toContain(
+    'For a fixed conversational prompt with no workspace or tool dependency',
+  );
+});
+
 test('multi-step planning keeps new-pipeline companions Host-owned', () => {
   const planDelegate = buildTagmaPlanDelegateSkill();
 
@@ -1165,6 +1184,18 @@ test('Trial prompts prioritize a complete positive path and explicit prerequisit
   expect(pipeline).toContain('configured maximum repair attempts');
   expect(pipeline).toContain('Do not invent a required credential');
   expect(pipeline).toContain('Authoring report (before Host verification)');
+});
+
+test('Trial planner repairs invalid missing-file cases instead of returning no-change', () => {
+  const planner = buildTagmaTrialPlannerAgent();
+  expect(planner).toContain('Omitting a fixture never removes a copied file');
+  expect(planner).toContain('use content: null for a missing-file negative case');
+  expect(planner).toContain(
+    'If Host rejects a plan, revise the affected case and commit again on the next authorized attempt',
+  );
+  expect(planner).toContain(
+    'Do not answer no-change while a Host plan-validation rejection remains unresolved',
+  );
 });
 
 test('tagma-pipeline agent cooperates with optional host trial-run repair before the logical turn ends', () => {

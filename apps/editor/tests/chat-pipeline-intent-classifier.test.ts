@@ -202,6 +202,35 @@ describe('Chat pipeline semantic intent classification', () => {
     ).toThrow(/bound/i);
   });
 
+  test('asks which action is wanted when an editor goal could be discussion or pipeline work', () => {
+    const prompt = buildChatPipelineIntentClassificationPrompt(
+      'I want to review a document in the editor.',
+      candidates,
+    );
+
+    expect(prompt.system).toContain('Use discussion for explicit conceptual requests');
+    expect(prompt.system).toContain('If the user describes a desired outcome in the editor');
+    expect(prompt.system).toContain(
+      'clarify whether they want an explanation, a one-off action, or a pipeline change',
+    );
+    expect(prompt.system).toContain('Do not infer write authority from a stated desire alone');
+    expect(
+      parseChatPipelineIntentClassificationText(
+        JSON.stringify({
+          kind: 'clarify',
+          targetCandidateId: null,
+          clarification: 'Do you want an explanation or a pipeline change?',
+          candidateIds: [],
+        }),
+        candidates,
+      ),
+    ).toEqual({
+      kind: 'clarify',
+      question: 'Do you want an explanation or a pipeline change?',
+      candidates: [],
+    });
+  });
+
   test('binds an edit only through a Host-issued candidate id', () => {
     const prompt = buildChatPipelineIntentClassificationPrompt(
       '继续修改刚才会话里的订单管线',

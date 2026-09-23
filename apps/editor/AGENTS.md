@@ -1796,12 +1796,15 @@
   final-line JSON; declared `stdout`/`stderr`/`normalizedOutput` sources, explicit values, and
   defaults do not. “Capture”, “return”, or “make observable” means a native output binding unless
   the user or downstream explicitly requires a file; never make a default read-only prompt task
-  promise a duplicate persisted artifact. Require a file only for that explicit contract or when
-  exact-byte/cross-run filesystem behavior needs evidence; a missing required artifact is a
-  blocking `pipeline-artifact` finding. Minimize Trial executions without weakening coverage: a
-  repeat-run case subsumes an otherwise identical single-run case when targets, fixtures, checks,
-  and first-run semantics are the same. Mark a dimension `blocked` only when no pipeline repair can
-  expose it to the harness.
+  promise a duplicate persisted artifact. A reusable analysis pipeline delivering a result to a
+  person may have one readable workspace report as its primary deliverable when the user did not
+  request transient or binding-only output. Give that report a completion check and Trial content
+  assertions; it is distinct from typed dataflow bindings. Require other files only for an
+  explicit contract or when exact-byte/cross-run filesystem behavior needs evidence; a missing
+  required artifact is a blocking `pipeline-artifact` finding. Minimize Trial executions without
+  weakening coverage: a repeat-run case subsumes an otherwise identical single-run case when
+  targets, fixtures, checks, and first-run semantics are the same. Mark a dimension `blocked` only
+  when no pipeline repair can expose it to the harness.
 - `trialTaskRepairScope` must map managed OpenCode primary-model stream failures (billing/network) to `diagnostic-only` via `isExternalDriverStreamFailure`, never to `pipeline-artifact`; a command task's genuine `exit_nonzero` remains `pipeline-artifact`.
 
 ## Targeted Pipeline Runs
