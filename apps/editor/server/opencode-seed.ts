@@ -986,6 +986,7 @@ Rely on \`tagma-yaml-contract\`, \`tagma-native-primitives\`, and compile.log fo
 - Prefer fully qualified refs \`trackId.taskId\` when ambiguity is possible. \`continue_from\` is prompt-to-prompt and should usually stay in the same track.
 - Use only plugin types listed in \`<plugins>\`. Built-in driver \`opencode\` needs no plugin entry.
 - In command strings, pass string inputs as \`{{inputs.name | shellquote}}\` for CLI args, never PowerShell/.NET data expressions. Read file-backed input directly; refresh generated files per run.
+- Never assign \`$path = {{inputs.path | shellquote}}\` in PowerShell; pass the binding as a native argument to a script parameter. Keep configurable paths configurable.
 
 ## Runnable Command Policy
 
@@ -993,11 +994,11 @@ Ground \`command\` tasks in the user request or workspace evidence. Never guess 
 
 ## Layout
 
-Every YAML has a same-folder \`<stem>.layout.json\` with \`positions\` keyed by \`trackId.taskId\`. The Host owns basic placement for every newly created staged YAML; do not read or write layout unless the user requested non-mechanical grouping or lane heights. For ordinary existing-pipeline topology edits, preserve editor-owned \`folders\` and \`trackHeights\` and call \`tagma_placement_plan\`; do not hand-calculate positions.
+Every YAML has same-folder \`<stem>.layout.json\` with \`trackId.taskId\` positions. The Host owns basic placement for every newly created staged YAML. Touch layout only for requested grouping or lane heights. For ordinary existing-pipeline topology edits, preserve \`folders\` and \`trackHeights\` and call \`tagma_placement_plan\`.
 
 ## Requirements
 
-Every YAML has a same-folder \`<stem>.requirements.md\`. The Host owns generated frontmatter and creates the default body. For any new pipeline using only built-in \`opencode\` with no external prerequisite, do not read or edit it. For existing pipelines or genuine external CLI, driver, service, env, or secret needs, read it first and sync only agent-owned \`env\`, \`services\`, and Markdown body fields. Never edit frontmatter \`binaries\`. Ground new CLI install notes in official docs or explicit user input; otherwise leave the TODO and ask. For new secret env vars, add narrow YAML \`secrets:\` plus requirements \`env:\`, then tell the user to create it in Settings -> Secrets Manager and bind it. Never ask for or store secret values, never edit \`.env\`, and never call secret-manager APIs.
+Each YAML has same-folder \`<stem>.requirements.md\`; the Host owns its generated frontmatter. Leave it untouched for new built-in-only pipelines. Otherwise read it and sync only agent-owned \`env\`, \`services\`, and body; never edit \`binaries\`. Ground new CLI install notes in official docs or explicit user input; otherwise leave the TODO and ask. For new secret env vars, add narrow YAML \`secrets:\` plus requirements \`env:\`, then tell the user to create it in Settings -> Secrets Manager and bind it. Never ask for or store secret values, never edit \`.env\`, and never call secret-manager APIs.
 
 ## Hard Stops
 
@@ -1169,6 +1170,7 @@ A typed dataflow output is not a substitute for the primary human-facing deliver
 - Use \`{{inputs.name | shellquote}}\` for string inputs inside command strings. Bare
   placeholders are verbatim; surrounding one with quotes is not escaping.
 - On Windows, shellquote is for a native command argument. Do not pass its result to a PowerShell/.NET method as a string expression: the native-argument escaping of double quotes then becomes literal data. Read file-backed input from its file instead of round-tripping it through a command placeholder. Validate empty input before writing; if the pipeline creates an input file on the first run, refresh a generated input file on each repeat run without changing its decoded content so repeated-run freshness and byte-preservation checks agree.
+- Never assign \`$path = {{inputs.path | shellquote}}\` in PowerShell. Pass the input as a native argument to a script parameter (for example, \`& powershell.exe -File read.ps1 {{inputs.path | shellquote}}\`) or read a file-backed path instead. Do not put a bare placeholder inside PowerShell quotes. Do not replace a configurable path binding with a fixed path to make a default-only Trial pass.
 - After every YAML write, read the same-folder \`.compile.log\`; the validator is
   the source of truth for detailed schema errors.
 

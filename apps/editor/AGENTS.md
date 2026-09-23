@@ -1766,9 +1766,12 @@
   Emit an author-time warning for that case. `command.argv` passes arguments without a shell and is
   exempt from this warning.
 - PowerShell `shellquote` protects native CLI arguments, not strings passed to .NET methods.
-  Keep file-backed data in the file or pass a PowerShell variable; otherwise the native quote
-  escapes become data. For headless AI commands promising structured files, write and validate
-  those files instead of treating free-form CLI stdout as a JSON contract.
+  It also cannot be assigned directly as a PowerShell expression: an unquoted path is parsed as
+  code. Pass a configurable path as a native argument to a script parameter, or read it from a
+  file; never repair an input failure by replacing the binding with a fixed path. Keep file-backed
+  data in the file or pass a PowerShell variable; otherwise native quote escapes become data.
+  For headless AI commands promising structured files, write and validate those files instead of
+  treating free-form CLI stdout as a JSON contract.
 - After any staged YAML change, the Trial planner must commit a plan bound to the new YAML hash,
   even if its cases are otherwise unchanged. A stale plan cannot proceed to Trial.
 - Requirements synchronization must be byte-idempotent when generated requirements semantics are

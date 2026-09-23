@@ -64,6 +64,17 @@ test('command guidance keeps PowerShell data literals distinct from native argum
   );
 });
 
+test('PowerShell path inputs stay variable without executing their quoted values', () => {
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  const nativePrimitives = buildTagmaNativePrimitivesSkill();
+  expect(pipeline).toContain('Never assign `$path = {{inputs.path | shellquote}}`');
+  expect(pipeline).toContain('pass the binding as a native argument to a script parameter');
+  expect(nativePrimitives).toContain('Never assign `$path = {{inputs.path | shellquote}}`');
+  expect(nativePrimitives).toContain(
+    'Do not replace a configurable path binding with a fixed path',
+  );
+});
+
 test('headless artifact guidance requires file contracts instead of stdout JSON guesses', () => {
   const guidance = buildTagmaNativePrimitivesSkill();
   expect(guidance).toContain('For headless AI commands that promise structured files');
