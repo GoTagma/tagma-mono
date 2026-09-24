@@ -1276,6 +1276,44 @@ export class ChatOperationV2ReadonlyOrchestrator {
       return { kind: 'stale', operation: current };
     }
 
+    if (current.phase === 'awaiting_input' && current.waitReason === 'clarification') {
+      const thread = this.persistence.getOperationClarificationThread(current.operationId);
+      const latest = thread?.entries.at(-1) ?? null;
+      if (!thread || !latest || latest.reply !== null || latest.disposition !== null) {
+        throw new Error('Pending clarification authority is missing during termination.');
+      }
+      const resolvedAt = Math.max(this.now(), current.updatedAt, latest.pending.requestedAt);
+      const disposedThread = applyChatOperationV2ClarificationDisposition({
+        thread,
+        clarificationId: latest.pending.clarificationId,
+        disposition: { code: outcome, resolvedAt },
+        expectedThreadVersion: thread.threadVersion,
+      });
+      const terminal = this.transition(
+        current,
+        {
+          ...stateOf(current),
+          phase: 'terminal',
+          waitReason: null,
+          terminalOutcome: outcome,
+          activeInvocationId: null,
+          pendingPermissionRequestId: null,
+        },
+        'operation_terminal',
+        {
+          outcome,
+          resultId: null,
+          bindingId: null,
+          artifactSetHash: null,
+        },
+        { expectedThreadVersion: thread.threadVersion, thread: disposedThread },
+      );
+      if (terminal.applied) return { kind: outcome, operation: terminal.operation };
+      return terminal.operation.phase === 'terminal'
+        ? { kind: 'already_terminal', operation: terminal.operation }
+        : { kind: 'stale', operation: terminal.operation };
+    }
+
     const claimedAt = this.now();
     const claimed = this.persistence.transitionOperation({
       operationId: current.operationId,

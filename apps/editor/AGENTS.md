@@ -1220,6 +1220,11 @@
   and is bounded. Once reserving starts it cannot return to clarification; once commit is decided it
   cannot return to authoring, verification, or repair. Terminal always clears wait and foreground
   invocation and writes exactly one immutable terminal event.
+- Stop or Discard during an unanswered clarification must atomically dispose the durable
+  clarification round with the matching terminal outcome and terminal event. A standalone
+  cancel-requested version bump strands the old-version pending round, makes projection fail with
+  `operation_mismatch`, and prevents the terminal transition. Explicit termination may win the CAS
+  even after the clarification TTL if expiry has not already terminalized it.
 - Renderer Chat code is a versioned operation API client and event projection only. It may submit a
   frozen dirty-canvas snapshot and CAS-guarded clarification, permission, cancel, retry, discard, or
   recovery choice, but may not call OpenCode mutations or stage/finalize primitives directly. V2 is

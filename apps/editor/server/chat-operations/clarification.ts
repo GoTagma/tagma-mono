@@ -28,6 +28,8 @@ export const CHAT_OPERATION_V2_CLARIFICATION_DISPOSITION_CODES = [
   'continue_same_operation',
   'expired',
   'superseded',
+  'cancelled_precommit',
+  'discarded',
 ] as const;
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -1184,6 +1186,10 @@ function assertThreadDispositionValid(
         'Expired clarification disposition requires the exact or later TTL boundary.',
       );
     }
+    return;
+  }
+  if (disposition.code === 'cancelled_precommit' || disposition.code === 'discarded') {
+    // A user termination that wins the operation CAS may arrive after the clarification TTL.
     return;
   }
   if (disposition.resolvedAt >= pending.expiresAt) {

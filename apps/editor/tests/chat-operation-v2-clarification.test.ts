@@ -712,7 +712,7 @@ describe('ChatTurn Operation V2 durable clarification threads', () => {
     ).toBe('thread_cas_conflict');
   });
 
-  test('allows reply-free disposition only for expiry or supersede and keeps it first-wins', () => {
+  test('allows reply-free expiry, supersede, Stop, and Discard dispositions and keeps them first-wins', () => {
     const pending = sealChatOperationV2PendingClarification(pendingInput());
     const awaiting = appendChatOperationV2ClarificationPending({
       thread: sealChatOperationV2ClarificationThread({
@@ -766,6 +766,25 @@ describe('ChatTurn Operation V2 durable clarification threads', () => {
     });
     expect(superseded.entries[0]?.reply).toBeNull();
     expect(superseded.entries[0]?.disposition?.code).toBe('superseded');
+
+    for (const code of ['cancelled_precommit', 'discarded'] as const) {
+      const terminated = applyChatOperationV2ClarificationDisposition({
+        thread: awaiting,
+        clarificationId: pending.clarificationId,
+        disposition: { code, resolvedAt: pending.expiresAt + 1 },
+        expectedThreadVersion: 1,
+      });
+      expect(terminated.entries[0]?.reply).toBeNull();
+      expect(terminated.entries[0]?.disposition?.code).toBe(code);
+      expect(
+        applyChatOperationV2ClarificationDisposition({
+          thread: terminated,
+          clarificationId: pending.clarificationId,
+          disposition: { code, resolvedAt: pending.expiresAt + 1 },
+          expectedThreadVersion: 1,
+        }).threadHash,
+      ).toBe(terminated.threadHash);
+    }
   });
 
   test('rejects overwrite, skipped/max rounds, reorder, and removal from append-only history', () => {

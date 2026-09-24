@@ -1,5 +1,9 @@
 # Agent Instructions
 
+## Developer-Supplied Test Sets
+
+For live acceptance work against a supplied Tagma test set or scenario/level matrix, follow `.agents/skills/test-tagma-test-sets/SKILL.md`. This workflow does not apply to ordinary repository tests or diagnostics-only monitoring.
+
 ## Git Commit Summary Files
 
 When an agent creates a git commit in this repository:

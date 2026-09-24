@@ -13,7 +13,10 @@ import {
   type ChatOperationV2DurableInvocationResult,
   type ChatOperationV2DurableInvocationRunner,
 } from '../server/chat-operations/orchestrator.js';
-import { readChatOperationV2OperationProjection } from '../server/chat-operations/projection.js';
+import {
+  readChatOperationV2OperationProjection,
+  readChatOperationV2WorkspaceProjection,
+} from '../server/chat-operations/projection.js';
 import { createChatInventorySnapshot } from '../server/chat-operations/snapshots.js';
 import {
   openChatOperationV2Store,
@@ -703,6 +706,122 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
       round: 1,
       question: 'Which pipeline should I update?',
     });
+  });
+
+  test('Stop on a pending clarification reaches a readable terminal operation', async () => {
+    const { orchestrator, store } = createHarness([
+      completedInvocation(
+        {
+          kind: 'clarify',
+          targetCandidateId: null,
+          clarification: 'One-off action or reusable pipeline?',
+          candidateIds: [],
+        },
+        21,
+      ),
+    ]);
+    const pending = await orchestrator.createAndDispatch(
+      baseCreateInput('operation-stop-clarification'),
+    );
+    expect(pending.kind).toBe('clarification_pending');
+
+    const stopped = await orchestrator.stopOperation({
+      operationId: pending.operation.operationId,
+      expectedGeneration: pending.operation.generation,
+      expectedVersion: pending.operation.version,
+      requestId: 'stop-pending-clarification',
+    });
+    expect(stopped).toMatchObject({
+      kind: 'cancelled_precommit',
+      operation: { phase: 'terminal', terminalOutcome: 'cancelled_precommit' },
+    });
+    expect(store.getOperation(pending.operation.operationId)).toMatchObject({
+      phase: 'terminal',
+      terminalOutcome: 'cancelled_precommit',
+    });
+    const events = store.listOperationEvents({
+      workspaceScopeId: 'workspace-scope-1',
+      after: 0,
+      limit: 100,
+    });
+    if (events.kind !== 'events') throw new Error('Expected retained operation events.');
+    expect(
+      store.getOperationClarificationThread(pending.operation.operationId)?.entries[0],
+    ).toMatchObject({ disposition: { code: 'cancelled_precommit' } });
+    expect(events.events.filter(({ type }) => type === 'operation_cancel_requested')).toHaveLength(
+      0,
+    );
+    expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
+
+    const persistence = {
+      getWorkspaceSnapshot: (workspaceScopeId: string) =>
+        store.getWorkspaceOperationSnapshot(workspaceScopeId),
+      getOperation: (operationId: string) => store.getOperation(operationId),
+      getAdmission: (operationId: string) => store.getOperationAdmission(operationId),
+      getClarificationThread: (operationId: string) =>
+        store.getOperationClarificationThread(operationId),
+      listPendingInteractiveViews: () => [],
+      listInvocationOutbox: (workspaceScopeId: string) =>
+        store.listInvocationOutbox(workspaceScopeId),
+      getResultProjection: (operationId: string) => store.getResultProjection(operationId),
+    };
+    const resolver = {
+      getCurrentInventory: () => ({
+        inventory: createChatInventorySnapshot(3, []),
+        candidates: [],
+        resolveCandidate: () => {
+          throw new Error('Projection-only fixture does not resolve a mutation target.');
+        },
+      }),
+    };
+    const detail = readChatOperationV2OperationProjection(
+      persistence,
+      resolver,
+      'workspace-scope-1',
+      pending.operation.operationId,
+    );
+    expect(detail.pendingInput).toBeNull();
+    expect(
+      readChatOperationV2WorkspaceProjection(persistence, resolver, 'workspace-scope-1')
+        .operations[0],
+    ).toMatchObject({
+      operationId: pending.operation.operationId,
+      terminalOutcome: 'cancelled_precommit',
+    });
+  });
+
+  test('Discard on a pending clarification terminalizes its durable thread', async () => {
+    const { orchestrator, store, advanceTime } = createHarness([
+      completedInvocation(
+        {
+          kind: 'clarify',
+          targetCandidateId: null,
+          clarification: 'Which action should I take?',
+          candidateIds: [],
+        },
+        22,
+      ),
+    ]);
+    const pending = await orchestrator.createAndDispatch(
+      baseCreateInput('operation-discard-clarification'),
+    );
+    expect(pending.kind).toBe('clarification_pending');
+
+    advanceTime(9 * 24 * 60 * 60 * 1_000);
+
+    const discarded = await orchestrator.discardOperation({
+      operationId: pending.operation.operationId,
+      expectedGeneration: pending.operation.generation,
+      expectedVersion: pending.operation.version,
+      requestId: 'discard-pending-clarification',
+    });
+    expect(discarded).toMatchObject({
+      kind: 'discarded',
+      operation: { phase: 'terminal', terminalOutcome: 'discarded' },
+    });
+    expect(
+      store.getOperationClarificationThread(pending.operation.operationId)?.entries[0],
+    ).toMatchObject({ disposition: { code: 'discarded' } });
   });
 
   test('a clarification reply stays in the operation, reruns a fresh classifier, and seals all reply context', async () => {

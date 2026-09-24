@@ -3453,6 +3453,16 @@ function assertClarificationThreadState(
         'Superseded clarification disposition requires the superseded terminal outcome.',
       );
     }
+  } else if (
+    latest?.disposition?.code === 'cancelled_precommit' ||
+    latest?.disposition?.code === 'discarded'
+  ) {
+    if (nextState.phase !== 'terminal' || nextState.terminalOutcome !== latest.disposition.code) {
+      throw new ChatOperationV2StoreError(
+        'invalid_clarification_thread',
+        'Terminated clarification disposition requires its matching terminal outcome.',
+      );
+    }
   }
 }
 
