@@ -23,6 +23,11 @@
   discard edited bytes without an explicit decision; saving invalid YAML is retainable and does
   not publish. Keep Host-issued file hashes, operation CAS and internal conversation credentials
   on every draft request, and invalidate late reads when the workspace closes.
+  The modal also hosts read-only evidence pseudo-files (`verification-feedback` first,
+  `generation-notes` last, ordered by `chatDraftNavEntries`): they are renderer projections of
+  the operation detail, never issue Host reads, require existing detail content, block edit/save
+  as `no_file`, and never force an unsaved-changes decision. `open({ notice })` opens directly
+  into one; selecting a real file clears it.
 - Header model/variant/new-conversation and History selection use `src/chat-actions/selection.ts`.
   Configured picker membership and pending/modal/navigation gates apply at execution time as well
   as rendering. Read-only history selection never grants writable conversation ownership.
@@ -333,6 +338,9 @@
 - Keep Chat notices in one height-bounded scrolling region so combined warnings cannot displace
   the composer. Notice text must shrink and wrap unbroken strings; model-variant labels must
   shrink independently of the header actions. Markdown lists restore their ordered/unordered markers.
+  Individual notices must never add their own inner scroll regions: the retained verification
+  notice renders only a clamped feedback excerpt (`verificationFeedbackExcerpt`, stage label and
+  failed-task chips) and routes full evidence into the draft editor's read-only pseudo-files.
 
 - Seal terminal authoring verification as the fixed-schema JSON `Pipeline verification outcome`
   result attachment. The Renderer may parse only that typed attachment, renders its compact

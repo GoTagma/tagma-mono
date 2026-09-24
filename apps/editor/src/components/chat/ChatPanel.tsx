@@ -30,6 +30,12 @@ import {
   chatOperationV2FailurePresentation,
   chatOperationV2RetainedWorkKind,
 } from '../../utils/chat-operation-v2-failure';
+import {
+  chatOperationFeedbackStageLabel,
+  verificationFeedbackExcerpt,
+} from '../../utils/chat-verification-feedback';
+import { formatRelative } from '../../utils/format-relative';
+import type { ChatOperationFeedback } from '../../../shared/chat-operation-feedback';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import type { ActivityEvent } from '../../api/opencode-chat';
@@ -85,6 +91,7 @@ import {
  */
 export function ChatPanel() {
   const bootstrapStatus = useChatStore((s) => s.bootstrapStatus);
+  const draftVisible = useChatDraftStore((state) => state.visible);
   const observe = useAgentChatSurfaceStore((s) => s.enabled);
   const observedState = useChatStore((s) => (observe ? s : null));
   const surface = useRef<HTMLDivElement>(null);
@@ -175,6 +182,9 @@ export function ChatPanel() {
         <ErrorBanner />
       </div>
       <ChatComposer />
+      {/* The draft modal is panel-owned (portal-rendered), not part of the
+          notice subtree that happens to open it. */}
+      {draftVisible && <DraftEditor />}
       <ProviderConnectDialog />
     </div>
   );
@@ -286,73 +296,117 @@ export function RetainedOperationNoticeView({
 }
 
 function RetryableOperationNotice() {
-  const editingDraft = useChatDraftStore((state) => state.visible);
   return (
-    <>
-      {editingDraft && <DraftEditor />}
-      <RetryableOperationNoticeBody
-        onOpenDraft={() => {
-          void useChatDraftStore.getState().open();
-        }}
-      />
-    </>
+    <RetryableOperationNoticeBody
+      onOpenDraft={() => {
+        void useChatDraftStore.getState().open();
+      }}
+      onViewFeedback={() => {
+        void useChatDraftStore.getState().open({ notice: 'verification-feedback' });
+      }}
+    />
   );
 }
 
 export function RetainedVerificationNoticeView({
   updatedAt,
   verificationFeedback = null,
-  draftSummary,
   pending,
   canOpenDraft,
   onOpenDraft,
+  onViewFeedback,
   onRetry,
   onDiscard,
 }: {
   updatedAt: number;
-  verificationFeedback?: { details: string } | null;
-  draftSummary?: string;
+  verificationFeedback?: ChatOperationFeedback | null;
   pending: boolean;
   canOpenDraft: boolean;
   onOpenDraft: () => void;
+  onViewFeedback: () => void;
   onRetry: () => void;
   onDiscard: () => void;
 }) {
+  const excerpt = verificationFeedback
+    ? verificationFeedbackExcerpt(verificationFeedback.details)
+    : null;
   return (
     <section
       aria-label="Pipeline draft retained"
       className="border-t border-tagma-warning/35 bg-tagma-warning/8 px-3 py-2 text-caption"
     >
-      <div className="text-label text-tagma-text">Draft saved; verification needs attention</div>
-      <p className="mt-1 text-tagma-muted">
-        Your generated pipeline and verification plan are retained. Nothing has been published. Open
-        the draft to review or edit its files, then continue verification. Verification may use
-        additional model tokens.
+      <div className="flex min-w-0 items-center gap-2">
+        <AlertTriangle size={12} className="shrink-0 text-tagma-warning" />
+        <div className="min-w-0 flex-1 truncate text-label text-tagma-text">
+          Verification needs attention — draft retained
+        </div>
+        {/* The timestamp is the visible proof that a re-failed Continue
+            verification actually ran again. */}
+        <span
+          className="shrink-0 text-tagma-muted-dim"
+          title={new Date(updatedAt).toLocaleString()}
+        >
+          {formatRelative(updatedAt)}
+        </span>
+      </div>
+      <p className="mt-0.5 text-tagma-muted">
+        Nothing is published. Review the draft, fix the issue, then continue.
       </p>
-      {verificationFeedback && (
-        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words text-tagma-muted">
-          {verificationFeedback.details}
-        </pre>
+      {verificationFeedback && excerpt ? (
+        <div className="mt-1.5 min-w-0">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="shrink-0 border border-tagma-warning/40 px-1.5 py-0.5 text-tagma-warning">
+              {chatOperationFeedbackStageLabel(verificationFeedback.stage)} failed
+            </span>
+            {verificationFeedback.failedTaskIds.length > 0 && (
+              <span className="shrink-0 text-tagma-muted">Failed tasks:</span>
+            )}
+            {verificationFeedback.failedTaskIds.map((taskId) => (
+              <span
+                key={taskId}
+                className="max-w-full break-all border border-tagma-border px-1.5 py-0.5 font-mono text-tagma-muted"
+              >
+                {taskId}
+              </span>
+            ))}
+            {verificationFeedback.omittedFailedTaskCount > 0 && (
+              <span className="shrink-0 text-tagma-muted-dim">
+                +{verificationFeedback.omittedFailedTaskCount} more
+              </span>
+            )}
+          </div>
+          {/* The excerpt never scrolls: the full evidence lives in the draft
+              editor's read-only feedback view. */}
+          <p className="mt-1 whitespace-pre-wrap break-words text-tagma-muted">{excerpt.text}</p>
+          {excerpt.truncated && (
+            <button
+              type="button"
+              className="mt-0.5 text-tagma-accent hover:underline disabled:opacity-50"
+              disabled={pending || !canOpenDraft}
+              title={
+                canOpenDraft
+                  ? 'Read the full feedback in the draft editor.'
+                  : 'The draft is not available right now.'
+              }
+              onClick={onViewFeedback}
+            >
+              View full feedback
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="mt-1 text-tagma-muted-dim">No detailed feedback was recorded.</p>
       )}
-      {draftSummary && (
-        <details className="mt-2 text-tagma-muted">
-          <summary className="cursor-pointer">Generated notes (not yet verified)</summary>
-          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words">
-            {draftSummary}
-          </pre>
-        </details>
-      )}
-      {/* A re-failed attempt returns to this identical notice; the timestamp is
-          the visible proof that Continue verification actually ran again. */}
-      <p className="mt-2 text-tagma-muted-dim">
-        Last update: {new Date(updatedAt).toLocaleString()}. Continuing runs verification again; if
-        it keeps failing, review the feedback above and edit the draft, or discard it.
-      </p>
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex items-center gap-2">
         <button
           type="button"
           className="btn-primary"
           disabled={pending || !canOpenDraft}
+          title={
+            canOpenDraft
+              ? 'Review and edit the retained draft files.'
+              : 'The draft is not available right now.'
+          }
           onClick={onOpenDraft}
         >
           Open draft
@@ -361,6 +415,7 @@ export function RetainedVerificationNoticeView({
           type="button"
           disabled={pending}
           className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
+          title="Run verification again on the retained draft. This may use additional model tokens."
           onClick={onRetry}
         >
           {pending ? 'Submitting…' : 'Continue verification'}
@@ -368,7 +423,7 @@ export function RetainedVerificationNoticeView({
         <button
           type="button"
           disabled={pending}
-          className="border border-tagma-border px-2 py-1 text-tagma-muted disabled:opacity-50"
+          className="px-2 py-1 text-tagma-muted hover:text-tagma-error disabled:opacity-50"
           onClick={onDiscard}
         >
           Discard draft
@@ -380,8 +435,10 @@ export function RetainedVerificationNoticeView({
 
 function RetryableOperationNoticeBody({
   onOpenDraft,
+  onViewFeedback,
 }: {
   onOpenDraft: (operation: ChatOperationV2Projection) => void;
+  onViewFeedback: (operation: ChatOperationV2Projection) => void;
 }) {
   const retryable = useChatStore(
     (state) => state.activeChatOperationV2?.executionState === 'retryable_failure',
@@ -465,11 +522,11 @@ function RetryableOperationNoticeBody({
     return (
       <RetainedVerificationNoticeView
         updatedAt={operation.updatedAt}
-        verificationFeedback={detail?.verificationFeedback}
-        {...(detail?.draftSummary ? { draftSummary: detail.draftSummary } : {})}
+        verificationFeedback={detail?.verificationFeedback ?? null}
         pending={pending}
         canOpenDraft={canOpenChatDraft()}
         onOpenDraft={() => onOpenDraft(operation)}
+        onViewFeedback={() => onViewFeedback(operation)}
         onRetry={() => void retry()}
         onDiscard={() => {
           if (

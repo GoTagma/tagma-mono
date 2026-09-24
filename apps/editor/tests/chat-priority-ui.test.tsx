@@ -11,6 +11,10 @@ import {
   RetainedOperationNoticeView,
   RetainedVerificationNoticeView,
 } from '../src/components/chat/ChatPanel';
+import {
+  chatOperationFeedbackStageLabel,
+  verificationFeedbackExcerpt,
+} from '../src/utils/chat-verification-feedback';
 import { chatOperationV2RetainedWorkKind } from '../src/utils/chat-operation-v2-failure';
 
 test.each(['commit_applying', 'trial-running', 'awaiting_input'] as const)(
@@ -51,24 +55,98 @@ test.each(['staging', 'authoring', 'repairing', 'trial-running'] as const)(
   },
 );
 
-test('retained verification notice shows the last attempt so a re-run is visible', () => {
-  const html = renderToStaticMarkup(
+function retainedVerificationNotice(
+  overrides?: Partial<Parameters<typeof RetainedVerificationNoticeView>[0]>,
+) {
+  return renderToStaticMarkup(
     <RetainedVerificationNoticeView
-      updatedAt={new Date('2026-09-16T08:00:00').getTime()}
-      verificationFeedback={{ details: 'Sandbox case failed: output mismatch' }}
+      updatedAt={Date.now() - 2 * 60 * 1000}
+      verificationFeedback={{
+        schemaVersion: 1,
+        stage: 'trial',
+        details: 'Sandbox case failed: output mismatch',
+        failedTaskIds: ['build', 'deploy'],
+        omittedFailedTaskCount: 2,
+      }}
       pending={false}
       canOpenDraft={true}
       onOpenDraft={() => {}}
+      onViewFeedback={() => {}}
       onRetry={() => {}}
       onDiscard={() => {}}
+      {...overrides}
     />,
   );
+}
+
+test('retained verification notice keeps evidence in one non-scrolling layer', () => {
+  const html = retainedVerificationNotice();
   expect(html).toContain('Open draft');
   expect(html).toContain('Continue verification');
   expect(html).toContain('Discard draft');
+  expect(html).toContain('aria-label="Pipeline draft retained"');
+  expect(html).toContain('Trial verification failed');
+  expect(html).toContain('build');
+  expect(html).toContain('deploy');
+  expect(html).toContain('+2 more');
   expect(html).toContain('Sandbox case failed: output mismatch');
-  expect(html).toContain('Last update');
-  expect(html).toContain(new Date('2026-09-16T08:00:00').toLocaleString());
+  expect(html).toContain('2m ago');
+  // The whole panel participates in the single bounded .chat-notices scroll;
+  // it must never add its own inner scroll regions.
+  expect(html).not.toContain('overflow-auto');
+  // Generated notes moved into the draft editor; the notice stays evidence-first.
+  expect(html).not.toContain('Generated notes');
+});
+
+test('short feedback renders in full without a draft-editor detour', () => {
+  const html = retainedVerificationNotice();
+  expect(html).not.toContain('View full feedback');
+});
+
+test('long feedback collapses to an excerpt with a draft-editor entry point', () => {
+  const html = retainedVerificationNotice({
+    verificationFeedback: {
+      schemaVersion: 1,
+      stage: 'compile',
+      details: Array.from({ length: 10 }, (_, index) => `line ${index} of failure evidence`).join(
+        '\n',
+      ),
+      failedTaskIds: [],
+      omittedFailedTaskCount: 0,
+    },
+  });
+  expect(html).toContain('Compilation failed');
+  expect(html).toContain('line 0 of failure evidence');
+  expect(html).not.toContain('line 5 of failure evidence');
+  expect(html).toContain('View full feedback');
+});
+
+test('retained verification notice without feedback keeps actions available', () => {
+  const html = retainedVerificationNotice({ verificationFeedback: null });
+  expect(html).toContain('No detailed feedback was recorded.');
+  expect(html).toContain('Open draft');
+  expect(html).toContain('Continue verification');
+  expect(html).not.toContain('View full feedback');
+});
+
+test('verification feedback excerpt clamps by lines and by characters', () => {
+  expect(verificationFeedbackExcerpt('one short line')).toEqual({
+    text: 'one short line',
+    truncated: false,
+  });
+  const byLines = verificationFeedbackExcerpt('one\ntwo\nthree\nfour');
+  expect(byLines.truncated).toBe(true);
+  expect(byLines.text).toBe('one\ntwo\nthree…');
+  const byChars = verificationFeedbackExcerpt('x'.repeat(1000));
+  expect(byChars.truncated).toBe(true);
+  expect(byChars.text).toBe(`${'x'.repeat(280)}…`);
+  expect(byChars.text.length).toBe(281);
+});
+
+test('verification feedback stage labels cover every stage', () => {
+  expect(chatOperationFeedbackStageLabel('compile')).toBe('Compilation');
+  expect(chatOperationFeedbackStageLabel('trial_plan')).toBe('Trial planning');
+  expect(chatOperationFeedbackStageLabel('trial')).toBe('Trial verification');
 });
 
 test('provider recovery explains the retained draft and offers explicit continuation', () => {

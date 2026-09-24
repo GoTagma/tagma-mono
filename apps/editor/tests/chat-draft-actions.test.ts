@@ -6,6 +6,11 @@ import { setClientWorkspace } from '../src/api/client';
 import { useChatStore } from '../src/store/chat-store';
 import { resetWorkspaceStores } from '../src/store/workspace-store-reset';
 import { useChatDraftStore } from '../src/chat-actions/draft';
+import {
+  chatDraftNavEntries,
+  getChatDraftActionAvailability,
+  isChatDraftDirty,
+} from '../src/chat-actions/draft';
 import { submitThroughControlHttp } from './fixtures/agent-chat-control-http';
 import type { AgentChatCommandParameters } from '../shared/agent-chat-control';
 
@@ -204,3 +209,92 @@ test.each(['ui', 'http'] as const)(
     });
   },
 );
+
+const feedback = {
+  schemaVersion: 1 as const,
+  stage: 'trial' as const,
+  details: 'Sandbox case failed: output mismatch',
+  failedTaskIds: ['build'],
+  omittedFailedTaskCount: 0,
+};
+function seedDetail(detail: {
+  verificationFeedback?: typeof feedback | null;
+  draftSummary?: string | null;
+}) {
+  useChatStore.setState({
+    chatOperationV2ThreadDetails: {
+      [operation.operationId]: detail as operationApi.ChatOperationV2OperationDetail,
+    },
+  });
+}
+
+test('notice pseudo-files open read-only without touching the edit buffer', async () => {
+  seedDetail({ verificationFeedback: feedback, draftSummary: 'generation notes' });
+  expect(await useChatDraftStore.getState().open({ notice: 'verification-feedback' })).toBe(true);
+  expect(useChatDraftStore.getState().notice).toBe('verification-feedback');
+  const availability = getChatDraftActionAvailability(useChatDraftStore.getState());
+  expect(availability.edit).toBe('no_file');
+  expect(availability.save).toBe('no_file');
+  expect(availability.close).toBe(null);
+  expect(useChatDraftStore.getState().edit('not accepted')).toBe(false);
+  expect(useChatDraftStore.getState().text).toBe('original');
+  // Switching between pseudo-files never issues another Host read.
+  expect(useChatDraftStore.getState().selectNotice('generation-notes')).toBe(true);
+  expect(useChatDraftStore.getState().notice).toBe('generation-notes');
+  expect(access).toHaveBeenCalledTimes(1);
+  // Selecting a real file leaves the notice and reloads from the Host.
+  expect(await useChatDraftStore.getState().select(fileId)).toBe(true);
+  expect(useChatDraftStore.getState().notice).toBeNull();
+  expect(access).toHaveBeenCalledTimes(2);
+});
+
+test('notice selection preserves unsaved edits and the dirty close guard', async () => {
+  seedDetail({ verificationFeedback: feedback });
+  await useChatDraftStore.getState().open();
+  useChatDraftStore.getState().edit('unsaved');
+  // Reading evidence never forces an unsaved-changes decision.
+  expect(useChatDraftStore.getState().selectNotice('verification-feedback')).toBe(true);
+  expect(isChatDraftDirty(useChatDraftStore.getState())).toBe(true);
+  expect(useChatDraftStore.getState().text).toBe('unsaved');
+  expect(useChatDraftStore.getState().close()).toBe(false);
+  // The edited buffer is still there when returning to the file.
+  expect(await useChatDraftStore.getState().select(fileId)).toBe(false);
+  expect(useChatDraftStore.getState().text).toBe('unsaved');
+});
+
+test('notice pseudo-files require existing detail content', async () => {
+  expect(await useChatDraftStore.getState().open({ notice: 'verification-feedback' })).toBe(false);
+  expect(useChatDraftStore.getState().visible).toBe(false);
+  seedDetail({ draftSummary: 'notes only' });
+  expect(await useChatDraftStore.getState().open({ notice: 'verification-feedback' })).toBe(false);
+  expect(await useChatDraftStore.getState().open({ notice: 'generation-notes' })).toBe(true);
+  expect(useChatDraftStore.getState().selectNotice('verification-feedback')).toBe(false);
+});
+
+test('opening a notice while the modal is visible switches without another Host read', async () => {
+  seedDetail({ verificationFeedback: feedback });
+  await useChatDraftStore.getState().open();
+  expect(access).toHaveBeenCalledTimes(1);
+  expect(await useChatDraftStore.getState().open({ notice: 'verification-feedback' })).toBe(true);
+  expect(useChatDraftStore.getState().notice).toBe('verification-feedback');
+  expect(access).toHaveBeenCalledTimes(1);
+  // A plain reopen stays a no-op.
+  expect(await useChatDraftStore.getState().open()).toBe(false);
+});
+
+test('draft nav entries order feedback first and generation notes last', () => {
+  expect(
+    chatDraftNavEntries({ draft, verificationFeedback: feedback, draftSummary: 'notes' }),
+  ).toEqual([
+    { kind: 'notice', notice: 'verification-feedback', label: 'Verification feedback' },
+    { kind: 'file', file: draft.files[0] },
+    { kind: 'notice', notice: 'generation-notes', label: 'Generation notes (unverified)' },
+  ]);
+  expect(
+    chatDraftNavEntries({ draft: { ...draft, omittedFileCount: 2, totalFileCount: 3 } }),
+  ).toEqual([
+    { kind: 'file', file: draft.files[0] },
+    { kind: 'omitted', count: 2 },
+  ]);
+  expect(chatDraftNavEntries({ draft: null })).toEqual([]);
+});

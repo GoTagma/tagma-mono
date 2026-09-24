@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { ChatOperationDraft, ChatOperationDraftEdit } from '../../shared/chat-operation-draft';
+import type { ChatOperationDraftFile } from '../../shared/chat-operation-draft';
+import type { ChatOperationFeedback } from '../../shared/chat-operation-feedback';
 import { accessChatOperationDraft, type ChatOperationV2Projection } from '../api/chat-operations';
 import { getClientWorkspace } from '../api/client';
 import { useChatStore } from '../store/chat-store';
@@ -7,16 +9,25 @@ import { registerWorkspaceStoreReset } from '../store/workspace-store-reset';
 import { getChatConversationKey } from '../utils/chat-conversation-key';
 import { chatOperationV2RetainedWorkKind } from '../utils/chat-operation-v2-failure';
 
+/**
+ * Read-only evidence views inside the draft modal. They are renderer-side
+ * projections of the operation detail, never Host-issued editable files, so
+ * they neither load bytes nor participate in the edit/save lifecycle.
+ */
+export type ChatDraftNotice = 'verification-feedback' | 'generation-notes';
+
 interface DraftState {
   visible: boolean;
   workspaceKey: string | null;
   operation: ChatOperationV2Projection | null;
   draft: ChatOperationDraft | null;
+  notice: ChatDraftNotice | null;
   text: string;
   pending: boolean;
   saved: boolean;
   error: string | null;
-  open: () => Promise<boolean>;
+  open: (options?: { notice?: ChatDraftNotice }) => Promise<boolean>;
+  selectNotice: (notice: ChatDraftNotice) => boolean;
   select: (fileId: string, discardChanges?: boolean) => Promise<boolean>;
   edit: (text: string) => boolean;
   save: () => Promise<boolean>;
@@ -28,6 +39,7 @@ const emptyDraft = {
   workspaceKey: null,
   operation: null,
   draft: null,
+  notice: null,
   text: '',
   pending: false,
   saved: false,
@@ -61,6 +73,18 @@ function ownsCurrentDraft(state: DraftState): boolean {
   );
 }
 
+function chatDraftNoticeAvailable(
+  operation: ChatOperationV2Projection | null,
+  notice: ChatDraftNotice,
+): boolean {
+  const detail = operation
+    ? useChatStore.getState().chatOperationV2ThreadDetails[operation.operationId]
+    : undefined;
+  return notice === 'verification-feedback'
+    ? !!detail?.verificationFeedback
+    : !!detail?.draftSummary;
+}
+
 export type ChatDraftBlockedReason =
   'closed' | 'pending' | 'unavailable' | 'no_file' | 'unchanged' | 'unsaved_changes';
 
@@ -79,13 +103,59 @@ export function getChatDraftActionAvailability(state: DraftState): {
         ? 'unavailable'
         : null;
   const dirty = isChatDraftDirty(state);
+  // A selected notice is a read-only view: no file is selected for editing.
+  const fileSelected = state.notice === null && !!state.draft?.selected;
   return {
-    edit: blocked ?? (state.draft?.selected ? null : 'no_file'),
-    save: blocked ?? (!state.draft?.selected ? 'no_file' : dirty ? null : 'unchanged'),
+    edit: blocked ?? (fileSelected ? null : 'no_file'),
+    save: blocked ?? (!fileSelected ? 'no_file' : dirty ? null : 'unchanged'),
     select: blocked ?? (dirty ? 'unsaved_changes' : null),
     // Closing an unavailable draft never changes Host work.
     close: !state.visible ? 'closed' : state.pending ? 'pending' : dirty ? 'unsaved_changes' : null,
   };
+}
+
+/** Reading a notice never discards edits, so unsaved changes do not block it. */
+export function getChatDraftNoticeAvailability(state: DraftState): ChatDraftBlockedReason | null {
+  return !state.visible
+    ? 'closed'
+    : state.pending
+      ? 'pending'
+      : !ownsCurrentDraft(state)
+        ? 'unavailable'
+        : null;
+}
+
+export type ChatDraftNavEntry =
+  | { kind: 'notice'; notice: ChatDraftNotice; label: string }
+  | { kind: 'file'; file: ChatOperationDraftFile }
+  | { kind: 'omitted'; count: number };
+
+/**
+ * Modal navigation order: actionable evidence first, editable draft files in
+ * the middle, unverified generation notes last.
+ */
+export function chatDraftNavEntries(input: {
+  draft: ChatOperationDraft | null;
+  verificationFeedback?: ChatOperationFeedback | null;
+  draftSummary?: string | null;
+}): ChatDraftNavEntry[] {
+  const entries: ChatDraftNavEntry[] = [];
+  if (input.verificationFeedback)
+    entries.push({
+      kind: 'notice',
+      notice: 'verification-feedback',
+      label: 'Verification feedback',
+    });
+  for (const file of input.draft?.files ?? []) entries.push({ kind: 'file', file });
+  if (input.draft?.omittedFileCount)
+    entries.push({ kind: 'omitted', count: input.draft.omittedFileCount });
+  if (input.draftSummary)
+    entries.push({
+      kind: 'notice',
+      notice: 'generation-notes',
+      label: 'Generation notes (unverified)',
+    });
+  return entries;
 }
 
 let request: AbortController | null = null;
@@ -143,15 +213,31 @@ export const useChatDraftStore = create<DraftState>((set, get) => {
   };
   return {
     ...emptyDraft,
-    async open() {
-      if (get().visible || !canOpenChatDraft()) return false;
+    async open(options) {
+      const notice = options?.notice ?? null;
+      if (get().visible) {
+        // Already open: a plain open stays a no-op, while a notice request
+        // switches the read-only view without another Host read.
+        return notice ? get().selectNotice(notice) : false;
+      }
+      if (!canOpenChatDraft()) return false;
+      const operation = useChatStore.getState().activeChatOperationV2;
+      if (notice && !chatDraftNoticeAvailable(operation, notice)) return false;
       set({
         ...emptyDraft,
         visible: true,
         workspaceKey: getClientWorkspace(),
-        operation: useChatStore.getState().activeChatOperationV2,
+        operation,
+        notice,
       });
       return load();
+    },
+    selectNotice(notice) {
+      const state = get();
+      if (getChatDraftNoticeAvailability(state) !== null) return false;
+      if (!chatDraftNoticeAvailable(state.operation, notice)) return false;
+      set({ notice });
+      return true;
     },
     async select(fileId, discardChanges = false) {
       const state = get();
@@ -161,6 +247,7 @@ export const useChatDraftStore = create<DraftState>((set, get) => {
         !state.draft?.files.some((file) => file.id === fileId)
       )
         return false;
+      set({ notice: null });
       return load(fileId);
     },
     edit(text) {

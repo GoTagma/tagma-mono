@@ -7,18 +7,27 @@ import {
 } from '../../agent-chat-control/observations';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 import {
+  chatDraftNavEntries,
   getChatDraftActionAvailability,
+  getChatDraftNoticeAvailability,
   isChatDraftDirty,
   useChatDraftStore,
 } from '../../chat-actions/draft';
 import { useChatStore } from '../../store/chat-store';
+import { chatOperationFeedbackStageLabel } from '../../utils/chat-verification-feedback';
 
 export function DraftEditor() {
   const state = useChatDraftStore();
-  const { draft, text, pending, error, saved, edit, save, select } = state;
+  const { draft, text, pending, error, saved, notice, edit, save, select, selectNotice } = state;
   // Host ownership/phase changes can disable an open modal without changing draft bytes.
   useChatStore((chat) => chat.activeChatOperationV2);
+  const detail = useChatStore((chat) =>
+    state.operation ? chat.chatOperationV2ThreadDetails[state.operation.operationId] : undefined,
+  );
+  const feedback = detail?.verificationFeedback ?? null;
+  const notes = detail?.draftSummary ?? null;
   const availability = getChatDraftActionAvailability(state);
+  const noticeBlocked = getChatDraftNoticeAvailability(state);
   const dirty = useChatDraftStore(isChatDraftDirty);
   const close = () => {
     if (pending || (dirty && !window.confirm('Close without saving these edits?'))) return;
@@ -33,7 +42,7 @@ export function DraftEditor() {
       surfaceId: surfaceId.current,
       conversationId: state.operation.conversationId,
       operationId: state.operation.operationId,
-      fileId: draft?.selected?.id ?? null,
+      fileId: notice ? null : (draft?.selected?.id ?? null),
       text: modal.current.querySelector<HTMLTextAreaElement>('textarea')?.value ?? '',
       error,
       pending,
@@ -44,6 +53,29 @@ export function DraftEditor() {
     const id = surfaceId.current;
     return () => unmountChatSurface('draft', id);
   }, []);
+  const navEntries = chatDraftNavEntries({
+    draft,
+    verificationFeedback: feedback,
+    draftSummary: notes,
+  });
+  const noticeBody =
+    notice === 'verification-feedback' && feedback
+      ? {
+          label: 'Verification feedback',
+          meta: `${chatOperationFeedbackStageLabel(feedback.stage)} failed${
+            feedback.failedTaskIds.length > 0
+              ? ` — failed tasks: ${feedback.failedTaskIds.join(', ')}${
+                  feedback.omittedFailedTaskCount > 0
+                    ? ` (+${feedback.omittedFailedTaskCount} more)`
+                    : ''
+                }`
+              : ''
+          }`,
+          body: feedback.details,
+        }
+      : notice === 'generation-notes' && notes
+        ? { label: 'Generation notes (unverified)', meta: null, body: notes }
+        : null;
   return createPortal(
     <div className="modal-viewport-backdrop fixed inset-0 z-[220] flex items-center justify-center">
       <div
@@ -78,29 +110,67 @@ export function DraftEditor() {
             aria-label="Draft files"
             className="w-60 shrink-0 overflow-auto border-r border-tagma-border p-2"
           >
-            {draft?.files.map((file) => (
-              <button
-                key={file.id}
-                type="button"
-                disabled={availability.select !== null && availability.select !== 'unsaved_changes'}
-                aria-current={file.id === draft.selected?.id ? 'true' : undefined}
-                className={`block w-full break-all px-2 py-2 text-left text-caption ${file.id === draft.selected?.id ? 'bg-tagma-surface text-tagma-text' : 'text-tagma-muted'}`}
-                onClick={() => {
-                  if (!dirty || window.confirm('Switch files without saving these edits?'))
-                    void select(file.id, dirty);
-                }}
-              >
-                {file.name}
-              </button>
-            ))}
-            {!!draft?.omittedFileCount && (
-              <p className="p-2 text-caption text-tagma-muted">
-                {draft.omittedFileCount} additional files retained but not listed.
-              </p>
-            )}
+            {navEntries.map((entry) => {
+              if (entry.kind === 'notice')
+                return (
+                  <button
+                    key={entry.notice}
+                    type="button"
+                    disabled={noticeBlocked !== null}
+                    aria-current={notice === entry.notice ? 'true' : undefined}
+                    className={`block w-full break-all px-2 py-2 text-left text-caption ${notice === entry.notice ? 'bg-tagma-surface text-tagma-text' : 'text-tagma-muted'}`}
+                    onClick={() => {
+                      selectNotice(entry.notice);
+                    }}
+                  >
+                    {entry.label}
+                  </button>
+                );
+              if (entry.kind === 'omitted')
+                return (
+                  <p key="omitted" className="p-2 text-caption text-tagma-muted">
+                    {entry.count} additional files retained but not listed.
+                  </p>
+                );
+              return (
+                <button
+                  key={entry.file.id}
+                  type="button"
+                  disabled={
+                    availability.select !== null && availability.select !== 'unsaved_changes'
+                  }
+                  aria-current={
+                    notice === null && entry.file.id === draft?.selected?.id ? 'true' : undefined
+                  }
+                  className={`block w-full break-all px-2 py-2 text-left text-caption ${notice === null && entry.file.id === draft?.selected?.id ? 'bg-tagma-surface text-tagma-text' : 'text-tagma-muted'}`}
+                  onClick={() => {
+                    if (!dirty || window.confirm('Switch files without saving these edits?'))
+                      void select(entry.file.id, dirty);
+                  }}
+                >
+                  {entry.file.name}
+                </button>
+              );
+            })}
           </nav>
           <div className="flex min-w-0 flex-1 flex-col p-3">
-            {draft?.selected ? (
+            {noticeBody ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                {noticeBody.meta && (
+                  <p className="mb-2 shrink-0 text-caption text-tagma-muted">{noticeBody.meta}</p>
+                )}
+                <pre
+                  aria-label={noticeBody.label}
+                  className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words border border-tagma-border bg-tagma-bg p-3 font-mono text-body text-tagma-text"
+                >
+                  {noticeBody.body}
+                </pre>
+              </div>
+            ) : notice ? (
+              <p className="text-caption text-tagma-muted">
+                This content is no longer available. Select a draft file instead.
+              </p>
+            ) : draft?.selected ? (
               <textarea
                 aria-label="Draft file contents"
                 spellCheck={false}
@@ -122,11 +192,13 @@ export function DraftEditor() {
         </div>
         <footer className="flex items-center justify-between border-t border-tagma-border px-4 py-3">
           <span role="status" className="text-caption text-tagma-muted">
-            {saved
-              ? 'Draft saved. Close this editor to continue verification.'
-              : dirty
-                ? 'Unsaved edits'
-                : 'No changes to save (the draft is kept, but not published)'}
+            {noticeBody
+              ? 'Read-only reference — select a draft file to edit or save.'
+              : saved
+                ? 'Draft saved. Close this editor to continue verification.'
+                : dirty
+                  ? 'Unsaved edits'
+                  : 'No changes to save (the draft is kept, but not published)'}
           </span>
           <button
             type="button"
