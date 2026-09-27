@@ -75,6 +75,13 @@ test('PowerShell path inputs stay variable without executing their quoted values
   );
 });
 
+test('pipeline agent writes large YAML and support files in bounded chunks', () => {
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  expect(pipeline).toContain('Chunk large file writes');
+  expect(pipeline).toContain('skeleton `write`, then focused `edit` additions');
+  expect(pipeline).toContain('model output limit');
+});
+
 test('headless artifact guidance requires file contracts instead of stdout JSON guesses', () => {
   const guidance = buildTagmaNativePrimitivesSkill();
   expect(guidance).toContain('For headless AI commands that promise structured files');
@@ -89,6 +96,23 @@ test('Trial planner recommits a plan whenever the staged YAML revision changes',
     'Even when every case remains applicable, begin with the new hash and commit the preserved cases',
   );
   expect(guidance).toContain('Never answer no-change while the current plan yamlHash is stale');
+});
+
+test('Trial planner treats a schedule trigger as satisfied by the virtualized Sandbox clock', () => {
+  const guidance = buildTagmaTrialPlannerAgent();
+  expect(guidance).toContain(
+    '`schedule` trigger fires immediately under the Sandbox virtualized clock',
+  );
+  expect(guidance).toContain('needs no fixture, no grant, and cannot be denied');
+  expect(guidance).toContain(
+    'Never block a case because a schedule wait would take real wall-clock time',
+  );
+});
+
+test('pipeline creation and repair receive schedule strategy guidance', () => {
+  const guidance = buildTagmaPipelineAgent('Windows');
+  expect(guidance).toContain('Load `tagma-trigger-strategy` for schedule creation or repair');
+  expect(guidance).toContain('tagma-trigger-strategy: "allow"');
 });
 
 function fakeSchemaNode(): Record<string, (...args: unknown[]) => unknown> {

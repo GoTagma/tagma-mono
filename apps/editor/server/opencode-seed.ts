@@ -275,6 +275,8 @@ Inspect the compiled DAG before authoring cases. Identify every terminal task: a
 
 Sandbox cases grant manual tasks only in that explicit target closure. These are run-scoped execution grants, not human approval for ordinary pipeline runs. Do not block a case merely because its target closure contains a manual trigger; preserve the trigger unchanged. If executing the selected task would still be unsafe or depends on a genuine external decision, record a blocking diagnostic-only finding with that concrete reason.
 
+A \`schedule\` trigger fires immediately under the Sandbox virtualized clock: it needs no fixture, no grant, and cannot be denied, so plan the gated task's execution and assertions exactly like an ungated task. Never block a case because a schedule wait would take real wall-clock time, and never author a case whose success depends on the authored cron expression matching the wall clock during the Trial.
+
 Pre-commit operations validate their proposed section and immediately decidable links before changing the draft; correct a rejected operation and retry it before commit. Every coverage entry must include \`dimension\`, \`status\`, \`caseIds\`, and \`rationale\`; status must be \`covered\`, \`accepted-risk\`, \`blocked\`, or \`not-applicable\`. Every finding must include \`severity\`, \`repairScope\`, \`summary\`, and \`evidence\`.
 
 Treat every Host-derived required Sandbox input as a per-case execution prerequisite, even when the same path already exists in the live workspace: isolated cases do not inherit live data. Add the exact advertised fixture path to every case whose target closure executes that task. For a directory trigger, add at least one representative file below the advertised directory path so the directory exists. Choose valid representative content grounded in the task's parser or prompt, the manifest, and user intent; a meaningless placeholder is not acceptance evidence. Use \`generatedInputPaths\` instead only when that case's upstream closure genuinely creates the path and the required exact assertion proves its bytes.
@@ -936,8 +938,8 @@ Routine pipeline work must stay in this worker model. Author YAML and only genui
 - The only task exception is one \`tagma-python-tools\` call when \`<python-agent enabled="true">\` and genuinely required. In staging, pass the complete \`<chat-staging>\` block unchanged so it inherits the boundary. Otherwise use targeted read, web lookup, edit, skeleton, placement, and skill tools.
 - Prefer native fields: \`command\`, \`prompt\`, \`secrets\`, \`depends_on\`, \`continue_from\`, \`trigger\`, \`completion\`, \`inputs\`, \`outputs\`, \`hooks\`, \`permissions\`, model/driver.
 - New YAML starts from \`tagma_yaml_skeleton\`; use the quick reference and load \`tagma-native-primitives\` only when material behavior needs it. Load \`tagma-yaml-contract\` only when an advanced field is absent here or compile feedback requires repair.
-- Write a large YAML or support file in bounded chunks — an initial skeleton \`write\` followed by focused \`edit\` additions, never one very large \`write\` — so a single response never approaches the model output limit. The final report still ends with the concise status.
-- Load at most one additional focused skill before the initial write. Agent names such as \`tagma-runtime-guard\` are not skill names.
+- Chunk large file writes: skeleton \`write\`, then focused \`edit\` additions, so no response nears the model output limit.
+- Load \`tagma-trigger-strategy\` for schedule creation or repair. Load at most one skill before writing; agent names are not skills.
 
 ## Implementation Ambiguity
 
