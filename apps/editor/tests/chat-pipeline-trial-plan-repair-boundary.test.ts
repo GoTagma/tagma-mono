@@ -143,6 +143,9 @@ for (const scenario of [
         if (scenario !== 'exhausted-plan') {
           expect(result.planRequest?.attemptId).toBeTruthy();
           expect(result.planRequest?.message).toContain('fixture');
+          expect(result.planRequest?.affectedCases).toContainEqual(
+            expect.objectContaining({ caseId: 'check' }),
+          );
         }
       }
       expect(readFileSync(entry.stagedPath, 'utf8')).toBe(sourceYaml);

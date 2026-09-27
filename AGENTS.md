@@ -160,6 +160,11 @@ Do not amend the same commit to include these files after naming them with the c
   attempt-2 prompt. Never loosen parsing, reuse the cached message id, persist or echo the rejected
   provider text, or auto-retry authentication, billing, rate-limit, transport, content, model, or
   unknown-response failures. A later explicit user Retry starts a new bounded two-attempt cycle.
+  One exception: a live authoring or repair generation that ends with finish reason `length`
+  (`model_output_length`) may receive exactly one automatic Host continuation on the same session
+  with fresh invocation/input/outbox identity — a resume, not a retry, judged against the
+  continued invocation's stage baseline. Trial planning and post-restart reconciliation are
+  excluded; every other provider failure still waits for explicit user Retry.
 - Chat admission authenticates only that the exact provider/model pair exists in managed configured
   providers. Model-catalog capability and status metadata is advisory UI data: never fetch it on the
   Send critical path, place it in the durable capability hash, or let it affect idempotency and

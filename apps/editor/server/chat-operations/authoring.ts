@@ -678,6 +678,7 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly repairAttempts: number;
     /** Present only for an explicit retry of an unchanged retained draft. */
     readonly verificationAttemptVersion?: number;
+    readonly planReviewAffectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     readonly signal: AbortSignal;
     readonly onTrialProgress?: (progress: ChatOperationV2TrialProgressUpdate) => void;
   }): Promise<ChatOperationV2AuthoringVerificationResult>;
@@ -1097,6 +1098,7 @@ function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanReque
     'attemptId',
     'requiredSandboxInputs',
     'unavailableBaselineInputs',
+    'affectedCases',
   ]);
   const requiredKeys = [
     'reason',
@@ -1198,6 +1200,70 @@ function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanReque
           'invalid_runtime_result',
           `Trial Plan ${key} input type is invalid.`,
         );
+      }
+    }
+  }
+  if (value.affectedCases !== undefined) {
+    if (!Array.isArray(value.affectedCases) || value.affectedCases.length > 16) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'invalid_runtime_result',
+        'Trial Plan affected cases are invalid.',
+      );
+    }
+    const caseIds = new Set<string>();
+    for (const item of value.affectedCases) {
+      if (
+        !isPlainRecord(item) ||
+        Object.keys(item).some(
+          (key) =>
+            !['caseId', 'failedExpectationTypes', 'originalCaseHash', 'requiredFixture'].includes(
+              key,
+            ),
+        )
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Trial Plan affected case is invalid.',
+        );
+      }
+      assertBoundedRuntimeText(item.caseId, 'Trial Plan affected case id', 128);
+      if (typeof item.originalCaseHash !== 'string' || !SHA256_RE.test(item.originalCaseHash)) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Trial Plan affected case hash is invalid.',
+        );
+      }
+      if (caseIds.has(item.caseId))
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Trial Plan affected case ids are duplicated.',
+        );
+      caseIds.add(item.caseId);
+      if (
+        !Array.isArray(item.failedExpectationTypes) ||
+        item.failedExpectationTypes.length === 0 ||
+        item.failedExpectationTypes.length > 16
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Trial Plan failed expectation types are invalid.',
+        );
+      }
+      for (const type of item.failedExpectationTypes)
+        assertBoundedRuntimeText(type, 'Trial Plan failed expectation type', 64);
+      if (item.requiredFixture !== undefined) {
+        const fixture = item.requiredFixture;
+        if (
+          !isPlainRecord(fixture) ||
+          !exactKeys(fixture, ['path', 'content']) ||
+          fixture.content !== null
+        ) {
+          throw new ChatOperationV2AuthoringProtocolError(
+            'invalid_runtime_result',
+            'Trial Plan required fixture is invalid.',
+          );
+        }
+        assertBoundedRuntimeText(fixture.path, 'Trial Plan required fixture path', 4096);
       }
     }
   }
@@ -1672,6 +1738,9 @@ export class ChatOperationV2AuthoringEngine {
       readonly feedback?: ChatOperationFeedback;
     } | null,
     interactiveRecoveryInput?: ResolveChatOperationV2InteractiveRecoveryInput,
+    // Host-issued invocation id this chain resumes after an output-length
+    // truncation. Set at most once per chain: a continuation never continues.
+    continuationOf?: string,
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
     if (!context.stage || !context.relocation) {
       throw new ChatOperationV2AuthoringProtocolError(
@@ -1728,6 +1797,7 @@ export class ChatOperationV2AuthoringEngine {
       clarificationThread,
       repairEvidence,
       trialPlanRequest,
+      ...(continuationOf === undefined ? {} : { continuationOf }),
     });
     const preparedAt = this.now();
     const outbox = this.persistence.prepareInvocationOutbox({
@@ -1957,6 +2027,29 @@ export class ChatOperationV2AuthoringEngine {
       return this.finishPrecommit(context, outcome);
     }
     if (result.kind === 'provider_unavailable') {
+      // One bounded automatic continuation per controlled-invocation chain: only a
+      // live authoring/repair generation that ended at the provider output limit
+      // resumes, on the same session under a fresh Host invocation identity, with
+      // the truncated invocation's failed_terminal outbox/usage evidence retained.
+      // Trial planning keeps its own attempt-budget protocol, a truncated
+      // continuation and every other provider failure fall through to the
+      // explicit-Retry wait below, and an explicit user Retry starts a fresh chain
+      // with its own single-continuation budget.
+      if (
+        continuationOf === undefined &&
+        (purpose === 'authoring' || purpose === 'repair') &&
+        result.code === 'model_output_length' &&
+        result.submissionUnknown !== true
+      ) {
+        return this.runControlledInvocation(
+          context,
+          purpose,
+          repairAttempt,
+          repairEvidence,
+          undefined,
+          identity.invocationId,
+        );
+      }
       // A repair/planning outage must not leave the completed authoring result
       // solely in this Host's memory. Keep it unpublished but restart-recoverable.
       if (context.pendingVisibleCompletion) await this.persistVisibleCompletion(context);
@@ -2553,6 +2646,9 @@ export class ChatOperationV2AuthoringEngine {
           stage: context.stage,
           repairAttempts: operation.repairAttempts,
           ...(verificationAttemptVersion === undefined ? {} : { verificationAttemptVersion }),
+          ...(context.pendingTrialPlanRequest?.affectedCases
+            ? { planReviewAffectedCases: context.pendingTrialPlanRequest.affectedCases }
+            : {}),
           signal: controller.signal,
           onTrialProgress: (progress) =>
             this.appendEvent(context.operationId, 'trial_progressed', {

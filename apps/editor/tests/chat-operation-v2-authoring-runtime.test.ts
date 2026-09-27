@@ -573,6 +573,156 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     ).resolves.toMatchObject({ kind: 'completed', disposition: 'changed' });
   });
 
+  test('an output-truncated repair continuation keeps bytes the truncated invocation wrote', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-repair-continuation',
+      stage: value.stage,
+    });
+    const first = {
+      ...invocationRequest(value.stage, relocation),
+      invocationId: 'repair-invocation-1',
+      inputId: 'repair-input-1',
+      purpose: 'repair' as const,
+      repairAttempt: 1,
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"repair","repairAttempt":1}'),
+    };
+    value.openCode.onExecute = () => value.staging.mutate(sha256('partial-repair-write'));
+    value.openCode.execution = {
+      kind: 'completed',
+      text: null,
+      finishCode: 'length',
+      usage: null,
+    };
+    await expect(value.runtime.runInvocation(first)).resolves.toEqual({
+      kind: 'provider_unavailable',
+      code: 'model_output_length',
+    });
+
+    value.openCode.onExecute = null;
+    value.openCode.execution = { kind: 'completed', text: null, finishCode: 'stop', usage: null };
+    await expect(
+      value.runtime.runInvocation({
+        ...first,
+        invocationId: 'repair-invocation-2',
+        inputId: 'repair-input-2',
+        canonicalRequestBytes: new TextEncoder().encode(
+          JSON.stringify({
+            purpose: 'repair',
+            repairAttempt: 1,
+            continuationOf: 'repair-invocation-1',
+          }),
+        ),
+      }),
+    ).resolves.toMatchObject({ kind: 'completed', disposition: 'changed' });
+    const authority = await value.staging.readAuthority(STAGE_ID);
+    expect(authority?.invocations['repair-invocation-2']?.baselineSnapshotHash).toBe(
+      authority?.invocations['repair-invocation-1']?.baselineSnapshotHash,
+    );
+  });
+
+  test('rejects an output-truncation continuation marker on a Trial Plan invocation', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-trial-plan-continuation',
+      stage: value.stage,
+    });
+    const first = {
+      ...invocationRequest(value.stage, relocation),
+      invocationId: 'trial-plan-invocation-1',
+      inputId: 'trial-plan-input-1',
+      purpose: 'trial_plan' as const,
+      trialPlanRequest: {
+        reason: 'missing' as const,
+        relativePlanPath: 'alpha/alpha.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs' as const],
+        attemptId: 'trial-plan-attempt-1',
+      },
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
+    };
+    value.openCode.execution = {
+      kind: 'completed',
+      text: null,
+      finishCode: 'length',
+      usage: null,
+    };
+    await expect(value.runtime.runInvocation(first)).resolves.toEqual({
+      kind: 'provider_unavailable',
+      code: 'model_output_length',
+    });
+
+    await expect(
+      value.runtime.runInvocation({
+        ...first,
+        invocationId: 'trial-plan-invocation-2',
+        inputId: 'trial-plan-input-2',
+        canonicalRequestBytes: new TextEncoder().encode(
+          JSON.stringify({ purpose: 'trial_plan', continuationOf: 'trial-plan-invocation-1' }),
+        ),
+      }),
+    ).rejects.toMatchObject({ code: 'authority_mismatch' });
+  });
+
+  test('recovered Trial verification keeps the affected-case review fence', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-plan-review-recovery',
+      stage: value.stage,
+    });
+    const affectedCases = [
+      {
+        caseId: 'missing-input',
+        failedExpectationTypes: ['task-status'],
+        originalCaseHash: 'b'.repeat(64),
+        requiredFixture: { path: 'alpha/input.txt', content: null as null },
+      },
+    ];
+    value.openCode.onExecute = () => value.staging.mutate(sha256('revised-plan'));
+    await value.runtime.runInvocation({
+      ...invocationRequest(value.stage, relocation),
+      invocationId: 'trial-plan-review-invocation',
+      inputId: 'trial-plan-review-input',
+      purpose: 'trial_plan',
+      trialPlanRequest: {
+        reason: 'invalid',
+        relativePlanPath: 'alpha/alpha.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'Revise the failed case.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs'],
+        attemptId: 'trial-plan-review-attempt',
+        affectedCases,
+      },
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan","review":true}'),
+    });
+    await value.createRuntime().verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+    expect(value.staging.trialInputs.at(-1)?.affectedCases).toEqual(affectedCases);
+  });
+
   test('mixed external failures do not hide actionable failed expectations from repair feedback', async () => {
     const value = await readyRuntime();
     value.staging.trialResult = {
@@ -1110,6 +1260,35 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(prompt.text).toContain('report.write');
     expect(prompt.text).toContain('<tagma-internal>');
     expect(prompt.system).toContain('failed expectations');
+    expect(prompt.system).toContain('bounded chunks');
+  });
+
+  test('builds a bounded resume prompt for an output-truncated authoring continuation', () => {
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'authoring-invocation-2',
+      sessionId: 'session-root',
+      executionMessageId: 'execution-message-2',
+      purpose: 'authoring',
+      intent: 'create',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'pipeline/pipeline.yaml',
+      trialPlanRequest: null,
+      admission: admission(),
+      clarificationThread: null,
+      canonicalRequestBytes: new TextEncoder().encode(
+        JSON.stringify({ purpose: 'authoring', continuationOf: 'authoring-invocation-1' }),
+      ),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.agent).toBe('tagma-pipeline');
+    expect(prompt.text).toContain('<tagma-internal>');
+    expect(prompt.text).toContain('<mode>resume_truncated_generation</mode>');
+    expect(prompt.text).toContain('<purpose>authoring</purpose>');
+    expect(prompt.text).toContain('cut off at the model output limit');
+    expect(prompt.text).not.toContain('<request>');
+    expect(prompt.system).toContain('finish with a concise status');
   });
 
   test('selects the dedicated Trial Plan agent with exact Host-issued planning authority', () => {
@@ -1164,6 +1343,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     });
 
     expect(prompt.system).toContain('staging coordinates');
+    expect(prompt.system).toContain('bounded chunks');
     expect(prompt.system).toContain('may remap publication');
     expect(prompt.system).toContain('compile log is not a published artifact');
     expect(prompt.system).toContain('Do not claim a published path');

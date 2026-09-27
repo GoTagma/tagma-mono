@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -7,12 +8,171 @@ import type { PipelineConfig } from '@tagma/sdk';
 
 import {
   CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS,
+  affectedChatPipelineTrialPlanCases,
+  chatPipelineTrialCaseExecutionHash,
   parseChatPipelineTrialPlan,
   pipelineTrialPlanPath,
   readChatPipelineTrialPlan,
   validateChatPipelineTrialPlanTaskPathCoordinates,
   validateChatPipelineTrialPlanTargetPaths,
 } from '../server/chat-pipeline-trial-plan';
+
+test('plan review identifies failed case and explicit missing-file fixture', () => {
+  const plan = parseChatPipelineTrialPlan({
+    ...prerequisitePlan(),
+    cases: [
+      {
+        id: 'present',
+        title: 'Present',
+        objective: 'Read input',
+        runs: 1,
+        targetTaskIds: ['main.finish'],
+        fixtures: [{ path: 'sample/input.txt', content: 'value' }],
+        expectations: [{ type: 'task-status', taskId: 'main.finish', status: 'success' }],
+      },
+      {
+        id: 'missing',
+        title: 'Missing',
+        objective: 'Reject missing input',
+        runs: 1,
+        targetTaskIds: ['main.finish'],
+        fixtures: [],
+        expectations: [{ type: 'task-status', taskId: 'main.finish', status: 'failed' }],
+      },
+    ],
+  });
+  expect(
+    affectedChatPipelineTrialPlanCases(plan, [
+      { id: 'present', success: true, expectations: [] },
+      { id: 'missing', success: false, expectations: [{ type: 'task-status', passed: false }] },
+    ]),
+  ).toEqual([
+    {
+      caseId: 'missing',
+      failedExpectationTypes: ['task-status'],
+      requiredFixture: { path: 'sample/input.txt', content: null },
+      originalCaseHash: chatPipelineTrialCaseExecutionHash(plan.cases[1]!),
+    },
+  ]);
+});
+
+test('host reader rejects a committed plan that leaves the failed case unchanged', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-affected-case-'));
+  try {
+    const stagedYamlPath = join(root, 'sample.yaml');
+    const candidate = completePlan();
+    const plan = parseChatPipelineTrialPlan(candidate);
+    writeFileSync(pipelineTrialPlanPath(stagedYamlPath), JSON.stringify(candidate), 'utf8');
+    const affectedCases = [
+      {
+        caseId: plan.cases[0]!.id,
+        failedExpectationTypes: ['file-equals'],
+        originalCaseHash: chatPipelineTrialCaseExecutionHash(plan.cases[0]!),
+      },
+    ];
+    expect(
+      readChatPipelineTrialPlan(
+        stagedYamlPath,
+        'sample/sample.yaml',
+        'a'.repeat(40),
+        3,
+        undefined,
+        undefined,
+        undefined,
+        affectedCases,
+      ),
+    ).toMatchObject({
+      status: 'required',
+      request: { reason: 'invalid', message: expect.stringContaining(plan.cases[0]!.id) },
+    });
+    const reordered = structuredClone(candidate);
+    (reordered.cases as Array<Record<string, unknown>>)[0] = Object.fromEntries(
+      Object.entries((reordered.cases as Array<Record<string, unknown>>)[0]!).reverse(),
+    );
+    const reorderedBytes = JSON.stringify(reordered);
+    writeFileSync(pipelineTrialPlanPath(stagedYamlPath), reorderedBytes, 'utf8');
+    expect(
+      readChatPipelineTrialPlan(
+        stagedYamlPath,
+        'sample/sample.yaml',
+        'a'.repeat(40),
+        3,
+        undefined,
+        undefined,
+        createHash('sha256').update(reorderedBytes).digest('hex'),
+        affectedCases,
+      ),
+    ).toMatchObject({ status: 'required', request: { reason: 'invalid' } });
+    const changed = structuredClone(candidate);
+    const changedCase = (changed.cases as Array<Record<string, unknown>>)[0]!;
+    changedCase.title = 'Renamed only';
+    const titleOnlyBytes = JSON.stringify(changed);
+    writeFileSync(pipelineTrialPlanPath(stagedYamlPath), titleOnlyBytes, 'utf8');
+    expect(
+      readChatPipelineTrialPlan(
+        stagedYamlPath,
+        'sample/sample.yaml',
+        'a'.repeat(40),
+        3,
+        undefined,
+        undefined,
+        createHash('sha256').update(titleOnlyBytes).digest('hex'),
+        affectedCases,
+      ),
+    ).toMatchObject({ status: 'required', request: { reason: 'invalid' } });
+    (changedCase.fixtures as Array<Record<string, unknown>>)[0]!.content = 'revised input\n中文';
+    const changedBytes = JSON.stringify(changed);
+    writeFileSync(pipelineTrialPlanPath(stagedYamlPath), changedBytes, 'utf8');
+    expect(
+      readChatPipelineTrialPlan(
+        stagedYamlPath,
+        'sample/sample.yaml',
+        'a'.repeat(40),
+        3,
+        undefined,
+        undefined,
+        createHash('sha256').update(changedBytes).digest('hex'),
+        affectedCases,
+      ),
+    ).toMatchObject({ status: 'ready' });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fixture setup rejection gives the planner the exact negative case and null fixture', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-fixture-setup-'));
+  try {
+    const stagedYamlPath = join(root, 'sample.yaml');
+    const candidate = structuredClone(completePlan());
+    const positive = (candidate.cases as Array<Record<string, unknown>>)[0]!;
+    const negative = {
+      ...positive,
+      id: 'missing-input',
+      title: 'Missing input',
+      fixtures: (positive.fixtures as Array<Record<string, unknown>>).slice(1),
+      expectations: [{ type: 'task-status', taskId: 'main.process', status: 'failed' }],
+    };
+    (candidate.cases as Array<Record<string, unknown>>).push(negative);
+    writeFileSync(pipelineTrialPlanPath(stagedYamlPath), JSON.stringify(candidate), 'utf8');
+    expect(
+      readChatPipelineTrialPlan(stagedYamlPath, 'sample/sample.yaml', 'a'.repeat(40)),
+    ).toMatchObject({
+      status: 'required',
+      request: {
+        affectedCases: [
+          {
+            caseId: 'missing-input',
+            failedExpectationTypes: ['task-status'],
+            requiredFixture: { path: 'inputs/a/report.txt', content: null },
+          },
+        ],
+      },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';

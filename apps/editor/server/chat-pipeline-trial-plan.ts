@@ -195,6 +195,70 @@ export interface ChatPipelineTrialPlanRequest {
   message: string;
   maxAttempts: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
+  /** Host-observed cases that must be revised before repeating a failed Trial. */
+  affectedCases?: Array<{
+    caseId: string;
+    failedExpectationTypes: string[];
+    originalCaseHash: string;
+    requiredFixture?: { path: string; content: null };
+  }>;
+}
+
+export function chatPipelineTrialCaseExecutionHash(testCase: ChatPipelineTrialPlanCase): string {
+  const { title: _title, objective: _objective, ...execution } = testCase;
+  return createHash('sha256').update(JSON.stringify(execution)).digest('hex');
+}
+
+/** Bound plan-review evidence to failed cases; infer absence only from a passing peer. */
+export function affectedChatPipelineTrialPlanCases(
+  plan: ChatPipelineTrialPlan,
+  results: readonly {
+    id: string;
+    success: boolean;
+    expectations: readonly { type: string; passed: boolean }[];
+  }[],
+): NonNullable<ChatPipelineTrialPlanRequest['affectedCases']> {
+  const passed = new Set(results.filter((item) => item.success).map((item) => item.id));
+  return results
+    .filter((item) => !item.success && item.expectations.some((expectation) => !expectation.passed))
+    .slice(0, 16)
+    .flatMap((result) => {
+      const testCase = plan.cases.find((item) => item.id === result.id);
+      if (!testCase) return [];
+      const failedExpectationTypes = [
+        ...new Set(result.expectations.filter((item) => !item.passed).map((item) => item.type)),
+      ].slice(0, 16);
+      const peer = plan.cases.find(
+        (item) =>
+          passed.has(item.id) &&
+          JSON.stringify([...item.targetTaskIds].sort()) ===
+            JSON.stringify([...testCase.targetTaskIds].sort()),
+      );
+      const missing = peer?.fixtures.filter(
+        (fixture) =>
+          fixture.content !== null &&
+          !testCase.fixtures.some((other) => other.path === fixture.path),
+      );
+      return [
+        {
+          caseId: result.id,
+          failedExpectationTypes,
+          originalCaseHash: chatPipelineTrialCaseExecutionHash(testCase),
+          ...(missing?.length === 1
+            ? { requiredFixture: { path: missing[0]!.path, content: null } }
+            : {}),
+        },
+      ];
+    });
+}
+
+class TrialPlanFixtureSetupError extends Error {
+  constructor(
+    message: string,
+    readonly affectedCases: NonNullable<ChatPipelineTrialPlanRequest['affectedCases']>,
+  ) {
+    super(message);
+  }
 }
 
 export type ChatPipelineTrialPlanReadResult =
@@ -1312,9 +1376,20 @@ export function validateChatPipelineTrialFixtureSetup(
       const right = new Map(
         negative.fixtures.map((item) => [item.path, fingerprint(item.content)]),
       );
-      if ([...left.keys()].some((path) => !right.has(path))) {
-        throw new Error(
+      const omittedPaths = [...left.keys()].filter((path) => !right.has(path));
+      if (omittedPaths.length > 0) {
+        throw new TrialPlanFixtureSetupError(
           `Case ${negative.id} omits a file input controlled by positive case ${positive.id}. Omission keeps the staged file; it does not construct absence. Explicitly fixture the negative input (content: null for missing, a string for present bytes) before testing a contradictory task outcome. Correct the plan, not the pipeline.`,
+          [
+            {
+              caseId: negative.id,
+              failedExpectationTypes: ['task-status'],
+              originalCaseHash: chatPipelineTrialCaseExecutionHash(negative),
+              ...(omittedPaths.length === 1
+                ? { requiredFixture: { path: omittedPaths[0]!, content: null } }
+                : {}),
+            },
+          ],
         );
       }
       const paths = new Set([...left.keys(), ...right.keys()]);
@@ -1325,8 +1400,15 @@ export function validateChatPipelineTrialFixtureSetup(
             (right.has(path) ? right.get(path) : readBase(path)),
         )
       ) {
-        throw new Error(
+        throw new TrialPlanFixtureSetupError(
           `Case ${negative.id} expects a different task outcome from ${positive.id} with the same effective file inputs and targets. fixtures: [] retains copied support files. Correct the plan's setup; use content: null to remove a required file and assert path-not-exists. Do not repair the pipeline to satisfy an unchanged negative setup.`,
+          [
+            {
+              caseId: negative.id,
+              failedExpectationTypes: ['task-status'],
+              originalCaseHash: chatPipelineTrialCaseExecutionHash(negative),
+            },
+          ],
         );
       }
     }
@@ -1341,6 +1423,7 @@ export function readChatPipelineTrialPlan(
   pipelineConfig?: PipelineConfig,
   workDir?: string,
   authenticatedPlanHash?: string | null,
+  affectedCases?: ChatPipelineTrialPlanRequest['affectedCases'],
 ): ChatPipelineTrialPlanReadResult {
   if (!isValidChatPipelineTrialPlanAttempts(maxAttempts)) {
     throw new Error('Trial plan max attempts is invalid.');
@@ -1400,6 +1483,21 @@ export function readChatPipelineTrialPlan(
     const plan = parseChatPipelineTrialPlan(parsed);
     validateChatPipelineTrialPlanTargetPaths(plan, relativeYamlPath);
     validateChatPipelineTrialFixtureSetup(plan, stagedYamlPath, relativeYamlPath);
+    if (affectedCases?.length) {
+      const unchanged = affectedCases.filter((affected) => {
+        const current = plan.cases.find((item) => item.id === affected.caseId);
+        return current && chatPipelineTrialCaseExecutionHash(current) === affected.originalCaseHash;
+      });
+      if (unchanged.length) {
+        return planRequest(
+          'invalid',
+          relativeYamlPath,
+          pipelineHash,
+          `Committed Trial Plan did not revise affected case(s): ${unchanged.map((item) => item.caseId).join(', ')}. Correct those cases before repeating Trial.`,
+          maxAttempts,
+        );
+      }
+    }
     if (pipelineConfig && workDir) {
       validateChatPipelineTrialPlanTaskPathCoordinates(
         plan,
@@ -1437,12 +1535,16 @@ export function readChatPipelineTrialPlan(
       planHash,
     };
   } catch (err) {
-    return planRequest(
+    const response = planRequest(
       'invalid',
       relativeYamlPath,
       pipelineHash,
       err instanceof Error ? err.message : String(err),
       maxAttempts,
     );
+    if (err instanceof TrialPlanFixtureSetupError && response.status === 'required') {
+      response.request.affectedCases = err.affectedCases;
+    }
+    return response;
   }
 }

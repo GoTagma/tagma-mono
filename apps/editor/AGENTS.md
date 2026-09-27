@@ -91,6 +91,11 @@
   that work. Persist completed authoring result authority before pausing a repair/planning
   invocation; reconstruct the same stage, binding, pending result, and planning authority on
   explicit Retry after Host restart. A pre-authoring failure may still restore the Composer.
+  One exception: a live authoring or repair invocation that ends at the model output limit
+  (`model_output_length`) first receives exactly one automatic Host continuation on the same
+  session with fresh invocation/input/outbox identity — a resume, not a retry — judged against
+  the continued invocation's stage baseline. A truncated continuation, Trial planning, and
+  post-restart reconciliation still park for explicit Retry.
 - Automatic commit execution retries only bounded transient filesystem errors. Exhaustion or an
   unexpected executor failure pauses the same commit phase with `user_retry` through an atomic
   `execution_wait` WAL update; only wait state/version/time may change. Keep the decision, artifacts,
@@ -1032,6 +1037,14 @@
   or address pipeline control artifacts. Structurally identical positive/negative file setups
   with conflicting task-status expectations require plan correction before execution or repair.
   Cache v30 binds the removal and prepublication output-exclusion semantics.
+- A plan-review request carries at most 16 Host-observed `affectedCases`, with failed assertion
+  types and the original case execution hash. Infer a `content: null` missing-file fixture only
+  from one file present in a passing peer with the same target closure. Before repeating Trial,
+  reject a committed plan whose affected case still has the same execution hash; changes to
+  title or objective alone do not count. Fixture-setup validation also supplies the offending
+  negative case and omitted file when known. Keep this evidence through the next planning attempt
+  and persist it with the authenticated Trial Plan invocation so post-restart verification retains
+  the same review fence.
 - Pipeline-local Trial fixtures and outputs use the `.tagma`-relative namespace `<stem>/...` in
   plans, never a literal `.tagma/<stem>/...` path. Readiness must translate a missing real path
   under `.tagma/<stem>/` into that logical namespace, and isolated execution must map the same

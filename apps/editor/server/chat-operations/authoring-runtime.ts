@@ -157,6 +157,23 @@ function incompleteAuthoringFinishCode(value: string): string | null {
   }
 }
 
+/**
+ * Canonical invocation bytes carry `continuationOf` only when the Host resumes one
+ * live authoring/repair generation that ended at the provider output limit
+ * (`model_output_length`). The continuation keeps the same OpenCode session under a
+ * fresh invocation identity and inherits the truncated invocation's stage baseline,
+ * so bytes that invocation already wrote still count toward the final
+ * changed/no_change disposition — the same cumulative-stage rule an explicit
+ * provider Retry follows. Trial Plan invocations never continue, and post-restart
+ * `reconcileInvocation` keeps parking a truncated execution for explicit Retry
+ * instead of continuing it.
+ */
+function authoringContinuationOf(canonicalRequestBytes: Uint8Array): string | null {
+  const request = sdkRecord(JSON.parse(new TextDecoder().decode(canonicalRequestBytes)));
+  const value = request?.continuationOf;
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
 export async function tryAutoApproveChatOperationV2StagedPermission(input: {
   readonly workDir: string;
   readonly agentRoot: string;
@@ -547,6 +564,8 @@ export interface ManagedChatOperationV2InvocationAuthority {
   readonly executionMessageId: string;
   readonly baselineSnapshotHash: string;
   readonly executionSubmitted: boolean;
+  /** Durable plan-review fence for verification after a Host restart. */
+  readonly planReviewAffectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
   readonly completed: Extract<
     ChatOperationV2AuthoringInvocationResult,
     { kind: 'completed' }
@@ -626,6 +645,7 @@ export interface ManagedChatOperationV2AuthoringStagingAdapter {
     readonly targetRelativePath: string;
     readonly trialId: string;
     readonly signal: AbortSignal;
+    readonly affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     readonly onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult>;
 }
@@ -972,6 +992,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     targetRelativePath: string;
     trialId: string;
     signal: AbortSignal;
+    affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult> {
     const abort = () =>
@@ -1009,6 +1030,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
         relativePath: input.targetRelativePath,
         trialId: input.trialId,
         trustedOperationV2: true,
+        ...(input.affectedCases ? { affectedCases: input.affectedCases } : {}),
       });
     } finally {
       emitProgress();
@@ -1835,10 +1857,12 @@ export function buildManagedChatOperationV2ExecutionPrompt(
       '</tagma-internal>',
     ].join('\n');
   }
+  const continuation = authoringContinuationOf(input.canonicalRequestBytes) !== null;
   return {
     agent: TAGMA_PIPELINE_AGENT,
     system: [
       'Operate only inside the authenticated staged Tagma workspace. Author exactly the supplied relative pipeline target and finish with a concise status.',
+      'When creating or replacing a large YAML or support file, write it in bounded chunks — an initial skeleton write followed by focused edit additions — so a single response never approaches the model output limit.',
       'Every target and companion path visible to you uses staging coordinates; the Host may remap publication to another target.',
       'The compile log is not a published artifact. Report its status only as staging evidence.',
       'Do not claim a published path or that a compile-log file remains after publication; the Host alone reports publication.',
@@ -1849,19 +1873,29 @@ export function buildManagedChatOperationV2ExecutionPrompt(
           ]
         : []),
     ].join(' '),
-    text: [
-      '<tagma-chat-operation-v2-authoring>',
-      `<purpose>${input.purpose}</purpose>`,
-      `<target>${escapeXml(input.targetRelativePath)}</target>`,
-      opencodeChatModel,
-      `<request>${escapeXml(requestText)}</request>`,
-      attachments,
-      repairContext,
-      `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
-      '</tagma-chat-operation-v2-authoring>',
-    ]
-      .filter(Boolean)
-      .join('\n'),
+    text: continuation
+      ? [
+          '<tagma-internal>',
+          '<mode>resume_truncated_generation</mode>',
+          `<purpose>${input.purpose}</purpose>`,
+          `<target>${escapeXml(input.targetRelativePath)}</target>`,
+          `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
+          '</tagma-internal>',
+          'Your previous response in this session was cut off at the model output limit. Continue exactly where it stopped, finish any partial file with bounded edits, then end with the concise status.',
+        ].join('\n')
+      : [
+          '<tagma-chat-operation-v2-authoring>',
+          `<purpose>${input.purpose}</purpose>`,
+          `<target>${escapeXml(input.targetRelativePath)}</target>`,
+          opencodeChatModel,
+          `<request>${escapeXml(requestText)}</request>`,
+          attachments,
+          repairContext,
+          `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
+          '</tagma-chat-operation-v2-authoring>',
+        ]
+          .filter(Boolean)
+          .join('\n'),
   };
 }
 
@@ -2046,6 +2080,26 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
               invocation.completed.executionMessageId !== invocation.executionMessageId))
         ) {
           throw new Error('invalid invocation authority');
+        }
+        if (invocation.planReviewAffectedCases !== undefined) {
+          if (
+            invocation.purpose !== 'trial_plan' ||
+            !Array.isArray(invocation.planReviewAffectedCases) ||
+            invocation.planReviewAffectedCases.length > 16 ||
+            invocation.planReviewAffectedCases.some(
+              (item) =>
+                typeof item.caseId !== 'string' ||
+                item.caseId.length > 128 ||
+                !HASH_RE.test(item.originalCaseHash) ||
+                !Array.isArray(item.failedExpectationTypes) ||
+                item.failedExpectationTypes.length > 16 ||
+                (item.requiredFixture !== undefined &&
+                  (typeof item.requiredFixture.path !== 'string' ||
+                    item.requiredFixture.path.length > 4096 ||
+                    item.requiredFixture.content !== null)),
+            )
+          )
+            throw new Error('invalid plan review authority');
         }
       }
     } catch (error) {
@@ -2623,6 +2677,25 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       }
     } else {
       const current = await this.requireCurrentSnapshot(authority);
+      const continuationOf = authoringContinuationOf(request.canonicalRequestBytes);
+      let baselineSnapshotHash = current.snapshotHash;
+      if (continuationOf !== null) {
+        const prior = authority.invocations[continuationOf];
+        if (
+          request.purpose === 'trial_plan' ||
+          !prior ||
+          prior.purpose !== request.purpose ||
+          prior.sessionId !== request.sessionId ||
+          prior.executionSubmitted !== true ||
+          prior.completed !== null
+        ) {
+          throw new ChatOperationV2AuthoringProtocolError(
+            'authority_mismatch',
+            'Continuation does not follow a truncated invocation of this chain.',
+          );
+        }
+        baselineSnapshotHash = prior.baselineSnapshotHash;
+      }
       invocation = {
         invocationId: request.invocationId,
         sessionId: request.sessionId,
@@ -2631,8 +2704,11 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         conversationId: request.admission.conversationId,
         requestDigest: digest,
         executionMessageId: executionMessageId(request),
-        baselineSnapshotHash: current.snapshotHash,
+        baselineSnapshotHash,
         executionSubmitted: false,
+        ...(request.purpose === 'trial_plan' && request.trialPlanRequest?.affectedCases
+          ? { planReviewAffectedCases: request.trialPlanRequest.affectedCases }
+          : {}),
         completed: null,
       };
       await this.writeInvocation(authority, invocation);
@@ -2757,6 +2833,9 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     }
     const finishFailure = incompleteAuthoringFinishCode(settlement.finishCode);
     if (finishFailure) {
+      // No automatic continuation after a restart: only a live runInvocation chain
+      // may resume one truncated authoring/repair generation. A truncation
+      // discovered here still parks for explicit Retry.
       return { kind: 'provider_unavailable' as const, code: finishFailure };
     }
     const current = await this.requireCurrentSnapshot(authority);
@@ -2901,11 +2980,18 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     }
     let trial: ChatPipelineTrialRunResult;
     try {
+      const latestInvocation = Object.values(authority.invocations).at(-1);
+      const planReviewAffectedCases =
+        input.planReviewAffectedCases ??
+        (latestInvocation?.purpose === 'trial_plan' && latestInvocation.completed !== null
+          ? latestInvocation.planReviewAffectedCases
+          : undefined);
       trial = await this.staging.runTrial({
         stageId: input.stage.stageId,
         targetRelativePath: authority.workingRelativePath,
         trialId: id,
         signal: input.signal,
+        ...(planReviewAffectedCases ? { affectedCases: planReviewAffectedCases } : {}),
         onProgress: (progress) =>
           input.onTrialProgress?.({
             stageId: progress.stageId,

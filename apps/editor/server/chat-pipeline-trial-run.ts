@@ -43,6 +43,7 @@ import { TRIAL_STREAM_EVIDENCE_BYTES } from '../shared/chat-pipeline-trial-evide
 import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
 import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
+  affectedChatPipelineTrialPlanCases,
   buildChatPipelineTrialPlanRequest,
   findChatPipelineTrialRepeatedFileOutputPaths,
   findUncoveredChatPipelineTrialTerminalTaskIds,
@@ -319,6 +320,8 @@ export interface ChatPipelineTrialRunInput {
   independentRecovery?: boolean;
   /** Sidecar-only authority; renderer routes never forward this field. */
   trustedOperationV2?: boolean;
+  /** Failed-case authority from the immediately preceding Host plan review. */
+  affectedCases?: ChatPipelineTrialPlanRequest['affectedCases'];
 }
 
 export type ChatPipelineTrialProgressPhase =
@@ -3833,6 +3836,7 @@ async function executeTrial(
                   stage.trialPlanMaxAttempts,
                 ),
                 attemptId: trialPlanRepairAttempt,
+                affectedCases: affectedChatPipelineTrialPlanCases(plan, cases),
               },
             }
           : {}),
@@ -3984,8 +3988,12 @@ export async function trialRunChatYamlStage(
       pipelineConfig,
       ws.workDir,
       planTelemetry.committedPlanHash,
+      input.trustedOperationV2 === true ? input.affectedCases : undefined,
     );
     if (planRead.status === 'required') {
+      if (input.trustedOperationV2 === true && input.affectedCases?.length) {
+        planRead.request.affectedCases = input.affectedCases;
+      }
       const sandboxFixtureAnalysis = resolveChatPipelineSandboxFixtureInputs(
         pipelineConfig,
         ws.workDir,

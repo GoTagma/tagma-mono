@@ -1675,6 +1675,146 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(runtime.invocationRequests[1]!.sessionId).toBe(runtime.invocationRequests[0]!.sessionId);
   });
 
+  test('continues an output-truncated authoring invocation once on the same session', async () => {
+    const { engine, store, runtime, resultPersistence } = createHarness({
+      providerUnavailableOnce: true,
+      providerFailureCode: 'model_output_length',
+      providerSubmissionUnknown: false,
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'authoring',
+    ]);
+    const [truncated, continuation] = runtime.invocationRequests;
+    expect(continuation!.invocationId).not.toBe(truncated!.invocationId);
+    expect(continuation!.inputId).not.toBe(truncated!.inputId);
+    expect(continuation!.sessionId).toBe(truncated!.sessionId);
+    expect(
+      JSON.parse(new TextDecoder().decode(continuation!.canonicalRequestBytes)).continuationOf,
+    ).toBe(truncated!.invocationId);
+    expect(
+      JSON.parse(new TextDecoder().decode(truncated!.canonicalRequestBytes)).continuationOf,
+    ).toBeUndefined();
+    const outboxes = store
+      .listInvocationOutbox('scope-1')
+      .filter(({ operationId }) => operationId === 'operation-1');
+    expect(outboxes).toHaveLength(2);
+    expect(
+      outboxes.find(({ invocationId }) => invocationId === truncated!.invocationId),
+    ).toMatchObject({ status: 'failed_terminal', failureCode: 'model_output_length' });
+    expect(
+      outboxes.find(({ invocationId }) => invocationId === continuation!.invocationId),
+    ).toMatchObject({ status: 'settled' });
+    expect(
+      store
+        .listUsageLedger('operation-1')
+        .map(({ status }) => status)
+        .sort(),
+    ).toEqual(['settled', 'unavailable']);
+    const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (events.kind !== 'events') throw new Error('Expected retained Host events.');
+    expect(events.events.filter(({ type }) => type === 'invocation_failed_terminal')).toHaveLength(
+      1,
+    );
+    expect(resultPersistence.calls.map(({ purpose }) => purpose)).toEqual(['authoring']);
+  });
+
+  test('parks for explicit Retry when the output-truncation continuation also truncates', async () => {
+    const { engine, store, runtime } = createHarness();
+    const runInvocation = runtime.runInvocation.bind(runtime);
+    runtime.runInvocation = async (request) => {
+      runtime.invocationRequests.push(request);
+      return { kind: 'provider_unavailable', code: 'model_output_length' };
+    };
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('provider_unavailable');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'authoring',
+    ]);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'authoring',
+      waitReason: 'provider_unavailable',
+      activeInvocationId: null,
+    });
+    expect(store.listUsageLedger('operation-1')).toEqual([
+      expect.objectContaining({ status: 'unavailable' }),
+      expect.objectContaining({ status: 'unavailable' }),
+    ]);
+    expect(
+      await engine.describeRecovery({ operationId: 'operation-1', sessionId: 'session-1' }),
+    ).toMatchObject({ action: 'await_provider_retry', reasonCode: 'explicit_retry_required' });
+
+    runtime.runInvocation = runInvocation;
+    const current = store.getOperation('operation-1')!;
+    const retried = await engine.retryProviderUnavailable({
+      operationId: current.operationId,
+      workspaceScopeId: current.workspaceScopeId,
+      expectedGeneration: current.generation,
+      expectedVersion: current.version,
+      requestId: 'explicit-provider-retry-after-continuation',
+    });
+    expect(retried.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests).toHaveLength(3);
+  });
+
+  test('continues an output-truncated repair once without consuming another repair attempt', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['repair', 'passed'],
+      providerUnavailableOnce: true,
+      providerUnavailablePurpose: 'repair',
+      providerFailureCode: 'model_output_length',
+      providerSubmissionUnknown: false,
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('commit_preparing');
+    expect(
+      runtime.invocationRequests.map(({ purpose, repairAttempt }) => [purpose, repairAttempt]),
+    ).toEqual([
+      ['authoring', 0],
+      ['repair', 1],
+      ['repair', 1],
+    ]);
+    const [truncatedRepair, continuation] = runtime.invocationRequests.slice(1);
+    expect(continuation!.sessionId).toBe(truncatedRepair!.sessionId);
+    expect(
+      JSON.parse(new TextDecoder().decode(continuation!.canonicalRequestBytes)).continuationOf,
+    ).toBe(truncatedRepair!.invocationId);
+    expect(store.getOperation('operation-1')).toMatchObject({ repairAttempts: 1 });
+    expect(runtime.verifyCalls).toHaveLength(2);
+  });
+
+  test('does not continue an output-truncated Trial Plan invocation', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['trial_plan', 'passed'],
+      providerUnavailableOnce: true,
+      providerUnavailablePurpose: 'trial_plan',
+      providerFailureCode: 'model_output_length',
+      providerSubmissionUnknown: false,
+    });
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('provider_unavailable');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+    ]);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'provider_unavailable',
+      repairAttempts: 0,
+    });
+  });
+
   test('emits one Host failure event when native admission already terminalized the outbox', async () => {
     const { engine, store } = createHarness({
       providerUnavailableOnce: true,
