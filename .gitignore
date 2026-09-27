@@ -56,3 +56,4 @@ scripts/auto-git-sync.ps1
 apps/editor/tmp-shots
 .playwright-cli/
 output/playwright/
+apps/editor/PI_CHAT_AGENT_BACKEND_DESIGN.md
