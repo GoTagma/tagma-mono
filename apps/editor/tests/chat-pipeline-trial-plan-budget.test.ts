@@ -278,6 +278,63 @@ test('generated tool and Host preserve the same positive and negative prerequisi
   }
 });
 
+test('generated Trial Plan tool accepts the Host source-line preservation assertion', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-source-lines-tool-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    const yaml = 'pipeline:\n  name: Demo\n  tracks: []\n';
+    const source = '# Heading\n\nFirst line.\nSecond line.\n';
+    writeFileSync(yamlPath, yaml);
+    writeStageAttemptLimit(agentTagmaDir, 2);
+    const generatedTool = buildTagmaTrialPlanTool();
+    expect(generatedTool).toContain('type: tool.schema.literal("file-preserves-lines")');
+    const tool = await loadGeneratedTool(root);
+    const args = invalidPlanArgs(yamlPath);
+    args.coverage = acceptedRiskCoverage();
+    args.cases = [
+      {
+        ...(args.cases as Array<Record<string, unknown>>)[0],
+        fixtures: [{ path: 'inputs/draft.md', content: source }],
+        expectations: [
+          { type: 'task-status', taskId: 'main.run', status: 'success' },
+          {
+            type: 'file-preserves-lines',
+            path: 'artifacts/report.md',
+            sourcePath: 'inputs/draft.md',
+            text: source,
+          },
+        ],
+      },
+    ];
+    await submitTrialPlan(tool, args, { directory: agentTagmaDir }, 'source-lines-contract');
+    const result = readChatPipelineTrialPlan(
+      yamlPath,
+      'demo/demo.yaml',
+      createHash('sha1').update(yaml).digest('hex'),
+      2,
+    );
+    if (result.status !== 'ready') throw new Error(JSON.stringify(result));
+    expect(result.status).toBe('ready');
+    expect(result.plan.cases[0]?.expectations[1]).toEqual({
+      type: 'file-preserves-lines',
+      path: 'artifacts/report.md',
+      sourcePath: 'inputs/draft.md',
+      text: source,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('host rejects a directly written trial plan without an authenticated tool commit', () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-unprovenanced-plan-'));
   try {

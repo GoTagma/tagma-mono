@@ -569,7 +569,8 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
     };
   }
   if (type === 'file-preserves-lines') {
-    const text = asString(raw.text, `${label}.text`, MAX_TEXT_EXPECTATION_BYTES);
+    asString(raw.text, `${label}.text`, MAX_TEXT_EXPECTATION_BYTES);
+    const text = raw.text as string;
     if (new TextEncoder().encode(text).length > MAX_TEXT_EXPECTATION_BYTES) {
       throw new Error(`${label}.text exceeds ${MAX_TEXT_EXPECTATION_BYTES} bytes.`);
     }

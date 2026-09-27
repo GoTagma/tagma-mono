@@ -1788,7 +1788,11 @@
   consumed fault control for required timeout or unmatched-source cases, a bounded plan request
   carries `missing_controlled_fault_seam` artifact authority into automatic repair with the
   missing evidence in the repair prompt. A missing assertion alone keeps plan-only authority.
-  Trial Plan contract v11 and cache v38 invalidate older pass decisions.
+  Trial Plan contract v11 and cache v39 invalidate older pass decisions.
+- Keep the generated `tagma_trial_plan` expectation schema and validator aligned with the Host
+  parser and Trial runner. In particular, `file-preserves-lines` must be authorable through the
+  tool, bind the exact non-null source fixture, and retain trailing whitespace/newlines in its
+  source text; trimming changes the exact-byte fixture contract.
 - Trial planning must receive bounded frozen user intent, including accepted clarifications and
   attachment requirements. Audit explicit output, execution-mechanism, and launch-behavior promises
   separately: a passing Sandbox output does not prove the named tool performed the step, and a
