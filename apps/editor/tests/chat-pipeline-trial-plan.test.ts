@@ -103,6 +103,34 @@ test('Host rejects a committed plan that omits explicit recovery evidence', () =
       status: 'required',
       request: { reason: 'invalid', message: expect.stringContaining('timeout-recovery') },
     });
+    const config = {
+      name: 'Audit',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            { id: 'process', name: 'Process', command: 'echo data' },
+            { id: 'publish', name: 'Publish', command: 'echo report' },
+          ],
+        },
+      ],
+    } as PipelineConfig;
+    const repair = readChatPipelineTrialPlan(
+      stagedYamlPath,
+      'sample/sample.yaml',
+      'a'.repeat(40),
+      3,
+      config,
+      undefined,
+      createHash('sha256').update(bytes).digest('hex'),
+      undefined,
+      'If verification times out, continue to a report with unverified results.',
+    );
+    expect(repair).toMatchObject({
+      status: 'required',
+      request: { artifactRepair: 'missing_controlled_fault_seam' },
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

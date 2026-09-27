@@ -16,7 +16,10 @@ import {
   normalizeTrialPrerequisiteCases,
   type ChatPipelineTrialPrerequisiteControls,
 } from './chat-pipeline-trial-prerequisites.js';
-import { missingExplicitResilienceEvidence } from './chat-trial-intent-coverage.js';
+import {
+  missingControlledFaultSeam,
+  missingExplicitResilienceEvidence,
+} from './chat-trial-intent-coverage.js';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
   version: 11,
@@ -198,6 +201,8 @@ export interface ChatPipelineTrialPlanRequest {
   message: string;
   maxAttempts: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
+  /** Host-confirmed staged artifact lacks a control needed for executable edge-case evidence. */
+  artifactRepair?: 'missing_controlled_fault_seam';
   /** Host-observed cases that must be revised before repeating a failed Trial. */
   affectedCases?: Array<{
     caseId: string;
@@ -1328,16 +1333,20 @@ function planRequest(
   pipelineHash: string,
   message: string,
   maxAttempts: number,
+  artifactRepair?: ChatPipelineTrialPlanRequest['artifactRepair'],
 ): ChatPipelineTrialPlanReadResult {
   return {
     status: 'required',
-    request: buildChatPipelineTrialPlanRequest(
-      reason,
-      relativeYamlPath,
-      pipelineHash,
-      message,
-      maxAttempts,
-    ),
+    request: {
+      ...buildChatPipelineTrialPlanRequest(
+        reason,
+        relativeYamlPath,
+        pipelineHash,
+        message,
+        maxAttempts,
+      ),
+      ...(artifactRepair ? { artifactRepair } : {}),
+    },
   };
 }
 
@@ -1578,12 +1587,17 @@ export function readChatPipelineTrialPlan(
     if (intentText) {
       const missing = missingExplicitResilienceEvidence(intentText, plan, pipelineConfig);
       if (missing.length > 0) {
+        const artifactRepair =
+          pipelineConfig && missingControlledFaultSeam(missing, pipelineConfig)
+            ? 'missing_controlled_fault_seam'
+            : undefined;
         return planRequest(
           'invalid',
           relativeYamlPath,
           pipelineHash,
           `The committed Trial Plan has no executable evidence for required document behavior: ${missing.join(', ')}. Add controlled edge-case inputs and downstream content assertions; source-preservation needs a file-preserves-lines assertion bound to the exact multiline source fixture. An ordinary success case or coverage label is insufficient. If this cannot be exercised safely, retain the draft and report the limitation instead of publishing.`,
           maxAttempts,
+          artifactRepair,
         );
       }
     }

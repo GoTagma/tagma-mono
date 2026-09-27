@@ -3123,6 +3123,23 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
           warningCount,
         };
       }
+      if (
+        trial.planRequest.artifactRepair === 'missing_controlled_fault_seam' &&
+        trial.repairAuthorization === 'pipeline-change-allowed'
+      ) {
+        return {
+          ...verificationRepair(id, [diagnostic, 'missing_controlled_fault_seam'], {
+            planRequest: trial.planRequest,
+            stagedSnapshotHash: (await this.requireCurrentSnapshot(authority)).snapshotHash,
+          }),
+          feedback,
+          planHash,
+          caseCount,
+          passedCount,
+          failedCount,
+          warningCount,
+        };
+      }
       return {
         kind: 'trial_plan_required' as const,
         trialId: id,

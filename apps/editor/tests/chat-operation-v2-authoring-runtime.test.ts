@@ -2369,6 +2369,47 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(verification).not.toHaveProperty('evidenceHash');
   });
 
+  test('routes Host-confirmed missing fault seam to artifact repair with plan feedback', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      cases: [],
+      plannedCaseCount: 0,
+      summary: 'A controlled timeout case cannot run because the staged task has no fault control.',
+      repairAuthorization: 'pipeline-change-allowed',
+      planRequest: {
+        reason: 'invalid',
+        relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'Add a controlled timeout seam to the staged pipeline.',
+        maxAttempts: 2,
+        requiredCoverage: ['representative-input'],
+        attemptId: 'trial-plan-attempt-1',
+        artifactRepair: 'missing_controlled_fault_seam',
+      },
+    } as unknown as ChatPipelineTrialRunResult;
+
+    const verification = await value.runtime.verifyStage({
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    });
+
+    expect(verification).toMatchObject({
+      kind: 'repair_required',
+      diagnosticCodes: expect.arrayContaining(['missing_controlled_fault_seam']),
+      feedback: { stage: 'trial_plan' },
+    });
+    expect(verification).toHaveProperty('evidenceHash');
+  });
+
   test('publishes compile-valid diagnostic-only Trial failures as unverified without granting repair authority', async () => {
     const value = await readyRuntime();
     value.staging.trialResult = {

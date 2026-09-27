@@ -276,3 +276,19 @@ export function missingExplicitResilienceEvidence(
       }),
   );
 }
+
+/** A controlled edge case cannot be authored until the staged closure consumes a fault control. */
+export function missingControlledFaultSeam(
+  missing: readonly ExplicitResilienceObligation[],
+  pipelineConfig: PipelineConfig,
+): boolean {
+  if (!missing.includes('timeout-recovery') && !missing.includes('unlocated-source')) return false;
+  const taskSources = pipelineConfig.tracks.flatMap((track) =>
+    track.tasks.map((task) => `${task.command ?? ''}\n${task.prompt ?? ''}`),
+  );
+  return !taskSources.some((source) =>
+    /\b(?:TAGMA_TEST_[A-Z0-9_]+|[A-Z][A-Z0-9_]*(?:FAULT|FAIL|TIMEOUT|UNLOCATED|MOCK|SIMULATE)[A-Z0-9_]*)\b/u.test(
+      source,
+    ),
+  );
+}

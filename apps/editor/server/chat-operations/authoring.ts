@@ -1101,6 +1101,7 @@ function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanReque
     'requiredSandboxInputs',
     'unavailableBaselineInputs',
     'affectedCases',
+    'artifactRepair',
   ]);
   const requiredKeys = [
     'reason',
@@ -1176,6 +1177,15 @@ function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanReque
     throw new ChatOperationV2AuthoringProtocolError(
       'invalid_runtime_result',
       'Trial Plan attempt id is invalid.',
+    );
+  }
+  if (
+    value.artifactRepair !== undefined &&
+    value.artifactRepair !== 'missing_controlled_fault_seam'
+  ) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Trial Plan artifact repair authority is invalid.',
     );
   }
   for (const key of ['requiredSandboxInputs', 'unavailableBaselineInputs'] as const) {

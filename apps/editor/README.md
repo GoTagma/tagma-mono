@@ -179,6 +179,10 @@ without separate fallback wording. The `file-preserves-lines` assertion binds ex
 bytes and verifies that each nonempty source line appears in the report in its original order, so
 a few matching markers cannot stand in for source preservation.
 These checks do not claim that every possible natural-language requirement is mechanically provable.
+If the staged pipeline has no controlled fault input that the required timeout or unmatched-source
+case can exercise, the Host treats that structural testability gap as a repairable pipeline artifact
+defect and passes the missing evidence into automatic repair. Plan-only assertion gaps remain within
+the bounded Trial Plan correction path.
 
 Desktop Chat routes pipeline work in two phases. A tool-free text invocation first returns one small
 JSON decision: discussion, read-only diagnosis, create, edit of one Host-issued pipeline candidate,

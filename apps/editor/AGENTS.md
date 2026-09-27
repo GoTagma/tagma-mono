@@ -1784,8 +1784,11 @@
   verification, and original-draft annotation also requires timeout, zero-claim, unmatched-source,
   and original-line preservation evidence without an explicit fallback sentence. The
   `file-preserves-lines` assertion binds exact fixture bytes and checks all nonempty source lines
-  in their original order in the output. Trial Plan contract v11 and cache v37 invalidate older
-  pass decisions.
+  in their original order in the output. If the Host proves that the staged pipeline has no
+  consumed fault control for required timeout or unmatched-source cases, a bounded plan request
+  carries `missing_controlled_fault_seam` artifact authority into automatic repair with the
+  missing evidence in the repair prompt. A missing assertion alone keeps plan-only authority.
+  Trial Plan contract v11 and cache v38 invalidate older pass decisions.
 - Trial planning must receive bounded frozen user intent, including accepted clarifications and
   attachment requirements. Audit explicit output, execution-mechanism, and launch-behavior promises
   separately: a passing Sandbox output does not prove the named tool performed the step, and a

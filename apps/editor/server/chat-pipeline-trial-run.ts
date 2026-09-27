@@ -1071,7 +1071,10 @@ function resultForPlanRequest(
     taskStatusCounts: {},
     omittedTaskStatusCounts: {},
     tasks: [],
-    repairAuthorization: 'diagnostic-only',
+    repairAuthorization:
+      request.artifactRepair === 'missing_controlled_fault_seam'
+        ? 'pipeline-change-allowed'
+        : 'diagnostic-only',
     ...(prerequisiteState ? { prerequisiteState } : {}),
     planTelemetry,
     planRequest: {

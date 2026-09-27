@@ -2,7 +2,10 @@ import { expect, test } from 'bun:test';
 import type { PipelineConfig } from '@tagma/sdk';
 
 import type { ChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
-import { missingExplicitResilienceEvidence } from '../server/chat-trial-intent-coverage';
+import {
+  missingControlledFaultSeam,
+  missingExplicitResilienceEvidence,
+} from '../server/chat-trial-intent-coverage';
 
 function plan(cases: ChatPipelineTrialPlan['cases']): ChatPipelineTrialPlan {
   return {
@@ -282,4 +285,28 @@ test('a named fault switch is insufficient when the targeted task closure never 
       ),
     ),
   ).toEqual([]);
+});
+
+test('Host distinguishes missing staged fault control from a plan-only coverage gap', () => {
+  const config = (command: string) =>
+    ({
+      name: 'Audit',
+      tracks: [
+        {
+          id: 'audit',
+          name: 'Audit',
+          tasks: [{ id: 'report', name: 'Report', command }],
+        },
+      ],
+    }) as PipelineConfig;
+  expect(missingControlledFaultSeam(['timeout-recovery'], config('echo report > report.md'))).toBe(
+    true,
+  );
+  expect(
+    missingControlledFaultSeam(
+      ['timeout-recovery'],
+      config('if [ "$AUDIT_TEST_FAULT" = timeout ]; then echo UNVERIFIED; fi'),
+    ),
+  ).toBe(false);
+  expect(missingControlledFaultSeam(['source-preservation'], config('echo report'))).toBe(false);
 });
