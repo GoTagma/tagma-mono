@@ -25,6 +25,7 @@ for (const scenario of [
   'corrected-path',
   'correct-negative',
   'task-failure',
+  'artifact-warning',
 ] as const) {
   test(`Trial repair boundary: ${scenario}`, async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-plan-repair-boundary-'));
@@ -54,7 +55,9 @@ for (const scenario of [
       ? 'import {readFileSync} from "node:fs"; const input=JSON.parse(readFileSync(".tagma/report/input.json","utf8")); process.exit(input.currency === "USD" ? 1 : 0);'
       : scenario === 'task-failure'
         ? 'process.exit(7);'
-        : 'import {mkdirSync,writeFileSync} from "node:fs"; mkdirSync("结果 目录",{recursive:true}); writeFileSync("结果 目录/校验.json",JSON.stringify(["ok"]));';
+        : scenario === 'artifact-warning'
+          ? 'process.stdout.write("ok");'
+          : 'import {mkdirSync,writeFileSync} from "node:fs"; mkdirSync("结果 目录",{recursive:true}); writeFileSync("结果 目录/校验.json",JSON.stringify(["ok"]));';
     writeFileSync(join(dirname(sourcePath), 'business.ts'), script);
     if (negative) writeFileSync(join(dirname(sourcePath), 'input.json'), '{"currency":"CNY"}');
     writeFileSync(
@@ -87,7 +90,17 @@ for (const scenario of [
             caseIds: dimension.startsWith('repeat-run') && !negative ? ['check'] : [],
             rationale: 'One deterministic output.',
           })),
-          findings: [],
+          findings:
+            scenario === 'artifact-warning'
+              ? [
+                  {
+                    severity: 'warning',
+                    repairScope: 'pipeline-artifact',
+                    summary: 'The promised report is not written',
+                    evidence: 'The command emits only stdout and never writes the report file.',
+                  },
+                ]
+              : [],
           cases: [
             {
               id: 'check',
@@ -124,9 +137,13 @@ for (const scenario of [
         relativePath: entry.relativePath,
         trialId: scenario,
       });
-      expect(result.ran).toBe(true);
+      expect(result.ran).toBe(scenario !== 'artifact-warning');
       expect(result.success).toBe(succeeds);
-      if (succeeds) {
+      if (scenario === 'artifact-warning') {
+        expect(result.kind).toBe('plan-failed');
+        expect(result.repairAuthorization).toBe('pipeline-change-allowed');
+        expect(result.summary).toContain('The promised report is not written');
+      } else if (succeeds) {
         expect(result.repairAuthorization).not.toBe('pipeline-change-allowed');
         expect(['passed', 'passed-with-warnings']).toContain(result.kind);
         if (!negative)

@@ -63,6 +63,36 @@ test('blocking findings still block the plan and carry their repair scope', () =
   ]);
 });
 
+test('repairable pipeline findings cannot pass as warnings', () => {
+  const findingPlan = plan({
+    findings: [
+      {
+        severity: 'warning',
+        repairScope: 'pipeline-artifact',
+        summary: 'The authored input never receives a caller value',
+        evidence: 'Its binding contains only a fixed literal.',
+      },
+      {
+        severity: 'warning',
+        repairScope: 'diagnostic-only',
+        summary: 'Concurrent runs are outside Trial coverage',
+        evidence: 'The harness runs cases serially.',
+      },
+    ],
+  });
+
+  expect(planBlockingDiagnostics(findingPlan)).toEqual([
+    {
+      message:
+        'The authored input never receives a caller value: Its binding contains only a fixed literal.',
+      scope: 'pipeline-artifact',
+    },
+  ]);
+  expect(planWarningDiagnostics(findingPlan)).toEqual([
+    'Plan warning Concurrent runs are outside Trial coverage: The harness runs cases serially.',
+  ]);
+});
+
 test('blocked coverage surfaces as a non-fatal warning', () => {
   const warnings = planWarningDiagnostics(
     plan({

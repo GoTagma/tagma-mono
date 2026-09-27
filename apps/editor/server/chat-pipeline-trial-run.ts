@@ -1148,15 +1148,15 @@ export interface TrialPlanBlockingDiagnostic {
 }
 
 /**
- * Only genuine pipeline findings block the plan. Blocked coverage is an
- * observation limit (the harness cannot observe a required dimension), not a
- * defect: it must never fail the plan, only surface as a non-fatal warning.
+ * A pipeline-artifact finding identifies a repairable defect even when the
+ * planner mistakenly labels it a warning. Blocked coverage is an observation
+ * limit, not a defect, and remains non-fatal.
  */
 export function planBlockingDiagnostics(
   plan: ChatPipelineTrialPlan,
 ): TrialPlanBlockingDiagnostic[] {
   return plan.findings
-    .filter((item) => item.severity === 'blocking')
+    .filter((item) => item.severity === 'blocking' || item.repairScope === 'pipeline-artifact')
     .map((item) => ({
       message: `${item.summary}: ${item.evidence}`,
       scope: item.repairScope,
@@ -1172,7 +1172,7 @@ export function planWarningDiagnostics(plan: ChatPipelineTrialPlan): string[] {
       .filter((item) => item.status === 'accepted-risk')
       .map((item) => `Accepted risk ${item.dimension}: ${item.rationale}`),
     ...plan.findings
-      .filter((item) => item.severity === 'warning')
+      .filter((item) => item.severity === 'warning' && item.repairScope === 'diagnostic-only')
       .map((item) => `Plan warning ${item.summary}: ${item.evidence}`),
   ].map((message) => boundedTrialText(message));
 }

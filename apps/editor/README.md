@@ -158,8 +158,10 @@ rejection that matches those assertions passes its test. No negative probe runs 
 baseline passes, and no override carries into ordinary Run behavior.
 
 The Host repeats test, authorized repair, and verification using **Maximum pipeline repair attempts**
-from Editor Settings. Actual logic failures require another test after repair. Components that need
-unavailable real environment values are warnings when Sandbox coverage passes; they are reported as
+from Editor Settings. A Trial Plan finding that identifies a repairable pipeline artifact defect
+blocks publication and enters that repair loop even if the planner labels it a warning. Coverage
+limits without an artifact defect remain warnings. Actual logic failures require another test after
+repair. Components that need unavailable real environment values are warnings when Sandbox coverage passes; they are reported as
 a coverage limitation and never as a claimed real-environment pass. An enabled Sandbox that remains
 untested or failing cannot complete as a published Chat result. Trial Plan corrections retain their
 separate bounded planning budget.
