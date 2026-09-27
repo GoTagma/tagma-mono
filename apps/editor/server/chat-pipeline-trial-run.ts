@@ -322,6 +322,8 @@ export interface ChatPipelineTrialRunInput {
   trustedOperationV2?: boolean;
   /** Failed-case authority from the immediately preceding Host plan review. */
   affectedCases?: ChatPipelineTrialPlanRequest['affectedCases'];
+  /** Frozen, Host-authenticated user intent for independent coverage review. */
+  intentText?: string;
 }
 
 export type ChatPipelineTrialProgressPhase =
@@ -1573,6 +1575,7 @@ export function evaluateTrialExpectation(
     expectation.type === 'file-contains' ||
     expectation.type === 'file-not-contains' ||
     expectation.type === 'file-equals' ||
+    expectation.type === 'file-preserves-lines' ||
     expectation.type === 'json-valid' ||
     expectation.type === 'json-pointer-equals'
   ) {
@@ -1649,6 +1652,25 @@ export function evaluateTrialExpectation(
           (content === expectation.text
             ? ' exactly matches the expected text.'
             : ' does not exactly match the expected text.'),
+        repairScope: 'pipeline-artifact',
+      };
+    }
+    if (expectation.type === 'file-preserves-lines') {
+      const lines = expectation.text.split(/\r?\n/u).filter((line) => line.trim().length > 0);
+      let offset = 0;
+      let preserved = true;
+      for (const line of lines) {
+        const at = content.indexOf(line, offset);
+        if (at < 0) {
+          preserved = false;
+          break;
+        }
+        offset = at + line.length;
+      }
+      return {
+        type: expectation.type,
+        passed: preserved,
+        detail: `${expectation.path} ${preserved ? 'preserves' : 'does not preserve'} all ${lines.length} nonempty source lines in order.`,
         repairScope: 'pipeline-artifact',
       };
     }
@@ -3989,6 +4011,7 @@ export async function trialRunChatYamlStage(
       ws.workDir,
       planTelemetry.committedPlanHash,
       input.trustedOperationV2 === true ? input.affectedCases : undefined,
+      input.trustedOperationV2 === true ? input.intentText : undefined,
     );
     if (planRead.status === 'required') {
       if (input.trustedOperationV2 === true && input.affectedCases?.length) {

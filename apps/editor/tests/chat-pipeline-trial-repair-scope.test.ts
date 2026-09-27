@@ -70,6 +70,35 @@ test('JSON Pointer array properties are plan errors, while object length remains
   }
 });
 
+test('source-preservation assertion checks every original line in order', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-source-lines-'));
+  try {
+    const original = '# Brief\nFirst factual paragraph.\nSecond factual paragraph.\n';
+    const expectation = {
+      type: 'file-preserves-lines' as const,
+      path: 'report.md',
+      sourcePath: 'input.md',
+      text: original,
+    };
+    writeFileSync(
+      join(root, 'report.md'),
+      '# Brief\nFirst factual paragraph.\n> [C1] checked\nSecond factual paragraph.\n',
+    );
+    expect(evaluateTrialExpectation(root, 'sample/sample.yaml', expectation, null).passed).toBe(
+      true,
+    );
+    writeFileSync(
+      join(root, 'report.md'),
+      'Second factual paragraph.\n# Brief\nFirst factual paragraph.\n',
+    );
+    expect(evaluateTrialExpectation(root, 'sample/sample.yaml', expectation, null).passed).toBe(
+      false,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('plan review preserves genuine task failures and passing negative cases', () => {
   const failed = {
     success: false,

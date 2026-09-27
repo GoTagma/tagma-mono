@@ -166,6 +166,20 @@ a coverage limitation and never as a claimed real-environment pass. An enabled S
 untested or failing cannot complete as a published Chat result. Trial Plan corrections retain their
 separate bounded planning budget.
 
+For explicit promises to continue producing a result after a timeout, external failure, an empty
+set of claims, or an unmatched source passage, the Host checks the committed Trial Plan independently
+of its coverage labels. A normal success case cannot prove these branches. Timeout, failure, and unmatched-source cases need
+a controlled input used by their target closure, a downstream success/content assertion, and a
+comparable normal case showing that the fallback marker is absent. An empty-claims case needs a
+nonempty input, an exact empty JSON result, and the final report's no-claims note. If executable
+evidence is missing, the Host requests a bounded plan correction and retains the draft when that
+budget is exhausted. When a request combines claim extraction, web verification, and annotation
+of an original draft, the Host also requires those timeout, zero-claim, and unmatched-source cases
+without separate fallback wording. The `file-preserves-lines` assertion binds exact source fixture
+bytes and verifies that each nonempty source line appears in the report in its original order, so
+a few matching markers cannot stand in for source preservation.
+These checks do not claim that every possible natural-language requirement is mechanically provable.
+
 Desktop Chat routes pipeline work in two phases. A tool-free text invocation first returns one small
 JSON decision: discussion, read-only diagnosis, create, edit of one Host-issued pipeline candidate,
 or clarification. The Host strictly parses that text and accepts only its fixed fields and candidate

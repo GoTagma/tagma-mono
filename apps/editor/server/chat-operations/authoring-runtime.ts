@@ -648,6 +648,7 @@ export interface ManagedChatOperationV2AuthoringStagingAdapter {
     readonly trialId: string;
     readonly signal: AbortSignal;
     readonly affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
+    readonly intentText?: string;
     readonly onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult>;
 }
@@ -995,6 +996,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     trialId: string;
     signal: AbortSignal;
     affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
+    intentText?: string;
     onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult> {
     const abort = () =>
@@ -1033,6 +1035,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
         trialId: input.trialId,
         trustedOperationV2: true,
         ...(input.affectedCases ? { affectedCases: input.affectedCases } : {}),
+        ...(input.intentText ? { intentText: input.intentText } : {}),
       });
     } finally {
       emitProgress();
@@ -3039,6 +3042,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         trialId: id,
         signal: input.signal,
         ...(planReviewAffectedCases ? { affectedCases: planReviewAffectedCases } : {}),
+        ...(input.intentText ? { intentText: input.intentText } : {}),
         onProgress: (progress) =>
           input.onTrialProgress?.({
             stageId: progress.stageId,

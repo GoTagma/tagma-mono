@@ -17,6 +17,31 @@ import {
   validateChatPipelineTrialPlanTargetPaths,
 } from '../server/chat-pipeline-trial-plan';
 
+test('ordered source assertion must bind the exact non-null source fixture', () => {
+  const source = '# Brief\nFirst paragraph.\nSecond paragraph.';
+  const base = prerequisitePlan();
+  const input = {
+    ...base,
+    cases: [
+      {
+        ...base.cases[0],
+        fixtures: [{ path: 'input.md', content: source }],
+        expectations: [
+          { type: 'task-status', taskId: 'main.finish', status: 'success' },
+          { type: 'file-preserves-lines', path: 'report.md', sourcePath: 'input.md', text: source },
+        ],
+      },
+    ],
+  };
+  expect(parseChatPipelineTrialPlan(input).cases[0]?.expectations[1]).toMatchObject({
+    type: 'file-preserves-lines',
+    text: source,
+  });
+  const changed = structuredClone(input);
+  changed.cases[0]!.expectations[1]!.text = 'different source';
+  expect(() => parseChatPipelineTrialPlan(changed)).toThrow('non-null source fixture');
+});
+
 test('plan review identifies failed case and explicit missing-file fixture', () => {
   const plan = parseChatPipelineTrialPlan({
     ...prerequisitePlan(),
@@ -54,6 +79,33 @@ test('plan review identifies failed case and explicit missing-file fixture', () 
       originalCaseHash: chatPipelineTrialCaseExecutionHash(plan.cases[1]!),
     },
   ]);
+});
+
+test('Host rejects a committed plan that omits explicit recovery evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-intent-coverage-'));
+  try {
+    const stagedYamlPath = join(root, 'sample.yaml');
+    const candidate = completePlan();
+    const bytes = JSON.stringify(candidate);
+    writeFileSync(pipelineTrialPlanPath(stagedYamlPath), bytes, 'utf8');
+    const read = readChatPipelineTrialPlan(
+      stagedYamlPath,
+      'sample/sample.yaml',
+      'a'.repeat(40),
+      3,
+      undefined,
+      undefined,
+      createHash('sha256').update(bytes).digest('hex'),
+      undefined,
+      'If verification times out, continue to a report with unverified results.',
+    );
+    expect(read).toMatchObject({
+      status: 'required',
+      request: { reason: 'invalid', message: expect.stringContaining('timeout-recovery') },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('host reader rejects a committed plan that leaves the failed case unchanged', () => {
@@ -177,7 +229,7 @@ test('fixture setup rejection gives the planner the exact negative case and null
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 10,
+    version: 11,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],

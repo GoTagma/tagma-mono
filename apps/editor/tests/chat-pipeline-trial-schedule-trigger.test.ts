@@ -90,7 +90,7 @@ function createScheduleFixture() {
   writeFileSync(
     entry.stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify({
-      version: 10,
+      version: 11,
       yamlHash: createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex'),
       summary: 'Verify the schedule-gated task executes under the virtualized Sandbox clock.',
       goals: ['Run the gated task once and produce the report artifact.'],

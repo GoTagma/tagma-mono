@@ -1774,6 +1774,18 @@
 
 ## Chat Trial Plan Semantics
 
+- Host review of explicit timeout/external-failure recovery, empty-claims, and unmatched-source promises uses the
+  frozen request, requirements-labelled attachments, and executable case evidence, not planner coverage labels. Do
+  not treat arbitrary attached source documents as requirements. Require a controlled
+  fault consumed by the targeted closure plus a differential output assertion for recoveries, or
+  a nonempty input/exact empty JSON result/final note for zero claims. Missing evidence is a
+  bounded Trial Plan correction and retains the draft on exhaustion; do not grant pipeline-write
+  authority from an untested promise. A document fact-checker with claim extraction, web
+  verification, and original-draft annotation also requires timeout, zero-claim, unmatched-source,
+  and original-line preservation evidence without an explicit fallback sentence. The
+  `file-preserves-lines` assertion binds exact fixture bytes and checks all nonempty source lines
+  in their original order in the output. Trial Plan contract v11 and cache v37 invalidate older
+  pass decisions.
 - Trial planning must receive bounded frozen user intent, including accepted clarifications and
   attachment requirements. Audit explicit output, execution-mechanism, and launch-behavior promises
   separately: a passing Sandbox output does not prove the named tool performed the step, and a

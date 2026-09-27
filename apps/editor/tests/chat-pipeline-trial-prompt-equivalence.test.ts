@@ -111,7 +111,7 @@ test('Sandbox Trial sends prompt tasks the same business prompt as production', 
   writeFileSync(
     entry.stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify({
-      version: 10,
+      version: 11,
       yamlHash,
       summary: 'Verify the fixed prompt without modifying it.',
       goals: ['Keep the production prompt byte-equivalent in Sandbox Trial.'],

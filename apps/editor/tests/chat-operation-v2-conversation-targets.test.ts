@@ -663,7 +663,7 @@ test('one conversation adds CSV and publishes after real repeated Sandbox verifi
       writeFileSync(
         path.replace(/\.yaml$/, '.trial-plan.json'),
         JSON.stringify({
-          version: 10,
+          version: 11,
           yamlHash: createHash('sha1').update(readFileSync(path)).digest('hex'),
           summary: 'Verify integer amounts and CSV escaping.',
           goals: ['Keep JSON and add CSV.'],

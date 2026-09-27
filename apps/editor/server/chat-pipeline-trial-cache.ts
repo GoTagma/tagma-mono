@@ -1,4 +1,4 @@
 /** Signed staged-trial cache protocol shared by execution and finalization. */
-// v35: repair-scoped pipeline findings block publication even when the planner
-// labels them as warnings; older passed-with-warnings results must be rerun.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 35 as const;
+// v37: ordered source-line assertions and inferred fact-checker boundaries
+// invalidate earlier acceptance decisions.
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 37 as const;

@@ -19,6 +19,7 @@ import {
   type ChatOperationV2TargetCoordinate,
 } from './binding.js';
 import type { ChatOperationV2ClarificationThread } from './clarification.js';
+import { buildChatOperationV2ClarifiedRequestText } from './clarification.js';
 import {
   ChatCommitTargetChangedBeforePrepareError,
   deriveChatCommitCoordinateId,
@@ -679,6 +680,7 @@ export interface ChatOperationV2AuthoringRuntime {
     /** Present only for an explicit retry of an unchanged retained draft. */
     readonly verificationAttemptVersion?: number;
     readonly planReviewAffectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
+    readonly intentText?: string;
     readonly signal: AbortSignal;
     readonly onTrialProgress?: (progress: ChatOperationV2TrialProgressUpdate) => void;
   }): Promise<ChatOperationV2AuthoringVerificationResult>;
@@ -2634,6 +2636,11 @@ export class ChatOperationV2AuthoringEngine {
     });
     let verification: ChatOperationV2AuthoringVerificationResult;
     try {
+      const admission = this.persistence.getOperationAdmission(context.operationId);
+      if (!admission) return this.retainDraft(context, 'intent_evidence_unavailable');
+      const clarificationThread = this.persistence.getOperationClarificationThread(
+        context.operationId,
+      );
       verification = validateVerification(
         await this.runtime.verifyStage({
           operationId: context.operationId,
@@ -2647,6 +2654,16 @@ export class ChatOperationV2AuthoringEngine {
           ...(context.pendingTrialPlanRequest?.affectedCases
             ? { planReviewAffectedCases: context.pendingTrialPlanRequest.affectedCases }
             : {}),
+          intentText:
+            buildChatOperationV2ClarifiedRequestText(admission.request.text, clarificationThread) +
+            admission.request.attachments
+              .filter((item) =>
+                /requirements?|spec(?:ification)?|acceptance|instructions?|brief|需求|规格|验收|说明/iu.test(
+                  item.label,
+                ),
+              )
+              .map((item) => `\n${item.content}`)
+              .join(''),
           signal: controller.signal,
           onTrialProgress: (progress) =>
             this.appendEvent(context.operationId, 'trial_progressed', {

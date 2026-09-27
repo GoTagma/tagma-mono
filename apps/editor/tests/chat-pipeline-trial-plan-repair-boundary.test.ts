@@ -80,7 +80,7 @@ for (const scenario of [
       writeFileSync(
         entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'),
         JSON.stringify({
-          version: 10,
+          version: 11,
           yamlHash: createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex'),
           summary: 'Check the business output and rejection boundary.',
           goals: ['Verify the existing business contract.'],
