@@ -83,6 +83,7 @@ import {
   safePrepareTrialHostWitnessInputs,
 } from './chat-pipeline-trial-witness.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from './python-agent.js';
+import { runtimeWithVirtualTime } from './chat-pipeline-trial-virtual-time.js';
 import { runPreflight } from './preflight-requirements.js';
 import { assertSafePluginName } from './plugin-safety.js';
 import {
@@ -254,8 +255,8 @@ export interface ChatPipelineTrialExecutionCoverage {
     prerequisiteProbe?: ChatPipelineTrialCaseResult['prerequisiteProbe'];
     automaticTriggerSatisfactions: Array<{
       taskId: string;
-      type: 'manual' | 'file' | 'directory';
-      mechanism: 'run-scoped-grant' | 'isolated-case-input';
+      type: 'manual' | 'file' | 'directory' | 'schedule';
+      mechanism: 'run-scoped-grant' | 'isolated-case-input' | 'virtualized-clock';
     }>;
   }>;
 }
@@ -1240,6 +1241,12 @@ function buildTrialExecutionCoverage(input: {
           taskId,
           type,
           mechanism: 'isolated-case-input',
+        });
+      } else if (type === 'schedule') {
+        automaticTriggerSatisfactions.push({
+          taskId,
+          type,
+          mechanism: 'virtualized-clock',
         });
       }
     }
@@ -2498,11 +2505,13 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
   const tagma = createTagma({
     registry: input.ws.registry,
     builtins: false,
-    runtime: runtimeWithInjectedEnv(
-      { ...input.pythonRunEnv, ...globalSecretEnv, ...trialEnv },
-      input.secretValues,
-      tagmaDirOf(input.ws.workDir),
-      { mode: input.runtimeMode },
+    runtime: runtimeWithVirtualTime(
+      runtimeWithInjectedEnv(
+        { ...input.pythonRunEnv, ...globalSecretEnv, ...trialEnv },
+        input.secretValues,
+        tagmaDirOf(input.ws.workDir),
+        { mode: input.runtimeMode },
+      ),
     ),
   });
   if (input.manualApprovalScopesByRunId.has(input.runId)) {

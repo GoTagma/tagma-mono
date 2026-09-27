@@ -380,6 +380,29 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 | `path`    | `string`      | Yes      | -       | Directory path to watch (relative to workDir)    |
 | `timeout` | `string`      | No       | -       | How long to wait for the directory to be created |
 
+#### `schedule` - Cron schedule gate
+
+| Field     | Type         | Required | Default | Description                                                                         |
+| --------- | ------------ | -------- | ------- | ----------------------------------------------------------------------------------- |
+| `type`    | `"schedule"` | Yes      | -       | Trigger type                                                                        |
+| `cron`    | `string`     | Yes      | -       | 5-field cron expression (minute hour day-of-month month day-of-week)                |
+| `timeout` | `string`     | No       | -       | Maximum wait for the next tick before the task times out (omit or `0` = indefinite) |
+
+The wait runs against the **host's local clock**. Supported cron syntax: `*`, lists (`,`), ranges (`-`), steps (`/`, including `*/n` and `a-b/n`), and case-insensitive month (`JAN`-`DEC`) / weekday (`SUN`-`SAT`) names; `0` and `7` both mean Sunday. There are no seconds, macros (`@daily`), or `L`/`W`/`#`/`?` extensions. When both day-of-month and day-of-week are restricted, a day matches when either matches (Vixie cron rule). An expression with no fire time within 5 years (e.g. February 31st) is a configuration error.
+
+Semantics to plan around:
+
+- A trigger gates task start inside one run; it never launches runs by itself. A manual Run starts the pipeline immediately and the gated task waits for the next matching tick, so on-demand execution keeps working.
+- The trigger wait counts against the task `timeout` (and the pipeline `timeout`). Author an explicit task timeout sized beyond the longest gap between ticks — e.g. `timeout: "4d"` covers a Friday-to-Monday wait for `0 8 * * 1-5` — or the host's default task timeout ends the wait early.
+- Each run fires the gate at most once. For recurring execution, compose with a workflow `lifecycle: { max_runs: ... }` repeat so every attempt waits for the next tick.
+- A waiting run is in-memory: it does not survive an editor/host restart, and ticks missed while nothing is running are not replayed.
+
+```yaml
+trigger:
+  type: schedule
+  cron: '0 8 * * 1-5' # weekdays at 08:00 local
+```
+
 ---
 
 ### Built-in Completions
@@ -507,7 +530,7 @@ These ship in `@tagma/runtime-bun`, not `@tagma/sdk` - when you `bun add @tagma/
 
 ### `bootstrapBuiltins(registry)`
 
-Registers all built-in plugins (opencode driver, file/directory/manual triggers, completion checks, static-context middleware).
+Registers all built-in plugins (opencode driver, file/directory/manual/schedule triggers, completion checks, static-context middleware).
 
 ### `loadPipeline(yaml: string, workDir: string): Promise<PipelineConfig>`
 
@@ -631,7 +654,7 @@ Properties:
 
 Typed error classes for trigger plugin error classification. The engine uses `instanceof` checks on these to set the correct task status (`blocked` or `timeout`) instead of matching on error message substrings.
 
-Built-in triggers (`manual`, `file`, `directory`) throw these automatically. Trigger plugins should throw `TriggerBlockedError` for user/policy rejections and `TriggerTimeoutError` for genuine wait timeouts.
+Built-in triggers (`manual`, `file`, `directory`, `schedule`) throw these automatically. Trigger plugins should throw `TriggerBlockedError` for user/policy rejections and `TriggerTimeoutError` for genuine wait timeouts.
 
 ```ts
 import { TriggerBlockedError, TriggerTimeoutError } from '@tagma/sdk';

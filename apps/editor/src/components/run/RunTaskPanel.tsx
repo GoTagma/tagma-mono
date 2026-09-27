@@ -231,6 +231,10 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
     taskConfig?.trigger && typeof taskConfig.trigger.path === 'string'
       ? taskConfig.trigger.path
       : null;
+  const triggerCron =
+    taskConfig?.trigger && typeof taskConfig.trigger.cron === 'string'
+      ? taskConfig.trigger.cron
+      : null;
   const triggerTimeout =
     taskConfig?.trigger && typeof taskConfig.trigger.timeout === 'string'
       ? taskConfig.trigger.timeout
@@ -361,6 +365,11 @@ export function RunTaskPanel({ task, config, hostPlatform = null, onClose }: Run
                       {taskConfig?.trigger?.type === task.waitReason.triggerType && triggerPath && (
                         <div className="font-mono whitespace-normal [overflow-wrap:anywhere]">
                           {`Watching ${triggerPath} — ${triggerPathContext}`}
+                        </div>
+                      )}
+                      {taskConfig?.trigger?.type === task.waitReason.triggerType && triggerCron && (
+                        <div className="font-mono whitespace-normal [overflow-wrap:anywhere]">
+                          {`Cron ${triggerCron} — host local time`}
                         </div>
                       )}
                       <div className="space-y-0.5 font-mono">

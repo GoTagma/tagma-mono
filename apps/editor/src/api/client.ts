@@ -408,8 +408,8 @@ export interface ChatPipelineTrialExecutionCoverage {
     executed: boolean;
     automaticTriggerSatisfactions: Array<{
       taskId: string;
-      type: 'manual' | 'file' | 'directory';
-      mechanism: 'run-scoped-grant' | 'isolated-case-input';
+      type: 'manual' | 'file' | 'directory' | 'schedule';
+      mechanism: 'run-scoped-grant' | 'isolated-case-input' | 'virtualized-clock';
     }>;
   }>;
 }

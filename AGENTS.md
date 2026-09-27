@@ -286,6 +286,28 @@ Do not amend the same commit to include these files after naming them with the c
 - Build the attachment once and use that same nullable result for both button eligibility and the
   submitted prompt so renderer and formatter cannot disagree about task failure semantics.
 
+## Schedule Trigger
+
+- The built-in `schedule` trigger lives in `@tagma/sdk` (`src/triggers/schedule.ts`, registered by
+  `bootstrapBuiltins()`), not in a plugin package: time is a primitive like `manual`/`file`/`directory`,
+  and built-in registration keeps fresh installs and chat authoring unblocked. Its cron parsing is
+  hand-rolled and dependency-free (`src/cron.ts`): exactly five fields, host local time, Vixie
+  day-of-month/day-of-week OR semantics, and a 5-year horizon that rejects never-firing expressions.
+- A trigger is a run-scoped gate, never a run launcher. Each run fires the gate at most once; the
+  wait must perceive time only through `TriggerContext.runtime.now()`/`sleep()` (segmented at the
+  ~24.8-day timer cap) so Sandbox Trial can virtualize the clock host-side. The wait counts against
+  the task `timeout`, so authoring guidance pairs schedule gates with explicit timeouts instead of
+  changing engine timeout semantics.
+- `TaskWaitReason` for a schedule wait carries only `triggerType: 'schedule'`; the cron expression
+  and next-fire time never cross the wire (the run panel reads the expression from task config).
+
+## Bun Test Rejection Timing
+
+- In `bun:test`, arming `expect(promise).rejects` BEFORE the promise rejects synchronously inside an
+  `AbortSignal` event listener dispatch hangs the test runner (the per-test timeout never fires).
+  Track the rejection via `.then/.catch` and assert on the captured error, or arm `.rejects` only
+  after the abort/dispose call. Microtask and timer-driven rejections are unaffected.
+
 ## Desktop Release Version Direction
 
 - Every Tagma hot-update entry point must require the manifest release version to be strictly

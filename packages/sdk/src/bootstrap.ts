@@ -12,6 +12,7 @@ import { OpenCodeDriver } from './drivers/opencode';
 import { DirectoryTrigger } from './triggers/directory';
 import { FileTrigger } from './triggers/file';
 import { ManualTrigger } from './triggers/manual';
+import { ScheduleTrigger } from './triggers/schedule';
 
 // Built-in Completions
 import { ExitCodeCompletion } from './completions/exit-code';
@@ -31,6 +32,7 @@ export const BuiltinTagmaPlugin = {
       directory: DirectoryTrigger,
       file: FileTrigger,
       manual: ManualTrigger,
+      schedule: ScheduleTrigger,
     },
     completions: {
       exit_code: ExitCodeCompletion,

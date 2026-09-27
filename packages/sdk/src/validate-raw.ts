@@ -26,6 +26,7 @@ import {
 } from '@tagma/core';
 import { extractInputReferences } from '@tagma/core';
 import { validateDeclaredSdkRequirement } from './compatibility';
+import { cronExpressionError } from './cron';
 
 interface QidEntry {
   readonly track: RawTrackConfig;
@@ -184,7 +185,12 @@ const OUTPUT_BINDING_FIELDS: ReadonlySet<string> = new Set([
 // external plugin packages are installed. These MUST stay in sync with the
 // types that `bootstrapBuiltins()` registers, otherwise the editor will
 // emit false-positive "unknown type" warnings for stock pipelines.
-const BUILTIN_TRIGGER_TYPES: ReadonlySet<string> = new Set(['manual', 'file', 'directory']);
+const BUILTIN_TRIGGER_TYPES: ReadonlySet<string> = new Set([
+  'manual',
+  'file',
+  'directory',
+  'schedule',
+]);
 const BUILTIN_COMPLETION_TYPES: ReadonlySet<string> = new Set([
   'exit_code',
   'file_exists',
@@ -896,6 +902,31 @@ export function validateRaw(
           message: `Trigger type "${triggerType}" is not registered. Install the plugin (e.g. @tagma/trigger-${triggerType}) or the task will fail at run time.`,
           severity: 'warning',
         });
+      }
+      if (triggerType === 'schedule' && task.trigger) {
+        // The generic PluginSchema shape cannot express cron syntax, so the
+        // built-in schedule trigger gets a targeted edit-time diagnostic here
+        // (run-time preflight still enforces required/type checks, and the
+        // trigger itself re-validates at watch time).
+        const cronValue = task.trigger.cron;
+        if (typeof cronValue === 'string') {
+          const cronProblem = cronExpressionError(cronValue);
+          if (cronProblem !== null) {
+            errors.push({
+              path: `${taskPath}.trigger.cron`,
+              message: `schedule trigger cron is invalid: ${cronProblem}`,
+              severity: 'warning',
+            });
+          }
+        }
+        if (task.timeout === undefined) {
+          errors.push({
+            path: `${taskPath}.trigger`,
+            message:
+              'schedule trigger waits count against the task timeout: set an explicit task timeout (and pipeline timeout) sized beyond the longest cron gap, or the host default task timeout will end the wait early.',
+            severity: 'warning',
+          });
+        }
       }
       if (knownCompletions && completionType !== null && !knownCompletions.has(completionType)) {
         errors.push({

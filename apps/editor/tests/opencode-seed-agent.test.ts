@@ -1041,6 +1041,49 @@ test('schema-driven YAML generation accepts canonical id boundary characters', a
   expect(result.yaml).toContain('- id: "_answer-2"');
 });
 
+test('schema-driven YAML generation round-trips a schedule trigger cron and rejects cron misuse', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+  const pipeline = {
+    name: 'Scheduled monitor',
+    atomicity_rationale: 'There is no useful intermediate verification boundary.',
+  };
+  const sections = (trigger?: Record<string, string>) => [
+    {
+      id: 'track:main',
+      type: 'track',
+      summary: 'Main',
+      track_identity_rationale: 'The task uses one execution identity.',
+    },
+    {
+      id: 'task:main.scrape',
+      type: 'command',
+      command: 'echo ok',
+      ...(trigger ? { trigger } : {}),
+      task_boundary_rationale: 'The scrape is one indivisible observable operation.',
+    },
+  ];
+
+  const result = JSON.parse(
+    await tool.execute({
+      manifest: { pipeline, sections: sections({ type: 'schedule', cron: '0 8 * * 1-5' }) },
+    }),
+  ) as { yaml: string };
+  expect(result.yaml).toContain('type: "schedule"');
+  expect(result.yaml).toContain('cron: "0 8 * * 1-5"');
+
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline,
+        sections: sections({ type: 'file', path: 'inbox/ready', cron: '0 8 * * 1-5' }),
+      },
+    }),
+  ).rejects.toThrow("trigger.cron is only valid with trigger type 'schedule'");
+  await expect(
+    tool.execute({ manifest: { pipeline, sections: sections({ type: 'schedule' }) } }),
+  ).rejects.toThrow('a schedule trigger requires trigger.cron');
+});
+
 test('schema-driven YAML generation requires reviewable task and track rationale', async () => {
   const tool = await loadGeneratedYamlSkeletonTool();
   const track = { id: 'track:main', type: 'track', summary: 'Main' };
@@ -2612,9 +2655,9 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(triggerSkill, 'utf8')).toContain('name: tagma-trigger-strategy');
   expect(readFileSync(triggerSkill, 'utf8')).toContain('Trigger strategy');
   expect(readFileSync(triggerSkill, 'utf8')).toContain('workspace task timeout by default');
-  expect(readFileSync(triggerSkill, 'utf8')).toContain(
-    'Never name or recommend a package, install command, trigger type, or field schema',
-  );
+  expect(readFileSync(triggerSkill, 'utf8')).toContain('use the built-in `schedule` trigger');
+  expect(readFileSync(triggerSkill, 'utf8')).toContain('cron: "0 8 * * 1-5"');
+  expect(readFileSync(triggerSkill, 'utf8')).toContain('sized beyond the longest cron gap');
   expect(readFileSync(safetySkill, 'utf8')).toContain('Best-effort rollback pattern');
   expect(planSkillDoc).toContain('Decide track boundaries by agent identity, not by parallelism');
   expect(planSkillDoc).toContain('command-only track');

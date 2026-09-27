@@ -848,10 +848,15 @@
   plus status breakdowns, and report planned/result/not-run case counts, so the bounded view cannot
   silently imply that omitted tasks or cases did not exist. Also return a credential-free execution
   coverage summary containing terminal task ids, each Sandbox case's targets and full dependency
-  closure, whether it ran, and each built-in manual/file/directory auto-satisfaction's type and
-  `run-scoped-grant` or `isolated-case-input` mechanism. Render that summary in a collapsed result
-  detail and expose only
+  closure, whether it ran, and each built-in manual/file/directory/schedule auto-satisfaction's
+  type and `run-scoped-grant`, `isolated-case-input`, or `virtualized-clock` mechanism. Render that
+  summary in a collapsed result detail and expose only
   bounded aggregate counts through production diagnostics.
+- The built-in `schedule` trigger perceives time only through `TagmaRuntime.now()`/`sleep()`, and
+  the engine's own deadlines never read that clock. Sandbox Trial wraps the case runtime in
+  `runtimeWithVirtualTime` (`chat-pipeline-trial-virtual-time.ts`) so the gate fires on its first
+  cron tick while every real execution budget stays intact. Never special-case the trigger's YAML
+  config for Trial; virtualization is host-owned and run-scoped, like the manual approval grant.
 - Every planned case without a result must retain its id, title, bounded reason category, and safe
   detail in the Trial result, repair evidence, diagnostics, and conversation export. A count alone
   is insufficient for distinguishing timeout, cancellation, or workspace-verification stops.
