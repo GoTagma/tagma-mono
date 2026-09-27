@@ -391,16 +391,17 @@ describe('editor OpenCode runtime selection', () => {
           return taskResult();
         },
       };
+      const getCaptured = (): SpawnSpec | null => captured;
       const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], join(root, '.tagma'), {
         mode,
       });
       await runtime.runCommand({ shell: '"$TAGMA_OPENCODE_CLI" run --model test/model' }, root);
-      expect(captured?.env?.TAGMA_OPENCODE_CLI).toBe(binary);
+      expect(getCaptured()?.env?.TAGMA_OPENCODE_CLI).toBe(binary);
       const managedPaths = resolveOpencodeRuntimePaths(join(root, '.tagma'));
-      expect(captured?.env?.HOME).toBe(managedPaths.home);
-      expect(captured?.env?.OPENCODE_CONFIG_DIR).toBe(managedPaths.configDir);
-      expect(captured?.env?.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('true');
-      expect(JSON.parse(captured?.env?.OPENCODE_CONFIG_CONTENT ?? '{}').plugin).toEqual([]);
+      expect(getCaptured()?.env?.HOME).toBe(managedPaths.home);
+      expect(getCaptured()?.env?.OPENCODE_CONFIG_DIR).toBe(managedPaths.configDir);
+      expect(getCaptured()?.env?.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('true');
+      expect(JSON.parse(getCaptured()?.env?.OPENCODE_CONFIG_CONTENT ?? '{}').plugin).toEqual([]);
     }
   });
 
