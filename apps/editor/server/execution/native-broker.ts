@@ -8,7 +8,10 @@ import type {
   TaskResult,
   TagmaRuntime,
 } from '@tagma/types';
-import { prepareEmbeddedOpencodeRuntime } from '../opencode-config.js';
+import {
+  buildEmbeddedOpencodeRuntimeConfig,
+  prepareEmbeddedOpencodeRuntime,
+} from '../opencode-config.js';
 import {
   markManagedOpencodeDatabaseReady,
   releaseManagedOpencodeDatabaseInitialization,
@@ -16,7 +19,7 @@ import {
   waitForManagedOpencodeDatabase,
   type PreparedManagedOpencodeDatabase,
 } from '../opencode-database.js';
-import { buildOpencodeEnv } from '../opencode-lifecycle.js';
+import { buildOpencodeEnv, resolveOpencodeBinary } from '../opencode-lifecycle.js';
 import {
   NativeExecutionService,
   type ExecutionBackend,
@@ -96,6 +99,43 @@ function mergeRuntimeEnv(
     return specEnv ? { ...specEnv } : undefined;
   }
   return { ...runtimeEnv, ...(specEnv ?? {}) };
+}
+
+function commandRuntimeEnv(
+  config: NativeBrokerRuntimeConfig,
+  command: CommandConfig,
+): Readonly<Record<string, string>> {
+  const source =
+    typeof command === 'string'
+      ? command
+      : 'shell' in command
+        ? command.shell
+        : command.argv.join(' ');
+  if (!/\$(?:\{TAGMA_OPENCODE_CLI\}|(?:env:)?TAGMA_OPENCODE_CLI\b)/iu.test(source))
+    return config.runtimeEnv;
+  if (!config.managedOpencodeCwd) {
+    throw new Error('Tagma OpenCode CLI requires a managed workspace runtime.');
+  }
+  const binary = resolveOpencodeBinary({ allowPathFallback: false });
+  if (!existsSync(binary)) throw new Error('Tagma OpenCode CLI binary is unavailable.');
+  // The opt-in CLI must not discover or migrate the user's global plugin config.
+  // Keep the user's data root for provider login; the authored command scopes its own DB.
+  const runtime = prepareEmbeddedOpencodeRuntime(config.managedOpencodeCwd);
+  return {
+    ...config.runtimeEnv,
+    TAGMA_OPENCODE_CLI: binary,
+    HOME: runtime.home,
+    USERPROFILE: runtime.home,
+    APPDATA: runtime.appData,
+    LOCALAPPDATA: runtime.localAppData,
+    XDG_CONFIG_HOME: runtime.configHome,
+    OPENCODE_CONFIG_DIR: runtime.configDir,
+    XDG_DATA_HOME: runtime.dataHome,
+    XDG_STATE_HOME: runtime.stateHome,
+    XDG_CACHE_HOME: runtime.cacheHome,
+    OPENCODE_CONFIG_CONTENT: JSON.stringify(buildEmbeddedOpencodeRuntimeConfig(runtime)),
+    OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
+  };
 }
 
 const REDACTED_SECRET = '[redacted secret]';
@@ -438,15 +478,15 @@ function resolveBrokerCommand(
   cwd: string,
   options: RunOptions,
 ): NativeResolvedExecution {
+  const commandEnv = commandRuntimeEnv(config, command);
   const needsWrapper =
-    Object.keys(config.runtimeEnv).length > 0 ||
-    config.secretValues.some((value) => value.length > 0);
+    Object.keys(commandEnv).length > 0 || config.secretValues.some((value) => value.length > 0);
   if (!needsWrapper) return { kind: 'command', command, cwd, options };
   return {
     kind: 'spawn',
     spec: {
       ...commandToSpawnSpecForRunRoute(command, cwd),
-      env: mergeRuntimeEnv(undefined, config.runtimeEnv),
+      env: mergeRuntimeEnv(undefined, commandEnv),
     },
     driver: null,
     options: withOutputRedactor(options, createSecretOutputRedactor(config.secretValues)),
@@ -522,9 +562,6 @@ export function createDirectLegacyRuntime(
   base: TagmaRuntime,
   config: NativeBrokerRuntimeConfig,
 ): TagmaRuntime {
-  const needsCommandWrapper =
-    Object.keys(config.runtimeEnv).length > 0 ||
-    config.secretValues.some((value) => value.length > 0);
   return {
     ...base,
     runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, options: RunOptions = {}) {
@@ -567,11 +604,14 @@ export function createDirectLegacyRuntime(
       })();
     },
     runCommand(command: CommandConfig, cwd: string, options: RunOptions = {}) {
+      const commandEnv = commandRuntimeEnv(config, command);
+      const needsCommandWrapper =
+        Object.keys(commandEnv).length > 0 || config.secretValues.some((value) => value.length > 0);
       if (!needsCommandWrapper) return base.runCommand(command, cwd, options);
       return base.runSpawn(
         {
           ...commandToSpawnSpecForRunRoute(command, cwd),
-          env: mergeRuntimeEnv(undefined, config.runtimeEnv),
+          env: mergeRuntimeEnv(undefined, commandEnv),
         },
         null,
         withOutputRedactor(options, createSecretOutputRedactor(config.secretValues)),

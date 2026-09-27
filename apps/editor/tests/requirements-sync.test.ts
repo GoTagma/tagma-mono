@@ -45,6 +45,28 @@ test('compact PowerShell completion conditions do not become binary requirements
   expect(extractBinariesFromYaml(yamlPath)?.map((binary) => binary.name)).toEqual(['bun', 'git']);
 });
 
+test('Tagma OpenCode CLI command resolves as a managed binary requirement', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'managed-cli.yaml',
+    [
+      'pipeline:',
+      '  name: managed-cli',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: check',
+      '          command: |',
+      '            OPENCODE_DB="$(mktemp -d)/opencode.db" "$TAGMA_OPENCODE_CLI" run --model test/model',
+    ].join('\n'),
+  );
+  expect(extractBinariesFromYaml(yamlPath)).toEqual([
+    { name: 'opencode', fromDriver: 'opencode', usedBy: ['main.check'] },
+  ]);
+});
+
 test('dependency discovery handles control spacing, quotations, multiline scripts, and argv boundaries', () => {
   const { tagmaDir } = makeWorkspace();
   for (const check of [

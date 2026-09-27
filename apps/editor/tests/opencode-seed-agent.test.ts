@@ -47,6 +47,23 @@ test('native command guidance enables Exa only for explicitly requested headless
   expect(skill).toContain('Do not enable Exa for commands that do not request web access');
 });
 
+test('headless OpenCode command guidance selects Tagma CLI and isolates its database', () => {
+  const pipeline = buildTagmaPipelineAgent('Windows');
+  const guidance = buildTagmaNativePrimitivesSkill();
+  expect(pipeline).toContain(
+    'load `tagma-native-primitives` for material behavior or explicit headless OpenCode CLI work',
+  );
+  expect(guidance).toContain('A bare `opencode` command resolves from the host PATH');
+  expect(guidance).toContain('TAGMA_OPENCODE_CLI');
+  expect(guidance).toContain(
+    "The Host supplies this path and Tagma's isolated OpenCode config only to commands that reference the variable",
+  );
+  expect(guidance).toContain('without loading user-global plugins');
+  expect(guidance).toContain('OPENCODE_DB');
+  expect(guidance).toContain('fresh private database');
+  expect(guidance).toContain('Do not point a standalone CLI at the Tagma-managed database');
+});
+
 test('command guidance keeps PowerShell data literals distinct from native arguments', () => {
   const pipeline = buildTagmaPipelineAgent('Windows');
   const nativePrimitives = buildTagmaNativePrimitivesSkill();
@@ -114,6 +131,9 @@ test('Trial planner checks requested architecture and launch semantics beyond pa
   expect(guidance).toContain('launch behavior');
   expect(guidance).toContain('A passing Sandbox case does not prove');
   expect(guidance).toContain('blocking pipeline-artifact finding');
+  expect(guidance).toContain(
+    'A managed prompt task is not an equivalent substitute for an explicitly required CLI command',
+  );
 });
 
 test('Trial planner treats a schedule trigger as satisfied by the virtualized Sandbox clock', () => {
@@ -778,7 +798,7 @@ test('pipeline authoring uses native prompt outputs without inventing duplicate 
     'For a fixed conversational prompt with no workspace or tool dependency, set all three permissions to false',
   );
   expect(nativePrimitives).toContain(
-    'pass its exact `provider-id/model-id` through `opencode run --model`',
+    'pass its exact `provider-id/model-id` through `"$TAGMA_OPENCODE_CLI" run --model`',
   );
   expect(nativePrimitives).toContain('`{{inputs.name | shellquote}}` for string inputs');
   expect(nativePrimitives).toContain('Do not add `driver: opencode` merely to');

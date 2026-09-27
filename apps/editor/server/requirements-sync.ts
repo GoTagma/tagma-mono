@@ -32,7 +32,7 @@ export interface RequirementsBinary {
   readonly probe?: string;
   /** Qualified task ids / hook keys that reference this binary. */
   readonly usedBy: readonly string[];
-  /** Tagma driver name, when this binary entry was derived from a prompt task's driver. */
+  /** Tagma driver name for a prompt task or an opted-in managed CLI command. */
   readonly fromDriver?: string;
 }
 
@@ -573,6 +573,29 @@ function addBinary(
   if (!entry.usedBy.includes(usedBy)) entry.usedBy.push(usedBy);
 }
 
+function addCommandBinaries(
+  binaries: Map<string, MutableBinary>,
+  command: unknown,
+  usedBy: string,
+): void {
+  const source =
+    typeof command === 'string'
+      ? command
+      : command && typeof command === 'object'
+        ? String(
+            (command as { shell?: unknown; argv?: unknown }).shell ??
+              (command as { argv?: unknown }).argv ??
+              '',
+          )
+        : '';
+  const managedCli = /\$(?:\{TAGMA_OPENCODE_CLI\}|(?:env:)?TAGMA_OPENCODE_CLI\b)/iu.test(source);
+  for (const bin of extractBinariesFromCommand(command)) {
+    if (managedCli && bin.toUpperCase() === 'TAGMA_OPENCODE_CLI') continue;
+    addBinary(binaries, bin, usedBy);
+  }
+  if (managedCli) addBinary(binaries, 'opencode', usedBy, 'opencode');
+}
+
 interface PartialPipeline {
   driver?: string;
   tracks?: PartialTrack[];
@@ -622,9 +645,7 @@ export function extractBinariesFromYaml(yamlPath: string): RequirementsBinary[] 
       const ref = `${trackId}.${taskId}`;
 
       if (task.command !== undefined) {
-        for (const bin of extractBinariesFromCommand(task.command)) {
-          addBinary(binaries, bin, ref);
-        }
+        addCommandBinaries(binaries, task.command, ref);
       }
       if (task.command === undefined && task.prompt !== undefined) {
         const driver = task.driver ?? track.driver ?? pipelineDriver ?? 'opencode';
@@ -634,9 +655,7 @@ export function extractBinariesFromYaml(yamlPath: string): RequirementsBinary[] 
 
       const completion = task.completion as { type?: unknown; check?: unknown } | null;
       if (completion && typeof completion === 'object' && completion.type === 'output_check') {
-        for (const bin of extractBinariesFromCommand(completion.check)) {
-          addBinary(binaries, bin, `${ref}.completion.output_check`);
-        }
+        addCommandBinaries(binaries, completion.check, `${ref}.completion.output_check`);
       }
     }
   }
@@ -645,9 +664,7 @@ export function extractBinariesFromYaml(yamlPath: string): RequirementsBinary[] 
     for (const [key, value] of Object.entries(pipeline.hooks)) {
       const cmds = Array.isArray(value) ? value : [value];
       for (const cmd of cmds) {
-        for (const bin of extractBinariesFromCommand(cmd)) {
-          addBinary(binaries, bin, `hooks.${key}`);
-        }
+        addCommandBinaries(binaries, cmd, `hooks.${key}`);
       }
     }
   }

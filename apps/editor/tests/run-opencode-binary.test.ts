@@ -374,6 +374,36 @@ describe('editor OpenCode runtime selection', () => {
     expect(getCaptured()).toEqual({ argv: ['opencode', '--version'] });
   });
 
+  test('exposes the Tagma OpenCode binary only to commands that request it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-command-opencode-'));
+    tempRoots.push(root);
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    for (const mode of ['broker', 'legacy'] as const) {
+      let captured: SpawnSpec | null = null;
+      const base = {
+        ...bunRuntime(),
+        async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
+          captured = spec;
+          return taskResult();
+        },
+      };
+      const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], join(root, '.tagma'), {
+        mode,
+      });
+      await runtime.runCommand({ shell: '"$TAGMA_OPENCODE_CLI" run --model test/model' }, root);
+      expect(captured?.env?.TAGMA_OPENCODE_CLI).toBe(binary);
+      const managedPaths = resolveOpencodeRuntimePaths(join(root, '.tagma'));
+      expect(captured?.env?.HOME).toBe(managedPaths.home);
+      expect(captured?.env?.OPENCODE_CONFIG_DIR).toBe(managedPaths.configDir);
+      expect(captured?.env?.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('true');
+      expect(JSON.parse(captured?.env?.OPENCODE_CONFIG_CONTENT ?? '{}').plugin).toEqual([]);
+    }
+  });
+
   test('does not inject managed OpenCode isolation into command task environments', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-run-command-env-'));
     tempRoots.push(root);

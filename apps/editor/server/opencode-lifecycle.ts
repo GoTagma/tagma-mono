@@ -323,7 +323,7 @@ export function resolveOpencodePathFallback(): string {
   return Bun.which('opencode') ?? 'opencode';
 }
 
-export function resolveOpencodeBinary(): string {
+export function resolveOpencodeBinary(options: { allowPathFallback?: boolean } = {}): string {
   const exe = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
   const userRuntimeDir =
     process.env.TAGMA_OPENCODE_SKIP_USER_DIR === '1'
@@ -368,6 +368,10 @@ export function resolveOpencodeBinary(): string {
         `This Tagma install is incomplete — reinstall the app, or open ` +
         `Settings → OpenCode CLI and click "Update" to stage a fresh binary.`,
     );
+  }
+
+  if (options.allowPathFallback === false) {
+    throw new Error('Tagma OpenCode CLI binary is unavailable; stage the bundled runtime first.');
   }
 
   // Bun.spawn does not resolve bare Windows commands through PATHEXT. Resolve

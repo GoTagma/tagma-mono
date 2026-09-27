@@ -1398,6 +1398,17 @@
   command itself invokes `opencode`. Requirements and preflight must keep that PATH-owned entry
   separate from a prompt task's `fromDriver: opencode` entry: the latter resolves through
   `resolveOpencodeBinary()` and the managed driver witness, never through an unrelated PATH probe.
+- When Chat authors an explicitly required headless OpenCode CLI command, invoke the Host-provided
+  `TAGMA_OPENCODE_CLI` path, which resolves through `resolveOpencodeBinary()` only for commands
+  referencing that variable. Supply the managed HOME, config directory, config-content overlay,
+  and project-config denial so the CLI keeps native and Tagma-owned tools without loading or
+  mutating user-global plugins; retain the user's provider login data root. Record it as a
+  managed OpenCode binary requirement. This does not rewrite bare `opencode` commands or
+  ordinary PATH resolution. For one-shot calls, seed a
+  process-scoped fresh `OPENCODE_DB` path in a private temporary directory.
+  Preserve an explicit CLI requirement through repair and Trial planning instead of silently
+  replacing it with a managed prompt task. Do not share the managed prompt database with the CLI
+  or inject managed isolation into ordinary command tasks.
 - The sidecar-private Workspace Runtime uses the Native Broker by default. Treat
   `TAGMA_WORKSPACE_RUNTIME=legacy` only as an explicit rollback choice: snapshot the mode once at
   the start of each pipeline, workflow, or Trial run and pass that value to every runtime created

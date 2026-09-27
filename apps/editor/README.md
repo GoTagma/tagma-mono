@@ -92,6 +92,12 @@ before spawning. A task timeout initiates cancellation, while the reported durat
 process-tree teardown and output capture. An explicit `opencode` shell command uses the executable
 on PATH, which can differ from the bundled OpenCode used by managed Chat. A healthy managed Chat
 runtime therefore does not establish the version or completion time of a nested CLI command.
+Chat-authored headless OpenCode CLI commands can invoke `TAGMA_OPENCODE_CLI`, which the editor
+provides only when a command references it. This selects Tagma's OpenCode binary while ordinary
+commands retain their PATH behavior. Those opt-in CLI commands use Tagma's isolated OpenCode
+configuration and tools without loading user-global plugins; provider login data remains available.
+One-shot CLI calls should give `OPENCODE_DB` a fresh private temporary database path in that
+command's process environment, avoiding the user-level database.
 
 Generated requirements documents use `Verify (macOS / Linux)` and `Verify (Windows)`
 instructions to locate external executables on PATH (`command -v` and `where.exe`). These

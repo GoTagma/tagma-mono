@@ -52,6 +52,45 @@ test('probeEnvVar honors process.env presence', () => {
   expect(probeEnvVar('TAGMA_PREFLIGHT_TEST_VAR')).toBe(false);
 });
 
+test('runPreflight resolves an opted-in OpenCode CLI through Tagma with no PATH dependency', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = join(tagmaDir, 'pipeline.yaml');
+  const binaryRoot = mkdtempSync(join(tmpdir(), 'tagma-preflight-opencode-'));
+  tempRoots.push(binaryRoot);
+  mkdirSync(join(binaryRoot, 'bin'));
+  writeFileSync(
+    join(binaryRoot, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+    '',
+  );
+  writeFileSync(yamlPath, 'pipeline:\n  name: x\n  tracks: []\n');
+  writeFileSync(
+    requirementsPath(yamlPath),
+    serializeRequirementsMd({
+      frontmatter: {
+        schemaVersion: 1,
+        generatedFor: 'pipeline.yaml',
+        generatedAt: new Date().toISOString(),
+        binaries: [{ name: 'opencode', fromDriver: 'opencode', usedBy: ['main.check'] }],
+        env: [],
+        services: [],
+      },
+      body: '# x\n',
+    }),
+  );
+  const previousBundled = process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+  const previousSkip = process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+  try {
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = binaryRoot;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    expect(runPreflight(yamlPath, { extraEnv: { PATH: '/missing' } }).missing.binaries).toEqual([]);
+  } finally {
+    if (previousBundled === undefined) delete process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+    else process.env.TAGMA_OPENCODE_BUNDLED_DIR = previousBundled;
+    if (previousSkip === undefined) delete process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+    else process.env.TAGMA_OPENCODE_SKIP_USER_DIR = previousSkip;
+  }
+});
+
 test('runPreflight reports missing binaries and required env vars', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = join(tagmaDir, 'pipeline.yaml');
