@@ -625,7 +625,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     );
   });
 
-  test('rejects an output-truncation continuation marker on a Trial Plan invocation', async () => {
+  test('a Trial Plan continuation keeps the draft baseline and same attempt', async () => {
     const value = await readyRuntime();
     const relocation = await value.runtime.relocateSession({
       operationId: 'operation-1',
@@ -651,6 +651,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       },
       canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
     };
+    value.openCode.onExecute = () => value.staging.mutate(sha256('partial-plan-draft'));
     value.openCode.execution = {
       kind: 'completed',
       text: null,
@@ -662,6 +663,8 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       code: 'model_output_length',
     });
 
+    value.openCode.onExecute = null;
+    value.openCode.execution = { kind: 'completed', text: null, finishCode: 'stop', usage: null };
     await expect(
       value.runtime.runInvocation({
         ...first,
@@ -671,7 +674,98 @@ describe('managed Chat Operation V2 authoring runtime', () => {
           JSON.stringify({ purpose: 'trial_plan', continuationOf: 'trial-plan-invocation-1' }),
         ),
       }),
+    ).resolves.toMatchObject({ kind: 'completed', disposition: 'changed' });
+    const authority = await value.staging.readAuthority(STAGE_ID);
+    expect(authority?.invocations['trial-plan-invocation-2']?.baselineSnapshotHash).toBe(
+      authority?.invocations['trial-plan-invocation-1']?.baselineSnapshotHash,
+    );
+  });
+
+  test('a Trial Plan continuation cannot switch the Host planning attempt', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-trial-plan-attempt-fence',
+      stage: value.stage,
+    });
+    const first = {
+      ...invocationRequest(value.stage, relocation),
+      invocationId: 'trial-plan-invocation-1',
+      inputId: 'trial-plan-input-1',
+      purpose: 'trial_plan' as const,
+      trialPlanRequest: {
+        reason: 'missing' as const,
+        relativePlanPath: 'alpha/alpha.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs' as const],
+        attemptId: 'trial-plan-attempt-1',
+      },
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
+    };
+    value.openCode.execution = { kind: 'completed', text: null, finishCode: 'length', usage: null };
+    await expect(value.runtime.runInvocation(first)).resolves.toMatchObject({
+      kind: 'provider_unavailable',
+      code: 'model_output_length',
+    });
+    await expect(
+      value.runtime.runInvocation({
+        ...first,
+        invocationId: 'trial-plan-invocation-2',
+        inputId: 'trial-plan-input-2',
+        trialPlanRequest: { ...first.trialPlanRequest, attemptId: 'trial-plan-attempt-2' },
+        canonicalRequestBytes: new TextEncoder().encode(
+          JSON.stringify({ purpose: 'trial_plan', continuationOf: 'trial-plan-invocation-1' }),
+        ),
+      }),
     ).rejects.toMatchObject({ code: 'authority_mismatch' });
+    expect(value.openCode.executions).toHaveLength(1);
+  });
+
+  test('recovered Trial Plan output truncation waits for explicit Retry', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-trial-plan-length-recovery',
+      stage: value.stage,
+    });
+    const request = {
+      ...invocationRequest(value.stage, relocation),
+      purpose: 'trial_plan' as const,
+      trialPlanRequest: {
+        reason: 'missing' as const,
+        relativePlanPath: 'alpha/alpha.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs' as const],
+        attemptId: 'trial-plan-attempt-1',
+      },
+    };
+    value.openCode.execution = {
+      kind: 'provider_unavailable',
+      code: 'provider_transport_unavailable',
+    };
+    await expect(value.runtime.runInvocation(request)).resolves.toMatchObject({
+      kind: 'provider_unavailable',
+    });
+    value.openCode.settlementFinishCode = 'length';
+
+    await expect(
+      value.runtime.reconcileInvocation({
+        ...request,
+        signal: undefined,
+        requestInteractive: undefined,
+      } as never),
+    ).resolves.toEqual({ kind: 'provider_unavailable', code: 'model_output_length' });
+    expect(value.openCode.executions).toHaveLength(1);
   });
 
   test('recovered Trial verification keeps the affected-case review fence', async () => {
@@ -1322,7 +1416,122 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(prompt.text).toContain('pipeline/pipeline.trial-plan.json');
     expect(prompt.text).toContain('trial-plan-attempt-1');
     expect(prompt.text).toContain('a'.repeat(40));
+    expect(prompt.text).toContain('<intent-request>Build the pipeline.</intent-request>');
     expect(prompt.text).not.toContain('<request>Build the pipeline.</request>');
+    expect(prompt.system).toContain('tool calls');
+  });
+
+  test('Trial planning receives the frozen user intent and attachment requirements', () => {
+    const source = admission();
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'trial-plan-intent-invocation',
+      sessionId: 'session-root',
+      executionMessageId: 'trial-plan-intent-message',
+      purpose: 'trial_plan',
+      intent: 'create',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'pipeline/pipeline.yaml',
+      trialPlanRequest: {
+        reason: 'missing',
+        relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs'],
+        attemptId: 'trial-plan-attempt-1',
+      },
+      admission: {
+        ...source,
+        request: {
+          ...source.request,
+          text: 'Use the named engine for acquisition and support immediate runs.',
+          attachments: [
+            { referenceId: 'attachment-1', label: 'Acceptance note', content: 'Keep both modes.' },
+          ],
+        },
+      },
+      clarificationThread: null,
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.text).toContain(
+      '<intent-request>Use the named engine for acquisition and support immediate runs.</intent-request>',
+    );
+    expect(prompt.text).toContain(
+      '<intent-attachment label="Acceptance note">Keep both modes.</intent-attachment>',
+    );
+    expect(prompt.system).toContain('requested execution mechanism');
+    expect(prompt.system).toContain('launch behavior');
+  });
+
+  test('Trial planning marks oversized intent as missing evidence instead of silently truncating it', () => {
+    const source = admission();
+    const largeIntent = 'A'.repeat(25 * 1024);
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'trial-plan-large-intent-invocation',
+      sessionId: 'session-root',
+      executionMessageId: 'trial-plan-large-intent-message',
+      purpose: 'trial_plan',
+      intent: 'create',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'pipeline/pipeline.yaml',
+      trialPlanRequest: {
+        reason: 'missing',
+        relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs'],
+        attemptId: 'trial-plan-attempt-1',
+      },
+      admission: { ...source, request: { ...source.request, text: largeIntent } },
+      clarificationThread: null,
+      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.text).toContain('<intent-request-omitted bytes="25600" sha256="');
+    expect(prompt.text).not.toContain(largeIntent);
+    expect(prompt.system).toContain('blocking diagnostic-only finding');
+  });
+
+  test('builds a bounded resume prompt for a truncated Trial Plan without resetting its draft', () => {
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'trial-plan-invocation-2',
+      sessionId: 'session-root',
+      executionMessageId: 'execution-message-2',
+      purpose: 'trial_plan',
+      intent: 'create',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'pipeline/pipeline.yaml',
+      trialPlanRequest: {
+        reason: 'missing',
+        relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'A Trial Plan is required.',
+        maxAttempts: 2,
+        requiredCoverage: ['multiple-inputs'],
+        attemptId: 'trial-plan-attempt-1',
+      },
+      admission: admission(),
+      clarificationThread: null,
+      canonicalRequestBytes: new TextEncoder().encode(
+        JSON.stringify({ purpose: 'trial_plan', continuationOf: 'trial-plan-invocation-1' }),
+      ),
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+    });
+
+    expect(prompt.agent).toBe('tagma-trial-planner');
+    expect(prompt.text).toContain('<mode>resume_truncated_trial_plan</mode>');
+    expect(prompt.text).toContain('trial-plan-attempt-1');
+    expect(prompt.text).toContain('begin');
+    expect(prompt.text).toContain('without reset');
+    expect(prompt.text).toContain('commit');
+    expect(prompt.text).not.toContain('<request>');
   });
 
   test('keeps staged paths and compile logs out of model-authored publication claims', () => {

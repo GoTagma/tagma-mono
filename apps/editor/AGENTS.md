@@ -91,11 +91,13 @@
   that work. Persist completed authoring result authority before pausing a repair/planning
   invocation; reconstruct the same stage, binding, pending result, and planning authority on
   explicit Retry after Host restart. A pre-authoring failure may still restore the Composer.
-  One exception: a live authoring or repair invocation that ends at the model output limit
+  One exception: a live authoring, repair, or Trial Plan invocation that ends at the model output limit
   (`model_output_length`) first receives exactly one automatic Host continuation on the same
   session with fresh invocation/input/outbox identity — a resume, not a retry — judged against
-  the continued invocation's stage baseline. A truncated continuation, Trial planning, and
-  post-restart reconciliation still park for explicit Retry.
+  the continued invocation's stage baseline. The planner retains its revision-bound draft and
+  Host attempt id; its counted `commit` fence prevents a duplicate submission. A truncated
+  continuation and post-restart reconciliation still park for explicit Retry. Keep planner output
+  focused on bounded tool calls without dropping substantive case assertions or coverage.
 - Automatic commit execution retries only bounded transient filesystem errors. Exhaustion or an
   unexpected executor failure pauses the same commit phase with `user_retry` through an atomic
   `execution_wait` WAL update; only wait state/version/time may change. Keep the decision, artifacts,
@@ -1760,6 +1762,14 @@
   Reuse `useModalBackdropDismiss` for these provider modals.
 
 ## Chat Trial Plan Semantics
+
+- Trial planning must receive bounded frozen user intent, including accepted clarifications and
+  attachment requirements. Audit explicit output, execution-mechanism, and launch-behavior promises
+  separately: a passing Sandbox output does not prove the named tool performed the step, and a
+  virtualized run-scoped trigger does not prove ordinary launch behavior. Ground repairable
+  mismatches in staged YAML/support evidence before a blocking pipeline-artifact finding; block
+  unsupported capabilities or unavailable intent evidence as diagnostic-only instead of claiming
+  complete coverage.
 
 - Assertion-only failures after successful or expected task outcomes require Host plan review,
   never an immediate pipeline-write grant. Carry the executed evidence and a fresh hash-bound

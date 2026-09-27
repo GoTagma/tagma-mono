@@ -2028,16 +2028,14 @@ export class ChatOperationV2AuthoringEngine {
     }
     if (result.kind === 'provider_unavailable') {
       // One bounded automatic continuation per controlled-invocation chain: only a
-      // live authoring/repair generation that ended at the provider output limit
+      // live generation that ended at the provider output limit
       // resumes, on the same session under a fresh Host invocation identity, with
       // the truncated invocation's failed_terminal outbox/usage evidence retained.
-      // Trial planning keeps its own attempt-budget protocol, a truncated
-      // continuation and every other provider failure fall through to the
-      // explicit-Retry wait below, and an explicit user Retry starts a fresh chain
-      // with its own single-continuation budget.
+      // Trial planning retains the same Host attempt id: the tool's counted
+      // commit fence prevents a second submission. A truncated continuation and
+      // every other provider failure fall through to explicit Retry below.
       if (
         continuationOf === undefined &&
-        (purpose === 'authoring' || purpose === 'repair') &&
         result.code === 'model_output_length' &&
         result.submissionUnknown !== true
       ) {

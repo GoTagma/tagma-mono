@@ -98,6 +98,24 @@ test('Trial planner recommits a plan whenever the staged YAML revision changes',
   expect(guidance).toContain('Never answer no-change while the current plan yamlHash is stale');
 });
 
+test('Trial planner uses bounded tool output and resumes a truncated draft without weakening checks', () => {
+  const guidance = buildTagmaTrialPlannerAgent();
+  expect(guidance).toContain('short, immediate tool calls');
+  expect(guidance).toContain('Never drop a substantive assertion');
+  expect(guidance).toContain('resume_truncated_trial_plan');
+  expect(guidance).toContain('call `begin` without reset');
+  expect(guidance).toContain('commit` exactly once across the attempt');
+});
+
+test('Trial planner checks requested architecture and launch semantics beyond passing output cases', () => {
+  const guidance = buildTagmaTrialPlannerAgent();
+  expect(guidance).toContain('explicit user requirements');
+  expect(guidance).toContain('requested execution mechanism');
+  expect(guidance).toContain('launch behavior');
+  expect(guidance).toContain('A passing Sandbox case does not prove');
+  expect(guidance).toContain('blocking pipeline-artifact finding');
+});
+
 test('Trial planner treats a schedule trigger as satisfied by the virtualized Sandbox clock', () => {
   const guidance = buildTagmaTrialPlannerAgent();
   expect(guidance).toContain(
@@ -1952,6 +1970,25 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       toolAttemptCount: 1,
       successfulWriteCount: 1,
     });
+    await expect(
+      generated.tool.execute(
+        {
+          operation: 'begin',
+          attempt_id: attemptId,
+          pipeline_path: 'sample/sample.yaml',
+          summary: plan.summary,
+          goals: plan.goals,
+        },
+        { directory: stage.agentTagmaDir },
+      ),
+    ).rejects.toThrow('commit was already submitted');
+    await expect(
+      generated.tool.execute(
+        { operation: 'commit', attempt_id: attemptId, pipeline_path: 'sample/sample.yaml' },
+        { directory: stage.agentTagmaDir },
+      ),
+    ).rejects.toThrow('commit was already attempted');
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)?.toolAttemptCount).toBe(1);
   } finally {
     stage.cleanup();
     generated.cleanup();

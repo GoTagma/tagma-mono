@@ -1792,7 +1792,7 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(runtime.verifyCalls).toHaveLength(2);
   });
 
-  test('does not continue an output-truncated Trial Plan invocation', async () => {
+  test('continues an output-truncated Trial Plan once within the same attempt', async () => {
     const { engine, store, runtime } = createHarness({
       verification: ['trial_plan', 'passed'],
       providerUnavailableOnce: true,
@@ -1803,9 +1803,44 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
 
     const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
 
+    expect(result.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    const [truncated, continuation] = runtime.invocationRequests.slice(1);
+    expect(continuation!.sessionId).toBe(truncated!.sessionId);
+    expect(continuation!.trialPlanRequest?.attemptId).toBe(truncated!.trialPlanRequest?.attemptId);
+    expect(continuation!.inputId).not.toBe(truncated!.inputId);
+    expect(
+      JSON.parse(new TextDecoder().decode(continuation!.canonicalRequestBytes)).continuationOf,
+    ).toBe(truncated!.invocationId);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      repairAttempts: 0,
+    });
+    expect(store.listUsageLedger('operation-1').map(({ status }) => status)).toEqual([
+      'settled',
+      'unavailable',
+      'settled',
+    ]);
+  });
+
+  test('parks after a second output-truncated Trial Plan invocation', async () => {
+    const { engine, store, runtime } = createHarness({ verification: ['trial_plan', 'passed'] });
+    const original = runtime.runInvocation.bind(runtime);
+    runtime.runInvocation = async (request) => {
+      if (request.purpose !== 'trial_plan') return original(request);
+      runtime.invocationRequests.push(request);
+      return { kind: 'provider_unavailable', code: 'model_output_length' };
+    };
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
     expect(result.kind).toBe('provider_unavailable');
     expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
       'authoring',
+      'trial_plan',
       'trial_plan',
     ]);
     expect(store.getOperation('operation-1')).toMatchObject({
@@ -1814,6 +1849,34 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       repairAttempts: 0,
     });
   });
+
+  test.each([
+    { code: 'model_output_length', submissionUnknown: true },
+    { code: 'provider_rate_limited', submissionUnknown: false },
+  ])(
+    'does not continue a Trial Plan for $code with submissionUnknown=$submissionUnknown',
+    async ({ code, submissionUnknown }) => {
+      const { engine, store, runtime } = createHarness({
+        verification: ['trial_plan', 'passed'],
+        providerUnavailableOnce: true,
+        providerUnavailablePurpose: 'trial_plan',
+        providerFailureCode: code,
+        providerSubmissionUnknown: submissionUnknown,
+      });
+
+      const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+      expect(result.kind).toBe('provider_unavailable');
+      expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+        'authoring',
+        'trial_plan',
+      ]);
+      expect(store.getOperation('operation-1')).toMatchObject({
+        phase: 'trial-running',
+        waitReason: 'provider_unavailable',
+      });
+    },
+  );
 
   test('emits one Host failure event when native admission already terminalized the outbox', async () => {
     const { engine, store } = createHarness({

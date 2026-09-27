@@ -111,6 +111,7 @@ const ADMISSION_SOURCE_HISTORY_MAX_PAGES = 64;
 const ADMISSION_SOURCE_RECONCILE_ATTEMPTS = 20;
 const ADMISSION_SOURCE_RECONCILE_DELAY_MS = 50;
 const TRIAL_PROGRESS_DURABLE_HEARTBEAT_MS = 30_000;
+const TRIAL_PLANNER_INLINE_INTENT_MAX_BYTES = 24 * 1024;
 const encoder = new TextEncoder();
 
 function canonicalJson(value: unknown): string {
@@ -159,14 +160,13 @@ function incompleteAuthoringFinishCode(value: string): string | null {
 
 /**
  * Canonical invocation bytes carry `continuationOf` only when the Host resumes one
- * live authoring/repair generation that ended at the provider output limit
+ * live generation that ended at the provider output limit
  * (`model_output_length`). The continuation keeps the same OpenCode session under a
  * fresh invocation identity and inherits the truncated invocation's stage baseline,
  * so bytes that invocation already wrote still count toward the final
  * changed/no_change disposition — the same cumulative-stage rule an explicit
- * provider Retry follows. Trial Plan invocations never continue, and post-restart
- * `reconcileInvocation` keeps parking a truncated execution for explicit Retry
- * instead of continuing it.
+ * provider Retry follows. Trial Plan resumes the same draft and counted attempt;
+ * post-restart `reconcileInvocation` still parks for explicit Retry.
  */
 function authoringContinuationOf(canonicalRequestBytes: Uint8Array): string | null {
   const request = sdkRecord(JSON.parse(new TextDecoder().decode(canonicalRequestBytes)));
@@ -564,6 +564,8 @@ export interface ManagedChatOperationV2InvocationAuthority {
   readonly executionMessageId: string;
   readonly baselineSnapshotHash: string;
   readonly executionSubmitted: boolean;
+  /** Seals the revision, attempt, and review request across a live plan continuation. */
+  readonly trialPlanRequestDigest?: string;
   /** Durable plan-review fence for verification after a Host restart. */
   readonly planReviewAffectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
   readonly completed: Extract<
@@ -1782,6 +1784,37 @@ export interface ManagedChatOperationV2ExecutionPrompt {
   readonly text: string;
 }
 
+function buildTrialPlannerIntentEvidence(
+  input: Parameters<ManagedChatOperationV2AuthoringOpenCodeAdapter['execute']>[0],
+): string[] {
+  let remainingBytes = TRIAL_PLANNER_INLINE_INTENT_MAX_BYTES;
+  const evidence: string[] = [];
+  const append = (tag: 'intent-request' | 'intent-attachment', value: string, label?: string) => {
+    const labelAttribute = label === undefined ? '' : ` label="${escapeXml(label)}"`;
+    const escaped = escapeXml(value);
+    const bytes = encoder.encode(escaped).byteLength;
+    if (bytes <= remainingBytes) {
+      evidence.push(`<${tag}${labelAttribute}>${escaped}</${tag}>`);
+      remainingBytes -= bytes;
+    } else {
+      evidence.push(
+        `<${tag}-omitted${labelAttribute} bytes="${encoder.encode(value).byteLength}" sha256="${sha256(value)}" />`,
+      );
+    }
+  };
+  append(
+    'intent-request',
+    buildChatOperationV2ClarifiedRequestText(
+      input.admission.request.text,
+      input.clarificationThread,
+    ),
+  );
+  for (const attachment of input.admission.request.attachments) {
+    append('intent-attachment', attachment.content, attachment.label);
+  }
+  return evidence;
+}
+
 export function buildManagedChatOperationV2ExecutionPrompt(
   input: Parameters<ManagedChatOperationV2AuthoringOpenCodeAdapter['execute']>[0],
 ): ManagedChatOperationV2ExecutionPrompt {
@@ -1795,18 +1828,25 @@ export function buildManagedChatOperationV2ExecutionPrompt(
         'Trial Plan invocation does not match the authenticated staged target.',
       );
     }
+    const continuation = authoringContinuationOf(input.canonicalRequestBytes) !== null;
     return {
       agent: TAGMA_TRIAL_PLANNER_AGENT,
       system:
-        'Operate only inside the authenticated staged Tagma workspace. Read only the exact staged target and relevant companions; mutate only through the dedicated Trial Plan tool for the Host-issued attempt.',
+        'Operate only inside the authenticated staged Tagma workspace. Read only the exact staged target and relevant companions; mutate only through the dedicated Trial Plan tool for the Host-issued attempt. Prefer immediate, bounded tool calls over explanatory text; preserve substantive case assertions and coverage. Audit the frozen user intent for requested execution mechanism and launch behavior as well as outputs. If intent evidence is omitted for size, use the same-session history; if it cannot be recovered, record a blocking diagnostic-only finding instead of claiming coverage.',
       text: [
         '<tagma-internal>',
-        '<mode>targeted_trial_planning</mode>',
+        `<mode>${continuation ? 'resume_truncated_trial_plan' : 'targeted_trial_planning'}</mode>`,
         `<agent-root>${escapeXml(input.stageDirectory)}</agent-root>`,
         `<target>${escapeXml(input.targetRelativePath)}</target>`,
         `<trial-plan-request>${escapeXml(canonicalJson(input.trialPlanRequest))}</trial-plan-request>`,
+        ...buildTrialPlannerIntentEvidence(input),
         `<host-evidence-digest>${sha256(input.canonicalRequestBytes)}</host-evidence-digest>`,
         '</tagma-internal>',
+        ...(continuation
+          ? [
+              'The previous generation hit the output limit. Continue the same Host attempt and YAML revision. If commit was already attempted, make no tool call and finish briefly. Otherwise call begin without reset to resume the draft, then add only missing cases, coverage, and findings with bounded tool calls, and commit once. Preserve prior substantive checks; avoid narration.',
+            ]
+          : []),
       ].join('\n'),
     };
   }
@@ -2075,6 +2115,9 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
           !HASH_RE.test(invocation.requestDigest) ||
           !HASH_RE.test(invocation.baselineSnapshotHash) ||
           typeof invocation.executionSubmitted !== 'boolean' ||
+          (invocation.trialPlanRequestDigest !== undefined &&
+            (invocation.purpose !== 'trial_plan' ||
+              !HASH_RE.test(invocation.trialPlanRequestDigest))) ||
           (invocation.completed !== null &&
             (invocation.completed.kind !== 'completed' ||
               invocation.completed.executionMessageId !== invocation.executionMessageId))
@@ -2682,12 +2725,13 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       if (continuationOf !== null) {
         const prior = authority.invocations[continuationOf];
         if (
-          request.purpose === 'trial_plan' ||
           !prior ||
           prior.purpose !== request.purpose ||
           prior.sessionId !== request.sessionId ||
           prior.executionSubmitted !== true ||
-          prior.completed !== null
+          prior.completed !== null ||
+          (request.purpose === 'trial_plan' &&
+            prior.trialPlanRequestDigest !== sha256(canonicalJson(request.trialPlanRequest)))
         ) {
           throw new ChatOperationV2AuthoringProtocolError(
             'authority_mismatch',
@@ -2706,6 +2750,9 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         executionMessageId: executionMessageId(request),
         baselineSnapshotHash,
         executionSubmitted: false,
+        ...(request.purpose === 'trial_plan'
+          ? { trialPlanRequestDigest: sha256(canonicalJson(request.trialPlanRequest)) }
+          : {}),
         ...(request.purpose === 'trial_plan' && request.trialPlanRequest?.affectedCases
           ? { planReviewAffectedCases: request.trialPlanRequest.affectedCases }
           : {}),
