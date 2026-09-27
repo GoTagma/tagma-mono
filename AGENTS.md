@@ -4,6 +4,9 @@
 
 For live acceptance work against a supplied Tagma test set or scenario/level matrix, follow `.agents/skills/test-tagma-test-sets/SKILL.md`. This workflow does not apply to ordinary repository tests or diagnostics-only monitoring.
 
+- Adjudicate each level by conversation rounds: one user message turn per round, and agent-mode automatic repair inside that turn is part of the same round. A clean one-round normal result — passed Trial and published bytes meeting the case's substantive criteria, with no product defect in monitoring — is a one-round pass; a manual real-workspace Run is not required. Otherwise follow the skill's defect-repair or follow-up paths. Monitor every round through the supplied Diagnostics and Chat Control APIs.
+- A confirmed Tagma-owned defect stops the matrix until repaired. After the fix, the developer restarts the local editor, the failed level is re-run from round 1 in a new workspace with fresh API instructions, and only a passing verification unlocks the next level.
+
 ## Git Commit Summary Files
 
 When an agent creates a git commit in this repository:
