@@ -86,6 +86,23 @@ test('Host rejects a committed plan that omits explicit recovery evidence', () =
   try {
     const stagedYamlPath = join(root, 'sample.yaml');
     const candidate = completePlan();
+    const intent = 'If verification times out, continue to a report with unverified results.';
+    (candidate as Record<string, unknown>).evidenceReview = {
+      version: 1,
+      intentDigest: createHash('sha256').update(intent).digest('hex'),
+      decisions: [
+        'timeout-recovery',
+        'failure-recovery',
+        'empty-result',
+        'unlocated-source',
+        'source-preservation',
+      ].map((type) => ({
+        type,
+        required: type === 'timeout-recovery',
+        taskIds: type === 'timeout-recovery' ? ['main.publish'] : [],
+        rationale: 'Review useful-output recovery.',
+      })),
+    };
     const bytes = JSON.stringify(candidate);
     writeFileSync(pipelineTrialPlanPath(stagedYamlPath), bytes, 'utf8');
     const read = readChatPipelineTrialPlan(
@@ -129,8 +146,9 @@ test('Host rejects a committed plan that omits explicit recovery evidence', () =
     );
     expect(repair).toMatchObject({
       status: 'required',
-      request: { artifactRepair: 'missing_controlled_fault_seam' },
+      request: { message: expect.stringContaining('typed-evidence-missing') },
     });
+    if (repair.status === 'required') expect(repair.request.artifactRepair).toBeUndefined();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -257,7 +275,7 @@ test('fixture setup rejection gives the planner the exact negative case and null
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 11,
+    version: 12,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],

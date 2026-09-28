@@ -1,5 +1,11 @@
-import { CHAT_PIPELINE_TRIAL_PLAN_CONTRACT } from './chat-pipeline-trial-plan.js';
+import {
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT,
+  chatPipelineTrialCaseExecutionHash,
+  validateChatPipelineTrialFixtureSetup,
+} from './chat-pipeline-trial-plan.js';
 import { normalizeTrialPrerequisiteCases } from './chat-pipeline-trial-prerequisites.js';
+import { createTrialResilienceRules } from './chat-trial-resilience-rules.js';
+import { createTrialPathCoordinateRules } from './chat-trial-path-coordinate-rules.js';
 
 /**
  * Build the OpenCode custom tool as a self-contained module. The tool runs in
@@ -10,6 +16,10 @@ import { normalizeTrialPrerequisiteCases } from './chat-pipeline-trial-prerequis
 export function buildTagmaTrialPlanTool(): string {
   const contract = JSON.stringify(CHAT_PIPELINE_TRIAL_PLAN_CONTRACT);
   const prerequisiteValidator = normalizeTrialPrerequisiteCases.toString();
+  const resilienceRules = createTrialResilienceRules.toString();
+  const pathCoordinateRules = createTrialPathCoordinateRules.toString();
+  const fixtureValidator = validateChatPipelineTrialFixtureSetup.toString();
+  const caseHash = chatPipelineTrialCaseExecutionHash.toString();
   return `import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -27,6 +37,11 @@ import { tool } from "@opencode-ai/plugin";
 const CONTRACT = ${contract};
 const BEGIN_YAML_EVIDENCE_LIMIT = 16 * 1024;
 const normalizeTrialPrerequisiteCases = (${prerequisiteValidator});
+const resilienceRules = (${resilienceRules})();
+const pathCoordinateRules = (${pathCoordinateRules})();
+const chatPipelineTrialCaseExecutionHash = (${caseHash});
+class TrialPlanFixtureSetupError extends Error {}
+const validateChatPipelineTrialFixtureSetup = (${fixtureValidator});
 const REQUIRED_COVERAGE = [...CONTRACT.coverageDimensions];
 const COVERAGE_STATUSES = [...CONTRACT.coverageStatuses];
 const FINDING_SEVERITIES = [...CONTRACT.findingSeverities];
@@ -91,7 +106,9 @@ function normalizeRelativeCasePath(value, label) {
 }
 
 function validateExpectation(value, label) {
-  const raw = asRecord(value, label);
+  const raw = { ...asRecord(value, label) };
+  if (raw.path !== undefined) raw.path = normalizeRelativeCasePath(raw.path, label + '.path');
+  if (raw.sourcePath !== undefined) raw.sourcePath = normalizeRelativeCasePath(raw.sourcePath, label + '.sourcePath');
   const type = asString(raw.type, label + ".type", 64);
   if (!EXPECTATION_TYPES.includes(type)) throw new Error(label + ".type is unsupported.");
   if (type === "path-exists" || type === "path-not-exists") {
@@ -129,7 +146,7 @@ function validateExpectation(value, label) {
     normalizeRelativeCasePath(raw.path, label + ".path");
     return raw;
   }
-  if (type === "json-pointer-equals") {
+  if (type === "json-pointer-equals" || type === "json-pointer-text-occurrence") {
     normalizeRelativeCasePath(raw.path, label + ".path");
     const pointer = asString(raw.pointer, label + ".pointer", 512, true);
     if (pointer !== "" && !pointer.startsWith("/")) {
@@ -137,6 +154,11 @@ function validateExpectation(value, label) {
     }
     if (/~(?:[^01]|$)/u.test(pointer)) {
       throw new Error(label + ".pointer contains an invalid JSON Pointer escape.");
+    }
+    if (type === "json-pointer-text-occurrence") {
+      normalizeRelativeCasePath(raw.sourcePath, label + ".sourcePath");
+      if (typeof raw.present !== "boolean") throw new Error(label + ".present must be a boolean.");
+      return raw;
     }
     const expectedJson = asString(
       raw.expectedJson,
@@ -279,7 +301,7 @@ function validateCase(value, index) {
     expectations
       .filter(
         (expectation) =>
-          expectation.type === "json-valid" || expectation.type === "json-pointer-equals",
+          expectation.type === "json-valid" || expectation.type === "json-pointer-equals" || expectation.type === "json-pointer-text-occurrence",
       )
       .map((expectation) => expectation.path.toLowerCase()),
   );
@@ -331,6 +353,7 @@ function validateCase(value, index) {
     fixtures,
     generatedInputPaths,
     expectations,
+    ...(raw.evidence === undefined ? {} : { evidence: resilienceRules.parseCaseEvidence(raw.evidence).map(item => item.type !== "source-preservation" && item.fault.type === "artifact-replace" ? { ...item, fault: { ...item.fault, path: normalizeRelativeCasePath(item.fault.path, label + ".evidence.fault.path") } } : item) }),
   }], false)[0];
 }
 
@@ -610,6 +633,7 @@ function assertValidPlan(value) {
   goals.forEach((goal, index) => asString(goal, "goals[" + index + "]", 1000));
 
   const cases = validateCaseEntries(raw.cases, true);
+  if (raw.evidenceReview !== undefined) resilienceRules.parseReview(raw.evidenceReview);
   validateCoverageSection(raw.coverage, cases);
 
   validateFindingEntries(raw.findings || []);
@@ -632,6 +656,8 @@ function assertTargetPaths(value, relativeYaml) {
       ...testCase.expectations
         .map((item, index) => ['expectations', index, item.path])
         .filter((item) => typeof item[2] === 'string'),
+      ...testCase.expectations.filter(item => typeof item.sourcePath === 'string').map((item, index) => ['expectations.sourcePath', index, item.sourcePath]),
+      ...(testCase.evidence || []).filter(item => item.type !== 'source-preservation' && item.fault.type === 'artifact-replace').map((item, index) => ['evidence.fault', index, item.fault.path]),
     ];
     for (const [kind, index, path] of items) {
       if (blocked.has(path.toLowerCase())) {
@@ -689,7 +715,7 @@ function resolvePipelineTarget(input, contextDirectory) {
 }
 
 const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 2;
-const TRIAL_PLAN_DRAFT_VERSION = 2;
+const TRIAL_PLAN_DRAFT_VERSION = 3;
 const TOOL_ATTEMPT_LIMITS = CONTRACT.limits.toolAttemptsPerYaml;
 const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
 const DRAFT_OPERATIONS = [
@@ -697,6 +723,8 @@ const DRAFT_OPERATIONS = [
   'upsert-case',
   'set-coverage',
   'set-findings',
+  'set-evidence-review',
+  'validate',
   'commit',
   'commit-plan',
 ];
@@ -792,6 +820,7 @@ function newTrialPlanDraft(paths, yamlHash, attemptId, summary, goals) {
     cases: [],
     seededFromYamlHash: null,
     commitAttempted: false,
+    evidenceReview: undefined,
   };
 }
 
@@ -830,6 +859,7 @@ function assertTrialPlanDraft(value, paths, yamlHash) {
       ? []
       : validateCoverageSection(draft.coverage, draft.cases);
   draft.findings = validateFindingEntries(draft.findings);
+  if (draft.evidenceReview !== undefined) draft.evidenceReview = resilienceRules.parseReview(draft.evidenceReview);
   draft.seededFromYamlHash = draft.seededFromYamlHash || null;
   draft.commitAttempted = draft.commitAttempted === true;
   return draft;
@@ -855,6 +885,7 @@ function readTrialPlanDraftIfExists(paths, yamlHash) {
     }
     throw error;
   }
+  if (raw.draftVersion === 2 && raw.version === 11) throw new Error('Legacy Trial draft evidence is invalidated; call begin with reset:true to rebuild the retained draft under the current contract.');
   return assertTrialPlanDraft(raw, paths, yamlHash);
 }
 
@@ -886,6 +917,7 @@ function trialPlanDraftResult(operation, draft, pipelineEvidence) {
       coverage: draft.coverage.length,
       findings: draft.findings.length,
       ...(pipelineEvidence ? { pipelineEvidence } : {}),
+      ...(draft.intentDigest ? { intentDigest: draft.intentDigest } : {}),
       ...(draft.seededFromYamlHash
         ? { seededFromYamlHash: draft.seededFromYamlHash }
         : {}),
@@ -1027,6 +1059,7 @@ function seedTrialPlanDraftFromAuthenticatedPriorRevision(input) {
       coverage: parsed.coverage,
       findings: parsed.findings,
       cases: parsed.cases,
+      ...(parsed.evidenceReview ? { evidenceReview: parsed.evidenceReview } : {}),
     };
     assertValidPlan(candidate);
     assertTargetPaths(candidate, input.paths.relativeYamlPath);
@@ -1041,6 +1074,7 @@ function seedTrialPlanDraftFromAuthenticatedPriorRevision(input) {
       coverage: candidate.coverage,
       findings: candidate.findings,
       cases: candidate.cases,
+      evidenceReview: parsed.evidenceReview,
       seededFromYamlHash: priorHash,
     };
   } catch {
@@ -1197,6 +1231,13 @@ const expectationSchema = tool.schema.discriminatedUnion("type", [
     expectedJson: tool.schema.string(),
   }),
   tool.schema.object({
+    type: tool.schema.literal("json-pointer-text-occurrence"),
+    path: tool.schema.string(),
+    pointer: tool.schema.string(),
+    sourcePath: tool.schema.string(),
+    present: tool.schema.boolean(),
+  }),
+  tool.schema.object({
     type: tool.schema.literal("directory-entry-count"),
     path: tool.schema.string(),
     suffix: tool.schema.string().optional(),
@@ -1224,6 +1265,17 @@ const findingSchema = tool.schema.object({
   evidence: tool.schema.string().min(1).max(2000),
 });
 
+const faultSchema = tool.schema.union([
+  tool.schema.object({ type: tool.schema.literal("task-timeout"), taskId: tool.schema.string(), timeoutMs: tool.schema.number().int().min(1).max(5000) }),
+  tool.schema.object({ type: tool.schema.literal("task-exit"), taskId: tool.schema.string(), exitCode: tool.schema.number().int().min(1).max(125) }),
+  tool.schema.object({ type: tool.schema.literal("artifact-replace"), producerTaskId: tool.schema.string(), consumerTaskId: tool.schema.string(), path: tool.schema.string(), content: tool.schema.string().max(65536) }),
+]);
+const evidenceSchema = tool.schema.union([
+  tool.schema.object({ type: tool.schema.literal("source-preservation"), preservationExpectationIndex: tool.schema.number().int().min(0).max(31) }),
+  tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source"]), normalCaseId: tool.schema.string(), recoveredTaskId: tool.schema.string(), outcomeExpectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).min(1).max(32), observationExpectationIndex: tool.schema.number().int().min(0).max(31).optional(), fault: faultSchema }),
+]);
+const evidenceReviewSchema = tool.schema.object({ version: tool.schema.literal(1), intentDigest: tool.schema.string().min(64).max(64), decisions: tool.schema.array(tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source","source-preservation"]), required: tool.schema.boolean(), taskIds: tool.schema.array(tool.schema.string()).max(32), rationale: tool.schema.string().min(1).max(1000) })).min(5).max(5) });
+
 const caseSchema = tool.schema.object({
   id: tool.schema.string(),
   baselineCaseId: tool.schema.string().optional().describe("Positive case to run before this one-prerequisite negative probe; retain the same targets and fixtures."),
@@ -1244,6 +1296,7 @@ const caseSchema = tool.schema.object({
       }),
     )
     .max(CONTRACT.limits.fixturesPerCase),
+  evidence: tool.schema.array(evidenceSchema).max(5).optional().describe("Typed execution evidence. normalCaseId differs from prerequisite-negative baselineCaseId. Host faults must have runtime observations."),
   generatedInputPaths: tool.schema
     .array(tool.schema.string())
     .max(CONTRACT.limits.generatedInputPathsPerCase)
@@ -1255,20 +1308,62 @@ const caseSchema = tool.schema.object({
     .max(CONTRACT.limits.expectationsPerCase),
 });
 
+function assertExecutableTrialPlan(input, plan) {
+  assertValidPlan(plan);
+  assertTargetPaths(plan, input.paths.relativeYamlPath);
+  const serialized = JSON.stringify(plan, null, 2) + String.fromCharCode(10);
+  if (new TextEncoder().encode(serialized).length > CONTRACT.limits.planBytes) {
+    throw new Error('trial plan exceeds the plan byte limit');
+  }
+  validateChatPipelineTrialFixtureSetup(plan, input.yamlPath, input.paths.relativeYamlPath);
+  const rawContext = input.paths.hostAttempt?.validationContext;
+  if (rawContext !== undefined) {
+    const context = resilienceRules.parseValidationContext(rawContext);
+    if (context.pathCoordinates !== undefined) {
+      pathCoordinateRules.validate(plan, pathCoordinateRules.parseContext(context.pathCoordinates));
+    }
+    for (const testCase of plan.cases) {
+      for (const id of testCase.targetTaskIds) {
+        if (!Object.hasOwn(context.tasks, id)) {
+          throw new Error('Trial case ' + testCase.id + ' targets an unknown staged task: ' + id);
+        }
+      }
+    }
+    if (context.intentDigest && !plan.evidenceReview) throw new Error('Set a structured evidence_review using the Host-issued intent digest before validation.');
+    const review = plan.evidenceReview === undefined ? undefined : resilienceRules.parseReview(plan.evidenceReview);
+    if (review && context.intentDigest && review.intentDigest !== context.intentDigest) throw new Error('Evidence review changed the frozen intent digest.');
+    const required = review ? review.decisions.filter(item => item.required).map(item => item.type) : context.obligations;
+    if (context.obligations.some(kind => !required.includes(kind))) throw new Error('Evidence review cannot remove a Host-pinned requirement.');
+    if (review && review.decisions.some(item => item.taskIds.some(id => !Object.hasOwn(context.tasks, id)))) throw new Error('Evidence review selects an unknown staged task.');
+    const inspection = resilienceRules.inspectEvidence(required, plan, context.tasks);
+    if (inspection.missing.length) {
+      if (inspection.issues.some(issue => issue.repairScope === 'pipeline-artifact')) return inspection;
+      throw new Error(inspection.issues.map(issue => (issue.caseId || 'plan') + ':' + issue.field + ' [' + issue.code + '] ' + issue.message).join(String.fromCharCode(10)));
+    }
+  }
+  return { missing: [], issues: [] };
+}
+
+function trialPlanFromDraft(draft) {
+  return {
+    version: CONTRACT.version,
+    yamlHash: draft.yamlHash,
+    summary: draft.summary,
+    goals: draft.goals,
+    coverage: draft.coverage,
+    findings: draft.findings,
+    cases: draft.cases,
+    ...(draft.evidenceReview === undefined ? {} : { evidenceReview: draft.evidenceReview }),
+  };
+}
+
 function commitValidatedTrialPlan(input, attempt, plan) {
   const planPath =
     input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
   let committedPlanHash;
   try {
-    assertValidPlan(plan);
-    assertTargetPaths(
-      plan,
-      relative(input.root, input.yamlPath).replaceAll(String.fromCharCode(92), '/'),
-    );
+    assertExecutableTrialPlan(input, plan);
     const serialized = JSON.stringify(plan, null, 2) + String.fromCharCode(10);
-    if (new TextEncoder().encode(serialized).length > CONTRACT.limits.planBytes) {
-      throw new Error('trial plan exceeds the plan byte limit');
-    }
     const tempPath = planPath + '.' + randomUUID() + '.tmp';
     writeFileSync(tempPath, serialized, 'utf8');
     renameSync(tempPath, planPath);
@@ -1290,15 +1385,7 @@ function commitValidatedTrialPlan(input, attempt, plan) {
 function commitTrialPlanDraft(input) {
   const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
   const draft = attempt.draft;
-  return commitValidatedTrialPlan(input, attempt, {
-    version: CONTRACT.version,
-    yamlHash: input.yamlHash,
-    summary: draft.summary,
-    goals: draft.goals,
-    coverage: draft.coverage,
-    findings: draft.findings,
-    cases: draft.cases,
-  });
+  return commitValidatedTrialPlan(input, attempt, trialPlanFromDraft(draft));
 }
 
 function commitCompleteTrialPlan(input) {
@@ -1311,6 +1398,7 @@ function commitCompleteTrialPlan(input) {
     coverage: input.args.coverage,
     findings: input.args.findings || [],
     cases: input.args.cases,
+    ...(input.args.evidence_review === undefined ? {} : { evidenceReview: resilienceRules.parseReview(input.args.evidence_review) }),
   });
 }
 
@@ -1324,6 +1412,13 @@ function executeExistingTrialPlanDraftOperation(input) {
       throw new Error('trial plan draft belongs to a different host attempt; call begin first');
     }
     assertTrialPlanDraftOpen(draft);
+    if (input.operation === 'validate') {
+      const inspection = assertExecutableTrialPlan(input, trialPlanFromDraft(draft));
+      if (inspection.missing.length > 0) {
+        return JSON.stringify({ valid: false, hostReviewRequired: true, missingEvidence: inspection.missing, issues: inspection.issues, commitAvailable: true, submissionConsumed: false });
+      }
+      return JSON.stringify({ valid: true, commitAvailable: true, submissionConsumed: false });
+    }
     if (input.operation === 'upsert-case') {
       const existingIndex = draft.cases.findIndex(
         (item) => item && typeof item === 'object' && item.id === input.args.case?.id,
@@ -1342,6 +1437,8 @@ function executeExistingTrialPlanDraftOperation(input) {
       draft.cases = validatedCases;
     } else if (input.operation === 'set-coverage') {
       draft.coverage = validateCoverageSection(input.args.coverage, draft.cases);
+    } else if (input.operation === 'set-evidence-review') {
+      draft.evidenceReview = resilienceRules.parseReview(input.args.evidence_review);
     } else if (input.operation === 'set-findings') {
       draft.findings = validateFindingEntries(input.args.findings);
     }
@@ -1421,6 +1518,7 @@ function executeTrialPlanOperation(args, context) {
         newTrialPlanDraft(paths, yamlHash, attemptId, summary, goals);
       draft.commitAttempted = false;
       draft.attemptId = attemptId;
+      draft.intentDigest = paths.hostAttempt?.validationContext?.intentDigest;
       draft.summary = summary;
       draft.goals = goals;
       writeTrialPlanDraft(paths, draft);
@@ -1448,7 +1546,7 @@ export default tool({
     "Build a targeted trial plan through bounded draft operations, or validate and commit one bounded complete plan atomically.",
   args: {
     operation: tool.schema.enum(DRAFT_OPERATIONS).describe(
-      "begin creates or resumes the revision-bound draft; upsert-case, set-coverage, and set-findings assemble it; commit performs its counted write. commit-plan validates and writes one complete bounded plan in one counted call.",
+      "begin creates or resumes the revision-bound draft; upsert-case, set-evidence-review reviews frozen intent; set-coverage and set-findings assemble it; validate checks complete executable evidence without spending a submission; commit performs its counted write. commit-plan validates and writes one complete bounded plan in one counted call.",
     ),
     pipeline_path: tool.schema
       .string()
@@ -1476,6 +1574,7 @@ export default tool({
       .array(findingSchema)
       .max(CONTRACT.limits.findings)
       .optional(),
+    evidence_review: evidenceReviewSchema.optional(),
     case: caseSchema.optional(),
     cases: tool.schema.array(caseSchema).max(CONTRACT.limits.cases).optional(),
   },

@@ -663,11 +663,27 @@ test('one conversation adds CSV and publishes after real repeated Sandbox verifi
       writeFileSync(
         path.replace(/\.yaml$/, '.trial-plan.json'),
         JSON.stringify({
-          version: 11,
+          version: 12,
           yamlHash: createHash('sha1').update(readFileSync(path)).digest('hex'),
           summary: 'Verify integer amounts and CSV escaping.',
           goals: ['Keep JSON and add CSV.'],
           findings: [],
+          evidenceReview: {
+            version: 1,
+            intentDigest: hash('Apply requested pipeline change.'),
+            decisions: [
+              'timeout-recovery',
+              'failure-recovery',
+              'empty-result',
+              'unlocated-source',
+              'source-preservation',
+            ].map((type) => ({
+              type,
+              required: false,
+              taskIds: [],
+              rationale: 'This JSON/CSV workflow promises no recovery behavior.',
+            })),
+          },
           coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) => ({
             dimension,
             status: dimension === 'repeat-run' ? 'covered' : 'not-applicable',

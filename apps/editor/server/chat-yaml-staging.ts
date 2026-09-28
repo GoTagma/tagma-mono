@@ -12,9 +12,16 @@ import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { PipelineConfig } from '@tagma/sdk';
-import { loadPipeline, parseYaml, serializePipeline } from '@tagma/sdk/yaml';
+import { loadPipeline, parseYaml, resolveConfig, serializePipeline } from '@tagma/sdk/yaml';
 
 import { pipelineTrialPlanPath, readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
+import {
+  buildTrialPlanValidationContext,
+  trialIntentDigest,
+  parseTrialPlanValidationContext,
+  type TrialPlanValidationContext,
+} from './chat-trial-intent-coverage.js';
+import { TRIAL_EVIDENCE_KINDS } from './chat-trial-resilience-rules.js';
 import {
   parseChatPipelineBinding,
   readChatPipelineBinding,
@@ -305,7 +312,12 @@ interface ChatYamlStageMetadata {
     relativePath: string;
     yamlHash: string;
     attemptId: string;
+    validationContext?: TrialPlanValidationContext;
   } | null;
+  trialEvidenceContract?: {
+    intentDigest: string;
+    required: readonly import('./chat-trial-resilience-rules.js').ExplicitResilienceObligation[];
+  };
   activeRelativePath: string | null;
   requestedAction: PipelineRequestedActionKind | null;
   routeIntentRequired: boolean;
@@ -355,6 +367,10 @@ export interface ChatYamlStageDescriptor {
   agentWorkspaceDir: string;
   agentTagmaDir: string;
   trialPlanMaxAttempts: number;
+  trialEvidenceContract?: {
+    intentDigest: string;
+    required: readonly import('./chat-trial-resilience-rules.js').ExplicitResilienceObligation[];
+  };
   activeRelativePath: string | null;
   activeStagedPath: string | null;
   requestedAction: PipelineRequestedActionKind | null;
@@ -1073,6 +1089,13 @@ function readMetadata(
           relativePath: assertPortableRelativePath(rawTrialPlanAttempt.relativePath),
           yamlHash: rawTrialPlanAttempt.yamlHash,
           attemptId: rawTrialPlanAttempt.attemptId,
+          ...(rawTrialPlanAttempt.validationContext === undefined
+            ? {}
+            : {
+                validationContext: parseTrialPlanValidationContext(
+                  rawTrialPlanAttempt.validationContext,
+                ),
+              }),
         }
       : null;
   const requestedAction = isPipelineRequestedActionKind(raw.requestedAction)
@@ -1164,6 +1187,9 @@ function readMetadata(
           : null,
       trialPlanMaxAttempts,
       trialPlanAttempt,
+      ...(raw.trialEvidenceContract === undefined
+        ? {}
+        : { trialEvidenceContract: parseStageEvidenceContract(raw.trialEvidenceContract) }),
       activeRelativePath:
         typeof raw.activeRelativePath === 'string' ? raw.activeRelativePath : null,
       requestedAction,
@@ -1353,6 +1379,9 @@ function descriptor(
     agentWorkspaceDir: paths.agentWorkspaceDir,
     agentTagmaDir: paths.agentTagmaDir,
     trialPlanMaxAttempts: metadata.trialPlanMaxAttempts,
+    ...(metadata.trialEvidenceContract
+      ? { trialEvidenceContract: metadata.trialEvidenceContract }
+      : {}),
     activeRelativePath: metadata.activeRelativePath,
     activeStagedPath: active?.stagedPath ?? reservedCreateTarget,
     requestedAction: metadata.requestedAction,
@@ -1837,6 +1866,45 @@ export function assertChatYamlStageLockOwner(
   }
 }
 
+function parseStageEvidenceContract(
+  value: unknown,
+): NonNullable<ChatYamlStageMetadata['trialEvidenceContract']> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Stage evidence contract is invalid.');
+  const raw = value as { intentDigest?: unknown; required?: unknown };
+  if (
+    typeof raw.intentDigest !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(raw.intentDigest) ||
+    !Array.isArray(raw.required) ||
+    raw.required.some((kind) => !TRIAL_EVIDENCE_KINDS.includes(kind as never)) ||
+    new Set(raw.required).size !== raw.required.length
+  )
+    throw new Error('Stage evidence contract is invalid.');
+  return { intentDigest: raw.intentDigest, required: [...raw.required] };
+}
+
+/** Host-only monotonic requirement pin, after the exact plan bytes are authenticated. */
+export function pinChatYamlStageEvidenceContract(
+  ws: WorkspaceState,
+  stageId: string,
+  intentDigest: string,
+  required: readonly import('./chat-trial-resilience-rules.js').ExplicitResilienceObligation[],
+): void {
+  const { paths, metadata } = readMetadata(ws, stageId);
+  const next = parseStageEvidenceContract({ intentDigest, required });
+  const previous = metadata.trialEvidenceContract;
+  if (
+    previous &&
+    (previous.intentDigest !== intentDigest ||
+      previous.required.some((kind) => !next.required.includes(kind)))
+  )
+    throw new Error(
+      'A stage evidence contract cannot change intent or remove a pinned requirement.',
+    );
+  if (previous && JSON.stringify(previous) === JSON.stringify(next)) return;
+  writeMetadata(paths, { ...metadata, trialEvidenceContract: next });
+}
+
 export function issueChatYamlStageTrialPlanAttempt(
   ws: WorkspaceState,
   input: {
@@ -1844,6 +1912,7 @@ export function issueChatYamlStageTrialPlanAttempt(
     relativePath: string;
     yamlHash: string;
     attemptId: string;
+    intentText?: string;
   },
 ): void {
   const { paths, metadata } = readMetadata(ws, input.stageId);
@@ -1855,7 +1924,8 @@ export function issueChatYamlStageTrialPlanAttempt(
     throw new Error('Trial plan attempt ID is invalid.');
   }
   const stagedPath = resolveStagedYamlPath(paths, relativePath);
-  const currentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
+  const yamlText = assertRegularTextFile(stagedPath, 'staged YAML');
+  const currentHash = sha1(yamlText);
   if (currentHash !== input.yamlHash) {
     throw new Error('Staged YAML changed before the Trial plan attempt was issued.');
   }
@@ -1865,6 +1935,14 @@ export function issueChatYamlStageTrialPlanAttempt(
       relativePath,
       yamlHash: input.yamlHash,
       attemptId: input.attemptId,
+      validationContext: buildTrialPlanValidationContext(
+        resolveConfig(parseYaml(yamlText), ws.workDir),
+        metadata.trialEvidenceContract?.required ?? [],
+        { relativeYamlPath: relativePath, workDir: ws.workDir },
+        input.intentText === undefined
+          ? metadata.trialPlanAttempt?.validationContext?.intentDigest
+          : trialIntentDigest(input.intentText),
+      ),
     },
   });
 }

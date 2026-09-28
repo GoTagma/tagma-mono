@@ -195,6 +195,12 @@ test('missing and empty fixtures exercise preflight and middleware separately wi
       readFileSync(join(root, '.tagma', '.chat-staging', stage.id, 'stage.json'), 'utf8'),
     );
     expect(stageMetadata.trialPlanAttempt.attemptId).toBe(correctionAttemptId);
+    expect(stageMetadata.trialPlanAttempt.validationContext.pathCoordinates).toMatchObject({
+      namespace: 'guide',
+      taskLocalPaths: expect.arrayContaining([
+        { path: 'rules.md', cwd: '.tagma/guide', descendants: false },
+      ]),
+    });
     const replay = await trialRunChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: entry.relativePath,

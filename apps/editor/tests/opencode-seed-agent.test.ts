@@ -1367,7 +1367,9 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('tagma_placement_plan: false');
     expect(planner).toContain('tagma_trial_plan: true');
     expect(planner).toContain('tagma_trial_plan: allow');
-    expect(planner).toContain('then `commit` exactly once');
+    expect(planner).toContain('then `validate`');
+    expect(planner).toContain('Then `commit` exactly once');
+    expect(planner).toContain('it spends no formal submission');
     expect(planner).toContain(
       'The begin operation requires a non-empty summary and a non-empty string-array goals',
     );

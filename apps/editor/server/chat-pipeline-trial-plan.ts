@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 import type { PipelineConfig } from '@tagma/sdk';
 import { buildDag } from '@tagma/sdk/config';
@@ -13,16 +13,25 @@ import {
 } from '../shared/chat-pipeline-trial-plan-limit.js';
 import { sameFilesystemPathCoordinate } from '../shared/filesystem-paths.js';
 import {
+  buildTrialPlanPathCoordinateContext,
+  createTrialPathCoordinateRules,
+} from './chat-trial-path-coordinate-rules.js';
+import {
   normalizeTrialPrerequisiteCases,
   type ChatPipelineTrialPrerequisiteControls,
 } from './chat-pipeline-trial-prerequisites.js';
 import {
-  missingControlledFaultSeam,
-  missingExplicitResilienceEvidence,
+  parseTrialCaseEvidence,
+  parseTrialEvidenceReview,
+  requiredTrialEvidence,
+  inspectTrialEvidence,
+  trialIntentDigest,
 } from './chat-trial-intent-coverage.js';
 
+const trialPathCoordinateRules = createTrialPathCoordinateRules();
+
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 11,
+  version: 12,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,
@@ -65,6 +74,7 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     'file-preserves-lines',
     'json-valid',
     'json-pointer-equals',
+    'json-pointer-text-occurrence',
     'directory-entry-count',
     'task-status',
   ],
@@ -138,6 +148,13 @@ export type ChatPipelineTrialExpectation =
   | { type: 'file-preserves-lines'; path: string; sourcePath: string; text: string }
   | { type: 'json-valid'; path: string }
   | {
+      type: 'json-pointer-text-occurrence';
+      path: string;
+      pointer: string;
+      sourcePath: string;
+      present: boolean;
+    }
+  | {
       type: 'json-pointer-equals';
       path: string;
       pointer: string;
@@ -166,6 +183,7 @@ export interface ChatPipelineTrialPlanCase extends ChatPipelineTrialPrerequisite
   /** Files the targeted closure must generate before consuming them as downstream inputs. */
   generatedInputPaths?: string[];
   expectations: ChatPipelineTrialExpectation[];
+  evidence?: import('./chat-trial-resilience-rules.js').TrialCaseEvidence[];
 }
 
 export interface ChatPipelineTrialPlan {
@@ -176,6 +194,7 @@ export interface ChatPipelineTrialPlan {
   coverage: ChatPipelineTrialPlanCoverage[];
   findings: ChatPipelineTrialPlanFinding[];
   cases: ChatPipelineTrialPlanCase[];
+  evidenceReview?: import('./chat-trial-resilience-rules.js').TrialEvidenceReview;
 }
 
 export function findUncoveredChatPipelineTrialTerminalTaskIds(
@@ -202,7 +221,7 @@ export interface ChatPipelineTrialPlanRequest {
   maxAttempts: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
   /** Host-confirmed staged artifact lacks a control needed for executable edge-case evidence. */
-  artifactRepair?: 'missing_controlled_fault_seam';
+  artifactRepair?: 'missing_controlled_fault_seam' | 'recovery_failure_policy';
   /** Host-observed cases that must be revised before repeating a failed Trial. */
   affectedCases?: Array<{
     caseId: string;
@@ -270,8 +289,17 @@ class TrialPlanFixtureSetupError extends Error {
 }
 
 export type ChatPipelineTrialPlanReadResult =
-  | { status: 'ready'; plan: ChatPipelineTrialPlan; planHash: string }
-  | { status: 'required'; request: ChatPipelineTrialPlanRequest };
+  | {
+      status: 'ready';
+      plan: ChatPipelineTrialPlan;
+      planHash: string;
+      reviewedRequirements?: readonly import('./chat-trial-resilience-rules.js').ExplicitResilienceObligation[];
+    }
+  | {
+      status: 'required';
+      request: ChatPipelineTrialPlanRequest;
+      reviewedRequirements?: readonly import('./chat-trial-resilience-rules.js').ExplicitResilienceObligation[];
+    };
 
 export interface ChatPipelineTrialPlanToolTelemetry {
   version: 2;
@@ -592,6 +620,16 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
       expectedJson: parseExpectedJson(raw.expectedJson, `${label}.expectedJson`),
     };
   }
+  if (type === 'json-pointer-text-occurrence') {
+    if (typeof raw.present !== 'boolean') throw new Error(`${label}.present must be a boolean.`);
+    return {
+      type,
+      path: normalizeRelativeCasePath(raw.path, `${label}.path`),
+      pointer: parseJsonPointer(raw.pointer, `${label}.pointer`),
+      sourcePath: normalizeRelativeCasePath(raw.sourcePath, `${label}.sourcePath`),
+      present: raw.present,
+    };
+  }
   if (type === 'directory-entry-count') {
     const min = raw.min === undefined ? null : asInteger(raw.min, `${label}.min`, 0, 10_000);
     const max = raw.max === undefined ? null : asInteger(raw.max, `${label}.max`, 0, 10_000);
@@ -747,6 +785,24 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     fixtures,
     generatedInputPaths,
     expectations,
+    ...(raw.evidence === undefined
+      ? {}
+      : {
+          evidence: parseTrialCaseEvidence(raw.evidence).map((item) =>
+            item.type !== 'source-preservation' && item.fault.type === 'artifact-replace'
+              ? {
+                  ...item,
+                  fault: {
+                    ...item.fault,
+                    path: normalizeRelativeCasePath(
+                      item.fault.path,
+                      `${label}.evidence.fault.path`,
+                    ),
+                  },
+                }
+              : item,
+          ),
+        }),
     ...(raw.baselineCaseId !== undefined ? { baselineCaseId: raw.baselineCaseId } : {}),
     ...(raw.environment !== undefined ? { environment: raw.environment } : {}),
     ...(raw.deniedManualTaskIds !== undefined
@@ -843,7 +899,9 @@ function validateJsonArtifactExpectations(cases: ChatPipelineTrialPlanCase[]): v
       testCase.expectations
         .filter(
           (expectation) =>
-            expectation.type === 'json-valid' || expectation.type === 'json-pointer-equals',
+            expectation.type === 'json-valid' ||
+            expectation.type === 'json-pointer-equals' ||
+            expectation.type === 'json-pointer-text-occurrence',
         )
         .map((expectation) => expectation.path.toLowerCase()),
     );
@@ -1056,6 +1114,9 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
     coverage,
     findings,
     cases,
+    ...(raw.evidenceReview === undefined
+      ? {}
+      : { evidenceReview: parseTrialEvidenceReview(raw.evidenceReview) }),
   };
 }
 
@@ -1096,6 +1157,21 @@ export function validateChatPipelineTrialPlanTargetPaths(
             ]
           : [],
       ),
+      ...testCase.expectations.flatMap((expectation, index) =>
+        'sourcePath' in expectation
+          ? [
+              {
+                label: `cases[${caseIndex}].expectations[${index}].sourcePath`,
+                path: expectation.sourcePath,
+              },
+            ]
+          : [],
+      ),
+      ...(testCase.evidence ?? []).flatMap((item, index) =>
+        item.type !== 'source-preservation' && item.fault.type === 'artifact-replace'
+          ? [{ label: `cases[${caseIndex}].evidence[${index}].fault.path`, path: item.fault.path }]
+          : [],
+      ),
     ];
     for (const item of paths) {
       if (!reserved.has(item.path.toLowerCase())) continue;
@@ -1106,116 +1182,17 @@ export function validateChatPipelineTrialPlanTargetPaths(
   }
 }
 
-interface TaskLocalTrialPath {
-  readonly path: string;
-  readonly cwd: string;
-  readonly descendants: boolean;
-}
-
-function normalizeTrialCoordinate(value: string): string {
-  return value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-}
-
-function taskLocalTrialPaths(
-  pipelineConfig: PipelineConfig,
-  relativeYamlPath: string,
-  workDir: string,
-): TaskLocalTrialPath[] {
-  const namespace = normalizeTrialCoordinate(dirname(relativeYamlPath));
-  if (!namespace || namespace === '.') return [];
-  const rootCwd = resolve(workDir);
-  const pipelineCwd = resolve(workDir, '.tagma', ...namespace.split('/'));
-  const paths: TaskLocalTrialPath[] = [];
-  const add = (value: unknown, cwd: string, descendants = false): void => {
-    if (typeof value !== 'string') return;
-    const path = normalizeTrialCoordinate(value);
-    if (!path || path.startsWith('/') || /^[A-Za-z]:\//.test(path) || path.startsWith('../'))
-      return;
-    paths.push({ path, cwd, descendants });
-  };
-
-  for (const track of pipelineConfig.tracks) {
-    for (const task of track.tasks) {
-      const resolvedCwd = resolve(workDir, task.cwd ?? track.cwd ?? '.');
-      const cwd = sameFilesystemPathCoordinate(resolvedCwd, rootCwd)
-        ? '.'
-        : sameFilesystemPathCoordinate(resolvedCwd, pipelineCwd)
-          ? `.tagma/${namespace}`
-          : null;
-      if (cwd === null) continue;
-      const trigger = task.trigger as { type?: unknown; path?: unknown } | undefined;
-      add(trigger?.path, cwd, trigger?.type === 'directory');
-      const completion = task.completion as { path?: unknown } | undefined;
-      add(completion?.path, cwd);
-      const middlewares = task.middlewares ?? track.middlewares ?? [];
-      for (const middleware of middlewares) {
-        const record = middleware as { type?: unknown; file?: unknown };
-        if (record.type === 'static_context') add(record.file, cwd);
-      }
-      for (const binding of Object.values(task.inputs ?? {})) {
-        const record = binding as { value?: unknown; default?: unknown };
-        for (const value of [record.value, record.default]) {
-          if (
-            typeof value !== 'string' ||
-            !(/[\\/]/.test(value) || /\.[A-Za-z0-9]+$/.test(value))
-          ) {
-            continue;
-          }
-          add(value, cwd);
-        }
-      }
-    }
-  }
-  return paths;
-}
-
-/**
- * Trial fixture/assertion paths use case-root coordinates, while runtime paths
- * inside a task use that task's effective cwd. Reject the common ambiguous
- * plan shape before execution so the planner corrects it instead of blaming a
- * successfully produced pipeline artifact.
- */
+/** Precommit and authoritative Host checks share the same case-root coordinate rules. */
 export function validateChatPipelineTrialPlanTaskPathCoordinates(
   plan: ChatPipelineTrialPlan,
   pipelineConfig: PipelineConfig,
   relativeYamlPath: string,
   workDir: string,
 ): void {
-  const namespace = normalizeTrialCoordinate(dirname(relativeYamlPath));
-  if (!namespace || namespace === '.') return;
-  const taskLocalPaths = taskLocalTrialPaths(pipelineConfig, relativeYamlPath, workDir);
-  for (const [caseIndex, testCase] of plan.cases.entries()) {
-    const paths = [
-      ...testCase.fixtures.map((fixture, index) => ({
-        label: `cases[${caseIndex}].fixtures[${index}].path`,
-        path: fixture.path,
-      })),
-      ...testCase.expectations.flatMap((expectation, index) =>
-        'path' in expectation
-          ? [{ label: `cases[${caseIndex}].expectations[${index}].path`, path: expectation.path }]
-          : [],
-      ),
-    ];
-    for (const item of paths) {
-      const path = normalizeTrialCoordinate(item.path);
-      if (path === namespace || path.startsWith(`${namespace}/`)) continue;
-      const matches = taskLocalPaths.filter(
-        (candidate) =>
-          path === candidate.path ||
-          (candidate.descendants && path.startsWith(`${candidate.path}/`)),
-      );
-      if (matches.some((candidate) => candidate.cwd === '.')) continue;
-      const match = matches.find(
-        (candidate) => candidate.cwd.toLowerCase() === `.tagma/${namespace}`.toLowerCase(),
-      );
-      if (!match) continue;
-      const expected = `${namespace}/${path}`;
-      throw new Error(
-        `${item.label} (${item.path}) uses a task-local path from effective cwd ${match.cwd}, ` +
-          `but Trial paths are relative to the isolated case root. Use ${expected}.`,
-      );
-    }
-  }
+  trialPathCoordinateRules.validate(
+    plan,
+    buildTrialPlanPathCoordinateContext(pipelineConfig, relativeYamlPath, workDir),
+  );
 }
 
 export function buildChatPipelineTrialPlanRequest(
@@ -1390,6 +1367,7 @@ export function validateChatPipelineTrialFixtureSetup(
   for (const negative of plan.cases) {
     if (
       negative.baselineCaseId ||
+      negative.evidence?.some((item) => item.type !== 'source-preservation') ||
       (negative.environment?.length ?? 0) > 0 ||
       (negative.deniedManualTaskIds?.length ?? 0) > 0
     )
@@ -1398,6 +1376,7 @@ export function validateChatPipelineTrialFixtureSetup(
       if (
         positive === negative ||
         positive.baselineCaseId ||
+        positive.evidence?.some((item) => item.type !== 'source-preservation') ||
         (positive.environment?.length ?? 0) > 0 ||
         JSON.stringify([...positive.targetTaskIds].sort()) !==
           JSON.stringify([...negative.targetTaskIds].sort())
@@ -1468,30 +1447,23 @@ export function readChatPipelineTrialPlan(
   authenticatedPlanHash?: string | null,
   affectedCases?: ChatPipelineTrialPlanRequest['affectedCases'],
   intentText?: string,
+  pinnedRequirements: readonly import('./chat-trial-resilience-rules.js').ExplicitResilienceObligation[] = [],
 ): ChatPipelineTrialPlanReadResult {
   if (!isValidChatPipelineTrialPlanAttempts(maxAttempts)) {
     throw new Error('Trial plan max attempts is invalid.');
   }
-  if (pipelineConfig) {
+  if (pipelineConfig && !intentText) {
     const plan = hostFixedPromptTrialPlan(pipelineConfig, pipelineHash, workDir);
-    if (plan) {
-      if (intentText) {
-        const missing = missingExplicitResilienceEvidence(intentText, plan, pipelineConfig);
-        if (missing.length > 0) {
-          return planRequest(
-            'invalid',
-            relativeYamlPath,
-            pipelineHash,
-            `The fixed Trial plan cannot verify required document behavior: ${missing.join(', ')}. Preserve the draft until executable evidence is available.`,
-            maxAttempts,
-          );
-        }
-      }
-      const planHash = createHash('sha256').update(JSON.stringify(plan)).digest('hex');
-      return { status: 'ready', plan, planHash };
-    }
+    if (plan)
+      return {
+        status: 'ready',
+        plan,
+        planHash: createHash('sha256').update(JSON.stringify(plan)).digest('hex'),
+      };
   }
   const path = pipelineTrialPlanPath(stagedYamlPath);
+  let reviewedRequirements:
+    readonly import('./chat-trial-resilience-rules.js').ExplicitResilienceObligation[] | undefined;
   if (!existsSync(path)) {
     return planRequest(
       'missing',
@@ -1537,6 +1509,13 @@ export function readChatPipelineTrialPlan(
       );
     }
     const plan = parseChatPipelineTrialPlan(parsed);
+    const planHash = createHash('sha256').update(content).digest('hex');
+    if (authenticatedPlanHash === planHash)
+      reviewedRequirements = requiredTrialEvidence(
+        plan,
+        intentText ? trialIntentDigest(intentText) : undefined,
+        pinnedRequirements,
+      );
     validateChatPipelineTrialPlanTargetPaths(plan, relativeYamlPath);
     validateChatPipelineTrialFixtureSetup(plan, stagedYamlPath, relativeYamlPath);
     if (affectedCases?.length) {
@@ -1571,7 +1550,6 @@ export function readChatPipelineTrialPlan(
         maxAttempts,
       );
     }
-    const planHash = createHash('sha256').update(content).digest('hex');
     const committedPlanHash =
       authenticatedPlanHash === undefined
         ? readChatPipelineTrialPlanToolTelemetry(stagedYamlPath, maxAttempts).committedPlanHash
@@ -1585,27 +1563,53 @@ export function readChatPipelineTrialPlan(
         maxAttempts,
       );
     }
-    if (intentText) {
-      const missing = missingExplicitResilienceEvidence(intentText, plan, pipelineConfig);
-      if (missing.length > 0) {
-        const artifactRepair =
-          pipelineConfig && missingControlledFaultSeam(missing, pipelineConfig)
-            ? 'missing_controlled_fault_seam'
-            : undefined;
-        return planRequest(
+    const requirements = requiredTrialEvidence(
+      plan,
+      intentText ? trialIntentDigest(intentText) : undefined,
+      pinnedRequirements,
+    );
+    reviewedRequirements = requirements;
+    {
+      const inspection = inspectTrialEvidence(
+        requirements,
+        plan,
+        pipelineConfig,
+        workDir ? { relativeYamlPath, workDir } : undefined,
+      );
+      if (inspection.missing.length) {
+        const details = inspection.issues
+          .map(
+            (issue) =>
+              (issue.caseId ?? 'plan') +
+              ':' +
+              issue.field +
+              ' [' +
+              issue.code +
+              '] ' +
+              issue.message,
+          )
+          .join('\n');
+        const response = planRequest(
           'invalid',
           relativeYamlPath,
           pipelineHash,
-          `The committed Trial Plan has no executable evidence for required document behavior: ${missing.join(', ')}. Add controlled edge-case inputs and downstream content assertions; source-preservation needs a file-preserves-lines assertion bound to the exact multiline source fixture. An ordinary success case or coverage label is insufficient. If this cannot be exercised safely, retain the draft and report the limitation instead of publishing.`,
+          'Required structured Trial evidence is incomplete: ' +
+            inspection.missing.join(', ') +
+            '.\n' +
+            details,
           maxAttempts,
-          artifactRepair,
+          inspection.issues.some((issue) => issue.repairScope === 'pipeline-artifact')
+            ? 'recovery_failure_policy'
+            : undefined,
         );
+        return { ...response, reviewedRequirements: requirements };
       }
     }
     return {
       status: 'ready',
       plan,
       planHash,
+      reviewedRequirements: requirements,
     };
   } catch (err) {
     const response = planRequest(
@@ -1618,6 +1622,6 @@ export function readChatPipelineTrialPlan(
     if (err instanceof TrialPlanFixtureSetupError && response.status === 'required') {
       response.request.affectedCases = err.affectedCases;
     }
-    return response;
+    return { ...response, ...(reviewedRequirements ? { reviewedRequirements } : {}) };
   }
 }

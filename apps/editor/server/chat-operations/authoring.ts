@@ -1181,7 +1181,8 @@ function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanReque
   }
   if (
     value.artifactRepair !== undefined &&
-    value.artifactRepair !== 'missing_controlled_fault_seam'
+    value.artifactRepair !== 'missing_controlled_fault_seam' &&
+    value.artifactRepair !== 'recovery_failure_policy'
   ) {
     throw new ChatOperationV2AuthoringProtocolError(
       'invalid_runtime_result',

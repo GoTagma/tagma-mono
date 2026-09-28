@@ -731,8 +731,7 @@
   continuation with a fresh ID may consume the next attempt. Pre-execution plan rejections must
   derive that fresh ID from the YAML hash and next counted submission ordinal, even when the Trial
   transport ID is unchanged. Replayed requests and output-length continuation retain the same ID;
-  never loosen the tool's one-commit fence to permit correction. Keep the current rejection reason
-  in bounded/redacted planning-budget exhaustion feedback. When an executed Trial failure allows
+  never loosen the tool's one-commit fence to permit correction. When an executed Trial failure allows
   pipeline repair and the plan budget remains, issue that next ID before the generic repair turn and
   require one mutually exclusive path: either edit pipeline artifacts, or leave YAML/layout/requirements
   unchanged and delegate a plan-only correction. Any pipeline-artifact write changes the revision and
@@ -749,13 +748,28 @@
   reject live `.tagma` destinations, and never rely on the agent to copy staging artifacts.
 - For exactly one fixed non-empty built-in OpenCode prompt with explicit all-false permissions and
   no inputs, outputs, dependencies, trigger, non-default completion, middleware, secrets, hooks,
-  plugin, non-default cwd, or file/side-effect contract, the Host deterministically creates the
+  plugin, non-default cwd, file/side-effect contract, or frozen-intent semantic review, the Host deterministically creates the
   bounded Trial Plan without an LLM continuation or plan file. Target only the sole qualified task,
   run it twice, require successful task status, mark only repeat-run covered, and mark every other
   structural dimension not-applicable. Bind the canonical generated plan hash into Trial cache and
   finalize verification exactly like an authored plan.
 - Assemble ordinary trial plans through bounded same-tool draft operations: `begin`, one
-  `upsert-case` per case, `set-coverage`, `set-findings`, then exactly one `commit`. Only `commit`
+  `upsert-case` per case, `set-coverage`, `set-findings`, `validate`, then exactly one `commit`. `validate`
+  checks complete fixture semantics and the same recovery rules as Host verification, using bounded,
+  revision-bound Host context; it changes neither draft bytes nor formal attempt telemetry. Repair
+  validation errors in the open draft. A blocked finding may be submitted for independent Host review,
+  with `valid: false, hostReviewRequired: true`; that is never a verification pass or repair grant.
+  Keep budget-exhaustion feedback bounded/redacted and include the current plan rejection reason.
+  Explicitly set production-normal values for application controls in non-fault cases; omission
+  inherits Sandbox synthetic values and null removes a prerequisite. Host faults do not need
+  application selectors, and their normal and controlled inputs remain identical.
+  Precommit and Host verification share effective-cwd rules for fixtures, assertions, source paths,
+  generated inputs and artifact faults. Rejections preserve draft bytes and counted submissions.
+  Planning exhaustion cannot erase independently established recovery-failure-policy repair
+  authority, grant another plan submission, or derive authority from a planner finding alone.
+  Pipeline repair retains its finite budget and successful Trial remains mandatory for publication.
+  Trial Plan v12, draft v3 and cache v42 invalidate older semantic and fault evidence.
+  Only `commit`
   consumes that draft's formal attempt. Keep drafts stage-owned, path-and-hash-bound, locked,
   size-bounded, resumable, resettable, and unpublished. For a new YAML hash, `begin` may seed only
   from the exact prior tool-authenticated plan; planners preserve unaffected cases and update the
@@ -1778,21 +1792,23 @@
 
 ## Chat Trial Plan Semantics
 
-- Host review of explicit timeout/external-failure recovery, empty-claims, and unmatched-source promises uses the
-  frozen request, requirements-labelled attachments, and executable case evidence, not planner coverage labels. Do
-  not treat arbitrary attached source documents as requirements. Require a controlled
-  fault consumed by the targeted closure plus a differential output assertion for recoveries, or
-  a nonempty input/exact empty JSON result/final note for zero claims. Missing evidence is a
-  bounded Trial Plan correction and retains the draft on exhaustion; do not grant pipeline-write
-  authority from an untested promise. A document fact-checker with claim extraction, web
-  verification, and original-draft annotation also requires timeout, zero-claim, unmatched-source,
-  and original-line preservation evidence without an explicit fallback sentence. The
-  `file-preserves-lines` assertion binds exact fixture bytes and checks all nonempty source lines
-  in their original order in the output. If the Host proves that the staged pipeline has no
-  consumed fault control for required timeout or unmatched-source cases, a bounded plan request
-  carries `missing_controlled_fault_seam` artifact authority into automatic repair with the
-  missing evidence in the repair prompt. A missing assertion alone keeps plan-only authority.
-  Trial Plan contract v11 and cache v39 invalidate older pass decisions.
+- Recovery requirements come from the independent planner's complete structured semantic review of
+  frozen intent and staged promised behavior, bound to Host SHA256 intentDigest and qualified task
+  scopes. Never infer kinds from request words, case labels, output text or filename extensions.
+  Pin required kinds monotonically after authenticating the committed review, including across repair.
+  Typed evidence requires a preceding passing normal case with identical fixtures/targets/environment
+  and concrete contrasting outcomes. Host native timeout/exit faults require actual failed-task status,
+  complete capture and successful downstream recovery through the compiled production failure policy.
+  Host artifact replacement must target a newly produced, completion-bound private regular file before
+  its consumer starts; reject fixtures, support/control files, pre-seeding, symlinks and hardlinks.
+  Empty collections and absent nonempty source spans need structural normal counterparts. Keep exact
+  source-line preservation. Never reuse controlled case results. Only independently checked compiled
+  failure-policy obstruction grants `recovery_failure_policy` artifact authority; malformed evidence
+  and missing assertions remain plan-only. Do not expand budgets or claim semantics from prose.
+  Validate replacement JSON and its observed pointer/source relationship before submission. Apply
+  artifact faults at the owned native invocation boundary before launch, never in projected events.
+  An unobserved fault grants neither artifact repair nor assertion planning; a proven data fault
+  remains observed when its consumer fails. Verify recovery success separately.
 - Keep the generated `tagma_trial_plan` expectation schema and validator aligned with the Host
   parser and Trial runner. In particular, `file-preserves-lines` must be authorable through the
   tool, bind the exact non-null source fixture, and retain trailing whitespace/newlines in its

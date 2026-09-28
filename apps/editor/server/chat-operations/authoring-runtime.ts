@@ -1835,7 +1835,7 @@ export function buildManagedChatOperationV2ExecutionPrompt(
     return {
       agent: TAGMA_TRIAL_PLANNER_AGENT,
       system:
-        'Operate only inside the authenticated staged Tagma workspace. Read only the exact staged target and relevant companions; mutate only through the dedicated Trial Plan tool for the Host-issued attempt. Prefer immediate, bounded tool calls over explanatory text; preserve substantive case assertions and coverage. Audit the frozen user intent for requested execution mechanism and launch behavior as well as outputs. If intent evidence is omitted for size, use the same-session history; if it cannot be recovered, record a blocking diagnostic-only finding instead of claiming coverage.',
+        'Operate only inside the authenticated staged Tagma workspace. Read only the exact staged target and relevant companions; mutate only through the dedicated Trial Plan tool for the Host-issued attempt. Prefer immediate, bounded tool calls over explanatory text; preserve substantive case assertions and coverage. Validate the complete draft with the tool before its counted commit; fix validation errors in the same open draft without consuming a submission. Audit the frozen user intent for requested execution mechanism and launch behavior as well as outputs. If intent evidence is omitted for size, use the same-session history; if it cannot be recovered, record a blocking diagnostic-only finding instead of claiming coverage.',
       text: [
         '<tagma-internal>',
         `<mode>${continuation ? 'resume_truncated_trial_plan' : 'targeted_trial_planning'}</mode>`,
@@ -3124,11 +3124,11 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         };
       }
       if (
-        trial.planRequest.artifactRepair === 'missing_controlled_fault_seam' &&
+        trial.planRequest.artifactRepair !== undefined &&
         trial.repairAuthorization === 'pipeline-change-allowed'
       ) {
         return {
-          ...verificationRepair(id, [diagnostic, 'missing_controlled_fault_seam'], {
+          ...verificationRepair(id, [diagnostic, trial.planRequest.artifactRepair], {
             planRequest: trial.planRequest,
             stagedSnapshotHash: (await this.requireCurrentSnapshot(authority)).snapshotHash,
           }),

@@ -113,7 +113,7 @@ test('a Host V2 edit runs its renamed branch in Sandbox without the original cwd
     writeFileSync(
       entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'),
       JSON.stringify({
-        version: 11,
+        version: 12,
         yamlHash,
         summary: 'Run a typed scalar chain in its copied cwd.',
         goals: ['Keep the original pipeline isolated.'],

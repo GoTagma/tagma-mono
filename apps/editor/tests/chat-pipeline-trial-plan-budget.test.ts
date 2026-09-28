@@ -8,8 +8,11 @@ import { pathToFileURL } from 'node:url';
 import {
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
+  validateChatPipelineTrialPlanTaskPathCoordinates,
 } from '../server/chat-pipeline-trial-plan';
 import { buildTagmaTrialPlanTool } from '../server/opencode-trial-plan-tool';
+import { buildTrialPlanValidationContext } from '../server/chat-trial-intent-coverage';
+import { parseYaml, resolveConfig } from '@tagma/sdk/yaml';
 
 async function loadGeneratedTool(root: string) {
   const pluginDir = join(root, 'node_modules', '@opencode-ai', 'plugin');
@@ -179,6 +182,282 @@ function writeStageAttemptLimit(agentTagmaDir: string, maxAttempts: number): voi
     'utf8',
   );
 }
+
+for (const scope of [
+  'track',
+  'task',
+  'track-review',
+  'task-review',
+  'workspace',
+  'task-override',
+] as const) {
+  test(`precommit validates effective cwd coordinates without spending a submission: ${scope}`, async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-plan-coordinate-'));
+    try {
+      const directory = join(
+        root,
+        '.tagma',
+        '.chat-staging',
+        'stage-1',
+        'agent-workspace',
+        '.tagma',
+      );
+      const yamlPath = join(directory, 'flow', 'flow.yaml');
+      mkdirSync(dirname(yamlPath), { recursive: true });
+      const yaml = [
+        'pipeline:',
+        '  name: Coordinate contract',
+        '  tracks:',
+        '    - id: main',
+        ...(scope.startsWith('track') || scope === 'task-override'
+          ? ['      cwd: .tagma/flow']
+          : []),
+        '      tasks:',
+        '        - id: run',
+        ...(scope === 'task' || scope === 'task-review' ? ['          cwd: .tagma/flow'] : []),
+        ...(scope === 'task-override' ? ['          cwd: .'] : []),
+        '          command: echo report',
+        '          inputs:',
+        '            document_path:',
+        '              type: string',
+        '              default: inputs/source.txt',
+        '          completion:',
+        '            type: file_exists',
+        '            path: artifacts/report.txt',
+        '',
+      ].join('\n');
+      writeFileSync(yamlPath, yaml);
+      writeStageAttemptLimit(directory, 2);
+      const tool = await loadGeneratedTool(root);
+      const args = invalidPlanArgs(yamlPath);
+      const attemptId = `coordinate-${scope}`;
+      issueTrialPlanAttempt(args, { directory }, attemptId);
+      const config = resolveConfig(parseYaml(yaml), root);
+      const stagePath = join(dirname(dirname(directory)), 'stage.json');
+      const stage = JSON.parse(readFileSync(stagePath, 'utf8'));
+      const reviewRequired = scope.endsWith('-review');
+      stage.trialPlanAttempt.validationContext = buildTrialPlanValidationContext(
+        config,
+        [],
+        {
+          relativeYamlPath: 'flow/flow.yaml',
+          workDir: root,
+        },
+        reviewRequired ? 'a'.repeat(64) : undefined,
+      );
+      writeFileSync(stagePath, JSON.stringify(stage));
+      const call = (operation: string, fields: Record<string, unknown> = {}) =>
+        tool.execute(
+          { operation, attempt_id: attemptId, pipeline_path: yamlPath, ...fields },
+          { directory },
+        );
+      const testCase = {
+        id: 'positive',
+        title: 'Positive',
+        objective: 'Read source and produce report.',
+        targetTaskIds: ['main.run'],
+        fixtures: [{ path: 'inputs/source.txt', content: 'source' }],
+        expectations: [
+          { type: 'task-status', taskId: 'main.run', status: 'success' },
+          { type: 'path-exists', path: 'artifacts/report.txt' },
+        ],
+      };
+      await call('begin', { summary: 'Check coordinates.', goals: ['Use case-root paths.'] });
+      await call('upsert-case', { case: testCase });
+      await call('set-coverage', { coverage: acceptedRiskCoverage() });
+      if (reviewRequired)
+        await call('set-evidence-review', {
+          evidence_review: {
+            version: 1,
+            intentDigest: 'a'.repeat(64),
+            decisions: [
+              'timeout-recovery',
+              'failure-recovery',
+              'empty-result',
+              'unlocated-source',
+              'source-preservation',
+            ].map((type) => ({
+              type,
+              required: false,
+              taskIds: [],
+              rationale: 'No recovery promise in this coordinate-only workflow.',
+            })),
+          },
+        });
+      const before = readChatPipelineTrialPlanToolTelemetry(yamlPath, 2);
+      const draftPath = join(
+        dirname(stagePath),
+        '.trial-plan-drafts',
+        readdirSync(join(dirname(stagePath), '.trial-plan-drafts'))[0]!,
+      );
+      const draftBefore = readFileSync(draftPath, 'utf8');
+      if (scope === 'track' || scope === 'task' || reviewRequired) {
+        await expect(call('validate')).rejects.toThrow('Use flow/inputs/source.txt');
+        expect(readFileSync(draftPath, 'utf8')).toBe(draftBefore);
+        expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toEqual(before);
+        await call('upsert-case', {
+          case: { ...testCase, fixtures: [{ path: 'flow/inputs/source.txt', content: 'source' }] },
+        });
+        await expect(call('validate')).rejects.toThrow('Use flow/artifacts/report.txt');
+        await call('upsert-case', {
+          case: {
+            ...testCase,
+            fixtures: [{ path: 'flow/inputs/source.txt', content: 'source' }],
+            expectations: [
+              testCase.expectations[0],
+              { type: 'path-exists', path: 'flow/artifacts/report.txt' },
+            ],
+          },
+        });
+      }
+      expect(JSON.parse(await call('validate'))).toMatchObject({
+        valid: true,
+        submissionConsumed: false,
+      });
+      expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toEqual(before);
+      await call('commit');
+      expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+        toolAttemptCount: 1,
+        successfulWriteCount: 1,
+      });
+      const plan = JSON.parse(
+        readFileSync(yamlPath.replace(/\.yaml$/, '.trial-plan.json'), 'utf8'),
+      );
+      expect(() =>
+        validateChatPipelineTrialPlanTaskPathCoordinates(plan, config, 'flow/flow.yaml', root),
+      ).not.toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('complete draft validation corrects typed recovery without spending a submission', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-plan-precommit-recovery-'));
+  try {
+    const directory = join(root, '.tagma', '.chat-staging', 'stage-1', 'agent-workspace', '.tagma');
+    const yamlPath = join(directory, 'flow', 'flow.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    const yaml = [
+      'pipeline:',
+      '  name: Recovery',
+      '  tracks:',
+      '    - id: main',
+      '      on_failure: ignore',
+      '      tasks:',
+      '        - id: start',
+      '          command: echo source',
+      '        - id: end',
+      '          depends_on: [start]',
+      '          command: echo report',
+      '',
+    ].join('\n');
+    writeFileSync(yamlPath, yaml);
+    writeStageAttemptLimit(directory, 2);
+    const tool = await loadGeneratedTool(root);
+    const args = invalidPlanArgs(yamlPath);
+    const attemptId = 'host-precommit-recovery';
+    issueTrialPlanAttempt(args, { directory }, attemptId);
+    const stagePath = join(dirname(dirname(directory)), 'stage.json');
+    const stage = JSON.parse(readFileSync(stagePath, 'utf8'));
+    stage.trialPlanAttempt.validationContext = buildTrialPlanValidationContext(
+      resolveConfig(parseYaml(yaml), root),
+      ['timeout-recovery'],
+    );
+    writeFileSync(stagePath, JSON.stringify(stage));
+    const call = (operation: string, fields: Record<string, unknown> = {}) =>
+      tool.execute(
+        { operation, attempt_id: attemptId, pipeline_path: yamlPath, ...fields },
+        { directory },
+      );
+    await call('begin', {
+      summary: 'Verify native failure recovery.',
+      goals: ['Keep the report.'],
+    });
+    const normal = {
+      id: 'normal',
+      title: 'N',
+      objective: 'N',
+      runs: 1,
+      targetTaskIds: ['main.end'],
+      fixtures: [{ path: 'inputs\\source.txt', content: 'source' }],
+      environment: [{ name: 'SIMULATE_FAULT', value: '' }],
+      expectations: [
+        { type: 'task-status', taskId: 'main.start', status: 'success' },
+        { type: 'task-status', taskId: 'main.end', status: 'success' },
+        { type: 'path-exists', path: 'work\\report.md' },
+        { type: 'file-not-contains', path: 'work\\report.md', text: 'Audit incomplete' },
+      ],
+    };
+    const fault = {
+      ...normal,
+      id: 'fault',
+      fixtures: [{ path: './inputs/source.txt', content: 'source' }],
+      title: 'F',
+      objective: 'F',
+      evidence: [
+        {
+          type: 'timeout-recovery',
+          normalCaseId: 'normal',
+          recoveredTaskId: 'main.end',
+          outcomeExpectationIndices: [3],
+          fault: { type: 'task-timeout', taskId: 'main.start', timeoutMs: 100 },
+        },
+      ],
+      expectations: [
+        { type: 'task-status', taskId: 'main.start', status: 'timeout' },
+        { type: 'task-status', taskId: 'main.end', status: 'success' },
+        { type: 'path-exists', path: './work/report.md' },
+        { type: 'file-contains', path: './work/report.md', text: 'Audit incomplete' },
+      ],
+    };
+    await call('upsert-case', { case: normal });
+    await call('upsert-case', {
+      case: { ...fault, fixtures: [{ path: 'input.txt', content: 'different' }] },
+    });
+    await call('set-coverage', { coverage: acceptedRiskCoverage() });
+    await call('set-findings', { findings: [] });
+    const before = readChatPipelineTrialPlanToolTelemetry(yamlPath, 2);
+    await expect(call('validate')).rejects.toThrow('normal-inputs-differ');
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toEqual(before);
+    await call('set-findings', {
+      findings: [
+        {
+          severity: 'blocking',
+          repairScope: 'pipeline-artifact',
+          summary: 'Speculative recovery defect',
+          evidence: 'Output wording alone does not prove a defect.',
+        },
+      ],
+    });
+    await expect(call('validate')).rejects.toThrow('normal-inputs-differ');
+    await call('set-findings', { findings: [] });
+    await call('upsert-case', {
+      case: { ...fault, environment: [{ name: 'SIMULATE_FAULT', value: 'timeout' }] },
+    });
+    await expect(call('validate')).rejects.toThrow('normal-inputs-differ');
+    await call('upsert-case', { case: fault });
+    expect(JSON.parse(await call('validate'))).toMatchObject({
+      valid: true,
+      submissionConsumed: false,
+    });
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toEqual(before);
+    await call('commit');
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+      toolAttemptCount: 1,
+      successfulWriteCount: 1,
+      attemptIds: [attemptId],
+    });
+    const committed = JSON.parse(
+      readFileSync(yamlPath.replace(/\.yaml$/, '.trial-plan.json'), 'utf8'),
+    );
+    expect(committed.cases[0].fixtures[0].path).toBe('inputs/source.txt');
+    expect(committed.cases[0].expectations[2].path).toBe('work/report.md');
+    await expect(call('validate')).rejects.toThrow('commit was already attempted');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('begin reuses exact authenticated YAML evidence with an explicit size-bound fallback', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-begin-evidence-'));
@@ -356,7 +635,7 @@ test('host rejects a directly written trial plan without an authenticated tool c
     writeFileSync(
       yamlPath.replace(/\.yaml$/u, '.trial-plan.json'),
       JSON.stringify({
-        version: 11,
+        version: 12,
         yamlHash,
         summary: args.summary,
         goals: args.goals,

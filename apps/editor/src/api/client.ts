@@ -327,10 +327,12 @@ export interface ChatPipelineTrialExpectationResult {
     | 'file-equals'
     | 'json-valid'
     | 'json-pointer-equals'
+    | 'json-pointer-text-occurrence'
     | 'directory-entry-count'
     | 'task-status'
     | 'case-execution'
-    | 'run-artifact-freshness';
+    | 'run-artifact-freshness'
+    | 'controlled-fault-evidence';
   passed: boolean;
   detail: string;
   repairScope?: 'pipeline-artifact' | 'diagnostic-only';

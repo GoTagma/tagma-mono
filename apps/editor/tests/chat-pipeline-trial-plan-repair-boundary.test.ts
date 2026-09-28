@@ -1,4 +1,32 @@
 import { expect, test } from 'bun:test';
+import {
+  hasChatPipelineTrialArtifactFailure,
+  trialNeedsPlanReview,
+} from '../server/chat-pipeline-trial-run';
+
+test('an unobserved Host fault grants neither artifact repair nor assertion-based planning', () => {
+  const unobserved = {
+    success: false,
+    tasks: [{ status: 'failed', repairScope: 'pipeline-artifact' as const }],
+    expectations: [
+      {
+        type: 'controlled-fault-evidence' as const,
+        passed: false,
+        repairScope: 'diagnostic-only' as const,
+      },
+      { type: 'file-contains' as const, passed: false, repairScope: 'pipeline-artifact' as const },
+    ],
+  };
+  expect(hasChatPipelineTrialArtifactFailure([unobserved])).toBe(false);
+  expect(
+    trialNeedsPlanReview([{ ...unobserved, tasks: [{ status: 'success', repairScope: null }] }]),
+  ).toBe(false);
+  const independent = { ...unobserved, expectations: unobserved.expectations.slice(1) };
+  expect(hasChatPipelineTrialArtifactFailure([unobserved, independent])).toBe(true);
+  expect(
+    trialNeedsPlanReview([{ ...independent, tasks: [{ status: 'success', repairScope: null }] }]),
+  ).toBe(true);
+});
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -80,7 +108,7 @@ for (const scenario of [
       writeFileSync(
         entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'),
         JSON.stringify({
-          version: 11,
+          version: 12,
           yamlHash: createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex'),
           summary: 'Check the business output and rejection boundary.',
           goals: ['Verify the existing business contract.'],

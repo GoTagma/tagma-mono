@@ -75,7 +75,7 @@ function writeTrialPlan(
     planPath,
     JSON.stringify(
       {
-        version: 11,
+        version: 12,
         yamlHash,
         summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
         goals: ['Preserve every logical input without silently overwriting output.'],

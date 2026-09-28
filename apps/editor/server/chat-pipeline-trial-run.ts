@@ -35,6 +35,7 @@ import {
   hashChatPipelineTrialabilityReport,
   hashChatPipelineTrialTree,
   issueChatYamlStageTrialPlanAttempt,
+  pinChatYamlStageEvidenceContract,
   listChatYamlStage,
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
@@ -55,6 +56,10 @@ import {
   type ChatPipelineTrialPlanRequest,
   type ChatPipelineTrialPlanToolTelemetry,
 } from './chat-pipeline-trial-plan.js';
+import {
+  createControlledTrialFaultRuntime,
+  type TrialFaultObservation,
+} from './chat-trial-controlled-fault-runtime.js';
 import {
   chatPipelineTrialWorkspacePathFromCasePath,
   describeTrialBlockers,
@@ -181,7 +186,11 @@ export interface ChatPipelineTrialStreamTruncation {
 }
 
 export interface ChatPipelineTrialExpectationResult {
-  type: ChatPipelineTrialExpectation['type'] | 'case-execution' | 'run-artifact-freshness';
+  type:
+    | ChatPipelineTrialExpectation['type']
+    | 'case-execution'
+    | 'run-artifact-freshness'
+    | 'controlled-fault-evidence';
   passed: boolean;
   detail: string;
   repairScope: 'pipeline-artifact' | 'diagnostic-only';
@@ -1014,6 +1023,7 @@ function issueNextTrialPlanAttempt(
     yamlHash: string;
     trialId: string;
     toolAttemptCount: number;
+    intentText?: string;
   },
 ): string {
   // Trial transport identity stays stable. A rejected counted submission needs
@@ -1027,6 +1037,7 @@ function issueNextTrialPlanAttempt(
     relativePath: input.relativePath,
     yamlHash: input.yamlHash,
     attemptId,
+    ...(input.intentText === undefined ? {} : { intentText: input.intentText }),
   });
   return attemptId;
 }
@@ -1097,9 +1108,7 @@ function resultForPlanRequest(
     omittedTaskStatusCounts: {},
     tasks: [],
     repairAuthorization:
-      request.artifactRepair === 'missing_controlled_fault_seam'
-        ? 'pipeline-change-allowed'
-        : 'diagnostic-only',
+      request.artifactRepair !== undefined ? 'pipeline-change-allowed' : 'diagnostic-only',
     ...(prerequisiteState ? { prerequisiteState } : {}),
     planTelemetry,
     planRequest: {
@@ -1607,7 +1616,8 @@ export function evaluateTrialExpectation(
     expectation.type === 'file-equals' ||
     expectation.type === 'file-preserves-lines' ||
     expectation.type === 'json-valid' ||
-    expectation.type === 'json-pointer-equals'
+    expectation.type === 'json-pointer-equals' ||
+    expectation.type === 'json-pointer-text-occurrence'
   ) {
     if (!stat || stat.isSymbolicLink() || !stat.isFile()) {
       return {
@@ -1633,7 +1643,11 @@ export function evaluateTrialExpectation(
       };
     }
     const content = readFileSync(path, 'utf-8');
-    if (expectation.type === 'json-valid' || expectation.type === 'json-pointer-equals') {
+    if (
+      expectation.type === 'json-valid' ||
+      expectation.type === 'json-pointer-equals' ||
+      expectation.type === 'json-pointer-text-occurrence'
+    ) {
       let parsed: unknown;
       try {
         parsed = JSON.parse(content);
@@ -1663,6 +1677,35 @@ export function evaluateTrialExpectation(
             : `${expectation.path} does not contain JSON Pointer ${expectation.pointer || '<root>'}.`,
           repairScope: actual.invalidArrayToken ? 'diagnostic-only' : 'pipeline-artifact',
           ...(actual.invalidArrayToken ? { planError: 'invalid-array-index' as const } : {}),
+        };
+      }
+      if (expectation.type === 'json-pointer-text-occurrence') {
+        const sourcePath = casePath(workDir, expectation.sourcePath, relativeYamlPath);
+        const sourceStat = lstatOrNull(sourcePath);
+        if (
+          !sourceStat ||
+          !sourceStat.isFile() ||
+          sourceStat.isSymbolicLink() ||
+          sourceStat.size > MAX_TRIAL_ASSERTION_FILE_BYTES ||
+          typeof actual.value !== 'string' ||
+          actual.value.trim().length === 0
+        )
+          return {
+            type: expectation.type,
+            passed: false,
+            detail:
+              'The source relationship requires a bounded regular source and a nonempty produced text span.',
+            repairScope: 'pipeline-artifact',
+          };
+        const present = readFileSync(sourcePath, 'utf8').includes(actual.value);
+        return {
+          type: expectation.type,
+          passed: present === expectation.present,
+          detail:
+            'The produced text span ' +
+            (present ? 'occurs' : 'does not occur') +
+            ' in the source fixture.',
+          repairScope: 'pipeline-artifact',
         };
       }
       const passed = isDeepStrictEqual(actual.value, JSON.parse(expectation.expectedJson));
@@ -1935,16 +1978,28 @@ export function hasChatPipelineTrialArtifactFailure(
   cases: readonly {
     success: boolean;
     tasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[];
-    expectations: readonly Pick<ChatPipelineTrialExpectationResult, 'passed' | 'repairScope'>[];
+    expectations: readonly (Pick<ChatPipelineTrialExpectationResult, 'passed' | 'repairScope'> & {
+      readonly type?: ChatPipelineTrialExpectationResult['type'];
+    })[];
   }[],
 ): boolean {
+  const observedCases = cases.filter(
+    (testCase) =>
+      !testCase.expectations.some(
+        (expectation) => expectation.type === 'controlled-fault-evidence' && !expectation.passed,
+      ),
+  );
   return (
-    [...cases.filter((testCase) => !testCase.success).flatMap((testCase) => testCase.tasks)].some(
+    [
+      ...observedCases
+        .filter((testCase) => !testCase.success)
+        .flatMap((testCase) => testCase.tasks),
+    ].some(
       (task) =>
         task.repairScope === 'pipeline-artifact' &&
         !['success', 'skipped', 'blocked'].includes(task.status),
     ) ||
-    cases.some((testCase) =>
+    observedCases.some((testCase) =>
       testCase.expectations.some(
         (expectation) => !expectation.passed && expectation.repairScope === 'pipeline-artifact',
       ),
@@ -1966,6 +2021,9 @@ export function trialNeedsPlanReview(
   return cases.some(
     (testCase) =>
       !testCase.success &&
+      !testCase.expectations.some(
+        (expectation) => expectation.type === 'controlled-fault-evidence' && !expectation.passed,
+      ) &&
       testCase.tasks.length > 0 &&
       testCase.tasks.every((task) => task.status === 'success' || task.repairScope === null) &&
       testCase.expectations.some(
@@ -2171,6 +2229,8 @@ function buildTrialSummary(
 }
 
 interface RunTrialPipelineInput {
+  onFaultObserved?: (observation: TrialFaultObservation) => void;
+  relativeYamlPath: string;
   ws: WorkspaceState;
   pipelineConfig: PipelineConfig;
   workDir: string;
@@ -2558,17 +2618,32 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
   const preflightEnvKeys = input.preflightEnvKeys.filter(
     (name) => !omittedEnvironment.has(name.toUpperCase()),
   );
+  const baseRuntime = runtimeWithVirtualTime(
+    runtimeWithInjectedEnv(
+      { ...input.pythonRunEnv, ...globalSecretEnv, ...trialEnv },
+      input.secretValues,
+      tagmaDirOf(input.ws.workDir),
+      { mode: input.runtimeMode },
+    ),
+  );
+  const faultEvidence = input.testCase?.evidence?.find(
+    (item) => item.type !== 'source-preservation',
+  );
+  const fault = faultEvidence?.fault ?? null;
+  const controlled = fault
+    ? createControlledTrialFaultRuntime(baseRuntime, fault, {
+        workDir: input.workDir,
+        relativeYamlPath: input.relativeYamlPath,
+        artifactPath:
+          fault.type === 'artifact-replace'
+            ? casePath(input.workDir, fault.path, input.relativeYamlPath)
+            : null,
+      })
+    : null;
   const tagma = createTagma({
     registry: input.ws.registry,
     builtins: false,
-    runtime: runtimeWithVirtualTime(
-      runtimeWithInjectedEnv(
-        { ...input.pythonRunEnv, ...globalSecretEnv, ...trialEnv },
-        input.secretValues,
-        tagmaDirOf(input.ws.workDir),
-        { mode: input.runtimeMode },
-      ),
-    ),
+    runtime: controlled?.runtime ?? baseRuntime,
   });
   if (input.manualApprovalScopesByRunId.has(input.runId)) {
     throw new Error(`Trial manual execution scope already exists for run ${input.runId}.`);
@@ -2592,9 +2667,13 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
         ? { envPolicy: { mode: 'allowlist' as const, keys: preflightEnvKeys } }
         : {}),
       ...(input.targetTaskIds ? { targetTaskIds: input.targetTaskIds } : {}),
-      ...(input.onEvent ? { onEvent: input.onEvent } : {}),
+      onEvent: (event) => {
+        controlled?.observeEvent(event);
+        input.onEvent?.(event);
+      },
     });
   } finally {
+    if (controlled) input.onFaultObserved?.(controlled.observed());
     if (input.manualApprovalScopesByRunId.get(input.runId) === manualScope) {
       input.manualApprovalScopesByRunId.delete(input.runId);
     }
@@ -2720,6 +2799,7 @@ async function executeTargetedTrialCase(
     taskId: null,
     taskStatus: null,
   });
+  const faultObservations: TrialFaultObservation[] = [];
   try {
     caseWorkspace = prepareTrialCaseWorkspace(
       input.stageRoot,
@@ -2773,6 +2853,7 @@ async function executeTargetedTrialCase(
           targetTaskIds: input.targetTaskIds,
           testCase: input.testCase,
           onEvent: (event) => updateTrialTaskProgress(input.progress, event),
+          onFaultObserved: (observation) => faultObservations.push(observation),
         });
       } finally {
         freshnessObservations.push(...freshnessProbes.map(observeRepeatedArtifactFreshness));
@@ -2827,6 +2908,21 @@ async function executeTargetedTrialCase(
         });
       }
     }
+  }
+  if (input.testCase.evidence?.some((item) => item.type !== 'source-preservation')) {
+    const observed =
+      faultObservations.length === input.testCase.runs &&
+      faultObservations.every((item) => item.observed);
+    expectations.push({
+      type: 'controlled-fault-evidence',
+      passed: observed,
+      detail: observed
+        ? 'The Host observed the declared fault in every actual case run.'
+        : 'The declared fault was not observed: ' +
+          (faultObservations.find((item) => !item.observed)?.diagnostic ??
+            'Native failure or generated-input replacement evidence is absent.'),
+      repairScope: 'diagnostic-only',
+    });
   }
   for (const path of repeatedOutputPaths) {
     expectations.push(
@@ -3487,8 +3583,12 @@ async function executeTrial(
         break;
       }
       if (
-        testCase.baselineCaseId &&
-        !cases.some((item) => item.id === testCase.baselineCaseId && item.success)
+        [
+          testCase.baselineCaseId,
+          ...(testCase.evidence ?? []).flatMap((item) =>
+            item.type === 'source-preservation' ? [] : [item.normalCaseId],
+          ),
+        ].some((id) => id && !cases.some((item) => item.id === id && item.success))
       ) {
         negativeCasesWithoutBaseline.add(testCase.id);
         continue;
@@ -3504,7 +3604,9 @@ async function executeTrial(
         continue;
       }
       const workspaceFailures: ChatPipelineTrialExpectationResult[] = [];
-      const reusableCase = reusableCases.get(testCase.id);
+      const reusableCase = testCase.evidence?.some((item) => item.type !== 'source-preservation')
+        ? undefined
+        : reusableCases.get(testCase.id);
       if (reusableCase) {
         progress.update({
           phase: 'running-case',
@@ -3691,7 +3793,7 @@ async function executeTrial(
             : (caseLoopStop?.reason ?? 'execution-stopped'),
           detail: boundedTrialText(
             negativeCasesWithoutBaseline.has(testCase.id)
-              ? `Positive baseline ${testCase.baselineCaseId} did not pass; fix it before testing individual prerequisite rejections.`
+              ? `Positive baseline ${testCase.baselineCaseId ?? testCase.evidence?.find((item) => item.type !== 'source-preservation')?.normalCaseId} did not pass; fix it before testing dependent probes.`
               : blockers
                 ? `The case target closure requires unavailable runtime prerequisites: ${describeTrialBlockers(blockers)}.`
                 : (caseLoopStop?.detail ??
@@ -4062,7 +4164,16 @@ export async function trialRunChatYamlStage(
       planTelemetry.committedPlanHash,
       input.trustedOperationV2 === true ? input.affectedCases : undefined,
       input.trustedOperationV2 === true ? input.intentText : undefined,
+      stage.trialEvidenceContract?.required ?? [],
     );
+    if (input.trustedOperationV2 === true && input.intentText && planRead.reviewedRequirements) {
+      pinChatYamlStageEvidenceContract(
+        ws,
+        stage.id,
+        createHash('sha256').update(input.intentText, 'utf8').digest('hex'),
+        planRead.reviewedRequirements,
+      );
+    }
     if (planRead.status === 'required') {
       if (input.trustedOperationV2 === true && input.affectedCases?.length) {
         planRead.request.affectedCases = input.affectedCases;
@@ -4097,8 +4208,17 @@ export async function trialRunChatYamlStage(
           ...resultForPlanAttemptBudgetExhausted(
             planTelemetry,
             startedAt,
-            planRead.request.message,
+            planRead.request.message +
+              (planRead.request.artifactRepair !== undefined
+                ? '\nHost confirmed that the compiled failure policy prevents required downstream recovery. Repair the pipeline recovery path; this YAML revision has no remaining plan-only submissions.'
+                : ''),
           ),
+          // Planning and artifact repair have separate budgets. Preserve only
+          // independently established Host authority, never a planner's claim.
+          repairAuthorization:
+            planRead.request.artifactRepair !== undefined
+              ? 'pipeline-change-allowed'
+              : 'diagnostic-only',
           ...preflightMetadata,
         };
       }
@@ -4108,6 +4228,9 @@ export async function trialRunChatYamlStage(
         yamlHash: snapshot.contentHash,
         trialId,
         toolAttemptCount: planTelemetry.toolAttemptCount,
+        ...(input.trustedOperationV2 === true && input.intentText
+          ? { intentText: input.intentText }
+          : {}),
       });
       return {
         ...resultForPlanRequest(

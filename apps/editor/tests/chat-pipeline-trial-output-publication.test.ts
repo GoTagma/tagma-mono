@@ -74,7 +74,7 @@ test('an edit that regenerates pipeline artifacts verifies and retries without c
     writeFileSync(
       entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'),
       JSON.stringify({
-        version: 11,
+        version: 12,
         yamlHash: createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex'),
         summary: 'Generate a revised ledger and a CSV copy.',
         goals: ['Preserve source artifacts until commit.'],

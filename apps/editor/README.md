@@ -168,26 +168,46 @@ separate bounded planning budget.
 
 When a committed Trial Plan is rejected before execution, the next automatic planning attempt
 receives a fresh Host-issued identity within that budget. Transport replay and output-length
-continuation keep the current identity and cannot submit a second commit for it. Budget-exhaustion
-feedback retains the last specific rejection so the retained draft can be corrected.
+continuation keep the current identity and cannot submit a second commit for it. This lets the
+planner correct rejected cases without weakening the one-submission limit or changing pipeline files.
 
-For explicit promises to continue producing a result after a timeout, external failure, an empty
-set of claims, or an unmatched source passage, the Host checks the committed Trial Plan independently
-of its coverage labels. A normal success case cannot prove these branches. Timeout, failure, and unmatched-source cases need
-a controlled input used by their target closure, a downstream success/content assertion, and a
-comparable normal case showing that the fallback marker is absent. An empty-claims case needs a
-nonempty input, an exact empty JSON result, and the final report's no-claims note. If executable
-evidence is missing, the Host requests a bounded plan correction and retains the draft when that
-budget is exhausted. When a request combines claim extraction, web verification, and annotation
-of an original draft, the Host also requires those timeout, zero-claim, and unmatched-source cases
-without separate fallback wording. The `file-preserves-lines` assertion binds exact source fixture
-bytes and verifies that each nonempty source line appears in the report in its original order, so
-a few matching markers cannot stand in for source preservation.
-These checks do not claim that every possible natural-language requirement is mechanically provable.
-If the staged pipeline has no controlled fault input that the required timeout or unmatched-source
-case can exercise, the Host treats that structural testability gap as a repairable pipeline artifact
-defect and passes the missing evidence into automatic repair. Plan-only assertion gaps remain within
-the bounded Trial Plan correction path.
+The planning tool checks complete cases with `validate` before the counted `commit`. Host and tool
+share fixture, effective-cwd, reserved-path and structured evidence checks. Validation failure leaves
+draft bytes and submission counters unchanged; feedback identifies the case, field and exact issue.
+
+The independent Trial planner reviews the frozen intent and staged promised behavior into a bounded
+`evidenceReview`, bound to the Host intent digest. Every registered behavior receives an explicit
+required/not-required decision with responsible task ids and rationale. Host checks protocol and
+execution evidence; it does not infer semantic requirements from keywords, filenames or report text.
+Requirements become monotonic stage metadata after an authenticated review, including across repair.
+This semantic review is model judgment, so live acceptance still checks substantive published bytes.
+Frozen-intent Desktop V2 requests use this review even for a single prompt; the deterministic
+fixed-prompt fast lane applies only when no frozen-intent review is needed.
+
+Typed `cases.evidence` binds each recovery case to a preceding successful normal case with identical
+targets, fixtures and explicit normal environment values. Host-owned `task-timeout` and `task-exit`
+faults use native subprocess execution, failure classification and capture; a distinct downstream
+recovery task must succeed under the compiled production failure policy. A success-only simulation
+branch cannot prove recovery. An exact inverse text assertion or differing JSON value distinguishes
+the actual recovery result; report language is unrestricted.
+
+For `empty-result` and `unlocated-source`, Host-owned `artifact-replace` changes a freshly produced,
+completion-bound regular artifact before its consumer starts. It cannot replace an original fixture,
+pipeline companion, pre-seeded file, symlink or hardlink. Empty evidence asserts an actual empty
+collection and a nonempty normal counterpart. `json-pointer-text-occurrence` compares a nonempty
+produced span against the exact source fixture, absent under fault and present normally.
+`file-preserves-lines` binds exact fixture bytes and checks all nonempty original lines in order.
+
+A malformed plan stays within bounded planning correction. A valid native recovery case whose
+compiled failure policy prevents downstream recovery yields independent `recovery_failure_policy`
+artifact repair authority, which survives planning exhaustion. Repair retains its separate finite
+budget and successful Trial remains mandatory. Controlled cases require fresh execution, never
+case-result reuse. Trial Plan v12, draft v3 and signed cache v42 invalidate older evidence; older
+drafts can be explicitly rebuilt with `begin reset:true`, while business artifacts remain retained.
+An unobserved fault is a diagnostic limit and grants neither artifact repair nor assertion-based
+planning. A successfully applied artifact fault remains observed when its consumer fails; recovery
+success is checked separately. Artifact changes happen at the owned native invocation boundary,
+before process launch, so asynchronous event projection cannot race consumption.
 
 Desktop Chat routes pipeline work in two phases. A tool-free text invocation first returns one small
 JSON decision: discussion, read-only diagnosis, create, edit of one Host-issued pipeline candidate,
