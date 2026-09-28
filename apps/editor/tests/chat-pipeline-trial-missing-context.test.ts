@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -175,6 +176,11 @@ test('missing and empty fixtures exercise preflight and middleware separately wi
     invalidPlan.cases.find((item: { id: string }) => item.id === 'missing-gate').fixtures = [];
     writeFileSync(planPath, JSON.stringify(invalidPlan));
     writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
+    const telemetryDir = join(root, '.tagma', '.chat-staging', stage.id, '.trial-plan-telemetry');
+    const telemetryPath = join(telemetryDir, readdirSync(telemetryDir)[0]!);
+    const telemetry = JSON.parse(readFileSync(telemetryPath, 'utf8'));
+    telemetry.attemptIds = ['invalid-context-setup'];
+    writeFileSync(telemetryPath, JSON.stringify(telemetry));
     const planFailure = await trialRunChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: entry.relativePath,
@@ -182,6 +188,28 @@ test('missing and empty fixtures exercise preflight and middleware separately wi
     });
     expect(planFailure.kind).toBe('plan-required');
     expect(planFailure.summary).toContain('omits a file input');
+    const correctionAttemptId = planFailure.planRequest?.attemptId;
+    expect(correctionAttemptId).toMatch(/^trial_plan_repair_2_/);
+    expect(correctionAttemptId).not.toBe('invalid-context-setup');
+    const stageMetadata = JSON.parse(
+      readFileSync(join(root, '.tagma', '.chat-staging', stage.id, 'stage.json'), 'utf8'),
+    );
+    expect(stageMetadata.trialPlanAttempt.attemptId).toBe(correctionAttemptId);
+    const replay = await trialRunChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      trialId: 'invalid-context-setup',
+    });
+    expect(replay.planRequest?.attemptId).toBe(correctionAttemptId);
+    expect(JSON.parse(readFileSync(telemetryPath, 'utf8')).toolAttemptCount).toBe(1);
+    writeAuthenticatedTrialPlanTelemetry(entry.stagedPath, 2);
+    const exhausted = await trialRunChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      trialId: 'invalid-context-exhausted',
+    });
+    expect(exhausted.summary).toContain('budget exhausted');
+    expect(exhausted.summary).toContain('omits a file input');
     expect(planFailure.repairAuthorization).not.toBe('pipeline-change-allowed');
     expect(prompts).toHaveLength(0);
     expect(existsSync(entry.stagedPath)).toBe(true);

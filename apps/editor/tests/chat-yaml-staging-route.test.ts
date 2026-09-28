@@ -970,7 +970,7 @@ describe('chat YAML staging routes', () => {
       repairAuthorization: 'diagnostic-only',
       planRequest: {
         reason: 'invalid',
-        attemptId: 'missing_fixture_plan',
+        attemptId: expect.stringMatching(/^trial_plan_repair_2_[a-f0-9]{64}$/),
         requiredSandboxInputs: [
           {
             taskId: 'main.ingest',
@@ -2840,7 +2840,10 @@ describe('chat YAML staging routes', () => {
       kind: 'plan-required',
       ran: false,
       repairAuthorization: 'diagnostic-only',
-      planRequest: { reason: 'invalid', attemptId: 'terminal_gap' },
+      planRequest: {
+        reason: 'invalid',
+        attemptId: expect.stringMatching(/^trial_plan_repair_2_[a-f0-9]{64}$/),
+      },
       notRunCases: [
         {
           id: 'ingest-only',

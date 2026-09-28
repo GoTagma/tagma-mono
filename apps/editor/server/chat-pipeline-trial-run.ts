@@ -1006,6 +1006,31 @@ function trialPlanRepairAttemptId(
   return `trial_plan_repair_${ordinal}_${identityHash}`;
 }
 
+function issueNextTrialPlanAttempt(
+  ws: WorkspaceState,
+  input: {
+    stageId: string;
+    relativePath: string;
+    yamlHash: string;
+    trialId: string;
+    toolAttemptCount: number;
+  },
+): string {
+  // Trial transport identity stays stable. A rejected counted submission needs
+  // a new planner identity; replay and truncated continuation keep the same one.
+  const attemptId =
+    input.toolAttemptCount === 0
+      ? input.trialId
+      : trialPlanRepairAttemptId(input.trialId, input.yamlHash, input.toolAttemptCount);
+  issueChatYamlStageTrialPlanAttempt(ws, {
+    stageId: input.stageId,
+    relativePath: input.relativePath,
+    yamlHash: input.yamlHash,
+    attemptId,
+  });
+  return attemptId;
+}
+
 function resultWithTrialPlan(
   result: ChatPipelineTrialRunResult,
   plan: ChatPipelineTrialPlan,
@@ -1092,6 +1117,7 @@ function resultForPlanRequest(
 function resultForPlanAttemptBudgetExhausted(
   planTelemetry: ChatPipelineTrialPlanToolTelemetry,
   startedAt: number,
+  rejectionReason?: string,
 ): ChatPipelineTrialRunResult {
   return {
     version: TRIAL_CACHE_VERSION,
@@ -1100,7 +1126,8 @@ function resultForPlanAttemptBudgetExhausted(
     ran: false,
     runId: null,
     summary: boundedTrialText(
-      'Trial plan tool attempt budget exhausted for this staged YAML revision.',
+      'Trial plan tool attempt budget exhausted for this staged YAML revision.' +
+        (rejectionReason ? `\nLast plan rejection: ${rejectionReason}` : ''),
     ),
     durationMs: Math.max(0, Date.now() - startedAt),
     totalTaskCount: 0,
@@ -2205,15 +2232,16 @@ function prerequisitePlanCorrection(
     input;
   if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
     return {
-      ...resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
+      ...resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt, message),
       trialabilityReport,
     };
   }
-  issueChatYamlStageTrialPlanAttempt(ws, {
+  const attemptId = issueNextTrialPlanAttempt(ws, {
     stageId: stage.id,
     relativePath: entry.relativePath,
     yamlHash: snapshot.contentHash,
-    attemptId: trialId,
+    trialId,
+    toolAttemptCount: planTelemetry.toolAttemptCount,
   });
   return {
     ...resultForPlanRequest(
@@ -2226,7 +2254,7 @@ function prerequisitePlanCorrection(
       ),
       planTelemetry,
       startedAt,
-      trialId,
+      attemptId,
     ),
     trialabilityReport,
   };
@@ -3099,14 +3127,21 @@ async function prepareTrialExecution(
     if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
       return {
         status: 'result',
-        result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
+        result: withTrialability(
+          resultForPlanAttemptBudgetExhausted(
+            planTelemetry,
+            startedAt,
+            `Trial cases do not execute terminal task(s): ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting every terminal task.`,
+          ),
+        ),
       };
     }
-    issueChatYamlStageTrialPlanAttempt(ws, {
+    const attemptId = issueNextTrialPlanAttempt(ws, {
       stageId: stage.id,
       relativePath: entry.relativePath,
       yamlHash: snapshot.contentHash,
-      attemptId: trialId,
+      trialId,
+      toolAttemptCount: planTelemetry.toolAttemptCount,
     });
     const reason = 'Sandbox Trial does not execute a real-workspace baseline';
     return {
@@ -3122,7 +3157,7 @@ async function prepareTrialExecution(
           ),
           planTelemetry,
           startedAt,
-          trialId,
+          attemptId,
           dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
           sandboxFixtureAnalysis.inputs,
         ),
@@ -3139,14 +3174,21 @@ async function prepareTrialExecution(
     if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
       return {
         status: 'result',
-        result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
+        result: withTrialability(
+          resultForPlanAttemptBudgetExhausted(
+            planTelemetry,
+            startedAt,
+            `Trial cases lack required isolated inputs: ${describeUncoveredTrialCaseFixtureInputs(uncoveredFixtureCases)}.`,
+          ),
+        ),
       };
     }
-    issueChatYamlStageTrialPlanAttempt(ws, {
+    const attemptId = issueNextTrialPlanAttempt(ws, {
       stageId: stage.id,
       relativePath: entry.relativePath,
       yamlHash: snapshot.contentHash,
-      attemptId: trialId,
+      trialId,
+      toolAttemptCount: planTelemetry.toolAttemptCount,
     });
     return {
       status: 'result',
@@ -3161,7 +3203,7 @@ async function prepareTrialExecution(
           ),
           planTelemetry,
           startedAt,
-          trialId,
+          attemptId,
           dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
           sandboxFixtureAnalysis.inputs,
         ),
@@ -3296,15 +3338,20 @@ async function executeTrial(
   if (uncoveredTerminalTaskIds.length > 0) {
     if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
       return {
-        ...resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
+        ...resultForPlanAttemptBudgetExhausted(
+          planTelemetry,
+          startedAt,
+          `Trial cases do not execute terminal task(s): ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting every terminal task.`,
+        ),
         trialabilityReport,
       };
     }
-    issueChatYamlStageTrialPlanAttempt(ws, {
+    const attemptId = issueNextTrialPlanAttempt(ws, {
       stageId: stage.id,
       relativePath: entry.relativePath,
       yamlHash: snapshot.contentHash,
-      attemptId: trialId,
+      trialId,
+      toolAttemptCount: planTelemetry.toolAttemptCount,
     });
     return {
       ...resultForPlanRequest(
@@ -3317,7 +3364,7 @@ async function executeTrial(
         ),
         planTelemetry,
         startedAt,
-        trialId,
+        attemptId,
         dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
         resolveChatPipelineSandboxFixtureInputs(pipelineConfig, ws.workDir, entry.relativePath)
           .inputs,
@@ -4047,22 +4094,27 @@ export async function trialRunChatYamlStage(
       );
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return {
-          ...resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
+          ...resultForPlanAttemptBudgetExhausted(
+            planTelemetry,
+            startedAt,
+            planRead.request.message,
+          ),
           ...preflightMetadata,
         };
       }
-      issueChatYamlStageTrialPlanAttempt(ws, {
+      const attemptId = issueNextTrialPlanAttempt(ws, {
         stageId: stage.id,
         relativePath: entry.relativePath,
         yamlHash: snapshot.contentHash,
-        attemptId: trialId,
+        trialId,
+        toolAttemptCount: planTelemetry.toolAttemptCount,
       });
       return {
         ...resultForPlanRequest(
           planRead.request,
           planTelemetry,
           startedAt,
-          trialId,
+          attemptId,
           dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
           sandboxFixtureAnalysis.inputs,
         ),

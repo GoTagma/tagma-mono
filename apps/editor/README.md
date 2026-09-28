@@ -166,6 +166,11 @@ a coverage limitation and never as a claimed real-environment pass. An enabled S
 untested or failing cannot complete as a published Chat result. Trial Plan corrections retain their
 separate bounded planning budget.
 
+When a committed Trial Plan is rejected before execution, the next automatic planning attempt
+receives a fresh Host-issued identity within that budget. Transport replay and output-length
+continuation keep the current identity and cannot submit a second commit for it. Budget-exhaustion
+feedback retains the last specific rejection so the retained draft can be corrected.
+
 For explicit promises to continue producing a result after a timeout, external failure, an empty
 set of claims, or an unmatched source passage, the Host checks the committed Trial Plan independently
 of its coverage labels. A normal success case cannot prove these branches. Timeout, failure, and unmatched-source cases need

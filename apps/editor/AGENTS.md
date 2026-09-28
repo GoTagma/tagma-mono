@@ -728,7 +728,11 @@
   planner continuation one host-issued attempt ID and require that exact ID on every tool operation.
   At most one `commit` for an ID may consume the budget; a repeated `begin` or `commit` in the
   same physical continuation must be rejected without incrementing counters. Only a later host
-  continuation with a fresh ID may consume the next attempt. When an executed Trial failure allows
+  continuation with a fresh ID may consume the next attempt. Pre-execution plan rejections must
+  derive that fresh ID from the YAML hash and next counted submission ordinal, even when the Trial
+  transport ID is unchanged. Replayed requests and output-length continuation retain the same ID;
+  never loosen the tool's one-commit fence to permit correction. Keep the current rejection reason
+  in bounded/redacted planning-budget exhaustion feedback. When an executed Trial failure allows
   pipeline repair and the plan budget remains, issue that next ID before the generic repair turn and
   require one mutually exclusive path: either edit pipeline artifacts, or leave YAML/layout/requirements
   unchanged and delegate a plan-only correction. Any pipeline-artifact write changes the revision and

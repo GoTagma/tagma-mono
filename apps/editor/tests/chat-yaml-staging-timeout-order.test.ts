@@ -677,7 +677,7 @@ describe('chat YAML staging async witness ordering', () => {
       },
       planRequest: {
         reason: 'invalid',
-        attemptId: 'missing_input_preflight',
+        attemptId: expect.stringMatching(/^trial_plan_repair_2_[a-f0-9]{64}$/),
         requiredSandboxInputs: [
           {
             taskId: 'main.verify',
