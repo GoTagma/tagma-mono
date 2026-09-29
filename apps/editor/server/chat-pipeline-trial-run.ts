@@ -1,4 +1,9 @@
 import { createHash } from 'node:crypto';
+import { redactChatRepairErrorOutput } from './chat-operations/repair-error-evidence';
+import {
+  readCompleteRepairOutput,
+  type TrialTaskOutputPaths,
+} from './chat-operations/repair-output-reader';
 import {
   copyFileSync,
   existsSync,
@@ -176,6 +181,7 @@ export interface ChatPipelineTrialTaskResult {
   stdout: string;
   stderr: string;
   outputDiagnostics?: readonly ChatPipelineTrialOutputDiagnostic[];
+  modelEvidenceReadErrors?: readonly { stream: 'stdout' | 'stderr'; message: string }[];
   stderrAuxiliaryDiagnosticsOmittedLines?: number;
   repairScope: 'pipeline-artifact' | 'diagnostic-only' | null;
   stdoutTruncation: ChatPipelineTrialStreamTruncation;
@@ -302,6 +308,16 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  /** Sidecar-private error capture, independent of display stream/task limits. */
+  repairErrorTasks?: ChatPipelineTrialTaskResult[];
+  repairPipelineDiagnostics?: Array<{
+    caseId: string;
+    runNumber: number;
+    runId: string;
+    taskId: string | null;
+    level: string;
+    text: string;
+  }>;
   taskStatusCounts?: Record<string, number>;
   omittedTaskStatusCounts?: Record<string, number>;
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
@@ -2175,14 +2191,60 @@ export function trialCaseFileObservation(
   return { path: coordinate, regularFile };
 }
 
-function trialTaskResults(
+function completeRepairStream(
+  text: string,
+  producedBytes: number | undefined,
+  path: string | null | undefined,
+  workDir: string,
+  logPath: string,
+  streamName: 'stdout' | 'stderr',
+  readErrors: Array<{ stream: 'stdout' | 'stderr'; message: string }>,
+) {
+  if (
+    path &&
+    ((producedBytes !== undefined && producedBytes > Buffer.byteLength(text)) ||
+      /^\[\d+ bytes truncated from head;/u.test(text))
+  ) {
+    try {
+      text = readCompleteRepairOutput(workDir, logPath, path).toString('utf8');
+    } catch (error) {
+      readErrors.push({
+        stream: streamName,
+        message: redactChatRepairErrorOutput(
+          error instanceof Error ? error.message : String(error),
+        ),
+      });
+    }
+  }
+  const redacted = redactChatRepairErrorOutput(text);
+  const bytes = Buffer.byteLength(text);
+  return {
+    text: redacted,
+    truncation: {
+      source:
+        producedBytes === undefined || producedBytes < bytes
+          ? ('unknown' as const)
+          : producedBytes > bytes
+            ? ('truncated' as const)
+            : ('not-truncated' as const),
+      trialResult: false,
+      producedBytes: producedBytes ?? null,
+      sourceReturnedBytes: bytes,
+      returnedBytes: Buffer.byteLength(redacted),
+    },
+  };
+}
+
+export function trialTaskResults(
   result: EngineResult,
   pipelineConfig: PipelineConfig,
   caseId: string | null,
   runNumber: number,
   workDir: string,
+  outputPaths: ReadonlyMap<string, TrialTaskOutputPaths> = new Map(),
 ): {
   tasks: ChatPipelineTrialTaskResult[];
+  repairErrorTasks: ChatPipelineTrialTaskResult[];
   totalTaskCount: number;
   omittedTaskCount: number;
   taskStatusCounts: Record<string, number>;
@@ -2235,9 +2297,53 @@ function trialTaskResults(
     };
   });
   const tasks = selectChatPipelineTrialTaskEvidence(allTasks, new Set());
+  const repairErrorTasks: ChatPipelineTrialTaskResult[] = [];
+  for (const task of allTasks) {
+    const state = result.states.get(task.taskId)!;
+    if (task.status === 'skipped' || task.status === 'blocked') continue;
+    const modelEvidenceReadErrors: Array<{ stream: 'stdout' | 'stderr'; message: string }> = [];
+    const paths = outputPaths.get(task.taskId);
+    const rawStdout = completeRepairStream(
+      state.result?.stdout ?? '',
+      state.result?.stdoutBytes,
+      paths?.stdoutPath,
+      workDir,
+      result.logPath,
+      'stdout',
+      modelEvidenceReadErrors,
+    );
+    const rawStderr = completeRepairStream(
+      state.result?.stderr ?? '',
+      state.result?.stderrBytes,
+      paths?.stderrPath,
+      workDir,
+      result.logPath,
+      'stderr',
+      modelEvidenceReadErrors,
+    );
+    repairErrorTasks.push({
+      ...task,
+      stdout: rawStdout.text,
+      stderr: rawStderr.text,
+      stderrAuxiliaryDiagnosticsOmittedLines: 0,
+      ...(modelEvidenceReadErrors.length ? { modelEvidenceReadErrors } : {}),
+      ...(state.result?.outputDiagnostics?.length
+        ? {
+            outputDiagnostics: state.result.outputDiagnostics.map((diagnostic) => ({
+              ...diagnostic,
+              message: redactChatRepairErrorOutput(diagnostic.message),
+              path: diagnostic.path ? basename(diagnostic.path) : null,
+            })),
+          }
+        : {}),
+      stdoutTruncation: rawStdout.truncation,
+      stderrTruncation: rawStderr.truncation,
+    });
+  }
   const taskStatusCounts = countTrialTaskStatuses(allTasks);
   return {
     tasks,
+    repairErrorTasks,
     totalTaskCount: allTasks.length,
     omittedTaskCount: Math.max(0, allTasks.length - tasks.length),
     taskStatusCounts,
@@ -2834,10 +2940,19 @@ async function executeTargetedTrialCase(
     caseCount: number;
     progress: ChatPipelineTrialProgressReporter;
   },
-): Promise<{ result: ChatPipelineTrialCaseResult; totalTaskCount: number }> {
+): Promise<{
+  result: ChatPipelineTrialCaseResult;
+  totalTaskCount: number;
+  repairErrorTasks: ChatPipelineTrialTaskResult[];
+  repairPipelineDiagnostics: NonNullable<ChatPipelineTrialRunResult['repairPipelineDiagnostics']>;
+}> {
   let caseWorkspace: { rootDir: string; workDir: string; yamlPath: string } | null = null;
   const runIds: string[] = [];
   const tasks: ChatPipelineTrialTaskResult[] = [];
+  const repairErrorTasks: ChatPipelineTrialTaskResult[] = [];
+  const repairPipelineDiagnostics: NonNullable<
+    ChatPipelineTrialRunResult['repairPipelineDiagnostics']
+  > = [];
   let totalTaskCount = 0;
   const taskStatusCounts: Record<string, number> = {};
   const runResults: EngineResult[] = [];
@@ -2883,6 +2998,7 @@ async function executeTargetedTrialCase(
       throw new Error(`Isolated case configuration error: ${caseConfigErrors.join('; ')}`);
     }
     for (let runNumber = 1; runNumber <= input.testCase.runs; runNumber += 1) {
+      const outputPaths = new Map<string, TrialTaskOutputPaths>();
       input.progress.update({
         phase: 'running-case',
         detail: `Running targeted case ${input.caseIndex}/${input.caseCount}: ${input.testCase.title}.`,
@@ -2913,7 +3029,30 @@ async function executeTargetedTrialCase(
           runId,
           targetTaskIds: input.targetTaskIds,
           testCase: input.testCase,
-          onEvent: (event) => updateTrialTaskProgress(input.progress, event),
+          onEvent: (event) => {
+            updateTrialTaskProgress(input.progress, event);
+            if (event.type === 'task_update')
+              outputPaths.set(event.taskId, {
+                ...outputPaths.get(event.taskId),
+                ...(event.stdoutPath !== undefined ? { stdoutPath: event.stdoutPath } : {}),
+                ...(event.stderrPath !== undefined ? { stderrPath: event.stderrPath } : {}),
+              });
+            if (
+              event.type === 'run_error' ||
+              (event.type === 'task_log' && (event.taskId === null || event.level === 'error'))
+            ) {
+              repairPipelineDiagnostics.push({
+                caseId: input.testCase.id,
+                runNumber,
+                runId,
+                taskId: event.type === 'task_log' ? event.taskId : null,
+                level: event.type === 'task_log' ? event.level : 'error',
+                text: redactChatRepairErrorOutput(
+                  event.type === 'task_log' ? event.text : event.error,
+                ),
+              });
+            }
+          },
           onFaultObserved: (observation) => faultObservations.push(observation),
         });
       } finally {
@@ -2933,11 +3072,17 @@ async function executeTargetedTrialCase(
         input.testCase.id,
         runNumber,
         caseWorkspace.workDir,
+        outputPaths,
       );
       totalTaskCount += evidence.totalTaskCount;
       mergeTrialTaskStatusCounts(taskStatusCounts, evidence.taskStatusCounts);
       tasks.push(
         ...evidence.tasks.map((task) =>
+          trialTaskFailureIsExpected(input.testCase, task) ? { ...task, repairScope: null } : task,
+        ),
+      );
+      repairErrorTasks.push(
+        ...evidence.repairErrorTasks.map((task) =>
           trialTaskFailureIsExpected(input.testCase, task) ? { ...task, repairScope: null } : task,
         ),
       );
@@ -3054,6 +3199,8 @@ async function executeTargetedTrialCase(
       expectations: reconciledExpectations,
     },
     totalTaskCount,
+    repairErrorTasks,
+    repairPipelineDiagnostics,
   };
 }
 
@@ -3584,6 +3731,10 @@ async function executeTrial(
   try {
     const secretValues = Object.values(sandboxScopedSecretEnv).filter(Boolean);
     const cases: ChatPipelineTrialCaseResult[] = [];
+    const repairErrorTasks: ChatPipelineTrialTaskResult[] = [];
+    const repairPipelineDiagnostics: NonNullable<
+      ChatPipelineTrialRunResult['repairPipelineDiagnostics']
+    > = [];
     const runtimePrerequisiteBlockers = new Map<string, ChatPipelineTrialBlocker>();
     const recordRuntimeBlockers = (blockers: readonly ChatPipelineTrialBlocker[]): void => {
       for (const blocker of blockers) {
@@ -3787,6 +3938,12 @@ async function executeTrial(
               expectations: [...executedCaseResult.expectations, ...workspaceFailures],
             };
       cases.push(caseResult);
+      repairErrorTasks.push(
+        ...caseExecution.repairErrorTasks.filter(
+          (task) => !caseResult.success || task.status !== 'success' || task.stderr.length > 0,
+        ),
+      );
+      repairPipelineDiagnostics.push(...caseExecution.repairPipelineDiagnostics);
       totalTaskCount += caseExecution.totalTaskCount;
       if (workspaceFailures.length > 0) {
         caseLoopStop = {
@@ -4027,6 +4184,8 @@ async function executeTrial(
       totalTaskCount,
       omittedTaskCount,
       tasks: visibleTasks,
+      repairErrorTasks,
+      repairPipelineDiagnostics,
       taskStatusCounts,
       omittedTaskStatusCounts,
       plan: trialPlanSummary(plan),

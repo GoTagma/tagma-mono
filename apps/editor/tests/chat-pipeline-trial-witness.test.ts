@@ -102,6 +102,70 @@ afterEach(() => {
 }, 300_000);
 
 describe('chat pipeline trial host witness', () => {
+  test('late events from an aborted worker cannot settle or terminate its replacement', async () => {
+    const { root, ws } = makeWorkspace();
+    const expected = captureTrialHostWitness(ws, prepared(root));
+    const NativeWorker = globalThis.Worker;
+    const workers: ControlledWorker[] = [];
+    class ControlledWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      request: { id: number } | null = null;
+      terminated = false;
+      constructor() {
+        workers.push(this);
+      }
+      postMessage(request: { id: number }) {
+        this.request = request;
+      }
+      terminate() {
+        this.terminated = true;
+      }
+    }
+    globalThis.Worker = ControlledWorker as unknown as typeof Worker;
+    try {
+      const controller = new AbortController();
+      const first = captureTrialHostWitnessAsync(ws, prepared(root), controller.signal).then(
+        () => null,
+        (error: Error) => error,
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(workers).toHaveLength(1);
+      const staleError = workers[0].onerror!;
+      const staleMessage = workers[0].onmessage!;
+      const staleMessageError = workers[0].onmessageerror!;
+      controller.abort();
+      expect((await first)?.name).toBe('AbortError');
+
+      const second = captureTrialHostWitnessAsync(ws, prepared(root)).then(
+        (witness) => witness,
+        (error: Error) => error,
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(workers).toHaveLength(2);
+      const replacement = workers[1];
+      staleError(new ErrorEvent('error', { message: 'stale worker failure' }));
+      staleMessageError();
+      staleMessage(
+        new MessageEvent('message', { data: { id: replacement.request!.id, ok: false } }),
+      );
+      replacement.onmessage!(
+        new MessageEvent('message', {
+          data: {
+            id: replacement.request!.id,
+            ok: true,
+            response: { kind: 'host', witness: expected, cacheStats: {} },
+          },
+        }),
+      );
+      expect(await second).toEqual(expected);
+      expect(replacement.terminated).toBe(false);
+    } finally {
+      disposeTrialWitnessWorker(ws);
+      globalThis.Worker = NativeWorker;
+    }
+  });
   test('refuses filesystem roots before a full-filesystem witness can recurse', () => {
     for (const workspaceRoot of [
       'F:\\',

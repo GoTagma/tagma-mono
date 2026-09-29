@@ -768,7 +768,7 @@
   Planning exhaustion cannot erase independently established recovery-failure-policy repair
   authority, grant another plan submission, or derive authority from a planner finding alone.
   Pipeline repair retains its finite budget and successful Trial remains mandatory for publication.
-  Trial Plan v12, draft v3 and cache v43 invalidate older semantic, fault and repair-diagnostic evidence.
+  Trial Plan v12, draft v3 and cache v44 invalidate older semantic, fault and repair-diagnostic evidence.
   Only `commit`
   consumes that draft's formal attempt. Keep drafts stage-owned, path-and-hash-bound, locked,
   size-bounded, resumable, resettable, and unpublished. For a new YAML hash, `begin` may seed only
@@ -969,6 +969,9 @@
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
   accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.
+- Detach Trial witness Worker callbacks before termination and fence every callback by the exact
+  current Worker identity. An aborted or disposed Worker's delayed message/error must never settle
+  a successor request or terminate the replacement Worker in the same workspace.
 - Exact Git-root workspaces must fail closed when git cannot be resolved or the repository layout
   cannot be inspected. Do not fall back to filesystem witness capture just because a `.git`
   marker exists.
@@ -1006,10 +1009,13 @@
   Bump it whenever result semantics change so an older signed result cannot be reinterpreted under
   a newer success, warning, or authorization policy.
 - A failed trial may feed one of the existing bounded hidden repair continuations back into the
-  same OpenCode session, stage, snapshot, and YAML lease. Mutation requires the exact top-level
-  `pipeline-change-allowed` authorization, derived only from a `pipeline-artifact` finding
-  or a direct executable behavior/expectation failure. Untyped legacy results fail closed. Blocked
-  coverage and environment, harness, credential, external-service, manual-approval, timeout,
+  same OpenCode session, stage, snapshot, and YAML lease. Ordinary mutation requires the top-level
+  `pipeline-change-allowed` authorization, derived from a `pipeline-artifact` finding
+  or a direct executable behavior/expectation failure. V2 also admits unexpected executed task
+  failures into the same staged-artifact repair loop so the model can investigate configuration
+  causes behind external errors. This grants neither environment/configuration mutation nor
+  credential fabrication. Untyped legacy results fail closed. Blocked
+  coverage and environment, harness, manual-approval, timeout,
   witness, or unsupported-observation failures remain `diagnostic-only` and must not be repaired by
   weakening or redirecting the pipeline. A signed, current-YAML/current-host
   blocked prerequisite state means Trial could not establish executable behavior because a real
@@ -1533,6 +1539,17 @@
   Promise rejection.
 
 ## Chat Usage Stats And Terminal Discard Reasons
+
+- Model repair input is not the compact `ChatOperationFeedback` notice. Preserve captured task
+  stdout/stderr before Trial display clipping and task selection, including stderr on successful
+  tasks; label canonical status and expected negative outcomes without turning them into repair
+  targets. Keep complete compilation validation details too. Store the credential-redacted evidence
+  privately in the authenticated stage, persist only its hash in Host events, and seal the exact
+  evidence into canonical repair bytes. Recovery must authenticate the same evidence or retain the
+  draft; never substitute a digest or short failure category for the actual error. Do not expose
+  private evidence through production diagnostics. Unexpected executed task provider failures also
+  enter the frozen-budget staged-artifact repair loop; this never authorizes credential fabrication,
+  changing explicit user models/drivers, weakening Trial, or retrying failed Chat invocations.
 
 - Repair feedback must come from structured unexpected failures and failed assertions, never an
   appended raw Trial summary that also describes passing negative cases and unselected tasks.

@@ -817,6 +817,162 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(value.staging.trialInputs.at(-1)?.affectedCases).toEqual(affectedCases);
   });
 
+  test('preserves complete task errors for the repair model separately from compact feedback', async () => {
+    const value = await readyRuntime();
+    const error =
+      'providerID=custom modelID=chosen-model HTTP 403: request rejected\n' +
+      'Diagnostic context that must reach the model. '.repeat(40) +
+      '\nLAST_ERROR_DETAIL';
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      repairAuthorization: 'pipeline-change-allowed',
+      totalTaskCount: 2,
+      omittedTaskCount: 0,
+      cases: [{ id: 'normal', success: false, expectations: [] }],
+      tasks: [
+        {
+          caseId: 'normal',
+          taskId: 'write.report',
+          status: 'failed',
+          failureKind: 'exit_nonzero',
+          repairScope: 'diagnostic-only',
+          stdout: '{"type":"error","statusCode":403}',
+          stderr: error,
+        },
+        {
+          caseId: 'normal',
+          taskId: 'validate.data',
+          status: 'success',
+          repairScope: null,
+          stdout: '',
+          stderr: 'AssertionError: invalid structured output',
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const request = {
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    };
+    const result = await value.runtime.verifyStage(request);
+    expect(result).toHaveProperty(
+      'repairErrorEvidenceHash',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+    );
+    const hash = result.repairErrorEvidenceHash!;
+    const evidence = await value.runtime.readRepairErrorEvidence!({
+      operationId: request.operationId,
+      operationGeneration: request.operationGeneration,
+      stageId: STAGE_ID,
+      hash,
+    });
+    const parsed = JSON.parse(evidence);
+    expect(parsed.tasks[0].stderr).toBe(error);
+    expect(parsed.tasks[0].stdout).toBe('{"type":"error","statusCode":403}');
+    expect(parsed.tasks[1]).toMatchObject({
+      status: 'success',
+      stderr: 'AssertionError: invalid structured output',
+    });
+    const recreated = value.createRuntime();
+    expect(
+      await recreated.readRepairErrorEvidence!({
+        operationId: request.operationId,
+        operationGeneration: request.operationGeneration,
+        stageId: STAGE_ID,
+        hash,
+      }),
+    ).toBe(evidence);
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'repair-evidence-test',
+      sessionId: 'session-root',
+      executionMessageId: 'repair-message',
+      purpose: 'repair',
+      intent: 'create',
+      stageDirectory: value.stage.stageDirectoryIdentity,
+      targetRelativePath: 'pipeline/pipeline.yaml',
+      trialPlanRequest: null,
+      admission: admission(),
+      clarificationThread: null,
+      signal: request.signal,
+      requestInteractive: async () => undefined,
+      canonicalRequestBytes: new TextEncoder().encode(
+        JSON.stringify({
+          purpose: 'repair',
+          repairAttempt: 1,
+          repairEvidence: {
+            feedback: result.feedback,
+            diagnosticCodes: ['trial_failed'],
+            errorEvidenceHash: hash,
+            errors: evidence,
+          },
+        }),
+      ),
+    });
+    expect(prompt.text).toContain('HTTP 403: request rejected');
+    expect(prompt.text).toContain('LAST_ERROR_DETAIL');
+    expect(prompt.text).toContain('AssertionError: invalid structured output');
+    expect(prompt.text).toContain('<repair-error-evidence>');
+    expect(JSON.stringify(result.feedback)).not.toContain('LAST_ERROR_DETAIL');
+    await expect(
+      recreated.readRepairErrorEvidence!({
+        operationId: 'foreign-operation',
+        operationGeneration: request.operationGeneration,
+        stageId: STAGE_ID,
+        hash,
+      }),
+    ).rejects.toThrow('Repair error evidence');
+  });
+
+  test('unexpected task provider errors enter the existing bounded repair loop', async () => {
+    const value = await readyRuntime();
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      success: false,
+      kind: 'failed',
+      ran: true,
+      repairAuthorization: 'diagnostic-only',
+      cases: [{ id: 'normal', success: false, expectations: [] }],
+      tasks: [
+        {
+          taskId: 'render.document',
+          caseId: 'normal',
+          status: 'failed',
+          failureKind: 'exit_nonzero',
+          repairScope: 'diagnostic-only',
+          stderr: 'Provider refused the selected execution model.',
+          stdout: '',
+        },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const request = {
+      operationId: 'operation-1',
+      workspaceScopeId: 'scope-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      targetId: 'pipeline-1',
+      stage: value.stage,
+      repairAttempts: 0,
+      signal: new AbortController().signal,
+    };
+    expect((await value.runtime.verifyStage(request)).kind).toBe('repair_required');
+    value.staging.trialResult = { ...value.staging.trialResult, kind: 'witness-failed' };
+    expect((await value.runtime.verifyStage(request)).kind).toBe('unverified');
+    value.staging.trialResult = {
+      ...value.staging.trialResult,
+      kind: 'failed',
+      tasks: [{ ...value.staging.trialResult.tasks[0], repairScope: null }],
+    };
+    expect((await value.runtime.verifyStage(request)).kind).toBe('unverified');
+  });
+
   test('mixed external failures do not hide actionable failed expectations from repair feedback', async () => {
     const value = await readyRuntime();
     value.staging.trialResult = {
@@ -1256,7 +1412,15 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       repairAttempts: 0,
       signal: new AbortController().signal,
     });
-    expect(result.kind).toBe('unverified');
+    expect(result.kind).toBe('repair_required');
+    const errorEvidence = await value.runtime.readRepairErrorEvidence!({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      stageId: STAGE_ID,
+      hash: result.repairErrorEvidenceHash!,
+    });
+    expect(errorEvidence).toContain(error);
+    expect(errorEvidence).toContain('PRIVATE_PROVIDER_RESPONSE');
     expect(result.feedback?.details).toContain('model API connection was interrupted');
     expect(result.feedback?.details.match(/main\.prompt: failed/g)).toHaveLength(1);
     expect(JSON.stringify(result.feedback)).not.toContain('PRIVATE_PROVIDER_RESPONSE');
@@ -1466,6 +1630,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
   });
 
   test('selects the dedicated Trial Plan agent with exact Host-issued planning authority', () => {
+    const errors = 'Complete assertion diagnostic '.repeat(1500) + 'FINAL_PLANNER_ERROR_DETAIL';
     const prompt = buildManagedChatOperationV2ExecutionPrompt({
       invocationId: 'trial-plan-invocation-1',
       sessionId: 'session-root',
@@ -1485,7 +1650,12 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       },
       admission: admission(),
       clarificationThread: null,
-      canonicalRequestBytes: new TextEncoder().encode('{"purpose":"trial_plan"}'),
+      canonicalRequestBytes: new TextEncoder().encode(
+        JSON.stringify({
+          purpose: 'trial_plan',
+          verificationErrorEvidence: { hash: sha256(errors), errors },
+        }),
+      ),
       signal: new AbortController().signal,
       requestInteractive: async () => undefined,
     });
@@ -1499,6 +1669,8 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     expect(prompt.text).toContain('<intent-request>Build the pipeline.</intent-request>');
     expect(prompt.text).not.toContain('<request>Build the pipeline.</request>');
     expect(prompt.system).toContain('tool calls');
+    expect(prompt.text).toContain('<trial-error-evidence>');
+    expect(prompt.text).toContain(errors);
   });
 
   test('Trial planning receives the frozen user intent and attachment requirements', () => {
@@ -1632,6 +1804,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     });
 
     expect(prompt.system).toContain('staging coordinates');
+    expect(prompt.system).toContain('check exit codes before discarding output');
     expect(prompt.system).toContain('bounded chunks');
     expect(prompt.system).toContain('may remap publication');
     expect(prompt.system).toContain('compile log is not a published artifact');

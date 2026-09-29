@@ -297,6 +297,7 @@ export interface ChatOperationV2HostEventPayloads {
   };
   readonly trial_status_changed: {
     readonly repairDiagnosisJson?: string;
+    readonly repairErrorEvidenceHash?: string;
     readonly stageId: string;
     readonly trialId: string;
     readonly status: TrialStatus;
@@ -753,10 +754,12 @@ const payloadValidators = {
       'errorCode',
       ...('feedback' in value ? ['feedback'] : []),
       ...('repairDiagnosisJson' in value ? ['repairDiagnosisJson'] : []),
+      ...('repairErrorEvidenceHash' in value ? ['repairErrorEvidenceHash'] : []),
     ]) &&
     (!('feedback' in value) || isChatOperationFeedback(value.feedback)) &&
     (!('repairDiagnosisJson' in value) ||
       parseChatRepairDiagnosisJson(value.repairDiagnosisJson) !== null) &&
+    (!('repairErrorEvidenceHash' in value) || isHash(value.repairErrorEvidenceHash)) &&
     isHostId(value.stageId) &&
     isHostId(value.trialId) &&
     includesValue(CHAT_OPERATION_V2_TRIAL_STATUSES, value.status) &&

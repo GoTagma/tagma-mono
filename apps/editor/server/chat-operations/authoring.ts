@@ -524,6 +524,8 @@ interface VerificationBase {
   readonly failedCount: number;
   readonly warningCount: number;
   readonly feedback?: ChatOperationFeedback;
+  /** Reference to private, complete captured error evidence; never a UI feedback string. */
+  readonly repairErrorEvidenceHash?: string;
 }
 
 interface VerificationArtifactAuthority {
@@ -677,6 +679,12 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly invocationId: string;
   }): Promise<void>;
   forwardInteractive(command: ChatOperationV2InteractiveForwardingCommand): Promise<void>;
+  readRepairErrorEvidence?(input: {
+    readonly operationId: string;
+    readonly operationGeneration: number;
+    readonly stageId: string;
+    readonly hash: string;
+  }): Promise<string>;
   verifyStage(input: {
     readonly operationId: string;
     readonly workspaceScopeId: string;
@@ -1301,6 +1309,8 @@ function validateVerification(
     );
   }
   assertHostId(result.trialId, 'Trial id');
+  if (result.repairErrorEvidenceHash !== undefined)
+    assertHash(result.repairErrorEvidenceHash, 'Repair error evidence hash');
   if (result.feedback !== undefined && !isChatOperationFeedback(result.feedback)) {
     throw new ChatOperationV2AuthoringProtocolError(
       'invalid_runtime_result',
@@ -1765,6 +1775,7 @@ export class ChatOperationV2AuthoringEngine {
       readonly diagnosticCodes: readonly string[];
       readonly feedback?: ChatOperationFeedback;
       readonly diagnosis?: ChatRepairDiagnosis;
+      readonly errorEvidenceHash?: string;
     } | null,
     interactiveRecoveryInput?: ResolveChatOperationV2InteractiveRecoveryInput,
     // Host-issued invocation id this chain resumes after an output-length
@@ -1792,6 +1803,9 @@ export class ChatOperationV2AuthoringEngine {
             : 'verification_failed',
         ],
         feedback: prior!.payload.feedback as ChatOperationFeedback,
+        ...(typeof prior?.payload.repairErrorEvidenceHash === 'string'
+          ? { errorEvidenceHash: prior.payload.repairErrorEvidenceHash }
+          : {}),
         ...(parseChatRepairDiagnosisJson(prior?.payload.repairDiagnosisJson)
           ? { diagnosis: parseChatRepairDiagnosisJson(prior?.payload.repairDiagnosisJson)! }
           : {}),
@@ -1813,6 +1827,34 @@ export class ChatOperationV2AuthoringEngine {
       context.operationId,
     );
     const identity = this.invocationIdentity(purpose, context.sessionId);
+    let errorEvidence: string | undefined;
+    const plannerErrorHash =
+      purpose === 'trial_plan'
+        ? this.persistence.getLatestOperationEvent(context.operationId, 'trial_status_changed')
+            ?.payload.repairErrorEvidenceHash
+        : undefined;
+    const errorEvidenceHash =
+      purpose === 'repair'
+        ? repairEvidence?.errorEvidenceHash
+        : typeof plannerErrorHash === 'string'
+          ? plannerErrorHash
+          : undefined;
+    if (errorEvidenceHash) {
+      if (!this.runtime.readRepairErrorEvidence)
+        return this.retainDraft(context, 'repair_evidence_unavailable');
+      try {
+        errorEvidence = await this.runtime.readRepairErrorEvidence({
+          operationId: context.operationId,
+          operationGeneration: context.stage.operationGeneration,
+          stageId: context.stage.stageId,
+          hash: errorEvidenceHash,
+        });
+      } catch {
+        return this.retainDraft(context, 'repair_evidence_unavailable');
+      }
+      if (sha256(new TextEncoder().encode(errorEvidence)) !== errorEvidenceHash)
+        return this.retainDraft(context, 'repair_evidence_unavailable');
+    }
     const requestBytes = canonicalBytes({
       schemaVersion: CHAT_OPERATION_V2_AUTHORING_SCHEMA_VERSION,
       purpose,
@@ -1827,8 +1869,14 @@ export class ChatOperationV2AuthoringEngine {
       originHash: context.originHash,
       admission,
       clarificationThread,
-      repairEvidence,
+      repairEvidence:
+        repairEvidence === null
+          ? null
+          : { ...repairEvidence, ...(errorEvidence ? { errors: errorEvidence } : {}) },
       trialPlanRequest,
+      ...(purpose === 'trial_plan' && errorEvidence
+        ? { verificationErrorEvidence: { hash: errorEvidenceHash, errors: errorEvidence } }
+        : {}),
       ...(continuationOf === undefined ? {} : { continuationOf }),
     });
     const preparedAt = this.now();
@@ -2759,6 +2807,9 @@ export class ChatOperationV2AuthoringEngine {
       warningCount: verification.warningCount,
       ...(verification.feedback ? { feedback: verification.feedback } : {}),
       ...(eventDiagnosis ? { repairDiagnosisJson: JSON.stringify(eventDiagnosis) } : {}),
+      ...(verification.repairErrorEvidenceHash
+        ? { repairErrorEvidenceHash: verification.repairErrorEvidenceHash }
+        : {}),
       errorCode:
         verification.kind === 'passed'
           ? null
@@ -2784,6 +2835,9 @@ export class ChatOperationV2AuthoringEngine {
         diagnosticCodes: verification.diagnosticCodes,
         ...(verification.feedback ? { feedback: verification.feedback } : {}),
         ...(repairDiagnosis ? { diagnosis: repairDiagnosis } : {}),
+        ...(verification.repairErrorEvidenceHash
+          ? { errorEvidenceHash: verification.repairErrorEvidenceHash }
+          : {}),
       });
     }
     if (verification.kind === 'trial_plan_required') {

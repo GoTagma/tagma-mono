@@ -122,8 +122,19 @@ user-owned support files, runtime mode, capability report, and Host prerequisite
 prompt and triggered closures always run again. The live Trial status includes a Host heartbeat
 and elapsed time during long, otherwise-silent model tasks.
 
-Automatic repair feedback excludes expected failures in passing negative cases and tasks skipped
-outside the selected run. The repair model receives structured workspace-relative task cwd,
+Compact repair notices exclude expected failures in passing negative cases and tasks skipped
+outside the selected run. The repair model receives a separate Host-authenticated private snapshot
+of captured task stdout/stderr and compilation errors, before display stream clipping and task
+window selection. Error output from a successful task remains labelled successful, and expected
+negative outcomes are labelled expected rather than treated as repair targets. Credentials are
+redacted; error content is not replaced with failure-code summaries. Existing runtime capture
+omissions remain explicit. The immutable snapshot is hash-bound into the canonical invocation,
+survives Host restart, and is never projected through production diagnostics or compact notices.
+Unexpected executed task errors, including provider errors, enter the existing finite repair loop
+so the model can investigate authored configuration and dataflow causes. Repairs cannot fabricate
+credentials, change an explicit user model/driver, weaken assertions, or increase execution/repair
+budgets. Harness and prerequisite failures remain separate. Each changed draft is verified again;
+successful Trial remains mandatory before publication. The model also receives task cwd,
 completion targets and Host-asserted file observations so it can diagnose read/write coordinates
 without guessing from clipped logs. Unchanged, complete failure evidence across actual repairs is
 reported with its recurrence count, including across plan-only revisions. This is diagnostic

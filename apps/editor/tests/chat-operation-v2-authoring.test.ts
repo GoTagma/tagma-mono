@@ -1138,6 +1138,69 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     ]);
   });
 
+  test('full error evidence is sealed into each repair and replaced after the next Trial', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['repair', 'repair', 'passed'],
+    });
+    const errors = [
+      JSON.stringify({ stderr: 'First diagnostic '.repeat(800) + 'FIRST_ERROR_END' }),
+      JSON.stringify({
+        stdout: { type: 'error', message: 'Second diagnostic '.repeat(900) + 'SECOND_ERROR_END' },
+      }),
+    ];
+    const evidence = new Map(errors.map((text) => [hash(text), text]));
+    const verify = runtime.verifyStage.bind(runtime);
+    let failedTrial = 0;
+    runtime.verifyStage = async (input) => {
+      const result = await verify(input);
+      return result.kind === 'repair_required'
+        ? { ...result, repairErrorEvidenceHash: hash(errors[failedTrial++]) }
+        : result;
+    };
+    Object.assign(runtime, {
+      readRepairErrorEvidence: async (input: { hash: string }) => evidence.get(input.hash)!,
+    });
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    const repairs = runtime.invocationRequests.filter((r) => r.purpose === 'repair');
+    expect(repairs).toHaveLength(2);
+    for (let index = 0; index < repairs.length; index++) {
+      const canonical = JSON.parse(new TextDecoder().decode(repairs[index].canonicalRequestBytes));
+      expect(canonical.repairEvidence.errors).toBe(errors[index]);
+      expect(canonical.repairEvidence.errorEvidenceHash).toBe(hash(errors[index]));
+    }
+    expect(new TextDecoder().decode(repairs[1].canonicalRequestBytes)).not.toContain(
+      'FIRST_ERROR_END',
+    );
+    expect(runtime.verifyCalls).toHaveLength(3);
+    expect(store.getOperation('operation-1')?.phase).toBe('commit_preparing');
+  });
+
+  test.each(['missing', 'changed'])(
+    'retains the draft rather than repairing without complete authenticated errors (%s)',
+    async (reason) => {
+      const { engine, store, runtime } = createHarness({ verification: ['repair'] });
+      const verify = runtime.verifyStage.bind(runtime);
+      runtime.verifyStage = async (input) => ({
+        ...(await verify(input)),
+        repairErrorEvidenceHash: hash('original errors'),
+      });
+      Object.assign(runtime, {
+        readRepairErrorEvidence: async () => {
+          if (reason === 'missing') throw new Error('Evidence is unavailable');
+          return 'changed errors';
+        },
+      });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      expect(runtime.invocationRequests.filter((r) => r.purpose === 'repair')).toHaveLength(0);
+      expect(store.getOperation('operation-1')).toMatchObject({
+        phase: 'trial-running',
+        waitReason: 'user_retry',
+        terminalOutcome: null,
+      });
+      expect(runtime.discardedStageIds).toHaveLength(0);
+    },
+  );
+
   test('each repair receives the latest failure and stops after the repaired verification passes', async () => {
     const { engine, store, runtime } = createHarness({
       verification: ['repair', 'repair', 'passed'],

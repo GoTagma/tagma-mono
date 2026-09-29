@@ -1428,7 +1428,12 @@ function terminateTrialWitnessWorker(state: TrialWitnessWorkerState, error: Erro
   const workerObjectUrl = state.workerObjectUrl;
   state.worker = null;
   state.workerObjectUrl = null;
-  if (worker) worker.terminate();
+  if (worker) {
+    worker.onmessage = null;
+    worker.onerror = null;
+    worker.onmessageerror = null;
+    worker.terminate();
+  }
   if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
   for (const pending of state.pending.values()) {
     pending.reject(error);
@@ -1457,6 +1462,7 @@ function ensureTrialWitnessWorker(state: TrialWitnessWorkerState): Worker {
   }
   state.workerObjectUrl = workerObjectUrl;
   worker.onmessage = (event: MessageEvent<TrialWitnessWorkerEnvelope>) => {
+    if (state.worker !== worker) return;
     const message = event.data;
     const pending = state.pending.get(message.id);
     if (!pending) return;
@@ -1468,6 +1474,7 @@ function ensureTrialWitnessWorker(state: TrialWitnessWorkerState): Worker {
     pending.reject(deserializeTrialWitnessWorkerError(message.error));
   };
   worker.onerror = (event: ErrorEvent) => {
+    if (state.worker !== worker) return;
     terminateTrialWitnessWorker(
       state,
       deserializeTrialWitnessWorkerError(
@@ -1481,6 +1488,7 @@ function ensureTrialWitnessWorker(state: TrialWitnessWorkerState): Worker {
     );
   };
   worker.onmessageerror = () => {
+    if (state.worker !== worker) return;
     terminateTrialWitnessWorker(
       state,
       new Error('Trial witness worker returned an unreadable response.'),

@@ -24,7 +24,7 @@ import { atomicWriteFileSync } from './path-utils.js';
 const SERVER_RECORD_AUTH_VERSION = 1;
 const SERVER_RECORD_AUTH_ALGORITHM = 'hmac-sha256';
 const SERVER_RECORD_AUTH_FIELD = '__tagmaServerAuth';
-const MAX_SERVER_RECORD_BYTES = 5 * 1024 * 1024;
+export const MAX_SERVER_RECORD_BYTES = 5 * 1024 * 1024;
 let cachedServerRecordKey: { source: string; key: Buffer } | null = null;
 
 type JsonObject = Record<string, unknown>;
