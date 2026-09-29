@@ -8,4 +8,6 @@
 // repair before a green ordinary case can publish.
 // v42: semantic review binds frozen intent; typed cases require real Host fault
 // observations and contrasting normal results, independent of human wording.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 42 as const;
+// v43: repair diagnostics retain effective cwd/completion coordinates and exclude
+// expected negative outcomes; older cached failures cannot drive stagnation decisions.
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 43 as const;

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { createHash } from 'node:crypto';
+import type { ChatRepairDiagnosis } from '../shared/chat-repair-diagnosis';
 import { buildManagedChatOperationV2ExecutionPrompt } from '../server/chat-operations/authoring-runtime.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1171,6 +1172,61 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(received[1]).not.toContain('attempt 1');
     expect(runtime.verifyCalls).toHaveLength(3);
   });
+  test.each([false, true])(
+    'carries repeated complete failure evidence across planning without a new retry limit (%s)',
+    async (plansBetweenRepairs) => {
+      const { engine, store, runtime } = createHarness({
+        verification: plansBetweenRepairs
+          ? ['repair', 'trial_plan', 'repair', 'trial_plan', 'repair', 'passed']
+          : ['repair', 'repair', 'repair', 'passed'],
+      });
+      const verify = runtime.verifyStage.bind(runtime);
+      runtime.verifyStage = async (input) => {
+        const result = await verify(input);
+        if (result.kind !== 'repair_required') return result;
+        const repairDiagnosis: ChatRepairDiagnosis = {
+          schemaVersion: 1,
+          failureSignature: 'f'.repeat(64),
+          repairAttempt: input.repairAttempts,
+          consecutiveFailures: 1,
+          complete: true,
+          failedExpectationTypes: ['task-status'],
+          files: [],
+          omittedTaskCount: 0,
+          omittedFileCount: 0,
+          tasks: [
+            {
+              taskId: 'main.task',
+              status: 'failed',
+              failureKind: 'completion_failed',
+              exitCode: 0,
+              effectiveCwd: '.',
+              completionType: 'file_exists',
+              completionPath: 'artifacts/output.json',
+              completionRegularFile: false,
+            },
+          ],
+        };
+        return { ...result, repairDiagnosis };
+      };
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      expect(runtime.verifyCalls).toHaveLength(plansBetweenRepairs ? 6 : 4);
+      expect(runtime.invocationRequests.filter((item) => item.purpose === 'repair')).toHaveLength(
+        3,
+      );
+      expect(store.getOperation('operation-1')).toMatchObject({
+        phase: 'commit_preparing',
+        repairAttempts: 3,
+        terminalOutcome: null,
+      });
+      const repair = runtime.invocationRequests.filter((item) => item.purpose === 'repair').at(-1)!;
+      const canonical = JSON.parse(new TextDecoder().decode(repair.canonicalRequestBytes));
+      expect(canonical.repairEvidence.diagnosis).toMatchObject({
+        consecutiveFailures: 3,
+        tasks: [{ effectiveCwd: '.', completionPath: 'artifacts/output.json' }],
+      });
+    },
+  );
 
   test('missing repair feedback preserves the draft instead of invoking an uninformed repair', async () => {
     const { engine, store, runtime } = createHarness({ verification: ['repair'] });

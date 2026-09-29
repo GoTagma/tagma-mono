@@ -122,6 +122,14 @@ user-owned support files, runtime mode, capability report, and Host prerequisite
 prompt and triggered closures always run again. The live Trial status includes a Host heartbeat
 and elapsed time during long, otherwise-silent model tasks.
 
+Automatic repair feedback excludes expected failures in passing negative cases and tasks skipped
+outside the selected run. The repair model receives structured workspace-relative task cwd,
+completion targets and Host-asserted file observations so it can diagnose read/write coordinates
+without guessing from clipped logs. Unchanged, complete failure evidence across actual repairs is
+reported with its recurrence count, including across plan-only revisions. This is diagnostic
+evidence, not a new retry limit or filesystem permission: the user's frozen repair budget and
+successful Trial before publication remain authoritative. Evidence omissions are explicit.
+
 Sandbox Trial validates pipeline logic with synthetic environment values, isolated input fixtures,
 and automatic manual-trigger grants limited to each case's selected dependency closure. It is the
 only verification mode, so every terminal branch the pipeline needs verified must be covered by a

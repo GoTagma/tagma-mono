@@ -863,7 +863,7 @@ describe('managed Chat Operation V2 authoring runtime', () => {
     });
     expect(result.kind).toBe('repair_required');
     expect(result.feedback?.details).toContain('Report must contain the audited decision.');
-    expect(result.feedback?.details).toContain('An independent output assertion failed.');
+    expect(result.feedback?.details).toContain('Trial result: failed.');
     expect(result.feedback?.details).not.toContain('AI_APICallError');
   });
 
@@ -888,7 +888,18 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       repairAuthorization: 'diagnostic-only',
       cases: [
         { id: 'negative', success: true },
-        { id: 'positive', success: false },
+        {
+          id: 'positive',
+          success: false,
+          expectations: [
+            {
+              type: 'json-pointer-equals',
+              passed: false,
+              repairScope: 'pipeline-artifact',
+              detail: 'expected 15, got 14',
+            },
+          ],
+        },
       ],
       tasks: [
         {
@@ -923,6 +934,75 @@ describe('managed Chat Operation V2 authoring runtime', () => {
       'main.live',
     ]);
   });
+  test.each(['completion_failed', 'output_error'])(
+    'excludes passed negative cases and skipped noise from raw Trial summaries (%s)',
+    async (failureKind) => {
+      const value = await readyRuntime();
+      value.staging.trialResult = {
+        ...value.staging.trialResult,
+        success: false,
+        kind: 'failed',
+        ran: true,
+        repairAuthorization: 'pipeline-change-allowed',
+        summary:
+          'Trial failed. Task main.expected_failure: EXPECTED_NEGATIVE_FAILURE. ' +
+          'Task main.unselected: OUTSIDE_TARGET_NOISE. ' +
+          'NDJSON_NOISE '.repeat(1000),
+        cases: [
+          { id: 'negative', success: true, expectations: [] },
+          { id: 'positive', success: false, expectations: [] },
+        ],
+        tasks: [
+          {
+            caseId: 'positive',
+            runNumber: 1,
+            taskId: 'main.write',
+            status: 'failed',
+            failureKind,
+            exitCode: 0,
+            repairScope: 'pipeline-artifact',
+            stdout: '',
+            stderr: 'The required output was not produced.',
+          },
+          {
+            caseId: 'negative',
+            runNumber: 1,
+            taskId: 'main.expected_failure',
+            status: 'failed',
+            failureKind: 'exit_nonzero',
+            exitCode: 1,
+            repairScope: null,
+            stdout: '',
+            stderr: 'EXPECTED_NEGATIVE_FAILURE',
+          },
+          {
+            caseId: 'positive',
+            runNumber: 1,
+            taskId: 'main.unselected',
+            status: 'skipped',
+            repairScope: null,
+            stdout: '',
+            stderr: 'OUTSIDE_TARGET_NOISE',
+          },
+        ],
+      } as unknown as ChatPipelineTrialRunResult;
+      const result = await value.runtime.verifyStage({
+        operationId: 'operation-1',
+        workspaceScopeId: 'scope-1',
+        operationGeneration: 1,
+        bindingId: 'binding-1',
+        targetId: 'pipeline-1',
+        stage: value.stage,
+        repairAttempts: 0,
+        signal: new AbortController().signal,
+      });
+      expect(result.feedback?.failedTaskIds).toEqual(['main.write']);
+      expect(result.feedback?.details).toContain('The required output was not produced.');
+      expect(result.feedback?.details).not.toContain('EXPECTED_NEGATIVE_FAILURE');
+      expect(result.feedback?.details).not.toContain('OUTSIDE_TARGET_NOISE');
+      expect(result.feedback?.details).not.toContain('NDJSON_NOISE');
+    },
+  );
   test('bounded feedback remains valid when clipping crosses a redaction boundary', async () => {
     const value = await readyRuntime();
     for (let prefixLength = 4000; prefixLength < 4050; prefixLength++) {

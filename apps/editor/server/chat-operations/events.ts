@@ -11,6 +11,7 @@ import {
   isChatOperationV2SubmissionUnknownReason,
   type ChatOperationV2SubmissionUnknownReason,
 } from './submission-diagnostics.js';
+import { parseChatRepairDiagnosisJson } from '../../shared/chat-repair-diagnosis';
 
 export const CHAT_OPERATION_V2_HOST_EVENT_SCHEMA_VERSION = 1;
 
@@ -295,6 +296,7 @@ export interface ChatOperationV2HostEventPayloads {
     readonly runCount: number | null;
   };
   readonly trial_status_changed: {
+    readonly repairDiagnosisJson?: string;
     readonly stageId: string;
     readonly trialId: string;
     readonly status: TrialStatus;
@@ -750,8 +752,11 @@ const payloadValidators = {
       'warningCount',
       'errorCode',
       ...('feedback' in value ? ['feedback'] : []),
+      ...('repairDiagnosisJson' in value ? ['repairDiagnosisJson'] : []),
     ]) &&
     (!('feedback' in value) || isChatOperationFeedback(value.feedback)) &&
+    (!('repairDiagnosisJson' in value) ||
+      parseChatRepairDiagnosisJson(value.repairDiagnosisJson) !== null) &&
     isHostId(value.stageId) &&
     isHostId(value.trialId) &&
     includesValue(CHAT_OPERATION_V2_TRIAL_STATUSES, value.status) &&

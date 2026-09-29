@@ -1,4 +1,11 @@
 import { createHash } from 'node:crypto';
+import {
+  isChatRepairDiagnosis,
+  parseChatRepairDiagnosisJson,
+  fitChatRepairDiagnosis,
+  type ChatRepairDiagnosis,
+} from '../../shared/chat-repair-diagnosis';
+import { advanceChatRepairDiagnosis } from './repair-diagnosis';
 import type {
   ChatOperationDraft,
   ChatOperationDraftEdit,
@@ -26,7 +33,7 @@ import {
   parseChatCommitPrepareRecord,
   type ChatCommitPrepareRecord,
 } from './commit.js';
-import { toHostOperationEventInput } from './events.js';
+import { CHAT_OPERATION_V2_MAX_EVENT_BYTES, toHostOperationEventInput } from './events.js';
 import {
   chatOperationV2ProviderFailureCode,
   safeChatOperationV2FailureCode,
@@ -550,6 +557,7 @@ export type ChatOperationV2AuthoringVerificationResult =
       readonly kind: 'repair_required';
       readonly diagnosticCodes: readonly string[];
       readonly evidenceHash: string;
+      readonly repairDiagnosis?: ChatRepairDiagnosis;
     })
   | (VerificationBase & {
       readonly kind: 'trial_plan_required';
@@ -1362,8 +1370,15 @@ function validateVerification(
       );
     }
     for (const code of result.diagnosticCodes) assertRuntimeCode(code, 'Trial diagnostic code');
-    if (result.kind === 'repair_required') assertHash(result.evidenceHash, 'Repair evidence hash');
-    else assertRuntimeCode(result.errorCode, 'Trial error code');
+    if (result.kind === 'repair_required') {
+      assertHash(result.evidenceHash, 'Repair evidence hash');
+      if (result.repairDiagnosis !== undefined && !isChatRepairDiagnosis(result.repairDiagnosis)) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Repair diagnosis is invalid.',
+        );
+      }
+    } else assertRuntimeCode(result.errorCode, 'Trial error code');
   }
   return result;
 }
@@ -1749,6 +1764,7 @@ export class ChatOperationV2AuthoringEngine {
       readonly evidenceHash: string;
       readonly diagnosticCodes: readonly string[];
       readonly feedback?: ChatOperationFeedback;
+      readonly diagnosis?: ChatRepairDiagnosis;
     } | null,
     interactiveRecoveryInput?: ResolveChatOperationV2InteractiveRecoveryInput,
     // Host-issued invocation id this chain resumes after an output-length
@@ -1776,6 +1792,9 @@ export class ChatOperationV2AuthoringEngine {
             : 'verification_failed',
         ],
         feedback: prior!.payload.feedback as ChatOperationFeedback,
+        ...(parseChatRepairDiagnosisJson(prior?.payload.repairDiagnosisJson)
+          ? { diagnosis: parseChatRepairDiagnosisJson(prior?.payload.repairDiagnosisJson)! }
+          : {}),
       };
     }
     const trialPlanRequest =
@@ -2707,6 +2726,21 @@ export class ChatOperationV2AuthoringEngine {
         this.terminationIntents.get(context.operationId) ?? 'cancelled_precommit',
       );
     }
+    const previousTrial = this.persistence.getLatestOperationEvent(
+      context.operationId,
+      'trial_status_changed',
+    );
+    const previousDiagnosis =
+      previousTrial &&
+      ['repair_required', 'trial_plan_required'].includes(String(previousTrial.payload.errorCode))
+        ? parseChatRepairDiagnosisJson(previousTrial.payload.repairDiagnosisJson)
+        : null;
+    const repairDiagnosis =
+      verification.kind === 'repair_required' && verification.repairDiagnosis
+        ? advanceChatRepairDiagnosis(verification.repairDiagnosis, previousDiagnosis)
+        : undefined;
+    const eventDiagnosis =
+      repairDiagnosis ?? (verification.kind === 'trial_plan_required' ? previousDiagnosis : null);
     this.appendEvent(context.operationId, 'trial_status_changed', {
       stageId: context.stage.stageId,
       trialId: verification.trialId,
@@ -2724,6 +2758,7 @@ export class ChatOperationV2AuthoringEngine {
       failedCount: verification.failedCount,
       warningCount: verification.warningCount,
       ...(verification.feedback ? { feedback: verification.feedback } : {}),
+      ...(eventDiagnosis ? { repairDiagnosisJson: JSON.stringify(eventDiagnosis) } : {}),
       errorCode:
         verification.kind === 'passed'
           ? null
@@ -2748,6 +2783,7 @@ export class ChatOperationV2AuthoringEngine {
         evidenceHash: verification.evidenceHash,
         diagnosticCodes: verification.diagnosticCodes,
         ...(verification.feedback ? { feedback: verification.feedback } : {}),
+        ...(repairDiagnosis ? { diagnosis: repairDiagnosis } : {}),
       });
     }
     if (verification.kind === 'trial_plan_required') {
@@ -4419,14 +4455,32 @@ export class ChatOperationV2AuthoringEngine {
       readonly eventId: string;
     },
   ) {
-    return toHostOperationEventInput({
-      schemaVersion: 1,
+    const input = {
+      schemaVersion: 1 as const,
       eventId: this.hostId('event'),
       type,
       timestamp,
       payload,
       ...(source ? { source } : {}),
-    });
+    };
+    const diagnosis = parseChatRepairDiagnosisJson(payload.repairDiagnosisJson);
+    if (diagnosis) {
+      const basePayload = { ...payload };
+      delete basePayload.repairDiagnosisJson;
+      const overhead = new TextEncoder().encode(
+        JSON.stringify({ ...input, payload: basePayload }),
+      ).byteLength;
+      const allowance =
+        CHAT_OPERATION_V2_MAX_EVENT_BYTES -
+        overhead -
+        JSON.stringify('repairDiagnosisJson').length -
+        2;
+      const fitted = fitChatRepairDiagnosis(diagnosis, allowance);
+      input.payload = fitted
+        ? { ...basePayload, repairDiagnosisJson: JSON.stringify(fitted) }
+        : basePayload;
+    }
+    return toHostOperationEventInput(input);
   }
 
   private hostId(kind: string): string {

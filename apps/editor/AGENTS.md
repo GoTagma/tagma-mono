@@ -768,7 +768,7 @@
   Planning exhaustion cannot erase independently established recovery-failure-policy repair
   authority, grant another plan submission, or derive authority from a planner finding alone.
   Pipeline repair retains its finite budget and successful Trial remains mandatory for publication.
-  Trial Plan v12, draft v3 and cache v42 invalidate older semantic and fault evidence.
+  Trial Plan v12, draft v3 and cache v43 invalidate older semantic, fault and repair-diagnostic evidence.
   Only `commit`
   consumes that draft's formal attempt. Keep drafts stage-owned, path-and-hash-bound, locked,
   size-bounded, resumable, resettable, and unpublished. For a new YAML hash, `begin` may seed only
@@ -1533,6 +1533,17 @@
   Promise rejection.
 
 ## Chat Usage Stats And Terminal Discard Reasons
+
+- Repair feedback must come from structured unexpected failures and failed assertions, never an
+  appended raw Trial summary that also describes passing negative cases and unselected tasks.
+  Keep effective cwd, built-in completion targets and Host-asserted file observations as bounded,
+  workspace-relative evidence in canonical repair input. It grants no path or repair authority
+  and must not enter production diagnostics. Persist the validated private diagnosis through
+  plan-only revisions; recurrence advances only after a new repair with complete, unchanged
+  observed evidence. Report recurrence to the model without a fixed retry cutoff or model/scenario
+  policy. Frozen user budgets, explicit Retry, Trial strength and publication authority still win.
+  Fit optional diagnosis to the existing Host event byte/depth bounds, preserving omission and
+  never converting clipped evidence into a complete no-progress observation.
 
 - Retain completed authoring drafts after automatic repair/Trial-plan no-change, repair exhaustion,
   and verification failure. Record the pause cause in `trial_status_changed`; historical terminal

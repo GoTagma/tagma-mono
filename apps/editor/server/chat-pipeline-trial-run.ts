@@ -13,7 +13,11 @@ import {
   type FSWatcher,
   type Stats,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  isChatRepairRelativePath,
+  type ChatRepairExecutionContext,
+} from '../shared/chat-repair-diagnosis';
 import { isDeepStrictEqual } from 'node:util';
 
 import {
@@ -162,6 +166,7 @@ export interface ChatPipelineTrialOutputDiagnostic {
 }
 
 export interface ChatPipelineTrialTaskResult {
+  executionContext?: ChatRepairExecutionContext;
   caseId: string | null;
   runNumber: number;
   taskId: string;
@@ -186,6 +191,7 @@ export interface ChatPipelineTrialStreamTruncation {
 }
 
 export interface ChatPipelineTrialExpectationResult {
+  fileObservation?: { path: string; regularFile: boolean | null };
   type:
     | ChatPipelineTrialExpectation['type']
     | 'case-execution'
@@ -2116,11 +2122,65 @@ export function selectChatPipelineTrialTaskEvidence(
   );
 }
 
+export function trialTaskExecutionContext(
+  task: { cwd?: string; completion?: { type: string; [key: string]: unknown } },
+  track: { cwd?: string; completion?: { type: string; [key: string]: unknown } },
+  workDir: string,
+): ChatRepairExecutionContext {
+  const cwd = resolve(workDir, task.cwd ?? track.cwd ?? '.');
+  const coordinate = (path: string): string | null => {
+    const value = relative(workDir, path).split(sep).join('/') || '.';
+    return isChatRepairRelativePath(value) ? value : null;
+  };
+  const configured = task.completion ?? track.completion;
+  let completion: ChatRepairExecutionContext['completion'] = null;
+  if (configured) {
+    // Other completion plugins own their parameter semantics; do not infer a path contract.
+    const path =
+      configured.type === 'file_exists' && typeof configured.path === 'string'
+        ? resolve(cwd, configured.path)
+        : null;
+    let regularFile: boolean | null = null;
+    const resolvedPath = path === null ? null : coordinate(path);
+    if (configured.type === 'file_exists' && resolvedPath !== null) {
+      try {
+        regularFile = lstatSync(path!).isFile();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') regularFile = false;
+      }
+    }
+    completion = { type: configured.type, resolvedPath, regularFile };
+  }
+  return { effectiveCwd: coordinate(cwd), completion };
+}
+
+export function trialCaseFileObservation(
+  workDir: string,
+  relativeYamlPath: string,
+  expectation: ChatPipelineTrialExpectation,
+): ChatPipelineTrialExpectationResult['fileObservation'] {
+  if (!('path' in expectation) || typeof expectation.path !== 'string') return undefined;
+  const path = resolve(
+    workDir,
+    chatPipelineTrialWorkspacePathFromCasePath(expectation.path, relativeYamlPath),
+  );
+  const coordinate = relative(workDir, path).split(sep).join('/') || '.';
+  if (!isChatRepairRelativePath(coordinate)) return undefined;
+  let regularFile: boolean | null = null;
+  try {
+    regularFile = lstatSync(path).isFile();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') regularFile = false;
+  }
+  return { path: coordinate, regularFile };
+}
+
 function trialTaskResults(
   result: EngineResult,
   pipelineConfig: PipelineConfig,
   caseId: string | null,
   runNumber: number,
+  workDir: string,
 ): {
   tasks: ChatPipelineTrialTaskResult[];
   totalTaskCount: number;
@@ -2151,6 +2211,7 @@ function trialTaskResults(
       state.result?.outputDiagnostics,
     );
     return {
+      executionContext: trialTaskExecutionContext(state.config, state.trackConfig, workDir),
       caseId,
       runNumber,
       taskId,
@@ -2871,6 +2932,7 @@ async function executeTargetedTrialCase(
         casePipelineConfig,
         input.testCase.id,
         runNumber,
+        caseWorkspace.workDir,
       );
       totalTaskCount += evidence.totalTaskCount;
       mergeTrialTaskStatusCounts(taskStatusCounts, evidence.taskStatusCounts);
@@ -2891,14 +2953,20 @@ async function executeTargetedTrialCase(
   } else if (caseWorkspace) {
     for (const expectation of input.testCase.expectations) {
       try {
-        expectations.push(
-          evaluateTrialExpectation(
+        const fileObservation = trialCaseFileObservation(
+          caseWorkspace.workDir,
+          input.relativeYamlPath,
+          expectation,
+        );
+        expectations.push({
+          ...evaluateTrialExpectation(
             caseWorkspace.workDir,
             input.relativeYamlPath,
             expectation,
             lastResult,
           ),
-        );
+          ...(fileObservation ? { fileObservation } : {}),
+        });
       } catch (err) {
         expectations.push({
           type: expectation.type,
