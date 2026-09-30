@@ -3224,6 +3224,126 @@ describe('ChatTurn Operation V2 service activation', () => {
 });
 
 describe('ChatTurn Operation V2 authoring service integration', () => {
+  test.each(['trial_plan', 'repair'] as const)(
+    'forwards complete private evidence through the production Service before %s invocation',
+    async (purpose) => {
+      const root = makeTempRoot();
+      const workspace = join(root, 'workspace');
+      mkdirSync(workspace);
+      const errors = JSON.stringify({
+        task: {
+          stdout: 'Provider response body with diagnostic detail. '.repeat(200),
+          stderr: 'Compilation or runtime error at the task boundary. '.repeat(200),
+        },
+        assertion: 'The produced content did not match the expected JSON.',
+        finalDetail: 'END_OF_PRIVATE_ERROR_EVIDENCE',
+      });
+      const errorHash = fixtureHash(errors);
+      const runtime = new FakeServiceAuthoringRuntime();
+      const readCalls: Array<{
+        operationId: string;
+        operationGeneration: number;
+        stageId: string;
+        hash: string;
+      }> = [];
+      Object.assign(runtime, {
+        readRepairErrorEvidence: async (input: (typeof readCalls)[number]) => {
+          readCalls.push(input);
+          const stage = runtime.stages.get(input.operationId);
+          if (
+            !stage ||
+            stage.operationGeneration !== input.operationGeneration ||
+            stage.stageId !== input.stageId ||
+            input.hash !== errorHash
+          )
+            throw new Error('Private evidence identity changed.');
+          return errors;
+        },
+      });
+      const invoke = runtime.runInvocation.bind(runtime);
+      runtime.runInvocation = async (request) => {
+        const result = await invoke(request);
+        return result.kind === 'completed' && request.purpose === 'authoring'
+          ? { ...result, disposition: 'changed' as const }
+          : result;
+      };
+      runtime.verifyStage = async () => {
+        const common = {
+          trialId: 'trial-private-evidence',
+          planHash: null,
+          caseCount: 0,
+          passedCount: 0,
+          failedCount: 0,
+          warningCount: 0,
+          repairErrorEvidenceHash: errorHash,
+        };
+        return purpose === 'trial_plan'
+          ? {
+              ...common,
+              kind: 'trial_plan_required' as const,
+              planRequest: {
+                reason: 'missing' as const,
+                relativePlanPath: 'pipeline/pipeline.trial-plan.json',
+                pipelineHash: 'a'.repeat(40),
+                message: 'A Trial Plan is required for this compiled pipeline.',
+                maxAttempts: 2,
+                requiredCoverage: ['multiple-inputs'],
+                attemptId: 'trial-plan-attempt-private-evidence',
+                requiredSandboxInputs: [],
+              },
+            }
+          : {
+              ...common,
+              kind: 'repair_required' as const,
+              diagnosticCodes: ['task_failed'],
+              evidenceHash: fixtureHash('structured-task-failure'),
+              feedback: {
+                schemaVersion: 1 as const,
+                stage: 'trial' as const,
+                details: 'Task failed.',
+                failedTaskIds: ['main.task'],
+                omittedFailedTaskCount: 0,
+              },
+            };
+      };
+      const runner = new FakeReadonlyRunner([
+        completedReadonlyInvocation(
+          { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+          1,
+        ),
+      ]);
+      const { service } = createMutationService({
+        controlDir: join(root, 'control'),
+        runner,
+        runtime,
+      });
+      const operation = await service.createAndDispatchReadonly(
+        workspace,
+        readonlyCreateInput(`private-evidence-${purpose}`),
+      );
+      expect(runtime.invocations.map((request) => request.purpose)).toEqual(['authoring', purpose]);
+      expect(readCalls).toEqual([
+        {
+          operationId: operation.operation.operationId,
+          operationGeneration: operation.operation.generation,
+          stageId: runtime.stages.get(operation.operation.operationId)!.stageId,
+          hash: errorHash,
+        },
+      ]);
+      const canonical = JSON.parse(
+        new TextDecoder().decode(runtime.invocations[1]!.canonicalRequestBytes),
+      );
+      expect(
+        purpose === 'trial_plan'
+          ? canonical.verificationErrorEvidence.errors
+          : canonical.repairEvidence.errors,
+      ).toBe(errors);
+      expect(
+        JSON.stringify(service.getOperationProjection(workspace, operation.operation.operationId)),
+      ).not.toContain('END_OF_PRIVATE_ERROR_EVIDENCE');
+    },
+  );
+
   test('the owning conversation can read and save its retained draft through the service', async () => {
     const root = makeTempRoot();
     const workspace = join(root, 'workspace');

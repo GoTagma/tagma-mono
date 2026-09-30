@@ -2209,6 +2209,15 @@ export class ChatOperationV2Service {
             ) => core.accessDraft!(input),
           }
         : {}),
+      ...(core.readRepairErrorEvidence
+        ? {
+            readRepairErrorEvidence: (
+              input: Parameters<
+                NonNullable<ChatOperationV2AuthoringRuntime['readRepairErrorEvidence']>
+              >[0],
+            ) => core.readRepairErrorEvidence!(input),
+          }
+        : {}),
       ensureStage: (input) => core.ensureStage(input),
       inspectStage: (input) => core.inspectStage(input),
       relocateSession: (input) => core.relocateSession(input),

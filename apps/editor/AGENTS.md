@@ -1550,6 +1550,10 @@
   private evidence through production diagnostics. Unexpected executed task provider failures also
   enter the frozen-budget staged-artifact repair loop; this never authorizes credential fabrication,
   changing explicit user models/drivers, weakening Trial, or retrying failed Chat invocations.
+- The production Chat V2 Service constructs a narrowed authoring-runtime facade. When a core
+  capability is added for private verification or repair evidence, forward it through that facade
+  with its original authenticated input and guard the actual Service dispatch path in tests; a
+  core-only runtime test cannot prove the planner or repair agent receives its bytes.
 
 - Repair feedback must come from structured unexpected failures and failed assertions, never an
   appended raw Trial summary that also describes passing negative cases and unselected tasks.
