@@ -6,6 +6,7 @@ import { useChatStore } from '../../store/chat-store';
 import {
   isChatHistorySelectionBlocked,
   selectChatHistoryOperation,
+  getChatSelectionAvailability,
 } from '../../chat-actions/selection';
 import type { ChatHistoryTopic } from '../../utils/chat-history-topic';
 
@@ -111,6 +112,8 @@ interface HistoryOperationRowProps {
   createdAt?: number;
   turnCount?: number;
   topic?: string;
+  rendererInstanceId?: string | null;
+  navigationBlocked?: boolean;
 }
 
 export function HistoryOperationRow({
@@ -121,13 +124,18 @@ export function HistoryOperationRow({
   createdAt,
   turnCount = 1,
   topic,
+  rendererInstanceId,
+  navigationBlocked = false,
 }: HistoryOperationRowProps) {
   const title = topic || operationLabel(operation, createdAt);
   const running = operation.executionState === 'running';
   return (
     <button
       type="button"
-      disabled={isChatHistorySelectionBlocked({ operation, active, switching })}
+      disabled={
+        (!active && navigationBlocked) ||
+        isChatHistorySelectionBlocked({ operation, active, switching, rendererInstanceId })
+      }
       aria-current={active ? 'true' : undefined}
       aria-busy={switching || undefined}
       aria-label={`${switching ? 'Switching to' : 'Switch to'} ${title}`}
@@ -166,6 +174,10 @@ export function HistoryDrawerPanel() {
     (state) => state.activeChatOperationV2?.operationId ?? null,
   );
   const selectingOperationId = useChatStore((state) => state.selectingSessionId);
+  const rendererInstanceId = useChatStore((state) => state.chatOperationV2RendererInstanceId);
+  const navigationBlocked = useChatStore(
+    (state) => getChatSelectionAvailability(state).navigationBlocked,
+  );
   const selectOperation = selectChatHistoryOperation;
   const topics = useChatStore((state) => state.chatOperationV2HistoryTopics);
   const loadTopics = useChatStore((state) => state.loadChatHistoryTopics);
@@ -287,6 +299,8 @@ export function HistoryDrawerPanel() {
             operation={operation}
             active={activeOperationId !== null && operationIds.includes(activeOperationId)}
             switching={selectingOperationId !== null && operationIds.includes(selectingOperationId)}
+            rendererInstanceId={rendererInstanceId}
+            navigationBlocked={navigationBlocked}
             createdAt={createdAt}
             turnCount={operationIds.length}
             topic={

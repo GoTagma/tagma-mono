@@ -573,6 +573,7 @@ export interface ManagedChatOperationV2InvocationAuthority {
   readonly executionMessageId: string;
   readonly baselineSnapshotHash: string;
   readonly executionSubmitted: boolean;
+  readonly completedSnapshotHash?: string;
   /** Seals the revision, attempt, and review request across a live plan continuation. */
   readonly trialPlanRequestDigest?: string;
   /** Durable plan-review fence for verification after a Host restart. */
@@ -1983,6 +1984,8 @@ export function buildManagedChatOperationV2ExecutionPrompt(
             'Read the complete repair-error-evidence, including stdout, stderr, assertion details and capture omissions. Expected negative outcomes (expectedTaskFailure or expectedCaseOutcome true) need no repair. A successful task can still have stderr evidence that explains a failed assertion; preserve its canonical status while investigating the command/dataflow. External errors are diagnostic evidence too: investigate their authored driver/model/configuration causes instead of ignoring them. Error paths are observations, not filesystem permission; use the authenticated staged target. Repair only staged workflow artifacts; do not fabricate credentials, change an explicit user model/driver, increase execution or repair budgets, or weaken assertions. If no supported artifact correction exists, leave the draft unchanged and explain the evidence. Compilation alone does not prove a Trial failure is fixed.',
             'When repair-diagnosis is supplied, its display-only paths are relative to the isolated case workspace root. Compare the effective cwd, resolved completion target and checked file observations with the authored reads/writes. Identify which task field, binding, prompt or supporting file contradicts the observed execution contract and make a causal correction while preserving unrelated behavior. Do not infer path authority from diagnostic coordinates.',
             'consecutiveFailures compares complete structured task, assertion and file observations across actual repair attempts. It does not certify that the underlying cause is identical and is not a model retry limit. Reconsider the causal diagnosis using all supplied evidence instead of repeating an equivalent edit. Preserve the frozen repair budget and require successful Trial before publication.',
+            'In repair-error-evidence schemaVersion 2, a {textRef: id} value stands for the complete string in sharedTexts[id]. Resolve each reference wherever it occurs, including task streams and pipeline diagnostics. Sharing is lossless; it neither omits errors nor changes task/case/run identities.',
+            'Finish with complete user-facing usage instructions for the final staged workflow: its actual configurable inputs, working-directory-relative file paths, outputs, and execution requirements. Replace any earlier instructions affected by your edits. Keep internal debugging details in the work record; the Host may present this final guidance only after verification passes.',
           ]
         : []),
     ].join(' '),
@@ -2192,6 +2195,8 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
           authority.conversationId !== invocation.conversationId ||
           !HASH_RE.test(invocation.requestDigest) ||
           !HASH_RE.test(invocation.baselineSnapshotHash) ||
+          (invocation.completedSnapshotHash !== undefined &&
+            !HASH_RE.test(invocation.completedSnapshotHash)) ||
           typeof invocation.executionSubmitted !== 'boolean' ||
           (invocation.trialPlanRequestDigest !== undefined &&
             (invocation.purpose !== 'trial_plan' ||
@@ -2889,7 +2894,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       admitted,
       invocation.executionMessageId,
     );
-    invocation = { ...invocation, completed };
+    invocation = { ...invocation, completed, completedSnapshotHash: current.snapshotHash };
     await this.writeInvocation(await this.authority(request.stage.stageId), invocation);
     return completed;
   }
@@ -2978,7 +2983,11 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       source: settlement.source,
       usage: settlement.usage,
     };
-    await this.writeInvocation(authority, { ...invocation, completed });
+    await this.writeInvocation(authority, {
+      ...invocation,
+      completed,
+      completedSnapshotHash: current.snapshotHash,
+    });
     return completed;
   }
 
@@ -3084,6 +3093,33 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
       repairErrorEvidence: evidence,
     });
     return evidence.hash;
+  }
+
+  async readFinalInstructions(
+    input: Parameters<NonNullable<ChatOperationV2AuthoringRuntime['readFinalInstructions']>>[0],
+  ): Promise<string | null> {
+    const authority = await this.authority(input.stageId);
+    if (
+      authority.stage.operationId !== input.operationId ||
+      authority.stage.operationGeneration !== input.operationGeneration
+    )
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Final instructions do not own this stage.',
+      );
+    const invocation = authority.invocations[input.invocationId];
+    if (
+      !invocation ||
+      invocation.requestDigest !== input.requestDigest ||
+      !['authoring', 'repair'].includes(invocation.purpose)
+    )
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Final instructions do not match their invocation.',
+      );
+    return invocation.completedSnapshotHash === input.stagedSnapshotHash
+      ? (invocation.completed?.text ?? null)
+      : null;
   }
 
   async verifyStage(input: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0]) {

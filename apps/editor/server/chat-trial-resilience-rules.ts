@@ -61,6 +61,7 @@ export interface TrialPlanValidationContext {
   readonly tasks: TrialResilienceTaskEvidence;
   readonly pathCoordinates?: TrialPlanPathCoordinateContext;
   readonly intentDigest?: string;
+  readonly declaredEnvironmentNames?: readonly string[];
 }
 export interface TrialEvidenceIssue {
   readonly type: ExplicitResilienceObligation;
@@ -85,9 +86,25 @@ export function createTrialResilienceRules() {
       throw new Error(label + ' must be an object.');
     return value as Record<string, unknown>;
   }
-  function keys(raw: Record<string, unknown>, allowed: readonly string[]): void {
-    if (Object.keys(raw).some((key) => !allowed.includes(key)))
-      throw new Error('Unknown structured evidence field.');
+  function keys(
+    raw: Record<string, unknown>,
+    allowed: readonly string[],
+    label = 'structured evidence',
+  ): void {
+    const unknown = Object.keys(raw).filter((key) => !allowed.includes(key));
+    if (unknown.length)
+      throw new Error(
+        'Unknown structured evidence field(s) in ' +
+          label +
+          ': ' +
+          unknown
+            .slice(0, 8)
+            .map((key) => JSON.stringify(key.slice(0, 96)))
+            .join(', ') +
+          '. Allowed fields: ' +
+          allowed.join(', ') +
+          '.',
+      );
   }
   function taskId(value: unknown, label: string): string {
     const id = text(value, label, 128);
@@ -111,7 +128,7 @@ export function createTrialResilienceRules() {
   }
   function parseReview(value: unknown): TrialEvidenceReview {
     const raw = record(value, 'evidenceReview');
-    keys(raw, ['version', 'intentDigest', 'decisions']);
+    keys(raw, ['version', 'intentDigest', 'decisions'], 'evidenceReview');
     if (
       raw.version !== 1 ||
       typeof raw.intentDigest !== 'string' ||
@@ -124,7 +141,7 @@ export function createTrialResilienceRules() {
       );
     const decisions = raw.decisions.map((value, i) => {
       const item = record(value, 'evidenceReview.decisions[' + i + ']');
-      keys(item, ['type', 'required', 'taskIds', 'rationale']);
+      keys(item, ['type', 'required', 'taskIds', 'rationale'], 'decision');
       if (!kinds.includes(item.type as never) || typeof item.required !== 'boolean')
         throw new Error('Evidence review disposition is invalid.');
       if (
@@ -271,6 +288,16 @@ export function createTrialResilienceRules() {
     )
       throw new Error('Trial Plan validation context is invalid.');
     const tasks = record(raw.tasks, 'Trial Plan tasks') as TrialResilienceTaskEvidence;
+    if (
+      raw.declaredEnvironmentNames !== undefined &&
+      (!Array.isArray(raw.declaredEnvironmentNames) ||
+        raw.declaredEnvironmentNames.some(
+          (name) => typeof name !== 'string' || name.length === 0,
+        ) ||
+        new Set(raw.declaredEnvironmentNames).size !== raw.declaredEnvironmentNames.length)
+    ) {
+      throw new Error('Trial Plan declared environment names are invalid.');
+    }
     for (const [id, task] of Object.entries(tasks)) {
       if (
         !/^[A-Za-z_][A-Za-z0-9_-]*\.[A-Za-z_][A-Za-z0-9_-]*$/.test(id) ||
@@ -294,6 +321,27 @@ export function createTrialResilienceRules() {
     if (new TextEncoder().encode(JSON.stringify(raw)).length > 2 * 1024 * 1024)
       throw new Error('Trial Plan validation context exceeds its byte bound.');
     return raw as unknown as TrialPlanValidationContext;
+  }
+  function validateEnvironmentControls(
+    cases: readonly ChatPipelineTrialPlanCase[],
+    context: TrialPlanValidationContext,
+  ): void {
+    // Older retained stages have no declaration snapshot; runtime preflight remains authoritative.
+    if (context.declaredEnvironmentNames === undefined) return;
+    for (const testCase of cases) {
+      const undeclared = (testCase.environment ?? []).filter(
+        (item) => !context.declaredEnvironmentNames!.includes(item.name),
+      );
+      if (undeclared.length)
+        throw new Error(
+          testCase.id +
+            ': environment controls must name declared requirements or secrets: ' +
+            undeclared.map((item) => item.name).join(', ') +
+            '. Declared names: ' +
+            (context.declaredEnvironmentNames.join(', ') || '(none)') +
+            '. Correct the case before commit; do not invent an environment binding or change production requirements to satisfy Trial.',
+        );
+    }
   }
   function closure(ids: readonly string[], tasks?: TrialResilienceTaskEvidence): Set<string> {
     const seen = new Set<string>();
@@ -759,6 +807,7 @@ export function createTrialResilienceRules() {
     parseFault,
     parseCaseEvidence,
     parseValidationContext,
+    validateEnvironmentControls,
     inspectEvidence,
     missingExplicitResilienceEvidence,
   };

@@ -29,6 +29,7 @@ import {
   type ChatOperationV2DiagnosticsEventSummary,
 } from '../server/chat-operations/service.js';
 import { normalizeChatOperationV2TargetCoordinate } from '../server/chat-operations/binding.js';
+import { createChatVerificationOutcome } from '../shared/chat-verification-outcome';
 import {
   sealChatOperationV2SessionRelocation,
   type ChatOperationV2AuthoringInvocationRequest,
@@ -3224,6 +3225,109 @@ describe('ChatTurn Operation V2 service activation', () => {
 });
 
 describe('ChatTurn Operation V2 authoring service integration', () => {
+  test('production Service reads final instructions from the verified repair before commit', async () => {
+    const root = makeTempRoot();
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace);
+    const runtime = new FakeServiceAuthoringRuntime({ text: 'Initial old instructions.' });
+    const invoke = runtime.runInvocation.bind(runtime);
+    runtime.runInvocation = async (request) => {
+      const result = await invoke(request);
+      return result.kind === 'completed' ? { ...result, disposition: 'changed' as const } : result;
+    };
+    let verified = 0;
+    const snapshotHash = fixtureHash('final verified snapshot');
+    const repairErrors = JSON.stringify({
+      stderr: 'binding input records: expected string, got array',
+    });
+    runtime.verifyStage = async () => {
+      const common = {
+        trialId: 'final-instructions-trial',
+        planHash: null,
+        caseCount: 1,
+        passedCount: 1,
+        failedCount: 0,
+        warningCount: 0,
+      };
+      if (verified++ === 0)
+        return {
+          ...common,
+          kind: 'repair_required',
+          diagnosticCodes: ['input_error'],
+          evidenceHash: fixtureHash('binding error'),
+          repairErrorEvidenceHash: fixtureHash(repairErrors),
+          feedback: {
+            schemaVersion: 1,
+            stage: 'trial',
+            details: 'Fix the authored records input type.',
+            failedTaskIds: ['main.consumer'],
+            omittedFailedTaskCount: 0,
+          },
+        };
+      return {
+        ...common,
+        kind: 'passed',
+        stagedSnapshotHash: snapshotHash,
+        artifactSetHash: fixtureHash('verified artifacts'),
+        artifactCount: 1,
+        outcome: createChatVerificationOutcome({
+          trialKind: 'passed',
+          ran: true,
+          plannedCaseCount: 1,
+          caseResultCount: 1,
+          passedCaseCount: 1,
+          failedCaseCount: 0,
+          notRunCaseCount: 0,
+          taskStatusCounts: { success: 1 },
+          reasonCode: 'trial_passed',
+          details: 'Verified after repair.',
+        }),
+      };
+    };
+    const reads: unknown[] = [];
+    Object.assign(runtime, {
+      readRepairErrorEvidence: async () => repairErrors,
+      readFinalInstructions: async (input: unknown) => {
+        reads.push(input);
+        return 'Configure inputs/current.txt and read reports/current.md.';
+      },
+    });
+    const commit = new FakeServiceCommitCoordinator();
+    commit.prepareCommit = async () => {
+      throw new Error('final instructions reached commit');
+    };
+    const { service } = createMutationService({
+      controlDir: join(root, 'control'),
+      runner: new FakeReadonlyRunner([
+        completedReadonlyInvocation(
+          { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+          1,
+        ),
+      ]),
+      runtime,
+      commit,
+      realResults: true,
+    });
+    await expect(
+      service.createAndDispatchReadonly(
+        workspace,
+        readonlyCreateInput('final-repair-instructions'),
+      ),
+    ).rejects.toThrow('final instructions reached commit');
+    const request = runtime.invocations.find((item) => item.purpose === 'repair')!;
+    expect(reads).toEqual([
+      {
+        operationId: request.operationId,
+        operationGeneration: request.operationGeneration,
+        stageId: request.stage.stageId,
+        invocationId: request.invocationId,
+        requestDigest: fixtureHash(new TextDecoder().decode(request.canonicalRequestBytes)),
+        stagedSnapshotHash: snapshotHash,
+      },
+    ]);
+    expect(verified).toBe(2);
+  });
+
   test.each(['trial_plan', 'repair'] as const)(
     'forwards complete private evidence through the production Service before %s invocation',
     async (purpose) => {

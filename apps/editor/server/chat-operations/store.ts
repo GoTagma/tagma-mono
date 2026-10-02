@@ -1,5 +1,11 @@
 import { Database } from 'bun:sqlite';
 import {
+  FINAL_INSTRUCTIONS_LABEL,
+  finalInstructionsAttachment,
+  parseFinalInstructions,
+  type ChatOperationV2FinalInstructions,
+} from './final-instructions.js';
+import {
   AgentChatControlStore,
   AGENT_CHAT_CONTROL_SCHEMA_SQL,
 } from '../agent-chat-control/store.js';
@@ -5451,6 +5457,7 @@ export class ChatOperationV2Store {
     readonly expectedVersion: number;
     readonly expectedMessageHash: string;
     readonly outcome: ChatVerificationOutcome;
+    readonly finalInstructions?: ChatOperationV2FinalInstructions;
   }): StoredChatOperationV2PendingResultMessage | null {
     this.assertOpen();
     assertIdentifier(input.operationId, 'operationId');
@@ -5473,6 +5480,8 @@ export class ChatOperationV2Store {
       const pending = this.getPendingResultMessage(operation.operationId);
       if (!pending || pending.message.messageHash !== input.expectedMessageHash) return null;
       const original = pending.message;
+      if (input.finalInstructions)
+        this.assertFinalInstructionsAuthority(operation, input.finalInstructions);
       // The Host may enrich a retained draft's verification before preparing a
       // WAL. It cannot replace authored text, provider evidence, or message ids.
       const message = sealChatOperationV2ResultMessage({
@@ -5495,6 +5504,9 @@ export class ChatOperationV2Store {
             label: 'Pipeline verification outcome',
             content,
           },
+          ...(input.finalInstructions
+            ? [finalInstructionsAttachment(input.finalInstructions)]
+            : []),
         ],
       });
       if (message.messageHash === original.messageHash) return pending;
@@ -10164,10 +10176,41 @@ export class ChatOperationV2Store {
     }
   }
 
+  private assertFinalInstructionsAuthority(
+    operation: StoredChatOperationV2,
+    instructions: ChatOperationV2FinalInstructions,
+  ): void {
+    const source = this.outboxRow(instructions.sourceInvocationId);
+    if (
+      !parseFinalInstructions(JSON.stringify(instructions)) ||
+      !source ||
+      source.workspace_scope_id !== operation.workspaceScopeId ||
+      source.operation_id !== operation.operationId ||
+      source.status !== 'settled' ||
+      !['authoring', 'repair'].includes(source.purpose) ||
+      source.request_digest !== instructions.sourceRequestDigest
+    ) {
+      throw new ChatOperationV2StoreError(
+        'invalid_result',
+        'Final instructions lack matching completed authoring authority.',
+      );
+    }
+  }
+
   private assertResultMessageOutboxAuthority(
     operation: StoredChatOperationV2,
     message: ChatOperationV2ResultMessage,
   ): void {
+    for (const attachment of message.attachments) {
+      if (attachment.label !== FINAL_INSTRUCTIONS_LABEL) continue;
+      const instructions = parseFinalInstructions(attachment.content);
+      if (!instructions)
+        throw new ChatOperationV2StoreError(
+          'invalid_result',
+          'Final instruction receipt is invalid.',
+        );
+      this.assertFinalInstructionsAuthority(operation, instructions);
+    }
     const outbox = this.outboxRow(message.invocationId);
     if (
       operation.generation !== message.generation ||

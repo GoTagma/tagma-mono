@@ -70,6 +70,7 @@ import { runPipelineLayoutSync } from './pipeline-layout-sync.js';
 import {
   assertRequirementsConsistentWithYamlChange,
   parseRequirementsMd,
+  requirementsPath,
   runRequirementsSync,
 } from './requirements-sync.js';
 import { runCompileAndWriteLog } from './compile-log.js';
@@ -1929,6 +1930,13 @@ export function issueChatYamlStageTrialPlanAttempt(
   if (currentHash !== input.yamlHash) {
     throw new Error('Staged YAML changed before the Trial plan attempt was issued.');
   }
+  const declarationPath = requirementsPath(stagedPath);
+  const declaredRequirementEnvironmentNames = existsSync(declarationPath)
+    ? (
+        parseRequirementsMd(assertRegularTextFile(declarationPath, 'staged requirements'))
+          .frontmatter?.env ?? []
+      ).map((item) => item.name)
+    : [];
   writeMetadata(paths, {
     ...metadata,
     trialPlanAttempt: {
@@ -1942,6 +1950,7 @@ export function issueChatYamlStageTrialPlanAttempt(
         input.intentText === undefined
           ? metadata.trialPlanAttempt?.validationContext?.intentDigest
           : trialIntentDigest(input.intentText),
+        declaredRequirementEnvironmentNames,
       ),
     },
   });

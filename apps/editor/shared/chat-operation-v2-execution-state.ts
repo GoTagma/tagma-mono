@@ -7,6 +7,11 @@ export const CHAT_OPERATION_V2_EXECUTION_STATES = [
 
 export type ChatOperationV2ExecutionState = (typeof CHAT_OPERATION_V2_EXECUTION_STATES)[number];
 
+/** Retained drafts have no running invocation; navigation preserves their Host authority. */
+export function isChatOperationV2Quiescent(state: ChatOperationV2ExecutionState): boolean {
+  return state === 'terminal' || state === 'retryable_failure';
+}
+
 export type ChatOperationV2ExecutionWaitReason =
   | null
   | 'clarification'

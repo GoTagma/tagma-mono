@@ -73,7 +73,9 @@ export function normalizeTrialPrerequisiteCases<T extends object>(
       throw new Error(`${label}.baselineCaseId is invalid.`);
     }
     if (faultCount > 1 || (baselineCaseId !== undefined && faultCount !== 1)) {
-      throw new Error(`${label} must change exactly one prerequisite from its positive baseline.`);
+      throw new Error(
+        `${label} must change exactly one prerequisite from its positive baseline: remove one declared environment input or deny one manual trigger. For file removal, omit baselineCaseId and use an independent case with fixtures: [{ path, content: null }].`,
+      );
     }
     if (faultCount === 1 && baselineCaseId === undefined) {
       throw new Error(`${label} requires a positive baselineCaseId.`);
@@ -105,7 +107,7 @@ export function normalizeTrialPrerequisiteCases<T extends object>(
       !sameList(raw.generatedInputPaths, base.generatedInputPaths)
     ) {
       throw new Error(
-        `Case ${String(raw.id)} must retain its baseline targets and fixtures; change only one prerequisite.`,
+        `Case ${String(raw.id)} must retain its baseline targets and fixtures; change only one declared environment input or manual trigger. File-removal cases use content: null without baselineCaseId.`,
       );
     }
     const targets = raw.targetTaskIds as string[];

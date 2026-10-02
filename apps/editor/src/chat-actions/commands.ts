@@ -64,10 +64,13 @@ export function getChatProductCommandAvailability(command: AgentChatCommand): st
     if (
       state.composerSubmitting ||
       state.chatExecutionMode !== 'operation-v2' ||
+      (state.activeChatOperationV2?.operationId !== target.operationId &&
+        getChatSelectionAvailability(state).navigationBlocked) ||
       isChatHistorySelectionBlocked({
         operation: target,
         active: state.activeChatOperationV2?.operationId === target.operationId,
         switching: state.selectingSessionId === target.operationId,
+        rendererInstanceId: state.chatOperationV2RendererInstanceId,
       })
     )
       return 'selection_unavailable';

@@ -2079,6 +2079,111 @@ test('trial-plan tool preserves observable pipeline-generated inputs without pre
   }
 });
 
+test('trial-plan draft feedback names the required operation field without consuming a submission', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const plan = completeTrialPlanToolArgs('sample/sample.yaml');
+    const context = { directory: stage.agentTagmaDir };
+    const attemptId = issueGeneratedTrialPlanAttempt('sample/sample.yaml', context);
+    const base = { attempt_id: attemptId, pipeline_path: 'sample/sample.yaml' };
+    const begin = { ...base, operation: 'begin', summary: plan.summary, goals: plan.goals };
+    await generated.tool.execute(begin, context);
+    for (const [operation, field] of [
+      ['upsert-case', 'case'],
+      ['set-coverage', 'coverage'],
+      ['set-findings', 'findings'],
+      ['set-evidence-review', 'evidence_review'],
+    ]) {
+      await expect(
+        generated.tool.execute({ ...base, operation, cases: plan.cases }, context),
+      ).rejects.toThrow(`${operation} requires ${field}`);
+      expect(JSON.parse(await generated.tool.execute(begin, context))).toMatchObject({ cases: 0 });
+      expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+        toolAttemptCount: 0,
+        validationRejectionCount: 0,
+      });
+    }
+    await generated.tool.execute(
+      { ...base, operation: 'upsert-case', case: (plan.cases as unknown[])[0] },
+      context,
+    );
+    expect(JSON.parse(await generated.tool.execute(begin, context))).toMatchObject({ cases: 1 });
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
+test('trial-plan upsert rejects undeclared environment controls before submission and preserves its draft', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const plan = completeTrialPlanToolArgs('sample/sample.yaml');
+    const context = { directory: stage.agentTagmaDir };
+    const attemptId = issueGeneratedTrialPlanAttempt('sample/sample.yaml', context);
+    const metadataPath = join(dirname(dirname(stage.agentTagmaDir)), 'stage.json');
+    const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    metadata.trialPlanAttempt.validationContext = {
+      version: 1,
+      obligations: [],
+      tasks: { 'main.process': { dependsOn: [] } },
+      declaredEnvironmentNames: ['SOURCE_PATH', 'API_TOKEN'],
+    };
+    writeFileSync(metadataPath, JSON.stringify(metadata), 'utf8');
+    const base = { attempt_id: attemptId, pipeline_path: 'sample/sample.yaml' };
+    const begin = { ...base, operation: 'begin', summary: plan.summary, goals: plan.goals };
+    await generated.tool.execute(begin, context);
+    const testCase = {
+      ...(plan.cases as Array<Record<string, unknown>>)[0],
+      environment: [{ name: 'UNDECLARED_INPUT', value: 'fixture.txt' }],
+    };
+    await expect(
+      generated.tool.execute({ ...base, operation: 'upsert-case', case: testCase }, context),
+    ).rejects.toThrow('UNDECLARED_INPUT');
+    expect(JSON.parse(await generated.tool.execute(begin, context))).toMatchObject({ cases: 0 });
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+      toolAttemptCount: 0,
+      validationRejectionCount: 0,
+    });
+    testCase.environment = [{ name: 'SOURCE_PATH', value: 'fixture.txt' }];
+    await generated.tool.execute({ ...base, operation: 'upsert-case', case: testCase }, context);
+    expect(JSON.parse(await generated.tool.execute(begin, context))).toMatchObject({ cases: 1 });
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
+test('command file-contract feedback identifies completion.type and its supported spelling', async () => {
+  const tool = await loadGeneratedYamlSkeletonTool();
+  await expect(
+    tool.execute({
+      manifest: {
+        pipeline: { name: 'Process records', atomicity_rationale: 'One atomic report write.' },
+        sections: [
+          {
+            id: 'track:main',
+            type: 'track',
+            track: 'main',
+            track_identity_rationale: 'One local identity.',
+          },
+          {
+            id: 'task:main.publish',
+            track: 'main',
+            task: 'publish',
+            type: 'command',
+            task_boundary_rationale: 'Publish the result',
+            command: 'write-report',
+            result_contract: 'file',
+            completion: { type: 'file', path: 'reports/result.md' },
+          },
+        ],
+      },
+    }),
+  ).rejects.toThrow('command task publish: completion.type must be "file_exists"');
+});
+
 test('trial-plan begin resumes the same revision unless reset is explicit', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();

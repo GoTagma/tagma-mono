@@ -12,4 +12,6 @@
 // expected negative outcomes; older cached failures cannot drive stagnation decisions.
 // v44: private complete captured task-error streams feed model repair, including
 // unexpected executed provider failures. Compact display evidence is not model input.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 44 as const;
+// v45: unexpected authored binding type/producer conflicts have typed input_error
+// repair authority; legacy blocked/spawn_error decisions cannot authorize or suppress repair.
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 45 as const;

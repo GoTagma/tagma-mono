@@ -1,4 +1,5 @@
 import { getChatConversationKey } from './chat-conversation-key';
+import { isChatOperationV2Quiescent } from '../../shared/chat-operation-v2-execution-state';
 import {
   cancelChatOperationV2,
   chooseChatOperationV2Recovery,
@@ -471,6 +472,7 @@ class Controller implements ChatOperationV2Controller {
     if (!CORRELATION_ID.test(conversationId)) {
       throw new Error('Chat Operation V2 conversation id is invalid.');
     }
+    if (conversationId !== this.#conversationId) this.#assertNavigationQuiescent();
     this.#selectionEpoch += 1;
     const conversationChanged = this.#conversationId !== conversationId;
     this.#conversationId = conversationId;
@@ -491,8 +493,12 @@ class Controller implements ChatOperationV2Controller {
     );
     if (!operation) throw new Error('The selected Chat Operation V2 record is unavailable.');
     const current = this.#snapshot.activeOperation;
-    if (current && current.phase !== 'terminal' && current.operationId !== operationId) {
-      throw new Error('Wait for the live Chat Operation V2 request to finish.');
+    if (current?.operationId !== operationId) this.#assertNavigationQuiescent();
+    if (
+      !isChatOperationV2Quiescent(operation.executionState) &&
+      current?.operationId !== operationId
+    ) {
+      throw new Error('Wait for the selected live Chat Operation V2 request to finish.');
     }
     if (operation.phase !== 'terminal' && operation.rendererInstanceId !== this.#rendererId()) {
       throw new Error('The live Chat Operation belongs to another renderer.');
@@ -512,16 +518,21 @@ class Controller implements ChatOperationV2Controller {
   }
 
   startNewConversation(): void {
-    const { activeOperation } = this.#requireProduction();
-    if (this.#mutationsInFlight.size > 0) {
-      throw new Error('Wait for the current Chat Operation V2 mutation to settle.');
-    }
-    if (activeOperation && activeOperation.phase !== 'terminal') {
-      throw new Error('A live Chat Operation must finish or be cancelled before starting another.');
-    }
+    this.#requireProduction();
+    this.#assertNavigationQuiescent();
     this.#selectionEpoch += 1;
     this.#snapshot = { ...this.#snapshot, activeOperation: null, inventory: null };
     this.#emit();
+  }
+
+  #assertNavigationQuiescent(): void {
+    if (this.#mutationsInFlight.size > 0) {
+      throw new Error('Wait for the current Chat Operation V2 mutation to settle.');
+    }
+    const { activeOperation } = this.#snapshot;
+    if (activeOperation && !isChatOperationV2Quiescent(activeOperation.executionState)) {
+      throw new Error('A live Chat Operation must finish or be cancelled before starting another.');
+    }
   }
 
   dispose(): void {

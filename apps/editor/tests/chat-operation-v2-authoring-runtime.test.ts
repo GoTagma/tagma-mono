@@ -439,6 +439,53 @@ function invocationRequest(
 }
 
 describe('managed Chat Operation V2 authoring runtime', () => {
+  test('final instructions survive runtime restart only for their authenticated completed snapshot', async () => {
+    const value = await readyRuntime();
+    const relocation = await value.runtime.relocateSession({
+      operationId: 'operation-1',
+      operationGeneration: 1,
+      bindingId: 'binding-1',
+      sessionId: 'session-root',
+      relocationId: 'relocation-final-instructions',
+      stage: value.stage,
+    });
+    const finalHash = sha256('verified instructions revision');
+    value.openCode.onExecute = () => value.staging.mutate(finalHash);
+    value.openCode.execution = {
+      kind: 'completed',
+      text: 'Configure inputs/source.txt; read reports/result.md.',
+      finishCode: 'stop',
+      usage: null,
+    };
+    const request = {
+      ...invocationRequest(value.stage, relocation),
+      purpose: 'repair' as const,
+      repairAttempt: 1,
+    };
+    await value.runtime.runInvocation(request);
+    const restarted = value.createRuntime();
+    if (!restarted.readFinalInstructions) throw new Error('Expected final instructions reader.');
+    const read = {
+      operationId: request.operationId,
+      operationGeneration: 1,
+      stageId: STAGE_ID,
+      invocationId: request.invocationId,
+      requestDigest: sha256(Buffer.from(request.canonicalRequestBytes).toString('utf8')),
+      stagedSnapshotHash: finalHash,
+    };
+    expect(await restarted.readFinalInstructions(read)).toBe(value.openCode.execution.text);
+    expect(
+      await restarted.readFinalInstructions({ ...read, stagedSnapshotHash: sha256('manual edit') }),
+    ).toBeNull();
+    await expect(
+      restarted.readFinalInstructions({ ...read, requestDigest: sha256('different invocation') }),
+    ).rejects.toThrow('invocation');
+    await expect(
+      restarted.readFinalInstructions({ ...read, operationId: 'operation-other' }),
+    ).rejects.toThrow('stage');
+    expect(value.openCode.providerExecutionCount).toBe(1);
+  });
+
   test('auto-approves only authenticated staged filesystem requests', async () => {
     const { root, stageDirectory } = harness();
     const target = join(stageDirectory, 'pipeline', 'pipeline.yaml');

@@ -83,6 +83,34 @@ export function redactChatRepairErrorOutput(text: string | undefined): string {
     .join('\n');
 }
 
+/** Share exact repeated text, never summarize or clip execution evidence. */
+function shareRepeatedStreams(details: Record<string, unknown>): Record<string, unknown> {
+  const counts = new Map<string, number>();
+  const visit = (value: unknown): void => {
+    if (typeof value === 'string') {
+      if (value.length >= 1024) counts.set(value, (counts.get(value) ?? 0) + 1);
+    } else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') Object.values(value).forEach(visit);
+  };
+  visit(details);
+  const sharedTexts: Record<string, string> = {};
+  const ids = new Map<string, string>();
+  for (const [text, count] of counts) {
+    if (count < 2) continue;
+    const id = `text_${ids.size + 1}`;
+    ids.set(text, id);
+    sharedTexts[id] = text;
+  }
+  const encode = (value: unknown): unknown => {
+    if (typeof value === 'string' && ids.has(value)) return { textRef: ids.get(value)! };
+    if (Array.isArray(value)) return value.map(encode);
+    if (value && typeof value === 'object')
+      return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, encode(entry)]));
+    return value;
+  };
+  return { ...(encode(details) as Record<string, unknown>), sharedTexts };
+}
+
 export function buildChatRepairErrorEvidence(
   trialId: string,
   trial: ChatPipelineTrialRunResult,
@@ -106,42 +134,47 @@ export function buildChatRepairErrorEvidence(
       continue;
     tasks.set(JSON.stringify([task.caseId, task.runNumber, task.taskId]), task);
   }
-  return sealChatRepairErrorEvidence(trialId, {
-    schemaVersion: 1,
-    kind: trial.kind,
-    ran: trial.ran,
-    repairAuthorization: trial.repairAuthorization,
-    totalTaskCount: trial.totalTaskCount,
-    omittedTaskCount: trial.omittedTaskCount,
-    taskEvidenceSource:
-      trial.repairErrorTasks === undefined ? 'display-fallback' : 'private-error-capture',
-    plannedCaseCount: trial.plannedCaseCount,
-    notRunCaseCount: trial.notRunCaseCount,
-    notRunCases: trial.notRunCases,
-    tasks: [...tasks.values()].map((task) => ({
-      ...task,
-      expectedCaseOutcome: task.caseId != null && passedCases.has(task.caseId),
-      expectedTaskFailure: task.status === 'failed' && task.repairScope === null,
-      evidenceRole:
-        task.status === 'failed' || task.status === 'timeout' ? 'failure' : 'execution-context',
-      stdout: redactChatRepairErrorOutput(task.stdout),
-      stderr: redactChatRepairErrorOutput(task.stderr),
-    })),
-    cases: (trial.cases ?? []).map((testCase) => ({
-      id: testCase.id,
-      success: testCase.success,
-      expectations: testCase.expectations,
-      totalTaskCount: testCase.totalTaskCount,
-      omittedTaskCount: testCase.omittedTaskCount,
-    })),
-    pipelineDiagnostics: (trial.repairPipelineDiagnostics ?? []).map((diagnostic) => ({
-      ...diagnostic,
-      expectedCaseOutcome: passedCases.has(diagnostic.caseId),
-    })),
-    // Task streams and assertion details above are authoritative; avoid duplicating them
-    // through the display summary. Retain that summary when no task evidence exists.
-    ...(trial.tasks?.length ? {} : { summary: redactChatRepairErrorOutput(trial.summary) }),
-  });
+  return sealChatRepairErrorEvidence(
+    trialId,
+    shareRepeatedStreams(
+      redactModelValue({
+        schemaVersion: 2,
+        kind: trial.kind,
+        ran: trial.ran,
+        repairAuthorization: trial.repairAuthorization,
+        totalTaskCount: trial.totalTaskCount,
+        omittedTaskCount: trial.omittedTaskCount,
+        taskEvidenceSource:
+          trial.repairErrorTasks === undefined ? 'display-fallback' : 'private-error-capture',
+        plannedCaseCount: trial.plannedCaseCount,
+        notRunCaseCount: trial.notRunCaseCount,
+        notRunCases: trial.notRunCases,
+        tasks: [...tasks.values()].map((task) => ({
+          ...task,
+          expectedCaseOutcome: task.caseId != null && passedCases.has(task.caseId),
+          expectedTaskFailure: task.status === 'failed' && task.repairScope === null,
+          evidenceRole:
+            task.status === 'failed' || task.status === 'timeout' ? 'failure' : 'execution-context',
+          stdout: redactChatRepairErrorOutput(task.stdout),
+          stderr: redactChatRepairErrorOutput(task.stderr),
+        })),
+        cases: (trial.cases ?? []).map((testCase) => ({
+          id: testCase.id,
+          success: testCase.success,
+          expectations: testCase.expectations,
+          totalTaskCount: testCase.totalTaskCount,
+          omittedTaskCount: testCase.omittedTaskCount,
+        })),
+        pipelineDiagnostics: (trial.repairPipelineDiagnostics ?? []).map((diagnostic) => ({
+          ...diagnostic,
+          expectedCaseOutcome: passedCases.has(diagnostic.caseId),
+        })),
+        // Task streams and assertion details above are authoritative; avoid duplicating them
+        // through the display summary. Retain that summary when no task evidence exists.
+        ...(trial.tasks?.length ? {} : { summary: redactChatRepairErrorOutput(trial.summary) }),
+      }) as Record<string, unknown>,
+    ),
+  );
 }
 
 export function isChatRepairErrorEvidence(value: unknown): value is ChatRepairErrorEvidence {

@@ -717,7 +717,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       durationMs: 0,
       sessionId: null,
       normalizedOutput: null,
-      failureKind: 'spawn_error',
+      failureKind:
+        bindingResolution.typeErrors.length > 0 || bindingResolution.ambiguous.length > 0
+          ? 'input_error'
+          : 'spawn_error',
       outputs: null,
     };
     state.finishedAt = nowISO();

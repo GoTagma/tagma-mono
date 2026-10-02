@@ -1965,6 +1965,9 @@ export function trialTaskRepairScope(
   externalDriverStreamFailure = false,
 ): ChatPipelineTrialTaskResult['repairScope'] {
   if (status === 'success') return null;
+  // Structured binding-contract failures are authored dataflow errors, even
+  // though the consumer correctly remains blocked before spawning.
+  if (failureKind === 'input_error') return 'pipeline-artifact';
   if (
     status === 'skipped' ||
     status === 'blocked' ||
@@ -1999,7 +2002,9 @@ export function trialTaskFailureIsExpected(
 export function hasChatPipelineTrialArtifactFailure(
   cases: readonly {
     success: boolean;
-    tasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[];
+    tasks: readonly (Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'> & {
+      readonly failureKind?: ChatPipelineTrialTaskResult['failureKind'];
+    })[];
     expectations: readonly (Pick<ChatPipelineTrialExpectationResult, 'passed' | 'repairScope'> & {
       readonly type?: ChatPipelineTrialExpectationResult['type'];
     })[];
@@ -2019,7 +2024,8 @@ export function hasChatPipelineTrialArtifactFailure(
     ].some(
       (task) =>
         task.repairScope === 'pipeline-artifact' &&
-        !['success', 'skipped', 'blocked'].includes(task.status),
+        !['success', 'skipped'].includes(task.status) &&
+        (task.status !== 'blocked' || task.failureKind === 'input_error'),
     ) ||
     observedCases.some((testCase) =>
       testCase.expectations.some(
@@ -2300,7 +2306,11 @@ export function trialTaskResults(
   const repairErrorTasks: ChatPipelineTrialTaskResult[] = [];
   for (const task of allTasks) {
     const state = result.states.get(task.taskId)!;
-    if (task.status === 'skipped' || task.status === 'blocked') continue;
+    if (
+      task.status === 'skipped' ||
+      (task.status === 'blocked' && task.failureKind !== 'input_error')
+    )
+      continue;
     const modelEvidenceReadErrors: Array<{ stream: 'stdout' | 'stderr'; message: string }> = [];
     const paths = outputPaths.get(task.taskId);
     const rawStdout = completeRepairStream(

@@ -34,6 +34,7 @@ export function buildTrialPlanValidationContext(
   obligations: readonly ExplicitResilienceObligation[],
   coordinates?: { readonly relativeYamlPath: string; readonly workDir: string },
   intentDigest?: string,
+  requirementEnvironmentNames: readonly string[] = [],
 ): TrialPlanValidationContext {
   const tasks: Record<string, TrialResilienceTaskEvidence[string]> = {};
   for (const [id, node] of buildDag(pipelineConfig).nodes) {
@@ -59,6 +60,16 @@ export function buildTrialPlanValidationContext(
     version: 2 as const,
     obligations: [...obligations],
     tasks,
+    declaredEnvironmentNames: [
+      ...new Set([
+        ...requirementEnvironmentNames,
+        ...(pipelineConfig.secrets ?? []),
+        ...pipelineConfig.tracks.flatMap((track) => [
+          ...(track.secrets ?? []),
+          ...track.tasks.flatMap((task) => task.secrets ?? []),
+        ]),
+      ]),
+    ].sort(),
     ...(coordinates
       ? {
           pathCoordinates: buildTrialPlanPathCoordinateContext(

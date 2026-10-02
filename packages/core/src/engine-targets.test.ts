@@ -314,6 +314,56 @@ describe('targeted pipeline runs', () => {
     }
   });
 
+  test('binding type failures carry input_error and never spawn the consumer', async () => {
+    const dir = makeDir();
+    const commands: string[] = [];
+    try {
+      const result = await runPipeline(
+        {
+          name: 'Typed dataflow',
+          tracks: [
+            {
+              id: 'main',
+              tasks: [
+                {
+                  id: 'source',
+                  command: '{"records":["first","second"]}',
+                  outputs: { records: { type: 'json' } },
+                },
+                {
+                  id: 'consumer',
+                  depends_on: ['source'],
+                  command: 'consume {{inputs.records}}',
+                  inputs: {
+                    records: {
+                      type: 'string',
+                      required: true,
+                      from: 'main.source.outputs.records',
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        { registry: new PluginRegistry(), runtime: fakeRuntime(commands), skipPluginLoading: true },
+      );
+      expect(result.success).toBe(false);
+      expect(result.states.get('main.source')?.status).toBe('success');
+      expect(result.states.get('main.consumer')).toMatchObject({
+        status: 'blocked',
+        result: {
+          failureKind: 'input_error',
+          stderr: expect.stringContaining('binding input "records"'),
+        },
+      });
+      expect(commands).toEqual(['{"records":["first","second"]}']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('prompt tasks still block when a required explicit binding has no value', async () => {
     const dir = makeDir();
     let driverCalls = 0;

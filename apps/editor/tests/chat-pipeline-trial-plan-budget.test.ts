@@ -363,6 +363,9 @@ test('complete draft validation corrects typed recovery without spending a submi
     stage.trialPlanAttempt.validationContext = buildTrialPlanValidationContext(
       resolveConfig(parseYaml(yaml), root),
       ['timeout-recovery'],
+      undefined,
+      undefined,
+      ['SIMULATE_FAULT'],
     );
     writeFileSync(stagePath, JSON.stringify(stage));
     const call = (operation: string, fields: Record<string, unknown> = {}) =>

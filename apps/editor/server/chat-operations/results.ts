@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { FINAL_INSTRUCTIONS_LABEL, projectedFinalInstructions } from './final-instructions.js';
 
 export const CHAT_OPERATION_V2_RESULT_RECORD_VERSION = 1 as const;
 export const CHAT_OPERATION_V2_RESULT_SCHEMA_VERSION = 2 as const;
@@ -1122,10 +1123,16 @@ export function projectChatOperationV2ResultForRenderer(
           messageId: message.messageId,
           role: 'assistant' as const,
           createdAt: message.createdAt,
-          text: message.text,
+          text:
+            message.purpose === 'authoring' && pipeline !== null
+              ? (projectedFinalInstructions(message.attachments, result.terminal.artifactSetHash) ??
+                message.text)
+              : message.text,
           contentHash: message.contentHash,
           attachments: Object.freeze(
-            message.attachments.map((attachment) => Object.freeze({ ...attachment })),
+            message.attachments
+              .filter((attachment) => attachment.label !== FINAL_INSTRUCTIONS_LABEL)
+              .map((attachment) => Object.freeze({ ...attachment })),
           ),
         }),
       ),

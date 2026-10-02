@@ -8,6 +8,20 @@ import {
 } from '../server/chat-trial-resilience-rules';
 
 const rules = createTrialResilienceRules();
+test('structured evidence errors identify the unsupported field and accepted shape', () => {
+  const review = evidenceReview([]);
+  expect(() => rules.parseReview({ ...review, obligations: [] })).toThrow(
+    'evidenceReview: "obligations"',
+  );
+  expect(() =>
+    rules.parseReview({
+      ...review,
+      decisions: review.decisions.map((item, index) =>
+        index === 0 ? { ...item, status: 'covered' } : item,
+      ),
+    }),
+  ).toThrow('decision: "status"');
+});
 export function evidenceReview(
   required: ExplicitResilienceObligation[],
   intent = 'Arbitrary business request',

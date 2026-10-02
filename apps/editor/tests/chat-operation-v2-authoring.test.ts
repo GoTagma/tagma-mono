@@ -47,6 +47,12 @@ import { createInitialChatOperationV2State } from '../server/chat-operations/typ
 import { appendChatOperationV2ResultMessage } from '../server/chat-operations/results.js';
 import type { ChatOperationV2SubmissionUnknownReason } from '../server/chat-operations/submission-diagnostics.js';
 import { CHAT_VERIFICATION_OUTCOME_SCHEMA_VERSION } from '../shared/chat-verification-outcome';
+import { createChatOperationV2AuthoringResultPersistence } from '../server/chat-operations/authoring-results';
+import {
+  FINAL_INSTRUCTIONS_LABEL,
+  parseFinalInstructions,
+  finalInstructionsAttachment,
+} from '../server/chat-operations/final-instructions';
 
 setDefaultTimeout(30_000);
 
@@ -87,6 +93,7 @@ interface RuntimeOptions {
   readonly providerSubmissionUnknownReason?: ChatOperationV2SubmissionUnknownReason;
   readonly relocationUnavailableOnce?: boolean;
   readonly emitTrialProgress?: boolean;
+  readonly completionTexts?: Partial<Record<'authoring' | 'repair' | 'trial_plan', string>>;
 }
 
 class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPersistence {
@@ -127,6 +134,9 @@ class FakeAuthoringResultPersistence implements ChatOperationV2AuthoringResultPe
                     label: 'Pipeline verification outcome',
                     content: serializeChatVerificationOutcome(input.verificationNotice.outcome),
                   },
+                  ...(input.verificationNotice.finalInstructions
+                    ? [finalInstructionsAttachment(input.verificationNotice.finalInstructions)]
+                    : []),
                 ],
           evidence: {
             capture: 'host_completion',
@@ -361,7 +371,9 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         request.purpose === 'authoring'
           ? (this.options.authoringDisposition ?? 'changed')
           : (this.options.repairDisposition ?? 'changed'),
-      text: 'Authoring complete; Host verification pending.',
+      text:
+        this.options.completionTexts?.[request.purpose] ??
+        'Authoring complete; Host verification pending.',
       executionMessageId: `execution-message-${this.invocationRequests.length}`,
       finishCode: 'stop',
       admittedAggregateSeq: this.invocationRequests.length,
@@ -379,6 +391,18 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         outcome: 'completed',
       },
     };
+  }
+
+  async readFinalInstructions(
+    input: Parameters<NonNullable<ChatOperationV2AuthoringRuntime['readFinalInstructions']>>[0],
+  ): Promise<string | null> {
+    const request = this.invocationRequests.find(
+      (item) => item.invocationId === input.invocationId,
+    )!;
+    return (
+      this.options.completionTexts?.[request.purpose] ??
+      'Authoring complete; Host verification pending.'
+    );
   }
 
   async reconcileInvocation() {
@@ -803,6 +827,73 @@ function dispatchInput(operation: StoredChatOperationV2) {
 }
 
 describe('ChatTurn Operation V2 authoring lifecycle', () => {
+  test.each([false, true])(
+    'final verified instructions follow repaired artifacts, including retained-draft restart (%s)',
+    async (restart) => {
+      const { store, runtime, now, nextHostId } = createHarness({
+        verification: restart ? ['repair', 'unverified', 'passed'] : ['repair', 'passed'],
+        completionTexts: {
+          authoring: 'Populate old/input.txt and read old/report.md.',
+          repair: 'Populate inputs/records.txt and read reports/current.md.',
+        },
+      });
+      let engine = new ChatOperationV2AuthoringEngine({
+        persistence: store,
+        runtime,
+        resultPersistence: createChatOperationV2AuthoringResultPersistence(store),
+        now,
+        nextHostId,
+      });
+      let result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      const original = store.getPendingResultMessage('operation-1');
+      if (restart) {
+        engine = new ChatOperationV2AuthoringEngine({
+          persistence: store,
+          runtime,
+          resultPersistence: createChatOperationV2AuthoringResultPersistence(store),
+          now,
+          nextHostId,
+        });
+        const waiting = store.getOperation('operation-1')!;
+        result = await engine.retryProviderUnavailable({
+          operationId: waiting.operationId,
+          workspaceScopeId: waiting.workspaceScopeId,
+          expectedGeneration: waiting.generation,
+          expectedVersion: waiting.version,
+          requestId: 'retry-final-instructions',
+        });
+      }
+      expect(result.kind).toBe('commit_preparing');
+      const pending = store.getPendingResultMessage('operation-1')!;
+      const attachment = pending.message.attachments.find(
+        (item) => item.label === FINAL_INSTRUCTIONS_LABEL,
+      );
+      expect(attachment).toBeDefined();
+      const instructions = parseFinalInstructions(attachment!.content)!;
+      expect(instructions.text).toBe('Populate inputs/records.txt and read reports/current.md.');
+      expect(instructions.text).not.toContain('old/');
+      expect(store.getInvocationOutbox(instructions.sourceInvocationId)?.purpose).toBe('repair');
+      expect(pending.message.text).toContain('old/input.txt');
+      if (restart) expect(pending.pendingMessageId).toBe(original!.pendingMessageId);
+    },
+  );
+  test('a repair without revision-matching instructions cannot publish stale authoring paths', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['repair', 'passed'],
+      completionTexts: { authoring: 'Read old/input.txt and old/report.md.' },
+    });
+    runtime.readFinalInstructions = async () => null;
+    expect((await engine.dispatch(dispatchInput(store.getOperation('operation-1')!))).kind).toBe(
+      'commit_preparing',
+    );
+    const attachment = store
+      .getPendingResultMessage('operation-1')!
+      .message.attachments.find((item) => item.label === FINAL_INSTRUCTIONS_LABEL)!;
+    const instructions = parseFinalInstructions(attachment.content)!;
+    expect(instructions.text).not.toContain('old/');
+    expect(instructions.text).toContain('passed verification');
+  });
+
   test('durably records content-minimized Trial heartbeat evidence', async () => {
     const { engine, store } = createHarness({ emitTrialProgress: true });
 

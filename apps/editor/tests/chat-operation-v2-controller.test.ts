@@ -140,6 +140,80 @@ function fakeApi() {
   };
 }
 
+test('leaves a retained draft and returns to retry the same operation without discarding it', async () => {
+  const fake = fakeApi();
+  const retained = operation({
+    phase: 'trial-running',
+    waitReason: 'user_retry',
+    executionState: 'retryable_failure',
+    version: 7,
+  });
+  fake.setSnapshot(snapshot([retained]));
+  fake.setOperation(retained);
+  const controller = createChatOperationV2Controller({
+    api: fake.api,
+    rendererInstanceId: 'renderer-01',
+  });
+  try {
+    await controller.activate({
+      workspaceKey: 'workspace',
+      conversationId: retained.conversationId,
+      handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    });
+    controller.startNewConversation();
+    controller.selectConversation('conversation-new');
+    expect(controller.getSnapshot().activeOperation).toBeNull();
+    expect(controller.getSnapshot().operations).toContainEqual(retained);
+    await controller.selectOperation(retained.operationId);
+    fake.setResult(staleResult(retained));
+    await controller.retry();
+    expect(fake.calls.find(({ name }) => name === 'retry')?.input).toMatchObject({
+      operationId: retained.operationId,
+      expectedGeneration: 1,
+      expectedVersion: 7,
+    });
+    expect(fake.calls.some(({ name }) => name === 'cancel' || name === 'discard')).toBe(false);
+  } finally {
+    controller.dispose();
+  }
+});
+
+test.each(['running', 'waiting_for_user'] as const)(
+  'keeps conversation navigation locked for %s work',
+  async (executionState) => {
+    const fake = fakeApi();
+    const active = operation({
+      executionState,
+      phase: 'authoring',
+      waitReason: executionState === 'waiting_for_user' ? 'permission' : null,
+    });
+    const other = operation({
+      operationId: 'operation-other',
+      conversationId: 'conversation-other',
+      phase: 'terminal',
+      executionState: 'terminal',
+    });
+    fake.setSnapshot(snapshot([active, other]));
+    fake.setOperation(active);
+    const controller = createChatOperationV2Controller({
+      api: fake.api,
+      rendererInstanceId: 'renderer-01',
+    });
+    try {
+      await controller.activate({
+        workspaceKey: 'workspace',
+        conversationId: active.conversationId,
+        handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+      });
+      expect(() => controller.startNewConversation()).toThrow();
+      await expect(controller.selectOperation(other.operationId)).rejects.toThrow();
+      expect(() => controller.selectConversation(other.conversationId)).toThrow();
+    } finally {
+      controller.dispose();
+    }
+  },
+);
+
 test('selected detail refreshes inventory without leaking ownership from another conversation', async () => {
   const fake = fakeApi();
   const foreground = operation({

@@ -86,7 +86,7 @@
     },
     "packages/core": {
       "name": "@tagma/core",
-      "version": "0.1.114",
+      "version": "0.1.115",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -151,7 +151,7 @@
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.4.116",
+      "version": "0.4.117",
     },
   },
   "packages": {

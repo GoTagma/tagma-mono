@@ -32,7 +32,7 @@ describe('Chat Operation V2 header controls', () => {
     });
   });
 
-  test('allows model recovery while a retryable operation retains navigation ownership', () => {
+  test('allows model recovery and navigation while preserving a retryable draft', () => {
     expect(
       chatHeaderControlLocks({
         ready: true,
@@ -44,7 +44,7 @@ describe('Chat Operation V2 header controls', () => {
     ).toEqual({
       modelSelectionBlocked: false,
       providerBlocked: false,
-      navigationBlocked: true,
+      navigationBlocked: false,
     });
   });
 

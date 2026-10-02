@@ -1029,6 +1029,8 @@ export type TaskFailureKind =
   | 'timeout'
   | 'aborted'
   | 'spawn_error'
+  /** Authored input type/producer ambiguity, detected before a child starts. */
+  | 'input_error'
   | 'binary_missing'
   | 'exit_nonzero'
   | 'parse_error'

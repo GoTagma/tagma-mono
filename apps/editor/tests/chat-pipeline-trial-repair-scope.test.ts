@@ -16,6 +16,32 @@ import {
 } from '../server/chat-pipeline-trial-run';
 import type { EngineResult } from '@tagma/sdk';
 
+test('typed input-contract errors authorize repair while unrelated blocked states remain diagnostic', () => {
+  expect(trialTaskRepairScope('blocked', 'input_error')).toBe('pipeline-artifact');
+  expect(trialTaskRepairScope('blocked', 'spawn_error')).toBe('diagnostic-only');
+  expect(trialTaskRepairScope('blocked', null)).toBe('diagnostic-only');
+  expect(
+    hasChatPipelineTrialArtifactFailure([
+      {
+        success: false,
+        expectations: [],
+        tasks: [
+          { status: 'blocked', failureKind: 'input_error', repairScope: 'pipeline-artifact' },
+        ],
+      },
+    ]),
+  ).toBe(true);
+  expect(
+    hasChatPipelineTrialArtifactFailure([
+      {
+        success: true,
+        expectations: [],
+        tasks: [{ status: 'blocked', failureKind: 'input_error', repairScope: null }],
+      },
+    ]),
+  ).toBe(false);
+});
+
 test('JSON Pointer array properties are plan errors, while object length remains a valid key', () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-pointer-plan-'));
   try {

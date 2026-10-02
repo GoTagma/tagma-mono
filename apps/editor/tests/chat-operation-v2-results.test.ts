@@ -22,6 +22,7 @@ import {
 
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
+import { finalInstructionsAttachment } from '../server/chat-operations/final-instructions';
 
 function messageInput(
   patch: Record<string, unknown> = {},
@@ -111,6 +112,72 @@ function forbiddenProjectionKeys(value: unknown): string[] {
 }
 
 describe('ChatTurn Operation V2 durable result projection', () => {
+  test('published and forked replies use artifact-bound final instructions without exposing internal receipts', () => {
+    const finalInstructions = finalInstructionsAttachment({
+      version: 1,
+      sourceInvocationId: 'repair-invocation-2',
+      sourceRequestDigest: HASH_B,
+      stagedSnapshotHash: HASH_B,
+      artifactSetHash: HASH_A,
+      text: 'Use inputs/current.txt; the result is reports/current.md.',
+    });
+    const message = sealChatOperationV2ResultMessage(
+      messageInput({
+        purpose: 'authoring',
+        text: 'Use old/input.txt and old/report.md.',
+        attachments: [finalInstructions],
+      }),
+    );
+    for (const outcome of ['completed_published', 'completed_forked'] as const) {
+      const result = sealChatOperationV2Result(
+        readonlyResultInput([message], {
+          purpose: 'authoring',
+          terminal: {
+            outcome,
+            operationVersion: 9,
+            terminalEventId: 'terminal-authoring-01',
+            terminalResultId: 'result-01',
+            bindingId: 'binding-01',
+            artifactSetHash: HASH_A,
+            terminalAt: 120,
+          },
+          sealedAt: 121,
+        }),
+      );
+      const projected = projectChatOperationV2ResultForRenderer(result, [message], {
+        disposition: outcome === 'completed_forked' ? 'forked' : 'published',
+        relativeCoordinate: 'current/current.yaml',
+        artifactSetHash: HASH_A,
+      });
+      expect(projected.messages[0].text).toBe(
+        'Use inputs/current.txt; the result is reports/current.md.',
+      );
+      expect(projected.messages[0].attachments).toEqual([]);
+      expect(JSON.stringify(projected)).not.toContain('repair-invocation-2');
+    }
+    const mismatched = sealChatOperationV2Result(
+      readonlyResultInput([message], {
+        purpose: 'authoring',
+        terminal: {
+          outcome: 'completed_published',
+          operationVersion: 9,
+          terminalEventId: 'terminal-authoring-01',
+          terminalResultId: 'result-01',
+          bindingId: 'binding-01',
+          artifactSetHash: HASH_B,
+          terminalAt: 120,
+        },
+        sealedAt: 121,
+      }),
+    );
+    expect(() =>
+      projectChatOperationV2ResultForRenderer(mismatched, [message], {
+        disposition: 'published',
+        relativeCoordinate: 'current/current.yaml',
+        artifactSetHash: HASH_B,
+      }),
+    ).toThrow('published artifact set');
+  });
   test('seals and parses exact immutable message and result records', () => {
     const message = sealChatOperationV2ResultMessage(messageInput());
     expect(message).toMatchObject({

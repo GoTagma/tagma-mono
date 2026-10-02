@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { useChatStore } from '../src/store/chat-store';
 import { useChatDraftStore } from '../src/chat-actions/draft';
+import type { ChatOperationV2Projection } from '../src/api/chat-operations';
 import {
   createChatConversation,
   selectChatModel,
   selectChatModelVariant,
   getChatSelectionAvailability,
+  isChatHistorySelectionBlocked,
 } from '../src/chat-actions/selection';
 
 const initial = useChatStore.getState();
@@ -27,6 +29,47 @@ beforeEach(() =>
 afterEach(() => {
   useChatStore.setState(initial);
   useChatDraftStore.setState({ visible: false });
+});
+
+test('paused drafts permit new conversations and can be selected again only by their renderer', async () => {
+  const retained: ChatOperationV2Projection = {
+    operationId: 'retained',
+    conversationId: 'retained-conversation',
+    rendererInstanceId: 'renderer-own',
+    generation: 1,
+    version: 4,
+    phase: 'trial-running',
+    waitReason: 'user_retry',
+    executionState: 'retryable_failure',
+    terminalOutcome: null,
+    createdAt: 1,
+    updatedAt: 2,
+    hasResult: false,
+    pendingInputKind: null,
+  };
+  useChatStore.setState({
+    activeChatOperationV2: retained,
+    newSession: async () => {
+      useChatStore.setState({ chatOperationV2ConversationId: 'new-conversation' });
+    },
+  });
+  expect(await createChatConversation()).toBe('new-conversation');
+  expect(
+    isChatHistorySelectionBlocked({
+      operation: retained,
+      active: false,
+      switching: false,
+      rendererInstanceId: 'renderer-own',
+    }),
+  ).toBe(false);
+  expect(
+    isChatHistorySelectionBlocked({
+      operation: retained,
+      active: false,
+      switching: false,
+      rendererInstanceId: 'renderer-other',
+    }),
+  ).toBe(true);
 });
 
 test('model and variant actions accept only the configured picker values', () => {

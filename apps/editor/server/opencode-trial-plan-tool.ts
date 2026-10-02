@@ -1278,7 +1278,7 @@ const evidenceReviewSchema = tool.schema.object({ version: tool.schema.literal(1
 
 const caseSchema = tool.schema.object({
   id: tool.schema.string(),
-  baselineCaseId: tool.schema.string().optional().describe("Positive case to run before this one-prerequisite negative probe; retain the same targets and fixtures."),
+  baselineCaseId: tool.schema.string().optional().describe("Only for removing one declared environment input or denying one manual trigger. Retain targets and fixtures. For a missing-file case, omit baselineCaseId and use an independent case with a content:null fixture."),
   environment: tool.schema.array(tool.schema.object({
     name: tool.schema.string(),
     value: tool.schema.string().nullable(),
@@ -1319,6 +1319,7 @@ function assertExecutableTrialPlan(input, plan) {
   const rawContext = input.paths.hostAttempt?.validationContext;
   if (rawContext !== undefined) {
     const context = resilienceRules.parseValidationContext(rawContext);
+    resilienceRules.validateEnvironmentControls(plan.cases, context);
     if (context.pathCoordinates !== undefined) {
       pathCoordinateRules.validate(plan, pathCoordinateRules.parseContext(context.pathCoordinates));
     }
@@ -1412,6 +1413,18 @@ function executeExistingTrialPlanDraftOperation(input) {
       throw new Error('trial plan draft belongs to a different host attempt; call begin first');
     }
     assertTrialPlanDraftOpen(draft);
+    const requiredField = {
+      "upsert-case": "case",
+      "set-coverage": "coverage",
+      "set-findings": "findings",
+      "set-evidence-review": "evidence_review",
+    }[input.operation];
+    if (requiredField && input.args[requiredField] === undefined) {
+      throw new Error(input.operation + " requires " + requiredField +
+        (input.operation === "upsert-case"
+          ? " (one case object, not cases or top-level case fields). Draft unchanged; correct this call before commit."
+          : ". Draft unchanged; correct this call before commit."));
+    }
     if (input.operation === 'validate') {
       const inspection = assertExecutableTrialPlan(input, trialPlanFromDraft(draft));
       if (inspection.missing.length > 0) {
@@ -1430,6 +1443,9 @@ function executeExistingTrialPlanDraftOperation(input) {
       const nextCases = [...draft.cases];
       nextCases[draftIndex] = input.args.case;
       const validatedCases = validateCaseEntries(nextCases, false);
+      if (input.paths.hostAttempt?.validationContext !== undefined) {
+        resilienceRules.validateEnvironmentControls(validatedCases, resilienceRules.parseValidationContext(input.paths.hostAttempt.validationContext));
+      }
       assertTargetPaths({ cases: validatedCases }, input.paths.relativeYamlPath);
       if (draft.coverage.length > 0) {
         validateCoverageSection(draft.coverage, validatedCases);

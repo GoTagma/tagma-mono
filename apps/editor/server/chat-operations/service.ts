@@ -2218,6 +2218,15 @@ export class ChatOperationV2Service {
             ) => core.readRepairErrorEvidence!(input),
           }
         : {}),
+      ...(core.readFinalInstructions
+        ? {
+            readFinalInstructions: (
+              input: Parameters<
+                NonNullable<ChatOperationV2AuthoringRuntime['readFinalInstructions']>
+              >[0],
+            ) => core.readFinalInstructions!(input),
+          }
+        : {}),
       ensureStage: (input) => core.ensureStage(input),
       inspectStage: (input) => core.inspectStage(input),
       relocateSession: (input) => core.relocateSession(input),

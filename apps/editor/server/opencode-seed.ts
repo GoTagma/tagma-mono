@@ -258,6 +258,8 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 
 Sandbox supplies synthetic values for declared environment requirements and secrets. Set explicit harmless production-normal values for application controls in every non-fault case. Omitted values inherit synthetic input; null removes a prerequisite. Host-owned faults need no authored test selector and retain identical normal and controlled environment values.
 
+Test the user's stated contract without adding a different input mechanism or editor-selection requirement. A configurable file path can satisfy a request to process a document; require automatic current-file selection only when explicitly requested. Positive fixtures must contain representative substantive data: an empty extraction from a placeholder source cannot establish a non-empty analysis contract. Assertions should verify the promised content and relationships without arbitrary capitalization or excluding original text that the requested comparison must preserve.
+
 Before committing, audit the explicit user requirements in \`<intent-request>\`, \`<intent-attachment>\`, and accepted clarifications. Trace promised outputs to concrete cases and inspect the staged YAML plus relevant companions for the requested execution mechanism, responsible tool or actor, and launch behavior. A passing Sandbox case does not prove those structural or operational promises: an output alone does not identify the tool that produced it, and a run-scoped trigger gate does not establish an automatic launcher or an immediate on-demand path. A managed prompt task is not an equivalent substitute for an explicitly required CLI command; check the authored command and its executable requirement before claiming that intent was met. Do not infer compliance from task names, permission flags, or virtualized trigger execution. Record an independently evidenced, repairable mismatch as a blocking pipeline-artifact finding; record an unsupported product capability or unavailable intent evidence as a blocking diagnostic-only finding. Never fabricate a YAML setting or claim intent coverage from output assertions alone.
 
 Review the complete frozen intent and staged promised behavior semantically; never decide requirements from keywords, titles, filenames or output phrases. After begin, call set-evidence-review with evidence_review {version:1,intentDigest,decisions}. Use the Host-issued intentDigest returned by begin. Review all five kinds: timeout-recovery, failure-recovery, empty-result, unlocated-source, source-preservation. Each decision has type, required, qualified responsible taskIds (nonempty only if required) and bounded rationale. Distinguish a timeout limit from a useful-output recovery promise. Include the workflow boundary behavior, not only explicit fallback sentences. Host-pinned requirements cannot be dropped after repairs. Human prose never selects Host evidence types.
@@ -267,6 +269,8 @@ Start with a positive end-to-end case covering the pipeline's terminal tasks and
 Preserve first-run semantics. When the pipeline creates an input if it is absent and reuses it otherwise, include a positive case that starts without that input. A pre-seeded repeat case exercises only reuse and cannot replace the creation case. Prefer one unseeded repeat case when its first execution creates the input and its later execution checks reuse. Do not pre-seed a pipeline-owned input merely to avoid testing its serializer. Assert the promised source identities, counts, relationships, and required content markers using the existing file and JSON expectations; successful task status and generic headings alone do not prove those content contracts. For review/revision workflows, include evidence that a concrete non-empty review reaches the revision and the required correction is present; an approve-only example does not exercise feedback handling. If the current harness cannot deterministically produce that branch, report the precise remaining coverage limit.
 
 For test-specific defaults, a case may set \`environment: [{ name, value }]\` for environment names declared by the pipeline's requirements or secrets. Use harmless test values suited to the task's input contract; never put real credentials in a plan and never override Host, shell, or provider configuration. Omitted defaults use the Host's deterministic synthetic values.
+
+Do not invent an environment selector to vary a literal/default task input. If the current harness cannot vary that authored binding, state the precise coverage limitation. Correct an undeclared-control rejection with draft operations before commit; do not add a production requirement solely to make a test selector legal.
 
 A negative prerequisite case must set \`baselineCaseId\` to its positive case, retain the same \`targetTaskIds\`, fixtures, and generated-input paths, and change exactly one prerequisite: either \`environment: [{ name, value: null }]\` to remove one test input, or \`deniedManualTaskIds: ["track.task"]\` to reject one manual trigger. Other environment defaults are inherited from the positive baseline. Declare a task-status expectation for every target; for a denied manual task also expect that task to be blocked and its downstream tasks to be skipped as appropriate. The Host runs positive cases first and skips a negative probe if its baseline did not pass. An expected rejection is a passing test only when every explicit assertion matches. Preserve positive coverage within the bounded case budget; list any untested negative boundaries accurately instead of claiming exhaustive coverage.
 
@@ -1238,6 +1242,12 @@ export function buildTagmaYamlContractSkill(): string {
 - A required task-specific \`from\` without a \`default\` must name an output that dependency can produce. Raw stream sources such as \`stdout\` and \`normalizedOutput\` are the explicit exceptions.
 - Ambiguity blocks even when the input is optional or declares a \`default\`. A fallback handles a missing value; it does not choose between multiple producers.
 - Before finishing an authoring or repair turn, inspect every task input against its direct dependency set and then confirm the generated \`.compile.log\` succeeds.
+
+## Preserve the business input contract during repair
+
+- A requested input with a default belongs in a native task input binding. Keep it configurable across compile and Trial repairs; do not replace it with a script literal or require implementation edits to change it.
+- Match downstream input types to the actual upstream contract. A denied, missing, or malformed source read must fail or produce an explicitly checked diagnostic; do not convert it into successful empty analysis. A genuinely empty collection remains valid when the source was read and its business contract permits it.
+- Preserve the user's timeout limits. Reduce or bound the work within those limits instead of silently increasing them.
 `;
 }
 
@@ -1594,14 +1604,19 @@ function buildTask(section) {
   const inputs = asStringArray(section.inputs);
   const outputs = asStringArray(section.outputs);
   const fileContract = normalizedCompletion && normalizedCompletion.type === "file_exists";
+  const taskLabel = (isCommand ? "command" : "prompt") + " task " + taskId;
+  if ((resultContract === "file" || resultContract === "native-output-and-file") && !fileContract) {
+    throw new Error(taskLabel + ': completion.type must be "file_exists" with completion.path for ' +
+      resultContract + '; received ' + JSON.stringify(normalizedCompletion?.type ?? null));
+  }
   if (resultContract === "none" && (outputs.length > 0 || fileContract)) {
     throw new Error(
-      "prompt task " + taskId + " declares no result but also defines outputs or a file completion",
+      taskLabel + " declares no result but also defines outputs or a file completion",
     );
   }
   if (resultContract === "file" && (!fileContract || outputs.length > 0)) {
     throw new Error(
-      "prompt task " + taskId + " file result contract requires one file completion and no native outputs",
+      taskLabel + " file result contract requires one file completion and no native outputs",
     );
   }
   if (
@@ -1609,13 +1624,12 @@ function buildTask(section) {
     (outputs.length === 0 || !fileContract)
   ) {
     throw new Error(
-      "prompt task " + taskId + " native-output-and-file contract requires both outputs and a file completion",
+      taskLabel + " native-output-and-file contract requires both outputs and a file completion",
     );
   }
   if (outputs.length > 0 && fileContract && resultContract !== "native-output-and-file") {
     throw new Error(
-      "prompt task " +
-        taskId +
+      taskLabel +
         " must choose one result contract (native outputs or file), or explicitly declare native-output-and-file",
     );
   }
@@ -1628,7 +1642,7 @@ function buildTask(section) {
     throw new Error("prompt task " + taskId + " has a file result contract but no write permission");
   }
   if (resultContract === "native-output" && outputs.length === 0) {
-    throw new Error("prompt task " + taskId + " declares native-output without outputs");
+    throw new Error(taskLabel + " declares native-output without outputs");
   }
   return {
     id: taskId,
@@ -1795,13 +1809,13 @@ export default tool({
         }),
         sections: tool.schema.array(
           tool.schema.object({
-            id: tool.schema.string(),
+            id: tool.schema.string().describe("Section identity: track:<track_id> or task:<track_id>.<task_id>; keep human wording in summary"),
             type: tool.schema
               .enum(["track", "prompt", "command"])
               .describe("Track sections use type=track; task sections use type=prompt or type=command"),
             summary: tool.schema.string().optional(),
-            track: tool.schema.string().optional(),
-            task: tool.schema.string().optional(),
+            track: tool.schema.string().optional().describe("Runtime track id matching [A-Za-z_][A-Za-z0-9_-]*; not a display name"),
+            task: tool.schema.string().optional().describe("Runtime task id matching [A-Za-z_][A-Za-z0-9_-]*; not a qualified id or display name"),
             track_identity_rationale: tool.schema
               .string()
               .optional()
@@ -1837,7 +1851,7 @@ export default tool({
               .optional(),
             completion: tool.schema
               .object({
-                type: tool.schema.string(),
+                type: tool.schema.string().describe("For file result contracts use file_exists, never file; other values are registered completion types"),
                 path: tool.schema.string().optional(),
               })
               .optional(),

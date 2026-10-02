@@ -1,4 +1,5 @@
 import type { ChatOperationV2Projection } from '../api/chat-operations';
+import { isChatOperationV2Quiescent } from '../../shared/chat-operation-v2-execution-state';
 import { useChatStore } from '../store/chat-store';
 import type { ChatReasoningEffort, ModelPick } from '../store/chat-persist';
 import { modelVariantIds } from '../store/chat-provider-catalog';
@@ -12,12 +13,11 @@ export function chatHeaderControlLocks(state: {
   retryable?: boolean;
   yamlEditLocked: boolean;
 }): { modelSelectionBlocked: boolean; providerBlocked: boolean; navigationBlocked: boolean } {
-  const conversationBlocked = state.sending || state.operationActive;
   const selectionBlocked = state.sending || (state.operationActive && !state.retryable);
   return {
     modelSelectionBlocked: !state.ready || selectionBlocked,
     providerBlocked: !state.ready || selectionBlocked || state.yamlEditLocked,
-    navigationBlocked: !state.ready || conversationBlocked,
+    navigationBlocked: !state.ready || selectionBlocked,
   };
 }
 
@@ -88,8 +88,15 @@ export function isChatHistorySelectionBlocked(input: {
   operation: ChatOperationV2Projection;
   active: boolean;
   switching: boolean;
+  rendererInstanceId?: string | null;
 }): boolean {
-  return input.switching || (input.operation.phase !== 'terminal' && !input.active);
+  return (
+    input.switching ||
+    (!input.active &&
+      (!isChatOperationV2Quiescent(input.operation.executionState) ||
+        (input.operation.phase !== 'terminal' &&
+          input.operation.rendererInstanceId !== input.rendererInstanceId)))
+  );
 }
 
 export async function selectChatHistoryOperation(operationId: string): Promise<boolean> {
@@ -102,10 +109,13 @@ export async function selectChatHistoryOperation(operationId: string): Promise<b
     state.chatExecutionMode !== 'operation-v2' ||
     useChatDraftStore.getState().visible ||
     state.composerSubmitting ||
+    (state.activeChatOperationV2?.operationId !== operationId &&
+      getChatSelectionAvailability(state).navigationBlocked) ||
     isChatHistorySelectionBlocked({
       operation,
       active: state.activeChatOperationV2?.operationId === operationId,
       switching: state.selectingSessionId === operationId,
+      rendererInstanceId: state.chatOperationV2RendererInstanceId,
     })
   )
     return false;

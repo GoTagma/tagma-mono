@@ -20,6 +20,11 @@ import type { ChatPipelineTrialRunResult } from '../chat-pipeline-trial-run.js';
 import type { ChatOperationV2Admission } from './admission.js';
 import { normalizeChatOperationV2AuthoringCompletionText } from './authoring-results.js';
 import {
+  FINAL_INSTRUCTIONS_MAX_BYTES,
+  serializeFinalInstructions,
+  type ChatOperationV2FinalInstructions,
+} from './final-instructions.js';
+import {
   normalizeChatOperationV2TargetCoordinate,
   type ChatOperationV2BindingReservedRecord,
   type ChatOperationV2BindingTerminalTransaction,
@@ -540,6 +545,7 @@ export interface ChatOperationV2AuthoringVerificationNotice {
   readonly code: string;
   readonly summary: string;
   readonly outcome: ChatVerificationOutcome;
+  readonly finalInstructions?: ChatOperationV2FinalInstructions;
 }
 
 export type ChatOperationV2AuthoringVerificationResult =
@@ -685,6 +691,15 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly stageId: string;
     readonly hash: string;
   }): Promise<string>;
+  /** Read a local authenticated completion; never contact or retry the provider. */
+  readFinalInstructions?(input: {
+    readonly operationId: string;
+    readonly operationGeneration: number;
+    readonly stageId: string;
+    readonly invocationId: string;
+    readonly requestDigest: string;
+    readonly stagedSnapshotHash: string;
+  }): Promise<string | null>;
   verifyStage(input: {
     readonly operationId: string;
     readonly workspaceScopeId: string;
@@ -2356,12 +2371,15 @@ export class ChatOperationV2AuthoringEngine {
       message.text !== completion.text ||
       (input.verificationNotice === null
         ? message.attachments.length !== 0
-        : message.attachments.length !== 1 ||
+        : message.attachments.length !== (input.verificationNotice.finalInstructions ? 2 : 1) ||
           message.attachments[0]?.kind !== 'notice' ||
           message.attachments[0]?.mediaType !== 'application/json' ||
           message.attachments[0]?.label !== 'Pipeline verification outcome' ||
           message.attachments[0]?.content !==
-            serializeChatVerificationOutcome(input.verificationNotice.outcome))
+            serializeChatVerificationOutcome(input.verificationNotice.outcome) ||
+          (input.verificationNotice.finalInstructions !== undefined &&
+            message.attachments[1]?.content !==
+              serializeFinalInstructions(input.verificationNotice.finalInstructions)))
     ) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
@@ -2870,6 +2888,38 @@ export class ChatOperationV2AuthoringEngine {
           : terminalResult(waiting.operation);
     }
     context.pendingTrialPlanRequest = null;
+    let finalInstructions: ChatOperationV2FinalInstructions | undefined;
+    if (current.repairAttempts > 0) {
+      const source = this.persistence
+        .listInvocationOutbox(current.workspaceScopeId)
+        .filter(
+          (item) =>
+            item.operationId === current.operationId &&
+            item.status === 'settled' &&
+            (item.purpose === 'authoring' || item.purpose === 'repair'),
+        )
+        .sort((left, right) => right.preparedAt - left.preparedAt)[0];
+      if (!source) return this.retainDraft(context, 'publication_instructions_unavailable');
+      const text = await this.runtime.readFinalInstructions?.({
+        operationId: current.operationId,
+        operationGeneration: current.generation,
+        stageId: context.stage.stageId,
+        invocationId: source.invocationId,
+        requestDigest: source.requestDigest,
+        stagedSnapshotHash: verification.stagedSnapshotHash,
+      });
+      finalInstructions = {
+        version: 1,
+        sourceInvocationId: source.invocationId,
+        sourceRequestDigest: source.requestDigest,
+        stagedSnapshotHash: verification.stagedSnapshotHash,
+        artifactSetHash: verification.artifactSetHash,
+        text:
+          text?.trim() && encoder.encode(text).byteLength <= FINAL_INSTRUCTIONS_MAX_BYTES
+            ? text
+            : 'The workflow has passed verification after repair. Open the published pipeline to review its final configuration and input/output paths before running it.',
+      };
+    }
     const pendingCompletion = context.pendingVisibleCompletion;
     if (!pendingCompletion && !context.visibleResult) {
       throw new ChatOperationV2AuthoringProtocolError(
@@ -2885,6 +2935,7 @@ export class ChatOperationV2AuthoringEngine {
           code: verification.warningCount > 0 ? 'trial_passed_with_warnings' : 'trial_passed',
           summary: verification.outcome.details,
           outcome: verification.outcome,
+          ...(finalInstructions ? { finalInstructions } : {}),
         },
       };
     } else if (context.visibleResult) {
@@ -2895,6 +2946,7 @@ export class ChatOperationV2AuthoringEngine {
         expectedVersion: current.version,
         expectedMessageHash: context.visibleResult.pendingMessageHash,
         outcome: verification.outcome,
+        ...(finalInstructions ? { finalInstructions } : {}),
       });
       if (!verified) {
         const latest = this.requireOperation(context.operationId);

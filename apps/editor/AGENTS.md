@@ -1540,6 +1540,30 @@
 
 ## Chat Usage Stats And Terminal Discard Reasons
 
+- Final published usage instructions must describe the verified artifacts after repair. Keep the
+  original authoring message, provider evidence, and message identity immutable. Before WAL
+  preparation, seal a bounded Host-approved instruction receipt joined to the same operation's
+  settled authoring/repair outbox, request digest, completed snapshot, and verified artifact set.
+  Public projection uses only its instructions and hides the source receipt. Never expose internal
+  repair/Trial transcripts; if a later manual edit or legacy completion has no matching snapshot,
+  use neutral verified guidance instead of stale paths. Cover retained-draft restart and the
+  production Service facade as well as the core runtime.
+- Paused `retryable_failure` operations may leave and re-enter their owning conversation without
+  Stop/Discard, losing credentials, or releasing the draft reservation. Running, interactive,
+  foreign-renderer nonterminal operations, and in-flight mutations still block navigation. UI,
+  product commands, history rows, and the controller must enforce the same gates.
+- Unexpected authored binding type/producer ambiguity is canonical `input_error`, even when its
+  task is blocked before spawning. It grants bounded artifact repair with complete binding errors;
+  missing external inputs and other blocked prerequisites remain diagnostic-only. Expected negative
+  failures never grant repair. Signed Trial cache v45 invalidates the previous blocked policy.
+- Private repair evidence v2 may share exact repeated large strings via `sharedTexts`/`textRef`.
+  Expanding references must restore all redacted evidence exactly, including successful-task streams;
+  never truncate errors or discard unique successful output to manufacture context savings.
+- Freeze declared requirement/secret environment names in the Host Trial validation context and
+  reject undeclared controls during `upsert-case` and `validate`, before counted commit. Keep the
+  runtime preflight check authoritative for changed/legacy contexts. Only environment removal and
+  manual denial use `baselineCaseId`; missing-file negatives use independent `content: null` fixtures.
+
 - Model repair input is not the compact `ChatOperationFeedback` notice. Preserve captured task
   stdout/stderr before Trial display clipping and task selection, including stderr on successful
   tasks; label canonical status and expected negative outcomes without turning them into repair
@@ -1595,8 +1619,9 @@
   and pending result after restart and runs verification only, using generation/version CAS. Keep
   the ordinary success/commit and explicit cancellation/discard boundaries unchanged. Ordinary Send
   and provider-dialog opening must never implicitly discard a retained verification draft. Project
-  its bounded authoring notes separately from sealed successful history; never expose repair or
-  Trial Plan text. Preserve typed, fixed connection-failure explanations without provider payloads.
+  its bounded authoring notes separately from sealed successful history; never expose internal repair
+  or Trial Plan transcripts. Verified usage instructions follow the Host receipt contract above.
+  Preserve typed, fixed connection-failure explanations without provider payloads.
 
 - Terminal discarded/failed operations retain the newest failed invocation's bounded failure
   code and stage. An interrupted unknown submission may recover its cause only from a matching

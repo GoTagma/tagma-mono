@@ -130,6 +130,10 @@ negative outcomes are labelled expected rather than treated as repair targets. C
 redacted; error content is not replaced with failure-code summaries. Existing runtime capture
 omissions remain explicit. The immutable snapshot is hash-bound into the canonical invocation,
 survives Host restart, and is never projected through production diagnostics or compact notices.
+Exact repeated large streams are shared losslessly within that private evidence; unique errors and
+successful-task output remain complete. Unexpected authored binding type or producer conflicts use
+`input_error` and can enter bounded repair even when the child never started. Missing external inputs
+remain prerequisite failures, and expected negative failures do not grant repair.
 Unexpected executed task errors, including provider errors, enter the existing finite repair loop
 so the model can investigate authored configuration and dataflow causes. Repairs cannot fabricate
 credentials, change an explicit user model/driver, weaken assertions, or increase execution/repair
@@ -193,6 +197,9 @@ planner correct rejected cases without weakening the one-submission limit or cha
 The planning tool checks complete cases with `validate` before the counted `commit`. Host and tool
 share fixture, effective-cwd, reserved-path and structured evidence checks. Validation failure leaves
 draft bytes and submission counters unchanged; feedback identifies the case, field and exact issue.
+Environment controls are checked against Host-frozen requirement and secret names during case
+assembly, before submission. Missing-file negatives use independent `content: null` fixtures;
+`baselineCaseId` is reserved for environment removal or manual-trigger denial.
 
 The independent Trial planner reviews the frozen intent and staged promised behavior into a bounded
 `evidenceReview`, bound to the Host intent digest. Every registered behavior receives an explicit
@@ -355,6 +362,12 @@ completion. A normal Send cannot implicitly discard this retained work. **Discar
 abandons it. A repair or Trial planner returning no changes, exhaustion of the repair budget, and
 compilation/Trial failures preserve the generated work instead of deleting it. The repair budget
 remains bounded; retrying verification does not reset it.
+
+A paused draft permits opening another conversation and returning to the original operation for
+verification. The draft and its ownership remain intact; running requests and pending decisions
+still lock navigation. After a successful repair, the published instructions follow the final
+verified configuration rather than the original paths. The Host binds those instructions to the
+completed revision while retaining the original authored evidence privately.
 
 **Open draft** shows the generated YAML, layout, requirements, and companion files in a file editor.
 **Save draft** accepts incomplete or invalid YAML so you can finish it manually. Saving is not

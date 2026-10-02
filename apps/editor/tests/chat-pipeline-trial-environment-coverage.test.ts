@@ -16,8 +16,12 @@ const SYNTHETIC_VALUE = `tagma-sandbox-trial-synthetic-${createHash('sha256')
   .slice(0, 24)}`;
 const { pipelineYamlPath } = await import('../server/pipeline-paths');
 const { WorkspaceState } = await import('../server/workspace-state');
-const { compileChatYamlStage, createChatYamlStage, discardChatYamlStage } =
-  await import('../server/chat-yaml-staging');
+const {
+  compileChatYamlStage,
+  createChatYamlStage,
+  discardChatYamlStage,
+  issueChatYamlStageTrialPlanAttempt,
+} = await import('../server/chat-yaml-staging');
 const { stopChatCompileWatcher } = await import('../server/chat-compile-watcher');
 const { trialRunChatYamlStage } = await import('../server/chat-pipeline-trial-run');
 const { runPreflight } = await import('../server/preflight-requirements');
@@ -247,6 +251,34 @@ test.each([{ branch: false }, { branch: true }])(
     expect(runPreflight(entry.stagedPath).missing.envs).toContain(ENV_NAME);
   },
 );
+
+test('Host freezes declared Trial environment names from staged requirements and every secret scope', () => {
+  const { ws, stage, entry } = createFixture({});
+  const raw = parseYaml(readFileSync(entry.stagedPath, 'utf8'));
+  const yamlText = serializePipeline({
+    ...raw,
+    secrets: ['PIPELINE_INPUT'],
+    tracks: raw.tracks.map((track) => ({
+      ...track,
+      secrets: ['TRACK_INPUT'],
+      tasks: track.tasks.map((task) => ({ ...task, secrets: ['TASK_INPUT'] })),
+    })),
+  });
+  writeFileSync(entry.stagedPath, yamlText, 'utf8');
+  issueChatYamlStageTrialPlanAttempt(ws, {
+    stageId: stage.id,
+    relativePath: entry.relativePath,
+    yamlHash: createHash('sha1').update(yamlText).digest('hex'),
+    attemptId: 'declared-environment-check',
+  });
+  const metadata = JSON.parse(
+    readFileSync(join(dirname(dirname(dirname(dirname(entry.stagedPath)))), 'stage.json'), 'utf8'),
+  );
+  expect(metadata.trialPlanAttempt.validationContext.declaredEnvironmentNames).toEqual(
+    [ENV_NAME, 'PIPELINE_INPUT', 'TASK_INPUT', 'TRACK_INPUT'].sort(),
+  );
+  expect(JSON.stringify(metadata.trialPlanAttempt.validationContext)).not.toContain(REAL_VALUE);
+});
 
 test('Sandbox cases keep synthetic values when the host environment has the real one', async () => {
   process.env[ENV_NAME] = REAL_VALUE;

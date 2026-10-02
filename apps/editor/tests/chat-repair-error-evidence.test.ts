@@ -20,6 +20,35 @@ afterEach(() => {
 });
 
 describe('private model repair error evidence', () => {
+  test('keeps concrete blocked input errors in private repair evidence', () => {
+    const stderr =
+      '[engine] task input binding resolution failed:\nbinding input "records": cannot coerce array to string';
+    const result = trialTaskResults(
+      {
+        states: new Map([
+          [
+            'main.consume',
+            {
+              status: 'blocked',
+              config: { command: 'consume' },
+              trackConfig: {},
+              result: { stdout: '', stderr, failureKind: 'input_error', exitCode: -1 },
+            },
+          ],
+        ]),
+      } as never,
+      { name: 'Binding', tracks: [] },
+      'positive',
+      1,
+      process.cwd(),
+    );
+    expect(result.repairErrorTasks).toHaveLength(1);
+    expect(result.repairErrorTasks[0]).toMatchObject({
+      status: 'blocked',
+      repairScope: 'pipeline-artifact',
+      stderr,
+    });
+  });
   test('recovers complete errors from the Host-owned persisted output instead of a runtime memory tail', () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-repair-complete-output-'));
     roots.push(root);
@@ -193,6 +222,72 @@ describe('private model repair error evidence', () => {
     expect(evidence.text).not.toContain('secret-value');
     expect(isChatRepairErrorEvidence(evidence)).toBe(true);
     expect(isChatRepairErrorEvidence({ ...evidence, text: evidence.text + 'x' })).toBe(false);
+  });
+
+  test('shares repeated full streams losslessly while preserving independent errors and case identities', () => {
+    const stdout = 'UPSTREAM_CONTEXT\n' + 'same successful output '.repeat(3000);
+    const stderr = 'FIRST_CAUSE\n' + 'error details '.repeat(1000) + '\nLAST_CAUSE';
+    const tasks = [1, 2, 3].flatMap((runNumber) => [
+      {
+        taskId: 'main.source',
+        caseId: 'positive',
+        runNumber,
+        status: 'success',
+        repairScope: null,
+        stdout,
+        stderr: '',
+      },
+      {
+        taskId: 'main.consume',
+        caseId: 'positive',
+        runNumber,
+        status: 'failed',
+        repairScope: 'pipeline-artifact',
+        stdout: '',
+        stderr,
+      },
+    ]);
+    const trial = {
+      kind: 'failed',
+      ran: true,
+      repairErrorTasks: tasks,
+      tasks: tasks.map((task) => ({
+        ...task,
+        stdout: '[display clipped]',
+        stderr: '[display clipped]',
+      })),
+      cases: [
+        {
+          id: 'positive',
+          success: false,
+          expectations: [
+            {
+              type: 'file-equals',
+              passed: false,
+              detail: 'Expected a nonempty result; observed empty bytes.',
+            },
+          ],
+        },
+      ],
+      repairPipelineDiagnostics: [
+        { caseId: 'positive', taskId: 'main.consume', runNumber: 1, message: stderr },
+      ],
+    } as unknown as ChatPipelineTrialRunResult;
+    const evidence = buildChatRepairErrorEvidence('trial-repeats', trial);
+    const parsed = JSON.parse(evidence.text);
+    const expand = (value: string | { textRef: string }) =>
+      typeof value === 'string' ? value : parsed.sharedTexts[value.textRef];
+    expect(parsed.schemaVersion).toBe(2);
+    expect(parsed.tasks).toHaveLength(6);
+    for (let index = 0; index < tasks.length; index++) {
+      expect(expand(parsed.tasks[index].stdout)).toBe(tasks[index].stdout);
+      expect(expand(parsed.tasks[index].stderr)).toBe(tasks[index].stderr);
+      expect(parsed.tasks[index].runNumber).toBe(tasks[index].runNumber);
+    }
+    expect(expand(parsed.pipelineDiagnostics[0].message)).toBe(stderr);
+    expect(parsed.cases[0].expectations[0].detail).toContain('observed empty bytes');
+    expect(evidence.text.length).toBeLessThan(JSON.stringify(tasks).length / 2);
+    expect(isChatRepairErrorEvidence(evidence)).toBe(true);
   });
 
   test('does not turn a passing expected rejection or a harness failure into artifact repair', () => {

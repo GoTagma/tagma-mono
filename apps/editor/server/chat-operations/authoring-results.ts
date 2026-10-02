@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { serializeChatVerificationOutcome } from '../../shared/chat-verification-outcome.js';
+import { finalInstructionsAttachment } from './final-instructions.js';
 import type {
   ChatOperationV2AuthoringResultPersistence,
   PersistChatOperationV2AuthoringInvocationResultInput,
@@ -117,6 +118,9 @@ class StoreAuthoringResultPersistence implements ChatOperationV2AuthoringResultP
                 label: 'Pipeline verification outcome',
                 content: serializeChatVerificationOutcome(input.verificationNotice.outcome),
               },
+              ...(input.verificationNotice.finalInstructions
+                ? [finalInstructionsAttachment(input.verificationNotice.finalInstructions)]
+                : []),
             ],
       evidence: {
         capture: completion.capture,
