@@ -512,8 +512,25 @@ class Controller implements ChatOperationV2Controller {
     if (detail.operation.operationId !== operationId) {
       throw new Error('Host returned a different Chat Operation for the selected history.');
     }
+    // Host wakes can resume the outgoing operation while the history read is pending.
+    if (this.#snapshot.activeOperation?.operationId !== operationId) {
+      this.#assertNavigationQuiescent();
+      if (!isChatOperationV2Quiescent(detail.operation.executionState)) {
+        throw new Error('Wait for the selected live Chat Operation V2 request to finish.');
+      }
+    }
+    if (
+      detail.operation.phase !== 'terminal' &&
+      detail.operation.rendererInstanceId !== this.#rendererId()
+    ) {
+      throw new Error('The live Chat Operation belongs to another renderer.');
+    }
+    const previousConversationId = this.#conversationId;
     this.#conversationId = detail.operation.conversationId;
-    if (!this.#applyOperation(detail.operation, true, detail.inventory)) return;
+    if (!this.#applyOperation(detail.operation, true, detail.inventory)) {
+      this.#conversationId = previousConversationId;
+      return;
+    }
     this.#onDetail?.(detail);
   }
 
@@ -619,6 +636,9 @@ class Controller implements ChatOperationV2Controller {
     if (this.#mutationsInFlight.has(key)) {
       throw new Error(`Chat Operation V2 already has an in-flight mutation for ${key}.`);
     }
+    // A user decision supersedes earlier navigation even if it settles back into
+    // a retained state before that navigation's detail read returns.
+    this.#selectionEpoch += 1;
     const token = Symbol(key);
     this.#mutationsInFlight.set(key, token);
     return () => {

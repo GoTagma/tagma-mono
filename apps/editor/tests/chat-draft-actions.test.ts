@@ -8,6 +8,7 @@ import { resetWorkspaceStores } from '../src/store/workspace-store-reset';
 import { useChatDraftStore } from '../src/chat-actions/draft';
 import {
   chatDraftNavEntries,
+  canOpenChatDraft,
   getChatDraftActionAvailability,
   isChatDraftDirty,
 } from '../src/chat-actions/draft';
@@ -99,6 +100,13 @@ test('shared draft open reads Host-issued files with the owning conversation cre
     conversationId: 'conversation',
     conversationKey: expect.stringMatching(/^[a-f0-9]{64}$/),
   });
+});
+
+test('loading History prevents opening a draft bound to the outgoing conversation', async () => {
+  useChatStore.setState({ selectingSessionId: 'another-operation' });
+  expect(canOpenChatDraft()).toBe(false);
+  expect(await useChatDraftStore.getState().open()).toBe(false);
+  expect(access).not.toHaveBeenCalled();
 });
 
 test('editing and saving retains invalid YAML, then uses the new operation version for later access', async () => {

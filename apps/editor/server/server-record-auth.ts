@@ -5,13 +5,14 @@ import {
   constants,
   existsSync,
   fsyncSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   realpathSync,
-  statSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
@@ -25,6 +26,8 @@ const SERVER_RECORD_AUTH_VERSION = 1;
 const SERVER_RECORD_AUTH_ALGORITHM = 'hmac-sha256';
 const SERVER_RECORD_AUTH_FIELD = '__tagmaServerAuth';
 export const MAX_SERVER_RECORD_BYTES = 5 * 1024 * 1024;
+/** Only the old Chat authoring authority reader may use this migration bound. */
+export const MAX_LEGACY_CHAT_AUTHORITY_BYTES = 64 * 1024 * 1024;
 let cachedServerRecordKey: { source: string; key: Buffer } | null = null;
 
 type JsonObject = Record<string, unknown>;
@@ -408,7 +411,10 @@ export function writeAuthenticatedServerRecordSync(
       signature: sign(canonicalPath, context, normalizedPayload),
     } satisfies ServerRecordAuth,
   };
-  atomicWriteFileSync(canonicalPath, JSON.stringify(record, null, 2) + '\n');
+  const bytes = JSON.stringify(record, null, 2) + '\n';
+  if (Buffer.byteLength(bytes) > MAX_SERVER_RECORD_BYTES)
+    throw new Error('Server record exceeds its authenticated byte limit.');
+  atomicWriteFileSync(canonicalPath, bytes);
   resolveAuthenticatedRecordPath(recordPath, context, false);
 }
 
@@ -416,15 +422,107 @@ export function readAuthenticatedServerRecordSync<T extends object>(
   recordPath: string,
   context: ServerRecordContext,
 ): T {
+  return readServerRecordWithinBound<T>(recordPath, context, MAX_SERVER_RECORD_BYTES);
+}
+
+/** Commit a pointer record to disk before reclaiming data referenced by its before-image. */
+export function syncAuthenticatedServerRecordSync(
+  recordPath: string,
+  context: ServerRecordContext,
+): void {
+  const path = resolveAuthenticatedRecordPath(recordPath, context, false);
+  const before = lstatSync(path, { bigint: true });
+  if (
+    !before.isFile() ||
+    before.isSymbolicLink() ||
+    before.nlink !== 1n ||
+    before.size > BigInt(MAX_SERVER_RECORD_BYTES)
+  )
+    throw authenticationError();
+  // Windows FlushFileBuffers requires a handle opened with write access.
+  const descriptor = openSync(path, constants.O_RDWR | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const opened = fstatSync(descriptor, { bigint: true });
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1n ||
+      opened.ino !== before.ino ||
+      opened.dev !== before.dev ||
+      opened.size !== before.size
+    )
+      throw authenticationError();
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  fsyncDirectorySync(dirname(path));
+}
+
+/** The exact historical Chat authority is authenticated before schema validation and migration. */
+export function readLegacyChatAuthoringAuthorityRecordSync<T extends object>(
+  recordPath: string,
+  context: ServerRecordContext,
+): T {
+  if (
+    context.kind !== 'stage-metadata' ||
+    basename(recordPath) !== 'chat-operation-v2-authoring-runtime.json' ||
+    basename(context.controlRoot) !== context.stageId
+  )
+    throw authenticationError();
+  return readServerRecordWithinBound<T>(recordPath, context, MAX_LEGACY_CHAT_AUTHORITY_BYTES);
+}
+
+function readServerRecordWithinBound<T extends object>(
+  recordPath: string,
+  context: ServerRecordContext,
+  maxBytes: number,
+): T {
   const canonicalPath = resolveAuthenticatedRecordPath(recordPath, context, false);
-  if (statSync(canonicalPath).size > MAX_SERVER_RECORD_BYTES) throw authenticationError();
+  const before = lstatSync(canonicalPath, { bigint: true });
+  if (
+    !before.isFile() ||
+    before.isSymbolicLink() ||
+    before.nlink !== 1n ||
+    before.size > BigInt(maxBytes)
+  )
+    throw authenticationError();
+  const descriptor = openSync(canonicalPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   let parsed: JsonObject;
   try {
-    const value = JSON.parse(readFileSync(canonicalPath, 'utf-8')) as unknown;
+    const opened = fstatSync(descriptor, { bigint: true });
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1n ||
+      opened.ino !== before.ino ||
+      opened.dev !== before.dev ||
+      opened.size !== before.size
+    )
+      throw authenticationError();
+    const bytes = Buffer.alloc(Number(opened.size) + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(descriptor, bytes, offset, bytes.length - offset, null);
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = lstatSync(canonicalPath, { bigint: true });
+    const finished = fstatSync(descriptor, { bigint: true });
+    if (
+      offset !== Number(opened.size) ||
+      after.isSymbolicLink() ||
+      after.nlink !== 1n ||
+      after.ino !== opened.ino ||
+      after.dev !== opened.dev ||
+      finished.size !== opened.size
+    )
+      throw authenticationError();
+    const value = JSON.parse(bytes.subarray(0, offset).toString('utf8')) as unknown;
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw authenticationError();
     parsed = value as JsonObject;
   } catch {
     throw authenticationError();
+  } finally {
+    closeSync(descriptor);
   }
   const auth = parsed[SERVER_RECORD_AUTH_FIELD];
   if (!isValidAuth(auth)) throw authenticationError();

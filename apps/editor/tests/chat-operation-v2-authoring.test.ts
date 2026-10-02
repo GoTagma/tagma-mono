@@ -827,6 +827,129 @@ function dispatchInput(operation: StoredChatOperationV2) {
 }
 
 describe('ChatTurn Operation V2 authoring lifecycle', () => {
+  test('initial publication seals instructions from its verified authoring snapshot', async () => {
+    const text = 'Populate inputs/records.txt and read reports/current.md.';
+    const { engine, store } = createHarness({ completionTexts: { authoring: text } });
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(result.kind).toBe('commit_preparing');
+    const pending = store.getPendingResultMessage('operation-1')!;
+    const attachment = pending.message.attachments.find(
+      (item) => item.label === FINAL_INSTRUCTIONS_LABEL,
+    );
+    expect(attachment).toBeDefined();
+    const instructions = parseFinalInstructions(attachment!.content)!;
+    expect(instructions.text).toBe(text);
+    expect(store.getInvocationOutbox(instructions.sourceInvocationId)?.purpose).toBe('authoring');
+    expect(store.getOperation('operation-1')!.repairAttempts).toBe(0);
+  });
+
+  test.each([
+    ['escaped receipt', '\u0001'.repeat(64 * 1024)],
+    ['invalid Unicode', '\ud800'],
+  ])('final instructions retain publication within receipt bounds (%s)', async (_label, text) => {
+    const { engine, store, runtime } = createHarness();
+    runtime.readFinalInstructions = async () => text;
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(result.kind).toBe('commit_preparing');
+    const attachment = store
+      .getPendingResultMessage('operation-1')!
+      .message.attachments.find((item) => item.label === FINAL_INSTRUCTIONS_LABEL)!;
+    const instructions = parseFinalInstructions(attachment.content)!;
+    expect(instructions.text).toContain('passed verification');
+    expect(instructions.text).not.toContain(text);
+  });
+
+  test.each([
+    ['long text', 'x'.repeat(64 * 1024 + 1)],
+    ['escaped text', '\u0001'.repeat(64 * 1024)],
+  ])(
+    'matching authoring snapshots preserve the original bounded response (%s)',
+    async (_label, text) => {
+      const { engine, store } = createHarness({ completionTexts: { authoring: text } });
+      const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      expect(result.kind).toBe('commit_preparing');
+      const pending = store.getPendingResultMessage('operation-1')!;
+      expect(pending.message.text).toBe(text);
+      expect(
+        pending.message.attachments.some((item) => item.label === FINAL_INSTRUCTIONS_LABEL),
+      ).toBe(false);
+    },
+  );
+
+  test.each([false, true])(
+    'manual retained-draft edits suppress obsolete instructions without automatic repair (restart=%s)',
+    async (restart) => {
+      const { store, runtime, now, nextHostId } = createHarness({
+        verification: ['unverified', 'passed'],
+        completionTexts: { authoring: 'Populate old/input.txt and read old/report.md.' },
+      });
+      const makeEngine = () =>
+        new ChatOperationV2AuthoringEngine({
+          persistence: store,
+          runtime,
+          resultPersistence: createChatOperationV2AuthoringResultPersistence(store),
+          now,
+          nextHostId,
+        });
+      let engine = makeEngine();
+      let instructionReads = 0;
+      runtime.readFinalInstructions = async () => {
+        instructionReads++;
+        return null;
+      };
+      const verifyStage = runtime.verifyStage.bind(runtime);
+      runtime.verifyStage = (input) => verifyStage({ ...input, stage: runtime.stage! });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      const original = store.getPendingResultMessage('operation-1')!;
+      const waiting = store.getOperation('operation-1')!;
+      expect(waiting.repairAttempts).toBe(0);
+      runtime.accessDraft = async (input) => {
+        if (input.edit)
+          runtime.stage = {
+            ...runtime.stage!,
+            snapshotHash: hash('manually changed input/output paths'),
+          };
+        return { files: [], selected: null, totalFileCount: 0, omittedFileCount: 0 };
+      };
+      await engine.accessDraft({
+        operationId: waiting.operationId,
+        workspaceScopeId: waiting.workspaceScopeId,
+        expectedGeneration: waiting.generation,
+        expectedVersion: waiting.version,
+        requestId: 'manual-instructions-edit',
+        edit: {
+          fileId: 'a'.repeat(64),
+          expectedHash: 'b'.repeat(64),
+          text: 'manually changed input/output paths',
+        },
+      });
+      if (restart) engine = makeEngine();
+      const saved = store.getOperation('operation-1')!;
+      const retried = await engine.retryProviderUnavailable({
+        operationId: saved.operationId,
+        workspaceScopeId: saved.workspaceScopeId,
+        expectedGeneration: saved.generation,
+        expectedVersion: saved.version,
+        requestId: 'retry-manual-instructions',
+      });
+      expect(retried.kind).toBe('commit_preparing');
+      expect(instructionReads).toBe(1);
+      const pending = store.getPendingResultMessage('operation-1')!;
+      const attachment = pending.message.attachments.find(
+        (item) => item.label === FINAL_INSTRUCTIONS_LABEL,
+      );
+      expect(attachment).toBeDefined();
+      const instructions = parseFinalInstructions(attachment!.content)!;
+      expect(instructions.text).not.toContain('old/');
+      expect(instructions.text).toContain('passed verification');
+      expect(instructions.stagedSnapshotHash).toBe(runtime.stage!.snapshotHash);
+      expect(store.getInvocationOutbox(instructions.sourceInvocationId)?.purpose).toBe('authoring');
+      expect(pending.pendingMessageId).toBe(original.pendingMessageId);
+      expect(pending.message.text).toBe(original.message.text);
+      expect(store.getOperation('operation-1')!.repairAttempts).toBe(0);
+    },
+  );
+
   test.each([false, true])(
     'final verified instructions follow repaired artifacts, including retained-draft restart (%s)',
     async (restart) => {
@@ -1125,7 +1248,7 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       expect(new Set(runtime.verificationAttemptVersions).size).toBe(2);
       expect(resultPersistence.calls).toHaveLength(1);
       const pending = store.getPendingResultMessage('operation-1')!;
-      expect(pending.message.attachments).toHaveLength(1);
+      expect(pending.message.attachments).toHaveLength(2);
       expect(pending.message.attachments[0]).toMatchObject({
         label: 'Pipeline verification outcome',
         kind: 'notice',
@@ -1134,6 +1257,11 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       expect(JSON.parse(pending.message.attachments[0]!.content)).toMatchObject({
         schemaVersion: CHAT_VERIFICATION_OUTCOME_SCHEMA_VERSION,
         sandbox: { status: 'passed' },
+      });
+      expect(pending.message.attachments[1]!.label).toBe(FINAL_INSTRUCTIONS_LABEL);
+      expect(parseFinalInstructions(pending.message.attachments[1]!.content)).toMatchObject({
+        sourceInvocationId: before.message.invocationId,
+        sourceRequestDigest: before.message.evidence.requestDigest,
       });
       expect(pending.message.text).toBe(before.message.text);
       expect(pending.message.evidence).toEqual(before.message.evidence);

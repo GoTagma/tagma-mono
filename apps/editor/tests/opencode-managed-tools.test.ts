@@ -6,6 +6,11 @@ import { join } from 'node:path';
 import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
 import { stagePinnedOpencodePluginFixture } from './helpers/opencode-native-plugin-fixture';
+import { PluginRegistry } from '@tagma/sdk';
+import { bootstrapBuiltins } from '@tagma/sdk/plugins';
+import { parseYaml } from '@tagma/sdk/yaml';
+import { validateRaw } from '@tagma/sdk/config';
+import type { CompletionPlugin } from '@tagma/sdk';
 
 // Copies the pinned plugin and Zod twice and loads generated tools in a child.
 // This verifies module/fixture isolation, not a 5s filesystem benchmark.
@@ -102,6 +107,110 @@ test('managed OpenCode tools load from the isolated runtime and migrate legacy w
     expect(verify.exitCode).toBe(0);
 
     expect(seedOpencodeArtifacts(tagmaCwd)).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+test('native generated YAML tool rejects missing file completion paths before emitting YAML', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma native yaml file contract-'));
+  const tagmaCwd = join(root, '.tagma');
+  const runtime = resolveOpencodeRuntimePaths(tagmaCwd);
+  const registry = new PluginRegistry();
+  bootstrapBuiltins(registry);
+  const fileSchema = registry.getHandler<CompletionPlugin>('completions', 'file_exists').schema;
+  const knownTypes = {
+    completions: ['file_exists'],
+    schemas: { completions: { file_exists: fileSchema } },
+  };
+  try {
+    seedOpencodeArtifacts(tagmaCwd);
+    stagePinnedOpencodePluginFixture(tagmaCwd, '1.18.18');
+    const verifierPath = join(root, 'verify native file contracts.ts');
+    writeFileSync(
+      verifierPath,
+      `import { pathToFileURL } from "node:url";
+const generated = (await import(pathToFileURL(process.argv[2]).href)).default;
+if (!generated.args.manifest?._zod) throw new Error("Expected pinned OpenCode Zod runtime");
+const observations = [];
+for (const taskType of ["command", "prompt"]) {
+  for (const contract of ["file", "native-output-and-file"]) {
+    for (const path of [undefined, "   ", "reports/result.md"]) {
+      const manifest = {
+        pipeline: { name: "File contract", atomicity_rationale: "One atomic file publication." },
+        sections: [
+          { id: "track:main", type: "track", track: "main", track_identity_rationale: "One execution identity." },
+          {
+            id: "task:main.publish", type: taskType, track: "main", task: "publish",
+            ...(taskType === "command" ? { command: "write-report" } : { prompt: "Write the report." }),
+            permissions: { read: true, write: true, execute: false },
+            task_boundary_rationale: "One independently observable file result.",
+            result_contract: contract,
+            ...(contract === "native-output-and-file" ? { outputs: ["report"] } : {}),
+            completion: { type: "file_exists", ...(path === undefined ? {} : { path }) },
+          },
+        ],
+      };
+      const args = { manifest: generated.args.manifest.parse(manifest) };
+      let result;
+      let error;
+      try { result = JSON.parse(await generated.execute(args)); }
+      catch (failure) { error = failure instanceof Error ? failure.message : String(failure); }
+      if (path === "reports/result.md") {
+        if (error || !result?.yaml) throw new Error("Valid file path was rejected: " + error);
+      } else if (!error?.includes("completion.path must be a non-empty string")) {
+        throw new Error("Expected immediate completion.path rejection for " + taskType + ":" + contract + "; received " + (error ?? "successful YAML"));
+      }
+      observations.push({ taskType, contract, path: path ?? null, ...(error ? { error } : { yaml: result.yaml }) });
+    }
+  }
+}
+console.log(JSON.stringify(observations));
+`,
+      'utf8',
+    );
+    const verify = Bun.spawnSync(
+      [process.execPath, verifierPath, join(runtime.configDir, 'tools', 'tagma_yaml_skeleton.ts')],
+      { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+    );
+    expect(new TextDecoder().decode(verify.stderr)).toBe('');
+    expect(verify.exitCode).toBe(0);
+    const observations = JSON.parse(new TextDecoder().decode(verify.stdout)) as Array<{
+      path: string | null;
+      error?: string;
+      yaml?: string;
+    }>;
+    expect(observations).toHaveLength(12);
+    expect(observations.filter((item) => item.error)).toHaveLength(8);
+    for (const item of observations.filter((candidate) => candidate.yaml)) {
+      expect(validateRaw(parseYaml(item.yaml!), knownTypes)).toEqual([]);
+    }
+
+    // The compiler remains authoritative for hand-written/previously persisted YAML.
+    for (const path of [undefined, '   ']) {
+      const errors = validateRaw(
+        {
+          name: 'Invalid file completion',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [
+                {
+                  id: 'publish',
+                  command: 'write-report',
+                  completion: { type: 'file_exists', ...(path === undefined ? {} : { path }) },
+                },
+              ],
+            },
+          ],
+        },
+        knownTypes,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ message: expect.stringContaining('completion.path') }),
+      ]);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

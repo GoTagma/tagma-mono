@@ -683,7 +683,9 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       durationMs: 0,
       sessionId: null,
       normalizedOutput: null,
-      failureKind: 'spawn_error',
+      // Inference blocks only on authored producer/consumer contract conflicts.
+      // No missing external prerequisite is classified through this gate.
+      failureKind: 'input_error',
       outputs: null,
     };
     state.finishedAt = nowISO();
@@ -770,7 +772,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         durationMs: 0,
         sessionId: null,
         normalizedOutput: null,
-        failureKind: 'spawn_error',
+        failureKind:
+          inputResolution.typeErrors.length > 0 || inputResolution.ambiguous.length > 0
+            ? 'input_error'
+            : 'spawn_error',
         outputs: null,
       };
       state.finishedAt = nowISO();

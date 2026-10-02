@@ -131,7 +131,12 @@ redacted; error content is not replaced with failure-code summaries. Existing ru
 omissions remain explicit. The immutable snapshot is hash-bound into the canonical invocation,
 survives Host restart, and is never projected through production diagnostics or compact notices.
 Exact repeated large streams are shared losslessly within that private evidence; unique errors and
-successful-task output remain complete. Unexpected authored binding type or producer conflicts use
+successful-task output remain complete. Complete evidence lives in a separate private, authenticated
+file, with a small owner-bound reference in the stage control record. Evidence exceeding its 64 MiB
+limit, or a storage failure, retains the draft for retry without truncating errors or making the
+control record unreadable. Valid legacy inline evidence is migrated on read; a failed migration
+preserves the original record for another attempt.
+Unexpected authored binding type or producer conflicts use
 `input_error` and can enter bounded repair even when the child never started. Missing external inputs
 remain prerequisite failures, and expected negative failures do not grant repair.
 Unexpected executed task errors, including provider errors, enter the existing finite repair loop

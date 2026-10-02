@@ -364,6 +364,133 @@ describe('targeted pipeline runs', () => {
     }
   });
 
+  test('programmatic prompt input producer conflicts carry input_error before driver execution', async () => {
+    const dir = makeDir();
+    const commands: string[] = [];
+    let driverCalls = 0;
+    const registry = new PluginRegistry();
+    registry.registerPlugin('drivers', 'mock', {
+      name: 'mock',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand() {
+        driverCalls++;
+        return { args: ['mock'] };
+      },
+    } satisfies DriverPlugin);
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'Ambiguous inferred prompt inputs',
+          tracks: [
+            {
+              id: 'main',
+              tasks: [
+                {
+                  id: 'first',
+                  command: '{"record":"first"}',
+                  outputs: { record: { type: 'string' } },
+                },
+                {
+                  id: 'second',
+                  command: '{"record":"second"}',
+                  outputs: { record: { type: 'string' } },
+                },
+                {
+                  id: 'review',
+                  prompt: 'Review the record.',
+                  driver: 'mock',
+                  depends_on: ['first', 'second'],
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        { registry, runtime: fakeRuntime(commands), skipPluginLoading: true },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('main.first')?.status).toBe('success');
+      expect(result.states.get('main.second')?.status).toBe('success');
+      expect(result.states.get('main.review')).toMatchObject({
+        status: 'blocked',
+        result: {
+          failureKind: 'input_error',
+          stderr: expect.stringContaining(
+            'input "record" is produced by multiple upstream Commands (main.first, main.second)',
+          ),
+        },
+      });
+      expect(commands.toSorted()).toEqual(['{"record":"first"}', '{"record":"second"}']);
+      expect(driverCalls).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('programmatic inferred prompt output type conflicts carry input_error before execution', async () => {
+    const dir = makeDir();
+    const commands: string[] = [];
+    let driverCalls = 0;
+    const registry = new PluginRegistry();
+    registry.registerPlugin('drivers', 'mock', {
+      name: 'mock',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand() {
+        driverCalls++;
+        return { args: ['mock'] };
+      },
+    } satisfies DriverPlugin);
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'Conflicting inferred prompt contract',
+          tracks: [
+            {
+              id: 'main',
+              tasks: [
+                { id: 'review', prompt: 'Return the record.', driver: 'mock' },
+                {
+                  id: 'text',
+                  depends_on: ['review'],
+                  command: 'consume {{inputs.record}}',
+                  inputs: { record: { type: 'string', required: true } },
+                },
+                {
+                  id: 'count',
+                  depends_on: ['review'],
+                  command: 'consume {{inputs.record}}',
+                  inputs: { record: { type: 'number', required: true } },
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        { registry, runtime: fakeRuntime(commands), skipPluginLoading: true },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('main.review')).toMatchObject({
+        status: 'blocked',
+        result: {
+          failureKind: 'input_error',
+          stderr: expect.stringContaining(
+            'output "record" has conflicting type requirements across downstream Commands',
+          ),
+        },
+      });
+      expect(result.states.get('main.text')?.status).toBe('skipped');
+      expect(result.states.get('main.count')?.status).toBe('skipped');
+      expect(commands).toEqual([]);
+      expect(driverCalls).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('prompt tasks still block when a required explicit binding has no value', async () => {
     const dir = makeDir();
     let driverCalls = 0;
@@ -402,6 +529,7 @@ describe('targeted pipeline runs', () => {
 
       expect(result.success).toBe(false);
       expect(result.states.get('main.review')?.status).toBe('blocked');
+      expect(result.states.get('main.review')?.result?.failureKind).toBe('spawn_error');
       expect(result.states.get('main.review')?.result?.stderr).toContain(
         'missing required binding input(s): claim',
       );

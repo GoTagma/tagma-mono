@@ -59,6 +59,7 @@ export function canOpenChatDraft(): boolean {
     !!operation &&
     !state.pendingChatActions[operation.operationId] &&
     !state.composerSubmitting &&
+    state.selectingSessionId === null &&
     operation.rendererInstanceId === state.chatOperationV2RendererInstanceId &&
     operation.conversationId === state.chatOperationV2ConversationId &&
     chatOperationV2RetainedWorkKind(operation) === 'verification'

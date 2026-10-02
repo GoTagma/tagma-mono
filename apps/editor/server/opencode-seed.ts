@@ -1609,6 +1609,9 @@ function buildTask(section) {
     throw new Error(taskLabel + ': completion.type must be "file_exists" with completion.path for ' +
       resultContract + '; received ' + JSON.stringify(normalizedCompletion?.type ?? null));
   }
+  if ((resultContract === "file" || resultContract === "native-output-and-file") && !normalizedCompletion.path) {
+    throw new Error(taskLabel + ': completion.path must be a non-empty string for ' + resultContract);
+  }
   if (resultContract === "none" && (outputs.length > 0 || fileContract)) {
     throw new Error(
       taskLabel + " declares no result but also defines outputs or a file completion",

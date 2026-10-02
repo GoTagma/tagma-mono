@@ -20,7 +20,7 @@ import type { ChatPipelineTrialRunResult } from '../chat-pipeline-trial-run.js';
 import type { ChatOperationV2Admission } from './admission.js';
 import { normalizeChatOperationV2AuthoringCompletionText } from './authoring-results.js';
 import {
-  FINAL_INSTRUCTIONS_MAX_BYTES,
+  parseFinalInstructions,
   serializeFinalInstructions,
   type ChatOperationV2FinalInstructions,
 } from './final-instructions.js';
@@ -68,6 +68,7 @@ import {
   type ChatOperationV2State,
 } from './types.js';
 import {
+  CHAT_OPERATION_V2_MAX_RESULT_ATTACHMENT_CONTENT_BYTES,
   parseChatOperationV2ResultMessage,
   sealChatOperationV2Result,
   type ChatOperationV2ResultMessage,
@@ -2888,38 +2889,56 @@ export class ChatOperationV2AuthoringEngine {
           : terminalResult(waiting.operation);
     }
     context.pendingTrialPlanRequest = null;
-    let finalInstructions: ChatOperationV2FinalInstructions | undefined;
-    if (current.repairAttempts > 0) {
-      const source = this.persistence
-        .listInvocationOutbox(current.workspaceScopeId)
-        .filter(
-          (item) =>
-            item.operationId === current.operationId &&
-            item.status === 'settled' &&
-            (item.purpose === 'authoring' || item.purpose === 'repair'),
-        )
-        .sort((left, right) => right.preparedAt - left.preparedAt)[0];
-      if (!source) return this.retainDraft(context, 'publication_instructions_unavailable');
-      const text = await this.runtime.readFinalInstructions?.({
-        operationId: current.operationId,
-        operationGeneration: current.generation,
-        stageId: context.stage.stageId,
-        invocationId: source.invocationId,
-        requestDigest: source.requestDigest,
-        stagedSnapshotHash: verification.stagedSnapshotHash,
-      });
-      finalInstructions = {
-        version: 1,
-        sourceInvocationId: source.invocationId,
-        sourceRequestDigest: source.requestDigest,
-        stagedSnapshotHash: verification.stagedSnapshotHash,
-        artifactSetHash: verification.artifactSetHash,
-        text:
-          text?.trim() && encoder.encode(text).byteLength <= FINAL_INSTRUCTIONS_MAX_BYTES
-            ? text
-            : 'The workflow has passed verification after repair. Open the published pipeline to review its final configuration and input/output paths before running it.',
-      };
-    }
+    const source = this.persistence
+      .listInvocationOutbox(current.workspaceScopeId)
+      .filter(
+        (item) =>
+          item.operationId === current.operationId &&
+          item.status === 'settled' &&
+          (item.purpose === 'authoring' || item.purpose === 'repair'),
+      )
+      .sort((left, right) => right.preparedAt - left.preparedAt)[0];
+    if (!source) return this.retainDraft(context, 'publication_instructions_unavailable');
+    const text = await this.runtime.readFinalInstructions?.({
+      operationId: current.operationId,
+      operationGeneration: current.generation,
+      stageId: context.stage.stageId,
+      invocationId: source.invocationId,
+      requestDigest: source.requestDigest,
+      stagedSnapshotHash: verification.stagedSnapshotHash,
+    });
+    const instructionAuthority = {
+      version: 1 as const,
+      sourceInvocationId: source.invocationId,
+      sourceRequestDigest: source.requestDigest,
+      stagedSnapshotHash: verification.stagedSnapshotHash,
+      artifactSetHash: verification.artifactSetHash,
+    };
+    const candidateInstructions = parseFinalInstructions(
+      JSON.stringify({ ...instructionAuthority, text }),
+    );
+    const originalText =
+      context.pendingVisibleCompletion?.persistenceInput.text ??
+      context.visibleResult?.message.text;
+    const unchangedAuthoringText =
+      source.purpose === 'authoring' &&
+      typeof text === 'string' &&
+      text === originalText &&
+      text.trim().length > 0 &&
+      new TextDecoder().decode(encoder.encode(text)) === text;
+    // A snapshot-matching original already belongs to the immutable publication.
+    // Do not replace a valid large response just to fit the smaller instruction receipt.
+    const finalInstructions: ChatOperationV2FinalInstructions | undefined =
+      candidateInstructions &&
+      encoder.encode(serializeFinalInstructions(candidateInstructions)).byteLength <=
+        CHAT_OPERATION_V2_MAX_RESULT_ATTACHMENT_CONTENT_BYTES
+        ? candidateInstructions
+        : unchangedAuthoringText
+          ? undefined
+          : {
+              ...instructionAuthority,
+              text: 'The workflow has passed verification. Open the published pipeline to review its final configuration and input/output paths before running it.',
+            };
     const pendingCompletion = context.pendingVisibleCompletion;
     if (!pendingCompletion && !context.visibleResult) {
       throw new ChatOperationV2AuthoringProtocolError(

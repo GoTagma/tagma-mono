@@ -178,6 +178,161 @@ test('leaves a retained draft and returns to retry the same operation without di
   }
 });
 
+test.each(['running', 'retryable_failure'] as const)(
+  'a completed Retry invalidates older history selection even when the source becomes %s',
+  async (executionState) => {
+    const fake = fakeApi();
+    const retained = operation({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      executionState: 'retryable_failure',
+    });
+    const archived = operation({
+      operationId: 'operation-archived',
+      conversationId: 'conversation-archived',
+      phase: 'terminal',
+      executionState: 'terminal',
+    });
+    const resumed = {
+      ...retained,
+      version: 2,
+      executionState,
+      waitReason: executionState === 'running' ? null : ('user_retry' as const),
+    };
+    fake.setSnapshot(snapshot([retained, archived]));
+    fake.setOperation(retained);
+    fake.setResult(staleResult(resumed));
+    let finishHistory!: (value: ChatOperationV2OperationDetail) => void;
+    const controller = createChatOperationV2Controller({
+      rendererInstanceId: 'renderer-01',
+      api: {
+        ...fake.api,
+        fetchOperation: (id, options) =>
+          id === archived.operationId
+            ? new Promise((resolve) => {
+                finishHistory = resolve;
+              })
+            : fake.api.fetchOperation(id, options),
+      },
+    });
+    try {
+      await controller.activate({
+        workspaceKey: 'workspace',
+        conversationId: retained.conversationId,
+        handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+      });
+      const selecting = controller.selectOperation(archived.operationId);
+      fake.setOperation(resumed);
+      await controller.retry();
+      finishHistory(detail(archived));
+      await selecting;
+      expect(controller.getSnapshot().activeOperation).toEqual(resumed);
+    } finally {
+      controller.dispose();
+    }
+  },
+);
+
+test('history cannot leave a source that became live through a Host wake while loading', async () => {
+  const fake = fakeApi();
+  const retained = operation({
+    phase: 'trial-running',
+    waitReason: 'user_retry',
+    executionState: 'retryable_failure',
+  });
+  const archived = operation({
+    operationId: 'operation-archived',
+    conversationId: 'conversation-archived',
+    phase: 'terminal',
+    executionState: 'terminal',
+  });
+  const resumed = { ...retained, version: 2, executionState: 'running' as const, waitReason: null };
+  fake.setSnapshot(snapshot([retained, archived]));
+  fake.setOperation(retained);
+  let finishHistory!: (value: ChatOperationV2OperationDetail) => void;
+  const controller = createChatOperationV2Controller({
+    rendererInstanceId: 'renderer-01',
+    api: {
+      ...fake.api,
+      fetchOperation: (id, options) =>
+        id === archived.operationId
+          ? new Promise((resolve) => {
+              finishHistory = resolve;
+            })
+          : fake.api.fetchOperation(id, options),
+    },
+  });
+  try {
+    await controller.activate({
+      workspaceKey: 'workspace',
+      conversationId: retained.conversationId,
+      handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    });
+    const selecting = controller.selectOperation(archived.operationId);
+    fake.setOperation(resumed);
+    fake.subscriptions[0]!.options.onWake({ workspaceSeq: 1, operationId: retained.operationId });
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(controller.getSnapshot().activeOperation).toEqual(resumed);
+    finishHistory(detail(archived));
+    await expect(selecting).rejects.toThrow('live Chat Operation');
+    expect(controller.getSnapshot().activeOperation).toEqual(resumed);
+  } finally {
+    controller.dispose();
+  }
+});
+
+test('a stale history detail cannot change the retained source conversation authority', async () => {
+  const fake = fakeApi();
+  const retained = operation({
+    phase: 'trial-running',
+    waitReason: 'user_retry',
+    executionState: 'retryable_failure',
+  });
+  const other = {
+    ...retained,
+    operationId: 'operation-other',
+    conversationId: 'conversation-other',
+  };
+  const newerOther = { ...other, version: 2 };
+  fake.setSnapshot(snapshot([retained, other]));
+  fake.setOperation(retained);
+  let finishHistory!: (value: ChatOperationV2OperationDetail) => void;
+  let readingOther = 0;
+  const controller = createChatOperationV2Controller({
+    rendererInstanceId: 'renderer-01',
+    api: {
+      ...fake.api,
+      fetchOperation: (id, options) =>
+        id === other.operationId
+          ? ++readingOther === 1
+            ? new Promise((resolve) => {
+                finishHistory = resolve;
+              })
+            : Promise.resolve(detail(newerOther))
+          : fake.api.fetchOperation(id, options),
+    },
+  });
+  try {
+    await controller.activate({
+      workspaceKey: 'workspace',
+      conversationId: retained.conversationId,
+      handshake: { chatOperationProtocolVersion: 2, chatOperationMode: 'production' },
+    });
+    const selecting = controller.selectOperation(other.operationId);
+    fake.subscriptions[0]!.options.onWake({ workspaceSeq: 1, operationId: other.operationId });
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(controller.getSnapshot().operations).toContainEqual(newerOther);
+    finishHistory(detail(other));
+    await selecting;
+    expect(controller.getSnapshot().activeOperation).toEqual(retained);
+    fake.setResult(staleResult(retained));
+    await controller.retry();
+    expect(fake.calls.some(({ name }) => name === 'retry')).toBe(true);
+  } finally {
+    controller.dispose();
+  }
+});
+
 test.each(['running', 'waiting_for_user'] as const)(
   'keeps conversation navigation locked for %s work',
   async (executionState) => {

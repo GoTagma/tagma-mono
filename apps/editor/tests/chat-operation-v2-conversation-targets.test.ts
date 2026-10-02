@@ -79,6 +79,18 @@ function createFixture(
   let store!: ChatOperationV2Store;
   let coordinator!: ReturnType<typeof createManagedChatOperationV2CommitCoordinator>;
   const sessions = new Map<string, string>();
+  const completedInvocations = new Map<
+    string,
+    {
+      operationId: string;
+      operationGeneration: number;
+      stageId: string;
+      requestDigest: string;
+      purpose: string;
+      completedSnapshotHash: string;
+      text: string | null;
+    }
+  >();
   const openCode: ManagedChatOperationV2AuthoringOpenCodeAdapter = {
     async ensureSession(input) {
       sessions.set(input.sessionId, input.sourceDirectory);
@@ -230,10 +242,29 @@ function createFixture(
             );
           }
           options.realTrialAuthor?.(path, desiredTaskCount);
+          const text = noChange ? null : (options.authoringText ?? 'Authored requested tasks.');
+          if (!noChange) {
+            const material = await readManagedChatOperationV2CommitStageMaterial({
+              canonicalWorkspaceRoot: workspaceRoot,
+              workspaceScopeId: input.workspaceScopeId,
+              stageId: request.stage.stageId,
+            });
+            completedInvocations.set(request.invocationId, {
+              operationId: request.operationId,
+              operationGeneration: request.operationGeneration,
+              stageId: request.stage.stageId,
+              requestDigest: createHash('sha256')
+                .update(request.canonicalRequestBytes)
+                .digest('hex'),
+              purpose: request.purpose,
+              completedSnapshotHash: material.stagedSnapshotHash,
+              text,
+            });
+          }
           return {
             kind: 'completed',
             disposition: noChange ? 'no_change' : 'changed',
-            text: noChange ? null : (options.authoringText ?? 'Authored requested tasks.'),
+            text,
             executionMessageId: `authoring-message-${invocationCount}`,
             finishCode: 'stop',
             admittedAggregateSeq: invocationCount,
@@ -243,6 +274,22 @@ function createFixture(
             },
             usage: null,
           };
+        };
+        // The mocked invocation bypasses Managed runtime invocation records. Pair its reader
+        // with those same completions, retaining identity and snapshot checks across restart.
+        runtime.readFinalInstructions = async (request) => {
+          const completed = completedInvocations.get(request.invocationId);
+          expect(completed).toBeDefined();
+          expect(completed).toMatchObject({
+            operationId: request.operationId,
+            operationGeneration: request.operationGeneration,
+            stageId: request.stageId,
+            requestDigest: request.requestDigest,
+          });
+          expect(['authoring', 'repair']).toContain(completed!.purpose);
+          return completed!.completedSnapshotHash === request.stagedSnapshotHash
+            ? completed!.text
+            : null;
         };
         // This suite owns publication/ownership boundaries. Inject a verification verdict over
         // actual authenticated staged bytes; compile/Trial execution has dedicated suites.
@@ -530,7 +577,7 @@ test('owned no-op publishes nothing and preserves ownership for a later edit', a
   expect(fixture.store.getResultProjection(first.operation.operationId)).toEqual(first.projection);
 }, 60_000);
 
-test.each(['retry', 'discard'] as const)(
+test.each(['retry', 'retry_edited', 'discard'] as const)(
   'owned verification failure retains the draft and target across restart until explicit %s',
   async (action) => {
     const fixture = createFixture();
@@ -549,14 +596,14 @@ test.each(['retry', 'discard'] as const)(
     expect(fixture.store.getBindingLease(failed.operation.bindingId!)?.record.status).toBe(
       'reserved',
     );
-    const draft = fixture.readDraft(failed.operation.stageId!);
+    let draft = fixture.readDraft(failed.operation.stageId!);
     expect(
       (yaml.load(draft) as { tracks: Array<{ tasks: unknown[] }> }).tracks[0]!.tasks,
     ).toHaveLength(3);
     const invocations = fixture.invocationCount;
 
     await fixture.restart();
-    const retained = fixture.store.getOperation(failed.operation.operationId)!;
+    let retained = fixture.store.getOperation(failed.operation.operationId)!;
     expect(retained).toMatchObject({
       phase: 'trial-running',
       waitReason: 'user_retry',
@@ -567,7 +614,37 @@ test.each(['retry', 'discard'] as const)(
     expect(fixture.readDraft(retained.stageId!)).toBe(draft);
     expect(fixture.read(first.path!)).toBe(bytes);
     expect(fixture.invocationCount).toBe(invocations);
-    if (action === 'retry') {
+    if (action === 'retry_edited') {
+      const request = {
+        protocolVersion: 2 as const,
+        operationId: retained.operationId,
+        expectedGeneration: retained.generation,
+        expectedVersion: retained.version,
+        clientRequestId: 'read-owned-draft-after-restart',
+        payload: {
+          rendererInstanceId: 'renderer',
+          conversationId: 'conversation-a',
+          conversationKey: 'a'.repeat(64),
+        },
+      };
+      const editable = await fixture.service.accessDraft(fixture.workspaceRoot, request);
+      expect(editable.draft.selected).not.toBeNull();
+      draft = editable.draft.selected!.text.replace('Owned pipeline', 'Manually edited pipeline');
+      await fixture.service.accessDraft(fixture.workspaceRoot, {
+        ...request,
+        clientRequestId: 'save-owned-draft-after-restart',
+        payload: {
+          ...request.payload,
+          edit: {
+            fileId: editable.draft.selected!.id,
+            expectedHash: editable.draft.selected!.hash,
+            text: draft,
+          },
+        },
+      });
+      retained = fixture.store.getOperation(retained.operationId)!;
+    }
+    if (action !== 'discard') {
       fixture.allowVerification();
       expect(
         await fixture.service.retryReadonly(fixture.workspaceRoot, {
@@ -590,6 +667,13 @@ test.each(['retry', 'discard'] as const)(
       });
       expect(fixture.read(first.path!)).toBe(draft);
       expect(fixture.invocationCount).toBe(invocations);
+      const text = fixture.store.getResultProjection(retained.operationId)?.messages[0]?.text;
+      if (action === 'retry_edited') {
+        expect(text).toContain('The workflow has passed verification.');
+        expect(text).not.toContain('Authored requested tasks.');
+      } else {
+        expect(text).toBe('Authored requested tasks.');
+      }
     } else {
       expect(
         await fixture.service.discardReadonly(fixture.workspaceRoot, {

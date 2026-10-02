@@ -36,6 +36,7 @@ export type ChatOperationActionBlockedReason =
   | 'unavailable'
   | 'operation_changed'
   | 'pending'
+  | 'history_loading'
   | 'draft_open'
   | 'action_unavailable'
   | 'request_unavailable'
@@ -105,6 +106,8 @@ export function getChatOperationActionAvailability(
   )
     return 'operation_changed';
   if (state.pendingChatActions[chatOperationActionKey(action)]) return 'pending';
+  if (state.selectingSessionId !== null && action.type !== 'operation.stop')
+    return 'history_loading';
   if (useChatDraftStore.getState().visible) return 'draft_open';
   const retained = chatOperationV2RetainedWorkKind(operation);
   switch (action.type) {

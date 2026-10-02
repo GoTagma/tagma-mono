@@ -1540,18 +1540,25 @@
 
 ## Chat Usage Stats And Terminal Discard Reasons
 
-- Final published usage instructions must describe the verified artifacts after repair. Keep the
+- Final published usage instructions must describe the verified artifacts, including manual draft
+  edits before any automatic repair. Check the completed snapshot on every publication. Keep the
   original authoring message, provider evidence, and message identity immutable. Before WAL
   preparation, seal a bounded Host-approved instruction receipt joined to the same operation's
   settled authoring/repair outbox, request digest, completed snapshot, and verified artifact set.
   Public projection uses only its instructions and hides the source receipt. Never expose internal
   repair/Trial transcripts; if a later manual edit or legacy completion has no matching snapshot,
-  use neutral verified guidance instead of stale paths. Cover retained-draft restart and the
+  use neutral verified guidance instead of stale paths. Bound the serialized receipt as well as its
+  text and reject invalid Unicode. A valid original authoring response proven to match the final
+  snapshot keeps its existing result-message limit when it cannot fit the smaller receipt; do not
+  replace that unchanged response with a generic notice. Cover retained-draft restart and the
   production Service facade as well as the core runtime.
 - Paused `retryable_failure` operations may leave and re-enter their owning conversation without
   Stop/Discard, losing credentials, or releasing the draft reservation. Running, interactive,
   foreign-renderer nonterminal operations, and in-flight mutations still block navigation. UI,
   product commands, history rows, and the controller must enforce the same gates.
+  Claiming a mutation invalidates earlier history reads even when it settles back into a pause.
+  Recheck quiescence after an asynchronous selection and bind its conversation only when the detail
+  is accepted. Loading history blocks recovery/draft actions while keeping Stop independent.
 - Unexpected authored binding type/producer ambiguity is canonical `input_error`, even when its
   task is blocked before spawning. It grants bounded artifact repair with complete binding errors;
   missing external inputs and other blocked prerequisites remain diagnostic-only. Expected negative
@@ -1559,10 +1566,22 @@
 - Private repair evidence v2 may share exact repeated large strings via `sharedTexts`/`textRef`.
   Expanding references must restore all redacted evidence exactly, including successful-task streams;
   never truncate errors or discard unique successful output to manufacture context savings.
+  Store complete evidence separately from the 5 MiB stage authority: its small HMAC-authenticated
+  reference seals workspace/operation/generation/stage ownership, digest, and byte length. Evidence
+  is bounded at 64 MiB per blob; a storage limit or failure retains the readable draft without
+  excerpting errors. Authenticate and validate legacy inline authority before migration; failed
+  migration preserves the old bytes for retry. Ordinary server records retain their original bound,
+  and every writer must reject oversized serialized records before replacing existing bytes.
+  Sync both the blob and its owner directory before publishing the reference; sync the current
+  pointer before reclaiming its before-image. File sync needs a write-capable handle on Windows.
+  Clear interrupted pending links before hash reuse and reclaim orphan blobs before quota checks.
 - Freeze declared requirement/secret environment names in the Host Trial validation context and
   reject undeclared controls during `upsert-case` and `validate`, before counted commit. Keep the
   runtime preflight check authoritative for changed/legacy contexts. Only environment removal and
   manual denial use `baselineCaseId`; missing-file negatives use independent `content: null` fixtures.
+- Generated `file` and `native-output-and-file` result contracts must require both
+  `completion.type: file_exists` and a non-empty `completion.path` before returning YAML. Guard this
+  with the real seeded tool and pinned plugin schema; compiler rejection remains authoritative.
 
 - Model repair input is not the compact `ChatOperationFeedback` notice. Preserve captured task
   stdout/stderr before Trial display clipping and task selection, including stderr on successful

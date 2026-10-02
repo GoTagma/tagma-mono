@@ -103,6 +103,8 @@ Do not amend the same commit to include these files after naming them with the c
 - Authored input type and ambiguous-producer failures use canonical `input_error`, even when the
   task is blocked before spawning. Missing external input remains a prerequisite failure. Trial
   may repair only unexpected authored contract failures and must preserve full binding diagnostics.
+  Apply the same classification to inferred Prompt ports and inferred input coercion in direct
+  programmatic runs, which may bypass the YAML compiler.
 - Resolve explicit prompt `inputs` through the binding resolver once. Infer only unbound names from upstream command ports: inferred port metadata does not carry an authored `value`. Preserve literal/default/from values in the driver input, while missing required explicit bindings must still block.
 
 ## Chat-Authored Pipeline Path Coordinates

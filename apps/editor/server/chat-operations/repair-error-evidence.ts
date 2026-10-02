@@ -191,6 +191,13 @@ export function isChatRepairErrorEvidence(value: unknown): value is ChatRepairEr
     return false;
   try {
     const parsed: unknown = JSON.parse(record.text!);
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      ![1, 2].includes((parsed as { schemaVersion?: number }).schemaVersion ?? 0)
+    )
+      return false;
     return JSON.stringify(redactModelValue(parsed)) === record.text;
   } catch {
     return false;

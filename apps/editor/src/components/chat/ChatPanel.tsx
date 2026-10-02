@@ -231,6 +231,7 @@ export function RetryableOperationNoticeView({
 export function RetainedOperationNoticeView({
   kind,
   pending,
+  navigationPending = false,
   onRetry,
   onDiscard,
   failureCode = null,
@@ -238,6 +239,7 @@ export function RetainedOperationNoticeView({
   kind: 'publication' | 'handoff' | 'authoring';
   failureCode?: string | null;
   pending: boolean;
+  navigationPending?: boolean;
   onRetry: () => void;
   onDiscard?: () => void;
 }) {
@@ -268,7 +270,7 @@ export function RetainedOperationNoticeView({
       <div className="mt-2 flex gap-2">
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || navigationPending}
           onClick={onRetry}
           className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
         >
@@ -283,7 +285,7 @@ export function RetainedOperationNoticeView({
         {onDiscard && (
           <button
             type="button"
-            disabled={pending}
+            disabled={pending || (navigationPending && !publication)}
             onClick={onDiscard}
             className="border border-tagma-border px-2 py-1 text-tagma-muted disabled:opacity-50"
           >
@@ -312,6 +314,7 @@ export function RetainedVerificationNoticeView({
   updatedAt,
   verificationFeedback = null,
   pending,
+  navigationPending = false,
   canOpenDraft,
   onOpenDraft,
   onViewFeedback,
@@ -321,6 +324,7 @@ export function RetainedVerificationNoticeView({
   updatedAt: number;
   verificationFeedback?: ChatOperationFeedback | null;
   pending: boolean;
+  navigationPending?: boolean;
   canOpenDraft: boolean;
   onOpenDraft: () => void;
   onViewFeedback: () => void;
@@ -382,7 +386,7 @@ export function RetainedVerificationNoticeView({
             <button
               type="button"
               className="mt-0.5 text-tagma-accent hover:underline disabled:opacity-50"
-              disabled={pending || !canOpenDraft}
+              disabled={pending || navigationPending || !canOpenDraft}
               title={
                 canOpenDraft
                   ? 'Read the full feedback in the draft editor.'
@@ -401,7 +405,7 @@ export function RetainedVerificationNoticeView({
         <button
           type="button"
           className="btn-primary"
-          disabled={pending || !canOpenDraft}
+          disabled={pending || navigationPending || !canOpenDraft}
           title={
             canOpenDraft
               ? 'Review and edit the retained draft files.'
@@ -413,7 +417,7 @@ export function RetainedVerificationNoticeView({
         </button>
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || navigationPending}
           className="border border-tagma-border px-2 py-1 text-tagma-text disabled:opacity-50"
           title="Run verification again on the retained draft. This may use additional model tokens."
           onClick={onRetry}
@@ -422,7 +426,7 @@ export function RetainedVerificationNoticeView({
         </button>
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || navigationPending}
           className="px-2 py-1 text-tagma-muted hover:text-tagma-error disabled:opacity-50"
           onClick={onDiscard}
         >
@@ -459,6 +463,7 @@ function RetryableOperationNoticeBody({
         state.pendingChatActions[`${operation.operationId}:stop`]
       ),
   );
+  const navigationPending = useChatStore((state) => state.selectingSessionId !== null);
   const retry = async () => {
     if (operation)
       await performChatOperationAction({
@@ -493,6 +498,7 @@ function RetryableOperationNoticeBody({
         kind={retainedWork}
         failureCode={failureCode}
         pending={pending}
+        navigationPending={navigationPending}
         onRetry={() => {
           void retry();
         }}
@@ -524,6 +530,7 @@ function RetryableOperationNoticeBody({
         updatedAt={operation.updatedAt}
         verificationFeedback={detail?.verificationFeedback ?? null}
         pending={pending}
+        navigationPending={navigationPending}
         canOpenDraft={canOpenChatDraft()}
         onOpenDraft={() => onOpenDraft(operation)}
         onViewFeedback={() => onViewFeedback(operation)}

@@ -27,6 +27,15 @@ import {
   type ChatRepairErrorEvidence,
 } from './repair-error-evidence.js';
 import {
+  ChatRepairEvidenceStorageError,
+  isChatRepairEvidenceReference,
+  pruneChatRepairEvidenceBlobs,
+  readChatRepairEvidenceBlob,
+  writeChatRepairEvidenceBlob,
+  type ChatRepairEvidenceOwner,
+  type ChatRepairEvidenceReference,
+} from './repair-evidence-store.js';
+import {
   isChatOperationFeedback,
   type ChatOperationFeedback,
 } from '../../shared/chat-operation-feedback.js';
@@ -69,6 +78,9 @@ import { pipelineManifestPath } from '../pipeline-manifest.js';
 import {
   ensureServerRecordControlRootSync,
   readAuthenticatedServerRecordSync,
+  readLegacyChatAuthoringAuthorityRecordSync,
+  MAX_SERVER_RECORD_BYTES,
+  syncAuthenticatedServerRecordSync,
   writeAuthenticatedServerRecordSync,
   type ServerRecordContext,
 } from '../server-record-auth.js';
@@ -599,7 +611,7 @@ export interface ManagedChatOperationV2AuthoringAuthorityRecord {
   readonly stage: ChatOperationV2AuthoringStage;
   readonly relocation: ChatOperationV2SessionRelocation | null;
   readonly invocations: Readonly<Record<string, ManagedChatOperationV2InvocationAuthority>>;
-  readonly repairErrorEvidence?: ChatRepairErrorEvidence;
+  readonly repairErrorEvidence?: ChatRepairErrorEvidence | ChatRepairEvidenceReference;
 }
 
 export interface ManagedChatOperationV2CompileResult {
@@ -628,6 +640,10 @@ export interface ManagedChatOperationV2AuthoringStagingAdapter {
     stageId: string,
     record: ManagedChatOperationV2AuthoringAuthorityRecord,
   ): Promise<void>;
+  readRepairEvidence?(
+    stageId: string,
+    reference: ChatRepairEvidenceReference,
+  ): Promise<ChatRepairErrorEvidence>;
   readRelocation(stageId: string): Promise<ChatYamlStageSessionRelocationBinding | null>;
   prepareRelocation(input: {
     readonly stageId: string;
@@ -812,6 +828,110 @@ export function createManagedChatOperationV2AuthoringOpenCodeAdapter(options: {
   return new ProductionOpenCodeAdapter(options.sourceDirectory, options.invocationStore);
 }
 
+function evidenceOwner(
+  authority: ManagedChatOperationV2AuthoringAuthorityRecord,
+): ChatRepairEvidenceOwner {
+  return {
+    workspaceScopeId: authority.workspaceScopeId,
+    operationId: authority.stage.operationId,
+    operationGeneration: authority.stage.operationGeneration,
+    stageId: authority.stage.stageId,
+  };
+}
+
+function validateManagedAuthoringAuthorityRecord(
+  authority: ManagedChatOperationV2AuthoringAuthorityRecord,
+  stageId: string,
+): void {
+  try {
+    if (
+      authority.version !== AUTHORING_AUTHORITY_VERSION ||
+      authority.stage.stageId !== stageId ||
+      !UUID_RE.test(stageId) ||
+      authority.stage.status !== 'ready' ||
+      authority.stage.target.coordinate !== authority.targetRelativePath ||
+      exactPipelineRelativePath(authority.targetRelativePath) !== authority.targetRelativePath ||
+      exactPipelineRelativePath(authority.workingRelativePath) !== authority.workingRelativePath ||
+      authority.workingRelativePath !== authority.targetRelativePath ||
+      !isAbsolute(authority.sourceDirectory) ||
+      !isAbsolute(authority.stageDirectory) ||
+      authority.sourceDirectory === authority.stageDirectory ||
+      directoryIdentity(authority.sourceDirectory) !== authority.stage.sourceDirectoryIdentity ||
+      directoryIdentity(authority.stageDirectory) !== authority.stage.stageDirectoryIdentity ||
+      typeof authority.sessionId !== 'string' ||
+      !authority.sessionId ||
+      (authority.conversationId !== null &&
+        (typeof authority.conversationId !== 'string' || !authority.conversationId)) ||
+      (authority.intent !== 'create' && authority.intent !== 'edit') ||
+      (authority.intent === 'create'
+        ? authority.originHash !== null
+        : typeof authority.originHash !== 'string' || !HASH_RE.test(authority.originHash)) ||
+      !authority.invocations ||
+      typeof authority.invocations !== 'object' ||
+      Array.isArray(authority.invocations)
+    ) {
+      throw new Error('invalid authority');
+    }
+    if (authority.relocation) parseChatOperationV2SessionRelocation(authority.relocation);
+    if (
+      authority.repairErrorEvidence !== undefined &&
+      !isChatRepairErrorEvidence(authority.repairErrorEvidence) &&
+      !isChatRepairEvidenceReference(authority.repairErrorEvidence, evidenceOwner(authority))
+    )
+      throw new Error('invalid repair error evidence');
+    const invocations = Object.entries(authority.invocations);
+    if (invocations.length > 16) throw new Error('invocation authority bound exceeded');
+    for (const [invocationId, invocation] of invocations) {
+      if (
+        invocation.invocationId !== invocationId ||
+        !['authoring', 'repair', 'trial_plan'].includes(invocation.purpose) ||
+        typeof invocation.conversationId !== 'string' ||
+        !invocation.conversationId ||
+        authority.conversationId !== invocation.conversationId ||
+        !HASH_RE.test(invocation.requestDigest) ||
+        !HASH_RE.test(invocation.baselineSnapshotHash) ||
+        (invocation.completedSnapshotHash !== undefined &&
+          !HASH_RE.test(invocation.completedSnapshotHash)) ||
+        typeof invocation.executionSubmitted !== 'boolean' ||
+        (invocation.trialPlanRequestDigest !== undefined &&
+          (invocation.purpose !== 'trial_plan' ||
+            !HASH_RE.test(invocation.trialPlanRequestDigest))) ||
+        (invocation.completed !== null &&
+          (invocation.completed.kind !== 'completed' ||
+            invocation.completed.executionMessageId !== invocation.executionMessageId))
+      ) {
+        throw new Error('invalid invocation authority');
+      }
+      if (invocation.planReviewAffectedCases !== undefined) {
+        if (
+          invocation.purpose !== 'trial_plan' ||
+          !Array.isArray(invocation.planReviewAffectedCases) ||
+          invocation.planReviewAffectedCases.length > 16 ||
+          invocation.planReviewAffectedCases.some(
+            (item) =>
+              typeof item.caseId !== 'string' ||
+              item.caseId.length > 128 ||
+              !HASH_RE.test(item.originalCaseHash) ||
+              !Array.isArray(item.failedExpectationTypes) ||
+              item.failedExpectationTypes.length > 16 ||
+              (item.requiredFixture !== undefined &&
+                (typeof item.requiredFixture.path !== 'string' ||
+                  item.requiredFixture.path.length > 4096 ||
+                  item.requiredFixture.content !== null)),
+          )
+        )
+          throw new Error('invalid plan review authority');
+      }
+    }
+  } catch (error) {
+    if (error instanceof ChatOperationV2AuthoringProtocolError) throw error;
+    throw new ChatOperationV2AuthoringProtocolError(
+      'authority_mismatch',
+      'Authenticated authoring runtime record is invalid.',
+    );
+  }
+}
+
 class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStagingAdapter {
   constructor(private readonly workspace: WorkspaceState) {}
 
@@ -939,6 +1059,24 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     if ((await this.inspectStage(stageId)) === null) return null;
     const authority = this.authorityPath(stageId);
     if (!existsSync(authority.path)) return null;
+    if (lstatSync(authority.path).size > MAX_SERVER_RECORD_BYTES) {
+      const legacy =
+        readLegacyChatAuthoringAuthorityRecordSync<ManagedChatOperationV2AuthoringAuthorityRecord>(
+          authority.path,
+          authority.context,
+        );
+      validateManagedAuthoringAuthorityRecord(legacy, stageId);
+      if (!isChatRepairErrorEvidence(legacy.repairErrorEvidence))
+        throw new Error('Oversized authoring authority is not a supported inline-evidence record.');
+      try {
+        await this.writeAuthority(stageId, legacy);
+      } catch {
+        // The exact legacy record is already HMAC/schema authenticated. Keep it
+        // readable for draft recovery; the next read retries migration without
+        // deleting or weakening the original durable authority.
+        return legacy;
+      }
+    }
     return readAuthenticatedServerRecordSync<ManagedChatOperationV2AuthoringAuthorityRecord>(
       authority.path,
       authority.context,
@@ -951,7 +1089,64 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
   ): Promise<void> {
     const authority = this.authorityPath(stageId);
     ensureServerRecordControlRootSync(authority.context);
-    writeAuthenticatedServerRecordSync(authority.path, authority.context, record);
+    const evidence = record.repairErrorEvidence;
+    if (
+      isChatRepairErrorEvidence(evidence) &&
+      existsSync(authority.path) &&
+      lstatSync(authority.path).size <= MAX_SERVER_RECORD_BYTES
+    ) {
+      const previous =
+        readAuthenticatedServerRecordSync<ManagedChatOperationV2AuthoringAuthorityRecord>(
+          authority.path,
+          authority.context,
+        );
+      validateManagedAuthoringAuthorityRecord(previous, stageId);
+      // A previous publication may have returned a sync error after rename.
+      // Commit the current pointer before reclaiming any before-image blob.
+      syncAuthenticatedServerRecordSync(authority.path, authority.context);
+      // A failed pointer replacement may leave a complete orphan blob. Only the
+      // current authenticated reference survives pre-write quota reclamation.
+      pruneChatRepairEvidenceBlobs(
+        authority.context,
+        isChatRepairEvidenceReference(previous.repairErrorEvidence, evidenceOwner(previous))
+          ? previous.repairErrorEvidence
+          : null,
+      );
+    }
+    const reference = isChatRepairErrorEvidence(evidence)
+      ? writeChatRepairEvidenceBlob(authority.context, evidenceOwner(record), evidence)
+      : evidence;
+    writeAuthenticatedServerRecordSync(authority.path, authority.context, {
+      ...record,
+      ...(reference ? { repairErrorEvidence: reference } : {}),
+    });
+    if (isChatRepairEvidenceReference(reference, evidenceOwner(record))) {
+      syncAuthenticatedServerRecordSync(authority.path, authority.context);
+      // Garbage collection cannot invalidate an already committed pointer.
+      try {
+        pruneChatRepairEvidenceBlobs(authority.context, reference);
+      } catch {
+        /* retry on a later write */
+      }
+    }
+  }
+
+  async readRepairEvidence(
+    stageId: string,
+    reference: ChatRepairEvidenceReference,
+  ): Promise<ChatRepairErrorEvidence> {
+    const { context } = this.authorityPath(stageId);
+    const authority = await this.readAuthority(stageId);
+    if (
+      !authority ||
+      authority.repairErrorEvidence?.hash !== reference.hash ||
+      authority.repairErrorEvidence.trialId !== reference.trialId ||
+      !isChatRepairEvidenceReference(authority.repairErrorEvidence, evidenceOwner(authority)) ||
+      authority.repairErrorEvidence.byteLength !== reference.byteLength ||
+      !isChatRepairEvidenceReference(reference, evidenceOwner(authority))
+    )
+      throw new ChatRepairEvidenceStorageError('repair_evidence_unavailable');
+    return readChatRepairEvidenceBlob(context, evidenceOwner(authority), reference);
   }
 
   async readRelocation(stageId: string): Promise<ChatYamlStageSessionRelocationBinding | null> {
@@ -2148,93 +2343,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     authority: ManagedChatOperationV2AuthoringAuthorityRecord,
     stageId: string,
   ): void {
-    try {
-      if (
-        authority.version !== AUTHORING_AUTHORITY_VERSION ||
-        authority.stage.stageId !== stageId ||
-        !UUID_RE.test(stageId) ||
-        authority.stage.status !== 'ready' ||
-        authority.stage.target.coordinate !== authority.targetRelativePath ||
-        exactPipelineRelativePath(authority.targetRelativePath) !== authority.targetRelativePath ||
-        exactPipelineRelativePath(authority.workingRelativePath) !==
-          authority.workingRelativePath ||
-        authority.workingRelativePath !== authority.targetRelativePath ||
-        !isAbsolute(authority.sourceDirectory) ||
-        !isAbsolute(authority.stageDirectory) ||
-        authority.sourceDirectory === authority.stageDirectory ||
-        directoryIdentity(authority.sourceDirectory) !== authority.stage.sourceDirectoryIdentity ||
-        directoryIdentity(authority.stageDirectory) !== authority.stage.stageDirectoryIdentity ||
-        typeof authority.sessionId !== 'string' ||
-        !authority.sessionId ||
-        (authority.conversationId !== null &&
-          (typeof authority.conversationId !== 'string' || !authority.conversationId)) ||
-        (authority.intent !== 'create' && authority.intent !== 'edit') ||
-        (authority.intent === 'create'
-          ? authority.originHash !== null
-          : typeof authority.originHash !== 'string' || !HASH_RE.test(authority.originHash)) ||
-        !authority.invocations ||
-        typeof authority.invocations !== 'object' ||
-        Array.isArray(authority.invocations)
-      ) {
-        throw new Error('invalid authority');
-      }
-      if (authority.relocation) parseChatOperationV2SessionRelocation(authority.relocation);
-      if (
-        authority.repairErrorEvidence !== undefined &&
-        !isChatRepairErrorEvidence(authority.repairErrorEvidence)
-      )
-        throw new Error('invalid repair error evidence');
-      const invocations = Object.entries(authority.invocations);
-      if (invocations.length > 16) throw new Error('invocation authority bound exceeded');
-      for (const [invocationId, invocation] of invocations) {
-        if (
-          invocation.invocationId !== invocationId ||
-          !['authoring', 'repair', 'trial_plan'].includes(invocation.purpose) ||
-          typeof invocation.conversationId !== 'string' ||
-          !invocation.conversationId ||
-          authority.conversationId !== invocation.conversationId ||
-          !HASH_RE.test(invocation.requestDigest) ||
-          !HASH_RE.test(invocation.baselineSnapshotHash) ||
-          (invocation.completedSnapshotHash !== undefined &&
-            !HASH_RE.test(invocation.completedSnapshotHash)) ||
-          typeof invocation.executionSubmitted !== 'boolean' ||
-          (invocation.trialPlanRequestDigest !== undefined &&
-            (invocation.purpose !== 'trial_plan' ||
-              !HASH_RE.test(invocation.trialPlanRequestDigest))) ||
-          (invocation.completed !== null &&
-            (invocation.completed.kind !== 'completed' ||
-              invocation.completed.executionMessageId !== invocation.executionMessageId))
-        ) {
-          throw new Error('invalid invocation authority');
-        }
-        if (invocation.planReviewAffectedCases !== undefined) {
-          if (
-            invocation.purpose !== 'trial_plan' ||
-            !Array.isArray(invocation.planReviewAffectedCases) ||
-            invocation.planReviewAffectedCases.length > 16 ||
-            invocation.planReviewAffectedCases.some(
-              (item) =>
-                typeof item.caseId !== 'string' ||
-                item.caseId.length > 128 ||
-                !HASH_RE.test(item.originalCaseHash) ||
-                !Array.isArray(item.failedExpectationTypes) ||
-                item.failedExpectationTypes.length > 16 ||
-                (item.requiredFixture !== undefined &&
-                  (typeof item.requiredFixture.path !== 'string' ||
-                    item.requiredFixture.path.length > 4096 ||
-                    item.requiredFixture.content !== null)),
-            )
-          )
-            throw new Error('invalid plan review authority');
-        }
-      }
-    } catch (error) {
-      if (error instanceof ChatOperationV2AuthoringProtocolError) throw error;
-      throw new ChatOperationV2AuthoringProtocolError(
-        'authority_mismatch',
-        'Authenticated authoring runtime record is invalid.',
-      );
-    }
+    validateManagedAuthoringAuthorityRecord(authority, stageId);
   }
 
   async ensureStage(input: Parameters<ChatOperationV2AuthoringRuntime['ensureStage']>[0]) {
@@ -3068,14 +3177,28 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     hash: string;
   }): Promise<string> {
     const authority = await this.authority(input.stageId);
-    const evidence = authority.repairErrorEvidence;
+    const storedEvidence = authority.repairErrorEvidence;
     if (
       authority.stage.operationId !== input.operationId ||
       authority.stage.operationGeneration !== input.operationGeneration ||
-      !evidence ||
-      evidence.hash !== input.hash ||
-      !isChatRepairErrorEvidence(evidence)
+      !storedEvidence ||
+      storedEvidence.hash !== input.hash
     ) {
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Repair error evidence is unavailable or changed.',
+      );
+    }
+    let evidence: ChatRepairErrorEvidence;
+    try {
+      evidence = isChatRepairErrorEvidence(storedEvidence)
+        ? storedEvidence
+        : await this.staging.readRepairEvidence!(
+            input.stageId,
+            storedEvidence as ChatRepairEvidenceReference,
+          );
+      if (!isChatRepairErrorEvidence(evidence)) throw new Error('Invalid repair evidence.');
+    } catch {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
         'Repair error evidence is unavailable or changed.',
@@ -3088,10 +3211,16 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     authority: ManagedChatOperationV2AuthoringAuthorityRecord,
     evidence: ChatRepairErrorEvidence,
   ): Promise<string> {
-    await this.staging.writeAuthority(authority.stage.stageId, {
-      ...(await this.authority(authority.stage.stageId)),
-      repairErrorEvidence: evidence,
-    });
+    try {
+      await this.staging.writeAuthority(authority.stage.stageId, {
+        ...(await this.authority(authority.stage.stageId)),
+        repairErrorEvidence: evidence,
+      });
+    } catch (error) {
+      throw error instanceof ChatRepairEvidenceStorageError
+        ? error
+        : new ChatRepairEvidenceStorageError('repair_evidence_unavailable');
+    }
     return evidence.hash;
   }
 
@@ -3123,6 +3252,77 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
   }
 
   async verifyStage(input: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0]) {
+    try {
+      return await this.verifyStageWithCompleteEvidence(input);
+    } catch (error) {
+      if (!(error instanceof ChatRepairEvidenceStorageError)) throw error;
+      return this.unverifiedEvidenceStorage(input, error);
+    }
+  }
+
+  private async unverifiedEvidenceStorage(
+    input: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0],
+    error: ChatRepairEvidenceStorageError,
+    trial?: ChatPipelineTrialRunResult,
+  ) {
+    const authority = await this.authority(input.stage.stageId);
+    const current = await this.requireCurrentSnapshot(authority);
+    const summary =
+      error.code === 'repair_evidence_limit'
+        ? 'Complete repair evidence exceeds the storage limit. The draft is retained; no errors were reduced to excerpts.'
+        : 'Complete repair evidence could not be persisted. The draft is retained; repair requires complete authenticated evidence.';
+    const cases = trial?.cases ?? [];
+    const caseCount =
+      trial && Number.isSafeInteger(trial.plannedCaseCount)
+        ? Math.max(0, trial.plannedCaseCount ?? 0)
+        : cases.length;
+    const passedCount = Math.min(caseCount, cases.filter((item) => item.success).length);
+    const failedCount = Math.min(
+      caseCount - passedCount,
+      cases.filter((item) => !item.success).length,
+    );
+    const warningCount = trial?.kind === 'passed-with-warnings' ? Math.min(caseCount, 1) : 0;
+    return {
+      kind: 'unverified' as const,
+      trialId: trialId({ ...input, stageId: input.stage.stageId }),
+      planHash: trial?.plan ? sha256(canonicalJson(trial.plan)) : null,
+      caseCount,
+      passedCount,
+      failedCount,
+      warningCount,
+      trialStatus: 'blocked' as const,
+      errorCode: error.code,
+      diagnosticCodes: [error.code],
+      redactedSummary: summary,
+      feedback: verificationFeedback('trial', summary),
+      stagedSnapshotHash: current.snapshotHash,
+      artifactSetHash: current.artifactSetHash,
+      artifactCount: current.artifactCount,
+      outcome: trial
+        ? verificationOutcomeFromTrial(trial, {
+            caseCount,
+            passedCount,
+            failedCount,
+            reasonCode: error.code,
+          })
+        : createChatVerificationOutcome({
+            trialKind: 'setup-failed',
+            ran: false,
+            plannedCaseCount: 0,
+            caseResultCount: 0,
+            passedCaseCount: 0,
+            failedCaseCount: 0,
+            notRunCaseCount: 0,
+            taskStatusCounts: {},
+            reasonCode: error.code,
+            details: summary,
+          }),
+    };
+  }
+
+  private async verifyStageWithCompleteEvidence(
+    input: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0],
+  ) {
     this.assertScope(input.workspaceScopeId);
     const authority = await this.authority(input.stage.stageId);
     if (
@@ -3273,7 +3473,12 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     const diagnostic = safeCode(`trial_${trial.kind.replace(/-/g, '_')}`, 'trial_failed');
     const feedback = trialVerificationFeedback(trial);
     const repairErrorEvidence = buildChatRepairErrorEvidence(id, trial);
-    await this.persistRepairErrorEvidence(authority, repairErrorEvidence);
+    try {
+      await this.persistRepairErrorEvidence(authority, repairErrorEvidence);
+    } catch (error) {
+      if (!(error instanceof ChatRepairEvidenceStorageError)) throw error;
+      return this.unverifiedEvidenceStorage(input, error, trial);
+    }
     if (trial.kind === 'plan-required') {
       if (!trial.planRequest) {
         return {

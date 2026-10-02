@@ -43,6 +43,28 @@ test('paused publication exposes Retry without offering post-decision discard', 
   expect(html).not.toContain('Discard');
 });
 
+test.each(['publication', 'authoring', 'handoff'] as const)(
+  'History loading disables %s recovery while preserving publication cancellation',
+  (kind) => {
+    const html = renderToStaticMarkup(
+      <RetainedOperationNoticeView
+        kind={kind}
+        pending={false}
+        navigationPending={true}
+        onRetry={() => {}}
+        onDiscard={() => {}}
+      />,
+    );
+    const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(
+      ([button]) => button,
+    );
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toContain('disabled=""');
+    expect(buttons[1]?.includes('disabled=""')).toBe(kind !== 'publication');
+    expect(html).not.toContain('Submitting');
+  },
+);
+
 test.each(['staging', 'authoring', 'repairing', 'trial-running'] as const)(
   'a provider interruption retains %s work instead of permitting a destructive resend',
   (phase) => {
@@ -127,6 +149,17 @@ test('retained verification notice without feedback keeps actions available', ()
   expect(html).toContain('Open draft');
   expect(html).toContain('Continue verification');
   expect(html).not.toContain('View full feedback');
+});
+
+test('History loading disables retained verification decisions without claiming submission', () => {
+  const html = retainedVerificationNotice({ navigationPending: true });
+  const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(
+    ([button]) => button,
+  );
+  expect(buttons).toHaveLength(3);
+  expect(buttons.every((button) => button.includes('disabled=""'))).toBe(true);
+  expect(html).toContain('Continue verification');
+  expect(html).not.toContain('Submitting');
 });
 
 test('verification feedback excerpt clamps by lines and by characters', () => {
