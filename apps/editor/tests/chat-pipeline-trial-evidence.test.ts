@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import {
   buildChatPipelineTrialOutputDiagnostics,
@@ -7,8 +10,49 @@ import {
   filterChatPipelineTrialStderr,
   selectChatPipelineTrialTaskEvidence,
   trialTaskRepairScope,
+  trialTaskExecutionContext,
   type ChatPipelineTrialTaskResult,
 } from '../server/chat-pipeline-trial-run';
+
+test('Trial observes task json_schema output at effective cwd without exposing schema input as output', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-schema-context-'));
+  try {
+    mkdirSync(join(root, '.tagma', 'flow', 'nested'), { recursive: true });
+    writeFileSync(join(root, '.tagma', 'flow', 'nested', 'data.json'), '{}');
+    const track = { cwd: '.tagma/flow' };
+    const task = {
+      completion: { type: 'json_schema', path: 'data.json', schema_path: 'schema.json' },
+    };
+    expect(trialTaskExecutionContext({ ...task, cwd: '.tagma/flow/nested' }, track, root)).toEqual({
+      effectiveCwd: '.tagma/flow/nested',
+      completion: {
+        type: 'json_schema',
+        resolvedPath: '.tagma/flow/nested/data.json',
+        regularFile: true,
+      },
+    });
+    expect(trialTaskExecutionContext(task, track, root).completion?.regularFile).toBe(false);
+    expect(
+      trialTaskExecutionContext({ completion: { type: 'custom', path: 'data.json' } }, track, root)
+        .completion,
+    ).toEqual({ type: 'custom', resolvedPath: null, regularFile: null });
+    expect(
+      trialTaskExecutionContext(
+        {
+          completion: {
+            type: 'json_schema',
+            path: '../../../outside.json',
+            schema_path: 'schema.json',
+          },
+        },
+        track,
+        root,
+      ).completion,
+    ).toEqual({ type: 'json_schema', resolvedPath: null, regularFile: null });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function streamTruncation() {
   return {

@@ -26,6 +26,7 @@ import {
 import { createChatInventorySnapshot } from '../server/chat-operations/snapshots.js';
 import type {
   StoredChatOperationV2,
+  StoredHostOperationEvent,
   StoredInvocationOutboxRecord,
 } from '../server/chat-operations/store.js';
 import type { ChatOperationV2State } from '../server/chat-operations/types.js';
@@ -266,11 +267,22 @@ function harness(input: {
     type: string;
     payload: Readonly<Record<string, unknown>>;
   }[];
-  latestEvents?: readonly {
+  latestEvents?: readonly ({
     operationId: string;
     type: string;
     payload: Readonly<Record<string, unknown>>;
-  }[];
+  } & Partial<
+    Pick<
+      StoredHostOperationEvent,
+      | 'workspaceScopeId'
+      | 'generation'
+      | 'operationVersion'
+      | 'timestamp'
+      | 'phase'
+      | 'waitReason'
+      | 'terminal'
+    >
+  >)[];
   onListInvocationOutbox?: () => void;
 }) {
   const inventory = input.inventory ?? hostInventory();
@@ -779,6 +791,413 @@ describe('ChatTurn Operation V2 renderer projection', () => {
       recordedAt: 150,
     });
   });
+
+  test('projects an authenticated authoring decline separately from verification pause', () => {
+    const retained = operation('operation-declined', {
+      ...state({
+        phase: 'trial-running',
+        waitReason: 'user_retry',
+        bindingId: 'binding-retained',
+        stageId: 'stage-retained',
+      }),
+      version: 5,
+      updatedAt: 160,
+    });
+    const value = harness({
+      operations: [retained],
+      latestEvents: [
+        {
+          operationId: retained.operationId,
+          type: 'trial_status_changed',
+          phase: 'authoring',
+          terminal: false,
+          payload: {
+            stageId: retained.stageId,
+            status: 'failed',
+            errorCode: 'authoring_interactive_declined',
+            privateDiagnostic: 'must-not-project',
+          },
+        },
+      ],
+    });
+    const detail = readChatOperationV2OperationProjection(
+      value.persistence,
+      value.resolver,
+      'scope-01',
+      retained.operationId,
+    );
+    expect(detail.operation.executionState).toBe('retryable_failure');
+    expect(detail.failure).toEqual({
+      stage: 'authoring',
+      code: 'authoring_interactive_declined',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: 150,
+    });
+    expect(detail.pendingInput).toBeNull();
+    expect(JSON.stringify(detail.failure)).not.toContain('must-not-project');
+  });
+
+  test('a genuine current Trial pause preserves its existing failure projection', () => {
+    const retained = operation('operation-real-trial-pause', {
+      ...state({ phase: 'trial-running', waitReason: 'user_retry', stageId: 'stage-retained' }),
+      version: 5,
+      updatedAt: 160,
+    });
+    const value = harness({
+      operations: [retained],
+      latestEvents: [
+        {
+          operationId: retained.operationId,
+          type: 'trial_status_changed',
+          phase: 'verifying',
+          terminal: false,
+          payload: { stageId: retained.stageId, status: 'failed', errorCode: 'trial_failed' },
+        },
+      ],
+    });
+    expect(
+      readChatOperationV2OperationProjection(
+        value.persistence,
+        value.resolver,
+        'scope-01',
+        retained.operationId,
+      ).failure,
+    ).toEqual({
+      stage: 'verification',
+      code: 'trial_verification_paused',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: 160,
+    });
+  });
+
+  test.each([
+    ['workspace', { workspaceScopeId: 'different-scope' }],
+    ['generation', { generation: 0 }],
+    ['old version', { operationVersion: 3 }],
+    ['current version', { operationVersion: 5 }],
+    ['future version', { operationVersion: 6 }],
+    ['pre-operation timestamp', { timestamp: 99 }],
+    ['future timestamp', { timestamp: 161 }],
+    ['invalid timestamp', { timestamp: Number.NaN }],
+    [
+      'wrong stage',
+      {
+        payload: {
+          stageId: 'different-stage',
+          status: 'failed',
+          errorCode: 'authoring_interactive_declined',
+        },
+      },
+    ],
+  ] as const)('does not infer verification pause from %s retained evidence', (_label, patch) => {
+    const retained = operation('operation-unbound-reason', {
+      ...state({ phase: 'trial-running', waitReason: 'user_retry', stageId: 'stage-retained' }),
+      version: 5,
+      updatedAt: 160,
+    });
+    const value = harness({
+      operations: [retained],
+      latestEvents: [
+        {
+          operationId: retained.operationId,
+          type: 'trial_status_changed',
+          phase: 'authoring',
+          terminal: false,
+          payload: {
+            stageId: retained.stageId,
+            status: 'failed',
+            errorCode: 'authoring_interactive_declined',
+          },
+          ...patch,
+        },
+      ],
+    });
+    expect(
+      readChatOperationV2OperationProjection(
+        value.persistence,
+        value.resolver,
+        'scope-01',
+        retained.operationId,
+      ).failure,
+    ).toEqual({
+      stage: 'operation',
+      code: 'retained_reason_unknown',
+      invocationId: null,
+      outboxStatus: null,
+      recordedAt: 160,
+    });
+  });
+
+  test.each([
+    ['accessor absent', undefined],
+    ['event absent', []],
+  ] as const)(
+    'missing retained reason evidence cannot establish verification pause (%s)',
+    (_label, latestEvents) => {
+      const retained = operation('operation-missing-reason', {
+        ...state({ phase: 'trial-running', waitReason: 'user_retry', stageId: 'stage-retained' }),
+        version: 5,
+        updatedAt: 160,
+      });
+      const value = harness({ operations: [retained], latestEvents });
+      expect(
+        readChatOperationV2OperationProjection(
+          value.persistence,
+          value.resolver,
+          'scope-01',
+          retained.operationId,
+        ).failure,
+      ).toEqual({
+        stage: 'operation',
+        code: 'retained_reason_unknown',
+        invocationId: null,
+        outboxStatus: null,
+        recordedAt: 160,
+      });
+    },
+  );
+
+  test('a current Trial reason supersedes an older decline', () => {
+    const retained = operation('operation-retried-trial', {
+      ...state({ phase: 'trial-running', waitReason: 'user_retry', stageId: 'stage-retained' }),
+      version: 8,
+      updatedAt: 160,
+    });
+    const value = harness({
+      operations: [retained],
+      latestEvents: [
+        {
+          operationId: retained.operationId,
+          type: 'trial_status_changed',
+          operationVersion: 4,
+          phase: 'authoring',
+          terminal: false,
+          payload: {
+            stageId: retained.stageId,
+            status: 'failed',
+            errorCode: 'authoring_interactive_declined',
+          },
+        },
+        {
+          operationId: retained.operationId,
+          type: 'trial_status_changed',
+          operationVersion: 7,
+          phase: 'verifying',
+          terminal: false,
+          payload: { stageId: retained.stageId, status: 'failed', errorCode: 'trial_failed' },
+        },
+      ],
+    });
+    expect(
+      readChatOperationV2OperationProjection(
+        value.persistence,
+        value.resolver,
+        'scope-01',
+        retained.operationId,
+      ).failure,
+    ).toMatchObject({ stage: 'verification', code: 'trial_verification_paused' });
+  });
+
+  test.each([
+    ['failed_terminal', 'provider_billing_required', 'provider_billing_required'],
+    ['submitted_unknown', null, 'submitted_unknown'],
+  ] as const)(
+    'provider %s remains authoritative over a prior authoring decline',
+    (status, failureCode, code) => {
+      const retryable = operation('operation-provider-after-decline', {
+        ...state({
+          phase: 'trial-running',
+          waitReason: 'provider_unavailable',
+          stageId: 'stage-retained',
+        }),
+        version: 5,
+        updatedAt: 160,
+      });
+      const value = harness({
+        operations: [retryable],
+        latestEvents: [
+          {
+            operationId: retryable.operationId,
+            type: 'trial_status_changed',
+            payload: {
+              stageId: retryable.stageId,
+              status: 'failed',
+              errorCode: 'authoring_interactive_declined',
+            },
+          },
+        ],
+        outboxes: [
+          {
+            invocationId: 'authoring-failure',
+            workspaceScopeId: 'scope-01',
+            operationId: retryable.operationId,
+            purpose: 'authoring',
+            sessionId: 'private-session',
+            inputId: 'private-input',
+            requestDigest: HASH_A,
+            status,
+            failureCode,
+            preparedAt: 145,
+            updatedAt: 155,
+            admittedAggregateSeq: null,
+            settledAt: status === 'failed_terminal' ? 155 : null,
+          },
+        ],
+      });
+      expect(
+        readChatOperationV2OperationProjection(
+          value.persistence,
+          value.resolver,
+          'scope-01',
+          retryable.operationId,
+        ).failure,
+      ).toEqual({
+        stage: 'authoring',
+        code,
+        invocationId: 'authoring-failure',
+        outboxStatus: status,
+        recordedAt: 160,
+      });
+    },
+  );
+
+  test.each(['completed_noop', 'cancelled_precommit'] as const)(
+    'terminal %s does not revive a prior decline reason',
+    (terminalOutcome) => {
+      const terminal = operation('operation-terminal-after-decline', {
+        ...state({ phase: 'terminal', terminalOutcome, stageId: 'stage-retained' }),
+        version: 5,
+        updatedAt: 160,
+      });
+      const value = harness({
+        operations: [terminal],
+        latestEvents: [
+          {
+            operationId: terminal.operationId,
+            type: 'trial_status_changed',
+            payload: {
+              stageId: terminal.stageId,
+              status: 'failed',
+              errorCode: 'authoring_interactive_declined',
+            },
+          },
+        ],
+      });
+      expect(
+        readChatOperationV2OperationProjection(
+          value.persistence,
+          value.resolver,
+          'scope-01',
+          terminal.operationId,
+        ).failure,
+      ).toBeNull();
+    },
+  );
+
+  test.each(['trial_blocked', 'repair_evidence_limit'] as const)(
+    'a returned blocked verification projects its pause (%s)',
+    (errorCode) => {
+      const retained = operation('operation-blocked-verification', {
+        ...state({ phase: 'trial-running', waitReason: 'user_retry', stageId: 'stage-retained' }),
+        version: 5,
+        updatedAt: 160,
+      });
+      const value = harness({
+        operations: [retained],
+        latestEvents: [
+          {
+            operationId: retained.operationId,
+            type: 'trial_status_changed',
+            phase: 'trial-running',
+            terminal: false,
+            payload: { stageId: retained.stageId, status: 'blocked', errorCode },
+          },
+        ],
+      });
+      const detail = readChatOperationV2OperationProjection(
+        value.persistence,
+        value.resolver,
+        'scope-01',
+        retained.operationId,
+      );
+      // A blocked storage result can precede any business Trial case execution.
+      expect(detail.failure).toEqual({
+        stage: 'verification',
+        code: 'trial_verification_paused',
+        invocationId: null,
+        outboxStatus: null,
+        recordedAt: 160,
+      });
+      expect(detail.trialProgress).toBeNull();
+    },
+  );
+
+  test.each([
+    ['decline', {}, 'authoring', 'authoring_interactive_declined'],
+    ['old generation', { generation: 0 }, 'operation', 'retained_reason_unknown'],
+    ['old version', { operationVersion: 3 }, 'operation', 'retained_reason_unknown'],
+    ['future timestamp', { timestamp: 161 }, 'operation', 'retained_reason_unknown'],
+    [
+      'passed status',
+      {
+        payload: {
+          stageId: 'stage-retained',
+          status: 'passed',
+          errorCode: 'authoring_interactive_declined',
+        },
+      },
+      'operation',
+      'retained_reason_unknown',
+    ],
+    [
+      'wrong stage',
+      {
+        payload: {
+          stageId: 'different-stage',
+          status: 'blocked',
+          errorCode: 'authoring_interactive_declined',
+        },
+      },
+      'operation',
+      'retained_reason_unknown',
+    ],
+  ] as const)(
+    'a blocked %s reason cannot establish verification pause',
+    (_label, patch, stage, code) => {
+      const retained = operation('operation-blocked-excluded', {
+        ...state({ phase: 'trial-running', waitReason: 'user_retry', stageId: 'stage-retained' }),
+        version: 5,
+        updatedAt: 160,
+      });
+      const value = harness({
+        operations: [retained],
+        latestEvents: [
+          {
+            operationId: retained.operationId,
+            type: 'trial_status_changed',
+            phase: 'authoring',
+            terminal: false,
+            payload: {
+              stageId: retained.stageId,
+              status: 'blocked',
+              errorCode: 'authoring_interactive_declined',
+            },
+            ...patch,
+          },
+        ],
+      });
+      expect(
+        readChatOperationV2OperationProjection(
+          value.persistence,
+          value.resolver,
+          'scope-01',
+          retained.operationId,
+        ).failure,
+      ).toMatchObject({ stage, code, invocationId: null, outboxStatus: null });
+    },
+  );
 
   test('maps an unknown stored failure code to a stable Renderer code', () => {
     const retryable = operation('operation-private-failure-code', {

@@ -11,7 +11,7 @@ Electron shell that wraps the [tagma-editor](../editor) into a packaged desktop 
 
 ## Requirements
 
-- **Bun** >= 1.3 (matches the workspace `packageManager` pin — currently 1.3.11)
+- **Bun** 1.3.14 (matches the workspace `packageManager` pin)
 - The editor build chain: `bun run build:desktop` from the repo root produces every prerequisite (`@tagma/types` + `@tagma/core` + `@tagma/runtime-bun` + `@tagma/sdk` + plugins + editor client + sidecar + electron main).
 
 ## Local development

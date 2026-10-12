@@ -136,11 +136,13 @@ export const OpenCodeDriver: DriverPlugin = {
     // resolved task -> track -> pipeline inheritance, so we only need to read
     // task.reasoning_effort here.
     const rawEffort = task.reasoning_effort ?? track.reasoning_effort;
-    const variant = rawEffort
-      ? rawEffort in EFFORT_TO_VARIANT
-        ? EFFORT_TO_VARIANT[rawEffort]
-        : rawEffort
-      : null;
+    const variant = ctx.resolveOpencodeVariant
+      ? await ctx.resolveOpencodeVariant(model, rawEffort)
+      : rawEffort
+        ? Object.hasOwn(EFFORT_TO_VARIANT, rawEffort)
+          ? EFFORT_TO_VARIANT[rawEffort]
+          : rawEffort
+        : null;
     const permissions = task.permissions ?? track.permissions ?? DEFAULT_PERMISSIONS;
     const permissionRestrictions = buildPermissionRestrictions(permissions);
     const restricted = Object.keys(permissionRestrictions).length > 0;
@@ -190,8 +192,9 @@ export const OpenCodeDriver: DriverPlugin = {
       'json', // JSON output for parseResult
     ];
 
-    // `--variant` must precede `--` like every other flag. opencode rejects
-    // unknown variant names with a clear error, so we don't pre-validate.
+    // The managed Host validates this native id against the effective model.
+    // Standalone SDK callers retain portable lowering and native passthrough.
+    // `--variant` must precede `--` like every other flag.
     if (variant) {
       args.push('--variant', variant);
     }

@@ -426,13 +426,40 @@ describe('durable complete repair evidence storage', () => {
       error: 'Second diagnosis',
     });
     const before = readFileSync(saved.path);
-    await expect(
-      h.staging.writeAuthority(STAGE_ID, {
-        ...saved.saved,
-        repairErrorEvidence: second,
-        invocations: { oversized: { text: 'X'.repeat(MAX_SERVER_RECORD_BYTES) } } as never,
-      }),
-    ).rejects.toThrow(/limit/);
+    const conversationId = saved.saved.conversationId ?? 'conversation-storage';
+    const oversizedAuthority: ManagedChatOperationV2AuthoringAuthorityRecord = {
+      ...saved.saved,
+      conversationId,
+      repairErrorEvidence: second,
+      invocations: {
+        oversized: {
+          invocationId: 'oversized',
+          sessionId: saved.saved.sessionId,
+          inputId: 'input-oversized',
+          purpose: 'authoring',
+          conversationId,
+          requestDigest: 'a'.repeat(64),
+          executionMessageId: 'message-oversized',
+          baselineSnapshotHash: saved.saved.stage.snapshotHash,
+          completedSnapshotHash: saved.saved.stage.snapshotHash,
+          executionSubmitted: true,
+          completed: {
+            kind: 'completed',
+            disposition: 'no_change',
+            text: 'X'.repeat(MAX_SERVER_RECORD_BYTES),
+            executionMessageId: 'message-oversized',
+            finishCode: 'stop',
+            admittedAggregateSeq: 1,
+            source: { aggregateSeq: 1, eventId: 'event-oversized' },
+            usage: null,
+          },
+        },
+      },
+    };
+    expect(new TextEncoder().encode(JSON.stringify(oversizedAuthority)).byteLength).toBeGreaterThan(
+      MAX_SERVER_RECORD_BYTES,
+    );
+    await expect(h.staging.writeAuthority(STAGE_ID, oversizedAuthority)).rejects.toThrow(/limit/);
     expect(readFileSync(saved.path)).toEqual(before);
     expect(await h.factory().readRepairErrorEvidence!({ ...h.identity, hash: first.hash })).toBe(
       first.text,

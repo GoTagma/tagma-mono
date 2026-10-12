@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { delimiter, dirname, join } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { basename, delimiter, dirname, join } from 'node:path';
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -16,7 +22,14 @@ import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 import type { TrialInteractionDeclaration } from '@tagma/types';
 
 import { stopAllChatCompileWatchers, stopChatCompileWatcher } from '../server/chat-compile-watcher';
-import { __chatPipelineTrialRunTestHooks } from '../server/chat-pipeline-trial-run';
+import {
+  __chatPipelineTrialRunTestHooks,
+  trialRunChatYamlStage,
+} from '../server/chat-pipeline-trial-run';
+import { issueChatYamlStageTrialPlanAttempt } from '../server/chat-yaml-staging';
+import { readChatPipelineTrialPlanRejectionEvidence } from '../server/chat-pipeline-trial-plan';
+import { createTrialPlanRejectionEvidenceRules } from '../server/chat-trial-plan-rejection-evidence';
+import { withWorkspacePluginMutationLock } from '../server/plugins/locks';
 import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
 import { bypassesRevisionCheck } from '../server/revision-routes';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
@@ -4704,6 +4717,154 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  // Prepared-only insertion before the completed-response drift test near line 4707
+  // in apps/editor/tests/chat-yaml-staging-route.test.ts. Uses existing imports/helpers.
+  // These are two independent fixtures; the finalized fixture is never resumed.
+  for (const { action, legacyVersion } of [45, 46].flatMap((legacyVersion) =>
+    (['finalize', 'rerun'] as const).map((action) => ({ action, legacyVersion })),
+  )) {
+    test(
+      action === 'finalize'
+        ? `does not grant finalize authority to a correctly signed v${legacyVersion} Trial cache`
+        : `reexecutes a same-input signed v${legacyVersion} Trial cache under v48 and replays only the new result`,
+      async () => {
+        const { ws, sourcePath } = makeWorkspace();
+        const getRoute = createHarness();
+        const sourceBefore = readFileSync(sourcePath, 'utf-8');
+        // Instrument a real task without adding a mutable output to its workspace witness.
+        const counterDir = mkdtempSync(join(tmpdir(), 'tagma-trial-version-counter-'));
+        roots.push(counterDir);
+        const counterPath = join(counterDir, 'executions.txt');
+        const helperPath = join(dirname(sourcePath), 'cache-probe.js');
+        writeFileSync(
+          helperPath,
+          [
+            "const fs = require('node:fs');",
+            `const counterPath = ${JSON.stringify(counterPath)};`,
+            "const count = fs.existsSync(counterPath) ? Number(fs.readFileSync(counterPath, 'utf8')) : 0;",
+            'fs.writeFileSync(counterPath, String(count + 1));',
+            "process.stdout.write('probe');",
+          ].join(' '),
+          'utf-8',
+        );
+        const startRes = makeRes();
+        getRoute('/api/workspace/chat-yaml-stage/start')(
+          request(ws, { activePath: sourcePath }, 'chat-lock'),
+          startRes,
+        );
+        const stage = startRes.body as {
+          id: string;
+          rootDir: string;
+          entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+        };
+        const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+        writeFileSync(
+          entry.stagedPath,
+          serializePipeline({
+            name: 'Signed Trial Cache Version',
+            tracks: [
+              {
+                id: 'main',
+                name: 'Main',
+                tasks: [{ id: 'case_probe', command: { argv: [process.execPath, helperPath] } }],
+              },
+            ],
+          }),
+          'utf-8',
+        );
+        compileStage(getRoute, ws, stage.id, entry.relativePath);
+        writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+        const trialId = `signed_cache_version_${action}`;
+        const runTrial = async () => {
+          const res = makeRes();
+          await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+            request(
+              ws,
+              { stageId: stage.id, relativePath: entry.relativePath, trialId },
+              'chat-lock',
+            ),
+            res,
+          );
+          expect(res.statusCode).toBe(200);
+          return res;
+        };
+        try {
+          const first = await runTrial();
+          expect(first.body).toMatchObject({ success: true, ran: true });
+          expect(readFileSync(counterPath, 'utf-8')).toBe('1');
+          const cachePath = onlyTrialCachePath(stage.rootDir);
+          const context = {
+            workspaceTagmaDir: join(ws.workDir, '.tagma'),
+            controlRoot: dirname(cachePath),
+            stageId: stage.id,
+            kind: 'trial-cache' as const,
+          };
+          type CacheFixture = {
+            version: number;
+            inputHash: string;
+            result: { version: number };
+            caseReuse: unknown[];
+          };
+          const current = readAuthenticatedServerRecordSync<CacheFixture>(cachePath, context);
+          // The same-input legacy fixture retains its actual witness, assertions and
+          // reusable case records. Only the protocol tags change, then Host re-signs it.
+          expect(current.caseReuse.length).toBeGreaterThan(0);
+          const legacy = {
+            ...current,
+            version: legacyVersion,
+            result: { ...current.result, version: legacyVersion },
+          };
+          writeAuthenticatedServerRecordSync(cachePath, context, legacy);
+          expect(readAuthenticatedServerRecordSync<CacheFixture>(cachePath, context)).toEqual(
+            legacy,
+          );
+
+          if (action === 'finalize') {
+            const finalizeRes = makeRes();
+            await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+              request(
+                ws,
+                { stageId: stage.id, relativePath: entry.relativePath, trialId },
+                'chat-lock',
+              ),
+              finalizeRes,
+            );
+            expect(finalizeRes.statusCode).toBe(200);
+            expect(finalizeRes.body).toMatchObject({
+              outcome: 'forked',
+              conflicts: ['trial-run-failed'],
+              trialVerification: 'not-verified',
+            });
+            expect(readFileSync(sourcePath, 'utf-8')).toBe(sourceBefore);
+            expect(readFileSync(counterPath, 'utf-8')).toBe('1');
+          } else {
+            const rerun = await runTrial();
+            expect(rerun.body).toMatchObject({
+              version: 48,
+              success: true,
+              ran: true,
+              cases: [expect.objectContaining({ executionSource: 'current-trial' })],
+            });
+            expect(readFileSync(counterPath, 'utf-8')).toBe('2');
+            const refreshed = readAuthenticatedServerRecordSync<CacheFixture>(cachePath, context);
+            expect(refreshed).toMatchObject({
+              version: 48,
+              inputHash: current.inputHash,
+              result: { version: 48 },
+            });
+            const replay = await runTrial();
+            expect(replay.body).toEqual(rerun.body);
+            expect(readFileSync(counterPath, 'utf-8')).toBe('2');
+          }
+        } finally {
+          discardStage(getRoute, ws, stage.id);
+          ws.watcher.stopWatching();
+          ws.layoutWatcher.stopWatching();
+        }
+      },
+    );
+  }
+
   test('replays a completed trial response after workspace drift but rejects stale finalize', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
@@ -5210,4 +5371,230 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
+  function completeRejectedPlanStage() {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      rootDir: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Counted invalid plan',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              { id: 'local', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
+          },
+        ],
+      }),
+    );
+    const yamlHash = createHash('sha1')
+      .update(readFileSync(entry.stagedPath, 'utf8'))
+      .digest('hex');
+    const attemptId = 'fixture-attempt-1';
+    issueChatYamlStageTrialPlanAttempt(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      yamlHash,
+      attemptId,
+    });
+    writeAuthenticatedTrialPlanTelemetry(entry.stagedPath, 1, 0);
+    const stageRoot = dirname(dirname(dirname(dirname(entry.stagedPath))));
+    const binding = {
+      stageRoot,
+      yamlHash,
+      relativeYamlPath: entry.relativePath,
+      attemptId,
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
+      successfulWriteCount: 0,
+    };
+    const rules = createTrialPlanRejectionEvidenceRules({
+      createHash,
+      randomUUID,
+      basename,
+      dirname,
+      join,
+      constants,
+      closeSync,
+      fstatSync,
+      lstatSync,
+      mkdirSync,
+      openSync,
+      readFileSync,
+      renameSync,
+      rmSync,
+      writeFileSync,
+    });
+    const diagnostic = {
+      message: 'private diagnostic --token route-private-secret ' + '原始诊断🧭'.repeat(180),
+      missingEvidence: ['source-passages'],
+      issues: [
+        {
+          type: 'source-preservation' as const,
+          caseId: null,
+          code: 'evidence-missing',
+          field: 'expectations',
+          message: 'Keep the complete private diagnostic.',
+          repairScope: 'diagnostic-only' as const,
+        },
+      ],
+    };
+    const evidence = rules.write(binding, diagnostic, true);
+    expect(readChatPipelineTrialPlanRejectionEvidence(entry.stagedPath, 2)).toEqual(evidence);
+    return {
+      ws,
+      getRoute,
+      stage,
+      entry,
+      stageRoot,
+      attemptId,
+      rules,
+      binding,
+      diagnostic,
+      evidence,
+    };
+  }
+
+  test('legacy Trial route strips complete private rejection and Host request while preserving public planning feedback', async () => {
+    const h = completeRejectedPlanStage();
+    const internal = await trialRunChatYamlStage(h.ws, {
+      stageId: h.stage.id,
+      relativePath: h.entry.relativePath,
+      trialId: 'private_internal',
+    });
+    expect(internal.kind).toBe('plan-required');
+    expect(internal.repairPlanRejectionEvidence?.text).toBe(h.evidence.text);
+    // Reset the same counted current attempt so the HTTP call has its own valid
+    // native handoff, then exercise both required and exhausted response paths.
+    for (const count of [1, 2]) {
+      issueChatYamlStageTrialPlanAttempt(h.ws, {
+        stageId: h.stage.id,
+        relativePath: h.entry.relativePath,
+        yamlHash: h.binding.yamlHash,
+        attemptId: `fixture-attempt-${count}`,
+      });
+      writeAuthenticatedTrialPlanTelemetry(h.entry.stagedPath, count, 0);
+      h.rules.write(
+        {
+          ...h.binding,
+          attemptId: `fixture-attempt-${count}`,
+          toolAttemptCount: count,
+          validationRejectionCount: count,
+        },
+        h.diagnostic,
+        true,
+      );
+      const response = makeRes();
+      await h.getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+        request(
+          h.ws,
+          {
+            stageId: h.stage.id,
+            relativePath: h.entry.relativePath,
+            trialId: `private_route_${count}`,
+          },
+          'chat-lock',
+        ),
+        response,
+      );
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toMatchObject({
+        success: false,
+        ran: false,
+        kind: count === 1 ? 'plan-required' : 'plan-failed',
+        planTelemetry: { toolAttemptCount: count, validationRejectionCount: count },
+      });
+      expect((response.body as { summary: string }).summary).toBeTruthy();
+      expect(response.body).not.toHaveProperty('repairPlanRejectionEvidence');
+      expect(response.body).not.toHaveProperty('repairPlanRequest');
+      expect(JSON.stringify(response.body)).not.toContain('route-private-secret');
+      expect(JSON.stringify(response.body)).not.toContain(h.evidence.text);
+      if (count === 1) expect(response.body).toHaveProperty('planRequest.attemptId');
+    }
+  });
+
+  for (const mutation of ['counter', 'companion', 'attempt', 'budget'] as const) {
+    test(`Trial refuses a fresh plan attempt when counted rejection ${mutation} changes during awaited plugin preparation`, async () => {
+      const h = completeRejectedPlanStage();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const held = withWorkspacePluginMutationLock(h.ws, () => gate);
+      const heldTask = h.ws.pluginOpLocks.get('__workspace_plugin_mutation__');
+      const pending = trialRunChatYamlStage(h.ws, {
+        stageId: h.stage.id,
+        relativePath: h.entry.relativePath,
+        trialId: 'late_preparation',
+      });
+      try {
+        // Observe the existing production lock waiter, not a timer or a new
+        // hook. The Trial already captured the rejection before it queues here.
+        for (
+          let turn = 0;
+          turn < 1000 && h.ws.pluginOpLocks.get('__workspace_plugin_mutation__') === heldTask;
+          turn++
+        ) {
+          await Promise.resolve();
+        }
+        expect(h.ws.pluginOpLocks.get('__workspace_plugin_mutation__')).not.toBe(heldTask);
+        if (mutation === 'counter') {
+          writeAuthenticatedTrialPlanTelemetry(h.entry.stagedPath, 2, 0);
+        } else if (mutation === 'companion') {
+          h.rules.write(
+            h.binding,
+            { ...h.diagnostic, message: 'different complete rejection' },
+            true,
+          );
+        } else if (mutation === 'attempt') {
+          issueChatYamlStageTrialPlanAttempt(h.ws, {
+            stageId: h.stage.id,
+            relativePath: h.entry.relativePath,
+            yamlHash: h.binding.yamlHash,
+            attemptId: 'late_host_attempt',
+          });
+        } else {
+          const path = join(h.stageRoot, 'stage.json');
+          const metadata = JSON.parse(readFileSync(path, 'utf8'));
+          metadata.trialPlanMaxAttempts = 3;
+          writeFileSync(path, JSON.stringify(metadata));
+        }
+        release();
+        await held;
+        const result = await pending;
+        expect(result).toMatchObject({
+          success: false,
+          kind: 'setup-failed',
+          ran: false,
+          repairAuthorization: 'diagnostic-only',
+        });
+        expect(result.planRequest).toBeUndefined();
+        expect(result.repairPlanRejectionEvidence).toBeUndefined();
+        const metadata = JSON.parse(readFileSync(join(h.stageRoot, 'stage.json'), 'utf8'));
+        expect(metadata.trialPlanAttempt.attemptId).toBe(
+          mutation === 'attempt' ? 'late_host_attempt' : h.attemptId,
+        );
+        expect(h.ws.chatPipelineTrialAbort).toBeNull();
+        expect(result.totalTaskCount).toBe(0);
+        expect(result.tasks).toEqual([]);
+      } finally {
+        release();
+        await held;
+        await pending;
+      }
+    });
+  }
 });

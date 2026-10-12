@@ -60,6 +60,119 @@ function pipeline(cwd: string, taskCwd?: string) {
 }
 
 describe('pipeline copies across workspace coordinates', () => {
+  test.each(['track-cwd', 'task-cwd'] as const)(
+    'a copied json_schema completion reads both relocated local companions (%s)',
+    async (cwdOwner) => {
+      const root = mkdtempSync(join(tmpdir(), 'tagma-copied-schema-'));
+      roots.push(root);
+      const stagedDir = join(root, 'stage', '.tagma', 'branch');
+      const completion = {
+        type: 'json_schema',
+        path: join(stagedDir, 'data.json'),
+        schema_path: join(stagedDir, 'data.schema.json'),
+      };
+      const config: Parameters<typeof serializePipeline>[0] = {
+        ...pipeline('.tagma/origin'),
+        tracks: [
+          {
+            ...pipeline('.tagma/origin').tracks[0]!,
+            ...(cwdOwner === 'task-cwd' ? { cwd: 'shared' } : {}),
+            tasks: [
+              {
+                ...pipeline('.tagma/origin').tracks[0]!.tasks[0]!,
+                completion,
+                ...(cwdOwner === 'task-cwd' ? { cwd: '.tagma/origin' } : {}),
+              },
+            ],
+          },
+        ],
+      };
+      const result = rewrite(config, root);
+      const track = result.config.tracks[0]!;
+      const task = track.tasks[0]!;
+      const copied = task.completion!;
+      const destinationDir = dirname(result.destinationYamlPath);
+      mkdirSync(destinationDir, { recursive: true });
+      writeFileSync(join(destinationDir, 'data.json'), '{"marker":"copied-only"}');
+      writeFileSync(join(destinationDir, 'data.schema.json'), '{"type":"object"}');
+      expect(copied.path).toBe(join(destinationDir, 'data.json'));
+      expect(copied.schema_path).toBe(join(destinationDir, 'data.schema.json'));
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          'const fs=require("node:fs");process.stdout.write(JSON.stringify(process.argv.slice(1).map(p=>JSON.parse(fs.readFileSync(p,"utf8")))))',
+          String(copied.path),
+          String(copied.schema_path),
+        ],
+        {
+          cwd: resolve(result.destinationWorkDir, task.cwd ?? track.cwd ?? '.'),
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      );
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      expect({ stdout, stderr, exitCode }).toEqual({
+        stdout: '[{"marker":"copied-only"},{"type":"object"}]',
+        stderr: '',
+        exitCode: 0,
+      });
+    },
+  );
+
+  test('copy preserves task cwd overrides and foreign json_schema coordinates', () => {
+    const externalSchema = join(virtualRoot, 'foreign', 'schema.json');
+    const result = rewrite({
+      name: 'Schema coordinates',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          cwd: '.tagma/origin',
+          tasks: [
+            {
+              id: 'nested',
+              name: 'Nested',
+              cwd: '.tagma/origin/jobs',
+              command: 'echo copied',
+              completion: { type: 'json_schema', path: 'data.json', schema_path: 'schema.json' },
+            },
+            {
+              id: 'external',
+              name: 'External',
+              cwd: '.',
+              command: 'echo copied',
+              completion: {
+                type: 'json_schema',
+                path: '.tagma/other/data.json',
+                schema_path: externalSchema,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const track = result.config.tracks[0]!;
+    const nested = track.tasks[0]!;
+    expect(nested.completion).toEqual({
+      type: 'json_schema',
+      path: 'data.json',
+      schema_path: 'schema.json',
+    });
+    expect(resolve(result.destinationWorkDir, nested.cwd!)).toBe(
+      join(dirname(result.destinationYamlPath), 'jobs'),
+    );
+    expect(track.tasks[1]!.completion).toEqual({
+      type: 'json_schema',
+      path: '.tagma/other/data.json',
+      schema_path: externalSchema,
+    });
+  });
+
   test('keeps explicit root and shared cwd independent of existing staged directories', () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-existing-copy-cwd-'));
     roots.push(root);

@@ -1,6 +1,14 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import { CHAT_OPERATION_V2_HOST_EVENT_TYPES as SERVER_CHAT_OPERATION_V2_HOST_EVENT_TYPES } from '../server/chat-operations/events';
+import {
+  CHAT_OPERATION_V2_HOST_EVENT_TYPES as SERVER_CHAT_OPERATION_V2_HOST_EVENT_TYPES,
+  toHostOperationEventInput,
+} from '../server/chat-operations/events';
+import {
+  chatExecutionMessageId,
+  observeChatExecutionInput,
+  type ChatExecutionInputWitness as ServerExecutionInputWitness,
+} from '../server/chat-operations/execution-input-witness';
 import {
   CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION as SERVER_CHAT_OPERATION_V2_PROJECTION_SCHEMA_VERSION,
   CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES as SERVER_CHAT_OPERATION_V2_RENDERER_EXECUTION_STATES,
@@ -33,6 +41,7 @@ import {
   CHAT_OPERATION_V2_TERMINAL_DISCARD_REASON_CODES,
   CHAT_OPERATION_V2_TERMINAL_OUTCOMES,
   CHAT_OPERATION_V2_WAIT_REASONS,
+  type ChatOperationV2ExecutionInputWitness,
   ChatOperationV2ApiError,
   ChatOperationV2ProtocolError,
   cancelChatOperationV2,
@@ -1330,3 +1339,93 @@ test('rejects invalid mutation URL identities before contacting the sidecar', as
   ).rejects.toBeInstanceOf(TypeError);
   expect(calls).toBe(0);
 });
+
+function hostExecutionObservationFixture() {
+  const owner = {
+    workspaceScopeId: 'scope-observer',
+    operationId: 'operation-observer',
+    operationGeneration: 1,
+    stageId: 'stage-observer',
+    repairAttempt: 0,
+  };
+  const identity = {
+    ...owner,
+    invocationId: 'invocation-observer',
+    sessionId: 'session-observer',
+    inputId: 'input-observer',
+    purpose: 'authoring' as const,
+  };
+  let witness!: ServerExecutionInputWitness;
+  observeChatExecutionInput({
+    ...identity,
+    executionMessageId: chatExecutionMessageId(identity),
+    observation: {
+      owner,
+      reference: null,
+      emit: (actual) => {
+        witness = actual;
+      },
+    },
+    canonicalRequestBytes: new TextEncoder().encode('{}'),
+    promptText: 'Local synthetic authoring input.',
+  });
+  // Both assignments are intentional compile-time parity checks for this scalar projection.
+  const browserWitness: ChatOperationV2ExecutionInputWitness = witness;
+  const serverWitness: ServerExecutionInputWitness = browserWitness;
+  const hostEvent = toHostOperationEventInput({
+    schemaVersion: 1,
+    eventId: 'event-observer',
+    type: 'execution_input_observed',
+    timestamp: 100,
+    payload: { invocationId: identity.invocationId, witness: serverWitness },
+  });
+  return { hostEvent, wake: operationWake(1, witness.operationId) };
+}
+
+test('reads the content-free wake for a validated Host SDK observation without returning its payload', async () => {
+  const { hostEvent, wake } = hostExecutionObservationFixture();
+  expect(hostEvent.type).toBe('execution_input_observed');
+  expect(hostEvent.source).toBeUndefined();
+  globalThis.fetch = (async () =>
+    Response.json({
+      protocolVersion: 2,
+      kind: 'events',
+      requestedAfter: 0,
+      retainedFloor: 0,
+      latestCursor: 1,
+      nextCursor: 1,
+      events: [wake],
+    })) as unknown as typeof fetch;
+  const page = await fetchChatOperationV2Events(0);
+  expect(page).toMatchObject({ kind: 'events', events: [wake] });
+  expect(JSON.stringify(page)).not.toContain('witness');
+  expect(JSON.stringify(page)).not.toContain('Local synthetic authoring input.');
+});
+
+test.each(['host-payload', 'error-body', 'unknown-field', 'authority'] as const)(
+  'event wake reading rejects %s instead of treating a diagnostic body as authority',
+  async (fault) => {
+    const { hostEvent, wake } = hostExecutionObservationFixture();
+    const value =
+      fault === 'host-payload'
+        ? { ...wake, payload: hostEvent.payload }
+        : fault === 'error-body'
+          ? { ...wake, errors: 'PRIVATE_ERROR_BODY_MUST_NOT_PASS' }
+          : fault === 'authority'
+            ? { ...wake, authorization: 'untrusted-grant' }
+            : { ...wake, unexpectedField: true };
+    globalThis.fetch = (async () =>
+      Response.json({
+        protocolVersion: 2,
+        kind: 'events',
+        requestedAfter: 0,
+        retainedFloor: 0,
+        latestCursor: 1,
+        nextCursor: 1,
+        events: [value],
+      })) as unknown as typeof fetch;
+    await expect(fetchChatOperationV2Events(0)).rejects.toBeInstanceOf(
+      ChatOperationV2ProtocolError,
+    );
+  },
+);

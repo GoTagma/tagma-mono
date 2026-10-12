@@ -224,12 +224,13 @@ export async function collectStream(
 ): Promise<{
   text: string;
   totalBytes: number;
+  storedBytes: number;
   path: string | null;
   complete: boolean;
   error: Error | null;
 }> {
   if (!stream) {
-    return { text: '', totalBytes: 0, path: null, complete: true, error: null };
+    return { text: '', totalBytes: 0, storedBytes: 0, path: null, complete: true, error: null };
   }
 
   // Independent streaming decoder for the live side-channel. Kept separate
@@ -437,6 +438,7 @@ export async function collectStream(
   return {
     text,
     totalBytes: childBytes,
+    storedBytes,
     // Return the path even on partial-write failure so operators can still
     // inspect the head bytes we managed to persist.
     path: filePath ?? null,
@@ -1024,6 +1026,10 @@ export async function runSpawnWith(
   const stderrPath = stderrResult.path;
   const stdoutBytes = stdoutResult.totalBytes;
   const stderrBytes = stderrResult.totalBytes;
+  const storedByteCounts = {
+    stdoutStoredBytes: stdoutResult.storedBytes,
+    stderrStoredBytes: stderrResult.storedBytes,
+  };
   const outputDiagnostics: TaskOutputDiagnostic[] = [];
   if (stdoutResult.error) {
     outputDiagnostics.push({
@@ -1072,6 +1078,7 @@ export async function runSpawnWith(
       stderrPath,
       stdoutBytes,
       stderrBytes,
+      ...storedByteCounts,
       durationMs,
       sessionId: null,
       normalizedOutput: null,
@@ -1095,6 +1102,7 @@ export async function runSpawnWith(
       stderrPath,
       stdoutBytes,
       stderrBytes,
+      ...storedByteCounts,
       durationMs,
       sessionId: null,
       normalizedOutput: null,
@@ -1147,6 +1155,8 @@ export async function runSpawnWith(
         stderrPath,
         stdoutBytes,
         stderrBytes,
+        ...storedByteCounts,
+        stderrDiagnostics: { suffix: note, completeSuffix: note, sourceBytes: stderrBytes },
         durationMs,
         sessionId: null,
         normalizedOutput: null,
@@ -1159,14 +1169,17 @@ export async function runSpawnWith(
   // reason appended to stderr so users see WHY the task failed without
   // having to dig through driver-specific JSON.
   if (forcedFailureMessage !== null) {
+    const suffix = (stderr.endsWith('\n') ? '' : '\n') + `[driver] ${forcedFailureMessage}`;
     return {
       exitCode: exitCode === 0 ? 1 : exitCode,
       stdout,
-      stderr: stderr + (stderr.endsWith('\n') ? '' : '\n') + `[driver] ${forcedFailureMessage}`,
+      stderr: stderr + suffix,
       stdoutPath,
       stderrPath,
       stdoutBytes,
       stderrBytes,
+      ...storedByteCounts,
+      stderrDiagnostics: { suffix, completeSuffix: suffix, sourceBytes: stderrBytes },
       durationMs,
       sessionId,
       normalizedOutput,
@@ -1181,6 +1194,7 @@ export async function runSpawnWith(
     stderrPath,
     stdoutBytes,
     stderrBytes,
+    ...storedByteCounts,
     durationMs,
     sessionId,
     normalizedOutput,

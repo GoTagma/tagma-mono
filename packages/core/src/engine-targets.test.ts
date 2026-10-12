@@ -102,6 +102,166 @@ const config: PipelineConfig = {
 };
 
 describe('targeted pipeline runs', () => {
+  test('forwards the managed OpenCode resolver through a copied runtime and binds its receiver', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    let receivedModel: string | undefined;
+    let receivedEffort: string | undefined;
+    let variant: string | null | undefined;
+    let spawned = 0;
+    const baseRuntime: TagmaRuntime = {
+      ...fakeRuntime([]),
+      resolveOpencodeVariant(model, effort) {
+        expect(this).toBe(runtime);
+        receivedModel = model;
+        receivedEffort = effort;
+        return 'low';
+      },
+      async runSpawn() {
+        spawned += 1;
+        return taskResult('verified');
+      },
+    };
+    const runtime: TagmaRuntime = { ...baseRuntime, now: () => new Date('2026-05-12T08:00:00Z') };
+    registry.registerPlugin('drivers', 'opencode', {
+      name: 'opencode',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand(task, _track, ctx) {
+        variant = await ctx.resolveOpencodeVariant?.(task.model, task.reasoning_effort);
+        return { args: ['opencode', '--variant', variant ?? 'missing'] };
+      },
+    });
+    try {
+      const result = await runPipeline(
+        {
+          name: 'managed-variant',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [
+                {
+                  id: 'verify',
+                  prompt: 'verify',
+                  driver: 'opencode',
+                  model: 'deepseek/deepseek-flash',
+                  reasoning_effort: 'low',
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        { registry, runtime, skipPluginLoading: true },
+      );
+      expect(result.success).toBe(true);
+      expect(receivedModel).toBe('deepseek/deepseek-flash');
+      expect(receivedEffort).toBe('low');
+      expect(variant).toBe('low');
+      expect(spawned).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not spawn an OpenCode task when its managed resolver rejects the variant', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    let spawned = 0;
+    registry.registerPlugin('drivers', 'opencode', {
+      name: 'opencode',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand(task, _track, ctx) {
+        await ctx.resolveOpencodeVariant?.(task.model, task.reasoning_effort);
+        return { args: ['opencode'] };
+      },
+    });
+    const runtime: TagmaRuntime = {
+      ...fakeRuntime([]),
+      async resolveOpencodeVariant() {
+        throw new Error('Managed OpenCode variant is unavailable.');
+      },
+      async runSpawn() {
+        spawned += 1;
+        return taskResult('unexpected');
+      },
+    };
+    try {
+      const result = await runPipeline(
+        {
+          name: 'managed-variant',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [
+                {
+                  id: 'verify',
+                  prompt: 'verify',
+                  driver: 'opencode',
+                  model: 'deepseek/deepseek-flash',
+                  reasoning_effort: 'low',
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        { registry, runtime, skipPluginLoading: true },
+      );
+      expect(result.success).toBe(false);
+      expect(spawned).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the managed OpenCode callback out of other driver contexts', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    let resolverExposed = true;
+    registry.registerPlugin('drivers', 'mock', {
+      name: 'mock',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand(_task, _track, ctx) {
+        resolverExposed = ctx.resolveOpencodeVariant !== undefined;
+        return { args: ['mock'] };
+      },
+    });
+    try {
+      const result = await runPipeline(
+        {
+          name: 'other-driver',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [{ id: 'verify', prompt: 'verify', driver: 'mock' }],
+            },
+          ],
+        },
+        dir,
+        {
+          registry,
+          runtime: {
+            ...fakeRuntime([]),
+            resolveOpencodeVariant() {
+              throw new Error('OpenCode policy must not be invoked.');
+            },
+            async runSpawn() {
+              return taskResult('verified');
+            },
+          },
+          skipPluginLoading: true,
+        },
+      );
+      expect(result.success).toBe(true);
+      expect(resolverExposed).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('runs selected tasks and their upstream prerequisites, not downstream tasks', async () => {
     const dir = makeDir();
     const seenCommands: string[] = [];

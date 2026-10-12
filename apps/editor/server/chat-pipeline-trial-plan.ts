@@ -1,6 +1,18 @@
-import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
 
 import type { PipelineConfig } from '@tagma/sdk';
 import { buildDag } from '@tagma/sdk/config';
@@ -12,6 +24,7 @@ import {
   isValidChatPipelineTrialPlanAttempts,
 } from '../shared/chat-pipeline-trial-plan-limit.js';
 import { sameFilesystemPathCoordinate } from '../shared/filesystem-paths.js';
+import { createTrialFixtureSetupRules } from './chat-trial-fixture-setup-rules.js';
 import {
   buildTrialPlanPathCoordinateContext,
   createTrialPathCoordinateRules,
@@ -28,7 +41,38 @@ import {
   trialIntentDigest,
 } from './chat-trial-intent-coverage.js';
 
+import {
+  createTrialPlanRejectionEvidenceRules,
+  type ChatPipelineTrialPlanRejectionEvidence,
+} from './chat-trial-plan-rejection-evidence.js';
+export type { ChatPipelineTrialPlanRejectionEvidence } from './chat-trial-plan-rejection-evidence.js';
+
+const trialPlanRejectionEvidenceRules = createTrialPlanRejectionEvidenceRules({
+  createHash,
+  randomUUID,
+  basename,
+  dirname,
+  join,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+});
 const trialPathCoordinateRules = createTrialPathCoordinateRules();
+const trialFixtureSetupRules = createTrialFixtureSetupRules({
+  createHash,
+  dirname,
+  join,
+  lstatSync,
+  readFileSync,
+});
+const TrialPlanFixtureSetupError = trialFixtureSetupRules.FixtureSetupError;
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
   version: 12,
@@ -75,6 +119,7 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     'json-valid',
     'json-pointer-equals',
     'json-pointer-text-occurrence',
+    'file-source-text-occurrence',
     'directory-entry-count',
     'task-status',
   ],
@@ -147,6 +192,15 @@ export type ChatPipelineTrialExpectation =
   | { type: 'file-equals'; path: string; text: string }
   | { type: 'file-preserves-lines'; path: string; sourcePath: string; text: string }
   | { type: 'json-valid'; path: string }
+  | {
+      type: 'file-source-text-occurrence';
+      path: string;
+      sourcePath: string;
+      sourcePointer: string;
+      producerTaskId: string;
+      consumerTaskId: string;
+      present: boolean;
+    }
   | {
       type: 'json-pointer-text-occurrence';
       path: string;
@@ -232,8 +286,7 @@ export interface ChatPipelineTrialPlanRequest {
 }
 
 export function chatPipelineTrialCaseExecutionHash(testCase: ChatPipelineTrialPlanCase): string {
-  const { title: _title, objective: _objective, ...execution } = testCase;
-  return createHash('sha256').update(JSON.stringify(execution)).digest('hex');
+  return trialFixtureSetupRules.caseExecutionHash(testCase);
 }
 
 /** Bound plan-review evidence to failed cases; infer absence only from a passing peer. */
@@ -277,15 +330,6 @@ export function affectedChatPipelineTrialPlanCases(
         },
       ];
     });
-}
-
-class TrialPlanFixtureSetupError extends Error {
-  constructor(
-    message: string,
-    readonly affectedCases: NonNullable<ChatPipelineTrialPlanRequest['affectedCases']>,
-  ) {
-    super(message);
-  }
 }
 
 export type ChatPipelineTrialPlanReadResult =
@@ -340,6 +384,58 @@ function emptyTrialPlanToolTelemetry(
     elapsedMs: 0,
     rejections: [],
   };
+}
+
+/** Read only complete current-attempt evidence. Compact summaries are never a substitute. */
+export function readChatPipelineTrialPlanRejectionEvidence(
+  stagedYamlPath: string,
+  maxAttempts = DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  expectedAttemptId?: string,
+): ChatPipelineTrialPlanRejectionEvidence | null {
+  try {
+    const telemetry = readChatPipelineTrialPlanToolTelemetry(stagedYamlPath, maxAttempts);
+    if (telemetry.successfulWriteCount !== 0 || telemetry.committedPlanHash !== null) return null;
+    const stageRoot = dirname(dirname(dirname(dirname(stagedYamlPath))));
+    const stagePath = join(stageRoot, 'stage.json');
+    const stat = lstatSync(stagePath);
+    if (stat.isSymbolicLink() || !stat.isFile()) return null;
+    const stage = JSON.parse(readFileSync(stagePath, 'utf8')) as {
+      trialPlanMaxAttempts?: unknown;
+      trialPlanAttempt?: { attemptId?: unknown; yamlHash?: unknown; relativePath?: unknown };
+    };
+    if (stage.trialPlanMaxAttempts !== maxAttempts) return null;
+    const attempt = stage.trialPlanAttempt;
+    if (
+      !attempt ||
+      typeof attempt.attemptId !== 'string' ||
+      !TRIAL_PLAN_HOST_ATTEMPT_ID_RE.test(attempt.attemptId) ||
+      (expectedAttemptId !== undefined && attempt.attemptId !== expectedAttemptId) ||
+      attempt.yamlHash !== telemetry.yamlHash ||
+      typeof attempt.relativePath !== 'string' ||
+      attempt.relativePath.replace(/\\/g, '/') !== telemetry.relativeYamlPath
+    )
+      return null;
+    const evidence = trialPlanRejectionEvidenceRules.read({
+      stageRoot,
+      yamlHash: telemetry.yamlHash,
+      relativeYamlPath: telemetry.relativeYamlPath,
+      attemptId: attempt.attemptId,
+      toolAttemptCount: telemetry.toolAttemptCount,
+      validationRejectionCount: telemetry.validationRejectionCount,
+      successfulWriteCount: telemetry.successfulWriteCount,
+    });
+    if (
+      evidence?.submissionConsumed &&
+      (telemetry.toolAttemptCount === 0 ||
+        telemetry.validationRejectionCount === 0 ||
+        telemetry.attemptIds.at(-1) !== evidence.attemptId ||
+        evidence.recordedAt < (telemetry.lastAttemptAt ?? Number.MAX_SAFE_INTEGER))
+    )
+      return null;
+    return evidence;
+  } catch {
+    return null;
+  }
 }
 
 function telemetryInteger(value: unknown, label: string, max: number): number {
@@ -630,6 +726,41 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
       present: raw.present,
     };
   }
+  if (type === 'file-source-text-occurrence') {
+    const allowed = [
+      'type',
+      'path',
+      'sourcePath',
+      'sourcePointer',
+      'producerTaskId',
+      'consumerTaskId',
+      'present',
+    ];
+    if (Object.keys(raw).some((key) => !allowed.includes(key)))
+      throw new Error(`${label} contains unsupported source-relation fields.`);
+    if (typeof raw.present !== 'boolean') throw new Error(`${label}.present must be a boolean.`);
+    const producerTaskId = asString(raw.producerTaskId, `${label}.producerTaskId`, 160);
+    const consumerTaskId = asString(raw.consumerTaskId, `${label}.consumerTaskId`, 160);
+    if (
+      !QUALIFIED_TASK_ID_RE.test(producerTaskId) ||
+      !QUALIFIED_TASK_ID_RE.test(consumerTaskId) ||
+      producerTaskId === consumerTaskId
+    )
+      throw new Error(`${label} requires distinct qualified producer and consumer task ids.`);
+    const path = normalizeRelativeCasePath(raw.path, `${label}.path`);
+    const sourcePath = normalizeRelativeCasePath(raw.sourcePath, `${label}.sourcePath`);
+    if (relativeFilePathsOverlap(path.toLowerCase(), sourcePath.toLowerCase()))
+      throw new Error(`${label} output must differ from its source.`);
+    return {
+      type,
+      path,
+      sourcePath,
+      sourcePointer: parseJsonPointer(raw.sourcePointer, `${label}.sourcePointer`),
+      producerTaskId,
+      consumerTaskId,
+      present: raw.present,
+    };
+  }
   if (type === 'directory-entry-count') {
     const min = raw.min === undefined ? null : asInteger(raw.min, `${label}.min`, 0, 10_000);
     const max = raw.max === undefined ? null : asInteger(raw.max, `${label}.max`, 0, 10_000);
@@ -711,13 +842,21 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
   if (new Set(normalizedGeneratedInputPaths).size !== normalizedGeneratedInputPaths.length) {
     throw new Error(`${label}.generatedInputPaths must not name the same path twice.`);
   }
-  if (normalizedGeneratedInputPaths.some((path) => fixturePaths.includes(path))) {
+  if (
+    normalizedGeneratedInputPaths.some((path) =>
+      fixtures.some((fixture) => fixture.path.toLowerCase() === path && fixture.content !== null),
+    )
+  ) {
     throw new Error(`${label}.generatedInputPaths must not also be pre-seeded through fixtures.`);
   }
   if (
     normalizedGeneratedInputPaths.some(
       (path, index) =>
-        fixturePaths.some((candidate) => relativeFilePathsOverlap(path, candidate)) ||
+        fixtures.some(
+          (fixture) =>
+            relativeFilePathsOverlap(path, fixture.path.toLowerCase()) &&
+            !(fixture.path.toLowerCase() === path && fixture.content === null),
+        ) ||
         normalizedGeneratedInputPaths
           .slice(0, index)
           .some((candidate) => relativeFilePathsOverlap(path, candidate)),
@@ -750,7 +889,11 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
   }
   const generatedInputExpectationPaths = new Set(
     expectations.flatMap((expectation) =>
-      expectation.type === 'file-equals' ? [expectation.path.toLowerCase()] : [],
+      expectation.type === 'file-equals'
+        ? [expectation.path.toLowerCase()]
+        : expectation.type === 'file-source-text-occurrence' && expectation.present
+          ? [expectation.sourcePath.toLowerCase()]
+          : [],
     ),
   );
   for (const generatedInputPath of normalizedGeneratedInputPaths) {
@@ -759,6 +902,23 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
         `${label}.generatedInputPaths requires a file-equals expectation for ${generatedInputPath}.`,
       );
     }
+  }
+  for (const expectation of expectations) {
+    if (expectation.type !== 'file-source-text-occurrence') continue;
+    if (
+      !normalizedGeneratedInputPaths.includes(expectation.sourcePath.toLowerCase()) ||
+      !fixtures.some(
+        (fixture) => fixture.path === expectation.sourcePath && fixture.content === null,
+      ) ||
+      fixtures.some(
+        (fixture) =>
+          fixture.content !== null &&
+          relativeFilePathsOverlap(fixture.path.toLowerCase(), expectation.path.toLowerCase()),
+      )
+    )
+      throw new Error(
+        `${label}.source-text relation requires an unseeded generated source and output.`,
+      );
   }
   const targetTaskIds = [
     ...new Set(
@@ -855,7 +1015,8 @@ export function findChatPipelineTrialRepeatedFileOutputPaths(
       expectation.type === 'file-equals' ||
       expectation.type === 'file-preserves-lines' ||
       expectation.type === 'json-valid' ||
-      expectation.type === 'json-pointer-equals'
+      expectation.type === 'json-pointer-equals' ||
+      expectation.type === 'file-source-text-occurrence'
     )) {
       continue;
     }
@@ -884,7 +1045,8 @@ function hasDistinctOutputExpectation(cases: ChatPipelineTrialPlanCase[]): boole
         expectation.type === 'file-equals' ||
         expectation.type === 'file-preserves-lines' ||
         expectation.type === 'json-valid' ||
-        expectation.type === 'json-pointer-equals'
+        expectation.type === 'json-pointer-equals' ||
+        expectation.type === 'file-source-text-occurrence'
       ) {
         positivePaths.add(expectation.path.toLowerCase());
       }
@@ -1334,107 +1496,7 @@ export function validateChatPipelineTrialFixtureSetup(
   stagedYamlPath: string,
   relativeYamlPath: string,
 ): void {
-  const namespace = dirname(relativeYamlPath).replace(/\\/g, '/');
-  const fingerprint = (content: string | Uint8Array | null): string | null =>
-    content === null ? null : createHash('sha256').update(content).digest('hex');
-  const base = new Map<string, string | null>();
-  const readBase = (path: string): string | null => {
-    if (base.has(path)) return base.get(path)!;
-    let value: string | null = null;
-    if (path.startsWith(`${namespace}/`)) {
-      const suffix = path.slice(namespace.length + 1);
-      let current = dirname(stagedYamlPath);
-      for (const segment of suffix.split('/')) {
-        current = join(current, segment);
-        try {
-          if (lstatSync(current).isSymbolicLink())
-            throw new Error('Trial fixtures must not address symlinks.');
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            base.set(path, null);
-            return null;
-          }
-          throw error;
-        }
-      }
-      if (!lstatSync(current).isFile())
-        throw new Error('Trial file fixtures must address regular files.');
-      value = fingerprint(readFileSync(current));
-    }
-    base.set(path, value);
-    return value;
-  };
-  for (const negative of plan.cases) {
-    if (
-      negative.baselineCaseId ||
-      negative.evidence?.some((item) => item.type !== 'source-preservation') ||
-      (negative.environment?.length ?? 0) > 0 ||
-      (negative.deniedManualTaskIds?.length ?? 0) > 0
-    )
-      continue;
-    for (const positive of plan.cases) {
-      if (
-        positive === negative ||
-        positive.baselineCaseId ||
-        positive.evidence?.some((item) => item.type !== 'source-preservation') ||
-        (positive.environment?.length ?? 0) > 0 ||
-        JSON.stringify([...positive.targetTaskIds].sort()) !==
-          JSON.stringify([...negative.targetTaskIds].sort())
-      )
-        continue;
-      const contradictsSuccess = negative.expectations.some(
-        (item) =>
-          item.type === 'task-status' &&
-          item.status !== 'success' &&
-          positive.expectations.some(
-            (other) =>
-              other.type === 'task-status' &&
-              other.taskId === item.taskId &&
-              other.status === 'success',
-          ),
-      );
-      if (!contradictsSuccess) continue;
-      const left = new Map(positive.fixtures.map((item) => [item.path, fingerprint(item.content)]));
-      const right = new Map(
-        negative.fixtures.map((item) => [item.path, fingerprint(item.content)]),
-      );
-      const omittedPaths = [...left.keys()].filter((path) => !right.has(path));
-      if (omittedPaths.length > 0) {
-        throw new TrialPlanFixtureSetupError(
-          `Case ${negative.id} omits a file input controlled by positive case ${positive.id}. Omission keeps the staged file; it does not construct absence. Explicitly fixture the negative input (content: null for missing, a string for present bytes) before testing a contradictory task outcome. Correct the plan, not the pipeline.`,
-          [
-            {
-              caseId: negative.id,
-              failedExpectationTypes: ['task-status'],
-              originalCaseHash: chatPipelineTrialCaseExecutionHash(negative),
-              ...(omittedPaths.length === 1
-                ? { requiredFixture: { path: omittedPaths[0]!, content: null } }
-                : {}),
-            },
-          ],
-        );
-      }
-      const paths = new Set([...left.keys(), ...right.keys()]);
-      if (
-        [...paths].every(
-          (path) =>
-            (left.has(path) ? left.get(path) : readBase(path)) ===
-            (right.has(path) ? right.get(path) : readBase(path)),
-        )
-      ) {
-        throw new TrialPlanFixtureSetupError(
-          `Case ${negative.id} expects a different task outcome from ${positive.id} with the same effective file inputs and targets. fixtures: [] retains copied support files. Correct the plan's setup; use content: null to remove a required file and assert path-not-exists. Do not repair the pipeline to satisfy an unchanged negative setup.`,
-          [
-            {
-              caseId: negative.id,
-              failedExpectationTypes: ['task-status'],
-              originalCaseHash: chatPipelineTrialCaseExecutionHash(negative),
-            },
-          ],
-        );
-      }
-    }
-  }
+  trialFixtureSetupRules.validateFixtureSetup(plan, stagedYamlPath, relativeYamlPath);
 }
 
 export function readChatPipelineTrialPlan(
@@ -1575,28 +1637,18 @@ export function readChatPipelineTrialPlan(
         plan,
         pipelineConfig,
         workDir ? { relativeYamlPath, workDir } : undefined,
+        Boolean(intentText),
       );
       if (inspection.missing.length) {
-        const details = inspection.issues
-          .map(
-            (issue) =>
-              (issue.caseId ?? 'plan') +
-              ':' +
-              issue.field +
-              ' [' +
-              issue.code +
-              '] ' +
-              issue.message,
-          )
-          .join('\n');
         const response = planRequest(
           'invalid',
           relativeYamlPath,
           pipelineHash,
-          'Required structured Trial evidence is incomplete: ' +
-            inspection.missing.join(', ') +
-            '.\n' +
-            details,
+          JSON.stringify({
+            message: 'Required structured Trial evidence is incomplete.',
+            missingEvidence: inspection.missing,
+            issues: inspection.issues,
+          }),
           maxAttempts,
           inspection.issues.some((issue) => issue.repairScope === 'pipeline-artifact')
             ? 'recovery_failure_policy'

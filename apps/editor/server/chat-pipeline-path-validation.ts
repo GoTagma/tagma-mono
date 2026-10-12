@@ -98,7 +98,7 @@ export function validateChatPipelinePathCoordinates(
   const validatePathConfig = (
     configPath: string,
     plugin: PathConfig | undefined,
-    key: 'path' | 'file',
+    key: 'path' | 'file' | 'schema_path',
     expectedTypes: ReadonlySet<string>,
     effectiveCwdValue: unknown,
   ): void => {
@@ -217,7 +217,8 @@ export function validateChatPipelinePathCoordinates(
   };
 
   const triggerTypes = new Set(['file', 'directory']);
-  const completionTypes = new Set(['file_exists']);
+  const completionTypes = new Set(['file_exists', 'json_schema']);
+  const schemaCompletionTypes = new Set(['json_schema']);
   const middlewareTypes = new Set(['static_context']);
 
   config.tracks.forEach((track, trackIndex) => {
@@ -253,11 +254,20 @@ export function validateChatPipelinePathCoordinates(
         effectiveCwd,
         task.prompt,
       );
+      const completion = task.completion;
+      const completionPath = `tracks[${trackIndex}].tasks[${taskIndex}].completion`;
       validatePathConfig(
-        `tracks[${trackIndex}].tasks[${taskIndex}].completion`,
-        task.completion as PathConfig | undefined,
+        completionPath,
+        completion as PathConfig | undefined,
         'path',
         completionTypes,
+        effectiveCwd,
+      );
+      validatePathConfig(
+        completionPath,
+        completion as PathConfig | undefined,
+        'schema_path',
+        schemaCompletionTypes,
         effectiveCwd,
       );
     });

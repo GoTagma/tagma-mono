@@ -568,6 +568,13 @@ prefers a connected, tool-capable OpenCode free agent model (`deepseek-v4-flash-
 `north-mini-code-free`) and falls back to the connected DeepSeek `deepseek-v4-flash` model. If none
 is configured, the gate fails closed instead of installing or substituting a fake provider.
 
+Both loop commands accept `--variant <id>` for an enabled variant in the selected real model's
+runtime catalog. The option keeps the normal model selection and all source/compiled rounds and
+fresh failure confirmations. Unknown or disabled variants fail before operation creation; successful
+explicit choices retain bounded, operation-owned Host usage model metadata in the report. Omitting
+the option preserves the existing null variant; null does not mean `low`. This evidence covers Host
+invocation admission, not auxiliary title requests or generated pipeline child CLI settings.
+
 The default live matrix includes:
 
 - `clarification`: a real model must project one clarification; the harness answers it with an
@@ -604,6 +611,7 @@ Useful gate options:
 bun run test:chat-v2-loop -- --scenario authoring-trial
 bun run test:chat-v2-loop -- --scenario authoring-create-trial
 bun run test:chat-v2-loop -- --stability-runs 3
+bun run test:chat-v2-loop -- --variant low
 bun run test:chat-v2-loop -- --timeout-ms 300000 --artifacts D:\Temp\tagma-loop-reports
 ```
 

@@ -569,16 +569,20 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     const trialId = body.trialId.trim();
     try {
       assertRequestOwnsChatYamlStage(req, ws, stageId);
-      return res.json(
-        await underWorkspaceWideYamlEditLock(ws, () =>
-          trialRunChatYamlStage(ws, {
-            stageId,
-            relativePath,
-            trialId,
-            independentRecovery: body.independentRecovery === true,
-          }),
-        ),
+      const result = await underWorkspaceWideYamlEditLock(ws, () =>
+        trialRunChatYamlStage(ws, {
+          stageId,
+          relativePath,
+          trialId,
+          independentRecovery: body.independentRecovery === true,
+        }),
       );
+      // Complete native feedback and the full Host request stay in the private
+      // V2 repair handoff; legacy HTTP keeps its existing bounded projection.
+      const publicResult = { ...result };
+      delete publicResult.repairPlanRejectionEvidence;
+      delete publicResult.repairPlanRequest;
+      return res.json(publicResult);
     } catch (err) {
       return respondStageError(res, err);
     }

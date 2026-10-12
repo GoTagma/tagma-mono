@@ -63,6 +63,7 @@ export const YAML_FEATURE_MIN_SDK = {
   workflow_self_repair: '0.7.52',
   task_bindings: '0.7.0',
   web_permissions: '0.7.111',
+  json_schema_completion: '0.7.121',
 } as const;
 
 const FEATURE_DESCRIPTIONS: Record<keyof typeof YAML_FEATURE_MIN_SDK, string> = {
@@ -72,6 +73,7 @@ const FEATURE_DESCRIPTIONS: Record<keyof typeof YAML_FEATURE_MIN_SDK, string> = 
   workflow_self_repair: 'Workflow pipeline retries with prior failure context',
   task_bindings: 'Pipeline tasks declare inputs/outputs bindings or input placeholders',
   web_permissions: 'Pipeline permissions explicitly allow or deny native web tools',
+  json_schema_completion: 'Pipeline tasks validate JSON files against explicit local schemas',
 };
 
 export function compareSemver(a: string, b: string): number {
@@ -279,6 +281,7 @@ function collectPipelineFeatures(
     for (const task of tasks) {
       if (taskUsesBindings(task as RawTaskConfig)) addFeature(features, 'task_bindings');
       if (permissionsUseWebField(task.permissions)) addFeature(features, 'web_permissions');
+      if (task.completion?.type === 'json_schema') addFeature(features, 'json_schema_completion');
     }
   }
   return [...features.values()];

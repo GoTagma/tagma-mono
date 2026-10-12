@@ -1,3 +1,8 @@
+import {
+  isChatExecutionInputWitness,
+  type ChatExecutionInputWitness,
+} from './execution-input-witness.js';
+
 import { randomUUID as systemRandomUUID } from 'node:crypto';
 import type { ChatOperationV2DraftRequest } from './api-requests.js';
 import {
@@ -288,6 +293,7 @@ export interface ChatOperationV2DiagnosticsEventSummary {
     currentStatus: StoredInvocationOutboxRecord['status'];
     currentFailureCode: string | null;
   }>;
+  readonly executionInputWitness?: ChatExecutionInputWitness;
   readonly submissionUnknown?: ChatOperationV2SubmissionUnknownDiagnostic;
   readonly trialProgress?: Readonly<
     Omit<ChatOperationV2HostEventPayloads['trial_progressed'], 'stageId' | 'trialId'>
@@ -663,6 +669,31 @@ function diagnosticsTrialFeedback(
   });
 }
 
+function diagnosticsExecutionInputWitness(
+  event: StoredHostOperationEvent,
+  outbox: StoredInvocationOutboxRecord | null,
+): ChatExecutionInputWitness | undefined {
+  const witness = event.payload.witness;
+  if (
+    event.type !== 'execution_input_observed' ||
+    !outbox ||
+    !isChatExecutionInputWitness(witness) ||
+    event.workspaceScopeId !== witness.workspaceScopeId ||
+    event.operationId !== witness.operationId ||
+    event.generation !== witness.operationGeneration ||
+    event.payload.invocationId !== witness.invocationId ||
+    outbox.invocationId !== witness.invocationId ||
+    outbox.operationId !== witness.operationId ||
+    outbox.workspaceScopeId !== witness.workspaceScopeId ||
+    outbox.sessionId !== witness.sessionId ||
+    outbox.inputId !== witness.inputId ||
+    outbox.purpose !== witness.purpose ||
+    outbox.requestDigest !== witness.requestDigest
+  )
+    return undefined;
+  return Object.freeze({ ...witness });
+}
+
 function diagnosticsEventSummary(
   event: StoredHostOperationEvent,
   outbox: StoredInvocationOutboxRecord | null,
@@ -673,6 +704,7 @@ function diagnosticsEventSummary(
       : null;
   const trialProgress = diagnosticsTrialProgress(event);
   const trialFeedback = diagnosticsTrialFeedback(event);
+  const executionInputWitness = diagnosticsExecutionInputWitness(event, outbox);
   return Object.freeze({
     workspaceSeq: event.workspaceSeq,
     operationId: event.operationId,
@@ -696,6 +728,7 @@ function diagnosticsEventSummary(
     ...(submissionUnknown ? { submissionUnknown } : {}),
     ...(trialProgress ? { trialProgress } : {}),
     ...(trialFeedback ? { trialFeedback } : {}),
+    ...(executionInputWitness ? { executionInputWitness } : {}),
   });
 }
 
@@ -2216,6 +2249,33 @@ export class ChatOperationV2Service {
                 NonNullable<ChatOperationV2AuthoringRuntime['readRepairErrorEvidence']>
               >[0],
             ) => core.readRepairErrorEvidence!(input),
+          }
+        : {}),
+      ...(core.inspectTrialPlanRejection
+        ? {
+            inspectTrialPlanRejection: (
+              input: Parameters<
+                NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlanRejection']>
+              >[0],
+            ) => core.inspectTrialPlanRejection!(input),
+          }
+        : {}),
+      ...(core.inspectTrialPlannerNoProgress
+        ? {
+            inspectTrialPlannerNoProgress: (
+              input: Parameters<
+                NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlannerNoProgress']>
+              >[0],
+            ) => core.inspectTrialPlannerNoProgress!(input),
+          }
+        : {}),
+      ...(core.inspectTrialPlanProviderFailure
+        ? {
+            inspectTrialPlanProviderFailure: (
+              input: Parameters<
+                NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlanProviderFailure']>
+              >[0],
+            ) => core.inspectTrialPlanProviderFailure!(input),
           }
         : {}),
       ...(core.readFinalInstructions

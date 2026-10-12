@@ -1,11 +1,9 @@
-import {
-  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT,
-  chatPipelineTrialCaseExecutionHash,
-  validateChatPipelineTrialFixtureSetup,
-} from './chat-pipeline-trial-plan.js';
+import { CHAT_PIPELINE_TRIAL_PLAN_CONTRACT } from './chat-pipeline-trial-plan.js';
+import { createTrialFixtureSetupRules } from './chat-trial-fixture-setup-rules.js';
 import { normalizeTrialPrerequisiteCases } from './chat-pipeline-trial-prerequisites.js';
 import { createTrialResilienceRules } from './chat-trial-resilience-rules.js';
 import { createTrialPathCoordinateRules } from './chat-trial-path-coordinate-rules.js';
+import { createTrialPlanRejectionEvidenceRules } from './chat-trial-plan-rejection-evidence.js';
 
 /**
  * Build the OpenCode custom tool as a self-contained module. The tool runs in
@@ -18,11 +16,13 @@ export function buildTagmaTrialPlanTool(): string {
   const prerequisiteValidator = normalizeTrialPrerequisiteCases.toString();
   const resilienceRules = createTrialResilienceRules.toString();
   const pathCoordinateRules = createTrialPathCoordinateRules.toString();
-  const fixtureValidator = validateChatPipelineTrialFixtureSetup.toString();
-  const caseHash = chatPipelineTrialCaseExecutionHash.toString();
+  const fixtureRules = createTrialFixtureSetupRules.toString();
+  const rejectionEvidenceRules = createTrialPlanRejectionEvidenceRules.toString();
   return `import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
+  constants,
+  fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -39,9 +39,10 @@ const BEGIN_YAML_EVIDENCE_LIMIT = 16 * 1024;
 const normalizeTrialPrerequisiteCases = (${prerequisiteValidator});
 const resilienceRules = (${resilienceRules})();
 const pathCoordinateRules = (${pathCoordinateRules})();
-const chatPipelineTrialCaseExecutionHash = (${caseHash});
-class TrialPlanFixtureSetupError extends Error {}
-const validateChatPipelineTrialFixtureSetup = (${fixtureValidator});
+const fixtureRules = (${fixtureRules})({ createHash, dirname, join, lstatSync, readFileSync });
+const rejectionEvidenceRules = (${rejectionEvidenceRules})({ createHash, randomUUID, basename, dirname, join, constants, closeSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync });
+const chatPipelineTrialCaseExecutionHash = fixtureRules.caseExecutionHash;
+const validateChatPipelineTrialFixtureSetup = fixtureRules.validateFixtureSetup;
 const REQUIRED_COVERAGE = [...CONTRACT.coverageDimensions];
 const COVERAGE_STATUSES = [...CONTRACT.coverageStatuses];
 const FINDING_SEVERITIES = [...CONTRACT.findingSeverities];
@@ -175,6 +176,20 @@ function validateExpectation(value, label) {
     }
     return raw;
   }
+  if (type === "file-source-text-occurrence") {
+    const allowed = ["type", "path", "sourcePath", "sourcePointer", "producerTaskId", "consumerTaskId", "present"];
+    if (Object.keys(raw).some((key) => !allowed.includes(key))) throw new Error(label + " contains unsupported source-relation fields.");
+    if (typeof raw.present !== "boolean") throw new Error(label + ".present must be a boolean.");
+    raw.path = normalizeRelativeCasePath(raw.path, label + ".path");
+    raw.sourcePath = normalizeRelativeCasePath(raw.sourcePath, label + ".sourcePath");
+    raw.producerTaskId = asString(raw.producerTaskId, label + ".producerTaskId", 160);
+    raw.consumerTaskId = asString(raw.consumerTaskId, label + ".consumerTaskId", 160);
+    if (!QUALIFIED_TASK_ID_RE.test(raw.producerTaskId) || !QUALIFIED_TASK_ID_RE.test(raw.consumerTaskId) || raw.producerTaskId === raw.consumerTaskId) throw new Error(label + " requires distinct qualified producer and consumer task ids.");
+    if (relativeFilePathsOverlap(raw.path.toLowerCase(), raw.sourcePath.toLowerCase())) throw new Error(label + " output must differ from its source.");
+    const pointer = asString(raw.sourcePointer, label + ".sourcePointer", 512, true);
+    if ((pointer !== "" && !pointer.startsWith("/")) || /~(?:[^01]|$)/u.test(pointer)) throw new Error(label + ".sourcePointer must be a valid JSON Pointer.");
+    return raw;
+  }
   if (type === "directory-entry-count") {
     normalizeRelativeCasePath(raw.path, label + ".path");
     if (raw.suffix !== undefined && raw.suffix !== null && raw.suffix !== "") {
@@ -248,13 +263,15 @@ function validateCase(value, index) {
   if (new Set(normalizedGeneratedInputPaths).size !== normalizedGeneratedInputPaths.length) {
     throw new Error(label + ".generatedInputPaths must not name the same path twice.");
   }
-  if (normalizedGeneratedInputPaths.some((path) => fixturePaths.includes(path))) {
+  if (normalizedGeneratedInputPaths.some((path) =>
+    fixtures.some((fixture) => fixture.path.toLowerCase() === path && fixture.content !== null))) {
     throw new Error(label + ".generatedInputPaths must not also be pre-seeded through fixtures.");
   }
   if (
     normalizedGeneratedInputPaths.some(
       (path, index) =>
-        fixturePaths.some((candidate) => relativeFilePathsOverlap(path, candidate)) ||
+        fixtures.some((fixture) => relativeFilePathsOverlap(path, fixture.path.toLowerCase()) &&
+          !(fixture.path.toLowerCase() === path && fixture.content === null)) ||
         normalizedGeneratedInputPaths
           .slice(0, index)
           .some((candidate) => relativeFilePathsOverlap(path, candidate)),
@@ -287,7 +304,11 @@ function validateCase(value, index) {
   }
   const generatedInputExpectationPaths = new Set(
     expectations.flatMap((expectation) =>
-      expectation.type === "file-equals" ? [expectation.path.toLowerCase()] : [],
+      expectation.type === "file-equals"
+        ? [expectation.path.toLowerCase()]
+        : expectation.type === "file-source-text-occurrence" && expectation.present
+          ? [expectation.sourcePath.toLowerCase()]
+          : [],
     ),
   );
   for (const generatedInputPath of normalizedGeneratedInputPaths) {
@@ -296,6 +317,13 @@ function validateCase(value, index) {
         label + ".generatedInputPaths requires a file-equals expectation for " + generatedInputPath + ".",
       );
     }
+  }
+  for (const expectation of expectations) {
+    if (expectation.type !== "file-source-text-occurrence") continue;
+    if (!normalizedGeneratedInputPaths.includes(expectation.sourcePath.toLowerCase()) ||
+        !fixtures.some((fixture) => fixture.path === expectation.sourcePath && fixture.content === null) ||
+        fixtures.some((fixture) => fixture.content !== null && relativeFilePathsOverlap(fixture.path.toLowerCase(), expectation.path.toLowerCase())))
+      throw new Error(label + ".source-text relation requires an unseeded generated source and output.");
   }
   const jsonAwarePaths = new Set(
     expectations
@@ -420,7 +448,8 @@ function repeatedFileOutputPaths(testCase) {
         expectation.type === "file-equals" ||
         expectation.type === "file-preserves-lines" ||
         expectation.type === "json-valid" ||
-        expectation.type === "json-pointer-equals"
+        expectation.type === "json-pointer-equals" ||
+        expectation.type === "file-source-text-occurrence"
       )
     ) {
       continue;
@@ -451,7 +480,8 @@ function hasDistinctOutputExpectation(cases) {
         expectation.type === "file-equals" ||
         expectation.type === "file-preserves-lines" ||
         expectation.type === "json-valid" ||
-        expectation.type === "json-pointer-equals"
+        expectation.type === "json-pointer-equals" ||
+        expectation.type === "file-source-text-occurrence"
       ) {
         positivePaths.add(expectation.path.toLowerCase());
       }
@@ -773,6 +803,7 @@ function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
   const telemetryDir = join(stageRoot, ".trial-plan-telemetry");
   const draftDir = join(stageRoot, ".trial-plan-drafts");
   return {
+    stageRoot,
     relativeYamlPath,
     telemetryDir,
     draftDir,
@@ -908,7 +939,43 @@ function writeTrialPlanDraft(paths, draft) {
   renameSync(tempPath, paths.draftPath);
 }
 
-function trialPlanDraftResult(operation, draft, pipelineEvidence) {
+function trialPlanDraftCaseInventory(testCase) {
+  return {
+    id: testCase.id,
+    expectations: testCase.expectations.map((expectation, index) => {
+      const type = expectation.type.trim();
+      const metadata = { index, type };
+      const boundedString = (key, limit, trim = false) => {
+        const value = expectation[key];
+        if (typeof value !== 'string') return;
+        const normalized = trim ? value.trim() : value;
+        if (normalized.length <= limit) metadata[key] = normalized;
+      };
+      if (type === 'task-status') {
+        boundedString('taskId', 160, true);
+      } else {
+        boundedString('path', 240);
+      }
+      if (['file-preserves-lines', 'json-pointer-text-occurrence', 'file-source-text-occurrence'].includes(type))
+        boundedString('sourcePath', 240);
+      if (['json-pointer-equals', 'json-pointer-text-occurrence'].includes(type))
+        boundedString('pointer', 512);
+      if (type === 'file-source-text-occurrence') {
+        boundedString('sourcePointer', 512);
+        boundedString('producerTaskId', 160, true);
+        boundedString('consumerTaskId', 160, true);
+      }
+      if (['json-pointer-text-occurrence', 'file-source-text-occurrence'].includes(type) && typeof expectation.present === 'boolean')
+        metadata.present = expectation.present;
+      return metadata;
+    }),
+    sourcePreservationIndices: (testCase.evidence || [])
+      .filter((item) => item.type === 'source-preservation')
+      .map((item) => item.preservationExpectationIndex),
+  };
+}
+
+function trialPlanDraftResult(operation, draft, pipelineEvidence, changedCase) {
   return JSON.stringify(
     {
       operation,
@@ -916,6 +983,19 @@ function trialPlanDraftResult(operation, draft, pipelineEvidence) {
       cases: draft.cases.length,
       coverage: draft.coverage.length,
       findings: draft.findings.length,
+      ...(['begin', 'set-evidence-review'].includes(operation) ? { draftInventory: {
+        cases: draft.cases.map((item) => ({ id: item.id, expectationCount: item.expectations.length })),
+        coverageDimensions: draft.coverage.map((item) => item.dimension),
+        ...(draft.evidenceReview?.coreWitness?.status === 'covered'
+          ? { normalCaseId: draft.evidenceReview.coreWitness.normalCaseId,
+              contentRoles: draft.evidenceReview.coreWitness.taskRoles
+                .filter((item) => item.role === 'content')
+                .map((item) => ({ taskId: item.taskId, expectationIndices: item.expectationIndices })) }
+          : {}),
+      } } : {}),
+      ...(changedCase === undefined ? {} : {
+        changedCase: trialPlanDraftCaseInventory(changedCase),
+      }),
       ...(pipelineEvidence ? { pipelineEvidence } : {}),
       ...(draft.intentDigest ? { intentDigest: draft.intentDigest } : {}),
       ...(draft.seededFromYamlHash
@@ -1111,7 +1191,7 @@ function beginTrialPlanAttempt(paths, yamlHash, attemptId) {
     telemetry.firstAttemptAt = telemetry.firstAttemptAt || now;
     telemetry.lastAttemptAt = now;
     writeTrialPlanAttemptTelemetry(paths, telemetry);
-    return { paths, telemetry, draft };
+    return { paths, telemetry, draft, attemptId };
   } catch (error) {
     rmSync(paths.lockPath, { force: true });
     throw error;
@@ -1136,7 +1216,7 @@ function beginCompleteTrialPlanAttempt(paths, yamlHash, attemptId) {
     telemetry.firstAttemptAt = telemetry.firstAttemptAt || now;
     telemetry.lastAttemptAt = now;
     writeTrialPlanAttemptTelemetry(paths, telemetry);
-    return { paths, telemetry };
+    return { paths, telemetry, attemptId };
   } catch (error) {
     rmSync(paths.lockPath, { force: true });
     throw error;
@@ -1146,6 +1226,45 @@ function beginCompleteTrialPlanAttempt(paths, yamlHash, attemptId) {
 function rejectionSummary(error) {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/\\s+/g, " ").trim().slice(0, 500) || "unknown validation rejection";
+}
+
+function completeTrialPlanDiagnostic(error) {
+  if (error && typeof error === 'object' && error.trialPlanDiagnostic) {
+    return error.trialPlanDiagnostic;
+  }
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    missingEvidence: [],
+    issues: [],
+  };
+}
+
+function incompleteTrialEvidenceError(inspection) {
+  const diagnostic = {
+    message: 'Required structured Trial evidence is incomplete.',
+    missingEvidence: inspection.missing,
+    issues: inspection.issues,
+  };
+  const error = new Error(JSON.stringify(diagnostic));
+  error.trialPlanDiagnostic = diagnostic;
+  return error;
+}
+
+function writeCompleteTrialPlanRejection(paths, telemetry, attemptId, error, submissionConsumed) {
+  try {
+    rejectionEvidenceRules.write({
+      stageRoot: paths.stageRoot,
+      yamlHash: telemetry.yamlHash,
+      relativeYamlPath: paths.relativeYamlPath,
+      attemptId,
+      toolAttemptCount: telemetry.toolAttemptCount,
+      validationRejectionCount: telemetry.validationRejectionCount,
+      successfulWriteCount: telemetry.successfulWriteCount,
+    }, completeTrialPlanDiagnostic(error), submissionConsumed);
+  } catch {
+    // Storage failure never replaces the actual validator rejection or consumes
+    // another submission. The Host requires the complete authenticated record.
+  }
 }
 
 function recordTrialPlanRejection(attempt, error) {
@@ -1166,13 +1285,12 @@ function recordTrialPlanRejection(attempt, error) {
     attempt.telemetry.validationRejectionCount += 1;
     if (rejection.count > 1) attempt.telemetry.repeatedValidationRejectionCount += 1;
     writeTrialPlanAttemptTelemetry(attempt.paths, attempt.telemetry);
+    writeCompleteTrialPlanRejection(attempt.paths, attempt.telemetry, attempt.attemptId, error, true);
+    // Keep the existing repetition notice, followed by the current full error,
+    // never the compact public summary used to fingerprint equivalent failures.
     if (rejection.count > 1) {
-      throw new Error(
-        "Repeated equivalent validation rejection (" +
-          rejection.count +
-          "x): " +
-          rejection.message,
-      );
+      throw new Error('Repeated equivalent validation rejection (' + rejection.count + 'x): ' +
+        (error instanceof Error ? error.message : String(error)));
     }
     throw error;
   } finally {
@@ -1238,6 +1356,15 @@ const expectationSchema = tool.schema.discriminatedUnion("type", [
     present: tool.schema.boolean(),
   }),
   tool.schema.object({
+    type: tool.schema.literal("file-source-text-occurrence"),
+    path: tool.schema.string(),
+    sourcePath: tool.schema.string(),
+    sourcePointer: tool.schema.string(),
+    producerTaskId: tool.schema.string(),
+    consumerTaskId: tool.schema.string(),
+    present: tool.schema.boolean(),
+  }).strict().describe("Same-repeat produced JSON STRING to report relation. Positive core also needs the producer's independent concrete content assertion; a quote does not prove reasoning, arithmetic or factual verification."),
+  tool.schema.object({
     type: tool.schema.literal("directory-entry-count"),
     path: tool.schema.string(),
     suffix: tool.schema.string().optional(),
@@ -1272,9 +1399,15 @@ const faultSchema = tool.schema.union([
 ]);
 const evidenceSchema = tool.schema.union([
   tool.schema.object({ type: tool.schema.literal("source-preservation"), preservationExpectationIndex: tool.schema.number().int().min(0).max(31) }),
-  tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source"]), normalCaseId: tool.schema.string(), recoveredTaskId: tool.schema.string(), outcomeExpectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).min(1).max(32), observationExpectationIndex: tool.schema.number().int().min(0).max(31).optional(), fault: faultSchema }),
+  tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source"]), normalCaseId: tool.schema.string(), recoveredTaskId: tool.schema.string(), outcomeExpectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).min(1).max(32).describe("Zero-based controlled-case expectation indices for actual downstream file-contains or json-pointer-equals recovery outputs, not task status, existence or the injected input observation. Contrast these outputs in the linked normal case."), observationExpectationIndex: tool.schema.number().int().min(0).max(31).optional().describe("Index of the actual replaced input observation. Empty-result requires an empty collection at a JSON pointer and a same-path, same-pointer nonempty array/object of the same type in the linked normal case."), fault: faultSchema }),
 ]);
-const evidenceReviewSchema = tool.schema.object({ version: tool.schema.literal(1), intentDigest: tool.schema.string().min(64).max(64), decisions: tool.schema.array(tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source","source-preservation"]), required: tool.schema.boolean(), taskIds: tool.schema.array(tool.schema.string()).max(32), rationale: tool.schema.string().min(1).max(1000) })).min(5).max(5) });
+// Preserve unknown review keys for the existing semantic key validator; do not
+// let Zod silently remove evidence that parseReview must reject.
+const coreWitnessSchema = tool.schema.union([
+  tool.schema.object({ status: tool.schema.literal("covered"), normalCaseId: tool.schema.string().min(1).max(64), taskRoles: tool.schema.array(tool.schema.object({ taskId: tool.schema.string(), role: tool.schema.enum(["content", "execution"]), rationale: tool.schema.string().min(1).max(1000), expectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).max(32) }).passthrough()).min(1).max(32), generatedInputs: tool.schema.array(tool.schema.object({ path: tool.schema.string().min(1).max(240), producerTaskId: tool.schema.string(), consumerTaskId: tool.schema.string() }).passthrough()).max(32) }).passthrough(),
+  tool.schema.object({ status: tool.schema.literal("blocked"), taskIds: tool.schema.array(tool.schema.string()).min(1).max(32), code: tool.schema.string().min(1).max(96), rationale: tool.schema.string().min(1).max(1000) }).passthrough(),
+]).describe("Covered core maps every terminal-closure task to success and every declared output artifact to concrete intent-bound content: stable JSON pointer values, meaningful finite numeric/boolean values, exact nonempty text, or supported source occurrence. Genuine unobservable core stays blocked with a blocking diagnostic-only finding; it cannot pass.");
+const evidenceReviewSchema = tool.schema.object({ version: tool.schema.literal(1), intentDigest: tool.schema.string().min(64).max(64), decisions: tool.schema.array(tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source","source-preservation"]), required: tool.schema.boolean(), taskIds: tool.schema.array(tool.schema.string()).max(32), rationale: tool.schema.string().min(1).max(1000) }).passthrough()).min(5).max(5), coreWitness: coreWitnessSchema.optional() }).passthrough();
 
 const caseSchema = tool.schema.object({
   id: tool.schema.string(),
@@ -1286,7 +1419,7 @@ const caseSchema = tool.schema.object({
   deniedManualTaskIds: tool.schema.array(tool.schema.string()).max(1).optional().describe("Deny one manual trigger in a negative Sandbox case; assert blocked for that task and explicit downstream outcomes."),
   title: tool.schema.string().min(1).max(240),
   objective: tool.schema.string().min(1).max(1000),
-  runs: tool.schema.number().int().min(1).max(CONTRACT.limits.runs).optional(),
+  runs: tool.schema.number().int().min(1).max(CONTRACT.limits.runs).optional().describe("Explicit runs:1 for controlled evidence and its linked normal case. Use a separate positive repeat case for repeat coverage."),
   targetTaskIds: tool.schema.array(tool.schema.string()).min(1).max(32),
   fixtures: tool.schema
     .array(
@@ -1301,12 +1434,40 @@ const caseSchema = tool.schema.object({
     .array(tool.schema.string())
     .max(CONTRACT.limits.generatedInputPathsPerCase)
     .optional()
-    .describe("Files the targeted closure must generate before consuming them as downstream inputs; the Host does not pre-seed them and requires exact file-equals evidence."),
+    .describe("Files the targeted closure must generate before consuming them as downstream inputs. Exact content:null fixtures remove only these files before each actual repeat; no write fixture may pre-seed them. Host requires exact file-equals evidence."),
   expectations: tool.schema
     .array(expectationSchema)
     .min(1)
     .max(CONTRACT.limits.expectationsPerCase),
 });
+
+const TRIAL_PLAN_PAYLOAD_SCHEMAS = {
+  summary: tool.schema.string().min(1).max(2000),
+  goals: tool.schema.array(tool.schema.string().min(1).max(1000)).min(1).max(CONTRACT.limits.goals),
+  reset: tool.schema.boolean().describe("Use only with begin to discard a prior draft for this exact path and YAML hash."),
+  coverage: tool.schema.array(coverageEntrySchema).max(REQUIRED_COVERAGE.length),
+  findings: tool.schema.array(findingSchema).max(CONTRACT.limits.findings),
+  evidence_review: evidenceReviewSchema,
+  case: caseSchema,
+  cases: tool.schema.array(caseSchema).max(CONTRACT.limits.cases),
+};
+const trialPlanPayloadSchema = tool.schema.object(Object.fromEntries(
+  Object.entries(TRIAL_PLAN_PAYLOAD_SCHEMAS).map(([name, schema]) => [name, schema.optional()]),
+)).strict();
+const completeTrialPlanPayloadSchema = trialPlanPayloadSchema.required({
+  summary: true,
+  goals: true,
+  coverage: true,
+  cases: true,
+});
+
+function parseTrialPlanPayload(args, complete = false) {
+  const payload = {};
+  for (const name of Object.keys(TRIAL_PLAN_PAYLOAD_SCHEMAS)) {
+    if (args[name] !== undefined) payload[name] = args[name];
+  }
+  return (complete ? completeTrialPlanPayloadSchema : trialPlanPayloadSchema).parse(payload);
+}
 
 function assertExecutableTrialPlan(input, plan) {
   assertValidPlan(plan);
@@ -1336,10 +1497,11 @@ function assertExecutableTrialPlan(input, plan) {
     const required = review ? review.decisions.filter(item => item.required).map(item => item.type) : context.obligations;
     if (context.obligations.some(kind => !required.includes(kind))) throw new Error('Evidence review cannot remove a Host-pinned requirement.');
     if (review && review.decisions.some(item => item.taskIds.some(id => !Object.hasOwn(context.tasks, id)))) throw new Error('Evidence review selects an unknown staged task.');
+    resilienceRules.validateCoreWitness(plan, context.tasks, Boolean(context.intentDigest));
     const inspection = resilienceRules.inspectEvidence(required, plan, context.tasks);
     if (inspection.missing.length) {
       if (inspection.issues.some(issue => issue.repairScope === 'pipeline-artifact')) return inspection;
-      throw new Error(inspection.issues.map(issue => (issue.caseId || 'plan') + ':' + issue.field + ' [' + issue.code + '] ' + issue.message).join(String.fromCharCode(10)));
+      throw incompleteTrialEvidenceError(inspection);
     }
   }
   return { missing: [], issues: [] };
@@ -1385,22 +1547,37 @@ function commitValidatedTrialPlan(input, attempt, plan) {
 
 function commitTrialPlanDraft(input) {
   const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
-  const draft = attempt.draft;
-  return commitValidatedTrialPlan(input, attempt, trialPlanFromDraft(draft));
+  let plan;
+  try {
+    parseTrialPlanPayload(input.args);
+    plan = trialPlanFromDraft(attempt.draft);
+  } catch (error) {
+    return recordTrialPlanRejection(attempt, error);
+  }
+  return commitValidatedTrialPlan(input, attempt, plan);
 }
 
 function commitCompleteTrialPlan(input) {
   const attempt = beginCompleteTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
-  return commitValidatedTrialPlan(input, attempt, {
-    version: CONTRACT.version,
-    yamlHash: input.yamlHash,
-    summary: input.args.summary,
-    goals: input.args.goals,
-    coverage: input.args.coverage,
-    findings: input.args.findings || [],
-    cases: input.args.cases,
-    ...(input.args.evidence_review === undefined ? {} : { evidenceReview: resilienceRules.parseReview(input.args.evidence_review) }),
-  });
+  let plan;
+  try {
+    const payload = parseTrialPlanPayload(input.args, true);
+    plan = {
+      version: CONTRACT.version,
+      yamlHash: input.yamlHash,
+      summary: payload.summary,
+      goals: payload.goals,
+      coverage: payload.coverage,
+      findings: payload.findings || [],
+      cases: payload.cases,
+      ...(payload.evidence_review === undefined ? {} : { evidenceReview: resilienceRules.parseReview(payload.evidence_review) }),
+    };
+  } catch (error) {
+    return recordTrialPlanRejection(attempt, error);
+  }
+  // This function records its own validation/write rejection. Keep it outside
+  // the construction catch so one failed submission is never recorded twice.
+  return commitValidatedTrialPlan(input, attempt, plan);
 }
 
 function executeExistingTrialPlanDraftOperation(input) {
@@ -1426,12 +1603,21 @@ function executeExistingTrialPlanDraftOperation(input) {
           : ". Draft unchanged; correct this call before commit."));
     }
     if (input.operation === 'validate') {
-      const inspection = assertExecutableTrialPlan(input, trialPlanFromDraft(draft));
+      const telemetry = readTrialPlanAttemptTelemetry(input.paths, input.yamlHash);
+      let inspection;
+      try {
+        inspection = assertExecutableTrialPlan(input, trialPlanFromDraft(draft));
+      } catch (error) {
+        writeCompleteTrialPlanRejection(input.paths, telemetry, input.attemptId, error, false);
+        throw error;
+      }
       if (inspection.missing.length > 0) {
+        writeCompleteTrialPlanRejection(input.paths, telemetry, input.attemptId, incompleteTrialEvidenceError(inspection), false);
         return JSON.stringify({ valid: false, hostReviewRequired: true, missingEvidence: inspection.missing, issues: inspection.issues, commitAvailable: true, submissionConsumed: false });
       }
       return JSON.stringify({ valid: true, commitAvailable: true, submissionConsumed: false });
     }
+    let changedCase;
     if (input.operation === 'upsert-case') {
       const existingIndex = draft.cases.findIndex(
         (item) => item && typeof item === 'object' && item.id === input.args.case?.id,
@@ -1451,6 +1637,7 @@ function executeExistingTrialPlanDraftOperation(input) {
         validateCoverageSection(draft.coverage, validatedCases);
       }
       draft.cases = validatedCases;
+      changedCase = validatedCases[draftIndex];
     } else if (input.operation === 'set-coverage') {
       draft.coverage = validateCoverageSection(input.args.coverage, draft.cases);
     } else if (input.operation === 'set-evidence-review') {
@@ -1459,7 +1646,7 @@ function executeExistingTrialPlanDraftOperation(input) {
       draft.findings = validateFindingEntries(input.args.findings);
     }
     writeTrialPlanDraft(input.paths, draft);
-    return trialPlanDraftResult(input.operation, draft);
+    return trialPlanDraftResult(input.operation, draft, undefined, changedCase);
   });
 }
 
@@ -1572,27 +1759,13 @@ export default tool({
       .min(1)
       .max(128)
       .describe("Exact Host attempt ID from the current host prompt; every call in the draft lifecycle must use the same value."),
-    summary: tool.schema.string().min(1).max(2000).optional(),
-    goals: tool.schema
-      .array(tool.schema.string().min(1).max(1000))
-      .min(1)
-      .max(CONTRACT.limits.goals)
-      .optional(),
-    reset: tool.schema
-      .boolean()
-      .optional()
-      .describe("Use only with begin to discard a prior draft for this exact path and YAML hash."),
-    coverage: tool.schema
-      .array(coverageEntrySchema)
-      .max(REQUIRED_COVERAGE.length)
-      .optional(),
-    findings: tool.schema
-      .array(findingSchema)
-      .max(CONTRACT.limits.findings)
-      .optional(),
-    evidence_review: evidenceReviewSchema.optional(),
-    case: caseSchema.optional(),
-    cases: tool.schema.array(caseSchema).max(CONTRACT.limits.cases).optional(),
+    // Keep the nested contract visible to the model while allowing a malformed
+    // business payload to reach the counted commit validator. Identity schemas
+    // above stay strict; unknown is never used for operation/path/attempt.
+    ...Object.fromEntries(Object.entries(TRIAL_PLAN_PAYLOAD_SCHEMAS).map(([name, schema]) => [
+      name,
+      tool.schema.union([schema, tool.schema.unknown()]).optional(),
+    ])),
   },
   async execute(args, context) {
     return executeTrialPlanOperation(args, context);

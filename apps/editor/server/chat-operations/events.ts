@@ -13,6 +13,11 @@ import {
 } from './submission-diagnostics.js';
 import { parseChatRepairDiagnosisJson } from '../../shared/chat-repair-diagnosis';
 
+import {
+  isChatExecutionInputWitness,
+  type ChatExecutionInputWitness,
+} from './execution-input-witness.js';
+
 export const CHAT_OPERATION_V2_HOST_EVENT_SCHEMA_VERSION = 1;
 
 export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
@@ -24,6 +29,7 @@ export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
   'classifier_protocol_repair_started',
   'snapshot_frozen',
   'invocation_prepared',
+  'execution_input_observed',
   'invocation_submission_unknown',
   'invocation_admitted',
   'invocation_started',
@@ -155,6 +161,12 @@ type CommitDecision = (typeof CHAT_OPERATION_V2_COMMIT_DECISIONS)[number];
 type CommitApplyStatus = (typeof CHAT_OPERATION_V2_COMMIT_APPLY_STATUSES)[number];
 type CommitRecoveryStatus = (typeof CHAT_OPERATION_V2_COMMIT_RECOVERY_STATUSES)[number];
 type UsageStatus = (typeof CHAT_OPERATION_V2_USAGE_STATUSES)[number];
+export type ChatOperationV2StageCreationDiagnostic = Readonly<{
+  phase: 'stage_creation';
+  errorClass: 'Error' | 'TypeError' | 'RangeError' | 'SyntaxError' | 'unknown';
+  systemCode: string | null;
+  completeErrorStorage: 'not_stored';
+}>;
 const CHAT_OPERATION_V2_TRIAL_PROGRESS_PHASES = [
   'preparing',
   'capturing-host-witness',
@@ -214,6 +226,10 @@ export interface ChatOperationV2HostEventPayloads {
     readonly sessionId: string;
     readonly inputId: string;
     readonly requestHash: string;
+  };
+  readonly execution_input_observed: {
+    readonly invocationId: string;
+    readonly witness: ChatExecutionInputWitness;
   };
   readonly invocation_submission_unknown: {
     readonly invocationId: string;
@@ -282,6 +298,7 @@ export interface ChatOperationV2HostEventPayloads {
     readonly status: StageStatus;
     readonly errorCode: string | null;
     readonly diagnosticCodes: readonly string[];
+    readonly creationDiagnostic?: ChatOperationV2StageCreationDiagnostic;
   };
   readonly trial_progressed: {
     readonly stageId: string;
@@ -508,6 +525,41 @@ function isNullableSafeCode(value: unknown): value is string | null {
   return value === null || isSafeCode(value);
 }
 
+function isStageCreationDiagnostic(
+  value: unknown,
+): value is ChatOperationV2StageCreationDiagnostic {
+  return (
+    isPlainRecord(value) &&
+    hasExactKeys(value, ['phase', 'errorClass', 'systemCode', 'completeErrorStorage']) &&
+    value.phase === 'stage_creation' &&
+    includesValue(
+      ['Error', 'TypeError', 'RangeError', 'SyntaxError', 'unknown'],
+      value.errorClass,
+    ) &&
+    (value.systemCode === null ||
+      includesValue(
+        [
+          'ENOENT',
+          'EACCES',
+          'EPERM',
+          'EIO',
+          'ENOSPC',
+          'EROFS',
+          'EBUSY',
+          'EMFILE',
+          'ENFILE',
+          'EINVAL',
+          'ENOTDIR',
+          'EISDIR',
+          'EEXIST',
+          'EXDEV',
+        ],
+        value.systemCode,
+      )) &&
+    value.completeErrorStorage === 'not_stored'
+  );
+}
+
 function isHash(value: unknown): value is string {
   return typeof value === 'string' && SHA256_HEX.test(value);
 }
@@ -623,6 +675,12 @@ const payloadValidators = {
     isHostId(value.sessionId) &&
     isHostId(value.inputId) &&
     isHash(value.requestHash),
+  execution_input_observed: (value) =>
+    isPlainRecord(value) &&
+    hasExactKeys(value, ['invocationId', 'witness']) &&
+    isHostId(value.invocationId) &&
+    isChatExecutionInputWitness(value.witness) &&
+    value.invocationId === value.witness.invocationId,
   invocation_submission_unknown: (value) =>
     isPlainRecord(value) &&
     (hasExactKeys(value, ['invocationId', 'errorCode']) ||
@@ -701,7 +759,15 @@ const payloadValidators = {
     isCount(value.artifactCount),
   stage_status_changed: (value) =>
     isPlainRecord(value) &&
-    hasExactKeys(value, ['stageId', 'status', 'errorCode', 'diagnosticCodes']) &&
+    hasExactKeys(value, [
+      'stageId',
+      'status',
+      'errorCode',
+      'diagnosticCodes',
+      ...('creationDiagnostic' in value ? ['creationDiagnostic'] : []),
+    ]) &&
+    (!('creationDiagnostic' in value) ||
+      (value.status === 'failed' && isStageCreationDiagnostic(value.creationDiagnostic))) &&
     isHostId(value.stageId) &&
     includesValue(CHAT_OPERATION_V2_STAGE_STATUSES, value.status) &&
     isNullableSafeCode(value.errorCode) &&

@@ -5,8 +5,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  chatV2AgentLoopVariantFromArgs,
   forceStopProcessTree,
+  isChatV2AgentLoopInvocationPurpose,
   runIsolatedChatV2AgentLoop,
+  validateChatV2AgentLoopVariant,
   type ChatV2AgentLoopScenario,
   type IsolatedChatV2AgentLoopReport,
   type RunIsolatedChatV2AgentLoopOptions,
@@ -37,6 +40,7 @@ export interface ChatV2AgentCycleOptions {
   readonly stabilityRuns?: number;
   readonly timeoutMs?: number;
   readonly keepRuntime?: boolean;
+  readonly variant?: string | null;
 }
 
 export interface ChatV2AgentCycleCommandResult {
@@ -84,6 +88,7 @@ export interface ChatV2AgentCycleReport {
   readonly completedAt: number;
   readonly stabilityRuns: number;
   readonly scenarios: readonly ChatV2AgentLoopScenario[];
+  readonly requestedVariant: string | null;
   readonly build: {
     readonly verdict: 'passed' | 'failed';
     readonly sha256: string | null;
@@ -214,6 +219,7 @@ function validateOptions(options: ChatV2AgentCycleOptions): {
   stabilityRuns: number;
   timeoutMs: number;
   scenarios: readonly ChatV2AgentLoopScenario[];
+  variant: string | null;
 } {
   const stabilityRuns = options.stabilityRuns ?? 2;
   if (!Number.isSafeInteger(stabilityRuns) || stabilityRuns < 2 || stabilityRuns > 5) {
@@ -234,7 +240,12 @@ function validateOptions(options: ChatV2AgentCycleOptions): {
     }
     unique.add(scenario);
   }
-  return { stabilityRuns, timeoutMs, scenarios: Object.freeze([...scenarios]) };
+  return {
+    stabilityRuns,
+    timeoutMs,
+    scenarios: Object.freeze([...scenarios]),
+    variant: validateChatV2AgentLoopVariant(options.variant),
+  };
 }
 
 async function runCommand(input: {
@@ -346,15 +357,50 @@ function scenarioFailure(input: {
   };
 }
 
-function realProviderRequiredFailure(input: {
+function scenarioConfigurationFailure(input: {
   phase: 'source_matrix' | 'compiled_matrix';
   mode: 'source' | 'compiled';
   stabilityRun: number;
   report: IsolatedChatV2AgentLoopReport;
+  requestedVariant: string | null;
 }): ChatV2AgentCycleFailure | null {
-  if (input.report.provider.mode === 'real') return null;
-  const name = 'RealProviderRequired';
-  const message = 'Chat V2 convergence cannot be verified by a fake provider scenario.';
+  const fake = input.report.provider.mode !== 'real';
+  const variantMismatch =
+    input.report.verdict === 'passed' && input.report.provider.variant !== input.requestedVariant;
+  const models = input.report.hostInvocationModels;
+  const metadataMismatch =
+    input.report.verdict === 'passed' &&
+    input.requestedVariant !== null &&
+    (!input.report.operation ||
+      typeof input.report.provider.provider !== 'string' ||
+      !input.report.provider.provider ||
+      typeof input.report.provider.model !== 'string' ||
+      !input.report.provider.model ||
+      !Array.isArray(models) ||
+      models.length < 1 ||
+      models.length > 100 ||
+      models.some(
+        (row) =>
+          !row ||
+          row.operationId !== input.report.operation?.operationId ||
+          row.provider !== input.report.provider.provider ||
+          row.model !== input.report.provider.model ||
+          row.variant !== input.requestedVariant ||
+          !isChatV2AgentLoopInvocationPurpose(row.purpose) ||
+          typeof row.invocationId !== 'string' ||
+          row.invocationId.length === 0,
+      ));
+  if (!fake && !variantMismatch && !metadataMismatch) return null;
+  const name = fake
+    ? 'RealProviderRequired'
+    : variantMismatch
+      ? 'VariantMismatch'
+      : 'VariantMetadataMismatch';
+  const message = fake
+    ? 'Chat V2 convergence cannot be verified by a fake provider scenario.'
+    : variantMismatch
+      ? 'Chat V2 scenario did not retain the requested model variant.'
+      : 'Chat V2 scenario did not retain owned Host invocation variant evidence.';
   return {
     phase: input.phase,
     mode: input.mode,
@@ -416,6 +462,7 @@ export async function runChatV2AgentCycle(
       completedAt: Date.now(),
       stabilityRuns: validated.stabilityRuns,
       scenarios: validated.scenarios,
+      requestedVariant: validated.variant,
       build,
       runs: Object.freeze([...runs]),
       confirmation,
@@ -439,6 +486,7 @@ export async function runChatV2AgentCycle(
           report = await dependencies.runScenario({
             scenario,
             providerMode: 'real',
+            variant: validated.variant,
             timeoutMs: validated.timeoutMs,
             artifactsParentDirectory: artifactsDirectory,
             keepRuntime: options.keepRuntime,
@@ -473,11 +521,12 @@ export async function runChatV2AgentCycle(
           };
         }
         const phase = mode === 'source' ? 'source_matrix' : 'compiled_matrix';
-        const providerFailure = realProviderRequiredFailure({
+        const providerFailure = scenarioConfigurationFailure({
           phase,
           mode,
           stabilityRun,
           report,
+          requestedVariant: validated.variant,
         });
         runs.push({
           mode,
@@ -513,17 +562,19 @@ export async function runChatV2AgentCycle(
       report = await dependencies.runScenario({
         scenario: initial.scenario,
         providerMode: 'real',
+        variant: validated.variant,
         timeoutMs: validated.timeoutMs,
         artifactsParentDirectory: artifactsDirectory,
         keepRuntime: options.keepRuntime,
         ...(sidecarExecutable ? { sidecarExecutable } : {}),
       });
       const phase = initial.mode === 'source' ? 'source_matrix' : 'compiled_matrix';
-      const providerFailure = realProviderRequiredFailure({
+      const providerFailure = scenarioConfigurationFailure({
         phase,
         mode: initial.mode,
         stabilityRun: initial.stabilityRun,
         report,
+        requestedVariant: validated.variant,
       });
       runs.push({
         mode: initial.mode,
@@ -698,6 +749,7 @@ async function runCli(): Promise<void> {
     throw new TypeError(`Unsupported agent-cycle scenario: ${scenarioValue}`);
   }
   const report = await runChatV2AgentCycle({
+    variant: chatV2AgentLoopVariantFromArgs(process.argv),
     stabilityRuns,
     timeoutMs,
     ...(artifactsParentDirectory ? { artifactsParentDirectory } : {}),

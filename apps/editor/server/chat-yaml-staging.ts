@@ -66,7 +66,8 @@ import {
   tagmaDirOf,
 } from './pipeline-paths.js';
 import { pipelineManifestPath, runPipelineManifestSync } from './pipeline-manifest.js';
-import { runPipelineLayoutSync } from './pipeline-layout-sync.js';
+import { runPipelineLayoutSyncDetailed } from './pipeline-layout-sync.js';
+import { CompileErrorObservationError } from './compile-error-observation.js';
 import {
   assertRequirementsConsistentWithYamlChange,
   parseRequirementsMd,
@@ -152,6 +153,38 @@ export class ChatYamlStageLockOwnershipError extends Error {
   constructor(message = 'The chat YAML stage does not belong to the active YAML edit lock.') {
     super(message);
     this.name = 'ChatYamlStageLockOwnershipError';
+  }
+}
+
+export class ChatYamlStageMissingArtifactError extends Error {
+  constructor(
+    readonly stageId: string,
+    readonly relativePath: string,
+    readonly filesystemError: NodeJS.ErrnoException,
+  ) {
+    super(`Expected staged YAML file was not found at ${relativePath}.`);
+    this.name = 'ChatYamlStageMissingArtifactError';
+  }
+}
+
+export interface ChatYamlStageScopeBaseline {
+  /** Paths use agent .tagma coordinates; no access to the Host baseline is granted. */
+  readonly artifacts: readonly { readonly relativePath: string; readonly text: string | null }[];
+  readonly supportDirectories?: readonly string[];
+  readonly supportFiles?: readonly { readonly relativePath: string; readonly text: string }[];
+}
+
+export class ChatYamlStageScopeViolationError extends Error {
+  constructor(
+    readonly stageId: string,
+    readonly targetRelativePath: string,
+    readonly kind: 'target_mismatch' | 'changed_source' | 'fresh_sibling',
+    readonly offendingRelativePath: string | null,
+    message: string,
+    readonly baseline?: ChatYamlStageScopeBaseline,
+  ) {
+    super(message);
+    this.name = 'ChatYamlStageScopeViolationError';
   }
 }
 
@@ -1956,6 +1989,56 @@ export function issueChatYamlStageTrialPlanAttempt(
   });
 }
 
+function readScopeRepairBaseline(
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  relativePath: string,
+): ChatYamlStageScopeBaseline {
+  const basePath = resolveRelativeInside(paths.baseTagmaDir, relativePath);
+  const expected = baseEntryFor(metadata, relativePath);
+  if (!expected || !sameArtifactHashes(pipelineArtifactHashes(basePath), expected)) {
+    throw new Error('Chat YAML stage base snapshot is invalid.');
+  }
+  const current = pipelineArtifactHashes(resolveStagedYamlPath(paths, relativePath));
+  const artifacts = (
+    [
+      [basePath, 'contentHash'],
+      [pipelineLayoutPath(basePath), 'layoutHash'],
+      [pipelineRequirementsPath(basePath), 'requirementsHash'],
+    ] as const
+  )
+    .filter(([, hash]) => !current || current[hash] !== expected[hash])
+    .map(([path]) => ({
+      relativePath: portableRelative(paths.baseTagmaDir, path),
+      text: existsSync(path) ? assertRegularTextFile(path, 'scope repair baseline') : null,
+    }));
+  const support =
+    current?.supportHash !== expected.supportHash ? readPipelineSupportTree(basePath) : null;
+  const coordinate = (path: string) =>
+    portableRelative(paths.baseTagmaDir, resolve(dirname(basePath), path));
+  const baseline = {
+    artifacts,
+    ...(support
+      ? {
+          supportDirectories: support.directories.map(coordinate),
+          supportFiles: [...support.files].map(([path, bytes]) => {
+            const text = bytes.toString('utf8');
+            if (!Buffer.from(text, 'utf8').equals(bytes)) {
+              throw new Error(
+                'Scope repair baseline requires unsupported non-text artifact bytes.',
+              );
+            }
+            return { relativePath: coordinate(path), text };
+          }),
+        }
+      : {}),
+  };
+  if (!sameArtifactHashes(pipelineArtifactHashes(basePath), expected)) {
+    throw new Error('Chat YAML stage base snapshot changed while reading repair evidence.');
+  }
+  return baseline;
+}
+
 function assertSessionPipelineBindingSemantics(
   ws: WorkspaceState,
   paths: StagePaths,
@@ -1970,7 +2053,13 @@ function assertSessionPipelineBindingSemantics(
     !metadata.activeRelativePath ||
     !samePipelineRelativePath(metadata.activeRelativePath, targetRelativePath)
   ) {
-    throw new Error(`The ${ownerLabel} may verify only its classified target.`);
+    throw new ChatYamlStageScopeViolationError(
+      metadata.id,
+      targetRelativePath,
+      'target_mismatch',
+      null,
+      `The ${ownerLabel} may verify only its classified target.`,
+    );
   }
   const changedSource = metadata.sourceRelativePaths.find(
     (relativePath) =>
@@ -1978,7 +2067,14 @@ function assertSessionPipelineBindingSemantics(
       stageTargetChanged(paths, metadata, relativePath),
   );
   if (changedSource) {
-    throw new Error(`The ${ownerLabel} cannot also mutate ${changedSource}.`);
+    throw new ChatYamlStageScopeViolationError(
+      metadata.id,
+      targetRelativePath,
+      'changed_source',
+      changedSource,
+      `The ${ownerLabel} cannot also mutate ${changedSource}.`,
+      readScopeRepairBaseline(paths, metadata, changedSource),
+    );
   }
   const freshSibling = listStageEntries(ws, paths, metadata).find(
     (entry) =>
@@ -1986,7 +2082,13 @@ function assertSessionPipelineBindingSemantics(
       baseEntryFor(metadata, entry.relativePath) === null,
   );
   if (freshSibling) {
-    throw new Error(`The ${ownerLabel} cannot also mutate ${freshSibling.relativePath}.`);
+    throw new ChatYamlStageScopeViolationError(
+      metadata.id,
+      targetRelativePath,
+      'fresh_sibling',
+      freshSibling.relativePath,
+      `The ${ownerLabel} cannot also mutate ${freshSibling.relativePath}.`,
+    );
   }
 }
 
@@ -2007,8 +2109,23 @@ export function compileChatYamlStage(
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   const targetRelativePath = assertPortableRelativePath(relativePath);
   const stagedPath = resolveStagedYamlPath(paths, targetRelativePath);
-  if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
   assertSessionPipelineBindingSemantics(ws, paths, metadata, targetRelativePath);
+  try {
+    lstatSync(stagedPath);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+    ) {
+      throw new ChatYamlStageMissingArtifactError(
+        stageId,
+        targetRelativePath,
+        error as NodeJS.ErrnoException,
+      );
+    }
+    throw error;
+  }
   if (independentRecovery) {
     if (routeIntent) {
       throw new Error('Independent recovery cannot also provide a router target mode.');
@@ -2032,8 +2149,11 @@ export function compileChatYamlStage(
   }
   const hostOwnsBasicLayout =
     metadata.requestedAction !== null || baseEntryFor(metadata, targetRelativePath) === null;
-  if (result.success && hostOwnsBasicLayout && runPipelineLayoutSync(stagedPath) === null) {
-    throw new Error('Host-managed new-pipeline layout synchronization failed.');
+  if (result.success && hostOwnsBasicLayout) {
+    const layout = runPipelineLayoutSyncDetailed(stagedPath);
+    if (layout.kind === 'unavailable') {
+      throw new CompileErrorObservationError(layout.observation);
+    }
   }
   return result;
 }

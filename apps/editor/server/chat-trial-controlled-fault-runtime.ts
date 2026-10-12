@@ -107,6 +107,7 @@ export function createControlledTrialFaultRuntime(
     },
     runSpawn(spec, driver, options = {}) {
       const id = owner(options);
+      beforeConsumerExecution(id);
       return fault.type !== 'artifact-replace' && id === fault.taskId
         ? inject(id, spec.cwd ?? scope.workDir, options)
         : base.runSpawn(spec, driver, options);

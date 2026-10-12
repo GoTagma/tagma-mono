@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createTagma, PluginRegistry, bunRuntime, type PipelineConfig } from '@tagma/sdk';
+import type { CompletionPlugin, TaskResult } from '@tagma/types';
+import { CHAT_PIPELINE_TRIAL_CACHE_VERSION as TRIAL_CACHE_VERSION } from '../server/chat-pipeline-trial-cache';
+import { sealChatOperationV2Admission } from '../server/chat-operations/admission';
+import { buildManagedChatOperationV2ExecutionPrompt } from '../server/chat-operations/authoring-runtime';
 import { readCompleteRepairOutput } from '../server/chat-operations/repair-output-reader';
 import {
   trialTaskResults,
@@ -18,6 +24,37 @@ const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
+
+function streamEvidence(result: Partial<TaskResult>, persisted?: string) {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-repair-stream-'));
+  roots.push(root);
+  const logs = join(root, '.tagma', 'logs', 'run-owned');
+  mkdirSync(logs, { recursive: true });
+  const path = join(logs, 'work.failed.stderr');
+  if (persisted !== undefined) writeFileSync(path, persisted);
+  const evidence = trialTaskResults(
+    {
+      states: new Map([
+        [
+          'work.failed',
+          {
+            status: 'failed',
+            config: { command: 'exit 1' },
+            trackConfig: {},
+            result: { stdout: '', stderr: '', exitCode: 1, failureKind: 'exit_nonzero', ...result },
+          },
+        ],
+      ]),
+      logPath: join(logs, 'pipeline.log'),
+    } as never,
+    { name: 'Capture', tracks: [] },
+    'positive',
+    1,
+    root,
+    persisted === undefined ? new Map() : new Map([['work.failed', { stderrPath: path }]]),
+  );
+  return evidence.repairErrorTasks[0];
+}
 
 describe('private model repair error evidence', () => {
   test('keeps concrete blocked input errors in private repair evidence', () => {
@@ -70,6 +107,7 @@ describe('private model repair error evidence', () => {
             stdoutBytes: 0,
             stderr: 'bounded runtime memory tail',
             stderrBytes: new TextEncoder().encode(stderr).length,
+            stderrStoredBytes: new TextEncoder().encode(stderr).length,
             exitCode: 1,
             failureKind: 'exit_nonzero',
           },
@@ -87,6 +125,225 @@ describe('private model repair error evidence', () => {
     expect(evidence.repairErrorTasks[0].stderr).toBe(stderr);
     expect(evidence.repairErrorTasks[0].stderrTruncation.source).toBe('not-truncated');
     expect(evidence.tasks[0].stderr).toBe('bounded runtime memory tail');
+  });
+
+  test('restores stored child errors and appends full completion feedback once into the repair prompt', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-repair-full-completion-'));
+    roots.push(root);
+    const child = 'CHILD_FIRST\n' + 'child context ☃ '.repeat(1000) + '\nCHILD_LAST';
+    const feedback =
+      ' FIRST_COMPLETION\n' + 'completion context ☃ '.repeat(2000) + '\nLAST_COMPLETION ';
+    const registry = new PluginRegistry();
+    registry.registerPlugin('completions', 'judge', {
+      name: 'judge',
+      async check() {
+        return { passed: false, feedback };
+      },
+    } as CompletionPlugin);
+    const config: PipelineConfig = {
+      name: 'Capture',
+      tracks: [
+        {
+          id: 'work',
+          name: 'Work',
+          tasks: [
+            {
+              id: 'failed',
+              name: 'Failed',
+              command: {
+                argv: [
+                  'node',
+                  '-e',
+                  `const fs = require("node:fs"); fs.writeSync(1, "business output"); fs.writeSync(2, ${JSON.stringify(child)});`,
+                ],
+              },
+              completion: { type: 'judge' },
+            },
+          ],
+        },
+      ],
+    };
+    const baseRuntime = bunRuntime();
+    const runtime = {
+      ...baseRuntime,
+      runCommand(
+        command: Parameters<typeof baseRuntime.runCommand>[0],
+        cwd: string,
+        options: Parameters<typeof baseRuntime.runCommand>[2],
+      ) {
+        return baseRuntime.runCommand(command, cwd, { ...options, maxStderrTailBytes: 128 });
+      },
+    };
+    const execution = await createTagma({ registry, runtime, builtins: false }).run(config, {
+      cwd: root,
+      skipPluginLoading: true,
+    });
+    const result = execution.states.get('work.failed')!.result!;
+    expect(execution.success).toBe(false);
+    expect(result.failureKind).toBe('completion_failed');
+    expect(result.stderr).not.toContain('FIRST_COMPLETION');
+    expect(readFileSync(result.stderrPath!, 'utf8')).toBe(child);
+    const trial = trialTaskResults(
+      execution,
+      config,
+      'positive',
+      1,
+      root,
+      new Map([['work.failed', { stdoutPath: result.stdoutPath, stderrPath: result.stderrPath }]]),
+    );
+    const repaired = trial.repairErrorTasks[0];
+    expect(repaired.stderr).toBe(child + '\n[completion] ' + feedback);
+    expect(repaired.stdout).toBe('business output');
+    expect(repaired.modelEvidenceReadErrors).toBeUndefined();
+    expect(repaired.stderrTruncation.source).toBe('not-truncated');
+    expect(trial.tasks[0].stderr).not.toContain('FIRST_COMPLETION');
+    const evidence = buildChatRepairErrorEvidence('trial-1', {
+      kind: 'failed',
+      ran: true,
+      cases: [{ id: 'positive', success: false, expectations: [] }],
+      ...trial,
+    } as unknown as ChatPipelineTrialRunResult);
+    expect(JSON.parse(evidence.text).tasks[0].stderr).toBe(repaired.stderr);
+    const canonicalRequestBytes = new TextEncoder().encode(
+      JSON.stringify({
+        purpose: 'repair',
+        repairAttempt: 1,
+        repairEvidence: {
+          feedback: {
+            schemaVersion: 1,
+            stage: 'trial',
+            details: 'Completion check failed.',
+            failedTaskIds: ['work.failed'],
+            omittedFailedTaskCount: 0,
+          },
+          diagnosticCodes: ['task_failed'],
+          errorEvidenceHash: evidence.hash,
+          errors: evidence.text,
+        },
+      }),
+    );
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'repair-1',
+      sessionId: 'session-1',
+      executionMessageId: 'input-1',
+      purpose: 'repair',
+      intent: 'create',
+      stageDirectory: root,
+      targetRelativePath: 'capture/capture.yaml',
+      trialPlanRequest: null,
+      admission: sealChatOperationV2Admission({
+        schemaVersion: 1,
+        request: { schemaVersion: 1, text: 'Build the pipeline.', attachments: [] },
+        provider: 'test',
+        model: 'offline-fixture',
+        variant: null,
+        agentPolicyHash: '1'.repeat(64),
+        settingsHash: '2'.repeat(64),
+        capabilityHash: '3'.repeat(64),
+        featureHash: '4'.repeat(64),
+        rendererInstanceId: 'renderer-1',
+        conversationId: 'conversation-1',
+        inventoryRevision: 1,
+        inventoryDigest: '5'.repeat(64),
+        readSnapshotHash: null,
+        purpose: 'authoring',
+        admittedAt: 1,
+      }),
+      clarificationThread: null,
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+      canonicalRequestBytes,
+    });
+    expect(prompt.text).toContain('CHILD_FIRST');
+    expect(prompt.text).toContain('CHILD_LAST');
+    expect(prompt.text).toContain('FIRST_COMPLETION');
+    expect(prompt.text).toContain('LAST_COMPLETION');
+    const encodedErrors = prompt.text.match(
+      /<repair-error-evidence>([\s\S]*?)<\/repair-error-evidence>/u,
+    )![1];
+    const decodedErrors = encodedErrors
+      .replace(/&quot;/gu, '"')
+      .replace(/&apos;/gu, "'")
+      .replace(/&lt;/gu, '<')
+      .replace(/&gt;/gu, '>')
+      .replace(/&amp;/gu, '&');
+    expect(decodedErrors).toBe(evidence.text);
+    expect(readFileSync(result.stderrPath!, 'utf8')).toBe(child);
+  });
+
+  test.each(['[runner] parse failed', '[driver] rejected output', '[engine] invalid binding'])(
+    'preserves typed diagnostics after restoring a child stream (%s)',
+    (note) => {
+      const child = 'CHILD_START\n' + 'detail '.repeat(2000) + '\nCHILD_END';
+      const suffix = '\n' + note;
+      const task = streamEvidence(
+        {
+          stderr: 'tail' + suffix,
+          stderrBytes: Buffer.byteLength(child),
+          stderrStoredBytes: Buffer.byteLength(child),
+          stderrDiagnostics: {
+            suffix,
+            completeSuffix: suffix,
+            sourceBytes: Buffer.byteLength(child),
+          },
+        },
+        child,
+      );
+      expect(task.stderr).toBe(child + suffix);
+      expect(task.modelEvidenceReadErrors).toBeUndefined();
+      expect(task.stderrTruncation.source).toBe('not-truncated');
+    },
+  );
+
+  test.each(['short-file', 'missing-file'])('rejects known missing captured bytes (%s)', (mode) => {
+    const task = streamEvidence(
+      { stderr: 'tail', stderrBytes: 1000, stderrStoredBytes: 1000 },
+      mode === 'short-file' ? 'short stored output' : undefined,
+    );
+    expect(task.modelEvidenceReadErrors?.[0].stream).toBe('stderr');
+    expect(task.stderrTruncation.source).toBe('truncated');
+  });
+
+  test('keeps redaction byte shrinkage valid and legacy raw byte gaps unknown', () => {
+    const redacted = streamEvidence({ stderr: 'x', stderrBytes: 6, stderrStoredBytes: 1 });
+    expect(redacted.stderr).toBe('x');
+    expect(redacted.modelEvidenceReadErrors).toBeUndefined();
+    expect(redacted.stderrTruncation.source).toBe('not-truncated');
+    const legacy = streamEvidence({ stderr: 'x', stderrBytes: 6 });
+    expect(legacy.modelEvidenceReadErrors).toBeUndefined();
+    expect(legacy.stderrTruncation.source).toBe('unknown');
+    const restoredLegacy = streamEvidence(
+      { stderr: 'tail', stderrBytes: 1000 },
+      'complete legacy capture',
+    );
+    expect(restoredLegacy.stderr).toBe('complete legacy capture');
+    expect(restoredLegacy.modelEvidenceReadErrors).toBeUndefined();
+    expect(restoredLegacy.stderrTruncation.source).toBe('unknown');
+    const empty = streamEvidence({ stderr: '', stderrBytes: 0, stderrStoredBytes: 0 });
+    expect(empty.stderrTruncation.source).toBe('not-truncated');
+    expect(empty.modelEvidenceReadErrors).toBeUndefined();
+  });
+
+  test('does not infer diagnostics from child text and rejects a mismatched typed suffix', () => {
+    const literal = 'child says [completion] with no engine annotation';
+    expect(
+      streamEvidence({ stderr: literal, stderrBytes: Buffer.byteLength(literal) }).stderr,
+    ).toBe(literal);
+    const mismatch = streamEvidence({
+      stderr: 'child only',
+      stderrStoredBytes: 10,
+      stderrDiagnostics: {
+        suffix: '\n[completion] expected',
+        completeSuffix: '\n[completion] full',
+      },
+    });
+    expect(mismatch.stderr).not.toContain('[completion] full');
+    expect(mismatch.modelEvidenceReadErrors?.[0].message).toContain('suffix does not match');
+    const marker = streamEvidence({
+      stderr: '[100 bytes truncated from head; not persisted]\nTAIL',
+    });
+    expect(marker.stderrTruncation.source).toBe('truncated');
+    expect(marker.modelEvidenceReadErrors).toHaveLength(1);
   });
 
   test('refuses foreign log paths and hardlinked output files', () => {
@@ -320,4 +577,148 @@ describe('private model repair error evidence', () => {
       }),
     ).toBe(false);
   });
+});
+
+test('complete native planner rejection survives private redaction, resealing and actual planner input', () => {
+  const required = [
+    'timeout-recovery',
+    'failure-recovery',
+    'empty-result',
+    'unlocated-source',
+    'source-preservation',
+  ];
+  const text = JSON.stringify({
+    message: 'Native rejection with all issues.',
+    missingEvidence: required,
+    issues: required.map((type, index) => ({
+      type,
+      caseId: null,
+      code: 'typed-evidence-missing',
+      field: 'cases.evidence',
+      message:
+        '完整诊断🧭'.repeat(200) + ` issue=${index} --token native-private-secret FINAL_${index}`,
+      repairScope: 'diagnostic-only',
+    })),
+  });
+  const nativeHash = createHash('sha256').update(text, 'utf8').digest('hex');
+  const hostMessage = 'Host full inspection 🧭 '.repeat(200) + 'HOST_FINAL_DETAIL';
+  const planRequest = {
+    reason: 'invalid' as const,
+    relativePlanPath: 'flow/flow.trial-plan.json',
+    pipelineHash: 'a'.repeat(40),
+    message: hostMessage,
+    maxAttempts: 2,
+    requiredCoverage: ['multiple-inputs' as const],
+    attemptId: 'fresh-host-attempt',
+  };
+  for (const kind of ['plan-required', 'plan-failed'] as const) {
+    const evidence = buildChatRepairErrorEvidence('trial-native', {
+      version: TRIAL_CACHE_VERSION,
+      success: false,
+      runId: null,
+      durationMs: 0,
+      totalTaskCount: 0,
+      omittedTaskCount: 0,
+      kind,
+      ran: false,
+      tasks: [],
+      cases: [],
+      summary: '[compact display summary]',
+      ...(kind === 'plan-required' ? { planRequest } : { repairPlanRequest: planRequest }),
+      repairPlanRejectionEvidence: {
+        version: 1,
+        stageId: 'stage-native',
+        yamlHash: 'a'.repeat(40),
+        relativeYamlPath: 'flow/flow.yaml',
+        attemptId: 'rejected-host-attempt',
+        submissionConsumed: true,
+        toolAttemptCount: 1,
+        validationRejectionCount: 1,
+        successfulWriteCount: 0,
+        recordedAt: 1,
+        text,
+        hash: nativeHash,
+        byteLength: Buffer.byteLength(text, 'utf8'),
+      },
+    } as ChatPipelineTrialRunResult);
+    expect(isChatRepairErrorEvidence(evidence)).toBe(true);
+    expect(evidence.hash).toBe(createHash('sha256').update(evidence.text, 'utf8').digest('hex'));
+    expect(evidence.text).not.toContain('native-private-secret');
+    const document = JSON.parse(evidence.text);
+    const native = document.planRejectionEvidence;
+    expect(native.nativeHash).toBe(nativeHash);
+    expect(native.nativeByteLength).toBe(Buffer.byteLength(text, 'utf8'));
+    expect(native.byteLength).toBe(Buffer.byteLength(native.text, 'utf8'));
+    expect(native.hash).toBe(createHash('sha256').update(native.text, 'utf8').digest('hex'));
+    expect(native.hash).not.toBe(nativeHash);
+    const complete = JSON.parse(native.text);
+    expect(complete.missingEvidence).toEqual(required);
+    expect(complete.issues).toHaveLength(5);
+    expect(complete.issues.map((issue: { type: string }) => issue.type)).toEqual(required);
+    expect(complete.issues.at(-1).message).toContain('FINAL_4');
+    expect(complete.issues.at(-1).message).toContain('[REDACTED]');
+    expect(document.planRequest.message).toBe(hostMessage);
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'native-planner',
+      sessionId: 'native-session',
+      executionMessageId: 'native-input',
+      purpose: 'trial_plan',
+      intent: 'create',
+      stageDirectory: '/isolated/stage/.tagma',
+      targetRelativePath: 'flow/flow.yaml',
+      trialPlanRequest: planRequest,
+      admission: sealChatOperationV2Admission({
+        schemaVersion: 1,
+        request: { schemaVersion: 1, text: 'Build the pipeline.', attachments: [] },
+        provider: 'test',
+        model: 'offline-fixture',
+        variant: null,
+        agentPolicyHash: '1'.repeat(64),
+        settingsHash: '2'.repeat(64),
+        capabilityHash: '3'.repeat(64),
+        featureHash: '4'.repeat(64),
+        rendererInstanceId: 'renderer-native',
+        conversationId: 'conversation-native',
+        inventoryRevision: 1,
+        inventoryDigest: '5'.repeat(64),
+        readSnapshotHash: null,
+        purpose: 'authoring',
+        admittedAt: 1,
+      }),
+      clarificationThread: null,
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+      canonicalRequestBytes: new TextEncoder().encode(
+        JSON.stringify({
+          purpose: 'trial_plan',
+          verificationErrorEvidence: { hash: evidence.hash, errors: evidence.text },
+        }),
+      ),
+    });
+    const encoded = prompt.text.match(
+      /<trial-error-evidence>([\s\S]*?)<\/trial-error-evidence>/u,
+    )![1]!;
+    const decoded = encoded
+      .replace(/&quot;/gu, '"')
+      .replace(/&apos;/gu, "'")
+      .replace(/&lt;/gu, '<')
+      .replace(/&gt;/gu, '>')
+      .replace(/&amp;/gu, '&');
+    expect(decoded).toBe(evidence.text);
+    expect(prompt.text).not.toContain('native-private-secret');
+  }
+  const missing = buildChatRepairErrorEvidence('trial-missing-native', {
+    version: TRIAL_CACHE_VERSION,
+    success: false,
+    runId: null,
+    durationMs: 0,
+    totalTaskCount: 0,
+    omittedTaskCount: 0,
+    kind: 'plan-required',
+    ran: false,
+    tasks: [],
+    cases: [],
+    summary: '[compact only]',
+  } as ChatPipelineTrialRunResult);
+  expect(JSON.parse(missing.text).planRejectionEvidence).toBeUndefined();
 });

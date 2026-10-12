@@ -75,7 +75,7 @@ directly only when you need lower-level package boundaries.
 - **Approval gates** -- trigger-based approval with stdin and WebSocket adapters
 - **Lifecycle hooks** -- `pipeline_start`, `task_start`, `task_success`, `task_failure`, `pipeline_complete`, `pipeline_error`
 - **Middleware** -- enrich prompts before execution (e.g. inject static context)
-- **Completion checks** -- validate task output with `exit_code`, `file_exists`, or `output_check` plugins
+- **Completion checks** -- validate task output with `exit_code`, `file_exists`, `json_schema`, or `output_check` plugins
 - **Plugin schemas** -- triggers/completions/middlewares can declare a `PluginSchema` so visual editors render typed forms for their config
 - **Unified task bindings** -- pass dynamic values with task-level `inputs` / `outputs`; add optional `type` metadata when a binding needs validation
 
@@ -422,6 +422,21 @@ trigger:
 | `path`     | `string`                   | Yes      | -       | File or directory path to check (relative to workDir) |
 | `kind`     | `"file" \| "dir" \| "any"` | No       | `"any"` | Entity type constraint                                |
 | `min_size` | `number`                   | No       | -       | Minimum file size in bytes (files only)               |
+
+#### `json_schema` - Explicit JSON file contract
+
+Available from SDK 0.7.121. This opt-in built-in runs inside the Host; the task's workspace does not need an SDK installation or a validator CLI.
+
+```yaml
+completion:
+  type: json_schema
+  path: output.json
+  schema_path: output.schema.json
+```
+
+Both required paths resolve from the effective task cwd and stay within that scope. The Host reads a complete UTF-8 JSON payload and a local Draft 7 JSON Schema, including in-document `$ref` definitions and standard formats when explicitly declared. Unsupported schemas, asynchronous validation, unresolved external references, malformed JSON, and non-finite numbers fail the check; it never fetches remote references.
+
+Requiredness, optional fields, extra properties, enums, bounds, and conditional rules come from the authored schema. Validation does not coerce values, insert defaults, or remove properties. Existing `file_exists`, custom completions, and native inline JSON behavior remain unchanged. Current-input IDs, source identity, cross-file coverage/order, and factual entailment still need separate explicit checks; a schema does not establish them automatically. Failure diagnostics enter the existing completion/repair evidence path, and downstream dependencies obey the existing failure policy.
 
 #### `output_check` - Command-based output validation
 

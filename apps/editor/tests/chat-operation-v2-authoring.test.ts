@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import type { ChatRepairDiagnosis } from '../shared/chat-repair-diagnosis';
+import {
+  CompileErrorObservationError,
+  observeCompileError,
+} from '../server/compile-error-observation';
 import { buildManagedChatOperationV2ExecutionPrompt } from '../server/chat-operations/authoring-runtime.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -32,6 +36,7 @@ import {
   type ChatOperationV2AuthoringRuntime,
   type ChatOperationV2AuthoringStage,
   type ChatOperationV2AuthoringVerificationResult,
+  type ChatOperationV2RejectedTrialPlanAttempt,
   type ChatOperationV2RuntimeInteractiveRequest,
   type ChatOperationV2SessionRelocation,
   type PersistChatOperationV2AuthoringInvocationResultInput,
@@ -69,7 +74,172 @@ afterEach(async () => {
 
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
+// Synthetic Host-runtime evidence below exercises actual engine dispatch/outboxes.
+// It does not establish private-stage HMAC, native capture or provider receipt.
+const feedbackUtf8Bytes = (value: string): number => new TextEncoder().encode(value).byteLength;
+
+function boundedFeedbackFixture(exhaust: boolean) {
+  const harness = createHarness({
+    repairMaxAttempts: 2,
+    verification: ['trial_plan', 'trial_plan', exhaust ? 'trial_plan' : 'passed'],
+    repairDisposition: 'no_change',
+  });
+  const { runtime, store } = harness;
+  const emptyOld = JSON.stringify({
+    kind: 'plan-required',
+    marker: 'OLD_INITIAL_ONLY',
+    padding: '',
+  });
+  const oldErrors = JSON.stringify({
+    kind: 'plan-required',
+    marker: 'OLD_INITIAL_ONLY',
+    padding: 'x'.repeat(806 - feedbackUtf8Bytes(emptyOld)),
+  });
+  const diagnostic = JSON.stringify({
+    message: 'The complete validation-only rejection must reach the next planner.',
+    missingEvidence: ['source-preservation'],
+    issues: [
+      { type: 'core-witness', message: '新的完整错误 🌐 <&> '.repeat(800) + 'NEW_FEEDBACK_END' },
+    ],
+  });
+  const nextErrors = JSON.stringify({
+    schemaVersion: 2,
+    kind: 'plan-required',
+    repairAuthorization: 'diagnostic-only',
+    completePlanRejection: { text: diagnostic },
+    marker: 'NEW_CURRENT_FEEDBACK',
+    attemptId: 'trial-plan-attempt-2',
+  });
+  const lastErrors = JSON.stringify({
+    schemaVersion: 2,
+    kind: 'plan-required',
+    repairAuthorization: 'diagnostic-only',
+    marker: 'LAST_CURRENT_FEEDBACK',
+    message: '第二轮之后的新错误 <&> '.repeat(500) + 'LAST_FEEDBACK_END',
+  });
+  const errorsByHash = new Map(
+    [oldErrors, nextErrors, lastErrors].map((text) => [hash(text), text]),
+  );
+  type Inspection = Parameters<
+    NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlanRejection']>
+  >[0];
+  type EvidenceRead = Parameters<
+    NonNullable<ChatOperationV2AuthoringRuntime['readRepairErrorEvidence']>
+  >[0];
+  const inspections: Inspection[] = [];
+  const evidenceReads: EvidenceRead[] = [];
+  const rejection = (attemptId: string): ChatOperationV2RejectedTrialPlanAttempt => ({
+    attemptId,
+    toolAttemptCount: 0,
+    maxToolAttempts: 2,
+    submissionConsumed: false,
+    validationRejectionCount: 0,
+    rejectionEvidenceHash: hash(diagnostic),
+    rejectionUtf8Bytes: feedbackUtf8Bytes(diagnostic),
+  });
+  Object.assign(runtime, {
+    inspectTrialPlanRejection: async (input: Inspection) => {
+      const previous = runtime.invocationRequests.at(-1)!;
+      expect(previous.purpose).toBe('trial_plan');
+      expect(input).toMatchObject({
+        operationId: previous.operationId,
+        operationGeneration: previous.operationGeneration,
+        stageId: previous.stage.stageId,
+        invocationId: previous.invocationId,
+        sessionId: previous.sessionId,
+        inputId: previous.inputId,
+        requestDigest: hash(new TextDecoder().decode(previous.canonicalRequestBytes)),
+        trialPlanRequest: previous.trialPlanRequest,
+      });
+      expect(store.getInvocationOutbox(input.invocationId)?.status).toBe('settled');
+      inspections.push(input);
+      return rejection(input.trialPlanRequest.attemptId);
+    },
+    readRepairErrorEvidence: async (input: EvidenceRead) => {
+      expect(input).toMatchObject({
+        operationId: 'operation-1',
+        operationGeneration: runtime.stage!.operationGeneration,
+        stageId: runtime.stage!.stageId,
+      });
+      evidenceReads.push(input);
+      const text = errorsByHash.get(input.hash);
+      if (text === undefined) throw new Error('Unexpected complete-error reference.');
+      return text;
+    },
+  });
+  const verify = runtime.verifyStage.bind(runtime);
+  let planReviews = 0;
+  runtime.verifyStage = async (input) => {
+    const result = await verify(input);
+    if (result.kind !== 'trial_plan_required') return result;
+    planReviews += 1;
+    if (planReviews === 1) return { ...result, repairErrorEvidenceHash: hash(oldErrors) };
+    const previous = runtime.invocationRequests.at(-1)!;
+    expect(input.stage.stageId).toBe(previous.stage.stageId);
+    expect(input.operationGeneration).toBe(previous.operationGeneration);
+    return {
+      ...result,
+      planRequest: {
+        ...result.planRequest,
+        reason: 'invalid' as const,
+        attemptId: `trial-plan-attempt-${planReviews}`,
+        message: 'Correct this current complete rejection without changing the pipeline.',
+      },
+      trialPlanRejection: rejection(previous.trialPlanRequest!.attemptId),
+      repairErrorEvidenceHash: hash(planReviews === 2 ? nextErrors : lastErrors),
+    };
+  };
+  const run = runtime.runInvocation.bind(runtime);
+  runtime.runInvocation = async (request) => {
+    const result = await run(request);
+    return !exhaust &&
+      request.trialPlanRequest?.attemptId === 'trial-plan-attempt-2' &&
+      result.kind === 'completed'
+      ? { ...result, disposition: 'changed' }
+      : result;
+  };
+  return { ...harness, oldErrors, nextErrors, lastErrors, diagnostic, inspections, evidenceReads };
+}
+
+function assertNextCompletePlannerInput(
+  request: ChatOperationV2AuthoringInvocationRequest,
+  currentErrors: string,
+  oldErrors: string,
+) {
+  const canonical = JSON.parse(new TextDecoder().decode(request.canonicalRequestBytes));
+  expect(canonical.verificationErrorEvidence).toEqual({
+    hash: hash(currentErrors),
+    errors: currentErrors,
+  });
+  expect(canonical.verificationErrorEvidence.errors).not.toBe(oldErrors);
+  expect(canonical.verificationErrorEvidence.hash).not.toBe(hash(oldErrors));
+  expect(feedbackUtf8Bytes(currentErrors)).toBeGreaterThan(8 * 1024);
+  const prompt = buildManagedChatOperationV2ExecutionPrompt({
+    ...request,
+    executionMessageId: 'synthetic-next-sdk-message',
+    intent: 'create',
+    stageDirectory: '/owned/stage/.tagma',
+    targetRelativePath: 'pipeline/pipeline.yaml',
+  });
+  const encoded = prompt.text.match(
+    /<trial-error-evidence>([\s\S]*?)<\/trial-error-evidence>/,
+  )?.[1];
+  expect(encoded).toBeDefined();
+  const decoded = encoded!
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+  expect(decoded).toBe(currentErrors);
+  expect(hash(decoded)).toBe(hash(currentErrors));
+  expect(feedbackUtf8Bytes(decoded)).toBe(feedbackUtf8Bytes(currentErrors));
+  expect(decoded).toContain('NEW_FEEDBACK_END');
+  expect(decoded).not.toContain('OLD_INITIAL_ONLY');
+}
+
 interface RuntimeOptions {
+  readonly repairMaxAttempts?: number;
   readonly verification?: readonly (
     'repair' | 'trial_plan' | 'unverified' | 'passed' | 'discard'
   )[];
@@ -304,6 +474,32 @@ class FakeAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     this.discardedStageIds.push(input.stageId);
     if (this.stage) this.stage = { ...this.stage, status: 'discarded', updatedAt: this.now() };
     return { kind: 'discarded' as const, stageId: input.stageId };
+  }
+
+  async inspectTrialPlanProviderFailure(
+    input: Parameters<
+      NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlanProviderFailure']>
+    >[0],
+  ) {
+    const previous = this.invocationRequests.at(-1);
+    if (
+      !previous ||
+      previous.purpose !== 'trial_plan' ||
+      !this.providerFailed ||
+      this.options.providerSubmissionUnknown !== false ||
+      previous.workspaceScopeId !== input.workspaceScopeId ||
+      previous.operationId !== input.operationId ||
+      previous.operationGeneration !== input.operationGeneration ||
+      previous.stage.stageId !== input.stageId ||
+      previous.invocationId !== input.previousInvocationId ||
+      previous.sessionId !== input.previousSessionId ||
+      previous.inputId !== input.previousInputId ||
+      createHash('sha256').update(previous.canonicalRequestBytes).digest('hex') !==
+        input.previousRequestDigest ||
+      input.failureCode !== (this.options.providerFailureCode ?? 'provider_unavailable')
+    )
+      return null;
+    return { failureDigest: '6'.repeat(64), trialPlanRequest: previous.trialPlanRequest! };
   }
 
   async runInvocation(
@@ -676,7 +872,7 @@ function createHarness(options: RuntimeOptions = {}) {
     now,
     nextHostId,
   });
-  seedAwaitingOperation(store, now, 'operation-1');
+  seedAwaitingOperation(store, now, 'operation-1', options.repairMaxAttempts);
   seedFallbackBinding(store, now, fallbackBindingId);
   return { root, store, runtime, resultPersistence, engine, now, nextHostId };
 }
@@ -721,6 +917,7 @@ function seedAwaitingOperation(
   store: ChatOperationV2Store,
   now: () => number,
   operationId: string,
+  repairMaxAttempts = 3,
 ) {
   const sealedAdmission = admission(now);
   const createdAt = sealedAdmission.admittedAt;
@@ -728,7 +925,7 @@ function seedAwaitingOperation(
     operationId,
     clientRequestId: `client-${operationId}`,
     workspaceScopeId: 'scope-1',
-    state: createInitialChatOperationV2State({ repairMaxAttempts: 3 }),
+    state: createInitialChatOperationV2State({ repairMaxAttempts }),
     admission: sealedAdmission,
     createdAt,
     event: event(`created-${operationId}`, 'operation_created', createdAt, {
@@ -1394,6 +1591,77 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     expect(store.getOperation('operation-1')?.phase).toBe('commit_preparing');
   });
 
+  test('retaining at the frozen repair maximum keeps the latest complete error and parsed diagnosis', async () => {
+    const { engine, store, runtime } = createHarness({
+      repairMaxAttempts: 2,
+      verification: ['repair', 'repair', 'repair'],
+    });
+    const errors = [0, 1, 2].map((attempt) =>
+      JSON.stringify({ stderr: `Complete diagnostic ${attempt}. `.repeat(800) + `END_${attempt}` }),
+    );
+    const evidence = new Map(errors.map((text) => [hash(text), text]));
+    const verify = runtime.verifyStage.bind(runtime);
+    let failure = 0;
+    runtime.verifyStage = async (input) => {
+      const result = await verify(input);
+      if (result.kind !== 'repair_required') return result;
+      const repairDiagnosis: ChatRepairDiagnosis = {
+        schemaVersion: 1,
+        failureSignature: hash('same complete failure'),
+        repairAttempt: input.repairAttempts,
+        consecutiveFailures: 1,
+        complete: true,
+        failedExpectationTypes: ['task-status'],
+        tasks: [
+          {
+            taskId: 'main.task',
+            status: 'failed',
+            failureKind: 'completion_failed',
+            exitCode: 1,
+            effectiveCwd: '.tagma/alpha',
+            completionType: 'file_exists',
+            completionPath: '.tagma/alpha/out.txt',
+            completionRegularFile: false,
+          },
+        ],
+        files: [],
+        omittedTaskCount: 0,
+        omittedFileCount: 0,
+      };
+      return { ...result, repairErrorEvidenceHash: hash(errors[failure++]), repairDiagnosis };
+    };
+    Object.assign(runtime, {
+      readRepairErrorEvidence: async (input: { hash: string }) => evidence.get(input.hash)!,
+    });
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    expect(result.kind).toBe('provider_unavailable');
+    const repairs = runtime.invocationRequests.filter(({ purpose }) => purpose === 'repair');
+    expect(repairs).toHaveLength(2);
+    for (let index = 0; index < repairs.length; index++) {
+      const canonical = JSON.parse(new TextDecoder().decode(repairs[index]!.canonicalRequestBytes));
+      expect(canonical.repairEvidence.errors).toBe(errors[index]);
+      expect(canonical.repairEvidence.errorEvidenceHash).toBe(hash(errors[index]));
+    }
+    const latest = store.getLatestOperationEvent('operation-1', 'trial_status_changed');
+    expect(latest?.payload).toMatchObject({
+      errorCode: 'repair_attempts_exhausted',
+      repairErrorEvidenceHash: hash(errors[2]),
+    });
+    expect(JSON.parse(String(latest?.payload.repairDiagnosisJson))).toMatchObject({
+      repairAttempt: 2,
+      consecutiveFailures: 3,
+      complete: true,
+    });
+    expect(evidence.get(String(latest?.payload.repairErrorEvidenceHash))).toBe(errors[2]);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      repairAttempts: 2,
+      repairMaxAttempts: 2,
+    });
+    expect(store.listCommitWal('scope-1')).toHaveLength(0);
+  });
+
   test.each(['missing', 'changed'])(
     'retains the draft rather than repairing without complete authenticated errors (%s)',
     async (reason) => {
@@ -1786,6 +2054,273 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     });
   });
 
+  test('uses the remaining counted plan submission with fresh Host identities and complete current errors', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['trial_plan', 'trial_plan', 'passed'],
+      repairDisposition: 'no_change',
+    });
+    const diagnostic = JSON.stringify({
+      message: 'The required evidence review is incomplete.',
+      missingEvidence: ['empty-result', 'source-preservation'],
+      issues: [{ type: 'evidence-review', message: '完整错误 <&> '.repeat(900) + 'FULL_PLAN_END' }],
+    });
+    const errors = JSON.stringify({ schemaVersion: 1, planRejection: { text: diagnostic } });
+    const rejection: ChatOperationV2RejectedTrialPlanAttempt = {
+      attemptId: 'trial-plan-attempt-1',
+      toolAttemptCount: 1,
+      maxToolAttempts: 2,
+      rejectionEvidenceHash: hash(diagnostic),
+    };
+    const inspectionCalls: string[] = [];
+    Object.assign(runtime, {
+      inspectTrialPlanRejection: async (input: { invocationId: string }) => {
+        inspectionCalls.push(input.invocationId);
+        return rejection;
+      },
+      readRepairErrorEvidence: async () => errors,
+    });
+    const verify = runtime.verifyStage.bind(runtime);
+    let planReviews = 0;
+    runtime.verifyStage = async (input) => {
+      const result = await verify(input);
+      if (result.kind !== 'trial_plan_required') return result;
+      planReviews++;
+      return planReviews === 1
+        ? result
+        : {
+            ...result,
+            planRequest: { ...result.planRequest, attemptId: 'trial-plan-attempt-2' },
+            trialPlanRejection: rejection,
+            repairErrorEvidenceHash: hash(errors),
+          };
+    };
+    const run = runtime.runInvocation.bind(runtime);
+    runtime.runInvocation = async (request) => {
+      const result = await run(request);
+      return request.trialPlanRequest?.attemptId === 'trial-plan-attempt-2' &&
+        result.kind === 'completed'
+        ? { ...result, disposition: 'changed' }
+        : result;
+    };
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('commit_preparing');
+    const planners = runtime.invocationRequests.filter(({ purpose }) => purpose === 'trial_plan');
+    expect(planners).toHaveLength(2);
+    expect(planners.map(({ trialPlanRequest }) => trialPlanRequest?.attemptId)).toEqual([
+      'trial-plan-attempt-1',
+      'trial-plan-attempt-2',
+    ]);
+    expect(planners[1]!.invocationId).not.toBe(planners[0]!.invocationId);
+    expect(planners[1]!.inputId).not.toBe(planners[0]!.inputId);
+    expect(planners[1]!.canonicalRequestBytes).not.toEqual(planners[0]!.canonicalRequestBytes);
+    expect(inspectionCalls).toEqual([planners[0]!.invocationId]);
+    const canonical = JSON.parse(new TextDecoder().decode(planners[1]!.canonicalRequestBytes));
+    expect(canonical.verificationErrorEvidence).toEqual({ hash: hash(errors), errors });
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      ...planners[1]!,
+      executionMessageId: 'fixture-sdk-message-2',
+      intent: 'create',
+      stageDirectory: '/owned/stage/.tagma',
+      targetRelativePath: 'pipeline/pipeline.yaml',
+    });
+    const encoded = prompt.text.match(
+      /<trial-error-evidence>([\s\S]*?)<\/trial-error-evidence>/,
+    )?.[1];
+    expect(encoded).toBeDefined();
+    const decoded = encoded!
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&');
+    expect(decoded).toBe(errors);
+    expect(hash(decoded)).toBe(canonical.verificationErrorEvidence.hash);
+    expect(new TextEncoder().encode(decoded).byteLength).toBe(
+      new TextEncoder().encode(errors).byteLength,
+    );
+    expect(decoded).toContain('FULL_PLAN_END');
+    expect(runtime.verifyCalls).toHaveLength(3);
+    expect(store.getOperation('operation-1')).toMatchObject({ repairAttempts: 0 });
+    expect(store.listUsageLedger('operation-1').every(({ status }) => status === 'settled')).toBe(
+      true,
+    );
+  });
+
+  test('a second completed rejected plan cannot exceed the existing maximum of two submissions', async () => {
+    const { engine, store, runtime } = createHarness({
+      verification: ['trial_plan', 'trial_plan', 'trial_plan'],
+      repairDisposition: 'no_change',
+    });
+    const errors = JSON.stringify({ planRejection: { text: 'Complete invalid-plan evidence.' } });
+    const firstRejection: ChatOperationV2RejectedTrialPlanAttempt = {
+      attemptId: 'trial-plan-attempt-1',
+      toolAttemptCount: 1,
+      maxToolAttempts: 2,
+      rejectionEvidenceHash: hash('Complete invalid-plan evidence.'),
+    };
+    Object.assign(runtime, {
+      inspectTrialPlanRejection: async () => {
+        const count = runtime.invocationRequests.filter(
+          ({ purpose }) => purpose === 'trial_plan',
+        ).length;
+        return {
+          ...firstRejection,
+          toolAttemptCount: count,
+          attemptId: `trial-plan-attempt-${count}`,
+        };
+      },
+      readRepairErrorEvidence: async () => errors,
+    });
+    const verify = runtime.verifyStage.bind(runtime);
+    runtime.verifyStage = async (input) => {
+      const result = await verify(input);
+      return result.kind === 'trial_plan_required' && runtime.invocationRequests.length > 1
+        ? {
+            ...result,
+            planRequest: { ...result.planRequest, attemptId: 'trial-plan-attempt-2' },
+            trialPlanRejection: firstRejection,
+            repairErrorEvidenceHash: hash(errors),
+          }
+        : result;
+    };
+
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    expect(runtime.verifyCalls).toHaveLength(2);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
+      repairAttempts: 0,
+    });
+    expect(
+      store.getLatestOperationEvent('operation-1', 'trial_status_changed')?.payload,
+    ).toMatchObject({
+      errorCode: 'trial_plan_no_change',
+    });
+  });
+
+  test.each([
+    'missing',
+    'read-failed',
+    'zero-count',
+    'exhausted',
+    'wrong-attempt',
+    'wrong-maximum',
+  ])(
+    'does not start a fresh planner without current counted rejection authority (%s)',
+    async (fault) => {
+      const { engine, store, runtime } = createHarness({
+        verification: ['trial_plan', 'trial_plan'],
+        repairDisposition: 'no_change',
+      });
+      Object.assign(runtime, {
+        inspectTrialPlanRejection: async () => {
+          if (fault === 'read-failed') throw new Error('Private evidence is unreadable.');
+          if (fault === 'missing') return null;
+          return {
+            attemptId: fault === 'wrong-attempt' ? 'stale-attempt' : 'trial-plan-attempt-1',
+            toolAttemptCount: fault === 'zero-count' ? 0 : fault === 'exhausted' ? 2 : 1,
+            maxToolAttempts: fault === 'wrong-maximum' ? 3 : 2,
+            rejectionEvidenceHash: hash('diagnostic'),
+          };
+        },
+      });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      expect(
+        runtime.invocationRequests.filter(({ purpose }) => purpose === 'trial_plan'),
+      ).toHaveLength(1);
+      expect(runtime.verifyCalls).toHaveLength(1);
+      expect(store.getOperation('operation-1')?.waitReason).toBe('user_retry');
+    },
+  );
+
+  test.each([
+    'same-attempt',
+    'changed-revision',
+    'changed-rejection',
+    'changed-counter',
+    'missing-full-blob',
+    'artifact-repair',
+  ])(
+    'retains rather than dispatching when the serial planner reread loses its fence (%s)',
+    async (fault) => {
+      const { engine, store, runtime } = createHarness({
+        verification:
+          fault === 'artifact-repair' ? ['trial_plan', 'repair'] : ['trial_plan', 'trial_plan'],
+        repairDisposition: 'no_change',
+      });
+      const rejection: ChatOperationV2RejectedTrialPlanAttempt = {
+        attemptId: 'trial-plan-attempt-1',
+        toolAttemptCount: 1,
+        maxToolAttempts: 2,
+        rejectionEvidenceHash: hash('diagnostic'),
+      };
+      Object.assign(runtime, { inspectTrialPlanRejection: async () => rejection });
+      const verify = runtime.verifyStage.bind(runtime);
+      runtime.verifyStage = async (input) => {
+        const result = await verify(input);
+        if (result.kind !== 'trial_plan_required' || runtime.verifyCalls.length === 1)
+          return result;
+        return {
+          ...result,
+          planRequest: {
+            ...result.planRequest,
+            attemptId: fault === 'same-attempt' ? rejection.attemptId : 'trial-plan-attempt-2',
+            pipelineHash:
+              fault === 'changed-revision' ? 'b'.repeat(40) : result.planRequest.pipelineHash,
+          },
+          trialPlanRejection: {
+            ...rejection,
+            toolAttemptCount: fault === 'changed-counter' ? 2 : 1,
+            rejectionEvidenceHash:
+              fault === 'changed-rejection' ? hash('other') : rejection.rejectionEvidenceHash,
+          },
+          ...(fault === 'missing-full-blob' ? {} : { repairErrorEvidenceHash: hash('full') }),
+        };
+      };
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      expect(
+        runtime.invocationRequests.filter(({ purpose }) => purpose === 'trial_plan'),
+      ).toHaveLength(1);
+      expect(runtime.verifyCalls).toHaveLength(2);
+      expect(store.getOperation('operation-1')?.waitReason).toBe('user_retry');
+    },
+  );
+
+  test.each(['provider_billing_required', 'provider_authentication_failed', 'submitted_unknown'])(
+    'does not inspect a counted plan rejection after provider failure (%s)',
+    async (code) => {
+      const { engine, store, runtime } = createHarness({
+        verification: ['trial_plan', 'trial_plan'],
+        providerUnavailableOnce: true,
+        providerUnavailablePurpose: 'trial_plan',
+        providerFailureCode: code,
+        providerSubmissionUnknown: code === 'submitted_unknown',
+      });
+      let inspections = 0;
+      Object.assign(runtime, {
+        inspectTrialPlanRejection: async () => {
+          inspections++;
+          throw new Error('Provider failure cannot authorize inspection or automatic retry.');
+        },
+      });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      expect(inspections).toBe(0);
+      expect(
+        runtime.invocationRequests.filter(({ purpose }) => purpose === 'trial_plan'),
+      ).toHaveLength(1);
+      expect(store.getOperation('operation-1')?.waitReason).toBe('provider_unavailable');
+    },
+  );
+
   test('records trial_plan_no_change as the retention reason when the planner leaves the snapshot unchanged', async () => {
     const { engine, store } = createHarness({
       verification: ['trial_plan', 'trial_plan'],
@@ -1876,7 +2411,11 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
   test('keeps the completed no-op stage discard free of any failure reason', async () => {
     const { engine, store } = createHarness({ authoringDisposition: 'no_change' });
 
-    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    const result = await engine.dispatch({
+      ...dispatchInput(store.getOperation('operation-1')!),
+      intent: 'edit',
+      originHash: hash('authenticated-edit-origin'),
+    });
 
     expect(result.kind).toBe('completed_noop');
     const event = store.getLatestOperationEvent('operation-1', 'stage_status_changed');
@@ -1889,7 +2428,11 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
 
   test('uses the no-op terminal path without preparing a commit WAL', async () => {
     const { engine, store, runtime } = createHarness({ authoringDisposition: 'no_change' });
-    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    const result = await engine.dispatch({
+      ...dispatchInput(store.getOperation('operation-1')!),
+      intent: 'edit',
+      originHash: hash('authenticated-edit-origin'),
+    });
 
     expect(result.kind).toBe('completed_noop');
     expect(store.getOperation('operation-1')).toMatchObject({
@@ -1898,6 +2441,8 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     });
     expect(store.listCommitWal('scope-1')).toHaveLength(0);
     expect(runtime.verifyCalls).toHaveLength(0);
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+    expect(store.getOperation('operation-1')!.repairAttempts).toBe(0);
     expect(runtime.discardedStageIds).toHaveLength(1);
     const projection = store.getResultProjection('operation-1');
     expect(projection).toMatchObject({
@@ -1913,48 +2458,267 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
     });
   });
 
-  test('Stop atomically discards pending result bytes before a no-op terminal can publish them', async () => {
-    const { engine, store, resultPersistence } = createHarness({
+  test.each(['create', 'edit'] as const)(
+    'Stop wins a settled no-change %s before publication',
+    async (intent) => {
+      const { engine, store, resultPersistence } = createHarness({
+        authoringDisposition: 'no_change',
+      });
+      const persist = resultPersistence.persistCompletedInvocationResult.bind(resultPersistence);
+      let notifyPrepared!: () => void;
+      let releasePersistence!: () => void;
+      const prepared = new Promise<void>((resolve) => {
+        notifyPrepared = resolve;
+      });
+      const released = new Promise<void>((resolve) => {
+        releasePersistence = resolve;
+      });
+      resultPersistence.persistCompletedInvocationResult = async (input) => {
+        const authority = await persist(input);
+        notifyPrepared();
+        await released;
+        return authority;
+      };
+      const dispatch = engine.dispatch({
+        ...dispatchInput(store.getOperation('operation-1')!),
+        intent,
+        originHash: intent === 'edit' ? hash('authenticated-edit-origin') : null,
+      });
+      await prepared;
+      const pending = store.getPendingResultMessage('operation-1');
+      expect(pending).not.toBeNull();
+      const current = store.getOperation('operation-1')!;
+
+      const stopped = await engine.stop({
+        operationId: current.operationId,
+        expectedGeneration: current.generation,
+        expectedVersion: current.version,
+        requestId: 'stop-after-pending-result',
+      });
+      releasePersistence();
+
+      expect(stopped).toMatchObject({
+        kind: 'cancelled_precommit',
+        operation: { phase: 'terminal', terminalOutcome: 'cancelled_precommit' },
+      });
+      expect(await dispatch).toMatchObject({ kind: 'cancelled_precommit' });
+      expect(store.getPendingResultMessage('operation-1')).toBeNull();
+      expect(store.listMessages(pending!.resultId)).toEqual([]);
+      expect(store.getResultProjection('operation-1')).toBeNull();
+    },
+  );
+
+  test('create no-change verification preserves the frozen repair budget', async () => {
+    const { engine, store, runtime } = createHarness({
       authoringDisposition: 'no_change',
+      repairMaxAttempts: 2,
+      verification: ['repair', 'repair', 'repair'],
     });
-    const persist = resultPersistence.persistCompletedInvocationResult.bind(resultPersistence);
-    let notifyPrepared!: () => void;
-    let releasePersistence!: () => void;
-    const prepared = new Promise<void>((resolve) => {
-      notifyPrepared = resolve;
-    });
-    const released = new Promise<void>((resolve) => {
-      releasePersistence = resolve;
-    });
-    resultPersistence.persistCompletedInvocationResult = async (input) => {
-      const authority = await persist(input);
-      notifyPrepared();
-      await released;
-      return authority;
-    };
-    const dispatch = engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
-    await prepared;
-    const pending = store.getPendingResultMessage('operation-1');
-    expect(pending).not.toBeNull();
-    const current = store.getOperation('operation-1')!;
 
-    const stopped = await engine.stop({
-      operationId: current.operationId,
-      expectedGeneration: current.generation,
-      expectedVersion: current.version,
-      requestId: 'stop-after-pending-result',
+    expect(await engine.dispatch(dispatchInput(store.getOperation('operation-1')!))).toMatchObject({
+      kind: 'provider_unavailable',
+      operation: {
+        phase: 'trial-running',
+        waitReason: 'user_retry',
+        terminalOutcome: null,
+        repairAttempts: 2,
+        repairMaxAttempts: 2,
+      },
     });
-    releasePersistence();
-
-    expect(stopped).toMatchObject({
-      kind: 'cancelled_precommit',
-      operation: { phase: 'terminal', terminalOutcome: 'cancelled_precommit' },
-    });
-    expect(await dispatch).toMatchObject({ kind: 'cancelled_precommit' });
-    expect(store.getPendingResultMessage('operation-1')).toBeNull();
-    expect(store.listMessages(pending!.resultId)).toEqual([]);
+    expect(
+      runtime.invocationRequests.map(({ purpose, repairAttempt }) => [purpose, repairAttempt]),
+    ).toEqual([
+      ['authoring', 0],
+      ['repair', 1],
+      ['repair', 2],
+    ]);
+    expect(
+      store.getLatestOperationEvent('operation-1', 'trial_status_changed')?.payload,
+    ).toMatchObject({ errorCode: 'repair_attempts_exhausted' });
+    expect(runtime.discardedStageIds).toEqual([]);
+    expect(store.listCommitWal('scope-1')).toHaveLength(0);
     expect(store.getResultProjection('operation-1')).toBeNull();
   });
+
+  test.each([
+    ['permission', 'deny', 'create', 'provider_unavailable', 0],
+    ['question', 'reject', 'create', 'provider_unavailable', 0],
+    ['permission', 'allow_once', 'create', 'commit_preparing', 1],
+    ['question', 'reply', 'create', 'commit_preparing', 1],
+    ['permission', 'deny', 'edit', 'completed_noop', 0],
+  ] as const)(
+    'no-change respects the resolved %s decision %s for %s',
+    async (kind, decision, intent, resultKind, verificationCount) => {
+      const common = {
+        openCodeRequestId: 'oc-create-no-change-decision',
+        openCodeProcessGeneration: 4,
+        requestedAt: 1_900_000_000_100,
+      };
+      const request: ChatOperationV2RuntimeInteractiveRequest =
+        kind === 'permission'
+          ? {
+              ...common,
+              kind: 'permission',
+              content: { actionCode: 'write', resourceCode: 'staged_workspace_file' },
+            }
+          : {
+              ...common,
+              kind: 'question',
+              content: {
+                header: 'Create',
+                question: 'Continue creating the staged target?',
+                options: [{ label: 'Continue', description: 'Create the requested target.' }],
+                multiple: false,
+              },
+            };
+      const { engine, store, runtime } = createHarness({
+        authoringDisposition: 'no_change',
+        interactive: [request],
+        repairMaxAttempts: 2,
+      });
+      const running = engine.dispatch({
+        ...dispatchInput(store.getOperation('operation-1')!),
+        intent,
+        originHash: intent === 'edit' ? hash('authenticated-edit-origin') : null,
+      });
+      while (!engine.getPendingInteractiveRequest('operation-1')) await Bun.sleep(1);
+      const pending = engine.getPendingInteractiveRequest('operation-1')!;
+      expect(
+        await engine.respondInteractive({
+          schemaVersion: CHAT_OPERATION_V2_INTERACTIVE_REQUEST_SCHEMA_VERSION,
+          hostRequestId: pending.hostRequestId,
+          operationId: pending.operationId,
+          expectedOperationGeneration: pending.operationGeneration,
+          expectedOperationVersion: pending.operationVersion,
+          expectedRecordHash: pending.recordHash,
+          invocationId: pending.invocationId,
+          kind: pending.kind,
+          openCodeRequestId: request.openCodeRequestId,
+          openCodeProcessGeneration: request.openCodeProcessGeneration,
+          clientRequestId: 'create-no-change-response',
+          decision,
+          answers: decision === 'reply' ? ['Continue'] : [],
+          respondedAt: request.requestedAt + 1,
+        }),
+      ).toMatchObject({ kind: 'forwarded' });
+      expect(await running).toMatchObject({ kind: resultKind });
+      expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+      expect(runtime.verifyCalls).toHaveLength(verificationCount);
+      expect(store.getOperation('operation-1')!.repairAttempts).toBe(0);
+      if (intent === 'create' && (decision === 'deny' || decision === 'reject')) {
+        expect(store.getOperation('operation-1')).toMatchObject({
+          waitReason: 'user_retry',
+          terminalOutcome: null,
+        });
+        expect(
+          store.getLatestOperationEvent('operation-1', 'trial_status_changed')?.payload,
+        ).toMatchObject({ errorCode: 'authoring_interactive_declined' });
+        expect(runtime.discardedStageIds).toEqual([]);
+        expect(store.listCommitWal('scope-1')).toHaveLength(0);
+      }
+    },
+  );
+
+  test('create no-change does not turn an unchanged repair into an uncounted invocation', async () => {
+    const { engine, store, runtime } = createHarness({
+      authoringDisposition: 'no_change',
+      repairDisposition: 'no_change',
+      repairMaxAttempts: 2,
+      verification: ['repair'],
+    });
+
+    await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'repair',
+    ]);
+    expect(runtime.verifyCalls).toHaveLength(1);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      waitReason: 'user_retry',
+      terminalOutcome: null,
+      repairAttempts: 1,
+      repairMaxAttempts: 2,
+    });
+    expect(
+      store.getLatestOperationEvent('operation-1', 'trial_status_changed')?.payload,
+    ).toMatchObject({ errorCode: 'repair_no_change' });
+    expect(store.listCommitWal('scope-1')).toHaveLength(0);
+  });
+
+  test('an accepted later response does not erase a decline from the same no-change invocation', async () => {
+    const requests: ChatOperationV2RuntimeInteractiveRequest[] = [0, 1].map((index) => ({
+      kind: 'permission',
+      content: { actionCode: 'write', resourceCode: 'staged_workspace_file' },
+      openCodeRequestId: `oc-sticky-decline-${index}`,
+      openCodeProcessGeneration: 4,
+      requestedAt: 1_900_000_000_100 + index * 10,
+    }));
+    const { engine, store, runtime } = createHarness({
+      authoringDisposition: 'no_change',
+      interactive: requests,
+      repairMaxAttempts: 2,
+    });
+    const running = engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+    for (const [index, decision] of (['deny', 'allow_once'] as const).entries()) {
+      while (!engine.getPendingInteractiveRequest('operation-1')) await Bun.sleep(1);
+      const pending = engine.getPendingInteractiveRequest('operation-1')!;
+      expect(
+        await engine.respondInteractive({
+          schemaVersion: CHAT_OPERATION_V2_INTERACTIVE_REQUEST_SCHEMA_VERSION,
+          hostRequestId: pending.hostRequestId,
+          operationId: pending.operationId,
+          expectedOperationGeneration: pending.operationGeneration,
+          expectedOperationVersion: pending.operationVersion,
+          expectedRecordHash: pending.recordHash,
+          invocationId: pending.invocationId,
+          kind: pending.kind,
+          openCodeRequestId: requests[index]!.openCodeRequestId,
+          openCodeProcessGeneration: requests[index]!.openCodeProcessGeneration,
+          clientRequestId: `sticky-decline-response-${index}`,
+          decision,
+          answers: [],
+          respondedAt: requests[index]!.requestedAt + 1,
+        }),
+      ).toMatchObject({ kind: 'forwarded' });
+    }
+    expect(await running).toMatchObject({
+      kind: 'provider_unavailable',
+      operation: { waitReason: 'user_retry', terminalOutcome: null, repairAttempts: 0 },
+    });
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+    expect(runtime.verifyCalls).toHaveLength(0);
+    expect(runtime.forwarded).toHaveLength(2);
+  });
+
+  test.each([
+    ['model_output_length', true],
+    ['submitted_unknown', true],
+    ['provider_billing_required', false],
+  ] as const)(
+    'create validation does not retry a provider failure (%s, unknown=%s)',
+    async (code, submissionUnknown) => {
+      const { engine, store, runtime } = createHarness({
+        authoringDisposition: 'no_change',
+        repairMaxAttempts: 2,
+        providerUnavailableOnce: true,
+        providerFailureCode: code,
+        providerSubmissionUnknown: submissionUnknown,
+      });
+
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+      expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual(['authoring']);
+      expect(runtime.verifyCalls).toHaveLength(0);
+      expect(store.getOperation('operation-1')).toMatchObject({
+        waitReason: 'provider_unavailable',
+        terminalOutcome: null,
+        repairAttempts: 0,
+        repairMaxAttempts: 2,
+      });
+      expect(store.listCommitWal('scope-1')).toHaveLength(0);
+    },
+  );
 
   test('fails closed after settlement when completed text cannot enter durable result authority', async () => {
     const { engine, store, runtime, resultPersistence } = createHarness({
@@ -2247,7 +3011,7 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
           purpose === 'repair'
             ? ['repair', 'passed']
             : purpose === 'trial_plan'
-              ? ['trial_plan', 'trial_plan', 'passed']
+              ? ['trial_plan', 'passed']
               : ['passed'],
         providerUnavailableOnce: true,
         providerUnavailablePurpose: purpose,
@@ -2281,6 +3045,23 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       expect(runtime.invocationRequests.at(-1)?.sessionId).toBe(
         runtime.invocationRequests[0]?.sessionId,
       );
+      if (purpose === 'trial_plan') {
+        const planners = runtime.invocationRequests.filter((item) => item.purpose === 'trial_plan');
+        expect(planners).toHaveLength(2);
+        expect(planners[1]?.trialPlanRequest).toEqual(planners[0]?.trialPlanRequest);
+        expect(planners[1]?.trialPlanProviderRetry).toMatchObject({
+          requestId: 'billing-restored',
+          previousInvocationId: planners[0]?.invocationId,
+          operationGeneration: waiting.generation,
+          operationVersion: waiting.version,
+          stageId: waiting.stageId,
+          failureCode: 'provider_billing_required',
+        });
+        expect(
+          JSON.parse(new TextDecoder().decode(planners[1]!.canonicalRequestBytes))
+            .trialPlanProviderRetry,
+        ).toEqual(planners[1]?.trialPlanProviderRetry);
+      }
     },
   );
 
@@ -2946,5 +3727,590 @@ describe('ChatTurn Operation V2 authoring lifecycle', () => {
       expect(result.kind).toBe('commit_preparing');
       expect(store.getOperation('operation-1')!.repairAttempts).toBe(repairCount);
     }
+  });
+});
+
+describe('Host stage creation failure diagnostic events', () => {
+  test('source unavailability keeps its existing failure event without a creation-fault claim', async () => {
+    const { engine, store, runtime } = createHarness({ failStage: true });
+    runtime.ensureStage = async () => ({
+      kind: 'failed',
+      errorCode: 'stage_source_unavailable',
+      diagnosticCodes: ['stage_source_unavailable'],
+    });
+    expect((await engine.dispatch(dispatchInput(store.getOperation('operation-1')!))).kind).toBe(
+      'discarded',
+    );
+    const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+    if (events.kind !== 'events') throw new Error('Expected Host events.');
+    const failed = events.events.find(
+      ({ type, payload }) => type === 'stage_status_changed' && payload.status === 'failed',
+    );
+    expect(failed?.payload).toEqual({
+      schemaVersion: 1,
+      stageId: expect.any(String),
+      status: 'failed',
+      errorCode: 'stage_source_unavailable',
+      diagnosticCodes: ['stage_source_unavailable'],
+    });
+    expect(failed?.payload).not.toHaveProperty('creationDiagnostic');
+    expect(runtime.invocationRequests).toHaveLength(0);
+  });
+
+  test('projects only trusted finite observations and preserves discard with no invocation', async () => {
+    let traps = 0;
+    const native = Object.defineProperty(new Error('PRIVATE_STAGE_CREATION_DETAIL'), 'code', {
+      value: 'ENOSPC',
+    });
+    const trusted = new CompileErrorObservationError(observeCompileError('stage_creation', native));
+    const proxy = new Proxy(trusted, {
+      get() {
+        traps += 1;
+        throw new Error('Unexpected carrier inspection.');
+      },
+      getPrototypeOf() {
+        traps += 1;
+        throw new Error('Unexpected carrier inspection.');
+      },
+    });
+    for (const [carrier, errorClass, systemCode] of [
+      [trusted, 'Error', 'ENOSPC'],
+      [proxy, 'unknown', null],
+      [
+        new CompileErrorObservationError(observeCompileError('stage_compile', native)),
+        'unknown',
+        null,
+      ],
+    ] as const) {
+      const { engine, store, runtime } = createHarness({ failStage: true });
+      const originalEnsureStage = runtime.ensureStage.bind(runtime);
+      runtime.ensureStage = async (input) => {
+        const result = await originalEnsureStage(input);
+        if (result.kind === 'failed')
+          Object.defineProperty(result, 'creationFailure', { value: carrier });
+        return result;
+      };
+      const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      expect(result.kind).toBe('discarded');
+      expect(store.getOperation('operation-1')).toMatchObject({
+        phase: 'terminal',
+        terminalOutcome: 'discarded',
+        activeInvocationId: null,
+      });
+      const events = store.listOperationEvents({ workspaceScopeId: 'scope-1', after: 0 });
+      if (events.kind !== 'events') throw new Error('Expected Host events.');
+      const failed = events.events.find(
+        ({ type, payload }) => type === 'stage_status_changed' && payload.status === 'failed',
+      );
+      expect(failed?.payload.creationDiagnostic).toEqual({
+        phase: 'stage_creation',
+        errorClass,
+        systemCode,
+        completeErrorStorage: 'not_stored',
+      });
+      expect(Object.keys(failed!.payload.creationDiagnostic as object).sort()).toEqual(
+        ['phase', 'errorClass', 'systemCode', 'completeErrorStorage'].sort(),
+      );
+      expect(JSON.stringify(events)).not.toContain('PRIVATE_STAGE_CREATION');
+      expect(
+        store.getLatestOperationEvent('operation-1', 'stage_status_changed')?.payload,
+      ).toMatchObject({ status: 'discarded', errorCode: 'stage_creation_failed' });
+      expect(runtime.discardedStageIds).toHaveLength(1);
+      expect(runtime.invocationRequests).toHaveLength(0);
+      expect(store.listInvocationOutbox('scope-1')).toEqual([]);
+      expect(store.listUsageLedger('operation-1')).toEqual([]);
+    }
+    expect(traps).toBe(0);
+  });
+});
+
+// Draft-only: tests below have not been executed.
+describe('explicit provider Retry requires exact definitive planner history', () => {
+  test.each(['unknown', 'missing-carrier', 'wrong-generation'] as const)(
+    'does not dispatch another planner for %s',
+    async (fault) => {
+      const { engine, store, runtime, resultPersistence, now, nextHostId } = createHarness({
+        verification: ['trial_plan', 'passed'],
+        providerUnavailableOnce: true,
+        providerUnavailablePurpose: 'trial_plan',
+        providerFailureCode: 'provider_billing_required',
+        providerSubmissionUnknown: fault === 'unknown',
+      });
+      await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+      const waiting = store.getOperation('operation-1')!;
+      const before = runtime.invocationRequests.length;
+      if (fault === 'missing-carrier') runtime.inspectTrialPlanProviderFailure = async () => null;
+      const restarted = new ChatOperationV2AuthoringEngine({
+        persistence: store,
+        runtime,
+        resultPersistence,
+        now,
+        nextHostId,
+      });
+      await restarted.retryProviderUnavailable({
+        operationId: waiting.operationId,
+        workspaceScopeId: waiting.workspaceScopeId,
+        expectedGeneration: waiting.generation + (fault === 'wrong-generation' ? 1 : 0),
+        expectedVersion: waiting.version,
+        requestId: 'explicit-negative-retry',
+      });
+      expect(runtime.invocationRequests.length).toBe(before);
+      expect(runtime.discardedStageIds).toEqual([]);
+      expect(store.getPendingResultMessage(waiting.operationId)).not.toBeNull();
+    },
+  );
+});
+
+describe('Host engine bounded complete-feedback integration', () => {
+  test('validation-only no-change invokes slot two with the full NEW error and reaches verified commit handoff', async () => {
+    const {
+      engine,
+      runtime,
+      store,
+      resultPersistence,
+      oldErrors,
+      nextErrors,
+      inspections,
+      evidenceReads,
+    } = boundedFeedbackFixture(false);
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(feedbackUtf8Bytes(oldErrors)).toBe(806);
+    expect(result.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    const planners = runtime.invocationRequests.filter(({ purpose }) => purpose === 'trial_plan');
+    expect(planners.map(({ trialPlanRequest }) => trialPlanRequest?.attemptId)).toEqual([
+      'trial-plan-attempt-1',
+      'trial-plan-attempt-2',
+    ]);
+    expect(planners.map(({ trialPlanRequest }) => trialPlanRequest?.maxAttempts)).toEqual([2, 2]);
+    expect(planners[1]!.invocationId).not.toBe(planners[0]!.invocationId);
+    expect(planners[1]!.inputId).not.toBe(planners[0]!.inputId);
+    expect(planners[1]!.stage.stageId).toBe(planners[0]!.stage.stageId);
+    expect(planners[1]!.operationGeneration).toBe(planners[0]!.operationGeneration);
+    expect(planners[1]!.operationId).toBe(planners[0]!.operationId);
+    expect(planners[1]!.sessionId).toBe(planners[0]!.sessionId);
+    expect(planners[1]!.trialPlanRequest!.pipelineHash).toBe(
+      planners[0]!.trialPlanRequest!.pipelineHash,
+    );
+    expect(planners[1]!.trialPlanRequest!.relativePlanPath).toBe(
+      planners[0]!.trialPlanRequest!.relativePlanPath,
+    );
+    expect(inspections.map(({ invocationId }) => invocationId)).toEqual([
+      planners[0]!.invocationId,
+    ]);
+    expect(evidenceReads.map(({ hash: h }) => h)).toEqual([hash(oldErrors), hash(nextErrors)]);
+    assertNextCompletePlannerInput(planners[1]!, nextErrors, oldErrors);
+    expect(runtime.verifyCalls).toHaveLength(3);
+    expect(
+      store.listInvocationOutbox('scope-1').filter(({ purpose }) => purpose === 'trial_plan'),
+    ).toHaveLength(2);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'commit_preparing',
+      repairAttempts: 0,
+      repairMaxAttempts: 2,
+      terminalOutcome: null,
+    });
+    // Authoring engine hands off to the existing commit protocol; it does not
+    // pretend this synthetic runtime itself published files.
+    expect(store.getCommitWal('commit-operation-1')).toMatchObject({ status: 'preparing' });
+    expect(store.getPendingResultMessage('operation-1')).not.toBeNull();
+    expect(
+      resultPersistence.calls.map(({ purpose, rendererProjectable }) => ({
+        purpose,
+        rendererProjectable,
+      })),
+    ).toEqual([
+      { purpose: 'trial_plan', rendererProjectable: false },
+      { purpose: 'trial_plan', rendererProjectable: false },
+      { purpose: 'authoring', rendererProjectable: true },
+    ]);
+    expect(store.listUsageLedger('operation-1').every(({ status }) => status === 'settled')).toBe(
+      true,
+    );
+  });
+
+  test('two validation-only zero-commit rejections still exhaust two planning slots and retain the LAST error', async () => {
+    const {
+      engine,
+      runtime,
+      store,
+      oldErrors,
+      nextErrors,
+      lastErrors,
+      inspections,
+      evidenceReads,
+    } = boundedFeedbackFixture(true);
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('provider_unavailable');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    const planners = runtime.invocationRequests.filter(({ purpose }) => purpose === 'trial_plan');
+    expect(planners).toHaveLength(2);
+    assertNextCompletePlannerInput(planners[1]!, nextErrors, oldErrors);
+    expect(inspections.map(({ trialPlanRequest }) => trialPlanRequest.attemptId)).toEqual([
+      'trial-plan-attempt-1',
+      'trial-plan-attempt-2',
+    ]);
+    // The local verification reread produces fresh feedback, but no third SDK
+    // invocation or error-body read is admitted even while commit count stays 0.
+    expect(runtime.verifyCalls).toHaveLength(3);
+    expect(evidenceReads.map(({ hash: h }) => h)).toEqual([hash(oldErrors), hash(nextErrors)]);
+    expect(
+      store.listInvocationOutbox('scope-1').filter(({ purpose }) => purpose === 'trial_plan'),
+    ).toHaveLength(2);
+    expect(store.getOperation('operation-1')).toMatchObject({
+      phase: 'trial-running',
+      waitReason: 'user_retry',
+      terminalOutcome: null,
+      repairAttempts: 0,
+      repairMaxAttempts: 2,
+    });
+    expect(
+      store.getLatestOperationEvent('operation-1', 'trial_status_changed')?.payload,
+    ).toMatchObject({
+      errorCode: 'trial_plan_attempts_exhausted',
+      repairErrorEvidenceHash: hash(lastErrors),
+    });
+    expect(hash(lastErrors)).not.toBe(hash(oldErrors));
+    expect(hash(lastErrors)).not.toBe(hash(nextErrors));
+    expect(store.getCommitWal('commit-operation-1')).toBeNull();
+    expect(store.listUsageLedger('operation-1').every(({ status }) => status === 'settled')).toBe(
+      true,
+    );
+  });
+
+  test('a committed blocked-core plan requests a typed plan-only correction and never artifact repair', async () => {
+    const { engine, runtime, store } = createHarness({
+      repairMaxAttempts: 2,
+      verification: ['trial_plan', 'trial_plan', 'passed'],
+    });
+    const blockedErrors = JSON.stringify({
+      schemaVersion: 2,
+      kind: 'plan-required',
+      repairAuthorization: 'diagnostic-only',
+      planTelemetry: { toolAttemptCount: 1, validationRejectionCount: 0, successfulWriteCount: 1 },
+      plan: {
+        evidenceReview: {
+          coreWitness: {
+            status: 'blocked',
+            code: 'core_content_unavailable',
+            taskIds: ['main.task'],
+          },
+        },
+      },
+      pipelineDiagnostics: [
+        { scope: 'diagnostic-only', message: 'A genuine content witness is not yet supplied.' },
+      ],
+    });
+    type EvidenceRead = Parameters<
+      NonNullable<ChatOperationV2AuthoringRuntime['readRepairErrorEvidence']>
+    >[0];
+    Object.assign(runtime, {
+      readRepairErrorEvidence: async (input: EvidenceRead) => {
+        expect(input.hash).toBe(hash(blockedErrors));
+        expect(input.stageId).toBe(runtime.stage!.stageId);
+        return blockedErrors;
+      },
+    });
+    const verify = runtime.verifyStage.bind(runtime);
+    let reviews = 0;
+    runtime.verifyStage = async (input) => {
+      const result = await verify(input);
+      if (result.kind !== 'trial_plan_required') return result;
+      reviews += 1;
+      return reviews === 1
+        ? result
+        : {
+            ...result,
+            planHash: hash('successfully-committed-but-blocked-plan'),
+            planRequest: {
+              ...result.planRequest,
+              reason: 'invalid' as const,
+              attemptId: 'trial-plan-attempt-2',
+              message: 'Correct the blocked content witness without changing pipeline artifacts.',
+            },
+            feedback: {
+              schemaVersion: 1 as const,
+              stage: 'trial_plan' as const,
+              details: 'The committed blocked core witness needs a plan-only correction.',
+              failedTaskIds: [],
+              omittedFailedTaskCount: 0,
+            },
+            repairErrorEvidenceHash: hash(blockedErrors),
+          };
+    };
+
+    const result = await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+
+    expect(result.kind).toBe('commit_preparing');
+    expect(runtime.invocationRequests.map(({ purpose }) => purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    const planners = runtime.invocationRequests.filter(({ purpose }) => purpose === 'trial_plan');
+    expect(planners.map(({ trialPlanRequest }) => trialPlanRequest?.maxAttempts)).toEqual([2, 2]);
+    expect(planners[1]!.trialPlanRequest).toMatchObject({
+      reason: 'invalid',
+      attemptId: 'trial-plan-attempt-2',
+    });
+    expect(planners[1]!.trialPlanRequest).not.toHaveProperty('artifactRepair');
+    const canonical = JSON.parse(new TextDecoder().decode(planners[1]!.canonicalRequestBytes));
+    expect(canonical.purpose).toBe('trial_plan');
+    expect(canonical.repairEvidence).toBeNull();
+    expect(canonical.verificationErrorEvidence).toEqual({
+      hash: hash(blockedErrors),
+      errors: blockedErrors,
+    });
+    expect(store.getOperation('operation-1')).toMatchObject({
+      repairAttempts: 0,
+      repairMaxAttempts: 2,
+    });
+    expect(
+      store.listInvocationOutbox('scope-1').filter(({ purpose }) => purpose === 'repair'),
+    ).toEqual([]);
+    expect(runtime.verifyCalls).toHaveLength(3);
+  });
+});
+
+// V6 Host integration: actual engine/store/outbox CAS with a synthetic Runtime contract.
+function hostNoProgressCanonical(value: unknown): string {
+  const normalize = (item: unknown): unknown =>
+    Array.isArray(item)
+      ? item.map(normalize)
+      : item && typeof item === 'object'
+        ? Object.fromEntries(
+            Object.entries(item)
+              .filter(([, entry]) => entry !== undefined)
+              .sort(([left], [right]) => left.localeCompare(right))
+              .map(([key, entry]) => [key, normalize(entry)]),
+          )
+        : item;
+  return JSON.stringify(normalize(value));
+}
+
+function hostNoProgressFixture(fault = 'none', exhaust = false) {
+  const harness = createHarness({
+    repairMaxAttempts: 2,
+    repairDisposition: 'no_change',
+    verification: ['trial_plan', 'trial_plan', 'passed'],
+  });
+  const { runtime, store } = harness;
+  type Inspection = Parameters<
+    NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlannerNoProgress']>
+  >[0];
+  type Observation = NonNullable<
+    Awaited<
+      ReturnType<NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlannerNoProgress']>>
+    >
+  >;
+  let sourcePlanRequest: NonNullable<ChatOperationV2AuthoringInvocationRequest['trialPlanRequest']>;
+  let fullError = '';
+  let observation: Observation | undefined;
+  const inspections: Inspection[] = [];
+  Object.assign(runtime, {
+    inspectTrialPlannerNoProgress: async (input: Inspection) => {
+      inspections.push(input);
+      const previous = runtime.invocationRequests.at(-1)!;
+      expect(previous.purpose).toBe('trial_plan');
+      expect(store.getInvocationOutbox(input.invocationId)?.status).toBe('settled');
+      expect(input.requestDigest).toBe(
+        hash(new TextDecoder().decode(previous.canonicalRequestBytes)),
+      );
+      if (fault === 'read-error') throw new Error('No progress read failed.');
+      if (fault === 'live' || fault === 'unknown' || fault === 'no-proof') return null;
+      if (
+        store
+          .listInvocationOutbox(previous.workspaceScopeId)
+          .filter((row) => row.operationId === previous.operationId && row.purpose === 'trial_plan')
+          .length >= input.trialPlanRequest.maxAttempts
+      )
+        return null;
+      observation = {
+        kind: 'completed_planner_no_progress',
+        workspaceScopeId: previous.workspaceScopeId,
+        operationId: previous.operationId,
+        operationGeneration: previous.operationGeneration,
+        stageId: previous.stage.stageId,
+        invocationId: previous.invocationId,
+        sessionId: previous.sessionId,
+        inputId: previous.inputId,
+        requestDigest: input.requestDigest,
+        trialPlanRequestDigest: hash(hostNoProgressCanonical(sourcePlanRequest)),
+        completedSnapshotHash: hash('unchanged authenticated synthetic stage'),
+        errorEvidenceHash: hash(fullError),
+        planArtifactStatus: 'absent',
+      };
+      if (fault === 'owner')
+        return { ...observation, operationGeneration: observation.operationGeneration + 1 };
+      if (fault === 'digest')
+        return { ...observation, requestDigest: hash('wrong canonical request') };
+      return observation;
+    },
+    readRepairErrorEvidence: async (input: { hash: string }) => {
+      if (input.hash !== hash(fullError)) throw new Error('Unexpected complete-error hash.');
+      return fullError;
+    },
+  });
+  const verify = runtime.verifyStage.bind(runtime);
+  let reviews = 0;
+  runtime.verifyStage = async (input) => {
+    const result = await verify(input);
+    if (result.kind !== 'trial_plan_required') return result;
+    reviews += 1;
+    if (reviews === 1) {
+      sourcePlanRequest = result.planRequest;
+      const empty = JSON.stringify({
+        schemaVersion: 2,
+        kind: 'plan-required',
+        ran: false,
+        repairAuthorization: 'diagnostic-only',
+        planRequest: sourcePlanRequest,
+        padding: '',
+      });
+      fullError = JSON.stringify({
+        schemaVersion: 2,
+        kind: 'plan-required',
+        ran: false,
+        repairAuthorization: 'diagnostic-only',
+        planRequest: sourcePlanRequest,
+        padding: 'x'.repeat(806 - feedbackUtf8Bytes(empty)),
+      });
+      return { ...result, repairErrorEvidenceHash: hash(fullError) };
+    }
+    if (!observation || !input.trialPlanNoProgress)
+      throw new Error('Expected independent Host handoff.');
+    expect(input.trialPlanNoProgress).toEqual({ observation, sourcePlanRequest });
+    const returned =
+      fault === 'snapshot'
+        ? { ...observation, completedSnapshotHash: hash('changed snapshot') }
+        : observation;
+    return {
+      ...result,
+      planRequest: {
+        ...result.planRequest,
+        reason: fault === 'nonmissing' ? ('invalid' as const) : ('missing' as const),
+        attemptId: `no-progress-host-attempt-${reviews}`,
+      },
+      repairErrorEvidenceHash: hash(fullError),
+      trialPlanNoProgress: returned,
+    };
+  };
+  const run = runtime.runInvocation.bind(runtime);
+  runtime.runInvocation = async (request) => {
+    const result = await run(request);
+    if (
+      request.purpose === 'trial_plan' &&
+      request.trialPlanNoProgress &&
+      result.kind === 'completed' &&
+      !exhaust
+    )
+      return { ...result, disposition: 'changed' };
+    return result;
+  };
+  return { ...harness, inspections, fullError: () => fullError };
+}
+
+describe('Host completed-planner no-progress handoff', () => {
+  test('settled no-change planner gets only slot2 with all original806 bytes and independent metadata', async () => {
+    const value = hostNoProgressFixture();
+    const result = await value.engine.dispatch(
+      dispatchInput(value.store.getOperation('operation-1')!),
+    );
+    expect(result.kind).toBe('commit_preparing');
+    const requests = value.runtime.invocationRequests;
+    expect(requests.map((request) => request.purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    const first = requests[1]!;
+    const next = requests[2]!;
+    const original = value.fullError();
+    expect(feedbackUtf8Bytes(original)).toBe(806);
+    const firstCanonical = JSON.parse(new TextDecoder().decode(first.canonicalRequestBytes));
+    const nextCanonical = JSON.parse(new TextDecoder().decode(next.canonicalRequestBytes));
+    expect(nextCanonical.verificationErrorEvidence).toEqual(
+      firstCanonical.verificationErrorEvidence,
+    );
+    expect(nextCanonical.verificationErrorEvidence).toEqual({
+      hash: hash(original),
+      errors: original,
+    });
+    expect(nextCanonical.trialPlanNoProgress).toEqual(next.trialPlanNoProgress);
+    expect(next.trialPlanNoProgress?.observation.invocationId).toBe(first.invocationId);
+    expect(Object.keys(next.trialPlanNoProgress!.observation)).not.toContain('toolAttemptCount');
+    expect(Object.keys(next.trialPlanNoProgress!.observation)).not.toContain(
+      'rejectionEvidenceHash',
+    );
+    expect(next.trialPlanRequest?.attemptId).not.toBe(first.trialPlanRequest?.attemptId);
+    expect(next.trialPlanRequest?.maxAttempts).toBe(2);
+    expect(value.store.getInvocationOutbox(first.invocationId)?.status).toBe('settled');
+    expect(value.store.getInvocationOutbox(next.invocationId)?.status).toBe('settled');
+    expect(
+      value.store.listInvocationOutbox('scope-1').filter((row) => row.purpose === 'trial_plan'),
+    ).toHaveLength(2);
+    expect(value.store.getCommitWal('commit-operation-1')).toMatchObject({ status: 'preparing' });
+    expect(value.runtime.invocationRequests.some((request) => request.purpose === 'repair')).toBe(
+      false,
+    );
+  });
+
+  test.each([
+    'owner',
+    'digest',
+    'snapshot',
+    'read-error',
+    'live',
+    'unknown',
+    'no-proof',
+    'nonmissing',
+  ] as const)('retains the draft without a second planner for %s', async (fault) => {
+    const value = hostNoProgressFixture(fault);
+    const dispatch = value.engine.dispatch(dispatchInput(value.store.getOperation('operation-1')!));
+    if (fault === 'nonmissing') {
+      await expect(dispatch).rejects.toMatchObject({ code: 'invalid_runtime_result' });
+    } else {
+      expect((await dispatch).kind).toBe('provider_unavailable');
+    }
+    expect(value.runtime.invocationRequests.map((request) => request.purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+    ]);
+    expect(value.runtime.prepare).toBeNull();
+    expect(
+      value.store.listInvocationOutbox('scope-1').filter((row) => row.purpose === 'trial_plan'),
+    ).toHaveLength(1);
+  });
+
+  test('a second no-progress completion cannot reset or refund the frozen two-slot budget', async () => {
+    const value = hostNoProgressFixture('none', true);
+    const result = await value.engine.dispatch(
+      dispatchInput(value.store.getOperation('operation-1')!),
+    );
+    expect(result.kind).toBe('provider_unavailable');
+    expect(value.runtime.invocationRequests.map((request) => request.purpose)).toEqual([
+      'authoring',
+      'trial_plan',
+      'trial_plan',
+    ]);
+    expect(
+      value.store.listInvocationOutbox('scope-1').filter((row) => row.purpose === 'trial_plan'),
+    ).toHaveLength(2);
+    expect(value.runtime.prepare).toBeNull();
+    expect(value.runtime.invocationRequests.some((request) => request.purpose === 'repair')).toBe(
+      false,
+    );
   });
 });

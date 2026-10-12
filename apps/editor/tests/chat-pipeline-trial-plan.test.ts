@@ -87,6 +87,11 @@ test('Host rejects a committed plan that omits explicit recovery evidence', () =
     const stagedYamlPath = join(root, 'sample.yaml');
     const candidate = completePlan();
     const intent = 'If verification times out, continue to a report with unverified results.';
+    const normal = (candidate.cases as Array<Record<string, unknown>>)[0]!;
+    (normal.expectations as Array<unknown>).push(
+      { type: 'task-status', taskId: 'main.publish', status: 'success' },
+      { type: 'file-equals', path: 'outputs/published-report.txt', text: 'report' },
+    );
     (candidate as Record<string, unknown>).evidenceReview = {
       version: 1,
       intentDigest: createHash('sha256').update(intent).digest('hex'),
@@ -102,6 +107,27 @@ test('Host rejects a committed plan that omits explicit recovery evidence', () =
         taskIds: type === 'timeout-recovery' ? ['main.publish'] : [],
         rationale: 'Review useful-output recovery.',
       })),
+      coreWitness: {
+        status: 'covered',
+        normalCaseId: 'all-file-boundaries',
+        taskRoles: [
+          {
+            taskId: 'main.process',
+            role: 'execution',
+            expectationIndices: [],
+            rationale:
+              'This reader-authority fixture executes only the declared echo data command; it promises no produced content for that preparatory task.',
+          },
+          {
+            taskId: 'main.publish',
+            role: 'content',
+            expectationIndices: [6],
+            rationale:
+              'The useful-report intent has a real publisher writing the exact normal report bytes; this witness does not satisfy or bypass the missing recovery evidence under test.',
+          },
+        ],
+        generatedInputs: [],
+      },
     };
     const bytes = JSON.stringify(candidate);
     writeFileSync(pipelineTrialPlanPath(stagedYamlPath), bytes, 'utf8');
@@ -128,7 +154,17 @@ test('Host rejects a committed plan that omits explicit recovery evidence', () =
           name: 'Main',
           tasks: [
             { id: 'process', name: 'Process', command: 'echo data' },
-            { id: 'publish', name: 'Publish', command: 'echo report' },
+            {
+              id: 'publish',
+              name: 'Publish',
+              command: {
+                argv: [
+                  process.execPath,
+                  '-e',
+                  'console.log("report");const fs=require("node:fs");fs.mkdirSync("outputs",{recursive:true});fs.writeFileSync("outputs/published-report.txt","report")',
+                ],
+              },
+            },
           ],
         },
       ],

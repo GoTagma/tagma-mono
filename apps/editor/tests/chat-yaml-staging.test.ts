@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -16,6 +16,8 @@ import type { Response } from 'express';
 import { parseYaml } from '@tagma/sdk/yaml';
 
 import {
+  ChatYamlStageMissingArtifactError,
+  ChatYamlStageScopeViolationError,
   __chatYamlStagingTestHooks,
   compileChatYamlStage,
   createChatYamlStage,
@@ -27,6 +29,7 @@ import {
   samePipelineRelativePath,
 } from '../server/chat-yaml-staging';
 import { reserveChatPipelineBinding } from '../server/chat-pipeline-binding';
+import { readCompileErrorObservation } from '../server/compile-error-observation';
 import { getFileVersion, hasFileChanged } from '../server/optimistic-lock';
 import { writeEditorSettings } from '../server/plugins/loader';
 import {
@@ -138,6 +141,188 @@ afterEach(() => {
 });
 
 describe('chat YAML staging', () => {
+  test('scope rejection carries only the authenticated changed-source baseline in staged coordinates', () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const otherPath = pipelineYamlPath(ws.workDir!, 'other');
+    const otherYaml = yamlFor('Other pipeline', 'unchanged baseline');
+    mkdirSync(dirname(otherPath), { recursive: true });
+    writeFileSync(otherPath, otherYaml);
+    writeFileSync(join(dirname(otherPath), 'helper.txt'), 'Original support bytes.');
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-baseline-repair',
+        bindingRequestId: 'request-baseline-repair',
+        intent: 'edit',
+      },
+    });
+    const selected = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const unrelated = stage.entries.find((entry) => entry.sourcePath === otherPath)!;
+    writeFileSync(unrelated.stagedPath, yamlFor('Unintended change', 'wrong'));
+    writeFileSync(join(dirname(unrelated.stagedPath), 'helper.txt'), 'Changed support bytes.');
+    writeFileSync(pipelineRequirementsPath(unrelated.stagedPath), 'Unintended declaration.');
+    writeFileSync(join(dirname(unrelated.stagedPath), 'extra.txt'), 'Unintended support file.');
+    try {
+      compileChatYamlStage(ws, stage.id, selected.relativePath);
+      throw new Error('Out-of-target write unexpectedly compiled.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ChatYamlStageScopeViolationError);
+      if (!(error instanceof ChatYamlStageScopeViolationError)) throw error;
+      expect(error).toMatchObject({
+        stageId: stage.id,
+        targetRelativePath: selected.relativePath,
+        kind: 'changed_source',
+        offendingRelativePath: unrelated.relativePath,
+      });
+      expect(error.baseline!.artifacts).toContainEqual({
+        relativePath: unrelated.relativePath,
+        text: otherYaml,
+      });
+      expect(error.baseline!.supportFiles).toContainEqual({
+        relativePath: 'other/helper.txt',
+        text: 'Original support bytes.',
+      });
+      expect(error.baseline!.artifacts).toContainEqual({
+        relativePath: 'other/other.requirements.md',
+        text: null,
+      });
+      expect(error.baseline!.supportFiles).toHaveLength(1);
+      expect(JSON.stringify(error.baseline)).not.toContain(stage.baseWorkspaceDir);
+      expect(readFileSync(unrelated.stagedPath, 'utf8')).toContain('Unintended change');
+      // Simulate native edits confined to the already owned staged root.
+      writeFileSync(unrelated.stagedPath, otherYaml);
+      writeFileSync(join(dirname(unrelated.stagedPath), 'helper.txt'), 'Original support bytes.');
+      rmSync(pipelineRequirementsPath(unrelated.stagedPath));
+      rmSync(join(dirname(unrelated.stagedPath), 'extra.txt'));
+      expect(compileChatYamlStage(ws, stage.id, selected.relativePath).success).toBe(true);
+    } finally {
+      stopWorkspace(ws);
+    }
+    expect(readFileSync(sourcePath, 'utf8')).toBe(baseYaml);
+    expect(readFileSync(otherPath, 'utf8')).toBe(otherYaml);
+    expect(readFileSync(unrelated.stagedPath, 'utf8')).toBe(otherYaml);
+  });
+
+  test('fresh-sibling and classified-target scope failures remain compile refusals with distinct typed kinds', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-scope-kinds',
+        bindingRequestId: 'request-scope-kinds',
+        intent: 'edit',
+      },
+    });
+    const selected = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const sibling = join(stage.agentTagmaDir, 'extra', 'extra.yaml');
+    mkdirSync(dirname(sibling), { recursive: true });
+    writeFileSync(sibling, yamlFor('Extra pipeline', 'extra'));
+    try {
+      for (const [target, kind] of [
+        [selected.relativePath, 'fresh_sibling'],
+        ['extra/extra.yaml', 'target_mismatch'],
+      ]) {
+        try {
+          compileChatYamlStage(ws, stage.id, target!);
+          throw new Error('Scope failure unexpectedly compiled.');
+        } catch (error) {
+          expect(error).toBeInstanceOf(ChatYamlStageScopeViolationError);
+          expect(error).toMatchObject({ stageId: stage.id, kind });
+          if (!(error instanceof ChatYamlStageScopeViolationError)) throw error;
+          expect(error.baseline).toBeUndefined();
+        }
+      }
+    } finally {
+      stopWorkspace(ws);
+    }
+    expect(existsSync(sibling)).toBe(true);
+  });
+
+  test('an altered Host baseline cannot supply automatic changed-source repair evidence', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const otherPath = pipelineYamlPath(ws.workDir!, 'other');
+    const otherYaml = yamlFor('Other pipeline', 'original');
+    mkdirSync(dirname(otherPath), { recursive: true });
+    writeFileSync(otherPath, otherYaml);
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-tampered-baseline',
+        bindingRequestId: 'request-tampered-baseline',
+        intent: 'edit',
+      },
+    });
+    const selected = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const unrelated = stage.entries.find((entry) => entry.sourcePath === otherPath)!;
+    writeFileSync(unrelated.stagedPath, yamlFor('Staged mutation', 'wrong'));
+    writeFileSync(
+      join(stage.baseWorkspaceDir, '.tagma', unrelated.relativePath),
+      yamlFor('Tampered baseline', 'wrong baseline'),
+    );
+    try {
+      expect(() => compileChatYamlStage(ws, stage.id, selected.relativePath)).toThrow(
+        'Chat YAML stage base snapshot is invalid.',
+      );
+    } finally {
+      stopWorkspace(ws);
+    }
+    expect(readFileSync(otherPath, 'utf8')).toBe(otherYaml);
+  });
+
+  test('classifies the missing expected staged target without touching its live source', () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-missing',
+        bindingRequestId: 'request-missing',
+        intent: 'edit',
+      },
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    rmSync(staged.stagedPath);
+    try {
+      compileChatYamlStage(ws, stage.id, staged.relativePath);
+      throw new Error('Missing target unexpectedly compiled.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ChatYamlStageMissingArtifactError);
+      expect(error).toMatchObject({
+        stageId: stage.id,
+        relativePath: staged.relativePath,
+        filesystemError: { code: 'ENOENT' },
+      });
+    } finally {
+      stopWorkspace(ws);
+    }
+    expect(readFileSync(sourcePath, 'utf8')).toBe(baseYaml);
+  });
+
+  test('a missing target cannot bypass rejection of a fresh sibling outside its binding', () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, {
+      activePath: sourcePath,
+      pipelineBinding: {
+        sessionId: 'session-missing-scope',
+        bindingRequestId: 'request-missing-scope',
+        intent: 'edit',
+      },
+    });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    rmSync(staged.stagedPath);
+    const alternate = join(stage.agentTagmaDir, 'other', 'other.yaml');
+    mkdirSync(dirname(alternate), { recursive: true });
+    writeFileSync(alternate, baseYaml);
+    try {
+      expect(() => compileChatYamlStage(ws, stage.id, staged.relativePath)).toThrow(
+        'cannot also mutate other/other.yaml',
+      );
+    } finally {
+      stopWorkspace(ws);
+    }
+    expect(readFileSync(sourcePath, 'utf8')).toBe(baseYaml);
+    expect(readFileSync(alternate, 'utf8')).toBe(baseYaml);
+  });
+
   test('returns native stage coordinates when the workspace is opened through an alias', () => {
     const { root, ws, sourcePath } = setupWorkspace();
     const alias = `${root}-alias`;
@@ -539,6 +724,39 @@ describe('chat YAML staging', () => {
 
     expect(discardChatYamlStage(ws, stage.id)).toBe(true);
     stopWorkspace(ws);
+  });
+
+  test('preserves a safe layout-write observation after a successful compile log', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const relativePath = 'new-graph/new-graph.yaml';
+    const stagedPath = join(stage.agentTagmaDir, relativePath);
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(stagedPath, yamlFor('New Graph', 'hello'), 'utf-8');
+    mkdirSync(pipelineLayoutPath(stagedPath));
+    const warning = spyOn(console, 'warn').mockImplementation(() => undefined);
+    let failure: unknown;
+    try {
+      try {
+        compileChatYamlStage(ws, stage.id, relativePath);
+      } catch (error) {
+        failure = error;
+      }
+      expect(JSON.parse(readFileSync(pipelineCompileLogPath(stagedPath), 'utf8'))).toMatchObject({
+        success: true,
+        parseOk: true,
+      });
+      expect(failure).toBeInstanceOf(Error);
+      expect(readCompileErrorObservation(failure)).toMatchObject({
+        phase: 'managed_layout_write',
+        errorClass: 'Error',
+      });
+      expect(JSON.stringify(readCompileErrorObservation(failure))).not.toContain(stagedPath);
+    } finally {
+      warning.mockRestore();
+      discardChatYamlStage(ws, stage.id);
+      stopWorkspace(ws);
+    }
   });
 
   test('rejects a declared no-marker sibling create that also rewrites an inventoried pipeline', async () => {

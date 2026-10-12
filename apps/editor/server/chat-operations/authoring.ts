@@ -1,4 +1,14 @@
+import {
+  isChatExecutionInputWitness,
+  type ChatExecutionInputWitness,
+} from './execution-input-witness.js';
+
 import { createHash } from 'node:crypto';
+import {
+  observeCompileError,
+  readCompileErrorObservation,
+  type CompileErrorObservationError,
+} from '../compile-error-observation.js';
 import {
   isChatRepairDiagnosis,
   parseChatRepairDiagnosisJson,
@@ -478,6 +488,44 @@ export interface ChatOperationV2AuthoringInvocationUsage {
   readonly outcome: Exclude<ChatOperationV2UsageOutcome, 'unavailable'>;
 }
 
+/** Host-only marker from the exact failed-terminal outbox and explicit Retry CAS. */
+export interface ChatOperationV2TrialPlanProviderRetry {
+  readonly workspaceScopeId: string;
+  readonly operationId: string;
+  readonly operationGeneration: number;
+  readonly operationVersion: number;
+  readonly stageId: string;
+  readonly requestId: string;
+  readonly previousInvocationId: string;
+  readonly previousSessionId: string;
+  readonly previousInputId: string;
+  readonly previousRequestDigest: string;
+  readonly failureCode: string;
+  readonly failureDigest: string;
+}
+
+/** A completed planner's observable lack of a committed plan, not tool telemetry. */
+export interface ChatOperationV2TrialPlannerNoProgress {
+  readonly kind: 'completed_planner_no_progress';
+  readonly workspaceScopeId: string;
+  readonly operationId: string;
+  readonly operationGeneration: number;
+  readonly stageId: string;
+  readonly invocationId: string;
+  readonly sessionId: string;
+  readonly inputId: string;
+  readonly requestDigest: string;
+  readonly trialPlanRequestDigest: string;
+  readonly completedSnapshotHash: string;
+  readonly errorEvidenceHash: string;
+  readonly planArtifactStatus: 'absent';
+}
+
+export interface ChatOperationV2TrialPlannerNoProgressContext {
+  readonly observation: ChatOperationV2TrialPlannerNoProgress;
+  readonly sourcePlanRequest: ChatOperationV2TrialPlanRequest;
+}
+
 export interface ChatOperationV2AuthoringInvocationRequest {
   readonly operationId: string;
   readonly workspaceScopeId: string;
@@ -496,6 +544,9 @@ export interface ChatOperationV2AuthoringInvocationRequest {
   readonly relocation: ChatOperationV2SessionRelocation;
   readonly signal: AbortSignal;
   readonly requestInteractive: (request: ChatOperationV2RuntimeInteractiveRequest) => Promise<void>;
+  readonly observeExecutionInput?: (witness: ChatExecutionInputWitness) => void | Promise<void>;
+  readonly trialPlanProviderRetry?: ChatOperationV2TrialPlanProviderRetry;
+  readonly trialPlanNoProgress?: ChatOperationV2TrialPlannerNoProgressContext;
 }
 
 export type ChatOperationV2AuthoringInvocationResult =
@@ -521,6 +572,18 @@ export type ChatOperationV2AuthoringInvocationResult =
 
 export type ChatOperationV2AuthoringInvocationRecoveryResult =
   ChatOperationV2AuthoringInvocationResult | { readonly kind: 'in_progress' };
+
+export interface ChatOperationV2RejectedTrialPlanAttempt {
+  readonly attemptId: string;
+  readonly toolAttemptCount: number;
+  readonly maxToolAttempts: number;
+  /** Hash of the complete private diagnostic, before redaction into model feedback. */
+  readonly rejectionEvidenceHash: string;
+  /** Required for a validation-only continuation; omitted legacy proofs remain counted-only. */
+  readonly submissionConsumed?: boolean;
+  readonly validationRejectionCount?: number;
+  readonly rejectionUtf8Bytes?: number;
+}
 
 interface VerificationBase {
   readonly trialId: string;
@@ -571,6 +634,9 @@ export type ChatOperationV2AuthoringVerificationResult =
   | (VerificationBase & {
       readonly kind: 'trial_plan_required';
       readonly planRequest: ChatOperationV2TrialPlanRequest;
+      /** Internal reread fence; never projected as public feedback or an event. */
+      readonly trialPlanRejection?: ChatOperationV2RejectedTrialPlanAttempt;
+      readonly trialPlanNoProgress?: ChatOperationV2TrialPlannerNoProgress;
     })
   | (VerificationBase & {
       readonly kind: 'discard';
@@ -627,6 +693,9 @@ export interface ChatOperationV2AuthoringRuntime {
         readonly kind: 'failed';
         readonly errorCode: string;
         readonly diagnosticCodes: readonly string[];
+        /** Opaque Host-only carrier; never serialize it as public event content. */
+        readonly creationFailure?: CompileErrorObservationError;
+        readonly completeErrorStorage?: 'not_stored';
       }
   >;
   inspectStage(input: {
@@ -692,6 +761,42 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly stageId: string;
     readonly hash: string;
   }): Promise<string>;
+  /**
+   * Local, authenticated inspection only. Older adapters retain no-change drafts;
+   * absence or unreadable evidence never authorizes another model invocation.
+   */
+  inspectTrialPlanRejection?(input: {
+    readonly operationId: string;
+    readonly operationGeneration: number;
+    readonly stageId: string;
+    readonly invocationId: string;
+    readonly sessionId: string;
+    readonly inputId: string;
+    readonly requestDigest: string;
+    readonly trialPlanRequest: ChatOperationV2TrialPlanRequest;
+  }): Promise<ChatOperationV2RejectedTrialPlanAttempt | null>;
+  /** Authenticated normal completion plus exact absent plan; tool activity remains unknown. */
+  inspectTrialPlannerNoProgress?(input: {
+    readonly workspaceScopeId: string;
+    readonly operationId: string;
+    readonly operationGeneration: number;
+    readonly stageId: string;
+    readonly invocationId: string;
+    readonly sessionId: string;
+    readonly inputId: string;
+    readonly requestDigest: string;
+    readonly trialPlanRequest: ChatOperationV2TrialPlanRequest;
+  }): Promise<ChatOperationV2TrialPlannerNoProgress | null>;
+  /** Exact definitive provider failure; only explicit Host Retry may use this local inspector. */
+  inspectTrialPlanProviderFailure?(
+    input: Omit<
+      ChatOperationV2TrialPlanProviderRetry,
+      'operationVersion' | 'requestId' | 'failureDigest'
+    >,
+  ): Promise<{
+    readonly failureDigest: string;
+    readonly trialPlanRequest: ChatOperationV2TrialPlanRequest;
+  } | null>;
   /** Read a local authenticated completion; never contact or retry the provider. */
   readFinalInstructions?(input: {
     readonly operationId: string;
@@ -712,6 +817,7 @@ export interface ChatOperationV2AuthoringRuntime {
     /** Present only for an explicit retry of an unchanged retained draft. */
     readonly verificationAttemptVersion?: number;
     readonly planReviewAffectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
+    readonly trialPlanNoProgress?: ChatOperationV2TrialPlannerNoProgressContext;
     readonly intentText?: string;
     readonly signal: AbortSignal;
     readonly onTrialProgress?: (progress: ChatOperationV2TrialProgressUpdate) => void;
@@ -1115,7 +1221,77 @@ function assertBoundedRuntimeText(
   }
 }
 
-function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanRequest {
+/** Exact bounded engineering metadata; absent telemetry never acquires zero counters. */
+export function validateTrialPlannerNoProgress(
+  value: unknown,
+): ChatOperationV2TrialPlannerNoProgress {
+  if (
+    !isPlainRecord(value) ||
+    !exactKeys(value, [
+      'kind',
+      'workspaceScopeId',
+      'operationId',
+      'operationGeneration',
+      'stageId',
+      'invocationId',
+      'sessionId',
+      'inputId',
+      'requestDigest',
+      'trialPlanRequestDigest',
+      'completedSnapshotHash',
+      'errorEvidenceHash',
+      'planArtifactStatus',
+    ]) ||
+    value.kind !== 'completed_planner_no_progress' ||
+    value.planArtifactStatus !== 'absent'
+  )
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Planner no-progress observation is invalid.',
+    );
+  for (const field of [
+    'workspaceScopeId',
+    'operationId',
+    'stageId',
+    'invocationId',
+    'sessionId',
+    'inputId',
+  ] as const)
+    assertHostId(value[field], 'Planner no-progress owner');
+  assertCounter(value.operationGeneration, 'Planner no-progress generation', 1);
+  for (const field of [
+    'requestDigest',
+    'trialPlanRequestDigest',
+    'completedSnapshotHash',
+    'errorEvidenceHash',
+  ] as const)
+    assertHash(value[field], 'Planner no-progress digest');
+  return value as unknown as ChatOperationV2TrialPlannerNoProgress;
+}
+
+export function validateTrialPlannerNoProgressContext(
+  value: unknown,
+): ChatOperationV2TrialPlannerNoProgressContext {
+  if (!isPlainRecord(value) || !exactKeys(value, ['observation', 'sourcePlanRequest']))
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Planner no-progress context is invalid.',
+    );
+  const observation = validateTrialPlannerNoProgress(value.observation);
+  const sourcePlanRequest = validateTrialPlanRequest(value.sourcePlanRequest);
+  if (
+    sourcePlanRequest.reason !== 'missing' ||
+    sourcePlanRequest.artifactRepair !== undefined ||
+    sha256(canonicalBytes(sourcePlanRequest)) !== observation.trialPlanRequestDigest
+  )
+    throw new ChatOperationV2AuthoringProtocolError(
+      'invalid_runtime_result',
+      'Planner no-progress request changed.',
+    );
+  return { observation, sourcePlanRequest };
+}
+
+export function validateTrialPlanRequest(value: unknown): ChatOperationV2TrialPlanRequest {
   if (!isPlainRecord(value)) {
     throw new ChatOperationV2AuthoringProtocolError(
       'invalid_runtime_result',
@@ -1388,6 +1564,54 @@ function validateVerification(
     for (const code of result.diagnosticCodes) assertRuntimeCode(code, 'Trial diagnostic code');
   } else if (result.kind === 'trial_plan_required') {
     validateTrialPlanRequest(result.planRequest);
+    if (result.trialPlanNoProgress !== undefined) {
+      validateTrialPlannerNoProgress(result.trialPlanNoProgress);
+      if (
+        result.trialPlanRejection !== undefined ||
+        result.planHash !== null ||
+        result.planRequest.reason !== 'missing' ||
+        result.planRequest.artifactRepair !== undefined
+      )
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Planner no-progress cannot widen verification authority.',
+        );
+    }
+    if (result.trialPlanRejection !== undefined) {
+      if (!isPlainRecord(result.trialPlanRejection))
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Trial Plan rejection evidence is invalid.',
+        );
+      assertHostId(result.trialPlanRejection.attemptId, 'Rejected Trial Plan attempt id');
+      assertCounter(result.trialPlanRejection.toolAttemptCount, 'Rejected Trial Plan count');
+      assertCounter(result.trialPlanRejection.maxToolAttempts, 'Rejected Trial Plan maximum', 1);
+      const rejection = result.trialPlanRejection;
+      if (rejection.submissionConsumed === false) {
+        if (rejection.toolAttemptCount !== 0 || rejection.validationRejectionCount !== 0)
+          throw new ChatOperationV2AuthoringProtocolError(
+            'invalid_runtime_result',
+            'Validation-only Trial Plan counters are invalid.',
+          );
+        assertCounter(rejection.rejectionUtf8Bytes, 'Complete Trial Plan rejection bytes', 1);
+      } else if (
+        rejection.toolAttemptCount < 1 ||
+        (rejection.submissionConsumed !== undefined && rejection.submissionConsumed !== true) ||
+        (rejection.submissionConsumed === true &&
+          rejection.validationRejectionCount !== rejection.toolAttemptCount)
+      ) {
+        throw new ChatOperationV2AuthoringProtocolError(
+          'invalid_runtime_result',
+          'Counted Trial Plan rejection is invalid.',
+        );
+      }
+      if (rejection.rejectionUtf8Bytes !== undefined)
+        assertCounter(rejection.rejectionUtf8Bytes, 'Complete Trial Plan rejection bytes', 1);
+      assertHash(
+        result.trialPlanRejection.rejectionEvidenceHash,
+        'Trial Plan rejection evidence hash',
+      );
+    }
   } else {
     if (!Array.isArray(result.diagnosticCodes) || result.diagnosticCodes.length > 16) {
       throw new ChatOperationV2AuthoringProtocolError(
@@ -1611,11 +1835,22 @@ export class ChatOperationV2AuthoringEngine {
       assertRuntimeCode(stageResult.errorCode, 'Stage failure code');
       for (const code of stageResult.diagnosticCodes)
         assertRuntimeCode(code, 'Stage diagnostic code');
+      const observed = readCompileErrorObservation(stageResult.creationFailure);
+      const creationDiagnostic =
+        stageResult.errorCode === 'stage_create_failed'
+          ? {
+              ...(observed?.phase === 'stage_creation'
+                ? observed
+                : observeCompileError('stage_creation')),
+              completeErrorStorage: 'not_stored' as const,
+            }
+          : undefined;
       this.appendEvent(context.operationId, 'stage_status_changed', {
         stageId: stagingOperation.stageId!,
         status: 'failed',
         errorCode: stageResult.errorCode,
         diagnosticCodes: [...stageResult.diagnosticCodes],
+        ...(creationDiagnostic ? { creationDiagnostic } : {}),
       });
       return this.finishPrecommit(context, 'discarded', undefined, undefined, {
         reasonCode: 'stage_creation_failed',
@@ -1797,6 +2032,8 @@ export class ChatOperationV2AuthoringEngine {
     // Host-issued invocation id this chain resumes after an output-length
     // truncation. Set at most once per chain: a continuation never continues.
     continuationOf?: string,
+    trialPlanProviderRetry?: ChatOperationV2TrialPlanProviderRetry,
+    trialPlanNoProgress?: ChatOperationV2TrialPlannerNoProgressContext,
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
     if (!context.stage || !context.relocation) {
       throw new ChatOperationV2AuthoringProtocolError(
@@ -1804,6 +2041,34 @@ export class ChatOperationV2AuthoringEngine {
         'Authoring stage is unavailable.',
       );
     }
+    // Capture the claim before any full-error read can yield to another writer.
+    const expectedOperation = this.requireOperation(context.operationId);
+    if (expectedOperation.phase === 'terminal') return terminalResult(expectedOperation);
+    const recoveryMatches =
+      interactiveRecoveryInput !== undefined &&
+      interactiveRecoveryInput.operationId === expectedOperation.operationId &&
+      interactiveRecoveryInput.expectedOperationGeneration === expectedOperation.generation &&
+      interactiveRecoveryInput.expectedOperationVersion === expectedOperation.version;
+    if (
+      expectedOperation.generation !== context.stage.operationGeneration ||
+      expectedOperation.stageId !== context.stage.stageId ||
+      (interactiveRecoveryInput !== undefined && !recoveryMatches) ||
+      (!recoveryMatches && expectedOperation.activeInvocationId !== (continuationOf ?? null))
+    )
+      return { kind: 'stale', operation: expectedOperation };
+    if (
+      trialPlanProviderRetry &&
+      (purpose !== 'trial_plan' ||
+        continuationOf !== undefined ||
+        trialPlanProviderRetry.workspaceScopeId !== context.workspaceScopeId ||
+        trialPlanProviderRetry.operationId !== expectedOperation.operationId ||
+        trialPlanProviderRetry.operationGeneration !== expectedOperation.generation ||
+        trialPlanProviderRetry.operationVersion !== expectedOperation.version ||
+        trialPlanProviderRetry.stageId !== expectedOperation.stageId ||
+        expectedOperation.waitReason !== 'provider_unavailable' ||
+        expectedOperation.activeInvocationId !== null)
+    )
+      return { kind: 'stale', operation: expectedOperation };
     if (purpose === 'repair' && !repairEvidence?.feedback) {
       const prior = this.persistence.getLatestOperationEvent(
         context.operationId,
@@ -1829,6 +2094,46 @@ export class ChatOperationV2AuthoringEngine {
     }
     const trialPlanRequest =
       purpose === 'trial_plan' ? validateTrialPlanRequest(context.pendingTrialPlanRequest) : null;
+    if (trialPlanRequest) {
+      // Existing durable outboxes conservatively bound every new planner ID,
+      // including output-length continuation, before another outbox is prepared.
+      const reserved = this.persistence
+        .listInvocationOutbox(context.workspaceScopeId)
+        .filter(
+          (row) => row.operationId === context.operationId && row.purpose === 'trial_plan',
+        ).length;
+      if (reserved >= trialPlanRequest.maxAttempts)
+        return this.retainDraft(context, 'trial_plan_attempts_exhausted');
+    }
+    if (trialPlanNoProgress) {
+      const proof = validateTrialPlannerNoProgressContext(trialPlanNoProgress);
+      const source = this.persistence.getInvocationOutbox(proof.observation.invocationId);
+      if (
+        purpose !== 'trial_plan' ||
+        continuationOf !== undefined ||
+        trialPlanProviderRetry !== undefined ||
+        !trialPlanRequest ||
+        source?.status !== 'settled' ||
+        source.purpose !== 'trial_plan' ||
+        source.workspaceScopeId !== context.workspaceScopeId ||
+        source.operationId !== context.operationId ||
+        source.sessionId !== proof.observation.sessionId ||
+        source.inputId !== proof.observation.inputId ||
+        source.requestDigest !== proof.observation.requestDigest ||
+        proof.observation.workspaceScopeId !== context.workspaceScopeId ||
+        proof.observation.operationId !== context.operationId ||
+        proof.observation.operationGeneration !== expectedOperation.generation ||
+        proof.observation.stageId !== context.stage.stageId ||
+        proof.observation.sessionId !== context.sessionId ||
+        trialPlanRequest.reason !== 'missing' ||
+        trialPlanRequest.artifactRepair !== undefined ||
+        trialPlanRequest.attemptId === proof.sourcePlanRequest.attemptId ||
+        trialPlanRequest.pipelineHash !== proof.sourcePlanRequest.pipelineHash ||
+        trialPlanRequest.relativePlanPath !== proof.sourcePlanRequest.relativePlanPath ||
+        trialPlanRequest.maxAttempts !== proof.sourcePlanRequest.maxAttempts
+      )
+        return this.retainDraft(context, 'trial_plan_no_progress_unavailable');
+    }
     if (purpose !== 'trial_plan' && context.pendingTrialPlanRequest !== null) {
       context.pendingTrialPlanRequest = null;
     }
@@ -1871,6 +2176,11 @@ export class ChatOperationV2AuthoringEngine {
       if (sha256(new TextEncoder().encode(errorEvidence)) !== errorEvidenceHash)
         return this.retainDraft(context, 'repair_evidence_unavailable');
     }
+    if (
+      trialPlanNoProgress &&
+      (errorEvidenceHash !== trialPlanNoProgress.observation.errorEvidenceHash || !errorEvidence)
+    )
+      return this.retainDraft(context, 'repair_evidence_unavailable');
     const requestBytes = canonicalBytes({
       schemaVersion: CHAT_OPERATION_V2_AUTHORING_SCHEMA_VERSION,
       purpose,
@@ -1894,7 +2204,19 @@ export class ChatOperationV2AuthoringEngine {
         ? { verificationErrorEvidence: { hash: errorEvidenceHash, errors: errorEvidence } }
         : {}),
       ...(continuationOf === undefined ? {} : { continuationOf }),
+      ...(trialPlanProviderRetry ? { trialPlanProviderRetry } : {}),
+      ...(trialPlanNoProgress ? { trialPlanNoProgress } : {}),
     });
+    const beforePreparation = this.requireOperation(context.operationId);
+    if (
+      beforePreparation.generation !== expectedOperation.generation ||
+      beforePreparation.version !== expectedOperation.version ||
+      beforePreparation.activeInvocationId !== expectedOperation.activeInvocationId ||
+      beforePreparation.stageId !== expectedOperation.stageId
+    )
+      return beforePreparation.phase === 'terminal'
+        ? terminalResult(beforePreparation)
+        : { kind: 'stale', operation: beforePreparation };
     const preparedAt = this.now();
     const outbox = this.persistence.prepareInvocationOutbox({
       invocationId: identity.invocationId,
@@ -1926,7 +2248,7 @@ export class ChatOperationV2AuthoringEngine {
     });
     this.appendUsageEvent(context.operationId, usage, 'pending', null);
 
-    const current = this.requireOperation(context.operationId);
+    const current = expectedOperation;
     const nextPhase =
       purpose === 'authoring'
         ? 'authoring'
@@ -2001,6 +2323,7 @@ export class ChatOperationV2AuthoringEngine {
     const trialPlanHeartbeat =
       purpose === 'trial_plan' ? setInterval(emitTrialPlanHeartbeat, 30_000) : null;
     trialPlanHeartbeat?.unref?.();
+    let interactiveDeclined = false;
     let result: ChatOperationV2AuthoringInvocationResult;
     try {
       result = await this.runtime.runInvocation({
@@ -2013,14 +2336,66 @@ export class ChatOperationV2AuthoringEngine {
         purpose,
         repairAttempt,
         trialPlanRequest,
+        ...(trialPlanProviderRetry ? { trialPlanProviderRetry } : {}),
+        ...(trialPlanNoProgress ? { trialPlanNoProgress } : {}),
         admission,
         clarificationThread,
         canonicalRequestBytes: Uint8Array.from(requestBytes),
         stage: context.stage,
         relocation: context.relocation,
         signal: controller.signal,
-        requestInteractive: (request) =>
-          this.beginInteractiveWait(context, identity, nextPhase, request),
+        requestInteractive: async (request) => {
+          const resolved = await this.beginInteractiveWait(context, identity, nextPhase, request);
+          if (
+            resolved.state !== 'resolved' ||
+            resolved.operationId !== context.operationId ||
+            resolved.operationGeneration !== active.operation.generation ||
+            resolved.invocationId !== identity.invocationId ||
+            resolved.kind !== request.kind ||
+            resolved.decision === null
+          ) {
+            throw new ChatOperationV2AuthoringProtocolError(
+              'authority_mismatch',
+              'Interactive completion does not match its invocation.',
+            );
+          }
+          interactiveDeclined ||= resolved.decision === 'deny' || resolved.decision === 'reject';
+        },
+        observeExecutionInput: (witness) => {
+          try {
+            const latest = this.persistence.getOperation(context.operationId);
+            const prepared = this.persistence.getInvocationOutbox(identity.invocationId);
+            if (
+              !isChatExecutionInputWitness(witness) ||
+              !latest ||
+              !prepared ||
+              latest.generation !== active.operation.generation ||
+              latest.activeInvocationId !== identity.invocationId ||
+              witness.operationId !== context.operationId ||
+              witness.workspaceScopeId !== context.workspaceScopeId ||
+              witness.operationGeneration !== active.operation.generation ||
+              witness.stageId !== context.stage?.stageId ||
+              witness.invocationId !== identity.invocationId ||
+              witness.sessionId !== identity.sessionId ||
+              witness.inputId !== identity.inputId ||
+              witness.purpose !== purpose ||
+              witness.repairAttempt !== repairAttempt ||
+              prepared.operationId !== context.operationId ||
+              prepared.workspaceScopeId !== context.workspaceScopeId ||
+              prepared.sessionId !== identity.sessionId ||
+              prepared.inputId !== identity.inputId ||
+              prepared.purpose !== purpose ||
+              prepared.requestDigest !== witness.requestDigest
+            )
+              return;
+            this.appendEvent(context.operationId, 'execution_input_observed', {
+              invocationId: identity.invocationId,
+              witness,
+            });
+          } catch {
+            /* Observation persistence cannot block authoring. */
+          }
+        },
       });
     } catch (error) {
       if (
@@ -2161,10 +2536,105 @@ export class ChatOperationV2AuthoringEngine {
           ? { kind: 'stale', operation: waiting.operation }
           : terminalResult(waiting.operation);
     }
-    if (purpose === 'authoring' && result.disposition === 'no_change') {
+    if (
+      purpose === 'authoring' &&
+      result.disposition === 'no_change' &&
+      context.intent === 'edit'
+    ) {
       return this.finishPrecommit(context, 'completed_noop');
     }
-    if (purpose !== 'authoring' && result.disposition === 'no_change') {
+    if (purpose === 'authoring' && result.disposition === 'no_change' && interactiveDeclined) {
+      return this.retainDraft(context, 'authoring_interactive_declined');
+    }
+    let rejectedTrialPlan: ChatOperationV2RejectedTrialPlanAttempt | null = null;
+    if (
+      purpose === 'trial_plan' &&
+      result.disposition === 'no_change' &&
+      trialPlanRequest &&
+      operationAfterInvocation.activeInvocationId === identity.invocationId &&
+      this.persistence.getInvocationOutbox(identity.invocationId)?.status === 'settled' &&
+      this.runtime.inspectTrialPlanRejection
+    ) {
+      try {
+        const rejected = await this.runtime.inspectTrialPlanRejection({
+          operationId: context.operationId,
+          operationGeneration: active.operation.generation,
+          stageId: context.stage.stageId,
+          invocationId: identity.invocationId,
+          sessionId: identity.sessionId,
+          inputId: identity.inputId,
+          requestDigest: outbox.requestDigest,
+          trialPlanRequest,
+        });
+        if (
+          isPlainRecord(rejected) &&
+          rejected.attemptId === trialPlanRequest.attemptId &&
+          Number.isSafeInteger(rejected.toolAttemptCount) &&
+          (rejected.toolAttemptCount > 0 ||
+            (rejected.submissionConsumed === false &&
+              rejected.toolAttemptCount === 0 &&
+              rejected.validationRejectionCount === 0 &&
+              Number.isSafeInteger(rejected.rejectionUtf8Bytes) &&
+              rejected.rejectionUtf8Bytes! > 0)) &&
+          rejected.maxToolAttempts === trialPlanRequest.maxAttempts &&
+          rejected.toolAttemptCount < rejected.maxToolAttempts &&
+          typeof rejected.rejectionEvidenceHash === 'string' &&
+          SHA256_RE.test(rejected.rejectionEvidenceHash)
+        )
+          rejectedTrialPlan = rejected;
+      } catch {
+        // A failed evidence read is not authority for a paid retry.
+      }
+    }
+    let noProgress: ChatOperationV2TrialPlannerNoProgressContext | undefined;
+    if (
+      purpose === 'trial_plan' &&
+      result.disposition === 'no_change' &&
+      trialPlanRequest &&
+      rejectedTrialPlan === null &&
+      operationAfterInvocation.activeInvocationId === identity.invocationId &&
+      this.persistence.getInvocationOutbox(identity.invocationId)?.status === 'settled' &&
+      this.runtime.inspectTrialPlannerNoProgress
+    ) {
+      try {
+        const observation = await this.runtime.inspectTrialPlannerNoProgress({
+          workspaceScopeId: context.workspaceScopeId,
+          operationId: context.operationId,
+          operationGeneration: active.operation.generation,
+          stageId: context.stage.stageId,
+          invocationId: identity.invocationId,
+          sessionId: identity.sessionId,
+          inputId: identity.inputId,
+          requestDigest: outbox.requestDigest,
+          trialPlanRequest,
+        });
+        if (observation) {
+          const proof = validateTrialPlannerNoProgressContext({
+            observation,
+            sourcePlanRequest: trialPlanRequest,
+          });
+          if (
+            observation.workspaceScopeId === context.workspaceScopeId &&
+            observation.operationId === context.operationId &&
+            observation.operationGeneration === active.operation.generation &&
+            observation.stageId === context.stage.stageId &&
+            observation.invocationId === identity.invocationId &&
+            observation.sessionId === identity.sessionId &&
+            observation.inputId === identity.inputId &&
+            observation.requestDigest === outbox.requestDigest
+          )
+            noProgress = proof;
+        }
+      } catch {
+        /* Unreadable or unknown observations cannot authorize another planner. */
+      }
+    }
+    if (
+      purpose !== 'authoring' &&
+      result.disposition === 'no_change' &&
+      rejectedTrialPlan === null &&
+      noProgress === undefined
+    ) {
       return this.retainDraft(
         context,
         purpose === 'trial_plan' ? 'trial_plan_no_change' : 'repair_no_change',
@@ -2182,7 +2652,16 @@ export class ChatOperationV2AuthoringEngine {
         ? { kind: 'stale', operation: verifying.operation }
         : terminalResult(verifying.operation);
     }
-    return this.verifyAndRepair(context, verifying.operation);
+    return this.verifyAndRepair(
+      context,
+      verifying.operation,
+      undefined,
+      rejectedTrialPlan && trialPlanRequest
+        ? { kind: 'rejection', rejection: rejectedTrialPlan, planRequest: trialPlanRequest }
+        : noProgress
+          ? { kind: 'completed_planner_no_progress', context: noProgress }
+          : undefined,
+    );
   }
 
   private validateInvocationResult(result: ChatOperationV2AuthoringInvocationResult): void {
@@ -2402,7 +2881,7 @@ export class ChatOperationV2AuthoringEngine {
     identity: InvocationIdentity,
     operationPhase: 'authoring' | 'trial-running' | 'repairing',
     input: ChatOperationV2RuntimeInteractiveRequest,
-  ): Promise<void> {
+  ): Promise<ChatOperationV2InteractiveRequest> {
     if (this.currentInteractiveByOperation.has(context.operationId)) {
       throw new ChatOperationV2AuthoringProtocolError(
         'authority_mismatch',
@@ -2460,14 +2939,16 @@ export class ChatOperationV2AuthoringEngine {
       resolve = settle;
       reject = fail;
     });
-    this.interactiveByHostRequest.set(hostRequestId, {
+    const wait: InteractiveWait = {
       request: waiting.interactive.request,
       operationPhase,
       resolve,
       reject,
-    });
+    };
+    this.interactiveByHostRequest.set(hostRequestId, wait);
     this.currentInteractiveByOperation.set(context.operationId, hostRequestId);
-    return promise;
+    await promise;
+    return wait.request;
   }
 
   getPendingInteractiveRequest(operationId: string): ChatOperationV2InteractiveRequest | null {
@@ -2703,6 +3184,16 @@ export class ChatOperationV2AuthoringEngine {
     context: OperationContext,
     operation: StoredChatOperationV2,
     verificationAttemptVersion?: number,
+    plannerFeedback?:
+      | {
+          readonly kind: 'rejection';
+          readonly rejection: ChatOperationV2RejectedTrialPlanAttempt;
+          readonly planRequest: ChatOperationV2TrialPlanRequest;
+        }
+      | {
+          readonly kind: 'completed_planner_no_progress';
+          readonly context: ChatOperationV2TrialPlannerNoProgressContext;
+        },
   ): Promise<ChatOperationV2AuthoringDispatchResult> {
     if (!context.stage || !context.relocation) {
       throw new ChatOperationV2AuthoringProtocolError(
@@ -2710,6 +3201,11 @@ export class ChatOperationV2AuthoringEngine {
         'Verification stage is unavailable.',
       );
     }
+    const rejectedTrialPlan = plannerFeedback?.kind === 'rejection' ? plannerFeedback : undefined;
+    const noProgress =
+      plannerFeedback?.kind === 'completed_planner_no_progress'
+        ? plannerFeedback.context
+        : undefined;
     let trialOperation = operation;
     if (operation.phase !== 'trial-running') {
       const transitioned = this.transition(operation, {
@@ -2747,6 +3243,7 @@ export class ChatOperationV2AuthoringEngine {
           targetId: context.targetId,
           stage: context.stage,
           repairAttempts: operation.repairAttempts,
+          ...(noProgress ? { trialPlanNoProgress: noProgress } : {}),
           ...(verificationAttemptVersion === undefined ? {} : { verificationAttemptVersion }),
           ...(context.pendingTrialPlanRequest?.affectedCases
             ? { planReviewAffectedCases: context.pendingTrialPlanRequest.affectedCases }
@@ -2842,6 +3339,49 @@ export class ChatOperationV2AuthoringEngine {
     });
     const current = this.requireOperation(context.operationId);
     if (current.phase === 'terminal') return terminalResult(current);
+    if (
+      rejectedTrialPlan &&
+      (verification.kind !== 'trial_plan_required' ||
+        verification.planRequest.pipelineHash !== rejectedTrialPlan.planRequest.pipelineHash ||
+        verification.planRequest.relativePlanPath !==
+          rejectedTrialPlan.planRequest.relativePlanPath ||
+        verification.planRequest.maxAttempts !== rejectedTrialPlan.rejection.maxToolAttempts ||
+        verification.planRequest.attemptId === rejectedTrialPlan.rejection.attemptId ||
+        verification.trialPlanRejection?.attemptId !== rejectedTrialPlan.rejection.attemptId ||
+        verification.trialPlanRejection?.toolAttemptCount !==
+          rejectedTrialPlan.rejection.toolAttemptCount ||
+        verification.trialPlanRejection?.maxToolAttempts !==
+          rejectedTrialPlan.rejection.maxToolAttempts ||
+        verification.trialPlanRejection?.rejectionEvidenceHash !==
+          rejectedTrialPlan.rejection.rejectionEvidenceHash ||
+        verification.trialPlanRejection?.submissionConsumed !==
+          rejectedTrialPlan.rejection.submissionConsumed ||
+        verification.trialPlanRejection?.validationRejectionCount !==
+          rejectedTrialPlan.rejection.validationRejectionCount ||
+        verification.trialPlanRejection?.rejectionUtf8Bytes !==
+          rejectedTrialPlan.rejection.rejectionUtf8Bytes ||
+        !verification.repairErrorEvidenceHash)
+    ) {
+      // Only a fresh Host planner attempt for this rejected revision may continue.
+      // The local reread cannot widen this exception into artifact repair/publication.
+      return this.retainDraft(context, 'trial_plan_no_change');
+    }
+    if (
+      noProgress &&
+      (verification.kind !== 'trial_plan_required' ||
+        verification.planHash !== null ||
+        verification.trialPlanRejection !== undefined ||
+        verification.planRequest.reason !== 'missing' ||
+        verification.planRequest.artifactRepair !== undefined ||
+        verification.planRequest.pipelineHash !== noProgress.sourcePlanRequest.pipelineHash ||
+        verification.planRequest.relativePlanPath !==
+          noProgress.sourcePlanRequest.relativePlanPath ||
+        verification.planRequest.maxAttempts !== noProgress.sourcePlanRequest.maxAttempts ||
+        verification.planRequest.attemptId === noProgress.sourcePlanRequest.attemptId ||
+        canonicalJson(verification.trialPlanNoProgress) !== canonicalJson(noProgress.observation) ||
+        verification.repairErrorEvidenceHash !== noProgress.observation.errorEvidenceHash)
+    )
+      return this.retainDraft(context, 'trial_plan_no_progress_unavailable');
     if (verification.kind === 'discard') {
       return this.retainDraft(context, verification.errorCode);
     }
@@ -2861,7 +3401,16 @@ export class ChatOperationV2AuthoringEngine {
     }
     if (verification.kind === 'trial_plan_required') {
       context.pendingTrialPlanRequest = verification.planRequest;
-      return this.runControlledInvocation(context, 'trial_plan', current.repairAttempts, null);
+      return this.runControlledInvocation(
+        context,
+        'trial_plan',
+        current.repairAttempts,
+        null,
+        undefined,
+        undefined,
+        undefined,
+        noProgress,
+      );
     }
     if (verification.kind === 'unverified') {
       // Keep the paid-for authoring result and authenticated stage durable.
@@ -3160,6 +3709,10 @@ export class ChatOperationV2AuthoringEngine {
       current.operationId,
       'trial_status_changed',
     );
+    const previousEvidence =
+      previous?.payload.stageId === current.stageId ? previous.payload : undefined;
+    const retainedErrorHash = previousEvidence?.repairErrorEvidenceHash;
+    const retainedDiagnosis = parseChatRepairDiagnosisJson(previousEvidence?.repairDiagnosisJson);
     this.appendEvent(current.operationId, 'trial_status_changed', {
       stageId: current.stageId,
       trialId: previous?.payload.trialId ?? `trial-retained-${current.version}`,
@@ -3170,6 +3723,10 @@ export class ChatOperationV2AuthoringEngine {
       failedCount: previous?.payload.failedCount ?? 0,
       warningCount: previous?.payload.warningCount ?? 0,
       ...(previous?.payload.feedback ? { feedback: previous.payload.feedback } : {}),
+      ...(typeof retainedErrorHash === 'string' && SHA256_RE.test(retainedErrorHash)
+        ? { repairErrorEvidenceHash: retainedErrorHash }
+        : {}),
+      ...(retainedDiagnosis ? { repairDiagnosisJson: JSON.stringify(retainedDiagnosis) } : {}),
       errorCode: SAFE_CODE_RE.test(reasonCode) ? reasonCode : 'trial_verification_failed',
     });
     const waiting = this.transition(current, {
@@ -3807,8 +4364,51 @@ export class ChatOperationV2AuthoringEngine {
       );
     }
     const purpose = previous.purpose as ChatOperationV2AuthoringInvocationPurpose;
-    if (purpose === 'trial_plan' && !context.pendingTrialPlanRequest) {
-      await this.recoverTrialPlanRequest(context, current);
+    let trialPlanProviderRetry: ChatOperationV2TrialPlanProviderRetry | undefined;
+    if (purpose === 'trial_plan') {
+      if (
+        previous.status !== 'failed_terminal' ||
+        previous.failureCode === null ||
+        !current.stageId ||
+        !this.runtime.inspectTrialPlanProviderFailure
+      )
+        return { kind: 'provider_unavailable', operation: current };
+      const owner = {
+        workspaceScopeId: current.workspaceScopeId,
+        operationId: current.operationId,
+        operationGeneration: current.generation,
+        stageId: current.stageId,
+        previousInvocationId: previous.invocationId,
+        previousSessionId: previous.sessionId,
+        previousInputId: previous.inputId,
+        previousRequestDigest: previous.requestDigest,
+        failureCode: previous.failureCode,
+      };
+      let failure: Awaited<
+        ReturnType<NonNullable<ChatOperationV2AuthoringRuntime['inspectTrialPlanProviderFailure']>>
+      >;
+      try {
+        failure = await this.runtime.inspectTrialPlanProviderFailure(owner);
+      } catch {
+        return { kind: 'provider_unavailable', operation: current };
+      }
+      if (!failure || !SHA256_RE.test(failure.failureDigest))
+        return { kind: 'provider_unavailable', operation: current };
+      const originalRequest = validateTrialPlanRequest(failure.trialPlanRequest);
+      if (
+        context.pendingTrialPlanRequest &&
+        sha256(canonicalBytes(context.pendingTrialPlanRequest)) !==
+          sha256(canonicalBytes(originalRequest))
+      )
+        return { kind: 'provider_unavailable', operation: current };
+      // Restart recovery retains the original attempt; it does not verify/create a new attempt.
+      context.pendingTrialPlanRequest = originalRequest;
+      trialPlanProviderRetry = {
+        ...owner,
+        operationVersion: current.version,
+        requestId: input.requestId,
+        failureDigest: failure.failureDigest,
+      };
     }
     const repairAttempt =
       purpose === 'repair'
@@ -3822,7 +4422,15 @@ export class ChatOperationV2AuthoringEngine {
         'Provider retry exceeds the frozen repair-attempt budget.',
       );
     }
-    return this.runControlledInvocation(context, purpose, repairAttempt, null);
+    return this.runControlledInvocation(
+      context,
+      purpose,
+      repairAttempt,
+      null,
+      undefined,
+      undefined,
+      trialPlanProviderRetry,
+    );
   }
 
   private async recoverDurableStageContext(

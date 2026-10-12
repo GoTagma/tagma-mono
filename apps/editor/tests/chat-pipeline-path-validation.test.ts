@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { RawPipelineConfig } from '@tagma/types';
+import type { RawPipelineConfig, RawTaskConfig } from '@tagma/types';
 
 import { validateChatPipelinePathCoordinates } from '../server/chat-pipeline-path-validation';
 
@@ -9,6 +9,7 @@ function configWithPaths(options: {
   prompt?: string;
   triggerType?: 'file' | 'directory';
   triggerPath?: string;
+  completion?: RawTaskConfig['completion'];
   completionPath?: string;
   staticContextPath?: string;
 }): RawPipelineConfig {
@@ -33,11 +34,13 @@ function configWithPaths(options: {
             ...(options.triggerPath
               ? { trigger: { type: options.triggerType ?? 'file', path: options.triggerPath } }
               : {}),
-            ...(options.completionPath
-              ? {
-                  completion: { type: 'file_exists', path: options.completionPath },
-                }
-              : {}),
+            ...(options.completion
+              ? { completion: options.completion }
+              : options.completionPath
+                ? {
+                    completion: { type: 'file_exists', path: options.completionPath },
+                  }
+                : {}),
           },
         ],
       },
@@ -46,6 +49,50 @@ function configWithPaths(options: {
 }
 
 describe('chat pipeline path-coordinate validation', () => {
+  test.each(['linux', 'win32'] as const)(
+    'validates both task json_schema paths using inherited cwd (%s)',
+    (platform) => {
+      const windows = platform === 'win32';
+      const prefix = windows ? '.TAGMA\\FACT-CHECKER' : '.tagma/fact-checker';
+      const repeatedCompletion: RawTaskConfig['completion'] = {
+        type: 'json_schema',
+        path: prefix + '/data.json',
+        schema_path: prefix + '/data.schema.json',
+      };
+      const config = configWithPaths({ trackCwd: prefix, completion: repeatedCompletion });
+      const options = {
+        workspaceRoot: windows ? 'C:\\workspace' : '/workspace',
+        relativeYamlPath: 'fact-checker/fact-checker.yaml',
+        platform,
+      };
+      expect(validateChatPipelinePathCoordinates(config, options).map((item) => item.path)).toEqual(
+        ['tracks[0].tasks[0].completion.path', 'tracks[0].tasks[0].completion.schema_path'],
+      );
+      for (const [path, schema_path] of [
+        ['data.json', 'data.schema.json'],
+        ['./' + prefix + '/data.json', './' + prefix + '/data.schema.json'],
+      ]) {
+        const legalConfig = configWithPaths({
+          trackCwd: prefix,
+          completion: { type: 'json_schema', path, schema_path },
+        });
+        expect(validateChatPipelinePathCoordinates(legalConfig, options)).toEqual([]);
+      }
+      const workspaceCwdConfig = configWithPaths({
+        trackCwd: prefix,
+        taskCwd: '.',
+        completion: repeatedCompletion,
+      });
+      expect(validateChatPipelinePathCoordinates(workspaceCwdConfig, options)).toEqual([]);
+      const fileExistsConfig = configWithPaths({
+        trackCwd: prefix,
+        taskCwd: prefix,
+        completionPath: 'override.txt',
+      });
+      expect(validateChatPipelinePathCoordinates(fileExistsConfig, options)).toEqual([]);
+    },
+  );
+
   test('rejects repeated POSIX pipeline coordinates for every task-local built-in path', () => {
     const diagnostics = validateChatPipelinePathCoordinates(
       configWithPaths({

@@ -27,8 +27,12 @@ The five plugin packages (`driver-codex`, `driver-claude-code`, `middleware-ligh
 
 ## Quick Start
 
-Prerequisites: Bun 1.3.x for workspace install/build/test, plus Node.js 22+ for
+Prerequisites: Bun 1.3.14 for workspace install/build/test, plus Node.js 22+ for
 repository maintenance scripts that intentionally run with `node`.
+
+The workspace, CI, release builders, and bundled Bun use the same runtime pin.
+Bun 1.3.14 preserves normal JIT execution while avoiding recurring pending async
+Host lifecycle stalls reproduced with Bun 1.3.11.
 
 ```bash
 bun run dev:editor:rebuild

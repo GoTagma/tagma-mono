@@ -17,6 +17,7 @@ import { ScheduleTrigger } from './triggers/schedule';
 // Built-in Completions
 import { ExitCodeCompletion } from './completions/exit-code';
 import { FileExistsCompletion } from './completions/file-exists';
+import { JsonSchemaCompletion } from './completions/json-schema';
 import { OutputCheckCompletion } from './completions/output-check';
 
 // Built-in Middleware
@@ -37,6 +38,7 @@ export const BuiltinTagmaPlugin = {
     completions: {
       exit_code: ExitCodeCompletion,
       file_exists: FileExistsCompletion,
+      json_schema: JsonSchemaCompletion,
       output_check: OutputCheckCompletion,
     },
     middlewares: {

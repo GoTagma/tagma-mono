@@ -14,6 +14,7 @@ import {
   buildClassifierTextCanonicalRequestBytes,
   deriveOpenCodeExecutionMessageId,
   extractNativeRequestDigest,
+  openCodeProviderFailureCode,
   type OpenCodeAdapterNativePromptInput,
   type OpenCodeAdapterClassifierTextPromptInput,
   type OpenCodeAdapterSdkClient,
@@ -35,6 +36,141 @@ import {
   TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS,
   type ChatPipelineIntentCandidate,
 } from '../shared/chat-pipeline-intent-classifier.js';
+
+describe('provider HTTP 403 failure categories', () => {
+  const apiError = (statusCode: number, fields: Record<string, unknown> = {}) => ({
+    name: 'APIError',
+    data: { statusCode, isRetryable: false, ...fields },
+  });
+
+  test.each([
+    [
+      'authentication code',
+      apiError(403, { code: 'invalid_api_key' }),
+      'provider_authentication_failed',
+    ],
+    ['billing code', apiError(403, { code: 'insufficient_quota' }), 'provider_billing_required'],
+    ['rate code', apiError(403, { type: 'rate_limit_error' }), 'provider_rate_limited'],
+    [
+      'JSON authentication code',
+      apiError(403, { responseBody: JSON.stringify({ error: { code: 'invalid_api_key' } }) }),
+      'provider_authentication_failed',
+    ],
+    [
+      'JSON billing code',
+      apiError(403, { responseBody: JSON.stringify({ error: { code: 'insufficient_quota' } }) }),
+      'provider_billing_required',
+    ],
+    [
+      'JSON rate code',
+      apiError(403, { responseBody: JSON.stringify({ error: { type: 'rate_limit_error' } }) }),
+      'provider_rate_limited',
+    ],
+    [
+      'free-tier rejection',
+      apiError(403, {
+        responseBody: JSON.stringify({ type: 'error', error: { type: 'FreeTierError' } }),
+      }),
+      'provider_request_rejected',
+    ],
+    [
+      'unknown category',
+      apiError(403, { code: 'fixture_unknown_category' }),
+      'provider_request_rejected',
+    ],
+    ['malformed JSON', apiError(403, { responseBody: '{' }), 'provider_request_rejected'],
+    [
+      'conflicting prose',
+      apiError(403, { message: 'Synthetic fixture mentions billing and API key.' }),
+      'provider_request_rejected',
+    ],
+    [
+      '401 over billing code',
+      apiError(401, { code: 'insufficient_quota' }),
+      'provider_authentication_failed',
+    ],
+    [
+      '402 over rate code',
+      apiError(402, { code: 'rate_limit_error' }),
+      'provider_billing_required',
+    ],
+    [
+      '429 over billing code',
+      apiError(429, { code: 'insufficient_quota' }),
+      'provider_rate_limited',
+    ],
+  ] as const)('classifies %s using bounded machine evidence', (_label, error, expected) => {
+    expect(openCodeProviderFailureCode(error)).toBe(expected);
+  });
+
+  test('ignores oversized, nested, and unrecognized response-body signals', () => {
+    for (const responseBody of [
+      JSON.stringify({ error: { code: 'invalid_api_key', message: 'x'.repeat(2048) } }),
+      JSON.stringify({ error: { code: 'invalid_api_key', message: '界'.repeat(700) } }),
+      JSON.stringify({ error: { error: { code: 'invalid_api_key' } } }),
+      JSON.stringify({ error: { code: 'arbitrary_invalid_api_key_suffix' } }),
+      JSON.stringify({ message: 'invalid_api_key' }),
+      JSON.stringify([{ error: { code: 'invalid_api_key' } }]),
+    ]) {
+      expect(openCodeProviderFailureCode(apiError(403, { responseBody }))).toBe(
+        'provider_request_rejected',
+      );
+    }
+  });
+
+  test('does not invoke provider accessors or interpret a body on an unknown error', () => {
+    let invoked = 0;
+    const data = { statusCode: 403 };
+    for (const key of ['code', 'type', 'responseBody', 'message']) {
+      Object.defineProperty(data, key, {
+        enumerable: true,
+        get() {
+          invoked++;
+          throw new Error('Synthetic provider accessor');
+        },
+      });
+    }
+    expect(openCodeProviderFailureCode({ name: 'APIError', data })).toBe(
+      'provider_request_rejected',
+    );
+    expect(invoked).toBe(0);
+    expect(
+      openCodeProviderFailureCode({
+        name: 'UnknownError',
+        data: {
+          statusCode: 403,
+          responseBody: JSON.stringify({ error: { code: 'invalid_api_key' } }),
+        },
+      }),
+    ).toBe('provider_request_rejected');
+  });
+
+  test('keeps a free-tier rejection content-free through classifier response and outbox', async () => {
+    const error = apiError(403, {
+      message: 'synthetic-private-provider-message',
+      responseBody: JSON.stringify({
+        type: 'error',
+        error: { type: 'FreeTierError', message: 'synthetic-private-provider-body' },
+      }),
+    });
+    const { runner, store } = setup({
+      richPrompt: (input) => ({ info: { parentID: input.messageID, error }, parts: [] }),
+    });
+    const input = request();
+    const result = await runner.run(input);
+    expect(result).toEqual({ kind: 'provider_unavailable', code: 'provider_request_rejected' });
+    const persisted = store.getInvocationOutbox(input.invocationId);
+    expect(persisted).not.toBeNull();
+    const serialized = JSON.stringify({ result, persisted });
+    for (const privateValue of [
+      'synthetic-private-provider-message',
+      'synthetic-private-provider-body',
+      'FreeTierError',
+    ]) {
+      expect(serialized).not.toContain(privateValue);
+    }
+  });
+});
 
 const candidates: readonly ChatPipelineIntentCandidate[] = [
   {

@@ -57,6 +57,12 @@ Do not amend the same commit to include these files after naming them with the c
   infinite modes must not enable repair.
 - Completion plugins may return a boolean or `{ passed, feedback? }`; failed structured feedback
   becomes task diagnostics and must remain available to the next repair attempt.
+- The opt-in built-in `json_schema` completion reads `path` and `schema_path` from the same
+  effective task cwd and validates a local Draft-7 schema without fetching references or changing
+  payload values. Preserve optional fields, allowed extras, and empty values according to that schema;
+  current-input identity, order, and semantic relationships still require explicit authored checks.
+  Keep both file coordinates aligned across staging, copying, and Trial planning. The schema is an
+  input, not a generated business artifact; do not change `file_exists` semantics.
 
 ## Pipeline Terminal Logging
 
@@ -85,6 +91,10 @@ Do not amend the same commit to include these files after naming them with the c
   draining and blocked stdin/exit waits; retain partial child bytes with structured capture
   diagnostics and preserve timeout/abort classification. Cover slow cleanup with real PowerShell
   descendants that inherit stdout/stderr, not only children with ignored output.
+- Register editor-added stderr diagnostics in `stderrDiagnostics.completeSuffix` so restoring the
+  captured child stream also restores every diagnostic exactly once. Preserve raw stream byte counts
+  and stored-file metadata; an existing unknown `sourceBytes` must stay unknown when another
+  diagnostic is appended, rather than being filled from the aggregate display length.
 
 ## Managed Prompt Web Capability
 
@@ -234,8 +244,15 @@ Do not amend the same commit to include these files after naming them with the c
 
 - Automatic post-authoring verification failure, repair/Trial-plan no-change, and exhausted repair
   budgets retain the authenticated draft at `trial-running` / `user_retry`; no-change describes the
-  last attempt, not the value of earlier artifacts. Keep explicit Stop/Discard and commit authority
-  separate. Manual draft edits require owning-conversation authentication, operation CAS, and a
+  last attempt, not the value of earlier artifacts. The narrow exception is a known completed and
+  settled Trial Plan invocation with a counted invalid native commit, complete private rejection
+  bound to its current stage/YAML/Host attempt by counters and SHA integrity, with an unchanged
+  completed snapshot and remaining original frozen planning budget. Reuse serial verification to issue a fresh counted Host attempt
+  and seal the complete redacted rejection into its canonical input. Missing/stale evidence, an
+  uncounted validation, exhaustion, or provider/unknown submission failure retains the draft for
+  explicit Retry; never retry a failed provider invocation. Keep artifact repair authority/budgets,
+  Stop/Discard and commit authority separate. Manual draft edits require owning-conversation
+  authentication, operation CAS, and a
   Host-issued existing artifact identity; even invalid YAML is retainable, never implicitly published.
 - Derive repair authority from unexpected failures. Passing negative cases and explicitly expected
   task failures cannot grant artifact repair permission. Carry the latest bounded redacted failed

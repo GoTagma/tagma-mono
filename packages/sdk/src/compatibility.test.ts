@@ -9,6 +9,7 @@ import {
   inferYamlCompatibility,
   parseSdkRequirement,
   resolveCurrentSdkVersion,
+  sdkRequirementSatisfied,
 } from './compatibility';
 import { loadPipeline, serializePipeline } from './schema';
 import { serializeWorkflow, validateRawWorkflow } from './workflow';
@@ -39,6 +40,33 @@ function parseSerializedWorkflow(content: string): RawWorkflowConfig {
 }
 
 describe('YAML SDK compatibility', () => {
+  test('infers the JSON Schema completion floor without weakening older SDK rejection', () => {
+    const config = basicPipeline({
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            {
+              id: 'produce',
+              command: 'produce',
+              completion: { type: 'json_schema', path: 'data.json', schema_path: 'schema.json' },
+            },
+          ],
+        },
+      ],
+    });
+    const serialized = serializePipeline(config);
+    const parsed = parseSerializedPipeline(serialized);
+    expect(YAML_FEATURE_MIN_SDK.json_schema_completion).toBe('0.7.121');
+    expect(parsed.requires?.sdk).toBe('>=0.7.121');
+    expect(inferYamlCompatibility(serialized).features.map((feature) => feature.id)).toContain(
+      'json_schema_completion',
+    );
+    expect(sdkRequirementSatisfied(parsed.requires!.sdk!, '0.7.120')).toBe(false);
+    expect(sdkRequirementSatisfied(parsed.requires!.sdk!, '0.7.121')).toBe(true);
+  });
+
   test('keeps the requires metadata minimum pinned to its first supported SDK', () => {
     expect(YAML_REQUIRES_FIELD_MIN_SDK).toBe('0.7.40');
   });

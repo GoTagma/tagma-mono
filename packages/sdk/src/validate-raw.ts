@@ -194,6 +194,7 @@ const BUILTIN_TRIGGER_TYPES: ReadonlySet<string> = new Set([
 const BUILTIN_COMPLETION_TYPES: ReadonlySet<string> = new Set([
   'exit_code',
   'file_exists',
+  'json_schema',
   'output_check',
 ]);
 const BUILTIN_MIDDLEWARE_TYPES: ReadonlySet<string> = new Set(['static_context']);

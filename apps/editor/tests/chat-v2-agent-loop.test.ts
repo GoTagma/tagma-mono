@@ -1,10 +1,163 @@
 import { expect, test } from 'bun:test';
 
 import {
+  chatV2AgentLoopVariantFromArgs,
   driveChatV2Operation,
+  projectChatV2AgentLoopInvocationModels,
+  resolveChatV2AgentLoopVariant,
   selectChatV2AgentLoopRealModel,
   validateChatV2AgentLoopScenarioOutcome,
 } from '../scripts/chat-v2-agent-loop.js';
+
+test('agent loop variant arguments keep the default and reject malformed explicit choices', () => {
+  expect(chatV2AgentLoopVariantFromArgs(['bun', 'loop.ts'])).toBeNull();
+  expect(chatV2AgentLoopVariantFromArgs(['--variant', 'low'])).toBe('low');
+  for (const args of [
+    ['--variant'],
+    ['--variant', ''],
+    ['--variant', '--timeout-ms'],
+    ['--variant', 'low', '--variant', 'high'],
+    ['--variant=low'],
+    ['--variant', ' low'],
+    ['--variant', 'a'.repeat(129)],
+  ]) {
+    expect(() => chatV2AgentLoopVariantFromArgs(args)).toThrow();
+  }
+});
+
+test('agent loop validates variants against the selected connected model without changing selection', () => {
+  const model = {
+    id: 'deepseek-flash',
+    status: 'active',
+    capabilities: { toolcall: true },
+    variants: { low: {}, high: {}, max: { disabled: true } },
+  };
+  const state = {
+    configured: { providers: [{ id: 'deepseek', models: { catalogAlias: model } }] },
+    catalog: { connected: ['deepseek'] },
+  };
+  const selection = selectChatV2AgentLoopRealModel(state);
+  expect(selection.model).toBe('deepseek-flash');
+  expect(resolveChatV2AgentLoopVariant(state, selection, undefined)).toBeNull();
+  expect(resolveChatV2AgentLoopVariant(state, selection, 'low')).toBe('low');
+  expect(resolveChatV2AgentLoopVariant(state, selection, 'high')).toBe('high');
+  expect(() => resolveChatV2AgentLoopVariant(state, selection, 'unknown')).toThrow('unavailable');
+  expect(() => resolveChatV2AgentLoopVariant(state, selection, 'max')).toThrow('disabled');
+  expect(() =>
+    resolveChatV2AgentLoopVariant({ ...state, catalog: { connected: [] } }, selection, 'low'),
+  ).toThrow('connected');
+  expect(() =>
+    resolveChatV2AgentLoopVariant(
+      {
+        ...state,
+        configured: {
+          providers: [
+            {
+              id: 'deepseek',
+              models: { catalogAlias: { ...model, status: 'deprecated' } },
+            },
+          ],
+        },
+      },
+      selection,
+      'low',
+    ),
+  ).toThrow('active tool-capable');
+  expect(() =>
+    resolveChatV2AgentLoopVariant(
+      {
+        ...state,
+        configured: {
+          providers: [
+            {
+              id: 'deepseek',
+              models: { catalogAlias: { ...model, capabilities: { toolcall: false } } },
+            },
+          ],
+        },
+      },
+      selection,
+      'low',
+    ),
+  ).toThrow('active tool-capable');
+  for (const variants of [
+    Object.create({ low: {} }),
+    { low: { disabled: 'true' } },
+    {},
+    { low: null },
+  ]) {
+    expect(() =>
+      resolveChatV2AgentLoopVariant(
+        {
+          ...state,
+          configured: {
+            providers: [
+              {
+                id: 'deepseek',
+                models: { catalogAlias: { ...model, variants } },
+              },
+            ],
+          },
+        },
+        selection,
+        'low',
+      ),
+    ).toThrow();
+  }
+});
+
+test('explicit variant evidence projects only owned bounded Host invocation metadata', () => {
+  const selected = { provider: 'deepseek', model: 'deepseek-flash', variant: 'low' };
+  const row = {
+    operationId: 'owned-operation',
+    invocationId: 'owned-invocation',
+    purpose: 'classifier',
+    providerID: selected.provider,
+    modelID: selected.model,
+    variantId: 'low',
+    text: 'private prompt must not be retained',
+    arbitraryHeader: 'private header',
+  };
+  const page = { protocolVersion: 2, records: [row], hasMore: false, totalRecords: 1 };
+  expect(projectChatV2AgentLoopInvocationModels(page, selected, 'owned-operation')).toEqual([
+    {
+      operationId: 'owned-operation',
+      invocationId: 'owned-invocation',
+      purpose: 'classifier',
+      provider: 'deepseek',
+      model: 'deepseek-flash',
+      variant: 'low',
+    },
+  ]);
+  for (const changed of [
+    { variantId: null },
+    { variantId: 'high' },
+    { providerID: 'other' },
+    { modelID: 'other' },
+    { purpose: 'title' },
+    { invocationId: '' },
+    { operationId: 'other-operation' },
+  ]) {
+    expect(() =>
+      projectChatV2AgentLoopInvocationModels(
+        { ...page, records: [{ ...row, ...changed }] },
+        selected,
+        'owned-operation',
+      ),
+    ).toThrow();
+  }
+  for (const changed of [
+    { protocolVersion: 1 },
+    { hasMore: true },
+    { totalRecords: 2 },
+    { records: [], totalRecords: 0 },
+    { records: Array(101).fill(row), totalRecords: 101 },
+  ]) {
+    expect(() =>
+      projectChatV2AgentLoopInvocationModels({ ...page, ...changed }, selected, 'owned-operation'),
+    ).toThrow();
+  }
+});
 
 test('real agent loop selects a connected tool-capable OpenCode free model before DeepSeek', () => {
   expect(
@@ -258,41 +411,107 @@ test('real discussion and clarification scenarios prove their distinct terminal 
   ).toThrow('must finish as a read-only operation');
 });
 
-test('agent loop drives create through clarification to a terminal projection', async () => {
-  const requests: Array<{ method: string; path: string; body: unknown }> = [];
-  let replied = false;
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    async fetch(request) {
-      const url = new URL(request.url);
-      const body = request.method === 'POST' ? await request.json() : null;
-      requests.push({ method: request.method, path: url.pathname, body });
-      expect(request.headers.get('authorization')).toBe('Bearer management-loop-token');
-      expect(request.headers.get('x-tagma-workspace')).toBe(String.raw`D:\agent-loop-workspace`);
+test.each([null, 'low'])(
+  'agent loop drives create through clarification with variant %s',
+  async (variant) => {
+    const requests: Array<{ method: string; path: string; body: unknown }> = [];
+    let replied = false;
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        const body = request.method === 'POST' ? await request.json() : null;
+        requests.push({ method: request.method, path: url.pathname, body });
+        expect(request.headers.get('authorization')).toBe('Bearer management-loop-token');
+        expect(request.headers.get('x-tagma-workspace')).toBe(String.raw`D:\agent-loop-workspace`);
 
-      if (request.method === 'POST' && url.pathname === '/api/chat/operations') {
-        return Response.json({
-          protocolVersion: 2,
-          result: {
-            kind: 'clarification_pending',
-            clarificationId: 'clarification-loop-1',
-            operation: {
-              operationId: 'operation-loop-1',
-              generation: 1,
-              version: 3,
-              phase: 'awaiting_input',
-              waitReason: 'clarification',
-              terminalOutcome: null,
+        if (request.method === 'GET' && url.pathname === '/api/chat/operations/usage') {
+          expect(url.searchParams.get('limit')).toBe('100');
+          return Response.json({
+            protocolVersion: 2,
+            totalRecords: 1,
+            hasMore: false,
+            records: [
+              {
+                operationId: 'operation-loop-1',
+                invocationId: 'invocation-loop-1',
+                purpose: 'discussion',
+                providerID: 'tagma-loop-provider',
+                modelID: 'loop-model',
+                variantId: variant,
+              },
+            ],
+          });
+        }
+        if (request.method === 'POST' && url.pathname === '/api/chat/operations') {
+          return Response.json({
+            protocolVersion: 2,
+            result: {
+              kind: 'clarification_pending',
+              clarificationId: 'clarification-loop-1',
+              operation: {
+                operationId: 'operation-loop-1',
+                generation: 1,
+                version: 3,
+                phase: 'awaiting_input',
+                waitReason: 'clarification',
+                terminalOutcome: null,
+              },
             },
-          },
-        });
-      }
-      if (request.method === 'GET' && url.pathname === '/api/chat/operations/operation-loop-1') {
-        if (replied) {
+          });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/chat/operations/operation-loop-1') {
+          if (replied) {
+            return Response.json({
+              protocolVersion: 2,
+              detail: {
+                operation: {
+                  operationId: 'operation-loop-1',
+                  generation: 1,
+                  version: 5,
+                  phase: 'terminal',
+                  waitReason: null,
+                  terminalOutcome: 'completed_readonly',
+                  hasResult: true,
+                },
+                pendingInput: null,
+                result: { messages: [{ text: 'Safe projected answer.', attachments: [] }] },
+              },
+            });
+          }
           return Response.json({
             protocolVersion: 2,
             detail: {
+              operation: {
+                operationId: 'operation-loop-1',
+                generation: 1,
+                version: 3,
+                phase: 'awaiting_input',
+                waitReason: 'clarification',
+                terminalOutcome: null,
+              },
+              pendingInput: {
+                kind: 'clarification',
+                operationId: 'operation-loop-1',
+                generation: 1,
+                operationVersion: 3,
+                clarificationId: 'clarification-loop-1',
+                round: 1,
+                candidateIds: [],
+              },
+            },
+          });
+        }
+        if (
+          request.method === 'POST' &&
+          url.pathname === '/api/chat/operations/operation-loop-1/clarification'
+        ) {
+          replied = true;
+          return Response.json({
+            protocolVersion: 2,
+            result: {
+              kind: 'completed_readonly',
               operation: {
                 operationId: 'operation-loop-1',
                 generation: 1,
@@ -300,103 +519,75 @@ test('agent loop drives create through clarification to a terminal projection', 
                 phase: 'terminal',
                 waitReason: null,
                 terminalOutcome: 'completed_readonly',
-                hasResult: true,
               },
-              pendingInput: null,
-              result: { messages: [{ text: 'Safe projected answer.', attachments: [] }] },
             },
           });
         }
-        return Response.json({
-          protocolVersion: 2,
-          detail: {
-            operation: {
-              operationId: 'operation-loop-1',
-              generation: 1,
-              version: 3,
-              phase: 'awaiting_input',
-              waitReason: 'clarification',
-              terminalOutcome: null,
-            },
-            pendingInput: {
-              kind: 'clarification',
-              operationId: 'operation-loop-1',
-              generation: 1,
-              operationVersion: 3,
-              clarificationId: 'clarification-loop-1',
-              round: 1,
-              candidateIds: [],
-            },
-          },
-        });
-      }
-      if (
-        request.method === 'POST' &&
-        url.pathname === '/api/chat/operations/operation-loop-1/clarification'
-      ) {
-        replied = true;
-        return Response.json({
-          protocolVersion: 2,
-          result: {
-            kind: 'completed_readonly',
-            operation: {
-              operationId: 'operation-loop-1',
-              generation: 1,
-              version: 5,
-              phase: 'terminal',
-              waitReason: null,
-              terminalOutcome: 'completed_readonly',
-            },
-          },
-        });
-      }
-      return Response.json({ error: 'unexpected request' }, { status: 404 });
-    },
-  });
-
-  try {
-    const result = await driveChatV2Operation({
-      origin: server.url.origin,
-      managementToken: 'management-loop-token',
-      workspacePath: String.raw`D:\agent-loop-workspace`,
-      provider: 'tagma-loop-provider',
-      model: 'loop-model',
-      prompt: 'Build a deterministic pipeline.',
-      clarificationReply: 'Use the default deterministic target.',
-      timeoutMs: 5_000,
-      pollIntervalMs: 100,
-    });
-
-    expect(result).toMatchObject({
-      operationId: 'operation-loop-1',
-      terminalOutcome: 'completed_readonly',
-      actionKinds: ['create', 'projection', 'clarification_reply', 'projection'],
-      rendererEvidence: {
-        terminalDetailFetched: true,
-        hasResult: true,
-        assistantMessageCount: 1,
+        return Response.json({ error: 'unexpected request' }, { status: 404 });
       },
     });
-    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      'POST /api/chat/operations',
-      'GET /api/chat/operations/operation-loop-1',
-      'POST /api/chat/operations/operation-loop-1/clarification',
-      'GET /api/chat/operations/operation-loop-1',
-    ]);
-    expect(requests[2]?.body).toMatchObject({
-      protocolVersion: 2,
-      operationId: 'operation-loop-1',
-      expectedGeneration: 1,
-      expectedVersion: 3,
-      payload: {
-        requestId: 'clarification-loop-1',
-        text: 'Use the default deterministic target.',
-      },
-    });
-  } finally {
-    await server.stop(true);
-  }
-});
+
+    try {
+      const result = await driveChatV2Operation({
+        origin: server.url.origin,
+        managementToken: 'management-loop-token',
+        workspacePath: String.raw`D:\agent-loop-workspace`,
+        provider: 'tagma-loop-provider',
+        model: 'loop-model',
+        variant,
+        prompt: 'Build a deterministic pipeline.',
+        clarificationReply: 'Use the default deterministic target.',
+        timeoutMs: 5_000,
+        pollIntervalMs: 100,
+      });
+
+      expect(result).toMatchObject({
+        operationId: 'operation-loop-1',
+        terminalOutcome: 'completed_readonly',
+        actionKinds: ['create', 'projection', 'clarification_reply', 'projection'],
+        rendererEvidence: {
+          terminalDetailFetched: true,
+          hasResult: true,
+          assistantMessageCount: 1,
+        },
+      });
+      expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+        'POST /api/chat/operations',
+        'GET /api/chat/operations/operation-loop-1',
+        'POST /api/chat/operations/operation-loop-1/clarification',
+        'GET /api/chat/operations/operation-loop-1',
+        ...(variant === null ? [] : ['GET /api/chat/operations/usage']),
+      ]);
+      expect(result.hostInvocationModels).toEqual(
+        variant === null
+          ? []
+          : [
+              {
+                operationId: 'operation-loop-1',
+                invocationId: 'invocation-loop-1',
+                purpose: 'discussion',
+                provider: 'tagma-loop-provider',
+                model: 'loop-model',
+                variant: 'low',
+              },
+            ],
+      );
+      expect(requests[0]?.body).toMatchObject({ payload: { variant } });
+      expect(requests[2]?.body).toMatchObject({
+        protocolVersion: 2,
+        operationId: 'operation-loop-1',
+        expectedGeneration: 1,
+        expectedVersion: 3,
+        payload: {
+          requestId: 'clarification-loop-1',
+          text: 'Use the default deterministic target.',
+        },
+      });
+    } finally {
+      await server.stop(true);
+    }
+  },
+);
 
 test('agent loop discovers an in-flight create and resolves a permission without UI help', async () => {
   const requests: Array<{ method: string; path: string; body: unknown }> = [];

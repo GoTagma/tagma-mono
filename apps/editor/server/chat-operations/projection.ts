@@ -1148,6 +1148,45 @@ function failureProjection(
       });
     }
     if (operation.phase === 'trial-running') {
+      const retained = persistence.getLatestOperationEvent?.(
+        operation.operationId,
+        'trial_status_changed',
+      );
+      // retainDraft writes the reason before the single transition to user_retry.
+      // Missing or superseded evidence cannot establish a verification pause.
+      const currentReason =
+        retained?.type === 'trial_status_changed' &&
+        retained.workspaceScopeId === operation.workspaceScopeId &&
+        retained.operationId === operation.operationId &&
+        retained.generation === operation.generation &&
+        retained.operationVersion === operation.version - 1 &&
+        retained.payload.stageId === operation.stageId &&
+        (retained.payload.status === 'failed' || retained.payload.status === 'blocked') &&
+        Number.isSafeInteger(retained.timestamp) &&
+        retained.timestamp >= operation.createdAt &&
+        retained.timestamp <= operation.updatedAt &&
+        typeof retained.payload.errorCode === 'string' &&
+        SAFE_CODE.test(retained.payload.errorCode)
+          ? retained
+          : null;
+      if (!currentReason) {
+        return Object.freeze({
+          stage: 'operation',
+          code: 'retained_reason_unknown',
+          invocationId: null,
+          outboxStatus: null,
+          recordedAt: operation.updatedAt,
+        });
+      }
+      if (currentReason.payload.errorCode === 'authoring_interactive_declined') {
+        return Object.freeze({
+          stage: 'authoring',
+          code: 'authoring_interactive_declined',
+          invocationId: null,
+          outboxStatus: null,
+          recordedAt: currentReason.timestamp,
+        });
+      }
       return Object.freeze({
         stage: 'verification',
         code: 'trial_verification_paused',

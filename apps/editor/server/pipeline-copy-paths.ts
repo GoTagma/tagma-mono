@@ -23,7 +23,8 @@ export interface RewriteCopiedPipelineYamlOptions {
 }
 
 const RELOCATABLE_TRIGGER_TYPES = new Set(['file', 'directory']);
-const RELOCATABLE_COMPLETION_TYPES = new Set(['file_exists']);
+const RELOCATABLE_COMPLETION_TYPES = new Set(['file_exists', 'json_schema']);
+const RELOCATABLE_SCHEMA_COMPLETION_TYPES = new Set(['json_schema']);
 const RELOCATABLE_MIDDLEWARE_TYPES = new Set(['static_context']);
 
 function portableRelative(from: string, to: string): string {
@@ -61,7 +62,7 @@ function relocatePipelineLocalPath(
 function rewriteTypedPluginPath<T extends Record<string, unknown>>(
   config: T | undefined,
   expectedTypes: ReadonlySet<string>,
-  key: 'path' | 'file',
+  key: 'path' | 'file' | 'schema_path',
   options: PipelineCopyPathRelocation,
 ): T | undefined {
   if (!config || !expectedTypes.has(config.type as string)) return config;
@@ -100,13 +101,23 @@ export function rewriteCopiedPipelineYaml(
   const rewritePluginPath = <T extends Record<string, unknown>>(
     plugin: T | undefined,
     expectedTypes: ReadonlySet<string>,
-    key: 'path' | 'file',
+    key: 'path' | 'file' | 'schema_path',
     relocation: PipelineCopyPathRelocation,
   ): T | undefined => {
     const rewritten = rewriteTypedPluginPath(plugin, expectedTypes, key, relocation);
     if (rewritten !== plugin) changed = true;
     return rewritten;
   };
+  const rewriteCompletion = <T extends Record<string, unknown>>(
+    completion: T | undefined,
+    relocation: PipelineCopyPathRelocation,
+  ): T | undefined =>
+    rewritePluginPath(
+      rewritePluginPath(completion, RELOCATABLE_COMPLETION_TYPES, 'path', relocation),
+      RELOCATABLE_SCHEMA_COMPLETION_TYPES,
+      'schema_path',
+      relocation,
+    );
 
   const rewritten = {
     ...config,
@@ -140,12 +151,7 @@ export function rewriteCopiedPipelineYaml(
               'path',
               taskPathOptions,
             ),
-            completion: rewritePluginPath(
-              task.completion,
-              RELOCATABLE_COMPLETION_TYPES,
-              'path',
-              taskPathOptions,
-            ),
+            completion: rewriteCompletion(task.completion, taskPathOptions),
             middlewares: task.middlewares?.map((middleware) =>
               rewritePluginPath(middleware, RELOCATABLE_MIDDLEWARE_TYPES, 'file', taskPathOptions)!,
             ),

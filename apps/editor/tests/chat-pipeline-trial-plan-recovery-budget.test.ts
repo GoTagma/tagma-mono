@@ -47,7 +47,15 @@ for (const scenario of [
             {
               id: 'report',
               name: 'Report',
-              command: scenario === 'existing-control' ? 'echo $env:RECOVERY_FAULT' : 'echo report',
+              command: {
+                argv: [
+                  process.execPath,
+                  '-e',
+                  scenario === 'existing-control'
+                    ? 'console.log(process.env.RECOVERY_FAULT ?? "");require("node:fs").writeFileSync("report.txt","report")'
+                    : 'console.log("report");require("node:fs").writeFileSync("report.txt","report")',
+                ],
+              },
               depends_on:
                 scenario === 'serial-last-submission'
                   ? ['main.prepare', 'main.source']
@@ -99,6 +107,38 @@ for (const scenario of [
               taskIds: type === 'timeout-recovery' ? ['main.report'] : [],
               rationale: 'Review production failure boundary.',
             })),
+            coreWitness: {
+              status: 'covered',
+              normalCaseId: 'normal',
+              taskRoles: [
+                {
+                  taskId: 'main.source',
+                  role: 'execution',
+                  expectationIndices: [],
+                  rationale:
+                    'The original source task only echoes a diagnostic marker; this fixture tests its real native timeout boundary without promising a content artifact.',
+                },
+                ...(scenario === 'serial-last-submission'
+                  ? [
+                      {
+                        taskId: 'main.prepare',
+                        role: 'execution',
+                        expectationIndices: [],
+                        rationale:
+                          'The original serial preparation task only echoes its marker and declares no content artifact.',
+                      },
+                    ]
+                  : []),
+                {
+                  taskId: 'main.report',
+                  role: 'content',
+                  expectationIndices: [scenario === 'serial-last-submission' ? 5 : 4],
+                  rationale:
+                    'The useful-report fixture now writes the exact normal report bytes while retaining its original stdout behavior; the fault must still satisfy the unchanged Q7 recovery assertion.',
+                },
+              ],
+              generatedInputs: [],
+            },
           },
           cases: [
             {
@@ -113,6 +153,10 @@ for (const scenario of [
                 { type: 'task-status', taskId: 'main.report', status: 'success' },
                 { type: 'path-exists', path: 'report.txt' },
                 { type: 'file-not-contains', path: 'report.txt', text: 'Q7' },
+                ...(scenario === 'serial-last-submission'
+                  ? [{ type: 'task-status', taskId: 'main.prepare', status: 'success' }]
+                  : []),
+                { type: 'file-equals', path: 'report.txt', text: 'report' },
               ],
             },
             {

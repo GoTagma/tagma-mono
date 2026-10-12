@@ -4,13 +4,22 @@ import {
   readCompleteRepairOutput,
   type TrialTaskOutputPaths,
 } from './chat-operations/repair-output-reader';
+import type {
+  TrialTaskStreamArchiveResult,
+  TrialTaskStreamEvidenceSink,
+} from './chat-operations/trial-stream-evidence-store';
 import {
+  closeSync,
+  constants,
   copyFileSync,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
   rmSync,
   utimesSync,
@@ -24,6 +33,7 @@ import {
   type ChatRepairExecutionContext,
 } from '../shared/chat-repair-diagnosis';
 import { isDeepStrictEqual } from 'node:util';
+import type { TaskResult } from '@tagma/types';
 
 import {
   createTagma,
@@ -59,11 +69,13 @@ import {
   findUncoveredChatPipelineTrialTerminalTaskIds,
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
+  readChatPipelineTrialPlanRejectionEvidence,
   type ChatPipelineTrialExpectation,
   type ChatPipelineTrialPlan,
   type ChatPipelineTrialPlanCase,
   type ChatPipelineTrialPlanRequest,
   type ChatPipelineTrialPlanToolTelemetry,
+  type ChatPipelineTrialPlanRejectionEvidence,
 } from './chat-pipeline-trial-plan.js';
 import {
   createControlledTrialFaultRuntime,
@@ -126,6 +138,7 @@ import {
 import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
 import type { WorkspaceState } from './workspace-state.js';
 import { timeoutMinutesToMs } from '../shared/execution-timeout-settings.js';
+import { isValidChatPipelineTrialPlanAttempts } from '../shared/chat-pipeline-trial-plan-limit.js';
 import {
   buildChatPipelineTrialCaseReuseFingerprint,
   hashChatPipelineTrialReusableSupportTree,
@@ -198,6 +211,24 @@ export interface ChatPipelineTrialStreamTruncation {
 
 export interface ChatPipelineTrialExpectationResult {
   fileObservation?: { path: string; regularFile: boolean | null };
+  /** SDK callback/file snapshot evidence; neither writer identity nor external truth. */
+  sourceTextEvidence?: {
+    runId: string | null;
+    sourcePath: string;
+    sourcePointer: string;
+    producerTaskId: string;
+    consumerTaskId: string;
+    producerCompletionObserved: boolean;
+    consumerStartObserved: boolean;
+    producerStatus: string;
+    consumerStatus: string;
+    producerResultPresent: boolean;
+    consumerResultPresent: boolean;
+    capturedSourceSha256: string | null;
+    capturedSourceBytes: number | null;
+    capturedTextSha256: string | null;
+    finalSourceSha256: string | null;
+  };
   type:
     | ChatPipelineTrialExpectation['type']
     | 'case-execution'
@@ -238,6 +269,8 @@ export interface ChatPipelineTrialCaseResult {
   success: boolean;
   executionSource?: 'current-trial' | 'equivalent-closure-cache';
   runIds: string[];
+  /** Preserves original run identities when a verified command-only case is reused. */
+  taskStreamEvidence?: TrialTaskStreamArchiveResult[];
   tasks: ChatPipelineTrialTaskResult[];
   totalTaskCount: number;
   omittedTaskCount: number;
@@ -310,6 +343,12 @@ export interface ChatPipelineTrialRunResult {
   tasks: ChatPipelineTrialTaskResult[];
   /** Sidecar-private error capture, independent of display stream/task limits. */
   repairErrorTasks?: ChatPipelineTrialTaskResult[];
+  /** Authenticated private stream references; independent of display and repair selection. */
+  taskStreamEvidence?: TrialTaskStreamArchiveResult[];
+  /** Complete native rejection for private model evidence only, never public telemetry. */
+  repairPlanRejectionEvidence?: ChatPipelineTrialPlanRejectionEvidence;
+  /** Complete Host rejection even when no fresh planning authority remains. */
+  repairPlanRequest?: ChatPipelineTrialPlanRequest;
   repairPipelineDiagnostics?: Array<{
     caseId: string;
     runNumber: number;
@@ -351,6 +390,8 @@ export interface ChatPipelineTrialRunInput {
   independentRecovery?: boolean;
   /** Sidecar-only authority; renderer routes never forward this field. */
   trustedOperationV2?: boolean;
+  /** Internal Host callback; renderer Trial routes never forward this field. */
+  taskStreamEvidenceSink?: TrialTaskStreamEvidenceSink;
   /** Failed-case authority from the immediately preceding Host plan review. */
   affectedCases?: ChatPipelineTrialPlanRequest['affectedCases'];
   /** Frozen, Host-authenticated user intent for independent coverage review. */
@@ -751,6 +792,23 @@ function reusableCaseRecords(
       ? [{ fingerprint, caseId: testCase.id, result: structuredClone(testCase) }]
       : [];
   });
+}
+
+export function bindTrialCoreCaseReuseFingerprint(
+  fingerprint: string | null,
+  plan: ChatPipelineTrialPlan,
+  caseId: string,
+): string | null {
+  const core = plan.evidenceReview?.coreWitness;
+  if (!fingerprint || core?.status !== 'covered' || core.normalCaseId !== caseId)
+    return fingerprint;
+  return createHash('sha256')
+    .update(fingerprint)
+    .update('\0core-witness\0')
+    .update(plan.evidenceReview!.intentDigest)
+    .update('\0')
+    .update(JSON.stringify(core))
+    .digest('hex');
 }
 
 function cleanupTrialPipelineSnapshot(snapshot: TrialPipelineSnapshot | null): void {
@@ -1172,6 +1230,24 @@ function resultForPlanAttemptBudgetExhausted(
   };
 }
 
+/** Plan-only correction never promotes diagnostic uncertainty into an artifact defect. */
+export function isBlockedCorePlanReviewCandidate(
+  plan: ChatPipelineTrialPlan,
+  diagnostics: readonly TrialPlanBlockingDiagnostic[],
+  toolAttemptCount: number,
+  maxAttempts: number,
+): boolean {
+  return (
+    isValidChatPipelineTrialPlanAttempts(maxAttempts) &&
+    plan.evidenceReview?.coreWitness?.status === 'blocked' &&
+    diagnostics.length > 0 &&
+    diagnostics.every((item) => item.scope === 'diagnostic-only') &&
+    Number.isSafeInteger(toolAttemptCount) &&
+    toolAttemptCount >= 0 &&
+    toolAttemptCount < maxAttempts
+  );
+}
+
 function resultForPlanFailure(
   plan: ChatPipelineTrialPlan,
   diagnostics: readonly TrialPlanBlockingDiagnostic[],
@@ -1411,6 +1487,56 @@ export function prepareTrialCaseWorkspace(
   }
 }
 
+/** Only declared generated files in this isolated case may be reset, never a directory. */
+export function resetGeneratedTrialInputs(
+  workDir: string,
+  relativeYamlPath: string,
+  testCase: Pick<ChatPipelineTrialPlanCase, 'generatedInputPaths' | 'fixtures'>,
+): void {
+  const inspect = (path: string): Stats | null => {
+    try {
+      return lstatSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  };
+  const root = resolve(workDir);
+  const rootStat = inspect(root);
+  if (!rootStat?.isDirectory() || rootStat.isSymbolicLink())
+    throw new Error('Generated inputs require an isolated regular workspace directory.');
+  for (const declared of testCase.generatedInputPaths ?? []) {
+    const path = casePath(root, declared, relativeYamlPath);
+    const components = relative(root, path).split(sep);
+    let parent = root;
+    let missingParent = false;
+    for (const component of components.slice(0, -1)) {
+      parent = join(parent, component);
+      const stat = inspect(parent);
+      if (!stat) {
+        missingParent = true;
+        break;
+      }
+      if (stat.isSymbolicLink() || !stat.isDirectory())
+        throw new Error('Generated input parent must be a regular non-symlink directory.');
+    }
+    if (missingParent) continue;
+    const stat = inspect(path);
+    if (stat) {
+      if (
+        !testCase.fixtures.some((fixture) => fixture.path === declared && fixture.content === null)
+      )
+        throw new Error(
+          'Generated input was pre-seeded without an explicit exact removal fixture.',
+        );
+      if (stat.isSymbolicLink() || !stat.isFile())
+        throw new Error('Generated input removal may target only a regular non-symlink file.');
+      rmSync(path);
+    }
+    if (inspect(path)) throw new Error('Generated input must be absent before each actual run.');
+  }
+}
+
 function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path);
@@ -1588,11 +1714,132 @@ function resolveJsonPointer(
   return { found: true, value: current };
 }
 
+type FileSourceTextRelation = Extract<
+  ChatPipelineTrialExpectation,
+  { type: 'file-source-text-occurrence' }
+>;
+export type TrialSourceTextObservation =
+  | {
+      runId: string;
+      status: 'captured';
+      sourceSha256: string;
+      sourceBytes: number;
+      text: string;
+      consumerStarted: boolean;
+    }
+  | { runId: string; status: 'unavailable'; consumerStarted: false };
+
+function sourceTextRelationKey(expectation: FileSourceTextRelation): string {
+  return JSON.stringify([
+    expectation.path,
+    expectation.sourcePath,
+    expectation.sourcePointer,
+    expectation.producerTaskId,
+    expectation.consumerTaskId,
+  ]);
+}
+
+/** Read only the bounded, stable produced file; never retain raw bytes in the observation. */
+function readTrialSourceText(
+  workDir: string,
+  relativeYamlPath: string,
+  expectation: FileSourceTextRelation,
+) {
+  const path = casePath(workDir, expectation.sourcePath, relativeYamlPath);
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = fstatSync(fd);
+    if (!before.isFile() || before.size > MAX_TRIAL_ASSERTION_FILE_BYTES)
+      throw new Error('Produced source is not a bounded regular file.');
+    const raw = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < raw.length) {
+      const count = readSync(fd, raw, offset, raw.length - offset, offset);
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = fstatSync(fd);
+    if (
+      offset !== raw.length ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mtimeMs !== after.mtimeMs ||
+      before.ctimeMs !== after.ctimeMs
+    )
+      throw new Error('Produced source changed during the read.');
+    const selected = resolveJsonPointer(
+      JSON.parse(raw.toString('utf8')),
+      expectation.sourcePointer,
+    );
+    if (!selected.found || typeof selected.value !== 'string' || selected.value.trim().length === 0)
+      throw new Error('Produced source pointer is not a nonblank STRING.');
+    return {
+      sourceSha256: createHash('sha256').update(raw).digest('hex'),
+      sourceBytes: raw.length,
+      text: selected.value,
+    };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Synchronous SDK terminal callback runs before its dependent can start; no I/O authority is added. */
+export function observeTrialSourceTextRelations(
+  event: RunEventPayload,
+  expectedRunId: string,
+  workDir: string,
+  relativeYamlPath: string,
+  testCase: Pick<ChatPipelineTrialPlanCase, 'expectations'>,
+  observations: Map<string, TrialSourceTextObservation>,
+): void {
+  if (event.type !== 'task_update' || event.runId !== expectedRunId) return;
+  const handled = new Set<string>();
+  for (const expectation of testCase.expectations) {
+    if (expectation.type !== 'file-source-text-occurrence') continue;
+    const key = sourceTextRelationKey(expectation);
+    if (handled.has(key)) continue;
+    handled.add(key);
+    try {
+      if (event.taskId === expectation.producerTaskId && event.status === 'success') {
+        if (event.exitCode !== 0 || observations.has(key))
+          throw new Error('Producer event is unavailable or duplicated.');
+        observations.set(key, {
+          runId: expectedRunId,
+          status: 'captured',
+          ...readTrialSourceText(workDir, relativeYamlPath, expectation),
+          consumerStarted: false,
+        });
+      } else if (event.taskId === expectation.consumerTaskId && event.status === 'running') {
+        const produced = observations.get(key);
+        if (
+          produced?.status !== 'captured' ||
+          produced.runId !== expectedRunId ||
+          produced.consumerStarted
+        )
+          throw new Error('Producer observation did not precede the consumer.');
+        const current = readTrialSourceText(workDir, relativeYamlPath, expectation);
+        if (current.sourceSha256 !== produced.sourceSha256 || current.text !== produced.text)
+          throw new Error('Producer source changed before consumer execution.');
+        observations.set(key, { ...produced, consumerStarted: true });
+      }
+    } catch {
+      // Observer failure is not a fallback to consumer-authored final source bytes.
+      observations.set(key, {
+        runId: expectedRunId,
+        status: 'unavailable',
+        consumerStarted: false,
+      });
+    }
+  }
+}
+
 export function evaluateTrialExpectation(
   workDir: string,
   relativeYamlPath: string,
   expectation: ChatPipelineTrialExpectation,
   lastResult: EngineResult | null,
+  sourceTextObservations?: ReadonlyMap<string, TrialSourceTextObservation>,
 ): ChatPipelineTrialExpectationResult {
   if (expectation.type === 'task-status') {
     const state = lastResult?.states.get(expectation.taskId);
@@ -1639,7 +1886,8 @@ export function evaluateTrialExpectation(
     expectation.type === 'file-preserves-lines' ||
     expectation.type === 'json-valid' ||
     expectation.type === 'json-pointer-equals' ||
-    expectation.type === 'json-pointer-text-occurrence'
+    expectation.type === 'json-pointer-text-occurrence' ||
+    expectation.type === 'file-source-text-occurrence'
   ) {
     if (!stat || stat.isSymbolicLink() || !stat.isFile()) {
       return {
@@ -1665,6 +1913,126 @@ export function evaluateTrialExpectation(
       };
     }
     const content = readFileSync(path, 'utf-8');
+    if (expectation.type === 'file-source-text-occurrence') {
+      const observed = sourceTextObservations?.get(sourceTextRelationKey(expectation));
+      const producer = lastResult?.states.get(expectation.producerTaskId);
+      const consumer = lastResult?.states.get(expectation.consumerTaskId);
+      const sourceTextEvidence: NonNullable<
+        ChatPipelineTrialExpectationResult['sourceTextEvidence']
+      > = {
+        runId: lastResult?.runId ?? null,
+        sourcePath: expectation.sourcePath,
+        sourcePointer: expectation.sourcePointer,
+        producerTaskId: expectation.producerTaskId,
+        consumerTaskId: expectation.consumerTaskId,
+        producerCompletionObserved:
+          observed?.status === 'captured' && observed.runId === lastResult?.runId,
+        consumerStartObserved:
+          observed?.status === 'captured' &&
+          observed.runId === lastResult?.runId &&
+          observed.consumerStarted,
+        producerStatus: producer?.status ?? 'missing',
+        consumerStatus: consumer?.status ?? 'missing',
+        producerResultPresent: producer?.result != null,
+        consumerResultPresent: consumer?.result != null,
+        capturedSourceSha256: observed?.status === 'captured' ? observed.sourceSha256 : null,
+        capturedSourceBytes: observed?.status === 'captured' ? observed.sourceBytes : null,
+        capturedTextSha256:
+          observed?.status === 'captured'
+            ? createHash('sha256').update(observed.text).digest('hex')
+            : null,
+        finalSourceSha256: null,
+      };
+      const relationFailure = (detail: string): ChatPipelineTrialExpectationResult => ({
+        type: expectation.type,
+        passed: false,
+        detail,
+        repairScope: 'pipeline-artifact',
+        sourceTextEvidence,
+      });
+      if (
+        observed?.status !== 'captured' ||
+        !observed.consumerStarted ||
+        observed.runId !== lastResult?.runId
+      )
+        return {
+          ...relationFailure(
+            'A same-run producer source observation before consumer execution is unavailable.',
+          ),
+          repairScope: 'diagnostic-only',
+        };
+      const sourcePath = casePath(workDir, expectation.sourcePath, relativeYamlPath);
+      const owns = (state: typeof producer, artifact: string, taskId: string) => {
+        const completion = state?.config.completion as { type?: string; path?: string } | undefined;
+        return (
+          state?.status === 'success' &&
+          state.result != null &&
+          `${state.trackConfig.id}.${state.config.id}` === taskId &&
+          (completion?.type === 'file_exists' || completion?.type === 'json_schema') &&
+          typeof completion.path === 'string' &&
+          resolve(workDir, state.config.cwd ?? state.trackConfig.cwd ?? '.', completion.path) ===
+            artifact
+        );
+      };
+      const upstream = (id: string, seen = new Set<string>()): boolean => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        const state = lastResult?.states.get(id);
+        return (state?.config.depends_on ?? []).some((reference) => {
+          const dependency = reference.includes('.')
+            ? reference
+            : `${state!.trackConfig.id}.${reference}`;
+          return dependency === expectation.producerTaskId || upstream(dependency, seen);
+        });
+      };
+      if (
+        sourcePath === path ||
+        !owns(producer, sourcePath, expectation.producerTaskId) ||
+        !owns(consumer, path, expectation.consumerTaskId) ||
+        !upstream(expectation.consumerTaskId)
+      )
+        return {
+          ...relationFailure(
+            "Source-text relation requires this repeat's successful declared producer, dependent consumer and owned artifacts.",
+          ),
+          repairScope: 'diagnostic-only',
+        };
+      const sourceStat = lstatOrNull(sourcePath);
+      if (!sourceStat || !sourceStat.isFile() || sourceStat.isSymbolicLink())
+        return relationFailure('Source-text relation requires a regular produced JSON source.');
+      if (sourceStat.size > MAX_TRIAL_ASSERTION_FILE_BYTES)
+        return {
+          ...relationFailure('Source-text relation exceeds the source assertion read limit.'),
+          repairScope: 'diagnostic-only',
+          truncation: {
+            layer: 'trial-assertion-reader',
+            reason: 'byte-limit',
+            limitBytes: MAX_TRIAL_ASSERTION_FILE_BYTES,
+            sourceBytes: sourceStat.size,
+            returnedBytes: 0,
+          },
+        };
+      let finalSource: { sourceSha256: string; sourceBytes: number; text: string };
+      try {
+        finalSource = readTrialSourceText(workDir, relativeYamlPath, expectation);
+      } catch {
+        return relationFailure('Produced source is unavailable or changed after completion.');
+      }
+      sourceTextEvidence.finalSourceSha256 = finalSource.sourceSha256;
+      if (finalSource.sourceSha256 !== observed.sourceSha256 || finalSource.text !== observed.text)
+        return relationFailure('Producer source changed after its completion observation.');
+      const present = content.includes(observed.text);
+      return {
+        type: expectation.type,
+        passed: present === expectation.present,
+        detail:
+          'The exact produced source text ' +
+          (present ? 'occurs' : 'does not occur') +
+          " in this repeat's consumer artifact.",
+        repairScope: 'pipeline-artifact',
+        sourceTextEvidence,
+      };
+    }
     if (
       expectation.type === 'json-valid' ||
       expectation.type === 'json-pointer-equals' ||
@@ -2158,13 +2526,12 @@ export function trialTaskExecutionContext(
   let completion: ChatRepairExecutionContext['completion'] = null;
   if (configured) {
     // Other completion plugins own their parameter semantics; do not infer a path contract.
+    const fileCompletion = configured.type === 'file_exists' || configured.type === 'json_schema';
     const path =
-      configured.type === 'file_exists' && typeof configured.path === 'string'
-        ? resolve(cwd, configured.path)
-        : null;
+      fileCompletion && typeof configured.path === 'string' ? resolve(cwd, configured.path) : null;
     let regularFile: boolean | null = null;
     const resolvedPath = path === null ? null : coordinate(path);
-    if (configured.type === 'file_exists' && resolvedPath !== null) {
+    if (fileCompletion && resolvedPath !== null) {
       try {
         regularFile = lstatSync(path!).isFile();
       } catch (error) {
@@ -2205,36 +2572,70 @@ function completeRepairStream(
   logPath: string,
   streamName: 'stdout' | 'stderr',
   readErrors: Array<{ stream: 'stdout' | 'stderr'; message: string }>,
+  storedBytes?: number,
+  diagnostics?: TaskResult['stderrDiagnostics'],
 ) {
-  if (
-    path &&
-    ((producedBytes !== undefined && producedBytes > Buffer.byteLength(text)) ||
-      /^\[\d+ bytes truncated from head;/u.test(text))
-  ) {
+  const suffix = diagnostics?.suffix ?? '';
+  const completeSuffix = diagnostics?.completeSuffix ?? suffix;
+  const sourceBytes = diagnostics ? diagnostics.sourceBytes : producedBytes;
+  const knownStoredBytes =
+    storedBytes !== undefined && Number.isSafeInteger(storedBytes) && storedBytes >= 0
+      ? storedBytes
+      : undefined;
+  const recordError = (message: string) => {
+    readErrors.push({ stream: streamName, message: redactChatRepairErrorOutput(message) });
+  };
+  const suffixMatches = suffix.length === 0 || text.endsWith(suffix);
+  if (!suffixMatches) recordError('Task diagnostic suffix does not match the captured result.');
+  let childText = suffixMatches && suffix.length > 0 ? text.slice(0, -suffix.length) : text;
+  const headTruncated = /^\[\d+ bytes truncated from head;/u.test(childText);
+  let capturedBytes = Buffer.byteLength(childText);
+  let restored = false;
+  const needsStoredOutput =
+    headTruncated ||
+    (knownStoredBytes !== undefined
+      ? knownStoredBytes !== capturedBytes
+      : sourceBytes !== undefined && sourceBytes > capturedBytes);
+  if (needsStoredOutput && path) {
     try {
-      text = readCompleteRepairOutput(workDir, logPath, path).toString('utf8');
+      const output = readCompleteRepairOutput(workDir, logPath, path);
+      capturedBytes = output.byteLength;
+      childText = output.toString('utf8');
+      restored = true;
+      if (knownStoredBytes !== undefined && capturedBytes !== knownStoredBytes) {
+        recordError('Complete task output does not match its captured byte count.');
+      }
     } catch (error) {
-      readErrors.push({
-        stream: streamName,
-        message: redactChatRepairErrorOutput(
-          error instanceof Error ? error.message : String(error),
-        ),
-      });
+      recordError(error instanceof Error ? error.message : String(error));
     }
+  } else if (needsStoredOutput && (headTruncated || knownStoredBytes !== undefined)) {
+    recordError('Complete task output is unavailable for the truncated captured stream.');
   }
+  text = childText + (suffixMatches ? completeSuffix : '');
   const redacted = redactChatRepairErrorOutput(text);
   const bytes = Buffer.byteLength(text);
+  const completeProducedBytes =
+    sourceBytes === undefined
+      ? undefined
+      : sourceBytes + Buffer.byteLength(suffixMatches ? completeSuffix : '');
   return {
     text: redacted,
     truncation: {
-      source:
-        producedBytes === undefined || producedBytes < bytes
-          ? ('unknown' as const)
-          : producedBytes > bytes
-            ? ('truncated' as const)
-            : ('not-truncated' as const),
+      source: !suffixMatches
+        ? ('unknown' as const)
+        : headTruncated && !restored
+          ? ('truncated' as const)
+          : knownStoredBytes !== undefined
+            ? capturedBytes < knownStoredBytes
+              ? ('truncated' as const)
+              : capturedBytes === knownStoredBytes
+                ? ('not-truncated' as const)
+                : ('unknown' as const)
+            : restored || completeProducedBytes === undefined || completeProducedBytes !== bytes
+              ? ('unknown' as const)
+              : ('not-truncated' as const),
       trialResult: false,
-      producedBytes: producedBytes ?? null,
+      producedBytes: completeProducedBytes ?? null,
       sourceReturnedBytes: bytes,
       returnedBytes: Buffer.byteLength(redacted),
     },
@@ -2321,6 +2722,7 @@ export function trialTaskResults(
       result.logPath,
       'stdout',
       modelEvidenceReadErrors,
+      state.result?.stdoutStoredBytes,
     );
     const rawStderr = completeRepairStream(
       state.result?.stderr ?? '',
@@ -2330,6 +2732,8 @@ export function trialTaskResults(
       result.logPath,
       'stderr',
       modelEvidenceReadErrors,
+      state.result?.stderrStoredBytes,
+      state.result?.stderrDiagnostics,
     );
     repairErrorTasks.push({
       ...task,
@@ -2935,16 +3339,107 @@ export function evaluateTrialTaskStatusExpectations(
     });
 }
 
+/** Concrete normal-output assertions apply to each repeat, not only its final filesystem. */
+export function evaluateTrialCoreContentExpectations(
+  workDir: string,
+  relativeYamlPath: string,
+  testCase: Pick<ChatPipelineTrialPlanCase, 'expectations'>,
+  indices: readonly number[],
+  result: EngineResult | null,
+  runNumber: number,
+  sourceTextObservations?: ReadonlyMap<string, TrialSourceTextObservation>,
+): ChatPipelineTrialExpectationResult[] {
+  return [...new Set(indices)].map((index) => {
+    const expectation = testCase.expectations[index];
+    if (!expectation) throw new Error('Core content expectation index is missing.');
+    const evaluated = evaluateTrialExpectation(
+      workDir,
+      relativeYamlPath,
+      expectation,
+      result,
+      sourceTextObservations,
+    );
+    return { ...evaluated, detail: `Run ${runNumber}: ${evaluated.detail}` };
+  });
+}
+
+/** Archive actual producer coordinates while the isolated case workspace still exists. */
+export function archiveCompletedTrialTaskStreams(
+  result: EngineResult,
+  identity: { trialId: string; caseId: string; runId: string; runNumber: number },
+  workDir: string,
+  outputPaths: ReadonlyMap<string, TrialTaskOutputPaths>,
+  sink: TrialTaskStreamEvidenceSink,
+): TrialTaskStreamArchiveResult[] {
+  const archived: TrialTaskStreamArchiveResult[] = [];
+  const byteCount = (value: number | undefined): number | null =>
+    value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  for (const [taskId, state] of result.states) {
+    const produced = state.result;
+    if (!produced || state.status === 'skipped') continue;
+    if (result.runId !== identity.runId) {
+      archived.push({
+        ...identity,
+        taskId,
+        status: 'unavailable',
+        manifest: null,
+        errorCodes: ['source_identity_mismatch'],
+      });
+      continue;
+    }
+    const paths = outputPaths.get(taskId);
+    const source = {
+      ...identity,
+      taskId,
+      taskStatus: state.status,
+      workDir,
+      logPath: result.logPath,
+      stdout: {
+        path: paths?.stdoutPath ?? produced.stdoutPath ?? null,
+        producedBytes: byteCount(produced.stdoutBytes),
+        storedBytes: byteCount(produced.stdoutStoredBytes),
+        // Historical field name; every reported capture failure for this stream is evidence.
+        captureReadError:
+          produced.outputDiagnostics?.some((diagnostic) => diagnostic.stream === 'stdout') ?? false,
+      },
+      stderr: {
+        path: paths?.stderrPath ?? produced.stderrPath ?? null,
+        producedBytes: byteCount(produced.stderrBytes),
+        storedBytes: byteCount(produced.stderrStoredBytes),
+        captureReadError:
+          produced.outputDiagnostics?.some((diagnostic) => diagnostic.stream === 'stderr') ?? false,
+      },
+    };
+    try {
+      archived.push(sink(source));
+    } catch {
+      // Monitoring evidence failure never creates a model retry or changes task success.
+      archived.push({
+        ...identity,
+        taskId,
+        status: 'unavailable',
+        manifest: null,
+        errorCodes: ['archive_sink_failure'],
+      });
+    }
+  }
+  return archived;
+}
+
 async function executeTargetedTrialCase(
   input: Omit<
     RunTrialPipelineInput,
     'workDir' | 'runId' | 'targetTaskIds' | 'testCase' | 'onEvent'
   > & {
     stageRoot: string;
+    trialId: string;
+    taskStreamEvidenceSink?: TrialTaskStreamEvidenceSink;
     stagedYamlPath: string;
     relativeYamlPath: string;
     testCase: ChatPipelineTrialPlanCase;
     targetTaskIds?: string[];
+    coreContentExpectationIndices: readonly number[];
+    coreGeneratedInputPaths: readonly string[];
     verifyRepeatedFileOutputs: boolean;
     caseIndex: number;
     caseCount: number;
@@ -2954,12 +3449,14 @@ async function executeTargetedTrialCase(
   result: ChatPipelineTrialCaseResult;
   totalTaskCount: number;
   repairErrorTasks: ChatPipelineTrialTaskResult[];
+  taskStreamEvidence: TrialTaskStreamArchiveResult[];
   repairPipelineDiagnostics: NonNullable<ChatPipelineTrialRunResult['repairPipelineDiagnostics']>;
 }> {
   let caseWorkspace: { rootDir: string; workDir: string; yamlPath: string } | null = null;
   const runIds: string[] = [];
   const tasks: ChatPipelineTrialTaskResult[] = [];
   const repairErrorTasks: ChatPipelineTrialTaskResult[] = [];
+  const taskStreamEvidence: TrialTaskStreamArchiveResult[] = [];
   const repairPipelineDiagnostics: NonNullable<
     ChatPipelineTrialRunResult['repairPipelineDiagnostics']
   > = [];
@@ -2972,6 +3469,7 @@ async function executeTargetedTrialCase(
     : [];
   const freshnessObservations: RepeatedArtifactFreshnessObservation[] = [];
   let lastResult: EngineResult | null = null;
+  let sourceTextObservations = new Map<string, TrialSourceTextObservation>();
   let executionError: string | null = null;
   input.progress.update({
     phase: 'running-case',
@@ -3008,7 +3506,14 @@ async function executeTargetedTrialCase(
       throw new Error(`Isolated case configuration error: ${caseConfigErrors.join('; ')}`);
     }
     for (let runNumber = 1; runNumber <= input.testCase.runs; runNumber += 1) {
+      if (input.coreGeneratedInputPaths.length > 0) {
+        resetGeneratedTrialInputs(caseWorkspace.workDir, input.relativeYamlPath, {
+          ...input.testCase,
+          generatedInputPaths: [...input.coreGeneratedInputPaths],
+        });
+      }
       const outputPaths = new Map<string, TrialTaskOutputPaths>();
+      sourceTextObservations = new Map<string, TrialSourceTextObservation>();
       input.progress.update({
         phase: 'running-case',
         detail: `Running targeted case ${input.caseIndex}/${input.caseCount}: ${input.testCase.title}.`,
@@ -3040,6 +3545,14 @@ async function executeTargetedTrialCase(
           targetTaskIds: input.targetTaskIds,
           testCase: input.testCase,
           onEvent: (event) => {
+            observeTrialSourceTextRelations(
+              event,
+              runId,
+              caseWorkspace!.workDir,
+              input.relativeYamlPath,
+              input.testCase,
+              sourceTextObservations,
+            );
             updateTrialTaskProgress(input.progress, event);
             if (event.type === 'task_update')
               outputPaths.set(event.taskId, {
@@ -3075,6 +3588,15 @@ async function executeTargetedTrialCase(
           ...evaluateTrialTaskStatusExpectations(input.testCase, lastResult, runNumber).filter(
             (expectation) => !expectation.passed,
           ),
+          ...evaluateTrialCoreContentExpectations(
+            caseWorkspace.workDir,
+            input.relativeYamlPath,
+            input.testCase,
+            input.coreContentExpectationIndices,
+            lastResult,
+            runNumber,
+            sourceTextObservations,
+          ).filter((expectation) => !expectation.passed),
         );
       const evidence = trialTaskResults(
         lastResult,
@@ -3084,6 +3606,17 @@ async function executeTargetedTrialCase(
         caseWorkspace.workDir,
         outputPaths,
       );
+      if (input.taskStreamEvidenceSink) {
+        taskStreamEvidence.push(
+          ...archiveCompletedTrialTaskStreams(
+            lastResult,
+            { trialId: input.trialId, caseId: input.testCase.id, runId, runNumber },
+            caseWorkspace.workDir,
+            outputPaths,
+            input.taskStreamEvidenceSink,
+          ),
+        );
+      }
       totalTaskCount += evidence.totalTaskCount;
       mergeTrialTaskStatusCounts(taskStatusCounts, evidence.taskStatusCounts);
       tasks.push(
@@ -3119,6 +3652,7 @@ async function executeTargetedTrialCase(
             input.relativeYamlPath,
             expectation,
             lastResult,
+            sourceTextObservations,
           ),
           ...(fileObservation ? { fileObservation } : {}),
         });
@@ -3201,6 +3735,7 @@ async function executeTargetedTrialCase(
       ...trialPrerequisiteProbe(input.testCase),
       success,
       runIds,
+      ...(input.taskStreamEvidenceSink ? { taskStreamEvidence } : {}),
       tasks: selectedTasks,
       totalTaskCount,
       omittedTaskCount: Math.max(0, totalTaskCount - selectedTasks.length),
@@ -3210,6 +3745,7 @@ async function executeTargetedTrialCase(
     },
     totalTaskCount,
     repairErrorTasks,
+    taskStreamEvidence,
     repairPipelineDiagnostics,
   };
 }
@@ -3386,10 +3922,43 @@ async function prepareTrialExecution(
     };
   }
   if (planDiagnostics.length > 0) {
-    return {
-      status: 'result',
-      result: withTrialability(resultForPlanFailure(plan, planDiagnostics, startedAt)),
-    };
+    const failure = resultForPlanFailure(plan, planDiagnostics, startedAt);
+    if (
+      isBlockedCorePlanReviewCandidate(
+        plan,
+        planDiagnostics,
+        planTelemetry.toolAttemptCount,
+        stage.trialPlanMaxAttempts,
+      )
+    ) {
+      const attemptId = issueNextTrialPlanAttempt(ws, {
+        stageId: stage.id,
+        relativePath: entry.relativePath,
+        yamlHash: snapshot.contentHash,
+        trialId,
+        toolAttemptCount: planTelemetry.toolAttemptCount,
+      });
+      return {
+        status: 'result',
+        result: withTrialability({
+          ...failure,
+          kind: 'plan-required',
+          repairAuthorization: 'diagnostic-only',
+          planTelemetry,
+          planRequest: {
+            ...buildChatPipelineTrialPlanRequest(
+              'invalid',
+              entry.relativePath,
+              snapshot.contentHash,
+              failure.summary,
+              stage.trialPlanMaxAttempts,
+            ),
+            attemptId,
+          },
+        }),
+      };
+    }
+    return { status: 'result', result: withTrialability(failure) };
   }
   if (!trialabilityReport.runnable) {
     return {
@@ -3559,6 +4128,7 @@ async function executeTrial(
   progress: ChatPipelineTrialProgressReporter,
   runtimeMode: WorkspaceRuntimeMode,
   reusableCases: ReadonlyMap<string, ChatPipelineTrialCaseResult>,
+  taskStreamEvidenceSink?: TrialTaskStreamEvidenceSink,
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
   progress.update({
@@ -3742,6 +4312,7 @@ async function executeTrial(
     const secretValues = Object.values(sandboxScopedSecretEnv).filter(Boolean);
     const cases: ChatPipelineTrialCaseResult[] = [];
     const repairErrorTasks: ChatPipelineTrialTaskResult[] = [];
+    const taskStreamEvidence: TrialTaskStreamArchiveResult[] = [];
     const repairPipelineDiagnostics: NonNullable<
       ChatPipelineTrialRunResult['repairPipelineDiagnostics']
     > = [];
@@ -3850,6 +4421,9 @@ async function executeTrial(
           taskStatus: 'reused',
         });
         cases.push(structuredClone(reusableCase));
+        if (taskStreamEvidenceSink && reusableCase.taskStreamEvidence) {
+          taskStreamEvidence.push(...structuredClone(reusableCase.taskStreamEvidence));
+        }
         totalTaskCount += reusableCase.totalTaskCount;
         reusedCaseCount += 1;
         continue;
@@ -3881,10 +4455,24 @@ async function executeTrial(
         manualApprovalScopesByRunId,
         manualApprovalTaskIds: manualTaskIdsByCase.get(testCase.id) ?? new Set<string>(),
         stageRoot: stage.rootDir,
+        trialId,
+        ...(taskStreamEvidenceSink ? { taskStreamEvidenceSink } : {}),
         stagedYamlPath: snapshot.yamlPath,
         relativeYamlPath: entry.relativePath,
         testCase: { ...testCase, environment: [...caseEnvironment.values()] },
         targetTaskIds,
+        coreGeneratedInputPaths:
+          plan.evidenceReview?.coreWitness?.status === 'covered' &&
+          plan.evidenceReview.coreWitness.normalCaseId === testCase.id
+            ? plan.evidenceReview.coreWitness.generatedInputs.map((item) => item.path)
+            : [],
+        coreContentExpectationIndices:
+          plan.evidenceReview?.coreWitness?.status === 'covered' &&
+          plan.evidenceReview.coreWitness.normalCaseId === testCase.id
+            ? testCase.expectations.flatMap((expectation, index) =>
+                expectation.type === 'task-status' ? [] : [index],
+              )
+            : [],
         verifyRepeatedFileOutputs: repeatedFileOutputCaseIds.has(testCase.id),
         caseIndex: caseOffset + 1,
         caseCount: plan.cases.length,
@@ -3954,6 +4542,7 @@ async function executeTrial(
         ),
       );
       repairPipelineDiagnostics.push(...caseExecution.repairPipelineDiagnostics);
+      taskStreamEvidence.push(...caseExecution.taskStreamEvidence);
       totalTaskCount += caseExecution.totalTaskCount;
       if (workspaceFailures.length > 0) {
         caseLoopStop = {
@@ -4195,6 +4784,7 @@ async function executeTrial(
       omittedTaskCount,
       tasks: visibleTasks,
       repairErrorTasks,
+      ...(taskStreamEvidenceSink ? { taskStreamEvidence } : {}),
       repairPipelineDiagnostics,
       taskStatusCounts,
       omittedTaskStatusCounts,
@@ -4354,6 +4944,12 @@ export async function trialRunChatYamlStage(
     if (planTelemetry.yamlHash !== snapshot.contentHash) {
       throw new Error('Staged YAML changed while Trial was preparing; retry the Trial run.');
     }
+    // Read before issuing a fresh attempt; this record belongs to the rejected
+    // current attempt and exact telemetry counters, not the next planner.
+    const repairPlanRejectionEvidence = readChatPipelineTrialPlanRejectionEvidence(
+      entry.stagedPath,
+      stage.trialPlanMaxAttempts,
+    );
     let pipelineConfig: PipelineConfig;
     try {
       pipelineConfig = await loadTrialPipelineConfig(snapshot, ws.workDir);
@@ -4450,6 +5046,8 @@ export async function trialRunChatYamlStage(
                 ? '\nHost confirmed that the compiled failure policy prevents required downstream recovery. Repair the pipeline recovery path; this YAML revision has no remaining plan-only submissions.'
                 : ''),
           ),
+          ...(repairPlanRejectionEvidence ? { repairPlanRejectionEvidence } : {}),
+          repairPlanRequest: planRead.request,
           // Planning and artifact repair have separate budgets. Preserve only
           // independently established Host authority, never a planner's claim.
           repairAuthorization:
@@ -4458,6 +5056,44 @@ export async function trialRunChatYamlStage(
               : 'diagnostic-only',
           ...preflightMetadata,
         };
+      }
+      if (repairPlanRejectionEvidence) {
+        // Configuration and plugin loading awaited after the original read.
+        // Bind the remaining counted budget and complete feedback again before
+        // issuing authority; the private companion has SHA integrity, not HMAC.
+        try {
+          const currentStage = listChatYamlStage(ws, stage.id, input.trustedOperationV2 === true);
+          const currentEntry = currentStage.entries.find((candidate) =>
+            samePipelineRelativePath(candidate.relativePath, entry.relativePath),
+          );
+          const currentTelemetry = readChatPipelineTrialPlanToolTelemetry(
+            entry.stagedPath,
+            stage.trialPlanMaxAttempts,
+          );
+          const currentRejection = readChatPipelineTrialPlanRejectionEvidence(
+            entry.stagedPath,
+            stage.trialPlanMaxAttempts,
+            repairPlanRejectionEvidence.attemptId,
+          );
+          if (
+            currentStage.trialPlanMaxAttempts !== stage.trialPlanMaxAttempts ||
+            currentEntry?.stagedPath !== entry.stagedPath ||
+            currentEntry?.contentHash !== snapshot.contentHash ||
+            JSON.stringify(currentTelemetry) !== JSON.stringify(planTelemetry) ||
+            JSON.stringify(currentRejection) !== JSON.stringify(repairPlanRejectionEvidence)
+          )
+            throw new Error('Current counted Trial Plan rejection changed during preparation.');
+        } catch {
+          return {
+            ...resultForSetupFailure(
+              'setup-failed',
+              'Trial Plan rejection or its current stage/attempt changed during preparation; draft retained for explicit Retry.',
+              startedAt,
+              preflightMetadata,
+            ),
+            planTelemetry,
+          };
+        }
       }
       const attemptId = issueNextTrialPlanAttempt(ws, {
         stageId: stage.id,
@@ -4478,6 +5114,7 @@ export async function trialRunChatYamlStage(
           dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
           sandboxFixtureAnalysis.inputs,
         ),
+        ...(repairPlanRejectionEvidence ? { repairPlanRejectionEvidence } : {}),
         ...preflightMetadata,
       };
     }
@@ -4672,14 +5309,18 @@ export async function trialRunChatYamlStage(
         }
         const caseReuseFingerprints = new Map<string, string>();
         for (const testCase of plan.cases) {
-          const fingerprint = buildChatPipelineTrialCaseReuseFingerprint({
-            pipelineConfig,
-            relativeYamlPath: entry.relativePath,
-            testCase,
-            supportTreeHash: executionSnapshot.supportTreeHash,
-            trialabilityReportHash,
-            runtimeMode,
-          });
+          const fingerprint = bindTrialCoreCaseReuseFingerprint(
+            buildChatPipelineTrialCaseReuseFingerprint({
+              pipelineConfig,
+              relativeYamlPath: entry.relativePath,
+              testCase,
+              supportTreeHash: executionSnapshot.supportTreeHash,
+              trialabilityReportHash,
+              runtimeMode,
+            }),
+            plan,
+            testCase.id,
+          );
           if (fingerprint) caseReuseFingerprints.set(testCase.id, fingerprint);
         }
         const reusableCases = readReusableTrialCases({
@@ -4705,6 +5346,7 @@ export async function trialRunChatYamlStage(
           progress,
           runtimeMode,
           reusableCases,
+          input.trustedOperationV2 === true ? input.taskStreamEvidenceSink : undefined,
         );
         if (controller.signal.aborted) {
           return resultForStopped(result, abortState, startedAt, budgets.lifecycleTimeoutMs);

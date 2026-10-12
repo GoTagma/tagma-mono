@@ -61,7 +61,7 @@ jobs:
           # `latest` so a freshly published Bun build with a broken
           # cross-target runtime (e.g. v1.3.12 windows-x64-baseline extract
           # failure) can't take the release pipeline down without warning.
-          bun-version: 1.3.11
+          bun-version: 1.3.14
 
       # Record the previous desktop-v* tag now so publish's min-shell gate
       # has a stable reference even if someone pushes an unrelated tag
@@ -170,7 +170,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.11
+          bun-version: 1.3.14
 
       - name: Clean build artifacts
         # Wipe any stale editor/dist and desktop-dist* from a previous workflow
@@ -949,7 +949,7 @@ jobs:
       - name: Set up Bun for lockfile synchronization
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.11
+          bun-version: 1.3.14
 
       - uses: actions/download-artifact@v7
         with:

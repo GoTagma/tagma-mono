@@ -5,6 +5,28 @@ import { OutputCheckCompletion } from './completions/output-check';
 import type { PluginSchema, RawPipelineConfig } from '@tagma/types';
 
 describe('validateRaw known plugin types', () => {
+  test('recognizes the built-in JSON Schema completion without workspace plugin installation', () => {
+    const diagnostics = validateRaw({
+      name: 'JSON Schema completion',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            {
+              id: 'producer',
+              command: 'produce',
+              completion: { type: 'json_schema', path: 'data.json', schema_path: 'schema.json' },
+            },
+          ],
+        },
+      ],
+    });
+    expect(diagnostics.filter((diagnostic) => diagnostic.message.includes('json_schema'))).toEqual(
+      [],
+    );
+  });
+
   test('rejects malformed prompt fields even when command is valid', () => {
     const diagnostics = validateRaw({
       name: 'bad prompt field',

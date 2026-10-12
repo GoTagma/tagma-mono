@@ -26,6 +26,65 @@ const ctx = {
 } as unknown as Parameters<typeof OpenCodeDriver.buildCommand>[2];
 
 describe('OpenCodeDriver buildCommand', () => {
+  test('passes the raw effort and effective model to the managed resolver', async () => {
+    const seen: Array<[string | undefined, string | undefined]> = [];
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ model: 'deepseek/deepseek-flash', reasoning_effort: 'low' }),
+      track,
+      {
+        ...ctx,
+        async resolveOpencodeVariant(model, effort) {
+          seen.push([model, effort]);
+          return 'low';
+        },
+      },
+    );
+    expect(seen).toEqual([['deepseek/deepseek-flash', 'low']]);
+    expect(spec.args[spec.args.indexOf('--variant') + 1]).toBe('low');
+  });
+
+  test('resolves inherited effort with the model actually passed to OpenCode', async () => {
+    const seen: Array<[string | undefined, string | undefined]> = [];
+    const spec = await OpenCodeDriver.buildCommand(
+      task(),
+      { ...track, model: 'deepseek/deepseek-flash', reasoning_effort: 'low' },
+      {
+        ...ctx,
+        resolveOpencodeVariant(model, effort) {
+          seen.push([model, effort]);
+          return 'low';
+        },
+      },
+    );
+    expect(seen).toEqual([['deepseek/deepseek-flash', 'low']]);
+    expect(spec.args[spec.args.indexOf('--model') + 1]).toBe('deepseek/deepseek-flash');
+    expect(spec.args[spec.args.indexOf('--variant') + 1]).toBe('low');
+  });
+
+  test('keeps a managed default result flag-free without lowering before resolution', async () => {
+    let received: string | undefined;
+    const spec = await OpenCodeDriver.buildCommand(task({ reasoning_effort: 'medium' }), track, {
+      ...ctx,
+      resolveOpencodeVariant(_model, effort) {
+        received = effort;
+        return null;
+      },
+    });
+    expect(received).toBe('medium');
+    expect(spec.args).not.toContain('--variant');
+  });
+
+  test('rejects before producing a command when managed variant resolution fails', async () => {
+    await expect(
+      OpenCodeDriver.buildCommand(task({ reasoning_effort: 'low' }), track, {
+        ...ctx,
+        async resolveOpencodeVariant() {
+          throw new Error('Managed OpenCode variant is unavailable.');
+        },
+      }),
+    ).rejects.toThrow('Managed OpenCode variant is unavailable.');
+  });
+
   test('runs default restricted tasks with a task-scoped allowlist policy', async () => {
     const spec = await OpenCodeDriver.buildCommand(task(), track, ctx);
 
@@ -243,13 +302,35 @@ describe('OpenCodeDriver buildCommand', () => {
     }
   });
 
-  test('passes provider-specific reasoning variants through to opencode', async () => {
-    const spec = await OpenCodeDriver.buildCommand(task({ reasoning_effort: 'max' }), track, ctx);
+  for (const [effort, expectedVariant] of [
+    ['low', 'minimal'],
+    ['medium', null],
+    ['high', 'high'],
+    ['max', 'max'],
+    ['native:low', 'native:low'],
+    ['constructor', 'constructor'],
+    ['__proto__', '__proto__'],
+    ['toString', 'toString'],
+  ] as const) {
+    test(`builds string-only argv with the expected reasoning variant for ${effort}`, async () => {
+      const spec = await OpenCodeDriver.buildCommand(
+        task({ reasoning_effort: effort }),
+        track,
+        ctx,
+      );
+      const variantIndex = spec.args.indexOf('--variant');
 
-    const variantIndex = spec.args.indexOf('--variant');
-    expect(variantIndex).toBeGreaterThan(-1);
-    expect(spec.args[variantIndex + 1]).toBe('max');
-  });
+      if (expectedVariant === null) {
+        expect(variantIndex).toBe(-1);
+      } else {
+        expect(variantIndex).toBeGreaterThan(-1);
+        expect(spec.args[variantIndex + 1]).toBe(expectedVariant);
+        expect(variantIndex + 1).toBeLessThan(spec.args.indexOf('--'));
+      }
+      expect(spec.args.every((arg) => typeof arg === 'string')).toBe(true);
+      expect(spec.args.slice(-2)).toEqual(['--', 'hello']);
+    });
+  }
 
   test('does not resume sessions created by another driver', async () => {
     const crossDriverCtx = {

@@ -6,6 +6,13 @@ import { bunRuntime } from '@tagma/sdk';
 import type { CommandConfig, DriverPlugin, RunOptions, SpawnSpec, TaskResult } from '@tagma/types';
 import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { runtimeWithInjectedEnvFromBase } from '../server/routes/run-session';
+import { sealChatOperationV2Admission } from '../server/chat-operations/admission';
+import { buildManagedChatOperationV2ExecutionPrompt } from '../server/chat-operations/authoring-runtime';
+import { buildChatRepairErrorEvidence } from '../server/chat-operations/repair-error-evidence';
+import {
+  trialTaskResults,
+  type ChatPipelineTrialRunResult,
+} from '../server/chat-pipeline-trial-run';
 
 const tempRoots: string[] = [];
 const envKeys = [
@@ -478,6 +485,7 @@ describe('editor OpenCode runtime selection', () => {
     let captured: SpawnSpec | null = null;
     const fatalLine =
       'timestamp=2026-07-29T08:27:10.799Z level=ERROR message="stream error" small=false mode=primary error.error="AI_APICallError: Rate limit exceeded."\n';
+    const capturedBytes = Buffer.byteLength(fatalLine + 'later child diagnostics\n'.repeat(1000));
     const base = {
       ...bunRuntime(),
       async runSpawn(
@@ -495,6 +503,8 @@ describe('editor OpenCode runtime selection', () => {
               taskResult({
                 exitCode: -1,
                 stderr: fatalLine,
+                stderrBytes: capturedBytes,
+                stderrStoredBytes: capturedBytes,
                 failureKind: 'aborted',
               }),
             );
@@ -537,7 +547,196 @@ describe('editor OpenCode runtime selection', () => {
     expect(outcome.exitCode).toBe(1);
     expect(outcome.failureKind).toBe('exit_nonzero');
     expect(outcome.stderr).toContain('Rate limit exceeded');
+    expect(outcome.stderr).toBe(fatalLine);
+    expect(outcome.stderrBytes).toBe(capturedBytes);
+    expect(outcome.stderrStoredBytes).toBe(capturedBytes);
+    expect(outcome.stderrDiagnostics).toBeUndefined();
   });
+
+  test.each(['bounded-primary', 'short-generic', 'prior-diagnostic', 'unknown-source'])(
+    'preserves a managed primary error through Trial and canonical repair (%s)',
+    async (mode) => {
+      const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-repair-'));
+      tempRoots.push(root);
+      mkdirSync(join(root, 'bin'), { recursive: true });
+      writeFileSync(
+        join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+        '',
+      );
+      process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+      process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+      process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+      process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+      delete process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR;
+      delete process.env.TAGMA_OPENCODE_USER_DIR;
+
+      const generic = mode === 'short-generic';
+      const detected = generic ? 'OpenCode primary model stream failed.' : 'Primary failure ☃';
+      const fatalLine =
+        'level=ERROR message="stream error" small=false mode=primary' +
+        (generic ? '' : ' error.error="Primary failure ☃"') +
+        '\n';
+      const child = generic
+        ? fatalLine
+        : fatalLine + 'original diagnostic café ☃\n'.repeat(2000) + 'CHILD_LAST';
+      const prior = mode === 'prior-diagnostic' || mode === 'unknown-source';
+      const priorDisplay = prior ? '\n[driver] bounded diagnostic' : '';
+      const priorFull = prior ? '\n[driver] complete diagnostic ☃\n' + 'detail '.repeat(1000) : '';
+      const rawBytes = Buffer.byteLength(child);
+      const logs = join(root, '.tagma', 'logs', 'run-owned');
+      mkdirSync(logs, { recursive: true });
+      const stderrPath = join(logs, 'work.failed.stderr');
+      const baseResult = taskResult({
+        exitCode: -1,
+        stdout: 'business output',
+        stdoutBytes: 15,
+        stdoutStoredBytes: 15,
+        stderr: (generic ? child : 'bounded runtime tail') + priorDisplay,
+        stderrBytes: mode === 'unknown-source' ? 123 : rawBytes,
+        stderrStoredBytes: rawBytes,
+        stderrPath,
+        ...(prior
+          ? {
+              stderrDiagnostics: {
+                suffix: priorDisplay,
+                completeSuffix: priorFull,
+                sourceBytes: mode === 'unknown-source' ? undefined : rawBytes,
+              },
+            }
+          : {}),
+        sessionId: 'prior-session',
+        normalizedOutput: 'partial result',
+        failureKind: 'aborted',
+      });
+      const base = {
+        ...bunRuntime(),
+        async runSpawn(
+          _spec: SpawnSpec,
+          _driver: DriverPlugin | null,
+          options: RunOptions = {},
+        ): Promise<TaskResult> {
+          writeFileSync(stderrPath, child);
+          const split = fatalLine.indexOf('small=false') + 5;
+          options.onOutputChunk?.('stderr', fatalLine.slice(0, split));
+          options.onOutputChunk?.('stderr', fatalLine.slice(split));
+          expect(options.signal?.aborted).toBe(true);
+          return baseResult;
+        },
+      };
+      const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], join(root, '.tagma'), {
+        mode: 'broker',
+      });
+      const result = await runtime.runSpawn(
+        { args: ['opencode', 'run', '--', 'Say hello'], cwd: root },
+        { name: 'opencode' } as DriverPlugin,
+      );
+      const trial = trialTaskResults(
+        {
+          states: new Map([
+            [
+              'work.failed',
+              { status: 'failed', config: { prompt: 'Say hello' }, trackConfig: {}, result },
+            ],
+          ]),
+          logPath: join(logs, 'pipeline.log'),
+        } as never,
+        { name: 'Capture', tracks: [] },
+        'positive',
+        1,
+        root,
+        new Map([['work.failed', { stderrPath }]]),
+      );
+      const expected = child + priorFull + '\n[editor] OpenCode primary model error: ' + detected;
+      const repaired = trial.repairErrorTasks[0];
+      expect(repaired.stderr).toBe(expected);
+      expect(repaired.modelEvidenceReadErrors).toBeUndefined();
+      expect(repaired.stderrTruncation.source).toBe('not-truncated');
+      expect(repaired.stdout).toBe('business output');
+      expect(trial.tasks[0].stderr).toBe(result.stderr);
+      expect(result.stderrBytes).toBe(baseResult.stderrBytes);
+      expect(result.stderrStoredBytes).toBe(rawBytes);
+      expect(result.stderrPath).toBe(stderrPath);
+      expect(result.stdoutBytes).toBe(baseResult.stdoutBytes);
+      expect(result.stdoutStoredBytes).toBe(baseResult.stdoutStoredBytes);
+      expect(result.stderrDiagnostics?.sourceBytes).toBe(
+        mode === 'unknown-source' ? undefined : rawBytes,
+      );
+      expect(result).toMatchObject({
+        exitCode: 1,
+        failureKind: 'exit_nonzero',
+        sessionId: null,
+        normalizedOutput: null,
+      });
+
+      const evidence = buildChatRepairErrorEvidence('trial-1', {
+        kind: 'failed',
+        ran: true,
+        cases: [{ id: 'positive', success: false, expectations: [] }],
+        ...trial,
+      } as unknown as ChatPipelineTrialRunResult);
+      const prompt = buildManagedChatOperationV2ExecutionPrompt({
+        invocationId: 'repair-1',
+        sessionId: 'session-1',
+        executionMessageId: 'input-1',
+        purpose: 'repair',
+        intent: 'create',
+        stageDirectory: root,
+        targetRelativePath: 'capture/capture.yaml',
+        trialPlanRequest: null,
+        admission: sealChatOperationV2Admission({
+          schemaVersion: 1,
+          request: { schemaVersion: 1, text: 'Build the pipeline.', attachments: [] },
+          provider: 'test',
+          model: 'offline-fixture',
+          variant: null,
+          agentPolicyHash: '1'.repeat(64),
+          settingsHash: '2'.repeat(64),
+          capabilityHash: '3'.repeat(64),
+          featureHash: '4'.repeat(64),
+          rendererInstanceId: 'renderer-1',
+          conversationId: 'conversation-1',
+          inventoryRevision: 1,
+          inventoryDigest: '5'.repeat(64),
+          readSnapshotHash: null,
+          purpose: 'authoring',
+          admittedAt: 1,
+        }),
+        clarificationThread: null,
+        signal: new AbortController().signal,
+        requestInteractive: async () => undefined,
+        canonicalRequestBytes: new TextEncoder().encode(
+          JSON.stringify({
+            purpose: 'repair',
+            repairAttempt: 1,
+            repairEvidence: {
+              feedback: {
+                schemaVersion: 1,
+                stage: 'trial',
+                details: 'Primary stream failed.',
+                failedTaskIds: ['work.failed'],
+                omittedFailedTaskCount: 0,
+              },
+              diagnosticCodes: ['task_failed'],
+              errorEvidenceHash: evidence.hash,
+              errors: evidence.text,
+            },
+          }),
+        ),
+      });
+      const encoded = prompt.text.match(
+        /<repair-error-evidence>([\s\S]*?)<\/repair-error-evidence>/u,
+      )![1];
+      const decoded = encoded
+        .replace(/&quot;/gu, '"')
+        .replace(/&apos;/gu, "'")
+        .replace(/&lt;/gu, '<')
+        .replace(/&gt;/gu, '>')
+        .replace(/&amp;/gu, '&');
+      expect(decoded).toBe(evidence.text);
+      expect(JSON.parse(decoded).tasks[0].stderr).toBe(expected);
+      expect(readFileSync(stderrPath, 'utf8')).toBe(child);
+    },
+  );
 
   test('preserves a runtime timeout even after detecting a fatal primary stream error', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-timeout-'));
@@ -574,6 +773,56 @@ describe('editor OpenCode runtime selection', () => {
 
     expect(result.exitCode).toBe(-1);
     expect(result.failureKind).toBe('timeout');
+  });
+
+  test('preserves external cancellation after detecting a managed primary error', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-cancel-'));
+    tempRoots.push(root);
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(
+      join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+      '',
+    );
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    const controller = new AbortController();
+    const raw = taskResult({
+      exitCode: -1,
+      stderr: 'cancelled tail',
+      stderrBytes: 1000,
+      stderrStoredBytes: 1000,
+      sessionId: 'prior-session',
+      normalizedOutput: 'partial output',
+      failureKind: 'aborted',
+    });
+    const runtime = runtimeWithInjectedEnvFromBase(
+      {
+        ...bunRuntime(),
+        async runSpawn(
+          _spec: SpawnSpec,
+          _driver: DriverPlugin | null,
+          options: RunOptions = {},
+        ): Promise<TaskResult> {
+          options.onOutputChunk?.(
+            'stderr',
+            'level=ERROR message="stream error" small=false mode=primary error.error="Primary failure"\n',
+          );
+          controller.abort('user cancelled');
+          return raw;
+        },
+      },
+      {},
+      [],
+      join(root, '.tagma'),
+      { mode: 'broker' },
+    );
+    const result = await runtime.runSpawn(
+      { args: ['opencode', 'run', '--', 'Say hello'], cwd: root },
+      { name: 'opencode' } as DriverPlugin,
+      { signal: controller.signal },
+    );
+    expect(result).toEqual(raw);
+    expect(result.stderrDiagnostics).toBeUndefined();
   });
 
   test('does not terminate a managed prompt for a recoverable title-model error', async () => {

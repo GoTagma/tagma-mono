@@ -130,8 +130,10 @@ export function buildTrialPlanPathCoordinateContext(
       if (cwd === null) continue;
       const trigger = task.trigger as { type?: unknown; path?: unknown } | undefined;
       add(trigger?.path, cwd, trigger?.type === 'directory');
-      const completion = task.completion as { path?: unknown } | undefined;
+      const completion = task.completion as
+        { type?: unknown; path?: unknown; schema_path?: unknown } | undefined;
       add(completion?.path, cwd);
+      if (completion?.type === 'json_schema') add(completion.schema_path, cwd);
       for (const middleware of task.middlewares ?? track.middlewares ?? []) {
         const record = middleware as { type?: unknown; file?: unknown };
         if (record.type === 'static_context') add(record.file, cwd);

@@ -115,6 +115,21 @@ export function buildChatRepairErrorEvidence(
   trialId: string,
   trial: ChatPipelineTrialRunResult,
 ): ChatRepairErrorEvidence {
+  const nativeRejection = trial.repairPlanRejectionEvidence;
+  const redactedRejectionText = nativeRejection
+    ? redactChatRepairErrorOutput(nativeRejection.text)
+    : undefined;
+  const planRejectionEvidence =
+    nativeRejection && redactedRejectionText !== undefined
+      ? {
+          ...nativeRejection,
+          nativeHash: nativeRejection.hash,
+          nativeByteLength: nativeRejection.byteLength,
+          text: redactedRejectionText,
+          hash: createHash('sha256').update(redactedRejectionText, 'utf8').digest('hex'),
+          byteLength: Buffer.byteLength(redactedRejectionText, 'utf8'),
+        }
+      : undefined;
   const passedCases = new Set((trial.cases ?? []).filter((c) => c.success).map((c) => c.id));
   const tasks = new Map(
     (trial.tasks ?? [])
@@ -149,10 +164,21 @@ export function buildChatRepairErrorEvidence(
         plannedCaseCount: trial.plannedCaseCount,
         notRunCaseCount: trial.notRunCaseCount,
         notRunCases: trial.notRunCases,
+        // Keep Host review and native tool rejections independent of the clipped
+        // Trial display summary. The native record's text is complete, hash- and
+        // revision-bound; redaction below reseals the actual model input bytes.
+        ...(trial.planRequest || trial.repairPlanRequest
+          ? { planRequest: trial.planRequest ?? trial.repairPlanRequest }
+          : {}),
+        ...(planRejectionEvidence ? { planRejectionEvidence } : {}),
+        ...(!planRejectionEvidence && (trial.planTelemetry?.validationRejectionCount ?? 0) > 0
+          ? { nativePlanRejectionUnavailable: true }
+          : {}),
         tasks: [...tasks.values()].map((task) => ({
           ...task,
           expectedCaseOutcome: task.caseId != null && passedCases.has(task.caseId),
-          expectedTaskFailure: task.status === 'failed' && task.repairScope === null,
+          expectedTaskFailure:
+            (task.status === 'failed' || task.status === 'timeout') && task.repairScope === null,
           evidenceRole:
             task.status === 'failed' || task.status === 'timeout' ? 'failure' : 'execution-context',
           stdout: redactChatRepairErrorOutput(task.stdout),
@@ -204,12 +230,25 @@ export function isChatRepairErrorEvidence(value: unknown): value is ChatRepairEr
   }
 }
 
-/** Runtime failures are evidence for repair, including errors returned by a task's provider. */
-export function hasUnexpectedExecutedTaskFailure(trial: ChatPipelineTrialRunResult): boolean {
+/** Unexpected execution failures can enter the Host's existing bounded repair loop. */
+export function hasUnexpectedExecutedTaskFailure(
+  trial: ChatPipelineTrialRunResult,
+  repairAttempts?: number,
+): boolean {
   if (!trial.ran || trial.kind !== 'failed') return false;
   const passedCases = new Set((trial.cases ?? []).filter((c) => c.success).map((c) => c.id));
   return (trial.repairErrorTasks ?? trial.tasks ?? []).some((task) => {
-    if (task.status !== 'failed' || task.repairScope !== 'diagnostic-only') return false;
+    if (task.repairScope !== 'diagnostic-only') return false;
+    if (
+      task.status !== 'failed' &&
+      !(
+        repairAttempts === 0 &&
+        trial.repairErrorTasks !== undefined &&
+        task.status === 'timeout' &&
+        task.failureKind === 'timeout'
+      )
+    )
+      return false;
     if (task.caseId != null && passedCases.has(task.caseId)) return false;
     // The Trial runner sets repairScope=null from typed authored status expectations.
     // Do not infer expected behavior from log/expectation prose.

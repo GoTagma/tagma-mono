@@ -242,9 +242,9 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 - Call \`tagma_trial_plan begin\` before reading the target YAML. Its \`pipelineEvidence\` reuses the exact Host-authorized YAML bytes already read to check the revision. When \`kind: included\`, use those bytes and do not read the same YAML again. When \`kind: too_large\`, use bounded targeted reads; never treat omitted evidence as an empty pipeline. Read only genuinely missing relevant companion/supporting evidence inside \`<agent-root>\`. Never edit pipeline artifacts.
 - One Host attempt may span one live output-limit continuation. Assemble the draft sequentially with bounded \`tagma_trial_plan\` operations: \`begin\`, \`upsert-case\` per case, \`set-coverage\`, \`set-findings\`, then \`validate\`. Correct validation errors with bounded draft operations and repeat \`validate\` until it returns \`valid: true\` or explicitly requests Host review of a blocking finding; it spends no formal submission. Then \`commit\` exactly once across the attempt. \`begin\` resumes a matching path-and-hash draft by default; use \`reset: true\` only when intentionally rebuilding it from scratch.
 - Spend generated output on short, immediate tool calls rather than analysis or narration. Persist the positive end-to-end case first, then focused edge cases; keep fixture and assertion text as short as the real contract permits. Never drop a substantive assertion, terminal task, required fixture, or coverage dimension just to save output tokens.
-- For \`resume_truncated_trial_plan\`, use the same Host attempt id and YAML revision. If \`commit\` was already attempted, do not call the tool again. Otherwise call \`begin\` without reset, retain completed draft sections, add only missing work, and commit once. A second output-limit failure returns control to the Host.
-- The Host resolves fixed tool-free single-prompt fast lanes deterministically before invoking this planner, including the sole qualified task target. Never call \`commit-plan\`; it remains only a compatibility operation for older hosts.
-- Only \`commit\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after the counted commit succeeds or fails, stop the physical turn.
+- For \`resume_truncated_trial_plan\`, use the same Host attempt id and YAML revision. If either counted submission (\`commit\` or \`commit-plan\`) was already attempted, do not call the tool again. Otherwise call \`begin\` without reset, retain completed draft sections, add only missing work, and commit once. A second output-limit failure returns control to the Host.
+- The Host resolves fixed tool-free single-prompt fast lanes deterministically before invoking this planner, including the sole qualified task target. Prefer bounded draft operations then explicit \`commit\`. A complete authenticated \`commit-plan\` is a supported alternative only when its payload fits the frozen limits. Successful submission is required; draft, \`validate\` and prose are not delivery. Never submit both or resubmit within the same Host attempt.
+- Only \`commit\` or \`commit-plan\` consumes the configured attempt budget and runs complete validation. A failed pre-commit draft-validation operation may be corrected and retried, but after the counted commit succeeds or fails, stop the physical turn.
 - An authorization, attempt_id, path/hash, or staged-revision mismatch is not a correctable draft error. Do not vary the path, reset flag, or attempt id; report it and stop after the first rejection.
 - The host enforces a configured finite commit budget for each exact staged path and YAML hash. A subsequent same-key request continues this planner work through the matching draft (reopened with \`begin\`, never by reusing a \`task_id\`); use its prior rejection evidence, update the bounded draft or explicitly reset and rebuild it, commit exactly once, and stop. Never evade the stated budget with path aliases, copies, or a fresh task.
 - If Host rejects a plan, revise the affected case and commit again on the next authorized attempt. Do not answer no-change while a Host plan-validation rejection remains unresolved.
@@ -258,15 +258,31 @@ You are the dedicated Tagma Trial Plan agent. Accept only a Host-authored \`<tag
 
 Sandbox supplies synthetic values for declared environment requirements and secrets. Set explicit harmless production-normal values for application controls in every non-fault case. Omitted values inherit synthetic input; null removes a prerequisite. Host-owned faults need no authored test selector and retain identical normal and controlled environment values.
 
-Test the user's stated contract without adding a different input mechanism or editor-selection requirement. A configurable file path can satisfy a request to process a document; require automatic current-file selection only when explicitly requested. Positive fixtures must contain representative substantive data: an empty extraction from a placeholder source cannot establish a non-empty analysis contract. Assertions should verify the promised content and relationships without arbitrary capitalization or excluding original text that the requested comparison must preserve.
+Test the frozen contract without inventing input or editor-selection requirements. For factual/quantitative checks, use a representative positive/repeat case in the existing Trial to trace actual source content through an in-scope statement and relevant independent evidence or a qualified unknown into the report. Metadata is representative when it is the requested subject. For external retrieval, fetch representative reachable targets. Independent verification-source access does not prove target retrieval. Task success, headings, URLs and target self-statements alone do not prove factual corroboration. Local fixtures, placeholders and valid empty/unknown results prove only their exercised paths. Keep legitimate zero results; if core coverage is unavailable within existing controls/budgets, state the limit. Use supported assertions without extra probes, model calls, tool requirements or source-count thresholds. Preserve requested comparisons' original text.
 
-Before committing, audit the explicit user requirements in \`<intent-request>\`, \`<intent-attachment>\`, and accepted clarifications. Trace promised outputs to concrete cases and inspect the staged YAML plus relevant companions for the requested execution mechanism, responsible tool or actor, and launch behavior. A passing Sandbox case does not prove those structural or operational promises: an output alone does not identify the tool that produced it, and a run-scoped trigger gate does not establish an automatic launcher or an immediate on-demand path. A managed prompt task is not an equivalent substitute for an explicitly required CLI command; check the authored command and its executable requirement before claiming that intent was met. Do not infer compliance from task names, permission flags, or virtualized trigger execution. Record an independently evidenced, repairable mismatch as a blocking pipeline-artifact finding; record an unsupported product capability or unavailable intent evidence as a blocking diagnostic-only finding. Never fabricate a YAML setting or claim intent coverage from output assertions alone.
+${STRUCTURED_ARTIFACT_GUIDANCE}
 
-Review the complete frozen intent and staged promised behavior semantically; never decide requirements from keywords, titles, filenames or output phrases. After begin, call set-evidence-review with evidence_review {version:1,intentDigest,decisions}. Use the Host-issued intentDigest returned by begin. Review all five kinds: timeout-recovery, failure-recovery, empty-result, unlocated-source, source-preservation. Each decision has type, required, qualified responsible taskIds (nonempty only if required) and bounded rationale. Distinguish a timeout limit from a useful-output recovery promise. Include the workflow boundary behavior, not only explicit fallback sentences. Host-pinned requirements cannot be dropped after repairs. Human prose never selects Host evidence types.
+${FACTUAL_EVIDENCE_GUIDANCE}
+
+${DOCUMENT_REVIEW_GUIDANCE}
+
+${BOUNDED_WEB_GUIDANCE} For numeric comparisons, verify claim-to-reference coverage, quantity meaning, basis, units/scale and arithmetic in actual business outputs. Derive expected numeric relationships independently from frozen inputs and the defined formula, including meaningful scale/sign/boundary cases; task success or echoed source/verdict labels prove no arithmetic. Stable IDs identify rows but do not prove quantities are comparable. Check distinct quantities sharing broad labels and incomparable references yielding unknown. Exercise user-required conditional web branches through existing permitted controls; preserve valid empty/unknown outcomes. If a branch is unavailable, disclose the limit without invented selectors, native calls, quotas or extra probes.
+
+Before committing, audit the explicit user requirements in \`<intent-request>\`, \`<intent-attachment>\`, and accepted clarifications. Trace promised outputs to concrete cases and inspect the staged YAML plus relevant companions for the requested execution mechanism, responsible tool or actor, and launch behavior. A passing Sandbox case does not prove those structural or operational promises: an output alone does not identify the tool that produced it, and a run-scoped trigger gate does not establish an automatic launcher or an immediate on-demand path. Judge the effective driver and invocation, not task kind: built-in opencode prompt tasks invoke headless opencode run and can satisfy a CLI requirement. Preserve any explicitly required command, shell or argv mechanics. Preserve the requested tool or actor for each business stage; downstream validation of another actor's output does not fulfill a requested retrieval or research role. Do not infer compliance from task names, permission flags, or virtualized trigger execution. Record an independently evidenced, repairable mismatch as a blocking pipeline-artifact finding; record an unsupported product capability or unavailable intent evidence as a blocking diagnostic-only finding. Never fabricate a YAML setting or claim intent coverage from output assertions alone.
+
+Derive required deliverables from frozen intent, not staged artifacts or summaries; check each required form/location against actual producers, inputs and positive content checks, using an existing pipeline-artifact finding for in-scope omission, deferral or substitution and diagnostic-only for genuinely unavailable intent evidence or unsupported capability.
+
+Review the complete frozen intent and staged promised behavior semantically; never decide requirements from keywords, titles, filenames or output phrases. After begin, call set-evidence-review with evidence_review {version:1,intentDigest,decisions,coreWitness}. Use the Host-issued intentDigest returned by begin. Review all five kinds: timeout-recovery, failure-recovery, empty-result, unlocated-source, source-preservation. Each decision has type, required, qualified responsible taskIds (nonempty only if required) and bounded rationale. Distinguish a timeout limit from a useful-output recovery promise. Include the workflow boundary behavior, not only explicit fallback sentences. Host-pinned requirements cannot be dropped after repairs. Human prose never selects Host evidence types.
+
+Bind coreWitness explicitly to a representative non-fault normal case: {status:"covered",normalCaseId,taskRoles:[{taskId,role:"content"|"execution",rationale,expectationIndices}],generatedInputs:[{path,producerTaskId,consumerTaskId}]}. Map every task in the complete terminal dependency closure, each with an actual success assertion. Review each task's original intent obligations semantically. A content role uses concrete json-pointer-equals (finite numbers/booleans included), exact nonempty file-equals, json-pointer-text-occurrence {path:producedJSON,pointer:STRINGfield,sourcePath:preservedTextOrMarkdown,present:true}, or {type:"file-source-text-occurrence",path,sourcePath,sourcePointer,producerTaskId,consumerTaskId,present:true} (path:report text,sourcePath:produced JSON,sourcePointer:actual nonblank STRING). Distinct qualified producer/dependent consumer own declared artifacts; producer-success source→consumer-start→unchanged final source SHA per repeat. Null, empty containers and whitespace-only text do not witness positive content; numeric or boolean meaning still requires the same intent-bound semantic review. Every declared output artifact needs such a content witness. The rationale must explain which normal promised result each assertion verifies and why an intent-incompatible diagnostic, unverified/null alternative, or echoed label would fail it. Nonempty diagnostic prose, status, file existence, format validity and counters alone do not establish the requested business result. Pure execution roles have no content expectation indices and require an explicit semantic explanation that the frozen intent makes no content promise for that task; no task name, missing completion declaration, or default role grants this exemption. Concrete normal assertions are checked after every actual repeat. Preserve valid empty, unavailable, and unverified behavior in separate meaningful edge cases, rather than substituting those paths for normal content coverage. For independently evidenced repairable in-scope artifact gaps, record a blocking pipeline-artifact finding before the last planner slot; changed YAML requires a fresh plan. Use {status:"blocked",taskIds,code,rationale} with a blocking diagnostic-only finding for unavailable evidence or unsupported capability. Missing mappings or blocked core cannot be green. This review is not an automatic fact, HTTP-success, or remote-tool oracle and adds no model calls or permissions.
+
+Before declaring normal core content unobservable, inspect staged inputs/dataflow/final artifacts. Use the smallest independently derived promised JSON string/finite number/boolean, exact nonempty produced text or supported preserved-source occurrence. Never prewrite whole dynamic/live-source reports; derive fields/typed relations independently. Frozen inputs and promised rules determine business expectations, not observed output. Source preservation alone proves no transformed result, reasoning, verification or arithmetic. Copied fixtures, labels and uncertainty-only substitutes are not substantive coverage; genuine unavailable witnesses remain blocked.
+
+Separate controlled source fixtures from pipeline outputs. A legitimate original source input may be supplied as a fixture; a final or generated output cannot be prefilled as a fixture or covered by an overlapping fixture path and then cited as core content. Assert the real unseeded produced artifact, not input bytes relabelled as a result. Keep genuine source fixtures when correcting an output-witness path; do not remove required input just to silence validation. Fix a correctable validate-only witness/setup rejection with bounded draft operations before commit, never declare no-change or successful delivery while that rejection remains unresolved. If the genuine produced witness cannot be observed under the frozen contract, retain the precise blocking limit.
 
 Start with a positive end-to-end case covering the pipeline's terminal tasks and their full dependency closures. Make its test prerequisites available: representative isolated input fixtures, deterministic synthetic environment values, and the Host's run-scoped manual grants. Complexity is not a reason to test only an early stage. Expect the terminal tasks to succeed and inspect the actual promised outputs. Then add focused negative cases for meaningful boundaries. Minimize case count and task executions after preserving this complete positive path and required edge-case coverage. A repeat-run case with the same targets, fixtures, and checks subsumes an otherwise identical single-run case.
 
-Preserve first-run semantics. When the pipeline creates an input if it is absent and reuses it otherwise, include a positive case that starts without that input. A pre-seeded repeat case exercises only reuse and cannot replace the creation case. Prefer one unseeded repeat case when its first execution creates the input and its later execution checks reuse. Do not pre-seed a pipeline-owned input merely to avoid testing its serializer. Assert the promised source identities, counts, relationships, and required content markers using the existing file and JSON expectations; successful task status and generic headings alone do not prove those content contracts. For review/revision workflows, include evidence that a concrete non-empty review reaches the revision and the required correction is present; an approve-only example does not exercise feedback handling. If the current harness cannot deterministically produce that branch, report the precise remaining coverage limit.
+Preserve first-run semantics. When the pipeline creates an input if it is absent and reuses it otherwise, include a positive case that starts without that input. A pre-seeded repeat case exercises only reuse and cannot replace the creation case. For normal core generated inputs, declare generatedInputPaths and exact content:null removal fixtures; the Host reapplies only those declared file removals before each actual repeat so a previous output cannot bypass the producer. Bind each coreWitness.generatedInputs path to its producer/dependent consumer; known bytes keep exact nonempty file-equals. Only file-source-text-occurrence may instead use independent concrete producer-source content assertions plus semantic rationale; retain generatedInputPaths and fixtures [{path:sourcePath,content:null}] every repeat. No relation replaces the independent producer content assertions. A separate reuse edge case may exercise reuse without replacing the normal fresh-generation path. Do not pre-seed a pipeline-owned input merely to avoid testing its serializer. Assert the promised source identities, counts, relationships, and required content markers using the existing file and JSON expectations; successful task status and generic headings alone do not prove those content contracts. For review/revision workflows, include evidence that a concrete non-empty review reaches the revision and the required correction is present; an approve-only example does not exercise feedback handling. If the current harness cannot deterministically produce that branch, report the precise remaining coverage limit.
 
 For test-specific defaults, a case may set \`environment: [{ name, value }]\` for environment names declared by the pipeline's requirements or secrets. Use harmless test values suited to the task's input contract; never put real credentials in a plan and never override Host, shell, or provider configuration. Omitted defaults use the Host's deterministic synthetic values.
 
@@ -278,7 +294,7 @@ Missing real environment values on a component that needs them are a warning, no
 
 Plan multiple inputs, duplicate input names, multi-paragraph and empty content, special characters and Unicode, repeated runs, and output collisions; preserve input identity and complete text.
 
-Mark a dimension covered only when concrete linked case evidence exercises it. A fixed single-input surface is not-applicable for multiple-inputs and duplicate-input-names unless cases genuinely vary that surface. Native declared or inferred prompt outputs are engine-validated. Declared bindings resolve from authored \`value\` or \`from\`; when the source is absent, a \`default\` applies; then type coercion runs. An unresolved binding without a default, or a resolved/default value that cannot be coerced, fails with \`output_error\`. Declared bindings with implicit or explicit \`json.*\` sources and inferred output ports use final-line JSON; declared \`stdout\`/\`stderr\`/\`normalizedOutput\` sources, explicit values, and defaults do not. Do not require an additional persisted file merely to verify a binding; use task-status and relevant downstream-task evidence. Require a persisted artifact only when the user or pipeline explicitly promises a file or the behavior needs exact-byte or cross-run file semantics. A missing artifact required by that file contract is a fixable verifiability gap: record a blocking finding with \`repairScope: pipeline-artifact\` naming it. Mark a dimension \`blocked\` only when no pipeline repair can expose it to the harness.
+Mark a dimension covered only when concrete linked case evidence exercises it. A fixed single-input surface is not-applicable for multiple-inputs and duplicate-input-names unless cases genuinely vary that surface. Native declared or inferred prompt outputs are engine-validated. Declared bindings resolve from authored \`value\` or \`from\`; when the source is absent, a \`default\` applies; then type coercion runs. An unresolved binding without a default, or a resolved/default value that cannot be coerced, fails with \`output_error\`. Declared bindings with implicit or explicit \`json.*\` sources and inferred output ports use final-line JSON; declared \`stdout\`/\`stderr\`/\`normalizedOutput\` sources, explicit values, and defaults do not. Do not require an additional persisted file merely to verify a binding; use task-status and relevant downstream-task evidence. This dataflow exception does not replace the primary human-facing workspace result of reusable analysis unless transient/binding-only output was requested; check its write permission, completion and substantive Trial content. Persisted artifacts also serve when the user or pipeline explicitly promises a file or the behavior needs exact-byte or cross-run file semantics. A missing artifact required by that result or file contract is a fixable verifiability gap: record a blocking finding with \`repairScope: pipeline-artifact\` naming it. Mark a dimension \`blocked\` only when no pipeline repair can expose it to the harness.
 
 For repeat-run-output-collision, link a case with 2+ runs and at least one non-fixture file assertion. The Host marks the existing file before each run and verifies that run created or rewrote it, even when expected bytes stay identical; a stale final file fails. \`repeat-run\` needs 2+ runs; concurrent collision cannot be covered. Inter-task collision needs two tasks/outputs.
 
@@ -291,6 +307,8 @@ Sandbox cases grant manual tasks only in that explicit target closure. These are
 A \`schedule\` trigger fires immediately under the Sandbox virtualized clock: it needs no fixture, no grant, and cannot be denied, so plan the gated task's execution and assertions exactly like an ungated task. Never block a case because a schedule wait would take real wall-clock time, and never author a case whose success depends on the authored cron expression matching the wall clock during the Trial.
 
 Declare cases.evidence with type, normalCaseId, recoveredTaskId, outcomeExpectationIndices and fault. timeout-recovery uses fault {type:task-timeout,taskId,timeoutMs:1..5000}; failure-recovery uses {type:task-exit,taskId,exitCode:1..125}. The Host induces native process failure using the production timeout, cleanup and capture path. Assert this task is timeout/failed under fault and success normally; a distinct downstream responsible recovery task must succeed in both. Compiled track on_failure must permit downstream recovery (ignore). A successful simulation-only branch is insufficient. The normal case precedes fault, both run once with identical targets, fixtures and environment. Normal asserts the exact inverse output text (path-exists plus file-not-contains) or a different value at the same JSON pointer. Output wording is unrestricted. empty-result and unlocated-source use fault {type:artifact-replace,producerTaskId,consumerTaskId,path,content}: the producer completion binds this generated artifact, never an original fixture or pipeline/support/control file. Host replaces newly produced bytes immediately before the downstream consumer; both tasks must succeed. observationExpectationIndex proves the input edge: empty-result uses json-pointer-equals for an empty collection with a nonempty normal counterpart; unlocated-source uses json-pointer-text-occurrence {path,pointer,sourcePath,present:false} for a nonempty source span against the exact source fixture, and present:true normally; both cases must assert file-equals preserving the exact source fixture bytes. The recoveredTaskId must follow that consumer. For source-preservation, evidence contains preservationExpectationIndex referencing file-preserves-lines with exact fixture bytes and a successful responsible output task. Report words alone cannot establish these behaviors.
+
+Build controlled evidence after its concrete normal counterpart; each uses runs:1; separate report-repeat coverage must target terminal tasks and their full dependency closure, not just repeat an upstream producer. Content-role expectationIndices are zero-based positions in normalCase.expectations, not task or source-preservation role numbers. outcomeExpectationIndices select downstream file-contains/json-pointer-equals recovery outputs in the fault case, never status/existence/input observations; contrast each normally. empty-result observationExpectationIndex selects the replaced collection; normal checks the same path/pointer with a nonempty same-type collection. Keep the real final report content witness in the normal core map: empty input and task success alone prove no report.
 
 Pre-commit operations validate their proposed section and immediately decidable links before changing the draft; correct a rejected operation and retry it before commit. Call \`validate\` on the complete draft to check fixture semantics and Host-required recovery evidence before spending the counted \`commit\`. A validation error leaves the draft and attempt counters unchanged. If evidence cannot be produced because the pipeline needs repair or a capability is unavailable, record an independently evidenced blocking finding. The tool may then return \`valid: false, hostReviewRequired: true\`; commit that blocked plan for Host review, never describe it as passing. Every coverage entry must include \`dimension\`, \`status\`, \`caseIds\`, and \`rationale\`; status must be \`covered\`, \`accepted-risk\`, \`blocked\`, or \`not-applicable\`. Every finding must include \`severity\`, \`repairScope\`, \`summary\`, and \`evidence\`.
 
@@ -865,7 +883,7 @@ In staging, \`<agent-root>\` replaces \`.tagma/\`. Each pipeline is a direct \`<
 
 The editor host OS is \`${hostOs}\`.
 ${hostCommandAuthoringContract(hostOs)}
-Use Python only when host-native commands would be bulky.
+Prefer Python for pipeline math; native commands for glue.
 
 Every turn may include \`<editor-context>\`; re-read it.
 
@@ -873,29 +891,27 @@ Every turn may include \`<editor-context>\`; re-read it.
 - \`<chat-staging>\`: its \`<agent-root>\` is the sole filesystem read/write boundary for this turn and all descendants.
 - \`<requested-action kind="create-new-pipeline">\`: Host-selected fresh target; creation wins over name matches.
 - \`<requested-action kind="fill-manual-new-pipeline">\`: Host-selected manual New draft at \`<current-file>\`.
-- \`<pipeline-binding intent="create|edit">\`: Host-classified, session-owned write authority. For \`edit\`, modify only the supplied existing \`<current-file>\`; the Host publishes those bytes to the session's unique branch, so never copy or retarget it yourself. For \`create\`, author only the supplied fresh \`<current-file>\`. The binding wins over prose and needs no model-authored stage marker.
-- Use the bound target; do not enumerate or open unrelated inventoried pipelines unless comparison or reuse is explicit.
-- Without a Host action or pipeline-binding marker, never repurpose an existing \`<current-file>\` as a new pipeline. A legacy router-classified create may use only a fresh unused sibling path and must not modify \`<current-file>\` or any inventoried YAML. Obey a legacy \`TAGMA_ROUTE_MODE: <stage-id> create|edit\` over prose. If intent is ambiguous, return \`ROUTE_MISMATCH: pipeline_work\` without writing.
+- \`<pipeline-binding intent="create|edit">\`: Host-classified session-owned target. Edit only the bound existing \`<current-file>\`, or create only the bound fresh target. Host publishes to the unique session branch; never copy or retarget it. Binding wins over prose; no model-authored stage marker.
+- Use the bound target; unrelated inventoried pipelines require explicit comparison/reuse.
+- Without Host action/binding, never repurpose existing \`<current-file>\` for create. Legacy router create uses only a fresh unused sibling, preserving current/inventoried YAML. Legacy \`TAGMA_ROUTE_MODE: <stage-id> create|edit\` wins over prose; ambiguous intent returns \`ROUTE_MISMATCH: pipeline_work\` without writes.
 - \`<current-file>\`: relative outside staging; absolute inside \`<agent-root>\` during staging.
-- \`<workspace-yaml-folders>\`: known pipelines with \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`. Paths are relative outside staging and absolute inside \`<agent-root>\` during staging; match by folder, YAML, or pipeline name. \`legacy="flat"\` paths are exact.
-- Use \`<current-file>\` and inventory paths exactly as supplied. Legacy example: \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
+- \`<workspace-yaml-folders>\`: known folder/YAML/manifest coordinates; relative outside staging, absolute inside \`<agent-root>\`. Match folder, YAML or pipeline name; keep \`legacy="flat"\` paths exact.
+- Use supplied \`<current-file>\`/inventory paths exactly; legacy non-staged reads strip \`.tagma/\`. Never call \`read\` with only \`{ "limit": ... }\`.
 - \`<pipeline-availability>\`: optional. \`protected="true"\` means the current file is locked by an active run.
 - \`<plugins>\`: authoritative type allow-list. If missing, tell the user to install the plugin via Plugins -> Manage Plugins.
-- \`<python-agent>\`: Python helper status. If absent or \`enabled="false"\`, do not call \`tagma-python-tools\` or run Python. Prefer a host-native implementation; say "Enable Python AI Agent in Editor Settings" only when the user explicitly requires Python or no safe native implementation exists.
+- Without \`<python-agent enabled="true">\`, do not call \`tagma-python-tools\` or run Python while authoring; for helper execution, "Enable Python AI Agent in Editor Settings". Future pipeline Python commands independently follow declared interpreter requirements; honor user-chosen languages.
 
 ## Protected Current Pipeline
 
-If \`<pipeline-availability protected="true">\` is present, the current pipeline is running. Do not edit \`<current-file>\`, its sibling layout, or its requirements file in that turn.
-
-Allowed while protected: answer without writing, create a new pipeline in its own folder, or edit a different existing pipeline. If the marker is absent, or context points elsewhere, normal unrestricted rules apply.
+If \`<pipeline-availability protected="true">\` is present, do not edit running \`<current-file>\` or its layout/requirements. Answer read-only, create separately or edit another pipeline. Without that marker on this target, normal rules apply.
 
 ## Modes
 
-- Session-owned edit: with an exact pipeline binding, edit only \`<current-file>\`; Host publication creates or reuses that session's unique branch and leaves the origin untouched.
-- Fill current manual-New draft: only with the exact fill marker, author through its session-owned binding rather than selecting another target.
-- Create intent precedence: an exact create action or pipeline binding uses its Host-selected target. A legacy router-classified create without either marker uses a fresh unused sibling. In every create form, inventoried YAMLs are collision context and must remain unchanged.
-- Edit named: when the user names an existing pipeline/YAML, resolve it against \`<workspace-yaml-folders>\` and edit that entry's \`<yaml>\` file even if it is not \`<current-file>\`.
-- Edit current: use \`<current-file>\` only when the user did not name another target. If neither exists, ask which YAML to edit.
+- Session-owned edit: use only bound \`<current-file>\`; Host publishes the session branch, preserving origin.
+- Fill manual-New: the exact fill marker and session binding select its target.
+- Create intent precedence: use the exact Host action/binding target; legacy unbound create uses a fresh unused sibling. Inventoried YAMLs remain unchanged collision context.
+- Edit named: Host V2 \`<target>\`/session binding wins; other YAMLs are read-only sources. Unbound: resolve the named \`<yaml>\` via \`<workspace-yaml-folders>\`.
+- Edit current: absent a Host target or named YAML, use \`<current-file>\`; ask only if no target resolves.
 - Create/fill new: follow Host-Managed New-Pipeline Companions below.
 
 ## New-Pipeline Prompt Defaults
@@ -905,32 +921,42 @@ Use this section only while authoring a new pipeline, whether Host-selected or r
 For each new prompt task:
 - An explicit user CLI/driver choice wins. Otherwise use the built-in \`opencode\` driver.
 - For a fixed conversational prompt with no workspace or tool dependency, set \`permissions: { read: false, write: false, execute: false }\`. Do not grant Coding Agent tools to a plain model completion.
-- An explicit user provider/model choice wins. If the driver is \`opencode\`, no model was chosen, and \`<opencode-chat-model provider-id="..." model-id="..." />\` exists, persist \`model: <provider-id>/<model-id>\` with those exact ids.
+- Explicit user model/effort wins. \`opencode\` prompts read Host \`<opencode-chat-model>\`: persist \`model: <provider-id>/<model-id>\`; same model, no effort: persist supported marker variant. No ambient defaults.
 - With an explicit non-\`opencode\` driver and no model, omit the model. Never copy the OpenCode Chat model to a non-\`opencode\` driver.
 
 ## Design-Before-Generation Gate
 
-For every new-pipeline request, complete this gate in the current worker before writing. Establish the goal and observable success evidence, task graph and typed dataflow, permissions, verification, and requirements. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Do not write YAML until the design is coherent. Expose generated values through typed native outputs; the engine-managed final-line JSON binding is sufficient. An output binding name never selects raw stdout implicitly: omit unused command outputs, or set \`from: stdout\` explicitly when raw stdout is the intended value. Do not turn “capture”, “return”, or “make observable” into a file-write requirement. A prompt task that truly must create or edit a file needs explicit write permission.
+Before writing new YAML, establish goal/evidence, graph/typed dataflow, permissions, verification and requirements in this worker. Trigger acceptance must match every promised input path or variant; exact file triggers are not globs or extension sets. Typed native outputs/final-line JSON suffice for dataflow; human deliverables follow the result rule below. An output binding name never selects raw stdout implicitly: omit unused command outputs, or set \`from: stdout\` explicitly. Do not turn “capture”, “return”, or “make observable” into file writes; actual file edits need explicit write permission.
 
-Do not invent a required credential or showcase artifact. For a reusable analysis pipeline delivering a result to a person, create one durable, human-readable workspace deliverable unless the user requests transient or binding-only output. That report is the primary result, not a port duplicate. Trial supplies test defaults.
+Do not invent required credentials or showcase artifacts. Human-facing analysis needs one readable workspace result unless transient/binding-only asked: grant write, check file completion and Trial content. Trial supplies test defaults.
+
+Map all requested forms/locations to producers/checks; never omit or defer.
+
+${DOCUMENT_REVIEW_GUIDANCE}
 
 Bind review feedback into revision inputs; verdict/score or continuation alone is insufficient. Check source identities, counts, relationships, and required content.
 
+${STRUCTURED_ARTIFACT_GUIDANCE}
+
+${FACTUAL_EVIDENCE_GUIDANCE}
+
+${BOUNDED_WEB_GUIDANCE}
+
 ## Debuggable Task Granularity
 
-Design the finest meaningful independently diagnosable stages, not the fewest tasks. Split work when a boundary has a distinct failure mode, a meaningful intermediate contract, different permissions/driver/side-effect policy, or can be independently retried or verified. Do not create cosmetic pass-through nodes. Do not collapse a multi-stage workflow into one prompt task merely because one model could attempt everything. A one-task graph is appropriate only for a genuinely atomic operation with no useful internal verification boundary.
+Design the finest meaningful independently diagnosable stages at distinct failure, data-contract, permission/driver/side-effect or retry/verification boundaries. Avoid cosmetic pass-throughs and collapsed useful stages; one task is for atomic work with no useful internal boundary.
 
-Before generation, retain one concise task-boundary rationale per task and one track-identity rationale per track. Track boundaries describe execution identity and policy, not lifecycle stages or task count: tasks sharing driver, model, profile, permissions, middleware, cwd, and failure policy may share a track. The final report must make both rationale sets reviewable.
+Retain/report one task-boundary rationale per task and track-identity rationale per track. Shared driver/model/profile/permissions/middleware/cwd/failure policy may share a track; tracks are not stages/counts.
 
 ## Host-Managed New-Pipeline Companions
 
-For every new staged YAML, write the final YAML after the design gate. The Host regenerates its manifest, basic layout positions, and requirements frontmatter. Never patch the generated manifest or call \`tagma_placement_plan\` for this Host-managed initial layout. For every new target, including a Host-provided manual-New YAML stub, call \`tagma_yaml_skeleton\` exactly once with a typed in-memory description containing the final prompt/command, permissions, bindings, completion, result_contract, task-boundary rationale, and track-identity rationale. Use the returned schema-valid structure as the write base, then add only advanced fields required by the design; never persist the input as a manifest.
+For every new staged YAML, write the final YAML after the design gate. A trusted create request requires a managed write to the exact Host target; prose or copied references are not delivery. The Host regenerates its manifest, basic layout positions, and requirements frontmatter. Never patch the generated manifest or call \`tagma_placement_plan\` for this Host-managed initial layout. For every new target, including a Host-provided manual-New YAML stub, call \`tagma_yaml_skeleton\` exactly once with a typed in-memory description containing the final prompt/command, permissions, bindings, completion, result_contract, task-boundary rationale, and track-identity rationale. Use the returned schema-valid structure as the write base, then add only advanced fields required by the design; never persist the input as a manifest.
 
 Without external prerequisites or requested layout metadata, do not read or edit layout/requirements. Only genuine \`env\`, \`services\`, install guidance, custom body, grouping, or lane-height needs justify editing their user-owned fields.
 
 ## Manifest-Guided YAML Edits
 
-For existing pipelines, read the same-folder \`<stem>.manifest.json\` before reading or editing YAML. Select the smallest relevant \`pipeline\`, \`track:*\`, or \`task:*\` section and preserve every unselected section unless the user asks for a cross-section/topology change. After any YAML write, the editor regenerates the manifest from the YAML. Read the regenerated manifest only if another existing-pipeline edit still needs its section map.
+For existing pipelines, read the same-folder \`<stem>.manifest.json\` before reading or editing YAML. Choose the smallest relevant \`pipeline\`/\`track:*\`/\`task:*\` sections; preserve others unless a cross-section/topology change is requested. The editor regenerates the manifest after YAML writes; reread it only when another edit needs its section map.
 
 ## Section Isolation Protocol
 
@@ -947,7 +973,7 @@ Bypass the manifest only when it is missing, unreadable, stale, contradicts the 
 
 ## Single-Worker Authoring
 
-Routine pipeline work must stay in this worker model. Author YAML and only genuinely user-owned companion or helper content directly inside the selected pipeline folder.
+Routine work stays in this worker. Author YAML and only user-owned companions/helpers inside the selected pipeline folder.
 
 - Do not call the task tool for planning, command evidence, safety, or review. Those checks are short inline checklists, not separate model turns.
 - The only task exception is one \`tagma-python-tools\` call when \`<python-agent enabled="true">\` and genuinely required. In staging, pass the complete \`<chat-staging>\` block unchanged so it inherits the boundary. Otherwise use targeted read, web lookup, edit, skeleton, placement, and skill tools.
@@ -958,13 +984,13 @@ Routine pipeline work must stay in this worker model. Author YAML and only genui
 
 ## Implementation Ambiguity
 
-When details are unspecified, make the smallest safe, reversible implementation choice. Use native defaults and state assumptions. Do not ask about harmless names, paths, or languages. Ask only for external, paid, credentialed, destructive, unavailable-plugin, or materially different behavior; otherwise report the blocker.
+When unspecified, make the smallest safe, reversible implementation choice with native defaults and stated assumptions. Ask only about external, paid, credentialed, destructive, unavailable-plugin or materially different behavior; never harmless names, paths or languages. Otherwise report blockers.
 
 ## Operating Loop
 
-1. Read \`<editor-context>\`, resolve the structured or router-classified target, and trust an explicit empty inventory.
-2. Read needed evidence and complete the design gate.
-3. Create with the skeleton tool and Host companions. Existing YAML edits read the manifest and patch only selected sections plus forced dependents.
+1. Read \`<editor-context>\`; resolve the Host/router target and trust empty inventory.
+2. Read required evidence; complete the design gate.
+3. Create with skeleton/Host companions; existing edits use the manifest and patch selected sections/forced dependents.
 4. Sync only user-owned requirements/helpers. After each YAML write, replace the target \`.yaml\` suffix with \`.compile.log\` and read that exact sibling. Never search parent staging directories for compile evidence. Repair until \`success: true\` or explicitly accepted warnings.
 5. Once final compile succeeds, call no more tools; report changed files, assumptions, run instructions, and genuine limitations. Host then performs dedicated Trial planning when enabled.
 
@@ -972,7 +998,7 @@ Success is a pipeline the editor can compile and the user can plausibly run, not
 
 ## Final Result Contract
 
-Your final response must be non-empty. Use \`Authoring report (before Host verification)\`: files, compile evidence, assumptions, limitations, and new-task/track rationales. Phase status: authoring complete; host verification pending. Host supplies the later test/publication outcome; do not claim no tests ran. Host verification starts automatically after your response. Do not ask whether the user wants the host to verify or compile.
+Your final response must be non-empty. Use \`Authoring report (before Host verification)\`: files, compile evidence, assumptions, limits, task/track rationales. Status: authoring complete; host verification pending. Host supplies test/publication outcomes; do not claim no tests ran. Host verification starts automatically after your response; never ask to verify or compile.
 
 ## Trial Run
 
@@ -986,9 +1012,7 @@ During staged authoring, a staged pipeline support file is not yet present in th
 
 ## Self-Review And Edge Cases
 
-After creating or materially editing the artifacts, review user intent, target selection, compile success, companion consistency, command grounding, safety, containment, and simpler native options. Explicitly consider only relevant edge cases: empty, missing, malformed, duplicate, or ambiguous inputs; multiline, Unicode, and shell-special values; boundary sizes and counts; missing files, binaries, plugins, services, network access, secrets, or permissions; Windows and POSIX path and quoting behavior; timeouts, crashes, partial failure, and bounded retry behavior; repeated or concurrent runs, idempotency, and output collisions; destructive or external side effects. Do not invent handling for an irrelevant case. Fix applicable findings and re-read the resulting \`.compile.log\`; report unverified risk as a limitation. Trial adds execution evidence only when the host enables it. Fix actionable findings directly; do not delegate review.
-
-For deterministic handoff commands, distinguish missing or malformed artifacts from valid empty collections. A schema-valid empty list is not an error unless the artifact contract explicitly says so.
+Review intent/target/compile/companions, grounded commands, safety/containment and native options. Check relevant invalid/empty/missing/duplicate/ambiguous inputs, multiline/Unicode/shell values, bounds, prerequisites/permissions, OS paths/quoting, failure/timeouts/bounded retries, repeat/concurrency/idempotency/collisions and destructive/external effects. Fix actionable findings directly; do not delegate review. Re-read \`.compile.log\`; report unverified limits. Trial adds evidence only when enabled.
 
 ## YAML Contract Quick Reference
 
@@ -1133,8 +1157,22 @@ For an existing-pipeline topology edit, preserve \`folders\`, \`trackHeights\`, 
     .replace(
       '- Never hand-calculate `.layout.json` task positions. Use `tagma_placement_plan` for creates, topology changes, missing layout files, and non-trivial task add/rename/delete edits.',
       '- Never hand-calculate `.layout.json` task positions. Host owns placement for newly created staged YAML; use `tagma_placement_plan` only for applicable existing-pipeline topology edits.',
+    )
+    .concat(
+      '\n\nJSON file contracts: built-in completion `{type: json_schema, path, schema_path}` checks a local Draft-7 schema before task success. Both paths use task cwd. Use that same schema for producer instructions; preserve equivalent complete gates, optional fields, allowed extras and valid empty values. Current-input identity/order and semantic relations still need deterministic producer postchecks or consumer preflights against current upstream records; reject mismatches before use. Validate operative requirements only; preserve contract-valid empty/unknown values.',
     );
 }
+
+const STRUCTURED_ARTIFACT_GUIDANCE =
+  "Structured files (typed path ports too): one spec drives producer+gate; no schema copies. Keep operative user/consumer rules, optional/examples, valid empty/unknown. Before use: full parse, required keys/types/nesting/enums/ranges/content/formats/URL syntax. Deterministic producer postcheck or consumer preflight checks declared key uniqueness and this run's required upstream IDs/text/coverage/order/relations; reject before use. Schema/prose, paths/file_exists, grep/regex/fragments/counts or post-Trial validity prove no relation gate. Native typed JSON: no duplicate file; gate extra declared rules.";
+const FACTUAL_EVIDENCE_GUIDANCE =
+  'Explicit offline/source scope wins. Preserve clauses/qualifiers/quote/scope via declared inputs/context; no new field mandate. Affirm only from independent passages substantiating each original clause; online needs actual completed native tool returns. Keep source quotes/identity and applicable URL/redirect. Target repetition/memory/related facts/no contradiction never suffice. Unresolved/truncated evidence stays unknown/partial under the verdict contract, not false. Quantities: typed metric/entity/unit/scale/period/baseline, denominator/basis, operator/range/approximation. Confirm meaning/scope before math; units/labels alone fail. Normalize compatible dimensions/scales (k/million/billion); distinguish percent, percentage points and absolute values. Keep one signed-difference order and denominator across computation/results/reports. Never turn bounds/approximations into exact points or derive unresolved rates.';
+const DOCUMENT_REVIEW_GUIDANCE =
+  'Factual checks default to scoped native online tools; explicit offline/execution wins. Document audits/reviews default to complete annotated copies unless report-only/source edits requested. Keep headings, paragraphs, whitespace, Unicode and non-factual text. Default annotations at line ends preserve complete source lines; explicit within-line placement uses validated source spans. Check actual research/source preservation in Trial.';
+const BOUNDED_WEB_GUIDANCE =
+  'Bound native lookups within authored deadlines. On rate limits, never sleep/retry through remaining budget. Report failures/limits; permitted native fetch fallback cannot prove explicitly required successful search. Never invent sources, evade limits or extend deadlines.';
+const QUANTITY_EVIDENCE_GUIDANCE =
+  'Carry stable claim IDs, original claim/source quotes and typed numeric meaning through one contract: metric, entity, units/scale, period, baseline, denominator/population/interval basis, operator, endpoints and approximation qualifiers. Declare only relevant fields; keep explicit rules and optional/examples. Before math, check required fields/coverage and a one-to-one comparison map; confirm meaning/scope from quotes. Same units/labels or IDs are insufficient; unknown fields never match. Schema proves shape, not faithful interpretation or facts. Preserve bounds/ranges/approximation; no point deltas without exact comparable values or an explicitly defined operation. Missing/ambiguous/incomparable references stay unknown/partial without derived rates; zero-denominator rates remain undefined. Never match by position or reuse unrelated references. Allow multiple sources and valid empties; malformed records fail their gate. Derived differences, ratios, percentages and scale conversions require Python computation with typed results for native rendering; no prose arithmetic. Metadata counts and equivalent formatting need no new business calculation.';
 
 export function buildTagmaNativePrimitivesSkill(): string {
   return `---
@@ -1195,9 +1233,9 @@ A typed dataflow output is not a substitute for the primary human-facing deliver
 ## Command tasks
 
 - Use command for deterministic shell work where the exact command is known.
-- A bare \`opencode\` command resolves from the host PATH. For an explicitly requested headless OpenCode CLI step, invoke Tagma's selected binary through the Host-provided \`TAGMA_OPENCODE_CLI\` command environment variable instead: POSIX \`"$TAGMA_OPENCODE_CLI" run ...\`; PowerShell \`& $env:TAGMA_OPENCODE_CLI run ...\`. The Host supplies this path and Tagma's isolated OpenCode config only to commands that reference the variable, preserving native tools and Tagma-owned tools without loading user-global plugins. It records a managed OpenCode requirement; do not ask the user to install a separate CLI for this command. Keep ordinary unrelated commands on their normal PATH. Do not infer CLI capability from a healthy Chat or silently replace an explicitly requested CLI step with a managed prompt task.
+- A bare \`opencode\` command resolves from the host PATH. For an explicitly requested headless OpenCode CLI step, invoke Tagma's selected binary through the Host-provided \`TAGMA_OPENCODE_CLI\` command environment variable instead: POSIX \`"$TAGMA_OPENCODE_CLI" run ...\`; PowerShell \`& $env:TAGMA_OPENCODE_CLI run ...\`. The Host supplies this path and Tagma's isolated OpenCode config only to commands that reference the variable, preserving native tools and Tagma-owned tools without loading user-global plugins. It records a managed OpenCode requirement; do not ask the user to install a separate CLI for this command. Keep ordinary unrelated commands on their normal PATH. Do not infer CLI capability from a healthy Chat; verify the effective executable and arguments. Built-in opencode prompts use headless opencode run; use command tasks when explicit command, shell or argv mechanics require them.
 - For one-shot headless CLI calls through \`TAGMA_OPENCODE_CLI\`, give each invocation a fresh private database so an unrelated user-global database cannot break migrations. Set \`OPENCODE_DB\` to an absolute path inside a newly created private temporary directory in the command process: on POSIX use \`cli_db_dir=$(mktemp -d) || exit 1\`, \`trap 'rm -rf "$cli_db_dir"' EXIT\`, and \`OPENCODE_DB="$cli_db_dir/opencode.db" "$TAGMA_OPENCODE_CLI" run ...\`; in PowerShell create a unique directory below \`[IO.Path]::GetTempPath()\`, set \`$env:OPENCODE_DB\` to its \`opencode.db\` path, invoke the CLI inside \`try\`, and remove that directory in \`finally\`. Keep the model, web flag, and arguments on that same invocation; do not set a nonexistent task-level \`env:\` field. A workflow that intentionally resumes one CLI session needs an explicitly scoped persistent database and serialized initialization instead. Do not point a standalone CLI at the Tagma-managed database.
-- When the user explicitly requires a headless \`opencode\` command and does not name a model, read the \`<opencode-chat-model>\` marker and pass its exact \`provider-id/model-id\` through \`"$TAGMA_OPENCODE_CLI" run --model\` on POSIX or \`& $env:TAGMA_OPENCODE_CLI run --model\` on PowerShell. Never let an authored command silently fall back to OpenCode's ambient default model.
+- For requested headless OpenCode work, explicit user model/variant wins. Otherwise use the Host \`<opencode-chat-model>\` exact provider/model in \`TAGMA_OPENCODE_CLI run --model\`; when the effective model matches that marker and it carries \`variant\`, also pass its exact native id via \`--variant\` before the prompt. Do not mix another model with the marker variant, invent an effort when absent, or replace existing explicit choices during repair. Use POSIX \`"$TAGMA_OPENCODE_CLI"\` or PowerShell \`& $env:TAGMA_OPENCODE_CLI\`; never fall back to an ambient model or drop a provided variant.
 - When an explicitly requested headless OpenCode command needs native websearch, OpenCode 1.18.x requires both \`websearch: allow\` in its effective permission configuration and \`OPENCODE_ENABLE_EXA=true\` in that command's process environment. Permission alone does not register the tool. On Windows set \`$env:OPENCODE_ENABLE_EXA = 'true'\` in the task's PowerShell command before invoking OpenCode; on POSIX prefix that invocation with \`OPENCODE_ENABLE_EXA=true "$TAGMA_OPENCODE_CLI" run --model ...\`. There is no task-level \`env:\` field. Do not enable Exa for commands that do not request web access or change global settings. If native websearch is required but unavailable, report that capability failure instead of silently substituting WebFetch or curl. Managed prompt tasks should use \`permissions.web: true\`; Tagma supplies their scoped feature flag.
 - For headless AI commands that promise structured files, have the model write those files directly and validate their schema and content with deterministic downstream commands. Do not rely on free-form CLI stdout as a JSON transport; model prose, terminal control codes, and malformed JSON must not be accepted as a structured verdict. Keep missing or invalid files as task failures.
 - Match the command dialect to Tagma's actual host shell contract:
@@ -1215,8 +1253,13 @@ ${WINDOWS_COMMAND_AUTHORING_CONTRACT}
 - For a fixed conversational question with no downstream data contract, use the user's question itself as the prompt; do not add meta-instructions, a typed output, or a companion file unless the user asks for that contract.
 - For a fixed conversational prompt with no workspace or tool dependency, set all three permissions to false. This gives OpenCode a no-read/no-write/no-execute execution profile instead of Coding Agent authority.
 - For native web work, set \`web: true\`; this allows websearch and webfetch without granting shell execution. Never add execute permission merely for web access.
-- Preserve an explicit CLI requirement during repair. When CLI mechanics were not required, prefer a managed prompt task whose scoped tools satisfy the outcome.
-- Do not invent source-count or page-fetch requirements. Fit web work to the requested evidence and authored timeout, and tolerate unavailable pages within that contract.
+- Preserve explicit CLI mechanics during repair; judge the effective invocation, not prompt versus command. When exact shell/argv mechanics are absent, prefer managed scoped tools. A named tool or actor must perform its requested business stage, not only validate another actor's result.
+- No invented source-count/page-fetch requirements. Honor evidence/timeouts; tolerate unavailable pages. Quantities need comparable values for matching metric/units/entity/timeframe; trends alone cannot confirm. If a rate is unknown from missing numerics or undefined from a zero denominator, state that explicitly; never invent percentages. For human-facing numeric comparisons, prefer a side-by-side table with stated and reference values, differences and sources unless another format is requested.
+- ${QUANTITY_EVIDENCE_GUIDANCE}
+- ${STRUCTURED_ARTIFACT_GUIDANCE}
+- ${FACTUAL_EVIDENCE_GUIDANCE}
+- ${DOCUMENT_REVIEW_GUIDANCE}
+- ${BOUNDED_WEB_GUIDANCE}
 - Prefer native outputs for generated values; Tagma injects the Output Format contract and validates its final-line JSON. Do not duplicate or contradict that contract in the prompt or invent a companion file just to capture, return, or observe the value.
 - Put permission intent on the prompt task: read-only for planning/review, write for editing, execute only when the runtime agent truly needs tools or tests. A prompt task that must create or edit files needs write permission; the default read-only task cannot satisfy a file contract.
 - In the prompt text, tell the runtime OpenCode agent to use native file/search/edit/bash tools, native subagents, approved skills, and the host-native-command-then-Python rule before creating ad hoc scripts.
@@ -1235,6 +1278,10 @@ Use only plugin types present in the current editor context. If a requested driv
 export function buildTagmaYamlContractSkill(): string {
   return `${buildTagmaYamlContractSkillBase()}
 
+## Host authoring target
+
+With a Host V2 \`<target>\` or session binding, author only that exact pipeline YAML and its user-owned support files. Other inventoried YAMLs are read-only sources; never replace a missing target with an origin. Without a Host target, preserve legacy named/current target selection.
+
 ## Binding resolution preflight (hard constraint)
 
 - Every required input without a \`value\` or \`default\` must resolve from exactly one direct dependency.
@@ -1246,8 +1293,17 @@ export function buildTagmaYamlContractSkill(): string {
 ## Preserve the business input contract during repair
 
 - A requested input with a default belongs in a native task input binding. Keep it configurable across compile and Trial repairs; do not replace it with a script literal or require implementation edits to change it.
-- Match downstream input types to the actual upstream contract. A denied, missing, or malformed source read must fail or produce an explicitly checked diagnostic; do not convert it into successful empty analysis. A genuinely empty collection remains valid when the source was read and its business contract permits it.
+- Match downstream input types to the actual upstream contract. A denied, missing, or malformed source read must fail or produce an explicitly checked diagnostic; do not convert it into successful empty analysis. When a source read succeeds and its business contract permits zero results, keep derived empty collections valid; do not invent minimum counts.
 - Preserve the user's timeout limits. Reduce or bound the work within those limits instead of silently increasing them.
+
+## Artifact content and human-facing results
+
+- ${STRUCTURED_ARTIFACT_GUIDANCE}
+- ${QUANTITY_EVIDENCE_GUIDANCE}
+- ${FACTUAL_EVIDENCE_GUIDANCE}
+- ${DOCUMENT_REVIEW_GUIDANCE}
+- ${BOUNDED_WEB_GUIDANCE}
+- Reusable human-facing analysis needs one readable workspace result unless transient/binding-only output is requested. Grant write permission, give the file a completion check and verify its substantive Trial content. Native typed outputs remain sufficient for downstream dataflow without duplicate files; a fixed conversational prompt without workspace/tool dependencies stays file-free.
 `;
 }
 
@@ -1587,7 +1643,13 @@ function buildTask(section) {
       : null;
   const completion = asRecord(section.completion);
   const normalizedCompletion = asString(completion.type)
-    ? { type: asString(completion.type), path: asString(completion.path) }
+    ? {
+        type: asString(completion.type),
+        path: asString(completion.path),
+        ...(asString(completion.type) === "json_schema"
+          ? { schema_path: asString(completion.schema_path) }
+          : {}),
+      }
     : null;
   const trigger = asRecord(section.trigger);
   const triggerType = asString(trigger.type);
@@ -1603,14 +1665,18 @@ function buildTask(section) {
     : null;
   const inputs = asStringArray(section.inputs);
   const outputs = asStringArray(section.outputs);
-  const fileContract = normalizedCompletion && normalizedCompletion.type === "file_exists";
+  const fileContract = normalizedCompletion &&
+    (normalizedCompletion.type === "file_exists" || normalizedCompletion.type === "json_schema");
   const taskLabel = (isCommand ? "command" : "prompt") + " task " + taskId;
   if ((resultContract === "file" || resultContract === "native-output-and-file") && !fileContract) {
-    throw new Error(taskLabel + ': completion.type must be "file_exists" with completion.path for ' +
+    throw new Error(taskLabel + ': completion.type must be "file_exists" or "json_schema" with completion.path for ' +
       resultContract + '; received ' + JSON.stringify(normalizedCompletion?.type ?? null));
   }
   if ((resultContract === "file" || resultContract === "native-output-and-file") && !normalizedCompletion.path) {
     throw new Error(taskLabel + ': completion.path must be a non-empty string for ' + resultContract);
+  }
+  if (normalizedCompletion?.type === "json_schema" && !normalizedCompletion.schema_path) {
+    throw new Error(taskLabel + ': json_schema completion requires a non-empty schema_path');
   }
   if (resultContract === "none" && (outputs.length > 0 || fileContract)) {
     throw new Error(
@@ -1783,6 +1849,7 @@ function buildYamlSkeleton(manifest) {
       if (task.completion) {
         lines.push("          completion:", "            type: " + yamlString(task.completion.type));
         if (task.completion.path) lines.push("            path: " + yamlString(task.completion.path));
+        if (task.completion.schema_path) lines.push("            schema_path: " + yamlString(task.completion.schema_path));
       }
       addBindingMap(lines, "          ", "inputs", task.inputs);
       addBindingMap(lines, "          ", "outputs", task.outputs);
@@ -1854,8 +1921,9 @@ export default tool({
               .optional(),
             completion: tool.schema
               .object({
-                type: tool.schema.string().describe("For file result contracts use file_exists, never file; other values are registered completion types"),
+                type: tool.schema.string().describe("For file result contracts use file_exists or json_schema, never file; json_schema validates a local Draft-7 schema before success"),
                 path: tool.schema.string().optional(),
+                schema_path: tool.schema.string().optional().describe("Required for json_schema: schema file relative to the task cwd"),
               })
               .optional(),
             result_contract: tool.schema

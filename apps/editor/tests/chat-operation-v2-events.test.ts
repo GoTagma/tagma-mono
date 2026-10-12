@@ -14,6 +14,41 @@ import {
   type ChatOperationV2HostEventType,
 } from '../server/chat-operations/events.js';
 
+import {
+  chatExecutionMessageId,
+  observeChatExecutionInput,
+  type ChatExecutionInputWitness,
+} from '../server/chat-operations/execution-input-witness.js';
+
+const witnessOwner = {
+  workspaceScopeId: 'scope-01',
+  operationId: 'operation-01',
+  operationGeneration: 1,
+  stageId: 'stage-01',
+  repairAttempt: 0,
+};
+const witnessIdentity = {
+  ...witnessOwner,
+  invocationId: 'invocation-01',
+  sessionId: 'ses_native_01',
+  inputId: 'input-01',
+  purpose: 'authoring' as const,
+};
+let executionWitness!: ChatExecutionInputWitness;
+observeChatExecutionInput({
+  observation: {
+    owner: witnessOwner,
+    reference: null,
+    emit: (witness) => {
+      executionWitness = witness;
+    },
+  },
+  ...witnessIdentity,
+  executionMessageId: chatExecutionMessageId(witnessIdentity),
+  canonicalRequestBytes: new TextEncoder().encode('{}'),
+  promptText: 'bounded authoring prompt',
+});
+
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
 const HASH_C = 'c'.repeat(64);
@@ -60,6 +95,10 @@ const payloads = {
     candidateId: 'candidate-01',
     byteCount: 2048,
     truncated: false,
+  },
+  execution_input_observed: {
+    invocationId: witnessIdentity.invocationId,
+    witness: executionWitness,
   },
   invocation_prepared: {
     invocationId: 'invocation-01',
@@ -480,4 +519,70 @@ describe('ChatTurn Operation V2 durable Host event allowlist', () => {
       }),
     ).toContain('invalid_payload');
   });
+});
+
+test('SDK witness event rejects forged execution identity, raw body fields and false match claims', () => {
+  const fixture = event('execution_input_observed');
+  for (const witness of [
+    { ...executionWitness, executionMessageId: 'msg_foreign' },
+    { ...executionWitness, errors: 'PRIVATE_BODY_MUST_NOT_PASS' },
+    { ...executionWitness, reason: 'matched', decodedCanonicalMatch: true },
+  ]) {
+    expect(
+      validateChatOperationV2HostEvent({
+        ...fixture,
+        payload: { invocationId: witnessIdentity.invocationId, witness },
+      }).valid,
+    ).toBe(false);
+  }
+  expect(validateChatOperationV2HostEvent(fixture).valid).toBe(true);
+});
+
+test('stage creation diagnostics accept finite metadata and reject exception content or storage claims', () => {
+  const base = event('stage_status_changed');
+  const payload = {
+    ...payloads.stage_status_changed,
+    status: 'failed',
+    errorCode: 'stage_create_failed',
+    diagnosticCodes: ['stage_create_failed'],
+  };
+  const diagnostic = {
+    phase: 'stage_creation',
+    errorClass: 'Error',
+    systemCode: 'ENOSPC',
+    completeErrorStorage: 'not_stored',
+  };
+  for (const allowed of [diagnostic, { ...diagnostic, errorClass: 'unknown', systemCode: null }]) {
+    expect(
+      validateChatOperationV2HostEvent({
+        ...base,
+        payload: { ...payload, creationDiagnostic: allowed },
+      }).valid,
+    ).toBe(true);
+  }
+  for (const invalid of [
+    { ...diagnostic, phase: 'stage_compile' },
+    { ...diagnostic, errorClass: 'PrivateErrorClass' },
+    { ...diagnostic, systemCode: 'ENOSPC_PRIVATE_EXCEPTION_CONTENT' },
+    { ...diagnostic, systemCode: 28 },
+    { ...diagnostic, completeErrorStorage: 'stored' },
+    { ...diagnostic, message: 'PRIVATE_STAGE_CREATION_DETAIL' },
+    { ...diagnostic, stack: 'PRIVATE_STAGE_CREATION_DETAIL' },
+    { ...diagnostic, errno: 28 },
+    { ...diagnostic, carrier: new Error('PRIVATE_STAGE_CREATION_DETAIL') },
+    null,
+  ]) {
+    expect(
+      violationCodes({
+        ...base,
+        payload: { ...payload, creationDiagnostic: invalid },
+      }),
+    ).toContain('invalid_payload');
+  }
+  expect(
+    violationCodes({
+      ...base,
+      payload: { ...payload, status: 'ready', creationDiagnostic: diagnostic },
+    }),
+  ).toContain('invalid_payload');
 });

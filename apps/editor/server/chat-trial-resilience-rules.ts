@@ -13,9 +13,32 @@ export const TRIAL_EVIDENCE_KINDS = [
   'source-preservation',
 ] as const;
 export type ExplicitResilienceObligation = (typeof TRIAL_EVIDENCE_KINDS)[number];
+export type TrialCoreWitness =
+  | {
+      readonly status: 'covered';
+      readonly normalCaseId: string;
+      readonly taskRoles: readonly {
+        readonly taskId: string;
+        readonly role: 'content' | 'execution';
+        readonly rationale: string;
+        readonly expectationIndices: readonly number[];
+      }[];
+      readonly generatedInputs: readonly {
+        readonly path: string;
+        readonly producerTaskId: string;
+        readonly consumerTaskId: string;
+      }[];
+    }
+  | {
+      readonly status: 'blocked';
+      readonly taskIds: readonly string[];
+      readonly code: string;
+      readonly rationale: string;
+    };
 export interface TrialEvidenceReview {
   readonly version: 1;
   readonly intentDigest: string;
+  readonly coreWitness?: TrialCoreWitness;
   readonly decisions: readonly {
     readonly type: ExplicitResilienceObligation;
     readonly required: boolean;
@@ -128,7 +151,7 @@ export function createTrialResilienceRules() {
   }
   function parseReview(value: unknown): TrialEvidenceReview {
     const raw = record(value, 'evidenceReview');
-    keys(raw, ['version', 'intentDigest', 'decisions'], 'evidenceReview');
+    keys(raw, ['version', 'intentDigest', 'decisions', 'coreWitness'], 'evidenceReview');
     if (
       raw.version !== 1 ||
       typeof raw.intentDigest !== 'string' ||
@@ -166,7 +189,91 @@ export function createTrialResilienceRules() {
     });
     if (new Set(decisions.map((item) => item.type)).size !== kinds.length)
       throw new Error('Evidence review kinds must not be duplicated.');
-    return { version: 1, intentDigest: raw.intentDigest, decisions };
+    return {
+      version: 1,
+      intentDigest: raw.intentDigest,
+      decisions,
+      ...(raw.coreWitness === undefined ? {} : { coreWitness: parseCoreWitness(raw.coreWitness) }),
+    };
+  }
+  function parseCoreWitness(value: unknown): TrialCoreWitness {
+    const raw = record(value, 'coreWitness');
+    const rationale = (value: unknown): string => {
+      const result = text(value, 'core witness rationale', 1000);
+      if (result.trim().length === 0)
+        throw new Error('Core witness needs a nonempty semantic rationale.');
+      return result;
+    };
+    if (raw.status === 'blocked') {
+      keys(raw, ['status', 'taskIds', 'code', 'rationale'], 'coreWitness');
+      if (!Array.isArray(raw.taskIds) || raw.taskIds.length === 0 || raw.taskIds.length > 32)
+        throw new Error('Blocked core witness must name its bounded responsible task scope.');
+      const ids = raw.taskIds.map((id) => taskId(id, 'coreWitness.taskIds'));
+      if (new Set(ids).size !== ids.length)
+        throw new Error('Core witness task ids must be unique.');
+      const code = text(raw.code, 'coreWitness.code', 96);
+      if (!/^[a-z][a-z0-9_-]*$/.test(code)) throw new Error('Core witness code must be finite.');
+      return { status: 'blocked', taskIds: ids, code, rationale: rationale(raw.rationale) };
+    }
+    if (raw.status !== 'covered') throw new Error('Core witness must be covered or blocked.');
+    keys(raw, ['status', 'normalCaseId', 'taskRoles', 'generatedInputs'], 'coreWitness');
+    if (
+      !Array.isArray(raw.taskRoles) ||
+      raw.taskRoles.length === 0 ||
+      raw.taskRoles.length > 32 ||
+      !Array.isArray(raw.generatedInputs) ||
+      raw.generatedInputs.length > 32
+    )
+      throw new Error('Core witness mappings must be explicit and bounded.');
+    const roles = raw.taskRoles.map((value) => {
+      const item = record(value, 'coreWitness.taskRoles');
+      keys(item, ['taskId', 'role', 'rationale', 'expectationIndices'], 'coreWitness.taskRoles');
+      if (
+        !['content', 'execution'].includes(item.role as string) ||
+        !Array.isArray(item.expectationIndices) ||
+        item.expectationIndices.length > 32 ||
+        (item.role === 'content'
+          ? item.expectationIndices.length === 0
+          : item.expectationIndices.length !== 0)
+      )
+        throw new Error('Each core task must explicitly review content or execution behavior.');
+      const indices = item.expectationIndices.map((value) =>
+        index(value, 'core expectation index'),
+      );
+      if (new Set(indices).size !== indices.length)
+        throw new Error('Core expectation indices must be unique.');
+      return {
+        taskId: taskId(item.taskId, 'core task'),
+        role: item.role as 'content' | 'execution',
+        rationale: rationale(item.rationale),
+        expectationIndices: indices,
+      };
+    });
+    if (new Set(roles.map((role) => role.taskId)).size !== roles.length)
+      throw new Error('Core witness must map each task exactly once.');
+    const generated = raw.generatedInputs.map((value) => {
+      const item = record(value, 'coreWitness.generatedInputs');
+      keys(item, ['path', 'producerTaskId', 'consumerTaskId'], 'coreWitness.generatedInputs');
+      const path = text(item.path, 'generated core input path', 240);
+      if (
+        path.startsWith('/') ||
+        /^[A-Za-z]:/.test(path) ||
+        path.includes('\\') ||
+        path.split('/').some((part) => !part || part === '.' || part === '..')
+      )
+        throw new Error('Generated core input must use a normalized case-relative path.');
+      return {
+        path,
+        producerTaskId: taskId(item.producerTaskId, 'core producer'),
+        consumerTaskId: taskId(item.consumerTaskId, 'core consumer'),
+      };
+    });
+    if (new Set(generated.map((item) => item.path.toLowerCase())).size !== generated.length)
+      throw new Error('Generated core input paths must be unique.');
+    const normalCaseId = text(raw.normalCaseId, 'core normalCaseId', 64);
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(normalCaseId))
+      throw new Error('Core normal case id is invalid.');
+    return { status: 'covered', normalCaseId, taskRoles: roles, generatedInputs: generated };
   }
   function parseFault(value: unknown): TrialControlledFault {
     const raw = record(value, 'evidence.fault');
@@ -430,6 +537,204 @@ export function createTrialResilienceRules() {
           item.type === 'file-equals' && item.path === sourcePath && item.text === source.content,
       )
     );
+  }
+  function validateCoreWitness(
+    plan: ChatPipelineTrialPlan,
+    tasks: TrialResilienceTaskEvidence,
+    required = false,
+  ): void {
+    const witness = plan.evidenceReview?.coreWitness;
+    if (!witness) {
+      if (required)
+        throw new Error('Frozen-intent Trial requires an explicit positive coreWitness.');
+      return;
+    }
+    const core = parseCoreWitness(witness);
+    const known = (id: string) => Object.prototype.hasOwnProperty.call(tasks, id);
+    if (core.status === 'blocked') {
+      if (
+        core.taskIds.some((id) => !known(id)) ||
+        !plan.findings.some(
+          (finding) => finding.severity === 'blocking' && finding.repairScope === 'diagnostic-only',
+        )
+      )
+        throw new Error(
+          'Blocked core witness requires known tasks and an existing blocking diagnostic-only finding; it cannot pass Trial.',
+        );
+      return;
+    }
+    const normal = plan.cases.find((c) => c.id === core.normalCaseId);
+    if (
+      !normal ||
+      normal.baselineCaseId ||
+      (normal.deniedManualTaskIds?.length ?? 0) > 0 ||
+      normal.environment?.some((item) => item.value === null) ||
+      normal.evidence?.some((item) => item.type !== 'source-preservation')
+    )
+      throw new Error('Core normal case must be a distinct executable non-fault positive case.');
+    if (normal.targetTaskIds.some((id) => !known(id)))
+      throw new Error('Core normal case targets unknown tasks.');
+    const executed = closure(normal.targetTaskIds, tasks);
+    const taskIds = Object.keys(tasks);
+    const dependedOn = new Set(taskIds.flatMap((id) => [...tasks[id]!.dependsOn]));
+    if (taskIds.filter((id) => !dependedOn.has(id)).some((id) => !executed.has(id)))
+      throw new Error('Core normal case must execute every terminal dependency closure.');
+    if (
+      core.taskRoles.length !== executed.size ||
+      core.taskRoles.some((role) => !executed.has(role.taskId))
+    )
+      throw new Error(
+        'Core witness must explicitly map every executed task; a missing map cannot pass.',
+      );
+    const overlaps = (a: string, b: string) => {
+      const x = a.toLowerCase(),
+        y = b.toLowerCase();
+      return x === y || x.startsWith(y + '/') || y.startsWith(x + '/');
+    };
+    const seeded = (path: string) =>
+      normal.fixtures.some((fixture) => fixture.content !== null && overlaps(fixture.path, path));
+    const concrete = (value: unknown): boolean =>
+      typeof value === 'string'
+        ? value.trim().length > 0
+        : typeof value === 'number'
+          ? Number.isFinite(value)
+          : typeof value === 'boolean'
+            ? true
+            : Array.isArray(value)
+              ? value.some(concrete)
+              : !!value && typeof value === 'object'
+                ? Object.values(value).some(concrete)
+                : false;
+    const generated = new Set((normal.generatedInputPaths ?? []).map((path) => path.toLowerCase()));
+    if (
+      core.generatedInputs.length !== generated.size ||
+      core.generatedInputs.some((item) => !generated.has(item.path.toLowerCase()))
+    )
+      throw new Error('Core generated-input map must match the normal case declaration exactly.');
+    const independentSourceContent = (path: string, producerTaskId: string) => {
+      const producer = core.taskRoles.find((role) => role.taskId === producerTaskId);
+      return (
+        producer?.role === 'content' &&
+        producer.expectationIndices.some((index) => {
+          const check = normal.expectations[index];
+          return (
+            (check?.type === 'json-pointer-equals' &&
+              check.path === path &&
+              concrete(JSON.parse(check.expectedJson))) ||
+            (check?.type === 'file-equals' && check.path === path && check.text.trim().length > 0)
+          );
+        })
+      );
+    };
+    const ownedSourceRelation = (e: ChatPipelineTrialExpectation) =>
+      e.type === 'file-source-text-occurrence' &&
+      e.present === true &&
+      core.generatedInputs.some(
+        (input) =>
+          input.path === e.sourcePath &&
+          input.producerTaskId === e.producerTaskId &&
+          input.consumerTaskId === e.consumerTaskId,
+      ) &&
+      e.producerTaskId !== e.consumerTaskId &&
+      executed.has(e.producerTaskId) &&
+      executed.has(e.consumerTaskId) &&
+      closure(tasks[e.consumerTaskId]?.dependsOn ?? [], tasks).has(e.producerTaskId) &&
+      (tasks[e.producerTaskId]?.artifactPaths ?? []).includes(e.sourcePath) &&
+      (tasks[e.consumerTaskId]?.artifactPaths ?? []).includes(e.path) &&
+      !seeded(e.path) &&
+      !seeded(e.sourcePath) &&
+      !overlaps(e.path, e.sourcePath) &&
+      independentSourceContent(e.sourcePath, e.producerTaskId);
+    for (const expectation of normal.expectations) {
+      if (expectation.type === 'file-source-text-occurrence' && !ownedSourceRelation(expectation))
+        throw new Error(
+          'Core source-text relation needs owned generated source, dependency, and independent concrete source content.',
+        );
+    }
+    for (const input of core.generatedInputs) {
+      if (
+        input.producerTaskId === input.consumerTaskId ||
+        !executed.has(input.producerTaskId) ||
+        !executed.has(input.consumerTaskId) ||
+        !closure(tasks[input.consumerTaskId]?.dependsOn ?? [], tasks).has(input.producerTaskId) ||
+        seeded(input.path) ||
+        !normal.fixtures.some(
+          (fixture) => fixture.path === input.path && fixture.content === null,
+        ) ||
+        !normal.expectations.some(
+          (e) =>
+            (e.type === 'file-equals' && e.path === input.path && e.text.length > 0) ||
+            (ownedSourceRelation(e) &&
+              e.type === 'file-source-text-occurrence' &&
+              e.sourcePath === input.path),
+        ) ||
+        ((tasks[input.producerTaskId]?.artifactPaths?.length ?? 0) > 0 &&
+          !tasks[input.producerTaskId]!.artifactPaths!.includes(input.path))
+      )
+        throw new Error(
+          'Generated core input needs an unseeded exact removal, asserted produced bytes, and an upstream producer/consumer mapping.',
+        );
+    }
+    for (const role of core.taskRoles) {
+      if (!status(normal, role.taskId, 'success'))
+        throw new Error('Core normal case must assert success for every mapped task.');
+      const paths = tasks[role.taskId]?.artifactPaths ?? [];
+      if (role.role === 'execution') {
+        if (paths.length)
+          throw new Error(
+            'A declared output artifact needs a content witness, not execution-only exemption.',
+          );
+        continue;
+      }
+      const contentPaths = new Set<string>();
+      for (const i of role.expectationIndices) {
+        const e = normal.expectations[i];
+        if (!e || !('path' in e) || seeded(e.path))
+          throw new Error('Core content must be a pipeline-produced unseeded output.');
+        if (e.type === 'json-pointer-equals') {
+          if (!concrete(JSON.parse(e.expectedJson)))
+            throw new Error(
+              'Core content assertion must be concrete and nonempty, not null or an empty collection.',
+            );
+        } else if (e.type === 'file-equals' && e.text.trim().length > 0) {
+          // Exact produced text still needs the explicit intent-bound semantic rationale.
+        } else if (e.type === 'file-source-text-occurrence') {
+          if (e.consumerTaskId !== role.taskId || !ownedSourceRelation(e))
+            throw new Error(
+              'Core source-text relation needs owned generated source, dependency, and independent concrete source content.',
+            );
+        } else if (e.type === 'json-pointer-text-occurrence' && e.present === true) {
+          const generatedSource =
+            core.generatedInputs.some(
+              (input) => input.path === e.sourcePath && input.consumerTaskId === role.taskId,
+            ) &&
+            normal.expectations.some(
+              (check) =>
+                check.type === 'file-equals' &&
+                check.path === e.sourcePath &&
+                check.text.length > 0,
+            );
+          const preservedNonempty =
+            preservedSource(normal, e.sourcePath) &&
+            normal.fixtures.some(
+              (fixture) =>
+                fixture.path === e.sourcePath &&
+                typeof fixture.content === 'string' &&
+                fixture.content.trim().length > 0,
+            );
+          if (e.path === e.sourcePath || (!preservedNonempty && !generatedSource))
+            throw new Error(
+              'Core source occurrence needs preserved nonempty input bytes or a mapped genuine upstream generated input.',
+            );
+        } else
+          throw new Error(
+            'Core content requires a concrete JSON value, nonempty exact file bytes, or present:true source occurrence; status/existence/schema alone is insufficient.',
+          );
+        contentPaths.add(e.path);
+      }
+      if (paths.some((path) => !contentPaths.has(path)))
+        throw new Error('Every declared core artifact must have a concrete content expectation.');
+    }
   }
   function pointerValue(value: unknown, pointer: string): unknown {
     if (!pointer) return value;
@@ -804,6 +1109,8 @@ export function createTrialResilienceRules() {
   }
   return {
     parseReview,
+    parseCoreWitness,
+    validateCoreWitness,
     parseFault,
     parseCaseEvidence,
     parseValidationContext,

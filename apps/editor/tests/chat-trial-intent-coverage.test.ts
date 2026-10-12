@@ -1,6 +1,12 @@
 import { expect, test } from 'bun:test';
 import type { ChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
-import { requiredTrialEvidence, trialIntentDigest } from '../server/chat-trial-intent-coverage';
+import {
+  buildTrialPlanValidationContext,
+  requiredTrialEvidence,
+  trialIntentDigest,
+} from '../server/chat-trial-intent-coverage';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   createTrialResilienceRules,
   TRIAL_EVIDENCE_KINDS,
@@ -8,6 +14,60 @@ import {
 } from '../server/chat-trial-resilience-rules';
 
 const rules = createTrialResilienceRules();
+test('task json_schema publishes only its data artifact using inherited cwd', () => {
+  const context = buildTrialPlanValidationContext(
+    {
+      name: 'Artifacts',
+      tracks: [
+        {
+          id: 'flow',
+          name: 'Flow',
+          cwd: '.tagma/flow',
+          tasks: [
+            {
+              id: 'produce',
+              name: 'Produce',
+              command: 'echo produce',
+              completion: { type: 'json_schema', path: 'data.json', schema_path: 'schema.json' },
+            },
+            {
+              id: 'override',
+              name: 'Override',
+              command: 'echo override',
+              completion: { type: 'file_exists', path: 'override.txt' },
+            },
+            {
+              id: 'external',
+              name: 'External',
+              command: 'echo external',
+              completion: {
+                type: 'json_schema',
+                path: '../../../../../external.json',
+                schema_path: 'schema.json',
+              },
+            },
+          ],
+        },
+      ],
+    },
+    [],
+    { workDir: join(tmpdir(), 'tagma-schema-coverage'), relativeYamlPath: 'flow/flow.yaml' },
+  );
+  expect(context.tasks['flow.produce']!.artifactPaths).toEqual(['flow/data.json']);
+  expect(context.tasks['flow.override']!.artifactPaths).toEqual(['flow/override.txt']);
+  expect(context.tasks['flow.external']!.artifactPaths).toEqual([]);
+  expect(context.pathCoordinates?.taskLocalPaths).toContainEqual({
+    path: 'data.json',
+    cwd: '.tagma/flow',
+    descendants: false,
+  });
+  expect(context.pathCoordinates?.taskLocalPaths).toContainEqual({
+    path: 'schema.json',
+    cwd: '.tagma/flow',
+    descendants: false,
+  });
+  expect(context.tasks['flow.produce']!.artifactPaths).not.toContain('flow/schema.json');
+});
 test('structured evidence errors identify the unsupported field and accepted shape', () => {
   const review = evidenceReview([]);
   expect(() => rules.parseReview({ ...review, obligations: [] })).toThrow(
@@ -142,6 +202,28 @@ const tasks = {
 
 test('semantic review binds frozen intent without inferring requirements from its words', () => {
   const plan = dataPlan('empty-result');
+  plan.evidenceReview = {
+    ...plan.evidenceReview!,
+    coreWitness: {
+      status: 'covered',
+      normalCaseId: 'normal',
+      generatedInputs: [],
+      taskRoles: [
+        {
+          taskId: 'flow.source',
+          role: 'content',
+          expectationIndices: [2],
+          rationale: 'Normal source extraction must retain the concrete original span.',
+        },
+        {
+          taskId: 'flow.report',
+          role: 'execution',
+          expectationIndices: [],
+          rationale: 'This digest-binding fixture promises only execution for the reporting task.',
+        },
+      ],
+    },
+  };
   expect(requiredTrialEvidence(plan, trialIntentDigest('Arbitrary business request'))).toEqual([
     'empty-result',
   ]);

@@ -307,6 +307,77 @@ function sdkErrorRetryable(value: unknown, depth = 0): boolean | null {
   return null;
 }
 
+const MAX_PROVIDER_ERROR_BODY_BYTES = 2048;
+const FORBIDDEN_PROVIDER_FAILURE_CODES = new Map<string, OpenCodePromptProviderFailureCode>([
+  ['authenticationerror', 'provider_authentication_failed'],
+  ['authenticationfailed', 'provider_authentication_failed'],
+  ['invalidapikey', 'provider_authentication_failed'],
+  ['missingapikey', 'provider_authentication_failed'],
+  ['unauthorized', 'provider_authentication_failed'],
+  ['billingerror', 'provider_billing_required'],
+  ['billingrequired', 'provider_billing_required'],
+  ['billinghardlimitreached', 'provider_billing_required'],
+  ['billingnotactive', 'provider_billing_required'],
+  ['paymentrequired', 'provider_billing_required'],
+  ['insufficientquota', 'provider_billing_required'],
+  ['insufficientcredit', 'provider_billing_required'],
+  ['insufficientcredits', 'provider_billing_required'],
+  ['creditsexhausted', 'provider_billing_required'],
+  ['ratelimiterror', 'provider_rate_limited'],
+  ['ratelimitexceeded', 'provider_rate_limited'],
+  ['ratelimited', 'provider_rate_limited'],
+  ['toomanyrequests', 'provider_rate_limited'],
+  ['quotaexceeded', 'provider_rate_limited'],
+]);
+
+/** Read machine categories only; provider bodies and prose never leave this boundary. */
+function sdkProviderErrorBodySignals(value: unknown, depth = 0): string[] {
+  if (depth > 2 || typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  try {
+    const signals: string[] = [];
+    const body = Object.getOwnPropertyDescriptor(value, 'responseBody');
+    if (
+      body &&
+      Object.prototype.hasOwnProperty.call(body, 'value') &&
+      typeof body.value === 'string' &&
+      body.value.length <= MAX_PROVIDER_ERROR_BODY_BYTES &&
+      encoder.encode(body.value).byteLength <= MAX_PROVIDER_ERROR_BODY_BYTES
+    ) {
+      try {
+        const envelope = record(JSON.parse(body.value));
+        if (envelope) {
+          const nested = Object.getOwnPropertyDescriptor(envelope, 'error');
+          for (const node of [envelope, record(nested?.value)]) {
+            if (!node) continue;
+            for (const key of ['code', 'type']) {
+              const field = Object.getOwnPropertyDescriptor(node, key);
+              if (
+                field &&
+                Object.prototype.hasOwnProperty.call(field, 'value') &&
+                typeof field.value === 'string' &&
+                field.value.length <= 128
+              ) {
+                signals.push(field.value.toLowerCase());
+              }
+            }
+          }
+        }
+      } catch {
+        // Malformed or non-JSON response bodies carry no machine category.
+      }
+    }
+    for (const key of ['data', 'detail', 'error', 'cause']) {
+      const field = Object.getOwnPropertyDescriptor(value, key);
+      if (field && Object.prototype.hasOwnProperty.call(field, 'value')) {
+        signals.push(...sdkProviderErrorBodySignals(field.value, depth + 1));
+      }
+    }
+    return signals;
+  } catch {
+    return [];
+  }
+}
+
 export function openCodeProviderFailureCode(
   error: unknown,
   responseStatus: number | null = null,
@@ -327,11 +398,22 @@ export function openCodeProviderFailureCode(
   if (identifiers.includes('messageabortederror')) return 'provider_invocation_aborted';
   if (identifiers.includes('contextoverflowerror')) return 'model_context_overflow';
   if (identifiers.includes('contentfiltererror')) return 'provider_content_filtered';
-  if (status === 401 || status === 403) return 'provider_authentication_failed';
+  if (status === 401) return 'provider_authentication_failed';
   if (status === 402) return 'provider_billing_required';
   if (status === 429) return 'provider_rate_limited';
   if (status === 408 || (status !== null && status >= 500)) {
     return 'provider_unavailable';
+  }
+  if (status === 403) {
+    // Forbidden can mean authentication, billing, or a provider policy such as
+    // unavailable free access. Require a known machine category for specific
+    // advice instead of treating every rejection as missing credentials.
+    const bodySignals = identifiers.includes('apierror') ? sdkProviderErrorBodySignals(error) : [];
+    for (const identifier of [...identifiers, ...bodySignals]) {
+      const category = FORBIDDEN_PROVIDER_FAILURE_CODES.get(identifier.replace(/[_-]/g, ''));
+      if (category) return category;
+    }
+    return 'provider_request_rejected';
   }
   if (/structured.?output.?error/.test(signal)) return 'structured_output_error';
   if (/context.?overflow|context.?length|context.?window/.test(signal)) {

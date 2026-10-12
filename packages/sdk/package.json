@@ -1,6 +1,6 @@
 {
   "name": "@tagma/sdk",
-  "version": "0.7.120",
+  "version": "0.7.121",
   "description": "Local AI task orchestration SDK for Tagma pipelines",
   "license": "MIT",
   "repository": {
@@ -87,6 +87,8 @@
     "@tagma/core": "workspace:*",
     "@tagma/runtime-bun": "workspace:*",
     "@tagma/types": "workspace:*",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "js-yaml": "^4.1.0"
   }
 }

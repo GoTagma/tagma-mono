@@ -24,6 +24,7 @@ import {
   resolveOpencodeRuntimePaths,
 } from './opencode-config.js';
 import { TAGMA_MANAGED_OPENCODE_TOOL_IDS } from './opencode-managed-tools.js';
+import { buildOpencodeInheritedEnv } from './opencode-host-env.js';
 import {
   markManagedOpencodeDatabaseReady,
   releaseManagedOpencodeDatabaseInitialization,
@@ -34,6 +35,12 @@ import {
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import {
+  captureManagedOpencodeConfigIdentity,
+  createManagedOpencodeExecutionSnapshot,
+  readManagedOpencodeExecutionCatalog,
+  type ManagedOpencodeExecutionSnapshot,
+} from './opencode-execution-snapshot.js';
 
 export interface OpencodeServerAuth {
   username: string;
@@ -108,6 +115,16 @@ export function ensureRealTagmaDirectory(workspaceRoot: string): string {
 // instance silently pins every chat to whichever workspace happened to open
 // chat first. Maps are keyed by the absolute cwd the caller passed.
 const handles = new Map<string, OpencodeHandle>();
+// Credentials and effective process configuration remain private to the Host.
+// An object identity binds catalogs to a process, independently of SQLite generations.
+const executionBases = new WeakMap<
+  OpencodeHandle,
+  {
+    readonly env: Readonly<Record<string, string>>;
+    readonly assertConfigCurrent: () => void;
+    readonly binary: string;
+  }
+>();
 const children = new Map<string, ReturnType<typeof Bun.spawn>>();
 const starting = new Map<string, Promise<OpencodeHandle>>();
 type OpencodeStartAttempt = {
@@ -229,45 +246,7 @@ export function buildOpencodeEnv(
   auth: OpencodeServerAuth = getOrCreateOpencodeServerAuth(cwd),
 ): Record<string, string> {
   const runtime = prepareEmbeddedOpencodeRuntime(cwd);
-  const keep = new Set([
-    'PATH',
-    'Path',
-    'TEMP',
-    'TMP',
-    'SYSTEMROOT',
-    'SystemRoot',
-    'COMSPEC',
-    'SHELL',
-    'LANG',
-    'LC_ALL',
-    'HTTP_PROXY',
-    'HTTPS_PROXY',
-    'NO_PROXY',
-    'http_proxy',
-    'https_proxy',
-    'no_proxy',
-  ]);
-  const providerPrefixes = [
-    'OPENAI_',
-    'ANTHROPIC_',
-    'GEMINI_',
-    'GOOGLE_',
-    'OPENROUTER_',
-    'GROQ_',
-    'AZURE_OPENAI_',
-    'AWS_',
-    'XAI_',
-    'MISTRAL_',
-    'DEEPSEEK_',
-    'COHERE_',
-  ];
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value !== 'string') continue;
-    if (keep.has(key) || providerPrefixes.some((prefix) => key.startsWith(prefix))) {
-      env[key] = value;
-    }
-  }
+  const env = buildOpencodeInheritedEnv();
   env.HOME = runtime.home;
   env.USERPROFILE = runtime.home;
   env.APPDATA = runtime.appData;
@@ -746,6 +725,7 @@ function createOpencodeStartAttempt(
     }
     const spawnArgs = ['serve', '--hostname', '127.0.0.1', '--port', String(port), ...corsArgs];
     const binary = resolveOpencodeBinary();
+    const assertConfigCurrent = captureManagedOpencodeConfigIdentity(cwd, opencodeEnv);
     assertStartStillCurrent();
     console.log('[opencode] spawning:', binary, spawnArgs.join(' '), 'cwd=', cwd);
 
@@ -889,6 +869,7 @@ function createOpencodeStartAttempt(
       throw err;
     }
     const h: OpencodeHandle = { baseUrl, pid: proc.pid ?? -1, cwd, auth, database };
+    executionBases.set(h, { env: Object.freeze({ ...opencodeEnv }), assertConfigCurrent, binary });
     handles.set(cwd, h);
     return h;
   })().catch((error) => {
@@ -1113,10 +1094,34 @@ export function shutdownOpencode(): void {
 
 export function getOpencodeHandle(cwd: string): OpencodeHandle | null {
   try {
-    return handles.get(canonicalOpencodeCwd(cwd)) ?? null;
+    const key = canonicalOpencodeCwd(cwd);
+    return restarting.has(key) ? null : (handles.get(key) ?? null);
   } catch {
     return null;
   }
+}
+
+/** Capture a safe effort resolver and private child base once per runtime/run. */
+export async function snapshotManagedOpencodeExecution(
+  cwd: string,
+): Promise<ManagedOpencodeExecutionSnapshot> {
+  const key = canonicalOpencodeCwd(cwd);
+  if (restarting.has(key)) throw new Error('Managed OpenCode process is restarting.');
+  const handle = handles.get(key) ?? (await ensureOpencode(key));
+  const base = executionBases.get(handle);
+  if (!base) throw new Error('Managed OpenCode execution configuration is unavailable.');
+  const assertCurrent = () => {
+    if (restarting.has(key) || handles.get(key) !== handle || !children.has(key)) {
+      throw new Error('Managed OpenCode execution generation changed.');
+    }
+    if (resolveOpencodeBinary() !== base.binary)
+      throw new Error('Managed OpenCode executable changed.');
+    base.assertConfigCurrent();
+  };
+  assertCurrent();
+  const catalog = await readManagedOpencodeExecutionCatalog(handle, base.env);
+  assertCurrent();
+  return createManagedOpencodeExecutionSnapshot(base.env, catalog, assertCurrent);
 }
 
 /** Safe runtime metadata for the read-only production diagnostics surface. */

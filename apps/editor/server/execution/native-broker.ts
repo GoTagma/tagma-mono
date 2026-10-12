@@ -19,7 +19,13 @@ import {
   waitForManagedOpencodeDatabase,
   type PreparedManagedOpencodeDatabase,
 } from '../opencode-database.js';
-import { buildOpencodeEnv, resolveOpencodeBinary } from '../opencode-lifecycle.js';
+import {
+  buildOpencodeEnv,
+  resolveOpencodeBinary,
+  snapshotManagedOpencodeExecution,
+} from '../opencode-lifecycle.js';
+import type { ManagedOpencodeExecutionSnapshot } from '../opencode-execution-snapshot.js';
+import { buildOpencodeInheritedEnv, OPENCODE_PROVIDER_ENV_PREFIXES } from '../opencode-host-env.js';
 import {
   NativeExecutionService,
   type ExecutionBackend,
@@ -40,6 +46,32 @@ interface NativeBrokerRuntimeConfig {
   readonly runtimeEnv: Readonly<Record<string, string>>;
   readonly secretValues: readonly string[];
   readonly managedOpencodeCwd?: string;
+}
+
+interface ManagedExecutionBinding {
+  snapshot?: Promise<ManagedOpencodeExecutionSnapshot>;
+  pinnedEnv?: Readonly<Record<string, string>>;
+}
+const managedBindings = new WeakMap<NativeBrokerRuntimeConfig, ManagedExecutionBinding>();
+function managedBinding(config: NativeBrokerRuntimeConfig): ManagedExecutionBinding {
+  let binding = managedBindings.get(config);
+  if (!binding) {
+    binding = {};
+    managedBindings.set(config, binding);
+  }
+  return binding;
+}
+function managedVariantResolver(config: NativeBrokerRuntimeConfig) {
+  return async (model: string | undefined, effort: string | undefined): Promise<string | null> => {
+    if (effort === undefined || effort === 'medium') return null;
+    if (!config.managedOpencodeCwd || !model)
+      throw new Error('Managed OpenCode model configuration is unavailable.');
+    const binding = managedBinding(config);
+    binding.snapshot ??= snapshotManagedOpencodeExecution(config.managedOpencodeCwd);
+    const snapshot = await binding.snapshot;
+    if (binding.pinnedEnv) snapshot.assertCompatibleBase(binding.pinnedEnv);
+    return snapshot.resolveVariant(model, effort);
+  };
 }
 
 const runtimeModes = new WeakMap<TagmaRuntime, WorkspaceRuntimeMode>();
@@ -101,18 +133,71 @@ function mergeRuntimeEnv(
   return { ...runtimeEnv, ...(specEnv ?? {}) };
 }
 
-function commandRuntimeEnv(
-  config: NativeBrokerRuntimeConfig,
-  command: CommandConfig,
-): Readonly<Record<string, string>> {
+function usesManagedOpencodeCli(command: CommandConfig): boolean {
   const source =
     typeof command === 'string'
       ? command
       : 'shell' in command
         ? command.shell
         : command.argv.join(' ');
-  if (!/\$(?:\{TAGMA_OPENCODE_CLI\}|(?:env:)?TAGMA_OPENCODE_CLI\b)/iu.test(source))
-    return config.runtimeEnv;
+  return /\$(?:\{TAGMA_OPENCODE_CLI\}|(?:env:)?TAGMA_OPENCODE_CLI\b)/iu.test(source);
+}
+
+function opencodeCredentialValues(env: Readonly<Record<string, string>>): string[] {
+  const secrets: string[] = [];
+  for (const [key, value] of Object.entries(env)) {
+    if (
+      OPENCODE_PROVIDER_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)) &&
+      /key|token|secret|password|credential|auth/iu.test(key)
+    ) {
+      secrets.push(value);
+    }
+    if (/^https?_proxy$/iu.test(key)) {
+      // Native diagnostics may echo invalid routing values before URL parsing succeeds.
+      secrets.push(value);
+      let components: string[] = [];
+      try {
+        const proxy = new URL(value);
+        components = [proxy.username, proxy.password];
+      } catch {
+        const userinfo = value.match(/^(?:[a-z][\w+.-]*:\/\/)?([^/?#]*)@/iu)?.[1];
+        if (userinfo) {
+          const separator = userinfo.indexOf(':');
+          components =
+            separator === -1
+              ? [userinfo]
+              : [userinfo.slice(0, separator), userinfo.slice(separator + 1)];
+        }
+      }
+      for (const component of components) {
+        secrets.push(component);
+        try {
+          secrets.push(decodeURIComponent(component));
+        } catch {
+          // The complete value and raw component remain redacted if encoding is malformed.
+        }
+      }
+    }
+  }
+  return secrets;
+}
+
+interface CommandRuntimeEnvironment {
+  readonly env: Readonly<Record<string, string>>;
+  readonly secretValues: readonly string[];
+}
+
+function commandRuntimeEnv(
+  config: NativeBrokerRuntimeConfig,
+  command: CommandConfig,
+  specEnv?: Readonly<Record<string, string>>,
+): CommandRuntimeEnvironment {
+  if (!usesManagedOpencodeCli(command)) {
+    return {
+      env: mergeRuntimeEnv(specEnv, config.runtimeEnv) ?? {},
+      secretValues: config.secretValues,
+    };
+  }
   if (!config.managedOpencodeCwd) {
     throw new Error('Tagma OpenCode CLI requires a managed workspace runtime.');
   }
@@ -121,8 +206,10 @@ function commandRuntimeEnv(
   // The opt-in CLI must not discover or migrate the user's global plugin config.
   // Keep the user's data root for provider login; the authored command scopes its own DB.
   const runtime = prepareEmbeddedOpencodeRuntime(config.managedOpencodeCwd);
-  return {
+  const env = {
+    ...buildOpencodeInheritedEnv(),
     ...config.runtimeEnv,
+    ...(specEnv ?? {}),
     TAGMA_OPENCODE_CLI: binary,
     HOME: runtime.home,
     USERPROFILE: runtime.home,
@@ -136,6 +223,7 @@ function commandRuntimeEnv(
     OPENCODE_CONFIG_CONTENT: JSON.stringify(buildEmbeddedOpencodeRuntimeConfig(runtime)),
     OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
   };
+  return { env, secretValues: [...config.secretValues, ...opencodeCredentialValues(env)] };
 }
 
 const REDACTED_SECRET = '[redacted secret]';
@@ -301,8 +389,11 @@ function mergeManagedOpencodeEnv(
   managedOpencodeCwd: string,
   managedDatabase: PreparedManagedOpencodeDatabase,
   args: readonly string[],
+  pinnedEnv?: Readonly<Record<string, string>>,
 ): Record<string, string> {
-  const managedEnv = buildOpencodeEnv(managedOpencodeCwd, managedDatabase);
+  const managedEnv = pinnedEnv
+    ? { ...pinnedEnv, OPENCODE_DB: managedDatabase.databasePath }
+    : buildOpencodeEnv(managedOpencodeCwd, managedDatabase);
   const env = { ...managedEnv, ...(injectedEnv ?? {}) };
   for (const key of MANAGED_OPENCODE_ISOLATION_ENV_KEYS) env[key] = managedEnv[key];
   const taskAgentName = selectedOpencodeAgent(args);
@@ -391,14 +482,23 @@ async function runManagedOpencodeSpawn(
     return result;
   }
   const note = `[editor] OpenCode primary model error: ${detectedError}`;
-  const stderr = result.stderr.includes(detectedError)
-    ? result.stderr
-    : [result.stderr, note].filter(Boolean).join('\n');
+  const suffix = result.stderr.includes(detectedError)
+    ? ''
+    : (result.stderr.length > 0 ? '\n' : '') + note;
+  const previous = result.stderrDiagnostics;
   return {
     ...result,
     exitCode: 1,
-    stderr,
-    stderrBytes: new TextEncoder().encode(stderr).byteLength,
+    stderr: result.stderr + suffix,
+    ...(suffix
+      ? {
+          stderrDiagnostics: {
+            suffix: (previous?.suffix ?? '') + suffix,
+            completeSuffix: (previous?.completeSuffix ?? previous?.suffix ?? '') + suffix,
+            sourceBytes: previous ? previous.sourceBytes : result.stderrBytes,
+          },
+        }
+      : {}),
     sessionId: null,
     normalizedOutput: null,
     failureKind: 'exit_nonzero',
@@ -407,6 +507,7 @@ async function runManagedOpencodeSpawn(
 
 interface ManagedResolution {
   readonly database: PreparedManagedOpencodeDatabase;
+  readonly snapshot?: ManagedOpencodeExecutionSnapshot;
   settled: boolean;
 }
 
@@ -439,8 +540,16 @@ async function resolveBrokerSpawn(
 ): Promise<NativeResolvedExecution> {
   const managed = Boolean(config.managedOpencodeCwd) && isManagedOpencodeSpawn(spec, driver);
   const resolvedSpec = resolveEditorDriverSpawnSpec(spec, driver);
-  const injectedEnv = mergeRuntimeEnv(resolvedSpec.env, config.runtimeEnv);
-  const runOptions = withOutputRedactor(options, createSecretOutputRedactor(config.secretValues));
+  // Core emits a driver-null spawn for command tasks carrying YAML secretEnv.
+  const cliCommand =
+    driver === null && usesManagedOpencodeCli({ argv: resolvedSpec.args })
+      ? commandRuntimeEnv(config, { argv: resolvedSpec.args }, resolvedSpec.env)
+      : undefined;
+  const injectedEnv = cliCommand?.env ?? mergeRuntimeEnv(resolvedSpec.env, config.runtimeEnv);
+  const runOptions = withOutputRedactor(
+    options,
+    createSecretOutputRedactor(cliCommand?.secretValues ?? config.secretValues),
+  );
   if (!managed || !config.managedOpencodeCwd) {
     return {
       kind: 'spawn',
@@ -456,15 +565,30 @@ async function resolveBrokerSpawn(
     { signal: options.signal },
   );
   try {
+    const binding = managedBinding(config);
+    const snapshot = binding.snapshot ? await binding.snapshot : undefined;
+    const pinnedEnv =
+      snapshot?.childEnvironment(database, injectedEnv) ??
+      (binding.pinnedEnv ??= Object.freeze(buildOpencodeEnv(managedCwd, database)));
+    const managedEnv = mergeManagedOpencodeEnv(
+      injectedEnv,
+      managedCwd,
+      database,
+      resolvedSpec.args,
+      pinnedEnv,
+    );
     return {
       kind: 'spawn',
       spec: withManagedOpencodeDiagnostics({
         ...resolvedSpec,
-        env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, database, resolvedSpec.args),
+        env: managedEnv,
       }),
       driver,
-      options: runOptions,
-      managed: { database, settled: false },
+      options: withOutputRedactor(
+        runOptions,
+        createSecretOutputRedactor(opencodeCredentialValues(managedEnv)),
+      ),
+      managed: { database, settled: false, snapshot },
     };
   } catch (error) {
     releaseManagedOpencodeDatabaseInitialization(database);
@@ -478,9 +602,9 @@ function resolveBrokerCommand(
   cwd: string,
   options: RunOptions,
 ): NativeResolvedExecution {
-  const commandEnv = commandRuntimeEnv(config, command);
+  const { env: commandEnv, secretValues } = commandRuntimeEnv(config, command);
   const needsWrapper =
-    Object.keys(commandEnv).length > 0 || config.secretValues.some((value) => value.length > 0);
+    Object.keys(commandEnv).length > 0 || secretValues.some((value) => value.length > 0);
   if (!needsWrapper) return { kind: 'command', command, cwd, options };
   return {
     kind: 'spawn',
@@ -489,7 +613,7 @@ function resolveBrokerCommand(
       env: mergeRuntimeEnv(undefined, commandEnv),
     },
     driver: null,
-    options: withOutputRedactor(options, createSecretOutputRedactor(config.secretValues)),
+    options: withOutputRedactor(options, createSecretOutputRedactor(secretValues)),
   };
 }
 
@@ -533,6 +657,7 @@ class NativeRuntimeBackend implements ExecutionBackend<NativeResolvedExecution> 
       return await this.base.runSpawn(resolved.spec, resolved.driver, resolved.options);
     }
     try {
+      resolved.managed.snapshot?.assertCurrent();
       const result = await runManagedOpencodeSpawn(
         this.base,
         resolved.spec,
@@ -555,7 +680,10 @@ export function createNativeBrokerRuntime(
   config: NativeBrokerRuntimeConfig,
 ): TagmaRuntime {
   const service = new NativeExecutionService(new NativeRuntimeBackend(base, config));
-  return createLegacyRuntimeAdapter(base, service);
+  return {
+    ...createLegacyRuntimeAdapter(base, service),
+    resolveOpencodeVariant: managedVariantResolver(config),
+  };
 }
 
 export function createDirectLegacyRuntime(
@@ -564,13 +692,18 @@ export function createDirectLegacyRuntime(
 ): TagmaRuntime {
   return {
     ...base,
+    resolveOpencodeVariant: managedVariantResolver(config),
     runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, options: RunOptions = {}) {
       const managed = Boolean(config.managedOpencodeCwd) && isManagedOpencodeSpawn(spec, driver);
       const resolvedSpec = resolveEditorDriverSpawnSpec(spec, driver);
-      const injectedEnv = mergeRuntimeEnv(resolvedSpec.env, config.runtimeEnv);
+      const cliCommand =
+        driver === null && usesManagedOpencodeCli({ argv: resolvedSpec.args })
+          ? commandRuntimeEnv(config, { argv: resolvedSpec.args }, resolvedSpec.env)
+          : undefined;
+      const injectedEnv = cliCommand?.env ?? mergeRuntimeEnv(resolvedSpec.env, config.runtimeEnv);
       const runOptions = withOutputRedactor(
         options,
-        createSecretOutputRedactor(config.secretValues),
+        createSecretOutputRedactor(cliCommand?.secretValues ?? config.secretValues),
       );
       if (!managed || !config.managedOpencodeCwd) {
         return base.runSpawn({ ...resolvedSpec, env: injectedEnv }, driver, runOptions);
@@ -581,17 +714,32 @@ export function createDirectLegacyRuntime(
           resolveManagedOpencodeDatabaseConfig(prepareEmbeddedOpencodeRuntime(managedCwd).root),
           { signal: options.signal },
         );
-        const spawnSpec = {
-          ...resolvedSpec,
-          env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, database, resolvedSpec.args),
-        };
         let published = false;
         try {
+          const binding = managedBinding(config);
+          const snapshot = binding.snapshot ? await binding.snapshot : undefined;
+          const pinnedEnv =
+            snapshot?.childEnvironment(database, injectedEnv) ??
+            (binding.pinnedEnv ??= Object.freeze(buildOpencodeEnv(managedCwd, database)));
+          const spawnSpec = {
+            ...resolvedSpec,
+            env: mergeManagedOpencodeEnv(
+              injectedEnv,
+              managedCwd,
+              database,
+              resolvedSpec.args,
+              pinnedEnv,
+            ),
+          };
+          snapshot?.assertCurrent();
           const result = await runManagedOpencodeSpawn(
             base,
             withManagedOpencodeDiagnostics(spawnSpec),
             driver,
-            runOptions,
+            withOutputRedactor(
+              runOptions,
+              createSecretOutputRedactor(opencodeCredentialValues(spawnSpec.env)),
+            ),
           );
           if (result.exitCode === 0) {
             markManagedOpencodeDatabaseReady(database);
@@ -604,9 +752,9 @@ export function createDirectLegacyRuntime(
       })();
     },
     runCommand(command: CommandConfig, cwd: string, options: RunOptions = {}) {
-      const commandEnv = commandRuntimeEnv(config, command);
+      const { env: commandEnv, secretValues } = commandRuntimeEnv(config, command);
       const needsCommandWrapper =
-        Object.keys(commandEnv).length > 0 || config.secretValues.some((value) => value.length > 0);
+        Object.keys(commandEnv).length > 0 || secretValues.some((value) => value.length > 0);
       if (!needsCommandWrapper) return base.runCommand(command, cwd, options);
       return base.runSpawn(
         {
@@ -614,7 +762,7 @@ export function createDirectLegacyRuntime(
           env: mergeRuntimeEnv(undefined, commandEnv),
         },
         null,
-        withOutputRedactor(options, createSecretOutputRedactor(config.secretValues)),
+        withOutputRedactor(options, createSecretOutputRedactor(secretValues)),
       );
     },
   };

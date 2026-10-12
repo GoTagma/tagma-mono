@@ -9,6 +9,7 @@ import {
   type ChatV2AgentCycleDependencies,
 } from '../scripts/chat-v2-agent-cycle.js';
 import type {
+  ChatV2AgentLoopInvocationModel,
   ChatV2AgentLoopScenario,
   IsolatedChatV2AgentLoopReport,
 } from '../scripts/chat-v2-agent-loop.js';
@@ -48,6 +49,7 @@ function scenarioReport(input: {
   scenario: ChatV2AgentLoopScenario;
   sidecarMode: 'source' | 'compiled';
   providerMode?: 'real' | 'fake';
+  variant?: string | null;
   verdict?: 'passed' | 'failed';
   failureName?: string;
   failureMessage?: string;
@@ -100,7 +102,20 @@ function scenarioReport(input: {
       provider: input.providerMode === 'fake' ? 'tagma-loop-provider' : 'opencode',
       model: input.providerMode === 'fake' ? 'loop-model' : 'deepseek-v4-flash-free',
       selection: input.providerMode === 'fake' ? 'deterministic-fake' : 'opencode-free',
+      variant: input.variant ?? null,
     },
+    hostInvocationModels: input.variant
+      ? [
+          {
+            operationId: `operation-${input.scenario}`,
+            invocationId: `invocation-${input.scenario}`,
+            purpose: 'discussion',
+            provider: input.providerMode === 'fake' ? 'tagma-loop-provider' : 'opencode',
+            model: input.providerMode === 'fake' ? 'loop-model' : 'deepseek-v4-flash-free',
+            variant: input.variant,
+          },
+        ]
+      : [],
     diagnostics: {
       protocolVersion: 1,
       timelineCursor: 3,
@@ -123,14 +138,24 @@ function dependencies(input?: {
   throwScenario?: boolean;
   cleanupFailure?: boolean;
   reportProviderMode?: 'real' | 'fake';
-}): { dependencies: ChatV2AgentCycleDependencies; calls: string[]; timeouts: number[] } {
+  reportVariant?: string | null;
+  omitInvocationMetadata?: boolean;
+  invocationMetadataPatch?: Partial<ChatV2AgentLoopInvocationModel>;
+}): {
+  dependencies: ChatV2AgentCycleDependencies;
+  calls: string[];
+  timeouts: number[];
+  variants: (string | null)[];
+} {
   const calls: string[] = [];
   const timeouts: number[] = [];
+  const variants: (string | null)[] = [];
   let failedOnce = false;
   let failureCount = 0;
   return {
     calls,
     timeouts,
+    variants,
     dependencies: {
       buildCompiledSidecar: async () => {
         calls.push('build');
@@ -140,9 +165,10 @@ function dependencies(input?: {
           output: 'built',
         };
       },
-      runScenario: async ({ scenario, sidecarExecutable, providerMode, timeoutMs }) => {
+      runScenario: async ({ scenario, sidecarExecutable, providerMode, timeoutMs, variant }) => {
         expect(providerMode).toBe('real');
         timeouts.push(timeoutMs ?? -1);
+        variants.push(variant ?? null);
         const mode = sidecarExecutable ? 'compiled' : 'source';
         calls.push(`${mode}:${scenario}`);
         if (input?.throwScenario) throw new Error('scenario transport crashed');
@@ -151,13 +177,23 @@ function dependencies(input?: {
         if (failed) failedOnce = true;
         const failureMessage = input?.failureMessages?.[failureCount];
         if (failed) failureCount += 1;
-        return scenarioReport({
+        const report = scenarioReport({
           scenario,
           sidecarMode: mode,
           providerMode: input?.reportProviderMode,
+          variant: input?.reportVariant === undefined ? variant : input.reportVariant,
           verdict: failed ? 'failed' : 'passed',
           ...(failureMessage ? { failureMessage } : {}),
         });
+        return {
+          ...report,
+          hostInvocationModels: input?.omitInvocationMetadata
+            ? []
+            : report.hostInvocationModels.map((row) => ({
+                ...row,
+                ...input?.invocationMetadataPatch,
+              })),
+        };
       },
       cleanupBuildDirectory: async () => {
         if (input?.cleanupFailure) throw new Error('build cleanup failed');
@@ -201,7 +237,47 @@ test('agent cycle owns stable real-provider source runs, a fresh build, and stab
   expect(report.runs).toHaveLength(16);
   expect(report.build).toMatchObject({ verdict: 'passed', sha256: 'a'.repeat(64) });
   expect(new Set(harness.timeouts)).toEqual(new Set([300_000]));
+  expect(harness.variants).toEqual(Array(16).fill(null));
 });
+
+test('agent cycle preserves explicit low throughout both full matrices and reports it', async () => {
+  const harness = dependencies();
+  const report = await runChatV2AgentCycle(
+    { artifactsParentDirectory: artifactsRoot(), variant: 'low' },
+    harness.dependencies,
+  );
+
+  expect(report.verdict).toBe('passed');
+  expect(report.nextAction).toBe('verified');
+  expect(report.requestedVariant).toBe('low');
+  expect(report.runs).toHaveLength(16);
+  expect(harness.variants).toEqual(Array(16).fill('low'));
+  expect(new Set(harness.timeouts)).toEqual(new Set([300_000]));
+});
+
+test.each(['source', 'compiled'] as const)(
+  'agent cycle retains low for exact fresh %s failure confirmation',
+  async (mode) => {
+    const harness = dependencies({ fail: { mode, scenario: 'discussion' } });
+    const report = await runChatV2AgentCycle(
+      { artifactsParentDirectory: artifactsRoot(), variant: 'low' },
+      harness.dependencies,
+    );
+
+    expect(report.verdict).toBe('failed');
+    expect(report.confirmation).toMatchObject({
+      verdict: 'confirmed',
+      mode,
+      scenario: 'discussion',
+    });
+    expect(harness.variants.every((variant) => variant === 'low')).toBeTrue();
+    expect(report.runs.at(-1)).toMatchObject({
+      purpose: 'confirmation',
+      mode,
+      scenario: 'discussion',
+    });
+  },
+);
 
 test('agent cycle cannot report verified from a fake provider scenario', async () => {
   const harness = dependencies({ reportProviderMode: 'fake' });
@@ -223,6 +299,38 @@ test('agent cycle cannot report verified from a fake provider scenario', async (
     name: 'RealProviderRequired',
   });
 });
+
+test('agent cycle rejects a successful scenario that silently drops explicit low', async () => {
+  const harness = dependencies({ reportVariant: null });
+  const report = await runChatV2AgentCycle(
+    { artifactsParentDirectory: artifactsRoot(), variant: 'low' },
+    harness.dependencies,
+  );
+  expect(report.verdict).toBe('failed');
+  expect(report.nextAction).toBe('repair_required');
+  expect(report.failure?.name).toBe('VariantMismatch');
+  expect(report.confirmation?.verdict).toBe('confirmed');
+  expect(harness.calls).not.toContain('build');
+});
+
+test.each([null, { operationId: 'foreign-operation' }, { variant: 'high' }, { purpose: 'title' }])(
+  'agent cycle cannot verify explicit low with unowned Host metadata %j',
+  async (patch) => {
+    const harness = dependencies({
+      omitInvocationMetadata: patch === null,
+      invocationMetadataPatch: patch ?? undefined,
+    });
+    const report = await runChatV2AgentCycle(
+      { artifactsParentDirectory: artifactsRoot(), variant: 'low' },
+      harness.dependencies,
+    );
+    expect(report.verdict).toBe('failed');
+    expect(report.nextAction).toBe('repair_required');
+    expect(report.failure?.name).toBe('VariantMetadataMismatch');
+    expect(report.confirmation?.verdict).toBe('confirmed');
+    expect(harness.calls).not.toContain('build');
+  },
+);
 
 test('agent cycle stops before build and emits a stable source failure fingerprint', async () => {
   const first = dependencies({ fail: { mode: 'source', scenario: 'discussion' } });

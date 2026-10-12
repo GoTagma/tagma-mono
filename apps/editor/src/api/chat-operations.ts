@@ -257,6 +257,7 @@ export const CHAT_OPERATION_V2_HOST_EVENT_TYPES = [
   'classifier_protocol_repair_started',
   'snapshot_frozen',
   'invocation_prepared',
+  'execution_input_observed',
   'invocation_submission_unknown',
   'invocation_admitted',
   'invocation_started',
@@ -291,6 +292,45 @@ const CHAT_OPERATION_V2_OPENCODE_EVENT_TYPES = [
   'permission_requested_live',
   'permission_resolved_live',
 ] as const satisfies readonly ChatOperationV2HostEventType[];
+
+// Browser-only scalar projection. The Host owns blob and SDK execution verification.
+export interface ChatOperationV2ExecutionInputWitness {
+  readonly schemaVersion: 1;
+  readonly layer: 'host-sdk-prompt-arguments';
+  readonly workspaceScopeId: string;
+  readonly operationId: string;
+  readonly operationGeneration: number;
+  readonly stageId: string;
+  readonly invocationId: string;
+  readonly sessionId: string;
+  readonly inputId: string;
+  readonly executionMessageId: string;
+  readonly purpose: 'authoring' | 'repair' | 'trial_plan';
+  readonly repairAttempt: number;
+  readonly requestDigest: string;
+  readonly continuationOf: string | null;
+  readonly trialId: string | null;
+  readonly referenceHash: string | null;
+  readonly referenceUtf8Bytes: number | null;
+  readonly canonicalErrorsHash: string | null;
+  readonly canonicalErrorsUtf8Bytes: number | null;
+  readonly promptTextHash: string;
+  readonly promptTextUtf8Bytes: number;
+  readonly decodedPromptErrorsHash: string | null;
+  readonly decodedPromptErrorsUtf8Bytes: number | null;
+  readonly errorBlockPresent: boolean | null;
+  readonly referenceCanonicalMatch: boolean | null;
+  readonly decodedCanonicalMatch: boolean | null;
+  readonly reason:
+    | 'matched'
+    | 'mismatch'
+    | 'no_error_evidence'
+    | 'continuation_context'
+    | 'reference_unavailable'
+    | 'error_block_absent'
+    | 'error_block_ambiguous'
+    | 'decode_unavailable';
+}
 
 export interface ChatOperationV2HostEventPayloads {
   readonly operation_created: { readonly generation: number; readonly version: number };
@@ -340,6 +380,10 @@ export interface ChatOperationV2HostEventPayloads {
     readonly sessionId: string;
     readonly inputId: string;
     readonly requestHash: string;
+  };
+  readonly execution_input_observed: {
+    readonly invocationId: string;
+    readonly witness: ChatOperationV2ExecutionInputWitness;
   };
   readonly invocation_submission_unknown: {
     readonly invocationId: string;
@@ -1092,6 +1136,140 @@ function hasEventPayloadKeys(value: Record<string, unknown>, keys: readonly stri
   return hasExactKeys(value, ['schemaVersion', ...keys]) && value.schemaVersion === 1;
 }
 
+function isExecutionInputWitness(value: unknown): value is ChatOperationV2ExecutionInputWitness {
+  const ID = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,127})$/;
+  const HASH = /^[0-9a-f]{64}$/;
+  const identityKeys = [
+    'workspaceScopeId',
+    'operationId',
+    'stageId',
+    'invocationId',
+    'sessionId',
+    'inputId',
+    'executionMessageId',
+  ] as const;
+  const nullableHashKeys = [
+    'referenceHash',
+    'canonicalErrorsHash',
+    'decodedPromptErrorsHash',
+  ] as const;
+  const nullableCountKeys = [
+    'referenceUtf8Bytes',
+    'canonicalErrorsUtf8Bytes',
+    'decodedPromptErrorsUtf8Bytes',
+  ] as const;
+  const nullableBoolKeys = [
+    'errorBlockPresent',
+    'referenceCanonicalMatch',
+    'decodedCanonicalMatch',
+  ] as const;
+  const reasons = [
+    'matched',
+    'mismatch',
+    'no_error_evidence',
+    'continuation_context',
+    'reference_unavailable',
+    'error_block_absent',
+    'error_block_ambiguous',
+    'decode_unavailable',
+  ];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const r = value as Record<string, unknown>;
+  const keys = [
+    'schemaVersion',
+    'layer',
+    ...identityKeys,
+    'operationGeneration',
+    'purpose',
+    'repairAttempt',
+    'requestDigest',
+    'continuationOf',
+    'trialId',
+    ...nullableHashKeys,
+    ...nullableCountKeys,
+    'promptTextHash',
+    'promptTextUtf8Bytes',
+    ...nullableBoolKeys,
+    'reason',
+  ];
+  const descriptors = Object.getOwnPropertyDescriptors(r);
+  if (
+    Object.keys(r).length !== keys.length ||
+    !keys.every(
+      (k) =>
+        descriptors[k]?.enumerable && Object.prototype.hasOwnProperty.call(descriptors[k], 'value'),
+    )
+  )
+    return false;
+  const count = (v: unknown) => Number.isSafeInteger(v) && Number(v) >= 0;
+  const id = (v: unknown) => typeof v === 'string' && ID.test(v);
+  const digest = (v: unknown) => typeof v === 'string' && HASH.test(v);
+  const paired = nullableHashKeys.every(
+    (key, index) => (r[key] === null) === (r[nullableCountKeys[index]] === null),
+  );
+  if (!paired) return false;
+  const referenceMatches =
+    r.referenceHash !== null &&
+    r.canonicalErrorsHash !== null &&
+    r.referenceHash === r.canonicalErrorsHash &&
+    r.referenceUtf8Bytes === r.canonicalErrorsUtf8Bytes;
+  const decodedMatches =
+    r.decodedPromptErrorsHash !== null &&
+    r.canonicalErrorsHash !== null &&
+    r.decodedPromptErrorsHash === r.canonicalErrorsHash &&
+    r.decodedPromptErrorsUtf8Bytes === r.canonicalErrorsUtf8Bytes;
+  if (
+    r.referenceCanonicalMatch !== null &&
+    (r.referenceHash === null ||
+      r.canonicalErrorsHash === null ||
+      r.referenceCanonicalMatch !== referenceMatches)
+  )
+    return false;
+  if (
+    r.decodedCanonicalMatch !== null &&
+    (r.decodedPromptErrorsHash === null ||
+      r.canonicalErrorsHash === null ||
+      r.decodedCanonicalMatch !== decodedMatches)
+  )
+    return false;
+  if (
+    r.reason === 'matched' &&
+    (r.referenceCanonicalMatch !== true ||
+      r.decodedCanonicalMatch !== true ||
+      r.errorBlockPresent !== true ||
+      r.continuationOf !== null)
+  )
+    return false;
+  if (
+    r.reason === 'continuation_context' &&
+    (r.continuationOf === null ||
+      r.decodedPromptErrorsHash !== null ||
+      r.decodedCanonicalMatch !== null ||
+      r.errorBlockPresent !== null)
+  )
+    return false;
+  return (
+    r.schemaVersion === 1 &&
+    r.layer === 'host-sdk-prompt-arguments' &&
+    identityKeys.every((k) => id(r[k])) &&
+    // Shape only: exact SDK message identity is authenticated and derived by the Host.
+    typeof r.executionMessageId === 'string' &&
+    /^msg_tagma_author_[0-9a-f]{40}$/.test(r.executionMessageId) &&
+    count(r.operationGeneration) &&
+    Number(r.operationGeneration) >= 1 &&
+    count(r.repairAttempt) &&
+    ['authoring', 'repair', 'trial_plan'].includes(String(r.purpose)) &&
+    digest(r.requestDigest) &&
+    digest(r.promptTextHash) &&
+    count(r.promptTextUtf8Bytes) &&
+    [r.continuationOf, r.trialId].every((v) => v === null || id(v)) &&
+    nullableHashKeys.every((k) => r[k] === null || digest(r[k])) &&
+    nullableCountKeys.every((k) => r[k] === null || count(r[k])) &&
+    nullableBoolKeys.every((k) => r[k] === null || typeof r[k] === 'boolean') &&
+    reasons.includes(String(r.reason))
+  );
+}
+
 function isHostEventPayload(type: ChatOperationV2HostEventType, value: unknown): boolean {
   if (!isPlainRecord(value)) return false;
   switch (type) {
@@ -1196,6 +1374,13 @@ function isHostEventPayload(type: ChatOperationV2HostEventType, value: unknown):
         isHostId(value.sessionId) &&
         isHostId(value.inputId) &&
         isHash(value.requestHash)
+      );
+    case 'execution_input_observed':
+      return (
+        hasEventPayloadKeys(value, ['invocationId', 'witness']) &&
+        isHostId(value.invocationId) &&
+        isExecutionInputWitness(value.witness) &&
+        value.invocationId === value.witness.invocationId
       );
     case 'invocation_submission_unknown':
       return (
@@ -2459,6 +2644,16 @@ function _parseHostEvent(value: unknown): ChatOperationV2HostEvent {
       value.payload.waitReason !== value.waitReason)
   ) {
     invalid('Host state event projection is inconsistent');
+  }
+  if (
+    value.type === 'execution_input_observed' &&
+    isPlainRecord(value.payload) &&
+    isExecutionInputWitness(value.payload.witness) &&
+    (value.payload.witness.workspaceScopeId !== value.workspaceScopeId ||
+      value.payload.witness.operationId !== value.operationId ||
+      value.payload.witness.operationGeneration !== value.generation)
+  ) {
+    invalid('Host execution input observation owner is inconsistent');
   }
   return value as unknown as ChatOperationV2HostEvent;
 }

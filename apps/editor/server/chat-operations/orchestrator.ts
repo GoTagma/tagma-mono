@@ -156,7 +156,8 @@ export type ChatOperationV2ReadonlyPersistence = Pick<
   | 'listMessages'
   | 'appendMessage'
   | 'sealResult'
->;
+> &
+  Partial<Pick<ChatOperationV2Store, 'getLatestOperationEvent'>>;
 
 export interface ChatOperationV2DirtySnapshotInput {
   readonly candidateId: string;
@@ -686,7 +687,16 @@ export class ChatOperationV2ReadonlyOrchestrator {
     });
     if (existing) {
       if (created.phase === 'terminal') return this.resultFor(created);
-      if (this.contexts.has(created.operationId)) return this.resultFor(created);
+      if (
+        this.contexts.has(created.operationId) &&
+        !(
+          created.phase === 'trial-running' &&
+          created.waitReason === 'user_retry' &&
+          created.bindingId !== null &&
+          created.stageId !== null
+        )
+      )
+        return this.resultFor(created);
       const outboxes = this.persistence
         .listInvocationOutbox(created.workspaceScopeId)
         .filter(({ operationId }) => operationId === created.operationId);
@@ -843,6 +853,15 @@ export class ChatOperationV2ReadonlyOrchestrator {
       );
     const mainOutbox = mains.at(-1) ?? null;
     const historicalMains = mains.slice(0, -1);
+    const mutations = operationOutboxes.filter(
+      ({ purpose }) => purpose === 'authoring' || purpose === 'repair' || purpose === 'trial_plan',
+    );
+    // A retained mutation belongs to the authoring engine. Recovery authenticates
+    // its durable ownership, but never reconciles or resubmits it as read-only work.
+    const retainedAuthoring =
+      mutations.length > 0 &&
+      this.isRetainedAuthoringRecovery(operation, admission, mutations, usageByInvocation);
+
     if (
       (!recoveringFreshClassifier &&
         !recoveringDefinitiveClassifierFailure &&
@@ -856,7 +875,10 @@ export class ChatOperationV2ReadonlyOrchestrator {
           outbox.purpose !== mainOutbox?.purpose ||
           outbox.requestDigest !== mainOutbox.requestDigest,
       ) ||
-      classifiers.length + mains.length !== operationOutboxes.length ||
+      classifiers.length + mains.length + (retainedAuthoring ? mutations.length : 0) !==
+        operationOutboxes.length ||
+      (retainedAuthoring &&
+        (mains.length !== 0 || durableClassifierOutbox?.status !== 'settled')) ||
       (recoveringFreshClassifier && mains.length !== 0)
     ) {
       throw new Error('Recovered invocation purposes are missing, duplicated, or conflicting.');
@@ -959,7 +981,8 @@ export class ChatOperationV2ReadonlyOrchestrator {
       main,
       intent,
       recoveredAuthoringDeferred:
-        operation.phase === 'awaiting_input' && operation.waitReason === 'user_retry',
+        retainedAuthoring ||
+        (operation.phase === 'awaiting_input' && operation.waitReason === 'user_retry'),
       recoveredFreshClassifier: recoveringFreshClassifier,
     };
     this.contexts.set(operation.operationId, context);
@@ -981,6 +1004,67 @@ export class ChatOperationV2ReadonlyOrchestrator {
             ? (mainOutbox.purpose as 'discussion' | 'diagnosis')
             : 'classifier',
     };
+  }
+
+  private isRetainedAuthoringRecovery(
+    operation: StoredChatOperationV2,
+    admission: ChatOperationV2Admission,
+    mutations: readonly StoredInvocationOutboxRecord[],
+    usageByInvocation: ReadonlyMap<string, StoredUsageLedgerRecord>,
+  ): boolean {
+    if (
+      operation.phase !== 'trial-running' ||
+      operation.waitReason !== 'user_retry' ||
+      operation.bindingId === null ||
+      operation.stageId === null ||
+      operation.activeInvocationId !== null ||
+      operation.pendingPermissionRequestId !== null
+    )
+      return false;
+    const event = this.persistence.getLatestOperationEvent?.(
+      operation.operationId,
+      'trial_status_changed',
+    );
+    if (
+      !event ||
+      event.type !== 'trial_status_changed' ||
+      event.workspaceScopeId !== operation.workspaceScopeId ||
+      event.operationId !== operation.operationId ||
+      event.generation !== operation.generation ||
+      event.operationVersion !== operation.version - 1 ||
+      event.payload.stageId !== operation.stageId ||
+      (event.payload.status !== 'failed' && event.payload.status !== 'blocked') ||
+      typeof event.payload.errorCode !== 'string' ||
+      !/^[a-z][a-z0-9_]{0,95}$/.test(event.payload.errorCode) ||
+      !Number.isSafeInteger(event.timestamp) ||
+      event.timestamp < operation.createdAt ||
+      event.timestamp > operation.updatedAt
+    )
+      return false;
+    return mutations.every((outbox) => {
+      const usage = usageByInvocation.get(outbox.invocationId);
+      return (
+        outbox.workspaceScopeId === operation.workspaceScopeId &&
+        outbox.operationId === operation.operationId &&
+        ['settled', 'failed_terminal', 'interrupted'].includes(outbox.status) &&
+        outbox.settledAt !== null &&
+        outbox.settledAt <= event.timestamp &&
+        usage !== undefined &&
+        usage.workspaceScopeId === operation.workspaceScopeId &&
+        usage.operationId === operation.operationId &&
+        usage.invocationId === outbox.invocationId &&
+        usage.purpose === outbox.purpose &&
+        usage.providerId === admission.provider &&
+        usage.modelId === admission.model &&
+        usage.variantId === admission.variant &&
+        ['settled', 'unavailable', 'corrected'].includes(usage.status) &&
+        usage.settledAt !== null &&
+        usage.settledAt <= event.timestamp &&
+        (usage.status === 'unavailable'
+          ? usage.outcome === 'unavailable'
+          : ['completed', 'failed', 'aborted', 'zero_token'].includes(usage.outcome ?? ''))
+      );
+    });
   }
 
   async resumeRecoveredOperation(

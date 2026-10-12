@@ -576,7 +576,51 @@ test('runSpawn reports child output bytes before redaction', async () => {
   expect(result.stderr).toBe('x');
   expect(result.stdoutBytes).toBe('secret'.length);
   expect(result.stderrBytes).toBe('secret'.length);
+  expect(result.stdoutStoredBytes).toBe(1);
+  expect(result.stderrStoredBytes).toBe(1);
 });
+
+test.each(['parse-error', 'forced-failure'])(
+  'runSpawn preserves child output and diagnostic provenance (%s)',
+  async (mode) => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-runner-diagnostic-'));
+    const stdoutPath = join(root, 'child.stdout');
+    const stderrPath = join(root, 'child.stderr');
+    const childStderr = 'CHILD_START\n' + 'child detail ☃ '.repeat(1000) + '\nCHILD_END';
+    const reason = 'DRIVER_DIAGNOSTIC';
+    const driver = {
+      name: 'diagnostic-fixture',
+      parseResult() {
+        if (mode === 'parse-error') throw new Error(reason);
+        return { forceFailure: true, forceFailureReason: reason };
+      },
+    } as unknown as DriverPlugin;
+    try {
+      const result = await runSpawn(
+        {
+          args: nodeArg(
+            `const fs = require("node:fs"); fs.writeSync(1, "business output"); fs.writeSync(2, ${JSON.stringify(childStderr)});`,
+          ),
+        },
+        driver,
+        { stdoutPath, stderrPath, maxStderrTailBytes: 128 },
+      );
+      expect(result.failureKind).toBe(mode === 'parse-error' ? 'parse_error' : 'exit_nonzero');
+      expect(result.exitCode).toBe(mode === 'parse-error' ? 0 : 1);
+      expect(result.stdout).toBe('business output');
+      expect(readFileSync(stdoutPath, 'utf8')).toBe('business output');
+      expect(readFileSync(stderrPath, 'utf8')).toBe(childStderr);
+      expect(result.stderrBytes).toBe(Buffer.byteLength(childStderr));
+      expect(result.stderrStoredBytes).toBe(Buffer.byteLength(childStderr));
+      expect(result.stderrDiagnostics?.sourceBytes).toBe(Buffer.byteLength(childStderr));
+      expect(result.stderrDiagnostics?.completeSuffix).toBe(result.stderrDiagnostics?.suffix);
+      expect(result.stderrDiagnostics?.suffix).toContain(reason);
+      expect(result.stderr.endsWith(result.stderrDiagnostics!.suffix)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test('runSpawn reports pre-spawn aborts as aborted', async () => {
   const controller = new AbortController();

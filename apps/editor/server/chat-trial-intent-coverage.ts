@@ -41,7 +41,11 @@ export function buildTrialPlanValidationContext(
     const track = node.track;
     const completion = node.task.completion as { type?: string; path?: string } | undefined;
     const artifactPaths: string[] = [];
-    if (coordinates && completion?.type === 'file_exists' && typeof completion.path === 'string') {
+    if (
+      coordinates &&
+      (completion?.type === 'file_exists' || completion?.type === 'json_schema') &&
+      typeof completion.path === 'string'
+    ) {
       const path = relative(
         coordinates.workDir,
         resolve(coordinates.workDir, node.task.cwd ?? track?.cwd ?? '.', completion.path),
@@ -98,6 +102,8 @@ export function requiredTrialEvidence(
   const review = rules.parseReview(plan.evidenceReview);
   if (expectedIntentDigest && review.intentDigest !== expectedIntentDigest)
     throw new Error('Evidence review does not match the frozen Host intent digest.');
+  if (expectedIntentDigest && !review.coreWitness)
+    throw new Error('Frozen-intent Trial requires an explicit positive coreWitness.');
   const required = review.decisions.filter((item) => item.required).map((item) => item.type);
   if (pinned.some((kind) => !required.includes(kind)))
     throw new Error(
@@ -110,14 +116,13 @@ export function inspectTrialEvidence(
   plan: ChatPipelineTrialPlan,
   pipelineConfig?: PipelineConfig,
   coordinates?: { relativeYamlPath: string; workDir: string },
+  requireCoreWitness = false,
 ) {
-  return rules.inspectEvidence(
-    obligations,
-    plan,
-    pipelineConfig
-      ? buildTrialPlanValidationContext(pipelineConfig, obligations, coordinates).tasks
-      : undefined,
-  );
+  const tasks = pipelineConfig
+    ? buildTrialPlanValidationContext(pipelineConfig, obligations, coordinates).tasks
+    : undefined;
+  if (tasks) rules.validateCoreWitness(plan, tasks, requireCoreWitness);
+  return rules.inspectEvidence(obligations, plan, tasks);
 }
 export function missingExplicitResilienceEvidence(
   obligations: readonly ExplicitResilienceObligation[],

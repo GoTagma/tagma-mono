@@ -690,7 +690,15 @@ export interface RuntimeLogStore {
   prune?(options: PruneLogOptions): Promise<void>;
 }
 
+/** Host policy for native OpenCode variants. Only model/effort identifiers cross this boundary. */
+export type OpenCodeVariantResolver = (
+  model: string | undefined,
+  effort: string | undefined,
+) => string | null | Promise<string | null>;
+
 export interface TagmaRuntime {
+  /** Optional managed-model policy; absent runtimes retain standalone driver behavior. */
+  resolveOpencodeVariant?: OpenCodeVariantResolver;
   runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, options?: RunOptions): Promise<TaskResult>;
   runCommand(command: CommandConfig, cwd: string, options?: RunOptions): Promise<TaskResult>;
   ensureDir(path: string): Promise<void>;
@@ -764,6 +772,8 @@ export interface PromptDocument {
 // ═══ Driver Context ═══
 
 export interface DriverContext {
+  /** Managed Host policy, forwarded only to the native OpenCode driver. No provider options. */
+  readonly resolveOpencodeVariant?: OpenCodeVariantResolver;
   readonly sessionMap: Map<string, string>;
   readonly sessionDriverMap: Map<string, string>;
   // Canonical text for continue_from handoff (driver-normalized).
@@ -1082,6 +1092,19 @@ export interface TaskResult {
    */
   readonly stdoutBytes?: number;
   readonly stderrBytes?: number;
+  /** Captured child bytes after optional redaction, before tail truncation or diagnostics. */
+  readonly stdoutStoredBytes?: number;
+  readonly stderrStoredBytes?: number;
+  /**
+   * Internal diagnostic append provenance. The displayed suffix stays bounded;
+   * completeSuffix retains available full diagnostics for private repair evidence.
+   * Neither suffix is written to the child-authored stderrPath.
+   */
+  readonly stderrDiagnostics?: {
+    readonly suffix: string;
+    readonly completeSuffix: string;
+    readonly sourceBytes?: number;
+  };
   readonly durationMs: number;
   readonly sessionId: string | null;
   readonly normalizedOutput: string | null;

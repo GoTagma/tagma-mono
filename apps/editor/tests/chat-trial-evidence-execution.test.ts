@@ -164,6 +164,27 @@ for (const kind of [
             taskIds: type === kind ? ['flow.report'] : [],
             rationale: 'Reviewed output boundary.',
           })),
+          coreWitness: {
+            status: 'covered',
+            normalCaseId: 'normal',
+            taskRoles: [
+              {
+                taskId: 'flow.source',
+                role: 'content',
+                expectationIndices: [native ? 5 : 6],
+                rationale:
+                  'The existing producer writes the concrete original source span, independently of the controlled fault replacement.',
+              },
+              {
+                taskId: 'flow.report',
+                role: 'content',
+                expectationIndices: [native ? 6 : 7],
+                rationale:
+                  'The existing consumer writes the exact normal R1 result; the original distinct fault marker must still be proven under the original controlled evidence.',
+              },
+            ],
+            generatedInputs: [],
+          },
         },
         cases: [
           {
@@ -176,6 +197,13 @@ for (const kind of [
               { type: 'file-not-contains', path: 'flow/report.txt', text: marker },
               ...(native ? [] : [normalObservation]),
               { type: 'file-equals', path: 'flow/source.txt', text: source },
+              {
+                type: 'json-pointer-equals',
+                path: 'flow/data.json',
+                pointer: '/0/span',
+                expectedJson: JSON.stringify(source),
+              },
+              { type: 'file-equals', path: 'flow/report.txt', text: 'R1' },
             ],
           },
           {

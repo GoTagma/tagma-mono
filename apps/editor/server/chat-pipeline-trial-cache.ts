@@ -14,4 +14,11 @@
 // unexpected executed provider failures. Compact display evidence is not model input.
 // v45: unexpected authored binding type/producer conflicts have typed input_error
 // repair authority; legacy blocked/spawn_error decisions cannot authorize or suppress repair.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 45 as const;
+// v46: only the first owned unexpected task timeout with complete private capture
+// may enter the persisted repair loop; older decisions cannot grant repair authority.
+// v47: native planning rejections carry complete private revision/attempt-bound evidence;
+// only known completed counted-invalid planning can use remaining original budget.
+// Older cached decisions cannot replace that evidence or authorize a continuation.
+// v48: counted planner payload rejection and trusted-create delivery checks invalidate older
+// signed decisions; substantive arithmetic and branch guidance is refreshed.
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 48 as const;

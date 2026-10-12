@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 
+import { observeCompileError, type CompileErrorObservation } from './compile-error-observation.js';
 import { computeTagmaPlacement, type PlacementTrack } from './opencode-placement.js';
 import { atomicWriteFileSync } from './path-utils.js';
 import { pipelineLayoutPath } from './pipeline-paths.js';
@@ -17,26 +18,50 @@ interface ParsedTrack {
   tasks?: unknown;
 }
 
-function placementTracksFromYaml(yamlPath: string): PlacementTrack[] | null {
+export type PipelineLayoutSyncResult =
+  | { readonly kind: 'completed'; readonly layout: EditorLayout }
+  | { readonly kind: 'unavailable'; readonly observation: CompileErrorObservation };
+
+type PlacementTracksResult =
+  | { readonly kind: 'completed'; readonly tracks: PlacementTrack[] }
+  | Extract<PipelineLayoutSyncResult, { kind: 'unavailable' }>;
+
+function unavailable(
+  phase: CompileErrorObservation['phase'],
+  error?: unknown,
+): Extract<PipelineLayoutSyncResult, { kind: 'unavailable' }> {
+  return { kind: 'unavailable', observation: observeCompileError(phase, error) };
+}
+
+function placementTracksFromYaml(yamlPath: string): PlacementTracksResult {
+  let content: string;
+  try {
+    content = readFileSync(yamlPath, 'utf8');
+  } catch (error) {
+    return unavailable('managed_layout_read', error);
+  }
   let parsed: unknown;
   try {
-    parsed = yaml.load(readFileSync(yamlPath, 'utf8'));
-  } catch {
-    return null;
+    parsed = yaml.load(content);
+  } catch (error) {
+    return unavailable('managed_layout_parse', error);
   }
   const pipeline = (parsed as { pipeline?: { tracks?: unknown } } | null)?.pipeline;
-  if (!pipeline || !Array.isArray(pipeline.tracks)) return null;
+  if (!pipeline || !Array.isArray(pipeline.tracks)) return unavailable('managed_layout_shape');
 
   const tracks: PlacementTrack[] = [];
   for (const rawTrack of pipeline.tracks) {
-    if (!rawTrack || typeof rawTrack !== 'object' || Array.isArray(rawTrack)) return null;
+    if (!rawTrack || typeof rawTrack !== 'object' || Array.isArray(rawTrack))
+      return unavailable('managed_layout_shape');
     const track = rawTrack as ParsedTrack;
-    if (typeof track.id !== 'string' || !track.id || !Array.isArray(track.tasks)) return null;
+    if (typeof track.id !== 'string' || !track.id || !Array.isArray(track.tasks))
+      return unavailable('managed_layout_shape');
     const tasks: PlacementTrack['tasks'] = [];
     for (const rawTask of track.tasks) {
-      if (!rawTask || typeof rawTask !== 'object' || Array.isArray(rawTask)) return null;
+      if (!rawTask || typeof rawTask !== 'object' || Array.isArray(rawTask))
+        return unavailable('managed_layout_shape');
       const task = rawTask as ParsedTask;
-      if (typeof task.id !== 'string' || !task.id) return null;
+      if (typeof task.id !== 'string' || !task.id) return unavailable('managed_layout_shape');
       const dependsOn = Array.isArray(task.depends_on)
         ? task.depends_on.filter((item): item is string => typeof item === 'string')
         : undefined;
@@ -50,7 +75,7 @@ function placementTracksFromYaml(yamlPath: string): PlacementTrack[] | null {
     }
     tracks.push({ id: track.id, tasks });
   }
-  return tracks;
+  return { kind: 'completed', tracks };
 }
 
 function finiteNumber(value: unknown): value is number {
@@ -123,11 +148,12 @@ function preservedTrackHeights(
  * heights. Invalid YAML or unresolved dependency coordinates leave the prior
  * layout untouched; compile diagnostics remain authoritative.
  */
-export function runPipelineLayoutSync(yamlPath: string): EditorLayout | null {
-  const tracks = placementTracksFromYaml(yamlPath);
-  if (!tracks) return null;
+export function runPipelineLayoutSyncDetailed(yamlPath: string): PipelineLayoutSyncResult {
+  const parsed = placementTracksFromYaml(yamlPath);
+  if (parsed.kind === 'unavailable') return parsed;
+  const { tracks } = parsed;
   const placement = computeTagmaPlacement({ tracks });
-  if (placement.warnings.length > 0) return null;
+  if (placement.warnings.length > 0) return unavailable('managed_layout_dependency');
 
   const targetPath = pipelineLayoutPath(yamlPath);
   const existing = readExistingLayout(targetPath);
@@ -146,9 +172,15 @@ export function runPipelineLayoutSync(yamlPath: string): EditorLayout | null {
 
   try {
     atomicWriteFileSync(targetPath, `${JSON.stringify(layout, null, 2)}\n`);
-    return layout;
+    return { kind: 'completed', layout };
   } catch (error) {
     console.warn(`[pipeline-layout] failed to write ${targetPath}:`, error);
-    return null;
+    return unavailable('managed_layout_write', error);
   }
+}
+
+/** Preserve the existing synchronous layout/null contract for ordinary callers. */
+export function runPipelineLayoutSync(yamlPath: string): EditorLayout | null {
+  const result = runPipelineLayoutSyncDetailed(yamlPath);
+  return result.kind === 'completed' ? result.layout : null;
 }

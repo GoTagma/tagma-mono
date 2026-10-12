@@ -7,9 +7,24 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { bunRuntime } from '@tagma/sdk';
+import { bootstrapBuiltins, PluginRegistry } from '@tagma/sdk/plugins';
+import type {
+  DriverContext,
+  DriverPlugin,
+  SpawnSpec,
+  TaskConfig,
+  TaskResult,
+  TrackConfig,
+} from '@tagma/types';
+import {
+  createDirectLegacyRuntime,
+  createNativeBrokerRuntime,
+} from '../server/execution/native-broker';
 
 import {
   OPENCODE_STARTUP_READINESS_TIMEOUT_MS,
@@ -18,6 +33,7 @@ import {
   resolveOpencodePathFallback,
   restartOpencode,
   stopOpencodeProcesses,
+  snapshotManagedOpencodeExecution,
 } from '../server/opencode-lifecycle';
 import { TAGMA_MANAGED_OPENCODE_TOOL_IDS } from '../server/opencode-managed-tools';
 
@@ -41,6 +57,7 @@ const MANAGED_TOOL_IDS_BODY = JSON.stringify(TAGMA_MANAGED_OPENCODE_TOOL_IDS);
 let tempRoot: string;
 const originalDatabaseStateDir = process.env.TAGMA_OPENCODE_DB_STATE_DIR;
 const originalDatabaseSchemaVersion = process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION;
+const originalDeepseekKey = process.env.DEEPSEEK_API_KEY;
 
 function accelerateHealthProbeTimeouts(): void {
   globalThis.setTimeout = ((
@@ -132,6 +149,8 @@ afterEach(async () => {
   if (originalDatabaseSchemaVersion === undefined)
     delete process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION;
   else process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = originalDatabaseSchemaVersion;
+  if (originalDeepseekKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+  else process.env.DEEPSEEK_API_KEY = originalDeepseekKey;
   rmSync(tempRoot, { recursive: true, force: true });
 });
 
@@ -1005,5 +1024,235 @@ describe('OpenCode PATH fallback', () => {
       command === 'opencode' ? shim : null) as typeof Bun.which;
 
     expect(resolveOpencodePathFallback()).toBe(shim);
+  });
+});
+
+function mockExecutionCatalog(
+  options: { mismatch?: boolean; hang?: boolean; disableLow?: boolean } = {},
+) {
+  let startupEnv: Record<string, string> = {};
+  const paths: string[] = [];
+  let port = 45250;
+  (Bun as BunLike).listen = (() => ({ port: port++, stop() {} })) as unknown as typeof Bun.listen;
+  (Bun as BunLike).spawn = ((_args, spawnOptions) => {
+    startupEnv = { ...(spawnOptions?.env as Record<string, string>) };
+    return mockOpencodeProcess();
+  }) as typeof Bun.spawn;
+  (Bun as BunLike).connect = ((optionsConnect: Parameters<typeof Bun.connect>[0]) => {
+    queueMicrotask(() => {
+      const socket = {
+        write(request: string | Uint8Array) {
+          const path = String(request).split(' ')[1] ?? '';
+          paths.push(path);
+          if (options.hang && path.startsWith('/config')) return;
+          let body = successfulProbeBody(request);
+          if (path.startsWith('/config/providers')) {
+            body = JSON.stringify({
+              providers: [
+                {
+                  id: 'deepseek',
+                  models: {
+                    'deepseek-flash': {
+                      variants: {
+                        low: {
+                          reasoningEffort: 'low',
+                          ...(options.disableLow ? { disabled: true } : {}),
+                        },
+                        high: {},
+                        max: {},
+                      },
+                    },
+                    'legacy-model': { variants: { minimal: {}, low: {} } },
+                  },
+                },
+              ],
+              default: {},
+            });
+          } else if (path.startsWith('/config')) {
+            body = JSON.stringify({
+              provider: options.mismatch
+                ? { extra: { options: { apiKey: 'private-test-value' } } }
+                : (JSON.parse(startupEnv.OPENCODE_CONFIG_CONTENT).provider ?? {}),
+            });
+          }
+          optionsConnect.socket.data?.(
+            socket as never,
+            Buffer.from(
+              `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`,
+            ),
+          );
+        },
+        end() {},
+      };
+      optionsConnect.socket.open?.(socket as never);
+    });
+    return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
+  }) as typeof Bun.connect;
+  return { paths, environment: () => startupEnv };
+}
+
+function managedDriver() {
+  const registry = new PluginRegistry();
+  bootstrapBuiltins(registry);
+  return registry.getHandler<DriverPlugin>('drivers', 'opencode');
+}
+
+describe('managed execution effort catalog', () => {
+  for (const [name, factory] of [
+    ['broker', createNativeBrokerRuntime],
+    ['legacy', createDirectLegacyRuntime],
+  ] as const) {
+    test(`${name} resolves raw Flash low through the real SDK builder and pins one catalog per runtime`, async () => {
+      const cwd = join(tempRoot, 'catalog workspace', '.tagma');
+      mkdirSync(cwd, { recursive: true });
+      process.env.DEEPSEEK_API_KEY = 'private-test-key';
+      const native = mockExecutionCatalog();
+      const spawned: SpawnSpec[] = [];
+      const base = {
+        ...bunRuntime(),
+        async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
+          spawned.push(spec);
+          return {
+            exitCode: 0,
+            stdout: '',
+            stderr: '',
+            stdoutPath: null,
+            stderrPath: null,
+            durationMs: 1,
+            sessionId: null,
+            normalizedOutput: null,
+            failureKind: null,
+          };
+        },
+      };
+      const runtime = factory(base, { runtimeEnv: {}, secretValues: [], managedOpencodeCwd: cwd });
+      expect(Object.keys(runtime)).toContain('resolveOpencodeVariant');
+      const copied = { ...runtime, now: () => 1 };
+      const driver = managedDriver();
+      const context = {
+        workDir: cwd,
+        normalizedMap: new Map(),
+        sessionMap: new Map(),
+        sessionDriverMap: new Map(),
+        resolveOpencodeVariant: copied.resolveOpencodeVariant,
+      } as DriverContext;
+      const track = {
+        id: 'verify',
+        name: 'verify',
+        tasks: [],
+        model: 'deepseek/deepseek-flash',
+        reasoning_effort: 'low',
+      } as TrackConfig;
+      const task = { id: 'claim', name: 'claim', prompt: 'verify the claim' } as TaskConfig;
+      const first = await driver.buildCommand(task, track, context);
+      const second = await driver.buildCommand(task, track, context);
+      expect(first.args[first.args.indexOf('--model') + 1]).toBe('deepseek/deepseek-flash');
+      expect(first.args[first.args.indexOf('--variant') + 1]).toBe('low');
+      expect(second.args[second.args.indexOf('--variant') + 1]).toBe('low');
+      expect(native.paths.filter((path) => path.startsWith('/config/providers'))).toHaveLength(1);
+      expect(native.paths.filter((path) => path.startsWith('/config?'))).toHaveLength(1);
+      await runtime.runSpawn(first, driver);
+      expect(spawned).toHaveLength(1);
+      expect(spawned[0].env?.DEEPSEEK_API_KEY).toBe('private-test-key');
+      expect(spawned[0].env?.OPENCODE_SERVER_PASSWORD).toBeUndefined();
+      expect(spawned[0].env?.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('true');
+      expect(native.environment().OPENCODE_DISABLE_PROJECT_CONFIG).toBeUndefined();
+      expect(await copied.resolveOpencodeVariant!('deepseek/legacy-model', 'low')).toBe('minimal');
+      expect(await copied.resolveOpencodeVariant!('deepseek/deepseek-flash', 'medium')).toBeNull();
+      await expect(
+        copied.resolveOpencodeVariant!('deepseek/deepseek-flash', 'minimal'),
+      ).rejects.toThrow('variant_unavailable');
+      await expect(
+        runtime.runSpawn(
+          { ...first, env: { ...first.env, DEEPSEEK_API_KEY: 'changed-task-key' } },
+          driver,
+        ),
+      ).rejects.toThrow('task_provider_environment_mismatch');
+      expect(spawned).toHaveLength(1);
+      await restartOpencode(cwd);
+      await expect(
+        copied.resolveOpencodeVariant!('deepseek/deepseek-flash', 'low'),
+      ).rejects.toThrow('generation changed');
+      const replacement = factory(base, {
+        runtimeEnv: {},
+        secretValues: [],
+        managedOpencodeCwd: cwd,
+      });
+      expect(await replacement.resolveOpencodeVariant!('deepseek/deepseek-flash', 'low')).toBe(
+        'low',
+      );
+      expect(native.paths.filter((path) => path.startsWith('/config/providers'))).toHaveLength(2);
+    });
+  }
+
+  test('rejects an effective provider mismatch without exposing private config or producing a driver command', async () => {
+    const cwd = join(tempRoot, 'mismatch', '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    mockExecutionCatalog({ mismatch: true });
+    const runtime = createNativeBrokerRuntime(bunRuntime(), {
+      runtimeEnv: {},
+      secretValues: [],
+      managedOpencodeCwd: cwd,
+    });
+    await expect(runtime.resolveOpencodeVariant!('deepseek/deepseek-flash', 'low')).rejects.toThrow(
+      'catalog_identity_unavailable',
+    );
+    await expect(
+      runtime.resolveOpencodeVariant!('deepseek/deepseek-flash', 'low'),
+    ).rejects.not.toThrow('private-test-value');
+  });
+
+  test('rejects changed configuration and provider environment in the same native generation', async () => {
+    const cwd = join(tempRoot, 'changed', '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    mockExecutionCatalog();
+    const snapshot = await snapshotManagedOpencodeExecution(cwd);
+    process.env.DEEPSEEK_API_KEY = 'changed-process-key';
+    expect(() => snapshot.resolveVariant('deepseek/deepseek-flash', 'low')).toThrow(
+      'provider_environment_changed',
+    );
+    if (originalDeepseekKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = originalDeepseekKey;
+    writeFileSync(join(cwd, 'opencode.json'), '{"provider":{"new":{}}}\n');
+    expect(() => snapshot.resolveVariant('deepseek/deepseek-flash', 'low')).toThrow(
+      'configuration_changed',
+    );
+  });
+
+  test('rejects missing or disabled low variants instead of silently choosing a default or higher effort', async () => {
+    const cwd = join(tempRoot, 'disabled low', '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    mockExecutionCatalog({ disableLow: true });
+    const runtime = createNativeBrokerRuntime(bunRuntime(), {
+      runtimeEnv: {},
+      secretValues: [],
+      managedOpencodeCwd: cwd,
+    });
+    await expect(runtime.resolveOpencodeVariant!('deepseek/deepseek-flash', 'low')).rejects.toThrow(
+      'low_variant_unavailable',
+    );
+    await expect(runtime.resolveOpencodeVariant!('deepseek/missing-model', 'low')).rejects.toThrow(
+      'model_unavailable',
+    );
+  });
+
+  test('bounds hung native metadata with a ten-second abort signal', async () => {
+    const cwd = join(tempRoot, 'hung', '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    mockExecutionCatalog({ hang: true });
+    const timeout = AbortSignal.timeout;
+    const budgets: number[] = [];
+    AbortSignal.timeout = ((milliseconds: number) => {
+      budgets.push(milliseconds);
+      return timeout(10);
+    }) as typeof AbortSignal.timeout;
+    try {
+      await expect(snapshotManagedOpencodeExecution(cwd)).rejects.toThrow(
+        'catalog_identity_unavailable',
+      );
+      expect(budgets).toContain(10_000);
+    } finally {
+      AbortSignal.timeout = timeout;
+    }
   });
 });

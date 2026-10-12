@@ -42,7 +42,7 @@ const MAX_COMPLETION_FEEDBACK_CHARS = 16_000;
 function normalizeCompletionOutcome(
   value: unknown,
   completionType: string,
-): { readonly passed: boolean; readonly feedback?: string } {
+): { readonly passed: boolean; readonly feedback?: string; readonly completeFeedback?: string } {
   if (typeof value === 'boolean') return { passed: value };
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const outcome = value as Record<string, unknown>;
@@ -60,7 +60,7 @@ function normalizeCompletionOutcome(
         trimmed.length <= MAX_COMPLETION_FEEDBACK_CHARS
           ? trimmed
           : trimmed.slice(-MAX_COMPLETION_FEEDBACK_CHARS);
-      return { passed: outcome.passed, feedback };
+      return { passed: outcome.passed, feedback, completeFeedback: outcome.feedback };
     }
   }
   throw new Error(
@@ -68,6 +68,28 @@ function normalizeCompletionOutcome(
       completionType +
       '.check() must return boolean or { passed: boolean, feedback?: string }',
   );
+}
+
+function appendStderrDiagnostic(
+  result: TaskResult,
+  suffix: string,
+  completeSuffix = suffix,
+  countBytes = true,
+): TaskResult {
+  const previous = result.stderrDiagnostics;
+  return {
+    ...result,
+    stderr: result.stderr + suffix,
+    stderrBytes: countBytes
+      ? (result.stderrBytes ?? new TextEncoder().encode(result.stderr).byteLength) +
+        new TextEncoder().encode(suffix).byteLength
+      : result.stderrBytes,
+    stderrDiagnostics: {
+      suffix: (previous?.suffix ?? '') + suffix,
+      completeSuffix: (previous?.completeSuffix ?? '') + completeSuffix,
+      sourceBytes: previous ? previous.sourceBytes : result.stderrBytes,
+    },
+  };
 }
 
 function seedTaskContinuation(ctx: RunContext, taskId: string): string | undefined {
@@ -1100,6 +1122,9 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         normalizedMap: ctx.normalizedMap,
         workDir: resolvedCwd,
         signal,
+        ...(driverName === 'opencode' && ctx.runtime.resolveOpencodeVariant
+          ? { resolveOpencodeVariant: ctx.runtime.resolveOpencodeVariant.bind(ctx.runtime) }
+          : {}),
         ...(taskDeadlineMs !== undefined ? { deadlineMs: taskDeadlineMs } : {}),
         // Structured view for drivers that want fine-grained control
         // over serialization (e.g. inserting [Previous Output] between
@@ -1167,14 +1192,17 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         const feedbackSuffix = feedbackNote
           ? (result.stderr.length > 0 ? '\n' : '') + feedbackNote
           : '';
-        const stderr = result.stderr + feedbackSuffix;
-        const stderrBytes =
-          (result.stderrBytes ?? new TextEncoder().encode(result.stderr).byteLength) +
-          new TextEncoder().encode(feedbackSuffix).byteLength;
+        const completeSuffix = outcome.completeFeedback
+          ? (result.stderr.length > 0 ? '\n' : '') + '[completion] ' + outcome.completeFeedback
+          : feedbackSuffix;
         result = {
-          ...result,
-          stderr,
-          stderrBytes,
+          ...(feedbackSuffix
+            ? appendStderrDiagnostic(result, feedbackSuffix, completeSuffix)
+            : {
+                ...result,
+                stderrBytes:
+                  result.stderrBytes ?? new TextEncoder().encode(result.stderr).byteLength,
+              }),
           failureKind: 'completion_failed',
         };
       }
@@ -1202,7 +1230,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         if (outputExtraction.bindingDiagnostic) {
           log.error(`[task:${taskId}]`, outputExtraction.bindingDiagnostic);
           const note = `\n[engine] ${outputExtraction.bindingDiagnostic}`;
-          result = { ...result, stderr: result.stderr + note };
+          result = appendStderrDiagnostic(result, note, note, false);
         }
       }
 
@@ -1215,7 +1243,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         if (outputExtraction.portDiagnostic) {
           log.error(`[task:${taskId}]`, outputExtraction.portDiagnostic);
           const note = `\n[engine] ${outputExtraction.portDiagnostic}`;
-          result = { ...result, stderr: result.stderr + note };
+          result = appendStderrDiagnostic(result, note, note, false);
         }
       }
       if (outputExtraction.bindingDiagnostic || outputExtraction.portDiagnostic) {

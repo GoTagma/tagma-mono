@@ -753,11 +753,18 @@
   run it twice, require successful task status, mark only repeat-run covered, and mark every other
   structural dimension not-applicable. Bind the canonical generated plan hash into Trial cache and
   finalize verification exactly like an authored plan.
+- Generated OpenCode tool rules must serialize a self-contained factory with explicit
+  dependencies. Never embed a function that captures module imports: bundled sidecars rename
+  those bindings. Guard emitted bundled tools with unrelated import collisions and execute
+  their validation/commit paths, including rejected fixtures and affected-case hashes.
 - Assemble ordinary trial plans through bounded same-tool draft operations: `begin`, one
   `upsert-case` per case, `set-coverage`, `set-findings`, `validate`, then exactly one `commit`. `validate`
   checks complete fixture semantics and the same recovery rules as Host verification, using bounded,
-  revision-bound Host context; it changes neither draft bytes nor formal attempt telemetry. Repair
-  validation errors in the open draft. A blocked finding may be submitted for independent Host review,
+  revision-bound Host context; it changes neither draft bytes nor formal attempt telemetry. Preserve
+  every issue type/field/message and required missing-evidence name in a private latest complete
+  rejection bound to stage/YAML/Host attempt, counters, SHA256 and UTF-8 byte length. Public rejection
+  telemetry stays at four 500-character summaries; it never substitutes for complete model feedback.
+  Read failure or stale evidence cannot authorize a continuation. Repair validation errors in the open draft. A blocked finding may be submitted for independent Host review,
   with `valid: false, hostReviewRequired: true`; that is never a verification pass or repair grant.
   Keep budget-exhaustion feedback bounded/redacted and include the current plan rejection reason.
   Explicitly set production-normal values for application controls in non-fault cases; omission
@@ -768,7 +775,7 @@
   Planning exhaustion cannot erase independently established recovery-failure-policy repair
   authority, grant another plan submission, or derive authority from a planner finding alone.
   Pipeline repair retains its finite budget and successful Trial remains mandatory for publication.
-  Trial Plan v12, draft v3 and cache v44 invalidate older semantic, fault and repair-diagnostic evidence.
+  Trial Plan v12, draft v3 and cache v47 invalidate older semantic, fault and repair-diagnostic evidence.
   Only `commit`
   consumes that draft's formal attempt. Keep drafts stage-owned, path-and-hash-bound, locked,
   size-bounded, resumable, resettable, and unpublished. For a new YAML hash, `begin` may seed only
@@ -1013,9 +1020,17 @@
   `pipeline-change-allowed` authorization, derived from a `pipeline-artifact` finding
   or a direct executable behavior/expectation failure. V2 also admits unexpected executed task
   failures into the same staged-artifact repair loop so the model can investigate configuration
-  causes behind external errors. This grants neither environment/configuration mutation nor
-  credential fabrication. Untyped legacy results fail closed. Blocked
-  coverage and environment, harness, manual-approval, timeout,
+  causes behind external errors. One narrow timeout exception uses the same frozen budget: an
+  unexpected task timeout in a real executed failed Trial may enter repair only when the operation
+  has persisted `repairAttempts: 0` and private complete task capture identifies both terminal
+  status and failure kind as timeout. Typed expected outcomes, passed cases, incomplete/read-error
+  evidence, max-attempts zero, cancellation, lifecycle limits and owned-session quiescence fences
+  retain their existing authority. Every admitted repair must receive the complete authenticated
+  error blob in its canonical request, increment the persisted counter before invocation, and
+  reverify; this exception cannot admit a second timeout-only repair or reset after restart.
+  This grants neither environment/configuration mutation nor credential fabrication. Untyped
+  legacy results fail closed. Blocked
+  coverage and environment, harness, manual-approval, ordinary timeout,
   witness, or unsupported-observation failures remain `diagnostic-only` and must not be repaired by
   weakening or redirecting the pipeline. A signed, current-YAML/current-host
   blocked prerequisite state means Trial could not establish executable behavior because a real
@@ -1048,8 +1063,15 @@
 - `plan-required` is a Host Trial Plan phase, never YAML-repair evidence. Dispatch one internal
   `trial_plan` invocation to the dedicated Trial Plan agent with the exact Host-issued staged path,
   YAML hash, attempt id, and bounded request; do not consume the pipeline-repair budget or expose
-  its text to the renderer. A `no_change` result from either repair or Trial planning ends that
-  chain without rerunning identical verification. Only a changed staged snapshot may be reverified.
+  its text to the renderer. Repair `no_change` ends that chain without identical verification.
+  Trial Plan `no_change` also retains the draft, except for a known completed, settled invocation
+  with a counted invalid native commit, verified complete rejection bound to current stage/YAML/
+  Host attempt and unchanged completed snapshot, and remaining original frozen planning budget.
+  Reuse serial verification to reauthenticate that evidence, issue a fresh Host attempt/invocation,
+  and seal its complete redacted feedback into canonical input. Every later commit remains counted;
+  do not expand the budget or bypass the one-commit fence. Missing/stale full evidence, uncounted
+  validation, exhaustion, and provider/unknown failures require explicit Retry. This exception grants
+  no pipeline-write authority and never consumes or expands the separate artifact-repair budget.
 - Before publication, compare executable references removed from the immutable base YAML with the
   staged agent-owned requirements body/frontmatter. Do not finalize while removed environment
   names, PowerShell cmdlets, or external binaries remain documented; repair YAML and its sibling
@@ -1146,9 +1168,14 @@
 
 - Normalize null, empty, and whitespace-only authoring text through the shared completion-text
   contract before sealing and validating a visible result. The Host fallback must not claim a
-  pipeline update succeeded. A settled `no_change` invocation, including a permission denial with
-  `tool_calls` and no text, finishes through `completed_noop`, discards its stage, and seals one
-  terminal result. Exercise the production result persistence adapter in lifecycle tests; a fake
+  pipeline update succeeded. A settled authoring `no_change` for an authenticated edit, including
+  a permission denial with `tool_calls` and no text, finishes through `completed_noop`, discards
+  its stage, and seals one terminal result. An authenticated create with no changes enters staged
+  artifact verification; an owned missing target uses complete error evidence and the frozen
+  repair budget. If that invocation resolved an explicit permission denial or question rejection,
+  retain its draft without an automatic repair. Terminal, Stop, cancellation, provider failure,
+  and unknown-submission fences remain authoritative before this decision. Exercise the
+  production result persistence adapter in lifecycle tests; a fake
   adapter can otherwise hide a normalization mismatch that strands foreground/background turns.
 
 - Keep Host-assigned OpenCode identities in OpenCode's native namespaces: session ids are
@@ -1433,6 +1460,12 @@
   Preserve an explicit CLI requirement through repair and Trial planning instead of silently
   replacing it with a managed prompt task. Do not share the managed prompt database with the CLI
   or inject managed isolation into ordinary command tasks.
+- Managed Chat, prompt tasks, and opted-in `TAGMA_OPENCODE_CLI` commands must share the
+  `opencode-host-env.ts` provider/proxy/CA trust allowlist. Keep runtime/control authority and TLS
+  bypass settings excluded. Apply CLI selection to secret-bearing command SpawnSpecs as well as
+  `runCommand`: core routes commands with resolved secrets through `runSpawn` with a null driver.
+  Authored and synthetic secret overrides remain authoritative; forwarded credentials must be
+  redacted from captured/live output. Ordinary commands retain their normal minimal environment.
 - The sidecar-private Workspace Runtime uses the Native Broker by default. Treat
   `TAGMA_WORKSPACE_RUNTIME=legacy` only as an explicit rollback choice: snapshot the mode once at
   the start of each pipeline, workflow, or Trial run and pass that value to every runtime created
@@ -1610,7 +1643,7 @@
   never converting clipped evidence into a complete no-progress observation.
 
 - Retain completed authoring drafts after automatic repair/Trial-plan no-change, repair exhaustion,
-  and verification failure. Record the pause cause in `trial_status_changed`; historical terminal
+  and verification failure, except for the verified counted-invalid planning continuation above. Record the pause cause in `trial_status_changed`; historical terminal
   reason codes remain readable. A prior artifact must not disappear because the latest attempt
   changed nothing. Explicit Stop/Discard and post-commit roll-forward retain their separate contracts.
   Ownership integration tests must cover this nonterminal wait across Host restart: Retry publishes
@@ -1801,6 +1834,12 @@
   must never depend on a developer window, copied token, fixed port, stale compiled binary, manual
   permission/clarification reply, or visual spinner judgment. Narrow harness debugging must use
   the explicitly named `test:chat-v2-loop:scenario` command.
+- The real loop's optional `--variant <id>` must validate the selected connected model's own enabled
+  catalog variant before creating an operation, then retain it in every source/compiled round and
+  exact failure confirmation. Omission preserves the existing null variant and free-first model
+  selection. Explicit variants require bounded, operation-owned Host usage model metadata; missing,
+  mismatched, disabled, or unknown metadata fails closed. Report this as Host invocation admission
+  evidence, not proof of auxiliary title requests or generated pipeline child CLI settings.
 - The loop treats authenticated Host operation projection and terminal outcome as authority. While
   create HTTP is in flight it discovers the correlated operation through the workspace snapshot,
   then may answer only projected live clarification/permission/question requests. Unknown or
@@ -1852,6 +1891,10 @@
 - Seeded pipeline-agent documents follow the current host contract. Keep seed assertions
   host-aware; verify Windows-only command guidance through `buildTagmaPipelineAgent('Windows')`
   instead of requiring it from Linux or macOS seed output.
+- Python AI Agent availability gates authoring-time execution/delegation, not ordinary pipeline
+  Python commands or authoring their supporting files. Keep declared interpreter requirements and
+  explicit user language choices independent. Python for pipeline math and native commands for glue
+  are design defaults; neither grants extra tool or filesystem permission.
 - Keep create/fill-new planning and post-authoring edge-case review inside the single pipeline
   worker. It must close a proportional design gate before the first manifest/YAML write, then
   review only relevant input, platform, prerequisite, failure, repeat/concurrency, collision, and
@@ -1939,6 +1982,10 @@
   data in the file or pass a PowerShell variable; otherwise native quote escapes become data.
   For headless AI commands promising structured files, write and validate those files instead of
   treating free-form CLI stdout as a JSON contract.
+- Keep promised structured-file handoff validation in the always-loaded pipeline-agent guide:
+  complete-file parsing and declared schema/content checks precede consumers and survive repair.
+  File path metadata and `file_exists` completion do not validate file bytes; optional CLI skill
+  guidance cannot provide universal coverage.
 - After any staged YAML change, the Trial planner must commit a plan bound to the new YAML hash,
   even if its cases are otherwise unchanged. A stale plan cannot proceed to Trial.
 - Requirements synchronization must be byte-idempotent when generated requirements semantics are
@@ -1976,6 +2023,36 @@
   targets, fixtures, checks, and first-run semantics are the same. Mark a dimension `blocked` only
   when no pipeline repair can expose it to the harness.
 - `trialTaskRepairScope` must map managed OpenCode primary-model stream failures (billing/network) to `diagnostic-only` via `isExternalDriverStreamFailure`, never to `pipeline-artifact`; a command task's genuine `exit_nonzero` remains `pipeline-artifact`.
+
+- Budget the actual seeded OpenCode guide after frontmatter step normalization, across all
+  supported host OS/Python-tool variants and the largest supported step value. The builder
+  alone can fit the strict 22,000-character limit while the normalized artifact exceeds it.
+- Compile setup feedback uses finite Host call-site phase, current direct native prototype
+  class, and allowlisted own-data system code. Prove nontrapping native Proxy/Error guards
+  before reflection; unavailable guards or custom prototypes yield unknown. Preserve the
+  observation object identity through its private WeakMap carrier. Never serialize exception
+  text or paths into public feedback; the new observer's zero-trap guarantee excludes legacy
+  logging and private error-evidence handlers.
+- Source-verification guidance must preserve explicit offline scope and original clauses,
+  qualifiers, quotations, entity, period, denominator and numeric operators. Schema validation
+  proves shape; independent source passages prove meaning. Validate every declared required
+  handoff before its first consumer, without inventing optional fields or treating unresolved
+  evidence as false. Representative positive Trial coverage stays within the original task's
+  tools, scope and budgets; legitimate empty or unknown results remain valid.
+
+- Reinforce generated handoff and factual dataflow in managed authoring/repair execution prompts
+  without growing the normalized seeded guide budget. A required validator's rejection must
+  fail its canonical task and block affected consumers. A genuine native/inline barrier inside
+  a consumer before business use is valid; FILE/custom completion success alone is not that
+  barrier. Preserve intentional producer completion and actual declared optional/empty rules.
+- Carry original scope and relevant qualifiers through extraction, verification, comparator or
+  Python operands, and reporting. Shape checks do not prove faithful interpretation; rounded
+  references cannot become exact operands merely by serialization. Numerical-only review must
+  not expand into unrelated qualitative auditing.
+- Trial planner guidance requires substantive positive-core assertions alongside applicable
+  legal empty/unknown/rejection paths within original intent and budgets, without claim/source
+  quotas or paid probes. Compatible same-run evidence reuse preserves required independence;
+  permitted native fetch fallback records search failures instead of treating them as false facts.
 
 ## Targeted Pipeline Runs
 

@@ -31,6 +31,7 @@ export interface DriveChatV2OperationOptions {
   readonly workspacePath: string;
   readonly provider: string;
   readonly model: string;
+  readonly variant?: string | null;
   readonly prompt: string;
   readonly clarificationReply: string;
   readonly permissionChoice?: 'allow_once' | 'allow_always' | 'deny';
@@ -45,6 +46,7 @@ export interface DriveChatV2OperationResult {
   readonly terminalOutcome: string;
   readonly actionKinds: readonly ChatV2AgentLoopActionKind[];
   readonly rendererEvidence: DriveChatV2RendererEvidence;
+  readonly hostInvocationModels?: readonly ChatV2AgentLoopInvocationModel[];
 }
 
 export interface DriveChatV2RendererEvidence {
@@ -89,7 +91,9 @@ export interface IsolatedChatV2AgentLoopReport {
     readonly provider: string | null;
     readonly model: string | null;
     readonly selection: 'opencode-free' | 'deepseek' | 'deterministic-fake' | null;
+    readonly variant: string | null;
   };
+  readonly hostInvocationModels: readonly ChatV2AgentLoopInvocationModel[];
   readonly diagnostics: {
     readonly protocolVersion: number | null;
     readonly timelineCursor: number | null;
@@ -111,10 +115,32 @@ export interface RunIsolatedChatV2AgentLoopOptions {
   readonly scenario?: ChatV2AgentLoopScenario;
   readonly sidecarExecutable?: string;
   readonly providerMode?: ChatV2AgentLoopProviderMode;
+  readonly variant?: string | null;
+}
+
+export interface ChatV2AgentLoopInvocationModel {
+  readonly operationId: string;
+  readonly invocationId: string;
+  readonly purpose: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly variant: string;
 }
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const editorRoot = resolve(scriptDirectory, '..');
+const hostInvocationPurposes = new Set([
+  'classifier',
+  'discussion',
+  'diagnosis',
+  'authoring',
+  'repair',
+  'trial_plan',
+]);
+
+export function isChatV2AgentLoopInvocationPurpose(value: unknown): value is string {
+  return typeof value === 'string' && hostInvocationPurposes.has(value);
+}
 
 function record(value: unknown, label: string): JsonRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -141,6 +167,117 @@ export interface ChatV2AgentLoopRealModelSelection {
   readonly provider: string;
   readonly model: string;
   readonly selection: 'opencode-free' | 'deepseek';
+}
+
+export function validateChatV2AgentLoopVariant(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || !/^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,127})$/.test(value)) {
+    throw new TypeError('Agent loop variant must be a valid Host identifier of at most 128 bytes.');
+  }
+  return value;
+}
+
+export function chatV2AgentLoopVariantFromArgs(args: readonly string[]): string | null {
+  if (args.some((value) => value.startsWith('--variant='))) {
+    throw new TypeError('--variant requires a separate variant identifier.');
+  }
+  const positions = args.flatMap((value, index) => (value === '--variant' ? [index] : []));
+  if (positions.length === 0) return null;
+  if (positions.length !== 1 || args[positions[0]! + 1] === undefined) {
+    throw new TypeError('--variant requires exactly one variant identifier.');
+  }
+  return validateChatV2AgentLoopVariant(args[positions[0]! + 1]);
+}
+
+export function resolveChatV2AgentLoopVariant(
+  value: unknown,
+  selected: { readonly provider: string; readonly model: string },
+  requested: string | null | undefined,
+): string | null {
+  const variant = validateChatV2AgentLoopVariant(requested);
+  if (variant === null) return null;
+  const state = record(value, 'OpenCode provider state');
+  const configured = record(state.configured, 'Configured provider state');
+  const catalog = record(state.catalog, 'OpenCode provider catalog');
+  if (!Array.isArray(catalog.connected) || !catalog.connected.includes(selected.provider)) {
+    throw new Error('The selected variant requires a connected configured provider.');
+  }
+  const providerValue = Array.isArray(configured.providers)
+    ? configured.providers.find(
+        (provider) => record(provider, 'Configured provider').id === selected.provider,
+      )
+    : undefined;
+  const provider = record(providerValue, 'Selected configured provider');
+  const models = record(provider.models, 'Selected configured models');
+  const modelValue = Object.entries(models).find(([key, rawModel]) => {
+    const model = record(rawModel, 'Configured model');
+    return (
+      (typeof model.id === 'string' && model.id.length > 0 ? model.id : key) === selected.model
+    );
+  })?.[1];
+  const model = record(modelValue, 'Selected configured model');
+  const capabilities = record(model.capabilities, 'Selected model capabilities');
+  if (model.status !== 'active' || capabilities.toolcall !== true) {
+    throw new Error('The selected variant requires an active tool-capable configured model.');
+  }
+  const variants = record(model.variants, 'Selected model variants');
+  if (!Object.prototype.hasOwnProperty.call(variants, variant)) {
+    throw new Error('The requested variant is unavailable for the selected real model.');
+  }
+  const variantOptions = record(variants[variant], 'Selected model variant');
+  if (variantOptions.disabled !== undefined && typeof variantOptions.disabled !== 'boolean') {
+    throw new Error('The requested variant has invalid enablement metadata.');
+  }
+  if (variantOptions.disabled === true) {
+    throw new Error('The requested variant is disabled for the selected real model.');
+  }
+  return variant;
+}
+
+export function projectChatV2AgentLoopInvocationModels(
+  value: unknown,
+  selected: { readonly provider: string; readonly model: string; readonly variant: string },
+  operationId: string,
+): readonly ChatV2AgentLoopInvocationModel[] {
+  const page = record(value, 'Host usage evidence');
+  if (
+    page.protocolVersion !== 2 ||
+    !Array.isArray(page.records) ||
+    page.records.length > 100 ||
+    page.hasMore !== false ||
+    !Number.isSafeInteger(page.totalRecords) ||
+    page.totalRecords !== page.records.length
+  ) {
+    throw new Error('Explicit variant requires complete bounded Host invocation model evidence.');
+  }
+  const models = page.records.flatMap((value) => {
+    const row = record(value, 'Host usage row');
+    if (row.operationId !== operationId) return [];
+    if (
+      row.providerID !== selected.provider ||
+      row.modelID !== selected.model ||
+      row.variantId !== selected.variant ||
+      !isChatV2AgentLoopInvocationPurpose(row.purpose)
+    ) {
+      throw new Error(
+        'Host invocation model evidence does not match the selected explicit variant.',
+      );
+    }
+    return [
+      Object.freeze({
+        operationId,
+        invocationId: nonEmptyString(row.invocationId, 'Host invocation id'),
+        purpose: row.purpose,
+        provider: selected.provider,
+        model: selected.model,
+        variant: selected.variant,
+      }),
+    ];
+  });
+  if (models.length === 0) {
+    throw new Error('Explicit variant has no owned Host invocation model evidence.');
+  }
+  return Object.freeze(models);
 }
 
 export function selectChatV2AgentLoopRealModel(value: unknown): ChatV2AgentLoopRealModelSelection {
@@ -435,6 +572,7 @@ async function requestJson(
 export async function driveChatV2Operation(
   options: DriveChatV2OperationOptions,
 ): Promise<DriveChatV2OperationResult> {
+  const variant = validateChatV2AgentLoopVariant(options.variant);
   const timeoutMs = options.timeoutMs ?? 120_000;
   const pollIntervalMs = options.pollIntervalMs ?? 100;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000) {
@@ -472,7 +610,7 @@ export async function driveChatV2Operation(
           request: { text: options.prompt, attachments: [] },
           provider: options.provider,
           model: options.model,
-          variant: null,
+          variant,
           rendererInstanceId,
           conversationId,
           localRevision: null,
@@ -526,11 +664,20 @@ export async function driveChatV2Operation(
     }
     pushAction(actions, 'projection');
     observeOperation(terminalOperation);
+    const hostInvocationModels =
+      variant === null
+        ? []
+        : projectChatV2AgentLoopInvocationModels(
+            await requestJson(options, '/api/chat/operations/usage?limit=100', deadline),
+            { provider: options.provider, model: options.model, variant },
+            authorityOperationId,
+          );
     return {
       operationId: authorityOperationId,
       terminalOutcome: projectedTerminalOutcome,
       actionKinds: Object.freeze([...actions]),
       rendererEvidence: rendererEvidenceFromDetail(detail, phaseHistory),
+      hostInvocationModels,
     };
   };
   pushAction(actions, 'create');
@@ -969,6 +1116,7 @@ export async function runIsolatedChatV2AgentLoop(
   const runId = randomUUID();
   const scenario = options.scenario ?? 'clarification';
   const providerMode = options.providerMode ?? 'real';
+  const requestedVariant = validateChatV2AgentLoopVariant(options.variant);
   const startedAt = Date.now();
   const timeoutMs = options.timeoutMs ?? 180_000;
   const runRoot = mkdtempSync(join(tmpdir(), 'tagma-chat-v2-agent-loop-runtime-'));
@@ -989,6 +1137,7 @@ export async function runIsolatedChatV2AgentLoop(
     provider: null,
     model: null,
     selection: null,
+    variant: null,
   };
   mkdirSync(tagmaDirectory, { recursive: true });
   mkdirSync(baselinePipelineDirectory, { recursive: true });
@@ -1162,6 +1311,7 @@ export async function runIsolatedChatV2AgentLoop(
   };
   let rawDiagnostics: Record<string, unknown> | null = null;
   let preflightEvidence: Record<string, unknown> | null = null;
+  let hostInvocationModels: readonly ChatV2AgentLoopInvocationModel[] = [];
   try {
     const port = await waitForSidecarReady(sidecar, output, Math.min(timeoutMs, 60_000));
     origin = `http://127.0.0.1:${port}`;
@@ -1212,11 +1362,13 @@ export async function runIsolatedChatV2AgentLoop(
           selection: 'deterministic-fake' as const,
         }
       : selectChatV2AgentLoopRealModel(providerState.body);
+    const variant = resolveChatV2AgentLoopVariant(providerState.body, model, requestedVariant);
     selectedModel = {
       mode: providerMode,
       provider: model.provider,
       model: model.model,
       selection: model.selection,
+      variant,
     };
     preflightEvidence = {
       open: opened.body,
@@ -1241,6 +1393,7 @@ export async function runIsolatedChatV2AgentLoop(
       workspacePath: workspace,
       provider: model.provider,
       model: model.model,
+      variant,
       prompt,
       clarificationReply:
         scenario === 'clarification'
@@ -1254,6 +1407,7 @@ export async function runIsolatedChatV2AgentLoop(
       timeoutMs,
       pollIntervalMs: 50,
     });
+    hostInvocationModels = operation.hostInvocationModels ?? [];
   } catch (error) {
     failure = {
       name: error instanceof Error ? error.name : 'Error',
@@ -1350,6 +1504,7 @@ export async function runIsolatedChatV2AgentLoop(
     lastOperation,
     failure,
     provider: selectedModel,
+    hostInvocationModels,
     diagnostics,
     artifactsDirectory,
     reportPath,
@@ -1365,6 +1520,7 @@ function cliValue(name: string): string | null {
 }
 
 if (import.meta.main) {
+  const variant = chatV2AgentLoopVariantFromArgs(process.argv);
   const scenarioValue = cliValue('--scenario') ?? 'matrix';
   if (
     ![
@@ -1401,6 +1557,7 @@ if (import.meta.main) {
           scenario,
           timeoutMs: timeoutValue,
           providerMode: process.argv.includes('--fake-provider') ? 'fake' : 'real',
+          variant,
           ...(artifactsParentDirectory ? { artifactsParentDirectory } : {}),
           keepRuntime: process.argv.includes('--keep-runtime'),
           ...(process.argv.includes('--compiled')

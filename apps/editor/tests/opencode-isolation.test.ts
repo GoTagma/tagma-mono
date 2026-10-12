@@ -42,6 +42,15 @@ const ENV_KEYS = [
   'OPENCODE_CONFIG_CONTENT',
   'TAGMA_OPENCODE_DB_STATE_DIR',
   'TAGMA_OPENCODE_DB_SCHEMA_VERSION',
+  'DEEPSEEK_API_KEY',
+  'HTTPS_PROXY',
+  'NODE_EXTRA_CA_CERTS',
+  'SSL_CERT_FILE',
+  'NPM_CONFIG_CAFILE',
+  'NODE_OPTIONS',
+  'NODE_TLS_REJECT_UNAUTHORIZED',
+  'OPENCODE_SERVER_PASSWORD',
+  'TAGMA_CHAT_CONTROL_SECRET',
 ] as const;
 
 const providerDef = {
@@ -641,6 +650,32 @@ test('OpenCode env stays bound to the one prepared generation passed by its laun
   expect(env.OPENCODE_DB).toBe(prepared.databasePath);
   expect(env.OPENCODE_DB.includes('schema-v1-')).toBe(true);
   expect(env.OPENCODE_DB.includes('schema-v2-')).toBe(false);
+});
+
+test('managed OpenCode preserves provider routing and configured CA trust without ambient authority', () => {
+  process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(tempRoot, 'opencode-state');
+  process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+  const inherited = {
+    DEEPSEEK_API_KEY: 'synthetic-provider-credential',
+    HTTPS_PROXY: 'http://127.0.0.1:1',
+    NODE_EXTRA_CA_CERTS: join(tempRoot, 'configured-ca.pem'),
+    SSL_CERT_FILE: join(tempRoot, 'configured-openssl-ca.pem'),
+    NPM_CONFIG_CAFILE: join(tempRoot, 'configured-npm-ca.pem'),
+  };
+  Object.assign(process.env, inherited, {
+    NODE_OPTIONS: '--require untrusted-runtime-hook',
+    NODE_TLS_REJECT_UNAUTHORIZED: '0',
+    OPENCODE_SERVER_PASSWORD: 'unmanaged-server-password',
+    TAGMA_CHAT_CONTROL_SECRET: 'unrelated-control-secret',
+  });
+  const auth = createOpencodeServerAuth();
+  const env = buildTestOpencodeEnv(auth);
+
+  for (const [key, value] of Object.entries(inherited)) expect(env[key]).toBe(value);
+  expect(env.NODE_OPTIONS).toBeUndefined();
+  expect(env.NODE_TLS_REJECT_UNAUTHORIZED).toBeUndefined();
+  expect(env.TAGMA_CHAT_CONTROL_SECRET).toBeUndefined();
+  expect(env.OPENCODE_SERVER_PASSWORD).toBe(auth.password);
 });
 
 test('user-global plugin declarations are outside the embedded opencode search path', () => {

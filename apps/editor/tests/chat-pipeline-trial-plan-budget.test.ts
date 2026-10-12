@@ -1,37 +1,49 @@
 import { expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { basename, dirname, join, relative } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
+  readChatPipelineTrialPlanRejectionEvidence,
   validateChatPipelineTrialPlanTaskPathCoordinates,
 } from '../server/chat-pipeline-trial-plan';
 import { buildTagmaTrialPlanTool } from '../server/opencode-trial-plan-tool';
+import { createTrialPlanRejectionEvidenceRules } from '../server/chat-trial-plan-rejection-evidence';
+import {
+  buildChatRepairErrorEvidence,
+  isChatRepairErrorEvidence,
+} from '../server/chat-operations/repair-error-evidence';
 import { buildTrialPlanValidationContext } from '../server/chat-trial-intent-coverage';
 import { parseYaml, resolveConfig } from '@tagma/sdk/yaml';
 
 async function loadGeneratedTool(root: string) {
   const pluginDir = join(root, 'node_modules', '@opencode-ai', 'plugin');
-  mkdirSync(pluginDir, { recursive: true });
-  writeFileSync(
-    join(pluginDir, 'package.json'),
-    JSON.stringify({ name: '@opencode-ai/plugin', type: 'module', exports: './index.js' }),
-    'utf8',
-  );
-  writeFileSync(
-    join(pluginDir, 'index.js'),
-    [
-      'const chain = new Proxy({}, { get: () => () => chain });',
-      'const schema = new Proxy({}, { get: () => () => chain });',
-      'function tool(config) { return config; }',
-      'tool.schema = schema;',
-      'export { tool };',
-    ].join('\n'),
-    'utf8',
+  mkdirSync(dirname(pluginDir), { recursive: true });
+  symlinkSync(
+    dirname(dirname(fileURLToPath(import.meta.resolve('@opencode-ai/plugin')))),
+    pluginDir,
+    process.platform === 'win32' ? 'junction' : 'dir',
   );
   const toolPath = join(root, 'tagma_trial_plan.mjs');
   writeFileSync(toolPath, buildTagmaTrialPlanTool(), 'utf8');
@@ -216,7 +228,15 @@ for (const scope of [
         '        - id: run',
         ...(scope === 'task' || scope === 'task-review' ? ['          cwd: .tagma/flow'] : []),
         ...(scope === 'task-override' ? ['          cwd: .'] : []),
-        '          command: echo report',
+        ...(scope.endsWith('-review')
+          ? [
+              '          command:',
+              '            argv:',
+              `              - ${JSON.stringify(process.execPath)}`,
+              '              - -e',
+              `              - ${JSON.stringify('const fs=require("node:fs");const source=fs.readFileSync("inputs/source.txt","utf8");console.log("report");fs.mkdirSync("artifacts",{recursive:true});fs.writeFileSync("artifacts/report.txt","report: "+source)')}`,
+            ]
+          : ['          command: echo report']),
         '          inputs:',
         '            document_path:',
         '              type: string',
@@ -260,6 +280,15 @@ for (const scope of [
         expectations: [
           { type: 'task-status', taskId: 'main.run', status: 'success' },
           { type: 'path-exists', path: 'artifacts/report.txt' },
+          ...(reviewRequired
+            ? [
+                {
+                  type: 'file-equals',
+                  path: 'flow/artifacts/report.txt',
+                  text: 'report: source',
+                },
+              ]
+            : []),
         ],
       };
       await call('begin', { summary: 'Check coordinates.', goals: ['Use case-root paths.'] });
@@ -282,6 +311,20 @@ for (const scope of [
               taskIds: [],
               rationale: 'No recovery promise in this coordinate-only workflow.',
             })),
+            coreWitness: {
+              status: 'covered',
+              normalCaseId: 'positive',
+              taskRoles: [
+                {
+                  taskId: 'main.run',
+                  role: 'content',
+                  expectationIndices: [2],
+                  rationale:
+                    'This frozen-intent coordinate fixture reads the exact source bytes at the effective task cwd and writes the exact source-derived normal report; status or file existence alone does not establish that promised content.',
+                },
+              ],
+              generatedInputs: [],
+            },
           },
         });
       const before = readChatPipelineTrialPlanToolTelemetry(yamlPath, 2);
@@ -306,6 +349,7 @@ for (const scope of [
             expectations: [
               testCase.expectations[0],
               { type: 'path-exists', path: 'flow/artifacts/report.txt' },
+              ...testCase.expectations.slice(2),
             ],
           },
         });
@@ -326,6 +370,19 @@ for (const scope of [
       expect(() =>
         validateChatPipelineTrialPlanTaskPathCoordinates(plan, config, 'flow/flow.yaml', root),
       ).not.toThrow();
+      if (reviewRequired) {
+        expect(plan.evidenceReview.coreWitness).toMatchObject({
+          status: 'covered',
+          normalCaseId: 'positive',
+          taskRoles: [{ taskId: 'main.run', role: 'content', expectationIndices: [2] }],
+          generatedInputs: [],
+        });
+        expect(plan.cases[0].expectations[2]).toEqual({
+          type: 'file-equals',
+          path: 'flow/artifacts/report.txt',
+          text: 'report: source',
+        });
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -767,7 +824,10 @@ test('a new YAML revision seeds its draft from the prior authenticated plan', as
     writeStageAttemptLimit(agentTagmaDir, 2);
     const tool = await loadGeneratedTool(root);
     const context = { directory: agentTagmaDir };
-    const args = { ...invalidPlanArgs(yamlPath), coverage: acceptedRiskCoverage() };
+    const args: Record<string, unknown> = {
+      ...invalidPlanArgs(yamlPath),
+      coverage: acceptedRiskCoverage(),
+    };
     await submitTrialPlan(tool, args, context, 'host-first-revision');
     const firstHash = createHash('sha1').update(firstYaml).digest('hex');
 
@@ -1607,3 +1667,312 @@ test('host telemetry reader rejects counters that do not partition tool attempts
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+async function nativeRejectionFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-native-plan-rejection-'));
+  const directory = join(root, '.tagma', '.chat-staging', 'stage-1', 'agent-workspace', '.tagma');
+  const yamlPath = join(directory, 'flow', 'flow.yaml');
+  mkdirSync(dirname(yamlPath), { recursive: true });
+  const yaml =
+    'pipeline:\n  name: Native rejection\n  tracks:\n    - id: main\n      tasks:\n        - id: run\n          command: echo source\n';
+  writeFileSync(yamlPath, yaml);
+  writeStageAttemptLimit(directory, 2);
+  const tool = await loadGeneratedTool(root);
+  const args: Record<string, unknown> = {
+    ...invalidPlanArgs(yamlPath),
+    coverage: acceptedRiskCoverage(),
+  };
+  const stageRoot = dirname(dirname(directory));
+  const issue = (attemptId: string, validationContext: unknown) => {
+    issueTrialPlanAttempt(args, { directory }, attemptId);
+    const stagePath = join(stageRoot, 'stage.json');
+    const stage = JSON.parse(readFileSync(stagePath, 'utf8'));
+    stage.trialPlanAttempt.validationContext = validationContext;
+    writeFileSync(stagePath, JSON.stringify(stage));
+    return (operation: string, fields: Record<string, unknown> = {}) =>
+      tool.execute(
+        { operation, attempt_id: attemptId, pipeline_path: yamlPath, ...fields },
+        { directory },
+      );
+  };
+  const draft = async (
+    call: ReturnType<typeof issue>,
+    testCase = (args.cases as Array<Record<string, unknown>>)[0]!,
+  ) => {
+    await call('begin', { summary: args.summary, goals: args.goals });
+    await call('upsert-case', { case: testCase });
+    await call('set-coverage', { coverage: args.coverage });
+    await call('set-findings', { findings: [] });
+  };
+  const rejectionPath = () =>
+    join(
+      stageRoot,
+      '.trial-plan-rejections',
+      readdirSync(join(stageRoot, '.trial-plan-rejections')).find((file) =>
+        file.endsWith('.json'),
+      )!,
+    );
+  return { root, yaml, directory, yamlPath, issue, draft, rejectionPath };
+}
+
+test('actual native commits retain every typed issue on repeated rejection and exhaust exactly two submissions', async () => {
+  const h = await nativeRejectionFixture();
+  try {
+    const required = [
+      'timeout-recovery',
+      'failure-recovery',
+      'empty-result',
+      'unlocated-source',
+      'source-preservation',
+    ] as const;
+    const context = buildTrialPlanValidationContext(
+      resolveConfig(parseYaml(h.yaml), h.root),
+      required,
+    );
+    const first = h.issue('host-complete-rejection-1', context);
+    await h.draft(first);
+    await expect(first('validate')).rejects.toThrow('source-preservation');
+    expect(readChatPipelineTrialPlanToolTelemetry(h.yamlPath, 2).toolAttemptCount).toBe(0);
+    expect(
+      readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2, 'host-complete-rejection-1')
+        ?.submissionConsumed,
+    ).toBe(false);
+    await expect(first('commit')).rejects.toThrow('source-preservation');
+    const evidence = readChatPipelineTrialPlanRejectionEvidence(
+      h.yamlPath,
+      2,
+      'host-complete-rejection-1',
+    )!;
+    expect(evidence).not.toBeNull();
+    expect(evidence.submissionConsumed).toBe(true);
+    expect(JSON.parse(evidence.text).missingEvidence).toEqual(required);
+    expect(JSON.parse(evidence.text).issues.map((issue: { type: string }) => issue.type)).toEqual(
+      required,
+    );
+    expect(JSON.parse(evidence.text).issues).toHaveLength(5);
+    expect(evidence.text.length).toBeGreaterThan(500);
+    expect(evidence.byteLength).toBe(Buffer.byteLength(evidence.text, 'utf8'));
+    expect(evidence.hash).toBe(createHash('sha256').update(evidence.text, 'utf8').digest('hex'));
+    const modelEvidence = buildChatRepairErrorEvidence('actual-native-tool-trial', {
+      kind: 'plan-required',
+      ran: false,
+      tasks: [],
+      cases: [],
+      summary: '[compact]',
+      repairPlanRejectionEvidence: evidence,
+    } as never);
+    expect(isChatRepairErrorEvidence(modelEvidence)).toBe(true);
+    const handedOff = JSON.parse(modelEvidence.text).planRejectionEvidence;
+    expect(handedOff.text).toBe(evidence.text);
+    expect(handedOff.nativeHash).toBe(evidence.hash);
+    expect(JSON.parse(handedOff.text).issues).toHaveLength(5);
+    expect(lstatSync(h.rejectionPath()).nlink).toBe(1);
+    if (process.platform !== 'win32') expect(lstatSync(h.rejectionPath()).mode & 0o077).toBe(0);
+
+    const second = h.issue('host-complete-rejection-2', context);
+    await second('begin', {
+      summary: 'Correct the rejected plan.',
+      goals: ['All required behaviors.'],
+    });
+    let repeatedError = '';
+    try {
+      await second('commit');
+    } catch (error) {
+      repeatedError = (error as Error).message;
+    }
+    expect(repeatedError).toBe('Repeated equivalent validation rejection (2x): ' + evidence.text);
+    const repeated = readChatPipelineTrialPlanRejectionEvidence(
+      h.yamlPath,
+      2,
+      'host-complete-rejection-2',
+    )!;
+    expect(repeated.text).toBe(evidence.text);
+    expect(repeated.attemptId).toBe('host-complete-rejection-2');
+    expect(
+      readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2, 'host-complete-rejection-1'),
+    ).toBeNull();
+    const stagePath = join(dirname(dirname(h.directory)), 'stage.json');
+    const stageBytes = readFileSync(stagePath, 'utf8');
+    writeFileSync(
+      stagePath,
+      JSON.stringify({ ...JSON.parse(stageBytes), trialPlanMaxAttempts: 3 }),
+    );
+    expect(
+      readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2, 'host-complete-rejection-2'),
+    ).toBeNull();
+    writeFileSync(stagePath, stageBytes);
+    const telemetry = readChatPipelineTrialPlanToolTelemetry(h.yamlPath, 2);
+    expect(telemetry).toMatchObject({
+      toolAttemptCount: 2,
+      validationRejectionCount: 2,
+      successfulWriteCount: 0,
+      repeatedValidationRejectionCount: 1,
+    });
+    expect(telemetry.rejections).toHaveLength(1);
+    expect(telemetry.rejections[0]!.count).toBe(2);
+    expect(telemetry.rejections[0]!.message.length).toBeLessThanOrEqual(500);
+    await expect(second('commit')).rejects.toThrow('already attempted');
+    const third = h.issue('host-complete-rejection-3', context);
+    await third('begin', { summary: 'No remaining submission.', goals: ['Budget fence.'] });
+    await expect(third('commit')).rejects.toThrow('budget exhausted');
+    expect(readChatPipelineTrialPlanToolTelemetry(h.yamlPath, 2)).toEqual(telemetry);
+    expect(
+      readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2, 'host-complete-rejection-3'),
+    ).toBeNull();
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test('actual native invalid commit keeps long Unicode bytes and rejects changed, unreadable or linked private evidence', async () => {
+  const h = await nativeRejectionFixture();
+  try {
+    const unicodePath = '目录/' + '诊断🧭'.repeat(55) + '.md';
+    const context = {
+      version: 2,
+      obligations: [],
+      tasks: { 'main.run': { dependsOn: [], kind: 'command', onFailure: 'stop_all' } },
+      pathCoordinates: {
+        namespace: 'flow',
+        taskLocalPaths: [{ path: unicodePath, cwd: '.tagma/flow', descendants: false }],
+      },
+    };
+    const call = h.issue('host-unicode-rejection', context);
+    await h.draft(call, {
+      id: 'unicode',
+      title: 'Unicode',
+      objective: 'Preserve error bytes.',
+      targetTaskIds: ['main.run'],
+      fixtures: [{ path: unicodePath, content: '原文' }],
+      expectations: [{ type: 'task-status', taskId: 'main.run', status: 'success' }],
+    });
+    let returnedError = '';
+    try {
+      await call('commit');
+    } catch (error) {
+      returnedError = (error as Error).message;
+    }
+    expect(returnedError.length).toBeGreaterThan(500);
+    expect(returnedError).toContain(unicodePath);
+    const evidence = readChatPipelineTrialPlanRejectionEvidence(
+      h.yamlPath,
+      2,
+      'host-unicode-rejection',
+    )!;
+    expect(JSON.parse(evidence.text).message).toBe(returnedError);
+    expect(evidence.byteLength).toBeGreaterThan(evidence.text.length);
+    expect(
+      readChatPipelineTrialPlanToolTelemetry(h.yamlPath, 2).rejections[0]!.message.length,
+    ).toBe(500);
+    const path = h.rejectionPath();
+    const original = readFileSync(path, 'utf8');
+    writeFileSync(
+      path,
+      JSON.stringify({ ...JSON.parse(original), text: evidence.text + 'changed' }),
+    );
+    expect(readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2)).toBeNull();
+    writeFileSync(path, original);
+    writeFileSync(h.yamlPath, h.yaml + '# different revision\n');
+    expect(readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2)).toBeNull();
+    writeFileSync(h.yamlPath, h.yaml);
+    linkSync(path, path + '.linked');
+    expect(readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2)).toBeNull();
+    rmSync(path + '.linked');
+    if (process.platform !== 'win32') {
+      chmodSync(path, 0o644);
+      expect(readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2)).toBeNull();
+      chmodSync(path, 0o600);
+    }
+    rmSync(path);
+    expect(readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2)).toBeNull();
+    expect(readChatPipelineTrialPlanToolTelemetry(h.yamlPath, 2)).toMatchObject({
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
+      successfulWriteCount: 0,
+    });
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+}, 20_000);
+
+for (const mutation of ['replace', 'rewrite', 'link', 'chmod'] as const) {
+  test(`complete rejection reader refuses a real ${mutation} during its file read`, async () => {
+    const h = await nativeRejectionFixture();
+    try {
+      const call = h.issue(
+        'host-read-race',
+        buildTrialPlanValidationContext(
+          resolveConfig(parseYaml(h.yaml), h.root),
+          ['source-preservation'],
+          {
+            relativeYamlPath: 'flow/flow.yaml',
+            workDir: h.root,
+          },
+        ),
+      );
+      await h.draft(call);
+      const error = await call('commit').then(
+        () => null,
+        (error: Error) => error,
+      );
+      expect(error).toBeInstanceOf(Error);
+      const evidence = readChatPipelineTrialPlanRejectionEvidence(h.yamlPath, 2)!;
+      expect(evidence.submissionConsumed).toBe(true);
+      const path = h.rejectionPath();
+      let mutated = false;
+      const racingRead = ((...args: unknown[]) => {
+        const encoded = Reflect.apply(readFileSync, undefined, args);
+        if (typeof args[0] === 'number' && !mutated) {
+          mutated = true;
+          if (mutation === 'replace') {
+            const replacement = `${path}.replacement`;
+            writeFileSync(replacement, encoded, { mode: 0o600 });
+            renameSync(replacement, path);
+          } else if (mutation === 'rewrite') {
+            const changed = JSON.parse(encoded as string);
+            changed.recordedAt += 1;
+            writeFileSync(path, JSON.stringify(changed));
+            const stat = lstatSync(path);
+            utimesSync(path, stat.atime, new Date(stat.mtimeMs + 1000));
+          } else if (mutation === 'link') {
+            linkSync(path, `${path}.link`);
+          } else {
+            chmodSync(path, 0o644);
+          }
+        }
+        return encoded;
+      }) as typeof readFileSync;
+      const rules = createTrialPlanRejectionEvidenceRules({
+        createHash,
+        randomUUID,
+        basename,
+        dirname,
+        join,
+        constants,
+        closeSync,
+        fstatSync,
+        lstatSync,
+        mkdirSync,
+        openSync,
+        readFileSync: racingRead,
+        renameSync,
+        rmSync,
+        writeFileSync,
+      });
+      expect(
+        rules.read({
+          stageRoot: dirname(dirname(h.directory)),
+          yamlHash: evidence.yamlHash,
+          relativeYamlPath: evidence.relativeYamlPath,
+          attemptId: evidence.attemptId,
+          toolAttemptCount: evidence.toolAttemptCount,
+          validationRejectionCount: evidence.validationRejectionCount,
+          successfulWriteCount: evidence.successfulWriteCount,
+        }),
+      ).toBeNull();
+      expect(mutated).toBe(true);
+    } finally {
+      rmSync(h.root, { recursive: true, force: true });
+    }
+  });
+}

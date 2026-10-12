@@ -767,6 +767,20 @@ test('one conversation adds CSV and publishes after real repeated Sandbox verifi
               taskIds: [],
               rationale: 'This JSON/CSV workflow promises no recovery behavior.',
             })),
+            coreWitness: {
+              status: 'covered',
+              normalCaseId: 'summary',
+              taskRoles: [
+                {
+                  taskId: 'main.summarize',
+                  role: 'content',
+                  expectationIndices: count > 2 ? [1, 2] : [1],
+                  rationale:
+                    'The original JSON/CSV request is verified by the exact computed city/amount rows and, when requested, the exact escaped CSV bytes.',
+                },
+              ],
+              generatedInputs: [],
+            },
           },
           coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) => ({
             dimension,
@@ -1046,7 +1060,7 @@ test('schema 8 ownership and publication survive migration before the next owned
 }, 60_000);
 
 test.each([false, true])(
-  'denied read with null text completes against real staging (existing target: %s)',
+  'denied read with null text retains a create and completes an edit against real staging (existing target: %s)',
   async (existing) => {
     const fixture = createFixture();
     const first = existing ? await fixture.send() : null;
@@ -1056,6 +1070,7 @@ test.each([false, true])(
       target: first?.path,
       noChange: true,
       requireReadPermission: true,
+      expectedPhase: existing ? 'terminal' : 'trial-running',
     });
     for (
       let attempt = 0;
@@ -1077,10 +1092,32 @@ test.each([false, true])(
       }),
     ).toMatchObject({ kind: 'forwarded' });
     const noop = await pending;
-    expect(noop.operation.terminalOutcome).toBe('completed_noop');
-    expect(noop.projection?.messages[0]?.text).toBe(
-      'The authoring invocation ended without a text response.',
+    const detail = fixture.service.getOperationProjection(
+      fixture.workspaceRoot,
+      noop.operation.operationId,
     );
+    expect(noop.operation.terminalOutcome).toBe(existing ? 'completed_noop' : null);
+    if (!existing) {
+      expect(detail.operation).toMatchObject({
+        phase: 'trial-running',
+        waitReason: 'user_retry',
+        executionState: 'retryable_failure',
+      });
+      expect(detail.failure).toMatchObject({
+        stage: 'authoring',
+        code: 'authoring_interactive_declined',
+        invocationId: null,
+        outboxStatus: null,
+      });
+      expect(fixture.store.getPendingResultMessage(noop.operation.operationId)).not.toBeNull();
+      expect(fixture.store.getResultProjection(noop.operation.operationId)).toBeNull();
+    }
+    expect(
+      (existing
+        ? noop.projection?.messages[0]
+        : fixture.store.getPendingResultMessage(noop.operation.operationId)?.message
+      )?.text,
+    ).toBe('The authoring invocation ended without a text response.');
     expect(noop.path).toBeNull();
     if (first) expect(fixture.read(first.path!)).toBe(bytes!);
     else
@@ -1090,10 +1127,53 @@ test.each([false, true])(
           revision: 1,
         }).inventory.candidates,
       ).toHaveLength(0);
+    expect(
+      await fixture.service.createAndDispatchReadonly(fixture.workspaceRoot, noop.input),
+    ).toMatchObject({ kind: existing ? 'completed_noop' : 'authoring_recovery_required' });
+    expect(fixture.invocationCount).toBe(expectedInvocations);
     await fixture.restart();
     expect(
       await fixture.service.createAndDispatchReadonly(fixture.workspaceRoot, noop.input),
-    ).toMatchObject({ kind: 'completed_noop' });
+    ).toMatchObject({ kind: existing ? 'completed_noop' : 'authoring_recovery_required' });
+    const replayDetail = fixture.service.getOperationProjection(
+      fixture.workspaceRoot,
+      noop.operation.operationId,
+    );
+    const retainedApproval =
+      detail.operation.terminalOutcome === null &&
+      detail.operation.phase === 'trial-running' &&
+      detail.operation.waitReason === 'user_retry' &&
+      detail.timing?.activeCategory === 'approval';
+    if (!retainedApproval) {
+      expect(replayDetail).toEqual(detail);
+    } else {
+      // Only the actual retained approval clock may advance. Persisted fields,
+      // nonwaiting durations and event evidence still match in full.
+      const beforeTiming = detail.timing;
+      const actualTiming = replayDetail.timing;
+      if (
+        beforeTiming === null ||
+        beforeTiming === undefined ||
+        actualTiming === null ||
+        actualTiming === undefined
+      )
+        throw new Error('Retained approval timing evidence must remain available.');
+      let durationsMs = beforeTiming.durationsMs;
+      if (durationsMs !== null) {
+        if (actualTiming.durationsMs === null)
+          throw new Error('Retained approval duration evidence must remain available.');
+        durationsMs = { ...durationsMs, approval: actualTiming.durationsMs.approval };
+      }
+      expect(replayDetail).toEqual({
+        ...detail,
+        timing: {
+          ...beforeTiming,
+          observedAt: actualTiming.observedAt,
+          elapsedMs: actualTiming.elapsedMs,
+          durationsMs,
+        },
+      });
+    }
     expect(fixture.invocationCount).toBe(expectedInvocations);
   },
   60_000,
