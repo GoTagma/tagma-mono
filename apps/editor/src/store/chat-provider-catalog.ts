@@ -103,6 +103,7 @@ export function buildProvidersFromV2Catalog(
     if (!v2ProviderById.has(model.providerID)) continue;
     const providerModels = modelsByProvider.get(model.providerID) ?? {};
     const legacyModel = legacyById.get(model.providerID)?.models?.[model.id];
+    if (runtimeProviders && legacyModel === undefined) continue;
     const v2Variants = Object.fromEntries(
       (model.variants ?? []).filter((id) => id.trim().length > 0).map((id) => [id, {}]),
     );
@@ -126,6 +127,16 @@ export function buildProvidersFromV2Catalog(
       variants: { ...runtimeVariants, ...v2Variants },
     };
     modelsByProvider.set(model.providerID, providerModels);
+  }
+
+  for (const runtimeProvider of legacyProviders) {
+    const providerModels = modelsByProvider.get(runtimeProvider.id) ?? {};
+    for (const [modelId, runtimeModel] of Object.entries(runtimeProvider.models ?? {})) {
+      if (!Object.prototype.hasOwnProperty.call(providerModels, modelId)) {
+        providerModels[modelId] = runtimeModel;
+      }
+    }
+    modelsByProvider.set(runtimeProvider.id, providerModels);
   }
 
   const providers = catalogProviders.flatMap((provider) => {

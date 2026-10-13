@@ -1224,7 +1224,13 @@ function beginCompleteTrialPlanAttempt(paths, yamlHash, attemptId) {
 }
 
 function rejectionSummary(error) {
-  const message = error instanceof Error ? error.message : String(error);
+  const diagnostic = error && typeof error === 'object' ? error.trialPlanDiagnostic : undefined;
+  const originalCoreMessage = diagnostic?.rejectionContext?.binding &&
+    typeof diagnostic.message === 'string' && error instanceof Error &&
+    error.message.startsWith(diagnostic.message + String.fromCharCode(10) + 'rejectionContext: ')
+      ? diagnostic.message
+      : null;
+  const message = originalCoreMessage || (error instanceof Error ? error.message : String(error));
   return message.replace(/\\s+/g, " ").trim().slice(0, 500) || "unknown validation rejection";
 }
 
@@ -1469,7 +1475,7 @@ function parseTrialPlanPayload(args, complete = false) {
   return (complete ? completeTrialPlanPayloadSchema : trialPlanPayloadSchema).parse(payload);
 }
 
-function assertExecutableTrialPlan(input, plan) {
+function assertExecutableTrialPlan(input, plan, countedAttempt) {
   assertValidPlan(plan);
   assertTargetPaths(plan, input.paths.relativeYamlPath);
   const serialized = JSON.stringify(plan, null, 2) + String.fromCharCode(10);
@@ -1497,7 +1503,65 @@ function assertExecutableTrialPlan(input, plan) {
     const required = review ? review.decisions.filter(item => item.required).map(item => item.type) : context.obligations;
     if (context.obligations.some(kind => !required.includes(kind))) throw new Error('Evidence review cannot remove a Host-pinned requirement.');
     if (review && review.decisions.some(item => item.taskIds.some(id => !Object.hasOwn(context.tasks, id)))) throw new Error('Evidence review selects an unknown staged task.');
-    resilienceRules.validateCoreWitness(plan, context.tasks, Boolean(context.intentDigest));
+    try {
+      resilienceRules.validateCoreWitness(plan, context.tasks, Boolean(context.intentDigest));
+    } catch (error) {
+      // Enrich only an already rejected core check. Preserve its guard and leading message.
+      try {
+        const diagnostic = error && typeof error === 'object' ? error.trialPlanDiagnostic : undefined;
+        if (diagnostic?.rejectionContext?.version === 1) {
+          const rejectionContext = diagnostic.rejectionContext;
+          // Never leave actionable coordinates without the current input binding.
+          delete diagnostic.rejectionContext;
+          const candidatePlanHash = createHash('sha256')
+            .update(JSON.stringify(plan, null, 2) + String.fromCharCode(10)).digest('hex');
+          let telemetry;
+          if (countedAttempt === undefined) {
+            telemetry = readTrialPlanAttemptTelemetry(input.paths, input.yamlHash);
+          } else {
+            // A counted reservation is intentionally not terminal telemetry yet.
+            // Reuse only the internally validated attempt for this exact input.
+            if (countedAttempt.paths !== input.paths ||
+                countedAttempt.attemptId !== input.attemptId ||
+                countedAttempt.telemetry.yamlHash !== input.yamlHash ||
+                countedAttempt.telemetry.relativeYamlPath !== input.paths.relativeYamlPath ||
+                !countedAttempt.telemetry.attemptIds.includes(input.attemptId)) {
+              throw new Error('Core rejection coordinates lack a current counted-attempt binding.');
+            }
+            telemetry = countedAttempt.telemetry;
+          }
+          let boundContext = { ...rejectionContext, binding: {
+            attemptId: input.attemptId,
+            relativeYamlPath: input.paths.relativeYamlPath,
+            yamlHash: input.yamlHash,
+            intentDigest: context.intentDigest || null,
+            candidatePlanHash,
+            committedPlanHash: telemetry.committedPlanHash,
+            candidateMatchesCommittedPlan: telemetry.committedPlanHash === candidatePlanHash,
+          } };
+          const contextLimitBytes = 2048;
+          let encodedContext = JSON.stringify(boundContext);
+          if (Buffer.byteLength(encodedContext, 'utf8') > contextLimitBytes) {
+            const omittedFields = ['path', 'sourcePath', 'sourcePointer', 'producerRoleExpectationIndices']
+              .filter((key) => Object.hasOwn(boundContext, key));
+            boundContext = { ...boundContext, omittedFields };
+            for (const key of omittedFields) delete boundContext[key];
+            encodedContext = JSON.stringify(boundContext);
+          }
+          if (Buffer.byteLength(encodedContext, 'utf8') <= contextLimitBytes &&
+              error instanceof Error && error.message === diagnostic.message) {
+            diagnostic.rejectionContext = boundContext;
+            // Native OpenCode tool errors are strings. Keep the old guard first,
+            // then deliver this bounded data through the existing thrown message.
+            error.message = diagnostic.message + String.fromCharCode(10) +
+              'rejectionContext: ' + encodedContext;
+          }
+        }
+      } catch {
+        // Unavailable enrichment cannot mask the original validation rejection.
+      }
+      throw error;
+    }
     const inspection = resilienceRules.inspectEvidence(required, plan, context.tasks);
     if (inspection.missing.length) {
       if (inspection.issues.some(issue => issue.repairScope === 'pipeline-artifact')) return inspection;
@@ -1525,7 +1589,7 @@ function commitValidatedTrialPlan(input, attempt, plan) {
     input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
   let committedPlanHash;
   try {
-    assertExecutableTrialPlan(input, plan);
+    assertExecutableTrialPlan(input, plan, attempt);
     const serialized = JSON.stringify(plan, null, 2) + String.fromCharCode(10);
     const tempPath = planPath + '.' + randomUUID() + '.tmp';
     writeFileSync(tempPath, serialized, 'utf8');

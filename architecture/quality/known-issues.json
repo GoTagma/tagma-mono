@@ -1,0 +1,927 @@
+{
+  "schemaVersion": 1,
+  "scope": "historical",
+  "importComplete": false,
+  "intakeRecordedOn": "2026-10-12",
+  "timezone": "Asia/Shanghai",
+  "handoff": {
+    "kind": "handoff-report",
+    "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+    "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+    "readComplete": true,
+    "historicalEvidenceAuthenticated": false
+  },
+  "currentWorkspace": {
+    "selection": "new-workspace",
+    "basis": "Latest direct user instruction",
+    "historicalArchivesRequiredToClaimHistoricalComplete": true
+  },
+  "sources": [
+    {
+      "id": "historical-catalog-sweep12",
+      "path": "work/fact-checker/reviews/sweep12-root-issue-catalog-complete-v5.json",
+      "sha256": "e2a5b26a0b8835399d92459bc293dd078d510c2bc53d7a942646dcccb852525f",
+      "reportedShape": "3 issues",
+      "availability": "missing",
+      "sha256Verified": false,
+      "provenance": "handoff-report"
+    },
+    {
+      "id": "historical-catalog-sweep13",
+      "path": "work/fact-checker/reviews/sweep13-unified-issue-catalog-v1.json",
+      "sha256": "9fab8d2c2d1920436f0be16ce42a5207f135bb0dcc1ba56d55f9330c145f922a",
+      "reportedShape": "4 issues and 2 confirmedPublicCodeGaps; specificCauseProven=false for uncommitted-plan",
+      "availability": "missing",
+      "sha256Verified": false,
+      "provenance": "handoff-report"
+    },
+    {
+      "id": "historical-catalog-sweep16",
+      "path": "work/fact-checker/reviews/sweep16-root-whole-problem-catalog-actual-v1/catalog.actual.json",
+      "sha256": "0a8237d96311f7fa44355dde032c400e00731f239a84e6b6a2dbe8f81c63af01",
+      "reportedShape": "3 groups and 12 case classes",
+      "availability": "missing",
+      "sha256Verified": false,
+      "provenance": "handoff-report"
+    },
+    {
+      "id": "historical-catalog-sweep17",
+      "path": "work/fact-checker/reviews/sweep17-full12-issue-catalog-prepared-v1/catalog.json",
+      "sha256": "2ce888df4451db515efae77851cfc5b237c820a2126339ccbf35c0339d3587de",
+      "reportedShape": "36 issues; not 36 confirmed causes; not graded against new UI policy",
+      "availability": "missing",
+      "sha256Verified": false,
+      "provenance": "handoff-report"
+    }
+  ],
+  "requiredSources": [
+    {
+      "id": "historical-catalog-sweep12",
+      "path": "work/fact-checker/reviews/sweep12-root-issue-catalog-complete-v5.json",
+      "sha256": "e2a5b26a0b8835399d92459bc293dd078d510c2bc53d7a942646dcccb852525f",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "historical-catalog-import"
+    },
+    {
+      "id": "historical-catalog-sweep13",
+      "path": "work/fact-checker/reviews/sweep13-unified-issue-catalog-v1.json",
+      "sha256": "9fab8d2c2d1920436f0be16ce42a5207f135bb0dcc1ba56d55f9330c145f922a",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "historical-catalog-import"
+    },
+    {
+      "id": "historical-catalog-sweep16",
+      "path": "work/fact-checker/reviews/sweep16-root-whole-problem-catalog-actual-v1/catalog.actual.json",
+      "sha256": "0a8237d96311f7fa44355dde032c400e00731f239a84e6b6a2dbe8f81c63af01",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "historical-catalog-import"
+    },
+    {
+      "id": "historical-catalog-sweep17",
+      "path": "work/fact-checker/reviews/sweep17-full12-issue-catalog-prepared-v1/catalog.json",
+      "sha256": "2ce888df4451db515efae77851cfc5b237c820a2126339ccbf35c0339d3587de",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "historical-catalog-import"
+    },
+    {
+      "id": "sweep18-formal-current",
+      "path": "work/fact-checker/reviews/sweep18-formal-current/",
+      "sha256": null,
+      "round": 18,
+      "kind": "directory",
+      "availability": "missing",
+      "requirement": "all-nine-formally-graded-engineering-records"
+    },
+    {
+      "id": "sweep18-sole-grader-finished",
+      "path": "work/fact-checker/reviews/sweep18-sole-grader-finished/",
+      "sha256": null,
+      "round": 18,
+      "kind": "directory",
+      "availability": "missing",
+      "requirement": "all-nine-formally-graded-engineering-records"
+    },
+    {
+      "id": "original-case-inventory",
+      "path": "work/fact-checker/case-inventory.json",
+      "sha256": "68bbda2f669e438f3270238c621f3ad08f6367f221343c53cfcf8ba25b9b3343",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "original-test-selector-binding"
+    },
+    {
+      "id": "sweep18-acceptance-policy",
+      "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+      "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "same-policy-comparison"
+    },
+    {
+      "id": "sweep18-actual-run-binding",
+      "path": "work/fact-checker/reviews/sweep18-actual-run-binding-root-v1.json",
+      "sha256": "9a2143610699d032dbe6d8eb58f8a5f972a7d248ecc80b1f457d0dfeb6128971",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "run-source-binding"
+    },
+    {
+      "id": "sweep18-source-manifest",
+      "path": "work/fact-checker/draft-validation/batch12-main-post17-r1/source-manifest.json",
+      "sha256": "bd84f70e769d7c1b5a046c882b4fe7cfd38aa198bbbff6730e10ee3a7e522e09",
+      "kind": "file",
+      "availability": "missing",
+      "requirement": "actual-source-binding"
+    }
+  ],
+  "availabilityAudit": {
+    "path": "work/handoff-resume-20261012/evidence-availability.json",
+    "sha256": "df27d299bf57afd29adfb233eece8c23d480e8dc5fb50a14632dfe256d4640b4",
+    "scope": "Read-only exact named evidence availability; not a product result."
+  },
+  "originalTestSet": {
+    "path": "/workspace/.tagma-cloud/test-sets/fact-checker/source.md",
+    "sha256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+    "availability": "present",
+    "sha256Verified": true,
+    "provenance": "current-workspace-availability-audit",
+    "promptsCopiedIntoPublicCatalog": false
+  },
+  "currentSourceBaseline": {
+    "status": "reconstruction-pending",
+    "scope": "available-public-source-mechanisms",
+    "mayClaimFullHistoricalGreen": false,
+    "rule": "Record independently proved current mechanisms and actual executable regressions under a separate baseline; missing archives remain reported unknown."
+  },
+  "excludedConclusions": [
+    "No full historical inventory imported.",
+    "No known issue classified as fixed by this intake.",
+    "No historical recurrence classified as a confirmed regression.",
+    "No model-provider root cause confirmed.",
+    "Round-18 user pause is not a product regression.",
+    "S4L1 is not graded PASS; S4L2 and S4L3 remain NOT RUN as handoff-reported."
+  ],
+  "importGaps": [
+    "Missing four original catalogs and their per-issue IDs, immutable first evidence, ordered histories, fixes, and accepted regression mappings.",
+    "Missing all nine formally graded round-18 engineering records and their source/policy bindings.",
+    "Missing original case inventory.",
+    "Prepared patches are missing and their tests were not executed.",
+    "The intake issue count is not the original inventory count."
+  ],
+  "issues": [
+    {
+      "id": "TQ-0001",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Planner reread can reuse a zero-commit attempt identity",
+      "category": "product",
+      "mechanism": "trial-planner-attempt-identity",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4.1; 6 Planner identity V2"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/reviews/sweep18-formal-current/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        },
+        {
+          "path": "work/fact-checker/reviews/sweep18-sole-grader-finished/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "Multiple NoTrialPlanWritten or no-progress/zero toolAttemptCount planning paths did not publish.",
+      "reportedCause": {
+        "candidate": "Attempt ID derivation can repeat when a local reread sees zero consumed commits.",
+        "handoffClaim": "public-source-confirmed possibility",
+        "historicalCausality": "unknown",
+        "requiredProof": "Actual Engine second-slot assertion RED on old production, then the same regression GREEN after the minimal repair."
+      },
+      "reportedPreparedFixes": [
+        {
+          "directory": "work/reviews/sweep18-planner-attempt-identity-preparation-v2/",
+          "manifestSha256": "41f6aface8cf352a5a6858eb23b905ece6ff4faf79830dd2012559e698cbda6d",
+          "ready": false,
+          "regressionsExecuted": false,
+          "provenance": "handoff-report"
+        }
+      ],
+      "regressionCandidates": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+          "namePattern": "^.*zero consumed commits can authorize one bounded planning correction$",
+          "expectedTests": 1,
+          "executionVerified": false,
+          "mappingAccepted": false,
+          "scope": "Pure admission guard; does not exercise real Engine derivation."
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+          "namePattern": "^.*rejects invented zero counters, unknown fields and a different original request digest$",
+          "expectedTests": 1,
+          "executionVerified": false,
+          "mappingAccepted": false,
+          "scope": "Pure no-progress proof guard; does not establish Engine second-slot repair."
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "namePattern": "^.*semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt$",
+          "expectedTests": 1,
+          "executionVerified": false,
+          "mappingAccepted": false,
+          "scope": "Managed tool boundary; fixture explicitly supplies distinct attempt IDs."
+        }
+      ],
+      "sourceFindings": [
+        {
+          "kind": "source-observation",
+          "path": "apps/editor/server/chat-pipeline-trial-run.ts",
+          "sha256": "ab45fa65eb32677763e106848ab5a2a85166421c4ec68c64c3edd9462789a361",
+          "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "line": 1112,
+          "observation": "issueNextTrialPlanAttempt chooses input.trialId when toolAttemptCount is zero.",
+          "scope": "Directly read public source. This does not prove that the historical case failed because of this branch."
+        }
+      ]
+    },
+    {
+      "id": "TQ-0002",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Repair changes YAML after the original planning budget is consumed",
+      "category": "product",
+      "mechanism": "post-repair-plan-freshness",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4.2; 6 Host revalidation R2"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/reviews/sweep18-formal-current/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        },
+        {
+          "path": "work/fact-checker/reviews/sweep18-sole-grader-finished/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [
+        {
+          "selector": "S1L3",
+          "sourcePath": "/workspace/.tagma-cloud/test-sets/fact-checker/source.md",
+          "sourceSha256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "provenance": "handoff-report",
+          "requiresFreshWorkspace": true
+        }
+      ],
+      "lastExecution": null,
+      "reportedObservation": "S1L3 ran two planners and one repair; changed YAML invalidated the old plan and planning=2 was exhausted.",
+      "reportedCause": {
+        "candidate": "The accepted pre-repair plan becomes stale against the modified pipeline revision.",
+        "historicalCausality": "unknown",
+        "repairLimit": "Only a newly proved narrow inline-code revalidation can be considered; no arbitrary prompt/shell/supporting-script equivalence."
+      },
+      "reportedErrorDelivery": {
+        "planner1Bytes": 840,
+        "repairBytes": 2309,
+        "planner2Bytes": 2512,
+        "integrity": "complete-reported; canonical/reference/decoded verification not locally recovered"
+      },
+      "reportedPreparedFixes": [
+        {
+          "path": "work/reviews/sweep18-repair-replan-static-v1/r2/candidate.manifest.prepared.json",
+          "manifestSha256": "13f2bc8d3464be647ffdea245ab8e0584d2f0a1d123df36e13c127cfe4ae7e0f",
+          "ready": false,
+          "regressionsExecuted": false,
+          "provenance": "handoff-report"
+        }
+      ]
+    },
+    {
+      "id": "TQ-0003",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "A blocked core witness leaves no changed plan after the second planner",
+      "category": "generation-workflow",
+      "mechanism": "blocked-core-plan-navigation",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4.3; 6 Blocked navigation V1"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/reviews/sweep18-formal-current/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        },
+        {
+          "path": "work/fact-checker/reviews/sweep18-sole-grader-finished/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [
+        {
+          "selector": "S3L1",
+          "sourcePath": "/workspace/.tagma-cloud/test-sets/fact-checker/source.md",
+          "sourceSha256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "provenance": "handoff-report",
+          "requiresFreshWorkspace": true
+        }
+      ],
+      "lastExecution": null,
+      "reportedObservation": "S3L1 committed coreWitness blocked/unseedable_prompt_content, then planner no_change on the same snapshot and paused.",
+      "reportedCause": {
+        "candidate": "The current permitted evidence cannot seed the promised normal content, and the planner did not produce a corrected plan.",
+        "historicalCausality": "unknown",
+        "authorityLimit": "Diagnostic prose is not independent mechanical repair authority; availability unknown must remain unknown."
+      },
+      "reportedErrorDelivery": {
+        "planner2Bytes": 3349,
+        "integrity": "complete-reported; underlying bytes not locally recovered"
+      },
+      "reportedPreparedFixes": [
+        {
+          "directory": "work/reviews/sweep18-blocked-plan-navigation-preparation-v1/",
+          "manifestSha256": "2b2f785b79171a5874287cf9f4aa3b04c47079675fa4035e48e75fccfdeef787",
+          "ready": false,
+          "regressionsExecuted": false,
+          "provenance": "handoff-report"
+        }
+      ],
+      "regressionCandidates": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-witness.test.ts",
+          "namePattern": "^.*blocked core requires an existing blocking diagnostic and is never green coverage$",
+          "expectedTests": 1,
+          "executionVerified": false,
+          "mappingAccepted": false,
+          "scope": "Existing pure witness guard; does not prove navigation repair or dynamic content availability."
+        }
+      ]
+    },
+    {
+      "id": "TQ-0004",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Preexecution observability blocks a dynamically sourced content plan",
+      "category": "product",
+      "mechanism": "preexecution-observability-gate",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4.4"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/reviews/sweep18-formal-current/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        },
+        {
+          "path": "work/fact-checker/reviews/sweep18-sole-grader-finished/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing",
+          "sourceRevision": {
+            "gitBase": "fa95145145ea531492d82db23c83e8c817f3f922",
+            "scopedSourceSha256": "2ea564666f91b87e758f52a421423cb4701f05dedc4d43a6c0a0744a287576a8",
+            "note": "Handoff-reported round-18 binding; missing actual source manifest has not been authenticated."
+          },
+          "acceptancePolicy": {
+            "kind": "current-ui-publication-and-bounded-convergence",
+            "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+            "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+            "verification": "unknown"
+          }
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [
+        {
+          "selector": "S3L3",
+          "sourcePath": "/workspace/.tagma-cloud/test-sets/fact-checker/source.md",
+          "sourceSha256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "provenance": "handoff-report",
+          "requiresFreshWorkspace": true
+        }
+      ],
+      "lastExecution": null,
+      "reportedObservation": "S3L3 was blocked by the product preexecution observability gate for dynamically sourced external content.",
+      "reportedCause": {
+        "candidate": "The plan could not supply the product's required permitted observable content before execution.",
+        "historicalCausality": "unknown",
+        "policyLimit": "This is handoff-reported product gate behavior, not an extra grader requirement; any repair needs independent source-bound proof."
+      },
+      "reportedErrorDelivery": {
+        "planner2Bytes": 4065,
+        "integrity": "complete-reported; underlying bytes not locally recovered"
+      }
+    },
+    {
+      "id": "TQ-0005",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Public diagnostics drop some original Host pause reasons",
+      "category": "product",
+      "mechanism": "host-pause-diagnostics-projection",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4.5; 6 Pause diagnostics V1"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/reviews/sweep18-formal-current/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing"
+        },
+        {
+          "path": "work/fact-checker/reviews/sweep18-sole-grader-finished/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing"
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "The public Diagnostics allowlist dropped the original Host pause code.",
+      "reportedCause": {
+        "candidate": "The finite public diagnostic allowlist omits lifecycle pause codes.",
+        "historicalCausality": "unknown",
+        "repairLimit": "Preserve privacy/provider taxonomy; observability repair alone does not establish Chat convergence."
+      },
+      "reportedPreparedFixes": [
+        {
+          "directory": "work/reviews/sweep18-planner-pause-diagnostics-preparation-v1/",
+          "manifestSha256": "129bc02e87c52000fcd6a6899364b7c3c86f770cd3e10fea9d7a4da9dfb0527b",
+          "ready": false,
+          "regressionsExecuted": false,
+          "provenance": "handoff-report"
+        }
+      ],
+      "regressionCandidates": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-event-diagnostics.test.ts",
+          "namePattern": "^.*rejects arbitrary diagnostic content while deduplicating safe reasons$",
+          "expectedTests": 1,
+          "executionVerified": false,
+          "mappingAccepted": false,
+          "scope": "Privacy guard to preserve; existing coverage does not include every reported missing pause code."
+        }
+      ],
+      "sourceFindings": [
+        {
+          "kind": "source-observation",
+          "path": "apps/editor/server/chat-operations/service.ts",
+          "sha256": "ec3a1e97f02a78eefe374c238f5f076504c73dce1f2647154038e65115373852",
+          "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "line": 579,
+          "observation": "diagnosticsForEvent projects errorCode and diagnosticCodes only through SAFE_DIAGNOSTIC_FAILURE_CODES.",
+          "scope": "Directly read public source. Exact omitted historical pause code and runtime effect are not recovered."
+        }
+      ]
+    },
+    {
+      "id": "TQ-0006",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Agent-cycle test fixtures omit exact temporary build-directory cleanup",
+      "category": "test-tool",
+      "mechanism": "cycle-fixture-build-directory-cleanup",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4.6; 6 Test-only temp cleanup V1"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "A cycle unit-test fixture does not clean its precise buildDirectory.",
+      "reportedCause": {
+        "candidate": "The synthetic cleanupBuildDirectory dependency is a no-op or intentional throw without registering the allocated directory for afterEach.",
+        "historicalCausality": "unknown",
+        "scopeLimit": "A test-fixture leak only; not evidence for the cause of unknown multi-gigabyte /tmp objects."
+      },
+      "reportedPreparedFixes": [
+        {
+          "directory": "work/fact-checker/reviews/sweep18-unit-test-temp-leak-preparation-v1/",
+          "manifestSha256": "24aa601afbc9b5fc7ad9dfe1478b82f88831b2b0c396418a95700d3eb8adcf01",
+          "ready": false,
+          "regressionsExecuted": false,
+          "provenance": "handoff-report"
+        }
+      ],
+      "sourceFindings": [
+        {
+          "kind": "source-observation",
+          "path": "apps/editor/tests/chat-v2-agent-cycle.test.ts",
+          "sha256": "5c330bd852fa53cdc4666a546dc1fda1f7449db9922f09adca8e0d0141b10ee4",
+          "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "line": 198,
+          "observation": "The synthetic cleanup callback ignores its argument; successful cleanup is a no-op and intentional failure throws. afterEach only removes paths registered by artifactsRoot.",
+          "scope": "Source counterexample independently read; no new runtime assertion was executed by catalog intake."
+        },
+        {
+          "kind": "source-observation",
+          "path": "apps/editor/scripts/chat-v2-agent-cycle.ts",
+          "sha256": "57a5674f1ebf74d3ac4c4696dbb2d0662f75b8a2cea64844d876723efa8630e3",
+          "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "line": 440,
+          "observation": "runChatV2AgentCycle allocates a distinct buildDirectory and later passes that exact directory to the cleanup dependency.",
+          "scope": "This bounds the fixture cleanup omission; it does not authorize deleting historical directories."
+        }
+      ]
+    },
+    {
+      "id": "TQ-0007",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Historical issues lack a complete durable ID-to-regression inventory",
+      "category": "test-tool",
+      "mechanism": "historical-inventory-and-regression-gate",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4 workflow gaps; 5.A-B"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "sourceId": "historical-catalog-sweep12",
+          "path": "work/fact-checker/reviews/sweep12-root-issue-catalog-complete-v5.json",
+          "sha256": "e2a5b26a0b8835399d92459bc293dd078d510c2bc53d7a942646dcccb852525f",
+          "availability": "missing"
+        },
+        {
+          "sourceId": "historical-catalog-sweep13",
+          "path": "work/fact-checker/reviews/sweep13-unified-issue-catalog-v1.json",
+          "sha256": "9fab8d2c2d1920436f0be16ce42a5207f135bb0dcc1ba56d55f9330c145f922a",
+          "availability": "missing"
+        },
+        {
+          "sourceId": "historical-catalog-sweep16",
+          "path": "work/fact-checker/reviews/sweep16-root-whole-problem-catalog-actual-v1/catalog.actual.json",
+          "sha256": "0a8237d96311f7fa44355dde032c400e00731f239a84e6b6a2dbe8f81c63af01",
+          "availability": "missing"
+        },
+        {
+          "sourceId": "historical-catalog-sweep17",
+          "path": "work/fact-checker/reviews/sweep17-full12-issue-catalog-prepared-v1/catalog.json",
+          "sha256": "2ce888df4451db515efae77851cfc5b237c820a2126339ccbf35c0339d3587de",
+          "availability": "missing"
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "Stable ID, first evidence, cause confirmation, fixed regression, and per-change mandatory execution were not joined into a complete inventory.",
+      "reportedCause": {
+        "candidate": "The historical catalogs, local tests, and qualification runs were not yet integrated into one enforced source-bound workflow.",
+        "historicalCausality": "unknown"
+      }
+    },
+    {
+      "id": "TQ-0008",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Broad prepared patch batches obscure causal repair attribution",
+      "category": "generation-workflow",
+      "mechanism": "repair-batch-attribution",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4 workflow gaps; 6"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "Several kinds of proposed modifications were prepared concurrently without final composite or runtime verification.",
+      "reportedCause": {
+        "candidate": "Simultaneous repairs make it hard to establish which change repaired a mechanism or reintroduced an old one.",
+        "historicalCausality": "unknown"
+      }
+    },
+    {
+      "id": "TQ-0009",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Different acceptance policies prevent direct cross-round regression grading",
+      "category": "test-tool",
+      "mechanism": "acceptance-policy-comparability",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4 workflow gaps; 5.D"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/reviews/sweep18-acceptance-policy.actual-root-v1.json",
+          "sha256": "23b532f61e7393e66f4db8da5e06feb1b646801fb528027c66b134a46aaf6d70",
+          "round": 18,
+          "availability": "missing"
+        },
+        {
+          "sourceId": "historical-catalog-sweep17",
+          "path": "work/fact-checker/reviews/sweep17-full12-issue-catalog-prepared-v1/catalog.json",
+          "sha256": "2ce888df4451db515efae77851cfc5b237c820a2126339ccbf35c0339d3587de",
+          "round": 17,
+          "availability": "missing"
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "Round 17 used strict business grading; round 18 used current UI/publication/bounded-convergence grading.",
+      "reportedCause": {
+        "candidate": "A cross-round pass/fail comparison can change because of policy rather than product behavior.",
+        "historicalCausality": "unknown"
+      }
+    },
+    {
+      "id": "TQ-0010",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Resource admission blocked continuation in the prior runtime environment",
+      "category": "environment",
+      "mechanism": "resource-admission",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4 workflow gaps; 8"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/full18-serial-runtime-v29-r1/controller-final-receipt.json",
+          "sha256": "00e84befe044049177319e12b11a9918e378455ce9e615a223ce0269d9261fa0",
+          "round": 18,
+          "availability": "missing"
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "Previous /tmp and workspace space pressure delayed testing; the eleventh round-18 case waited before paid submission.",
+      "reportedCause": {
+        "candidate": "Insufficient free space relative to the unchanged 384 MiB bootstrap admission floor.",
+        "historicalCausality": "unknown",
+        "scopeLimit": "Handoff free-space values are historical snapshots; unknown-owned objects must not be deleted by name or mtime."
+      }
+    },
+    {
+      "id": "TQ-0011",
+      "lineage": [],
+      "lineageStatus": "unknown-until-historical-import",
+      "title": "Complete error delivery is conflated with automatic repair convergence",
+      "category": "generation-workflow",
+      "mechanism": "feedback-integrity-versus-convergence",
+      "observationVerified": "unknown",
+      "causeConfirmed": "unknown",
+      "firstEvidence": null,
+      "intakeEvidence": {
+        "kind": "handoff-report",
+        "path": "/workspace/attachments/c55127a0-8470-41d3-a315-76670d985d28/Tagma \u9632\u56de\u5f52\u5de5\u4f5c\u6d41\u4ea4\u63a5.md",
+        "sha256": "4bc4afcbdf12cb964f8065e7c7acd435941406d8e0d7bba4801d95d0fe55342a",
+        "section": "4 workflow gaps; 4.2-4"
+      },
+      "provenance": "Handoff intake only. Underlying historical evidence and first observation have not been recovered.",
+      "reportedEvidence": [
+        {
+          "path": "work/fact-checker/reviews/sweep18-formal-current/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing"
+        },
+        {
+          "path": "work/fact-checker/reviews/sweep18-sole-grader-finished/",
+          "sha256": null,
+          "round": 18,
+          "kind": "directory",
+          "availability": "missing"
+        }
+      ],
+      "history": [],
+      "status": "pending-evidence",
+      "fixes": [],
+      "regressions": [],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "reportedObservation": "Several current failures persisted even when canonical/reference/decoded error bytes and hashes matched across planning and repair.",
+      "reportedCause": {
+        "candidate": "Integrity and downstream convergence are separate properties; an unchanged failure cannot be assigned to truncation without new evidence.",
+        "historicalCausality": "unknown"
+      },
+      "regressionCandidates": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "namePattern": "^.*malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection$",
+          "expectedTests": 1,
+          "executionVerified": false,
+          "mappingAccepted": false,
+          "scope": "Full rejection/tool-boundary integrity only; not proof of product acceptance convergence."
+        }
+      ]
+    }
+  ],
+  "intakeStatus": "incomplete-handoff-intake"
+}

@@ -1,0 +1,1685 @@
+{
+  "schemaVersion": 1,
+  "kind": "append-only-R10-runtime-observation-supplement-final-sealed-candidate",
+  "scope": "Exact12 genuine closed-case sole grades on frozen R10 source with bound Root closure, final operator ledger and saved-only independent late current known-scope resolution. Current UI acceptance is 4 PASS /8 NOT_FULL_PASS.",
+  "createdAtUTC": "2026-10-13T04:44:15.761337+00:00",
+  "proposedPublicTarget": "architecture/quality/runtime-observations-20261013-r10-supplement.json",
+  "baseRegister": {
+    "path": "architecture/quality/runtime-observations.json",
+    "sha256": "259b71d8a9a37b6dade1d65ed31d5fb443a0e21e3adbaf82790f1b82645361c2",
+    "bytes": 154386
+  },
+  "previousSupplements": [
+    {
+      "path": "architecture/quality/runtime-observations-20261012-supplement.json",
+      "sha256": "5ed99a5a9132475a8a500d7c36188b033c7982d705d2f563a00be46d8eba72a5",
+      "bytes": 66588
+    },
+    {
+      "path": "architecture/quality/runtime-observations-20261012-r6-supplement.json",
+      "sha256": "be4ee643a73175cfcb82b2fb61efbc087b7751833133851efa92e240ad4ee639",
+      "bytes": 94563
+    },
+    {
+      "path": "architecture/quality/runtime-observations-20261012-r7-supplement.json",
+      "sha256": "9c5e949f97cbe0a25fe8df81dc8c7d88dd223f1673624d91f5cbf3046813400b",
+      "bytes": 106890
+    },
+    {
+      "path": "architecture/quality/runtime-observations-20261012-r8-supplement.json",
+      "sha256": "7c92a4e963a7c5112db1fa1b68cd3cbffeb34ef7cbe09ddfbc58b54f1944e19c",
+      "bytes": 72228
+    },
+    {
+      "path": "architecture/quality/runtime-observations-20261012-r9-supplement.json",
+      "sha256": "c0d009a56ff7d665d9b2c39ef1ce3c1ef4043f5274f2396bb7a07a35ac40be95",
+      "bytes": 77808
+    }
+  ],
+  "readingRule": "Resolve the existing base and five supplements in their original order, then append these observations. Do not rewrite prior first evidence, status, cause, fixes, mappings or history. Candidate mappings are not confirmed mechanisms.",
+  "preservedStableRuntimeIssueIDs": [
+    "RUI-0001",
+    "RUI-0002",
+    "RUI-0003",
+    "RUI-0004",
+    "RUI-0005",
+    "RUI-0006",
+    "RUI-0007",
+    "RUI-0008",
+    "RUI-0009",
+    "RUI-0010",
+    "RUI-0011",
+    "RUI-0012",
+    "RUI-0013",
+    "RUI-0014"
+  ],
+  "preservedStableRuntimeIssueCanonicalMetadata": [
+    {
+      "id": "RUI-0001",
+      "preservedStatus": "observed-root-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/0"
+      },
+      "firstEvidenceCanonicalSha256": "87a79f421992a53ce47bd7131864d0fc8f865479d9f25392f0a124e966f34c61",
+      "entireOriginalDefinitionCanonicalSha256": "522fdff976390ac33a6922556c131540e46046c9b81155349d47bb68c3c37456",
+      "preservedHistoryRepresentationCount": 4
+    },
+    {
+      "id": "RUI-0002",
+      "preservedStatus": "confirmed-source-contract-defect-pending-fix",
+      "preservedCauseConfirmed": "confirmed",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/1"
+      },
+      "firstEvidenceCanonicalSha256": "623fd318841f6cd0e55a34f4ea8ab62d4dbd5f6aa9862ab493f69e3264278834",
+      "entireOriginalDefinitionCanonicalSha256": "13804ab9df9972ca6a25c9130f8abe9ffd2b7b5c7ca00c98e37906bc907313e1",
+      "preservedHistoryRepresentationCount": 1
+    },
+    {
+      "id": "RUI-0003",
+      "preservedStatus": "confirmed-tool-defect-correction-recorded-regression-qualification-pending",
+      "preservedCauseConfirmed": "confirmed",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/2"
+      },
+      "firstEvidenceCanonicalSha256": "5a43f1b8f4674b2d00d4f64d5ab8a08d27b804be0335f399617b7266f0c907f4",
+      "entireOriginalDefinitionCanonicalSha256": "d62cd837b17ba9bba18a6b8e3d5defab37e85a9a856eff5fee15aeb498c7daca",
+      "preservedHistoryRepresentationCount": 1
+    },
+    {
+      "id": "RUI-0004",
+      "preservedStatus": "observed-closure-blocker-root-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/3"
+      },
+      "firstEvidenceCanonicalSha256": "58f2150eed4138b2cdc422216123a31dfcb921e1e5f4c22412999dfda94e04d5",
+      "entireOriginalDefinitionCanonicalSha256": "1363474ba08a5d664665086fbc6ac80e34af95fd97d763e1b345131ceef749dd",
+      "preservedHistoryRepresentationCount": 1
+    },
+    {
+      "id": "RUI-0005",
+      "preservedStatus": "observed-root-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/4"
+      },
+      "firstEvidenceCanonicalSha256": "113665d4931db1ea7391fa8b794584a66cae362aabaaed7879ad015a00ce606a",
+      "entireOriginalDefinitionCanonicalSha256": "4e8f0f53619f91e5d0bcf4536f0a49a9b6804db2e57e0211edfc30dee8e629b3",
+      "preservedHistoryRepresentationCount": 5
+    },
+    {
+      "id": "RUI-0006",
+      "preservedStatus": "observed-root-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/5"
+      },
+      "firstEvidenceCanonicalSha256": "9a635b6b9f2f77f064bd7c669093a792e06aaab9b12d756dddbc043d508b3333",
+      "entireOriginalDefinitionCanonicalSha256": "de2018f57b498e0583fd5495f822c16a4abd2b8041e75ed1c950dfc8d005c85d",
+      "preservedHistoryRepresentationCount": 5
+    },
+    {
+      "id": "RUI-0007",
+      "preservedStatus": "observed-evidence-disagreement-root-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/6"
+      },
+      "firstEvidenceCanonicalSha256": "58f2150eed4138b2cdc422216123a31dfcb921e1e5f4c22412999dfda94e04d5",
+      "entireOriginalDefinitionCanonicalSha256": "1b39976b2dc5a6dff7d147b23cca07b5e6fea87594e16ce264213851d70f1384",
+      "preservedHistoryRepresentationCount": 1
+    },
+    {
+      "id": "RUI-0008",
+      "preservedStatus": "confirmed-work-only-tool-defect",
+      "preservedCauseConfirmed": "confirmed",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/7"
+      },
+      "firstEvidenceCanonicalSha256": "f0fd66dfcceb1f325f473d30351e15c39d32fa9b528656e1e5be4b8c805a3f45",
+      "entireOriginalDefinitionCanonicalSha256": "69dba86216e65fb4fb1c199c22b0dec060a11ffb6cdc67985001387058c9bc3a",
+      "preservedHistoryRepresentationCount": 1
+    },
+    {
+      "id": "RUI-0009",
+      "preservedStatus": "confirmed-unlaunched-tool-candidate-defect",
+      "preservedCauseConfirmed": "confirmed",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/8"
+      },
+      "firstEvidenceCanonicalSha256": "91c869f9162e2445cdcbcbcade7d22f31f5284dac705326843d6257a4dc59a87",
+      "entireOriginalDefinitionCanonicalSha256": "0af8d3e36cd5fb59d2d791cc597b6cd59dd0b6febd74aedc31e769a5c5c2cec3",
+      "preservedHistoryRepresentationCount": 1
+    },
+    {
+      "id": "RUI-0010",
+      "preservedStatus": "current-provider-unavailable-underlying-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/9"
+      },
+      "firstEvidenceCanonicalSha256": "853be1e95fc75b6d46585672b26ff6d7f37df62aa63c3b624d089a20f89b9c81",
+      "entireOriginalDefinitionCanonicalSha256": "64f1d6ba466103109738a5106a52e320a04b297d5894a9ff58812b0047c13194",
+      "preservedHistoryRepresentationCount": 3
+    },
+    {
+      "id": "RUI-0011",
+      "preservedStatus": "observed-runtime-admission-mismatch-root-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 0,
+        "jsonPointer": "/issues/10"
+      },
+      "firstEvidenceCanonicalSha256": "84b1fe8fae1740c06c56ac57697ac1fc19391a872846daf4a15f059f007629d8",
+      "entireOriginalDefinitionCanonicalSha256": "2cc78e20d69f0bcc7c7216f7601bb2be1611d76df503ba638f378b6626f973c7",
+      "preservedHistoryRepresentationCount": 2
+    },
+    {
+      "id": "RUI-0012",
+      "preservedStatus": "current-supplier-request-rejected-underlying-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 1,
+        "jsonPointer": "/newIssues/0"
+      },
+      "firstEvidenceCanonicalSha256": "c2624a629e1429efaccb1bd1fc7929b01d5c9e6e662cd7a7c29635edc2fbeb9b",
+      "entireOriginalDefinitionCanonicalSha256": "6bde4b24e270a867da28da401388be561c7f18a310a356f25b93eb706b6b5f20",
+      "preservedHistoryRepresentationCount": 1
+    },
+    {
+      "id": "RUI-0013",
+      "preservedStatus": "tool-guard-prepared-current-real-r6-result-unresolved",
+      "preservedCauseConfirmed": "confirmed",
+      "originalDefinition": {
+        "registerIndex": 2,
+        "jsonPointer": "/newIssues/0"
+      },
+      "firstEvidenceCanonicalSha256": "e19ad1829135effb8e4327c1a454653495603e77969527fef1eca1d1d6263ac5",
+      "entireOriginalDefinitionCanonicalSha256": "94a6ceeb02a1fa9130b276592de4c8ac4fa099b1be14a7986129e106e252e776",
+      "preservedHistoryRepresentationCount": 4
+    },
+    {
+      "id": "RUI-0014",
+      "preservedStatus": "observed-root-cause-unknown",
+      "preservedCauseConfirmed": "unknown",
+      "originalDefinition": {
+        "registerIndex": 2,
+        "jsonPointer": "/newIssues/1"
+      },
+      "firstEvidenceCanonicalSha256": "5d49d5fc9bbbe4f8f4be752ad5c32e5faf26f6aa51d06708a18ad388b7242f92",
+      "entireOriginalDefinitionCanonicalSha256": "549b3a78334562824bccd6bcccc87fe6d179cf64cc2403e13aa235268fa11d46",
+      "preservedHistoryRepresentationCount": 2
+    }
+  ],
+  "newIssues": [],
+  "appendToExistingIssues": [
+    {
+      "issueId": "RUI-0013",
+      "existingFirstEvidenceStatusCauseFixesRegressionsAndHistoryUntouched": true,
+      "priorStatus": "tool-guard-prepared-current-real-r6-result-unresolved",
+      "priorCauseConfirmed": "confirmed",
+      "appendHistory": [
+        {
+          "appendOrdinalInThisSupplement": 1,
+          "kind": "later-sole-graded-current-workflow-clarification-latency-observation",
+          "caseId": "S1L3",
+          "caseAppend": {
+            "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s1l3.observation-append-0001.actual.json",
+            "sha256": "dc7640563084848a5ec0eced31fa79b6fa791b9b546c4a09b7d03333d7a40ebc",
+            "bytes": 4888
+          },
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1433,
+            "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+          },
+          "existingRootLateWriterReceipt": {
+            "path": "work/handoff-resume-20261012/r10-root-choice-attempt-0001-late-rejected.actual.json",
+            "sha256": "9e5e28eb2f2ab01f6eb2e1549a2b4e1c342456da5be9417176c58738f85ff382",
+            "bytes": 1250
+          },
+          "currentWorkflowObservationDoesNotReconfirmHistoricalParaphraseSourceCause": true,
+          "productRootCause": "UNKNOWN",
+          "historicalRegressionConfirmed": "UNKNOWN_NOT_ESTABLISHED",
+          "automaticFixedPromotionAllowed": false
+        }
+      ]
+    }
+  ],
+  "acceptancePolicy": "current genuine DOM Open Pipeline and normal current publication within original configured planning2/repair2; unchanged original prompts; no additional business/math/full-Trial-coverage score",
+  "sourceFingerprintForR10": {
+    "scheme": "public-git-visible-v1",
+    "fileCount": 1433,
+    "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+  },
+  "modelScopes": [
+    {
+      "runId": "original12-current-source-20261013-r10",
+      "modelPolicy": {
+        "mode": "deepseek-flash-low",
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash",
+        "variant": "low"
+      },
+      "budgets": {
+        "planning": 2,
+        "pipelineRepair": 2,
+        "serial": 1,
+        "originalSendPerCase": 1,
+        "manualRetry": 0,
+        "extraPaidProbes": 0
+      }
+    }
+  ],
+  "caseObservations": [
+    {
+      "caseId": "S1L1",
+      "assessment": "PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [],
+      "mechanismClassificationFromSoleGrade": "normal_current_published_pipeline_within_original_budget",
+      "visualObservationClass": "normal-current-published",
+      "phase": "terminal",
+      "waitReason": null,
+      "executionState": "terminal",
+      "typedFailure": null,
+      "trialStatusCodes": [],
+      "plannerInvocations": 2,
+      "repairInvocations": 0,
+      "normalCurrentPublication": true,
+      "currentOpenPipeline": true,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": "NOT_APPLICABLE_NO_WITNESS",
+      "canonicalInputByteAndDeliverySummary": [],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s1l1.observation-append-0001.actual.json",
+        "sha256": "96d0a3d9fc6b36170207d2e34cedca874ce192f65b231e37a0e43096a9cab86a",
+        "bytes": 5680
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s1l1.closed-case-grade.actual.json",
+        "sha256": "8e2fb569c5b0052e3330424e96447df757cc7b8697ab41ac46f0bffe17c365c4",
+        "bytes": 10917
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "NOT_FULL_PASS",
+        "transition": "NOT_FULL_PASS -> PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 1,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S1L2",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "TQ-0002",
+          "association": "UNKNOWN",
+          "basis": "Observed older-YAML plan pause after repair only; exact protected delta and revalidation eligibility require separate evidence"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "current_stale_plan_pause_after_repair",
+      "visualObservationClass": "retained-older-revision-plan-pause",
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "executionState": "retryable_failure",
+      "typedFailure": {
+        "stage": "verification",
+        "code": "trial_verification_paused"
+      },
+      "trialStatusCodes": [
+        {
+          "operationVersion": 8,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 11,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 14,
+          "generation": 1,
+          "stage": "trial",
+          "errorCode": "repair_required"
+        },
+        {
+          "operationVersion": 17,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 17,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": null
+        }
+      ],
+      "plannerInvocations": 2,
+      "repairInvocations": 1,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": false,
+      "canonicalInputWitnessesMatch": true,
+      "canonicalInputByteAndDeliverySummary": [
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "695b489b7e200460fd17bdade790495321edcd8f3617fbb522485eb365248b7e",
+          "canonicalErrorsUtf8Bytes": 806,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "e200d4c67ee45638edd3b012ea47d19b33e61acbc2809c1b61e0b580cd6114c7",
+          "canonicalErrorsUtf8Bytes": 2233,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "repair",
+          "canonicalErrorsHash": "42866c66cabfd48b1264cfc840c0d95c3dce529d7f0f8891bb7f6b72cdd3ba0b",
+          "canonicalErrorsUtf8Bytes": 1598,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 1
+        }
+      ],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s1l2.observation-append-0001.actual.json",
+        "sha256": "e456b719a67a8afecb6911020677222076f73ea705bd49512f73dc6572525b29",
+        "bytes": 6038
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s1l2.closed-case-grade.actual.json",
+        "sha256": "e3ba898106d8941c89db9caeb1dce967e0464ecb0ca6dcef42c10d25c01de825",
+        "bytes": 11965
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "PASS",
+        "transition": "PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 1,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S1L3",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [
+        "RUI-0013"
+      ],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "RUI-0013",
+          "association": "EXISTING_OPERATOR_OBSERVATION_REFERENCE_ONLY",
+          "basis": "Authorized clarification unanswered; Root late writer rejected. Current latency event does not reconfirm the historical paraphrase source cause"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "harness_authorized_pipeline_goal_clarification_observation_cause_unknown",
+      "visualObservationClass": "clarification-awaiting-input",
+      "phase": "terminal",
+      "waitReason": null,
+      "executionState": "terminal",
+      "typedFailure": {
+        "code": "original_prompt_answer_unavailable_wait",
+        "type": "HarnessFault"
+      },
+      "trialStatusCodes": [],
+      "plannerInvocations": 0,
+      "repairInvocations": 0,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": "NOT_SEPARATELY_PROJECTED_HERE",
+      "canonicalInputWitnessesMatch": "NOT_APPLICABLE_NO_WITNESS",
+      "canonicalInputByteAndDeliverySummary": [],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s1l3.observation-append-0001.actual.json",
+        "sha256": "dc7640563084848a5ec0eced31fa79b6fa791b9b546c4a09b7d03333d7a40ebc",
+        "bytes": 4888
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s1l3.closed-case-grade.actual.json",
+        "sha256": "3d062a099c4e0ba708897b952538c1c90f787e4709a5b0b2f96eb2bc6e5cc3c4",
+        "bytes": 10026
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "NOT_FULL_PASS",
+        "transition": "NOT_FULL_PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S2L1",
+      "assessment": "PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [],
+      "mechanismClassificationFromSoleGrade": "normal_current_published_pipeline_within_original_budget",
+      "visualObservationClass": "normal-current-published",
+      "phase": "terminal",
+      "waitReason": null,
+      "executionState": "terminal",
+      "typedFailure": null,
+      "trialStatusCodes": [],
+      "plannerInvocations": 1,
+      "repairInvocations": 0,
+      "normalCurrentPublication": true,
+      "currentOpenPipeline": true,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": "NOT_APPLICABLE_NO_WITNESS",
+      "canonicalInputByteAndDeliverySummary": [],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s2l1.observation-append-0001.actual.json",
+        "sha256": "d98c8a9964d953307dd3cc5ba0e31ba6f9c573c0f42189d9ab67bdcd16069c4e",
+        "bytes": 5368
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s2l1.closed-case-grade.actual.json",
+        "sha256": "f0a377111ee3f010417f916d2c3173bd1f3af0fd03dd28a77b336558f7f9cf2a",
+        "bytes": 10937
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "NOT_FULL_PASS",
+        "transition": "NOT_FULL_PASS -> PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S2L2",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "RUI-0005",
+          "association": "UNKNOWN_CANDIDATE_BROAD_OBSERVATION_ONLY",
+          "basis": "Current no-plan/nonpublication observation; provider length and settled-planner paths stay distinct"
+        },
+        {
+          "id": "TQ-0001",
+          "association": "UNKNOWN_NOT_PROVED_ELIGIBLE_IDENTITY_RECURRENCE",
+          "basis": "NoPlan alone does not prove eligible zero-tool/noProgress reread or attempt identity defect"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "current_no_plan_after_planner_model_output_length_cause_unknown",
+      "visualObservationClass": "retained-no-plan-pause",
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "executionState": "retryable_failure",
+      "typedFailure": {
+        "stage": "verification",
+        "code": "trial_verification_paused"
+      },
+      "trialStatusCodes": [
+        {
+          "operationVersion": 11,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 13,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_no_change"
+        }
+      ],
+      "plannerInvocations": 2,
+      "repairInvocations": 0,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": true,
+      "canonicalInputByteAndDeliverySummary": [
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "6242eece36d76ff1399461bed68c2e323d38cd2a92b07611506f76a88fe785a6",
+          "canonicalErrorsUtf8Bytes": 810,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "6242eece36d76ff1399461bed68c2e323d38cd2a92b07611506f76a88fe785a6",
+          "canonicalErrorsUtf8Bytes": 810,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        }
+      ],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s2l2.observation-append-0001.actual.json",
+        "sha256": "250fa49d59cf2a61a25550236505f83014dc376532d54985d539359d7f3b9e47",
+        "bytes": 6007
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s2l2.closed-case-grade.actual.json",
+        "sha256": "0b6c3d0f05e3cb3431485ed0759ea26a1abac4ac45923b22974d958b7d1e9217",
+        "bytes": 45945
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "PASS",
+        "transition": "PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 1,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S2L3",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "RUI-0005",
+          "association": "UNKNOWN_CANDIDATE_BROAD_OBSERVATION_ONLY",
+          "basis": "Current no-plan/nonpublication observation; provider length and settled-planner paths stay distinct"
+        },
+        {
+          "id": "TQ-0001",
+          "association": "UNKNOWN_NOT_PROVED_ELIGIBLE_IDENTITY_RECURRENCE",
+          "basis": "NoPlan alone does not prove eligible zero-tool/noProgress reread or attempt identity defect"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "current_no_plan_after_planner_model_output_length_cause_unknown",
+      "visualObservationClass": "preparing-or-running-sandbox-trial-without-publication",
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "executionState": "retryable_failure",
+      "typedFailure": {
+        "stage": "verification",
+        "code": "trial_verification_paused"
+      },
+      "trialStatusCodes": [
+        {
+          "operationVersion": 11,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 13,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_no_change"
+        }
+      ],
+      "plannerInvocations": 2,
+      "repairInvocations": 0,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": false,
+      "canonicalInputWitnessesMatch": true,
+      "canonicalInputByteAndDeliverySummary": [
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "55b4e286eaad9c09559ca372e0faaa62f85b835d3daf5147c627dac25c41258a",
+          "canonicalErrorsUtf8Bytes": 840,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "55b4e286eaad9c09559ca372e0faaa62f85b835d3daf5147c627dac25c41258a",
+          "canonicalErrorsUtf8Bytes": 840,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        }
+      ],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s2l3.observation-append-0001.actual.json",
+        "sha256": "b1c07af29dc2f67fba83af12962ccfe075dbe6c5f06e136ce9f643c07ff7b892",
+        "bytes": 6026
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s2l3.closed-case-grade.actual.json",
+        "sha256": "91e74aa3c7e778b61e5d27e3d621ed1246aabce2a7bd110e4dc7ab46f0db40b2",
+        "bytes": 71382
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "PASS",
+        "transition": "PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 1,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S3L1",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "RUI-0006",
+          "association": "UNKNOWN_CANDIDATE_BROAD_OBSERVATION_ONLY",
+          "basis": "Current preexecution blocked-core witness publication pause"
+        },
+        {
+          "id": "TQ-0003",
+          "association": "UNKNOWN",
+          "basis": "Historical blocked-plan navigation evidence unavailable; exact coordinate relation unknown"
+        },
+        {
+          "id": "TQ-0004",
+          "association": "UNKNOWN",
+          "basis": "Observed product preexecution gate; a false mechanical rejection is not proved"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "current_preexecution_blocked_core_witness_publication_pause_cause_unknown",
+      "visualObservationClass": "preexecution-blocked-witness-pause",
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "executionState": "retryable_failure",
+      "typedFailure": {
+        "stage": "verification",
+        "code": "trial_verification_paused"
+      },
+      "trialStatusCodes": [
+        {
+          "operationVersion": 8,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 11,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 14,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 14,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": null
+        }
+      ],
+      "plannerInvocations": 2,
+      "repairInvocations": 0,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": true,
+      "canonicalInputByteAndDeliverySummary": [
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "4b6ef215ad84a80601c86a358f6d2ad30ff3bf64267b4b40e8702499cc0740de",
+          "canonicalErrorsUtf8Bytes": 806,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "26ed86ed3ebc535b59476ee585a970094a0b3f7c719452e7e9bd28c9247c40ee",
+          "canonicalErrorsUtf8Bytes": 1520,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        }
+      ],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s3l1.observation-append-0001.actual.json",
+        "sha256": "87fbf0b434f59e3e12e7625bd406da2d8918c35143aff5fcb681646b5ef58885",
+        "bytes": 5713
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s3l1.closed-case-grade.actual.json",
+        "sha256": "9f6a9b03765dbda05ba545488df9002f28e5d1aeb586341a80b9140f1a638df9",
+        "bytes": 11394
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "PASS",
+        "transition": "PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S3L2",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "RUI-0005",
+          "association": "UNKNOWN_CANDIDATE_BROAD_OBSERVATION_ONLY",
+          "basis": "Current no-plan/nonpublication observation; provider length and settled-planner paths stay distinct"
+        },
+        {
+          "id": "TQ-0001",
+          "association": "UNKNOWN_NOT_PROVED_ELIGIBLE_IDENTITY_RECURRENCE",
+          "basis": "NoPlan alone does not prove eligible zero-tool/noProgress reread or attempt identity defect"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "current_no_plan_after_two_settled_planners_cause_unknown",
+      "visualObservationClass": "retained-no-plan-pause",
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "executionState": "retryable_failure",
+      "typedFailure": {
+        "stage": "verification",
+        "code": "trial_verification_paused"
+      },
+      "trialStatusCodes": [
+        {
+          "operationVersion": 11,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 14,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 15,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_no_change"
+        }
+      ],
+      "plannerInvocations": 2,
+      "repairInvocations": 0,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": true,
+      "canonicalInputByteAndDeliverySummary": [
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "d241f348a31a17911d959416a8bc4bca106f44fb4e3ffa9dc9b9294c4ccbbe76",
+          "canonicalErrorsUtf8Bytes": 806,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "76c616a18c10ac830b2ec2b7a28fa5e234aca4c3907ea11a21d3c315d9b4d666",
+          "canonicalErrorsUtf8Bytes": 2533,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        }
+      ],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s3l2.observation-append-0001.actual.json",
+        "sha256": "00f886a7bb0cfa2c9312ace368060ad6a96869fdb39518e9e2089562a562139c",
+        "bytes": 6001
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s3l2.closed-case-grade.actual.json",
+        "sha256": "519c5b25c2cfccf7434c3cee766f7963564879828c11a78a108871ea3d45c04d",
+        "bytes": 35725
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "NOT_FULL_PASS",
+        "transition": "NOT_FULL_PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S3L3",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "RUI-0006",
+          "association": "UNKNOWN_CANDIDATE_BROAD_OBSERVATION_ONLY",
+          "basis": "Current preexecution blocked-core witness publication pause"
+        },
+        {
+          "id": "TQ-0003",
+          "association": "UNKNOWN",
+          "basis": "Historical blocked-plan navigation evidence unavailable; exact coordinate relation unknown"
+        },
+        {
+          "id": "TQ-0004",
+          "association": "UNKNOWN",
+          "basis": "Observed product preexecution gate; a false mechanical rejection is not proved"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "current_preexecution_blocked_core_witness_publication_pause_cause_unknown",
+      "visualObservationClass": "preexecution-blocked-witness-pause",
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "executionState": "retryable_failure",
+      "typedFailure": {
+        "stage": "verification",
+        "code": "trial_verification_paused"
+      },
+      "trialStatusCodes": [
+        {
+          "operationVersion": 8,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 11,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 14,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 14,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": null
+        }
+      ],
+      "plannerInvocations": 2,
+      "repairInvocations": 0,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": false,
+      "canonicalInputWitnessesMatch": true,
+      "canonicalInputByteAndDeliverySummary": [
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "427b6a191005cf8983e4b73b142b62d323052dce53a7f6420728613a1ebd0175",
+          "canonicalErrorsUtf8Bytes": 840,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "c20ae4fe83019d5bef6a864773ba546caf620c914496f3ee54e861aa696ce092",
+          "canonicalErrorsUtf8Bytes": 2639,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        }
+      ],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s3l3.observation-append-0001.actual.json",
+        "sha256": "0192008a757e46055da9ff083d7677a97fdbfc114f18b22a299e429d74028c9c",
+        "bytes": 5712
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s3l3.closed-case-grade.actual.json",
+        "sha256": "edb6137c808ed61435d8f81b9e56763cb2bdfe1df6a7bb63781919bb1eac4d57",
+        "bytes": 11417
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "NOT_FULL_PASS",
+        "transition": "NOT_FULL_PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S4L1",
+      "assessment": "PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [],
+      "mechanismClassificationFromSoleGrade": "normal_current_published_pipeline_within_original_budget",
+      "visualObservationClass": "normal-current-published",
+      "phase": "terminal",
+      "waitReason": null,
+      "executionState": "terminal",
+      "typedFailure": null,
+      "trialStatusCodes": [],
+      "plannerInvocations": 2,
+      "repairInvocations": 0,
+      "normalCurrentPublication": true,
+      "currentOpenPipeline": true,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": "NOT_APPLICABLE_NO_WITNESS",
+      "canonicalInputByteAndDeliverySummary": [],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s4l1.observation-append-0001.actual.json",
+        "sha256": "a7188a1f385beb59e439b6749fb5e616edccf1824f538a194084d0609639552f",
+        "bytes": 5680
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s4l1.closed-case-grade.actual.json",
+        "sha256": "87fa6327d536293e8cd730ca406cebd00da7e6a2b48ed1c20215a89b845df143",
+        "bytes": 10917
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "NOT_FULL_PASS",
+        "transition": "NOT_FULL_PASS -> PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S4L2",
+      "assessment": "NOT_FULL_PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [
+        {
+          "id": "TQ-0002",
+          "association": "UNKNOWN",
+          "basis": "Observed older-YAML plan pause after repair only; exact protected delta and revalidation eligibility require separate evidence"
+        }
+      ],
+      "mechanismClassificationFromSoleGrade": "current_stale_plan_pause_after_repair",
+      "visualObservationClass": "retained-older-revision-plan-pause",
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "executionState": "retryable_failure",
+      "typedFailure": {
+        "stage": "verification",
+        "code": "trial_verification_paused"
+      },
+      "trialStatusCodes": [
+        {
+          "operationVersion": 8,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 11,
+          "generation": 1,
+          "stage": "trial",
+          "errorCode": "repair_required"
+        },
+        {
+          "operationVersion": 14,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 17,
+          "generation": 1,
+          "stage": "trial",
+          "errorCode": "repair_required"
+        },
+        {
+          "operationVersion": 20,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": "trial_plan_required"
+        },
+        {
+          "operationVersion": 20,
+          "generation": 1,
+          "stage": "trial_plan",
+          "errorCode": null
+        }
+      ],
+      "plannerInvocations": 2,
+      "repairInvocations": 2,
+      "normalCurrentPublication": false,
+      "currentOpenPipeline": false,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": true,
+      "canonicalInputByteAndDeliverySummary": [
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "e1fadbf54cfb7876ba2ef2da3fa83498da5fdfd62a0b2f4af463c315252f47cb",
+          "canonicalErrorsUtf8Bytes": 806,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 0
+        },
+        {
+          "purpose": "repair",
+          "canonicalErrorsHash": "228262fb805f8b7250b7a410ab905b12faa40f54239073a8c1869b4398e9df24",
+          "canonicalErrorsUtf8Bytes": 37300,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 1
+        },
+        {
+          "purpose": "trial_plan",
+          "canonicalErrorsHash": "8fc40e615b372448db86eb5f408aaa9aa6f7fe00a292fdce0fc545f5cc06be7a",
+          "canonicalErrorsUtf8Bytes": 844,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 1
+        },
+        {
+          "purpose": "repair",
+          "canonicalErrorsHash": "d503224164378ad50f46bcb48f0d5110dd1a3613e7e9b3a3093bbeb1424144d5",
+          "canonicalErrorsUtf8Bytes": 220148,
+          "referenceCanonicalMatch": true,
+          "decodedCanonicalMatch": true,
+          "errorBlockPresent": true,
+          "repairAttempt": 2
+        }
+      ],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s4l2.observation-append-0001.actual.json",
+        "sha256": "251f8d902d2bc879bad86e7a0b0f1271591e533cde30637ed7c12b02d5a1d1c0",
+        "bytes": 6324
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s4l2.closed-case-grade.actual.json",
+        "sha256": "274f7b64757c0fd89baa16c258cb4773170831c98b333a394857fef0155d58b5",
+        "bytes": 12795
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "NOT_FULL_PASS",
+        "transition": "NOT_FULL_PASS -> NOT_FULL_PASS",
+        "priorR9PlannerInvocations": 2,
+        "priorR9RepairInvocations": 1,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    },
+    {
+      "caseId": "S4L3",
+      "assessment": "PASS",
+      "genuinelyClosedAndSoleGraded": true,
+      "observationVerified": true,
+      "sourceFingerprint": {
+        "scheme": "public-git-visible-v1",
+        "fileCount": 1433,
+        "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+      },
+      "operatorObservationIssueReferences": [],
+      "referencesAreNotCauseOrMechanicalRegressionConfirmation": true,
+      "investigationMappingCandidates": [],
+      "mechanismClassificationFromSoleGrade": "normal_current_published_pipeline_within_original_budget",
+      "visualObservationClass": "normal-current-published",
+      "phase": "terminal",
+      "waitReason": null,
+      "executionState": "terminal",
+      "typedFailure": null,
+      "trialStatusCodes": [],
+      "plannerInvocations": 2,
+      "repairInvocations": 1,
+      "normalCurrentPublication": true,
+      "currentOpenPipeline": true,
+      "independentCurrentPNGViewed": true,
+      "diagnosticsCurrentOperationMatches": true,
+      "canonicalInputWitnessesMatch": "NOT_APPLICABLE_NO_WITNESS",
+      "canonicalInputByteAndDeliverySummary": [],
+      "caseAppend": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s4l3.observation-append-0001.actual.json",
+        "sha256": "8824b23be64fe15b31c1e4ccff9d2a82c25f7081e33eba2c3fbc47092221b17d",
+        "bytes": 6300
+      },
+      "soleIndependentGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/s4l3.closed-case-grade.actual.json",
+        "sha256": "bf4835c31774d3255f921cb21a6830e70a0de5c4ceb58ed7364da1eacb72b4d0",
+        "bytes": 11106
+      },
+      "savedOwnedCaseProcessScopeClosed": true,
+      "savedOwnedCasePaidScopeSettled": true,
+      "productRootCause": "UNKNOWN",
+      "currentMechanicalIssueAssociation": "UNKNOWN",
+      "confirmedHistoricalRegression": "UNKNOWN_NOT_ESTABLISHED",
+      "automaticFixedPromotionAllowed": false,
+      "oldIssueStatusCauseFirstEvidenceAndHistoryChanged": false,
+      "samePolicyComparison": {
+        "priorR9Assessment": "PASS",
+        "transition": "PASS -> PASS",
+        "priorR9PlannerInvocations": 1,
+        "priorR9RepairInvocations": 0,
+        "outcomeDifferenceEstablishesCauseRepairOrRegression": false
+      }
+    }
+  ],
+  "complete12CurrentSoleGradeObservationsPreclosure": {
+    "actualSoleGradedCaseCount": 12,
+    "PASS": 4,
+    "NOT_FULL_PASS": 8,
+    "allPassed": false,
+    "passCases": [
+      "S1L1",
+      "S2L1",
+      "S4L1",
+      "S4L3"
+    ],
+    "originalSendTotalFromCaseAppends": 12,
+    "manualRetryTotalFromCaseAppends": 0,
+    "extraPaidProbeTotalFromCaseAppends": 0,
+    "plannerInvocationsFromSoleGrades": 21,
+    "repairInvocationsFromSoleGrades": 4,
+    "originalGradesAndReportsUnchanged": true,
+    "wholeRunPaidOrProcessClosureEstablishedByThisSection": false,
+    "preclosureObservationBlockRetainedAsOf": true
+  },
+  "currentObservationGroups": {
+    "normalCurrentPublished": [
+      "S1L1",
+      "S2L1",
+      "S4L1",
+      "S4L3"
+    ],
+    "currentOlderRevisionPlanPausesAfterRepair": [
+      "S1L2",
+      "S4L2"
+    ],
+    "currentUnansweredAuthorizedClarificationWorkflowBoundary": [
+      "S1L3"
+    ],
+    "typedNoPlanPlannerPauseObservations": [
+      "S2L2",
+      "S2L3",
+      "S3L2"
+    ],
+    "typedNoPlanGroupDoesNotAssertNoPlanTextVisibleInEveryPNG": true,
+    "currentPreexecutionBlockedCoreWitnessPauses": [
+      "S3L1",
+      "S3L3"
+    ]
+  },
+  "samePolicyR9Comparison": {
+    "reference": {
+      "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-comparison-preclosure-0001.actual.json",
+      "sha256": "98af5ec5941c9da879ea43776dbf6cfd41b77a472d5357aab38f05e8e62f108f",
+      "bytes": 204588
+    },
+    "policiesModelsAndBudgetsPairedExactly": true,
+    "priorR9RecordedGradeCounts": {
+      "NOT_FULL_PASS": 7,
+      "PASS": 5
+    },
+    "currentR10SoleGradeCountsPreclosure": {
+      "PASS": 4,
+      "NOT_FULL_PASS": 8
+    },
+    "observedGradeTransitionCounts": {
+      "NOT_FULL_PASS -> PASS": 3,
+      "PASS -> NOT_FULL_PASS": 4,
+      "NOT_FULL_PASS -> NOT_FULL_PASS": 4,
+      "PASS -> PASS": 1
+    },
+    "sourceDifferenceEstablishesCause": false,
+    "outcomeDifferenceEstablishesRepairOrRegression": false
+  },
+  "boundedMechanismFacts": [
+    {
+      "id": "R10-older-plan-after-repair",
+      "cases": [
+        "S1L2",
+        "S4L2"
+      ],
+      "relatedHistoricalIntakeCandidate": "TQ-0002",
+      "protectedArtifactPlanDeltaAndRevalidationEligibility": "UNKNOWN",
+      "mechanicalRegressionConfirmed": "UNKNOWN_NOT_ESTABLISHED"
+    },
+    {
+      "id": "R10-planner-output-length-or-no-change",
+      "cases": [
+        "S2L2",
+        "S2L3",
+        "S3L2"
+      ],
+      "outputLengthObservedCases": [
+        "S2L2",
+        "S2L3"
+      ],
+      "twoSettledPlannerCase": "S3L2",
+      "eligibleRereadIdentityRegressionProved": false,
+      "causeOrProviderRationale": "UNKNOWN"
+    },
+    {
+      "id": "R10-blocked-core-current-product-gate",
+      "cases": [
+        "S3L1",
+        "S3L3"
+      ],
+      "notAnAdditionalGraderBusinessOrCoverageRequirement": true,
+      "relatedCurrentSourceContract": "CSR-0013",
+      "falseValidationRejectionOrCoordinateDefectRecurrenceProved": false,
+      "sourceCauseAndSelectedCoordinateFixConvergenceEffect": "UNKNOWN"
+    },
+    {
+      "id": "R10-clarification-workflow-latency",
+      "cases": [
+        "S1L3"
+      ],
+      "plannerInvocations": 0,
+      "repairInvocations": 0,
+      "existingRootLateWriterReceipt": {
+        "path": "work/handoff-resume-20261012/r10-root-choice-attempt-0001-late-rejected.actual.json",
+        "sha256": "9e5e28eb2f2ab01f6eb2e1549a2b4e1c342456da5be9417176c58738f85ff382",
+        "bytes": 1250
+      },
+      "lateWriterRejectedWithoutMetadataChoiceOrDirectTypedReply": true,
+      "newProductMechanicalDefectAsserted": false
+    },
+    {
+      "id": "R10-s1l2-association-correction",
+      "cases": [
+        "S1L2"
+      ],
+      "reference": {
+        "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s1l2.issue-association-correction-append-0001.actual.json",
+        "sha256": "eb311b5e57687592fcaf602a71436a032a93644d1c7c2723c48ef817ac4a243a",
+        "bytes": 1466
+      },
+      "operatorObservationIssueReferencesAfterCorrection": [],
+      "oldRUI0005ReferencePreservedButCannotBeUsedAsNoPlanOrRegressionProof": true
+    }
+  ],
+  "RootExternalAndNormalHarnessActions": {
+    "boundedRootExternalActionCounts": {
+      "externalRootChoiceWriterExecutionCount": 5,
+      "externalRootMetadataChoiceWriteCount": 4,
+      "externalRootDirectTypedPostCount": 0,
+      "qualifiedHarnessDelegatedRootReplyExecutedCount": 4,
+      "qualifiedHarnessDelegatedRootReplyUnknownCount": 0,
+      "externalRootManualRetryCount": 0,
+      "externalRootAdditionalOriginalSendCount": 0,
+      "externalRootPermissionAllowCount": 0,
+      "externalRootPaidProbeCount": 0,
+      "externalRootPipelineRunCount": 0,
+      "externalRootModelSelectionCount": 0
+    },
+    "normalQualifiedHarnessExecutedCommandCounts": {
+      "conversation.create": 12,
+      "model.select": 12,
+      "model.variant": 12,
+      "composer.edit": 12,
+      "composer.submit": 12,
+      "operation.stop": 1,
+      "clarification.reply_text": 4
+    },
+    "metadataWritesAreNotTypedReplies": true,
+    "normalTypedClarificationsAreNotAdditionalOriginalSends": true,
+    "RootFailedLateWriterPreserved": {
+      "path": "work/handoff-resume-20261012/r10-root-choice-attempt-0001-late-rejected.actual.json",
+      "sha256": "9e5e28eb2f2ab01f6eb2e1549a2b4e1c342456da5be9417176c58738f85ff382",
+      "bytes": 1250
+    },
+    "globalAPIProviderOrFinancialCounts": "UNKNOWN"
+  },
+  "wholeRunQualificationAndClosure": {
+    "soleWholeReview": {
+      "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/complete12-review.actual.json",
+      "sha256": "8cd852de5158e050950483846baecc295851184be615fa509777467a12233ee3",
+      "bytes": 58952
+    },
+    "RootFinalLedger": {
+      "path": "work/handoff-resume-20261012/original12-r10-root-external-operator-ledger.actual.json",
+      "sha256": "fc9faba65a84ae6ed969190618edca9deb4b3441a2038c3ae1035cb9f59b934f",
+      "bytes": 9807
+    },
+    "knownOwnedClosure": {
+      "path": "work/handoff-resume-20261012/original12-r10-known-scope-closure.actual.json",
+      "sha256": "975d3a620ec78bd48d9f701f1f650cc0ffcea17aad743b59229046fbc5c62520",
+      "bytes": 83884
+    },
+    "knownOwnedScopeResult": "COMPLETE_CURRENT_AVAILABLE_OWNED_AND_PAID_SCOPES",
+    "state": "CURRENT_AVAILABLE_OWNED_AND_KEYED_HOST_SCOPES_CLOSED",
+    "wholeGradeEarlierRootControllerUNKNOWNPreservedAsOf": "UNKNOWN to this reviewer until independently reading a bound Root controller-owned closure receipt; all12 registered per-case native scopes and current Host invocation scopes verified inactive/terminal. No global closure claim.",
+    "independentLateRootClosureResolution": {
+      "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/whole-root-closure-resolution.actual.json",
+      "sha256": "71d19fe035a7b36a87ed0e75d95f2362c15178709c79eee3cbbd2770321b7836",
+      "bytes": 47733
+    },
+    "rootClosureBindingIsNotIndependentLateReviewerResolution": true,
+    "naturalCLIExitCode": 1,
+    "allCurrentAvailableKeyedHostRowsTerminal": true,
+    "currentAvailableKeyedHostInvocationCount": 52,
+    "currentKeyedSettledCount": 50,
+    "currentKeyedUnavailableCount": 2,
+    "unavailableUsageIsNotSettledOrCompleted": true,
+    "hostUsageInvocationIdJoin": "UNAVAILABLE: public Host summaries omit invocation IDs; complete current Host-authenticated outbox windows and complete keyed Usage UI windows verified independently.",
+    "allPassed": false,
+    "globalFinancialProviderChildTrafficOrUnregisteredProcesses": "UNKNOWN",
+    "futureLaunchAdmission": "UNASSESSED by this receipt",
+    "sdkCleanupAuthority": "NOT GRANTED; no current or planned reclaim here",
+    "previousIndependentLateUNKNOWNPreservedAsOf": "UNKNOWN_NOT_YET_PROVIDED_TO_THIS_ASSEMBLY",
+    "savedIndependentLateReviewChecksNoNewProcOrControls": true
+  },
+  "completeness": {
+    "stableRuntimeIssueCount": 14,
+    "preservedHistoryRepresentationCount": 32,
+    "newRuntimeIssueIDsAllocated": 0,
+    "historicalCoverageComplete": false,
+    "historicalImportComplete": false,
+    "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+    "currentSourceGuardCountsAtObservedRun": {
+      "passed": true,
+      "issues": 13,
+      "exactSelectors": 62,
+      "historicalCoverageComplete": false,
+      "doesNotEstablishRealChatConvergence": true
+    },
+    "syntheticGuardGreenDoesNotEstablishCurrentUIConvergence": true
+  },
+  "evidence": [
+    {
+      "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-comparison-preclosure-0001.actual.json",
+      "sha256": "98af5ec5941c9da879ea43776dbf6cfd41b77a472d5357aab38f05e8e62f108f",
+      "bytes": 204588
+    },
+    {
+      "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/formal-current-view-0012.actual.json",
+      "sha256": "50baddffdd06cfc9b09e986368055289a4cf5a7b5a9c16d8ecf771fe51d0a32c",
+      "bytes": 8940
+    },
+    {
+      "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/r10.source-model-enrollment.actual.json",
+      "sha256": "d732de2d6f6fd8f76fb5991d9fc2baaf820e86c66d9f76fe1be25e4881cd5d38",
+      "bytes": 36475
+    },
+    {
+      "path": "work/handoff-resume-20261012/original12-r10-persistent-inventory-append-v1/s1l2.issue-association-correction-append-0001.actual.json",
+      "sha256": "eb311b5e57687592fcaf602a71436a032a93644d1c7c2723c48ef817ac4a243a",
+      "bytes": 1466
+    },
+    {
+      "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-comparison-known-owned-sealed-append-0001.actual.json",
+      "sha256": "88b3b34a7344a575dfd89d3e915857825d272ced72fd13b5f4aca2bac2f47238",
+      "bytes": 17148
+    },
+    {
+      "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/complete12-review.actual.json",
+      "sha256": "8cd852de5158e050950483846baecc295851184be615fa509777467a12233ee3",
+      "bytes": 58952
+    },
+    {
+      "path": "work/handoff-resume-20261012/original12-r10-root-external-operator-ledger.actual.json",
+      "sha256": "fc9faba65a84ae6ed969190618edca9deb4b3441a2038c3ae1035cb9f59b934f",
+      "bytes": 9807
+    },
+    {
+      "path": "work/handoff-resume-20261012/original12-r10-known-scope-closure.actual.json",
+      "sha256": "975d3a620ec78bd48d9f701f1f650cc0ffcea17aad743b59229046fbc5c62520",
+      "bytes": 83884
+    },
+    {
+      "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-independent-late-resolution-binding-append-0001.actual.json",
+      "sha256": "76b6dd07a2fa087133c00b18d4093a6868c502630580b8c7e1712957d12c3a7d",
+      "bytes": 2392
+    },
+    {
+      "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/whole-root-closure-resolution.actual.json",
+      "sha256": "71d19fe035a7b36a87ed0e75d95f2362c15178709c79eee3cbbd2770321b7836",
+      "bytes": 47733
+    }
+  ],
+  "metadataPolicy": {
+    "onlyFiniteMetadataAndOpaqueEvidenceReferences": true,
+    "rawPromptsCodeQuestionsDiagnosticProseAuthOrDBIncluded": false,
+    "workEvidenceUploadedOrPublished": false
+  },
+  "ready": false,
+  "publicApplied": false,
+  "publicCatalogApplyRequiresRootReviewAndCurrentSourceRequalification": true,
+  "currentClosureReferencesMustBeAppendedAfterActualEvidenceExists": false,
+  "immutableLineagePreservation": {
+    "all32OriginalHistoryRepresentationsCheckedAgainstOriginalCanonicalHashes": true,
+    "fullVerifiedFirstEvidenceDefinitionAndHistoryReferences": {
+      "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-comparison-preclosure-0001.actual.json",
+      "sha256": "98af5ec5941c9da879ea43776dbf6cfd41b77a472d5357aab38f05e8e62f108f",
+      "bytes": 204588
+    },
+    "everyPriorRegisterAndSupplementPreservedAsOriginalBoundPublicBytes": true,
+    "firstEvidenceStatusCauseFixesMappingsOrOldHistoryRewritten": false
+  },
+  "earlierFullWorkOnlyProposalPreserved": {
+    "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/public-r10-supplement-candidate.prepared-v1.json",
+    "sha256": "d3381634b8e1a28e7372aa594659599f57ac2bdf01e546dd4709339bcd78c9fc",
+    "bytes": 74660
+  },
+  "projectionCompactnessRule": "Omit repeated equivalent reference/decoded hashes when equality was separately verified, and per-history repeats already bound by unchanged prior public register bytes. Full proof remains immutable and referenced.",
+  "preclosurePublicCandidatePreserved": {
+    "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/public-r10-supplement-candidate.prepared-v2.compact.json",
+    "sha256": "2440498e8b57e2ddec7b992cc1bf7cdd83ff8bfac08555631e57d83a22d90eda",
+    "bytes": 62308
+  },
+  "knownOwnedClosureComparisonAppend": {
+    "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-comparison-known-owned-sealed-append-0001.actual.json",
+    "sha256": "88b3b34a7344a575dfd89d3e915857825d272ced72fd13b5f4aca2bac2f47238",
+    "bytes": 17148
+  },
+  "laterIndependentResolutionMustBeSeparateAppendWithoutChangingEarlierUnknowns": true,
+  "previousRootClosureBoundCandidatePreserved": {
+    "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/public-r10-supplement-candidate.prepared-v3.root-closure-bound.json",
+    "sha256": "dd74291df43a866556e91263595a85280bedec99967da76898603625deb02f53",
+    "bytes": 67181
+  },
+  "independentLateResolutionBindingAppend": {
+    "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-independent-late-resolution-binding-append-0001.actual.json",
+    "sha256": "76b6dd07a2fa087133c00b18d4093a6868c502630580b8c7e1712957d12c3a7d",
+    "bytes": 2392
+  },
+  "readyForRootMetadataReview": true,
+  "materializedPublicObservation": {
+    "atUTC": "2026-10-13T04:49:42.323142+00:00",
+    "reviewedPreparedCandidateSha256": "b8a13c1891f154aca55a4234934c24791753bfd5952e6309cafd141651e69055",
+    "preparationFieldsPreservedAsOf": true,
+    "historicalCoverageComplete": false,
+    "realUIAllPassed": false,
+    "newLaunchOrCleanupAuthority": false
+  }
+}

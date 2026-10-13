@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kind": "generic-root-clarification-ancestor-broker-contract",
+  "scope": "local-test-workflow-contract",
+  "ready": false,
+  "publicApplied": false,
+  "productDefect": false,
+  "liveAcceptance": false,
+  "mechanism": "permanent-once finite Root metadata joins current admitted original request and current normal Control scope before delegating clarification.reply_text",
+  "sourceEvidence": {
+    "legacyCounterexampleSourceSha256": "3f81ac33c08043910ac104d564347ac520a731bca73da082174dbb449a3a1977",
+    "selectedCounterexampleTests": 1,
+    "selectedCounterexampleAssertionFailures": 1,
+    "selectedCounterexampleImportsOrEnvironmentFailures": 0,
+    "legacyCounterexampleOutputSha256": "2c5bbb8643398c5e81847e8a2c28ca005747993ce58265b3d84fe79021f20a50",
+    "preparedModuleSourceSha256": "9000cdef4bb6f6893bd1b2aa7fa9b0ae6ce92444ab0791345162f4c65d257618",
+    "preparedTestSourceSha256": "37e682a30be6c90fb6e795e23f8137195c1a55ce1d02f39f303cf2ecbb079e1f",
+    "publicTypedParserSha256": "4a71cfde8d75a518075ae7ee9ed84c2196a82ced950fefcb494ef94e00b29de3"
+  },
+  "currentLocalVerification": {
+    "toolchain": "Bun 1.3.14 (0d9b296a)",
+    "executedTests": 10,
+    "passed": 10,
+    "failed": 0,
+    "skipOrTodo": 0,
+    "junitSha256": "a65aff26eee0d931b9db795af213918c272bfd163a072b93dbf48d0e1d59589e",
+    "outputSha256": "abc520c8f8155e9a32506b2c12a377ef7ce5d18b163b4be24be47e6dc8905520",
+    "aggregateRunnerOutputVerified": true,
+    "eachExactSelectorMatchesOneExecutedPassedJunitCase": true,
+    "perSelectorChildCLI": "NOT_RUN_UNTIL_ROOT_SELECTED_GATE",
+    "privateMainHistorical177PlusIntegration6": "183 passed; private workflow proof, not public module additional actions"
+  },
+  "protocol": "normal typed clarification.reply_text; no transport in module",
+  "brokerExtraActionScope": {
+    "composerSubmitAdded": 0,
+    "manualRetryAdded": 0,
+    "modelSelectionAdded": 0,
+    "pipelineRunAdded": 0,
+    "newNativeInspectionAdded": 0,
+    "normalMainOriginalSendAndModelSetupExcluded": true
+  },
+  "limits": {
+    "RootExternalSiblingFDReadability": "ENVIRONMENT_BLOCKED_OBSERVATION_SEPARATE_FROM_LOCAL_CONTRACT",
+    "historicalSpecificRootReplyFailureCause": "UNKNOWN",
+    "futureWorkflowActivation": "NOT_RUN",
+    "historicalCoverageComplete": false,
+    "currentActual12Acceptance": "UNKNOWN_TO_THIS_LOCAL_GUARD",
+    "unknownAcknowledgement": "PERMANENTLY_HELD_NO_REPOST"
+  }
+}

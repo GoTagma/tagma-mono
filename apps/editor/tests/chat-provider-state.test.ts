@@ -10,6 +10,8 @@ import {
   buildProvidersFromV2Catalog,
   fetchConfiguredProviderModels,
   fetchProviderCatalog,
+  modelVariantIds,
+  reconcileModelPick,
 } from '../src/store/chat-provider-catalog';
 
 const originalFetch = globalThis.fetch;
@@ -321,4 +323,159 @@ test('projects provider-state into a renderer-safe directory without credentials
       },
     ],
   });
+});
+
+function modelPickerRuntimeAuthorityFixture() {
+  const model = (id: string) => ({
+    id,
+    providerID: 'runtime-provider',
+    name: `Runtime ${id}`,
+    status: 'active',
+    capabilities: { reasoning: true, toolcall: true },
+    limit: { context: 32_000, output: 8_000 },
+    variants: { 'runtime-low': {}, 'runtime-high': {} },
+  });
+  const configured = {
+    providers: [
+      {
+        id: 'runtime-provider',
+        name: 'Runtime provider',
+        models: {
+          shared: model('shared'),
+          'runtime-only': model('runtime-only'),
+        },
+      },
+    ],
+    default: { 'runtime-provider': 'runtime-only' },
+  };
+  const catalog = {
+    providers: [{ id: 'runtime-provider', name: 'Catalog provider' }],
+    models: [
+      {
+        id: 'shared',
+        providerID: 'runtime-provider',
+        name: 'Catalog shared model',
+        status: 'active',
+        capabilities: { reasoning: false, toolcall: false },
+        limit: { context: 64_000, output: 16_000 },
+        variants: [{ id: 'catalog-variant' }],
+      },
+      {
+        id: 'catalog-only',
+        providerID: 'runtime-provider',
+        name: 'Catalog-only model',
+        status: 'active',
+        capabilities: { reasoning: true, toolcall: true },
+        limit: { context: 64_000, output: 16_000 },
+        variants: [],
+      },
+    ],
+  };
+  return { configured, catalog };
+}
+
+test('model-picker-runtime-authority excludes catalog-only models from an otherwise configured provider', () => {
+  const { configured, catalog } = modelPickerRuntimeAuthorityFixture();
+  const state = projectManagedOpenCodeProviderState(configured, catalog);
+  const providers = buildProvidersFromV2Catalog(state.modelCatalog!, [
+    ...state.configured.providers,
+  ]);
+  expect(
+    resolveConfiguredOpenCodeSelectedModelAuthority(configured.providers, {
+      providerID: 'runtime-provider',
+      modelID: 'catalog-only',
+    }).configured,
+  ).toBe(false);
+  for (const provider of providers) {
+    for (const modelID of Object.keys(provider.models)) {
+      expect(
+        resolveConfiguredOpenCodeSelectedModelAuthority(configured.providers, {
+          providerID: provider.id,
+          modelID,
+        }).configured,
+      ).toBe(true);
+    }
+  }
+  expect(providers[0]!.models['catalog-only']).toBeUndefined();
+  expect(
+    reconcileModelPick(
+      providers,
+      { 'runtime-provider': 'shared' },
+      {
+        providerID: 'runtime-provider',
+        modelID: 'catalog-only',
+      },
+    ),
+  ).toEqual({ providerID: 'runtime-provider', modelID: 'shared' });
+});
+
+test('model-picker-runtime-authority retains runtime-only models and their configured variants beside V2 metadata', () => {
+  const { configured, catalog } = modelPickerRuntimeAuthorityFixture();
+  catalog.models = catalog.models.filter((model) => model.id === 'shared');
+  const state = projectManagedOpenCodeProviderState(configured, catalog);
+  const providers = buildProvidersFromV2Catalog(state.modelCatalog!, [
+    ...state.configured.providers,
+  ]);
+  expect(
+    resolveConfiguredOpenCodeSelectedModelAuthority(configured.providers, {
+      providerID: 'runtime-provider',
+      modelID: 'runtime-only',
+    }).configured,
+  ).toBe(true);
+  expect(Object.keys(providers[0]!.models).sort()).toEqual(['runtime-only', 'shared']);
+  expect(providers[0]!.models['runtime-only']).toEqual(
+    state.configured.providers[0]!.models['runtime-only'],
+  );
+  expect(
+    modelVariantIds(providers, { providerID: 'runtime-provider', modelID: 'runtime-only' }),
+  ).toEqual(['runtime-low', 'runtime-high']);
+  expect(reconcileModelPick(providers, { ...state.configured.default }, null)).toEqual({
+    providerID: 'runtime-provider',
+    modelID: 'runtime-only',
+  });
+  expect(providers[0]!.models.shared).toMatchObject({
+    id: 'shared',
+    name: 'Catalog shared model',
+    capabilities: { reasoning: true, toolcall: true },
+    limit: { context: 64_000, output: 16_000 },
+    variants: { 'runtime-low': {}, 'runtime-high': {}, 'catalog-variant': {} },
+  });
+  for (const modelID of Object.keys(providers[0]!.models)) {
+    expect(
+      resolveConfiguredOpenCodeSelectedModelAuthority(configured.providers, {
+        providerID: providers[0]!.id,
+        modelID,
+      }).configured,
+    ).toBe(true);
+  }
+});
+
+test('model-picker-runtime-authority keeps an empty configured model inventory empty despite advertised catalog models', () => {
+  const { catalog } = modelPickerRuntimeAuthorityFixture();
+  const configured = {
+    providers: [{ id: 'runtime-provider', name: 'Runtime provider', models: {} }],
+  };
+  const state = projectManagedOpenCodeProviderState(configured, catalog);
+  expect(
+    resolveConfiguredOpenCodeSelectedModelAuthority(configured.providers, {
+      providerID: 'runtime-provider',
+      modelID: 'shared',
+    }).configured,
+  ).toBe(false);
+  expect(buildProvidersFromV2Catalog(state.modelCatalog!, [...state.configured.providers])).toEqual(
+    [],
+  );
+});
+
+test('model-picker-runtime-authority preserves standalone catalog projection and explicit empty-runtime authority', () => {
+  const { configured, catalog } = modelPickerRuntimeAuthorityFixture();
+  const state = projectManagedOpenCodeProviderState(configured, catalog);
+  const standalone = buildProvidersFromV2Catalog(state.modelCatalog!);
+  expect(Object.keys(standalone[0]!.models).sort()).toEqual(['catalog-only', 'shared']);
+  expect(standalone[0]!.models.shared).toMatchObject({
+    name: 'Catalog shared model',
+    capabilities: { reasoning: false, toolcall: false },
+    variants: { 'catalog-variant': {} },
+  });
+  expect(buildProvidersFromV2Catalog(state.modelCatalog!, [])).toEqual([]);
 });

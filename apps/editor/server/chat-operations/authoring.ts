@@ -2655,7 +2655,12 @@ export class ChatOperationV2AuthoringEngine {
     return this.verifyAndRepair(
       context,
       verifying.operation,
-      undefined,
+      // An eligible local reread without a counted commit has no next submission
+      // ordinal. Bind its fresh attempt to the durable verification transition;
+      // counted commits and output-length continuation retain their coordinates.
+      noProgress !== undefined || rejectedTrialPlan?.toolAttemptCount === 0
+        ? verifying.operation.version
+        : undefined,
       rejectedTrialPlan && trialPlanRequest
         ? { kind: 'rejection', rejection: rejectedTrialPlan, planRequest: trialPlanRequest }
         : noProgress

@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "kind": "sanitized-R7-authorized-clarification-grammar-and-installed-public-guard-evidence",
+  "issueId": "CSR-0009",
+  "runtimeLineage": "RUI-0013",
+  "classification": "test-tool-harness-finite-authorized-grammar",
+  "originalFirstEvidence00f60Unchanged": {
+    "sourceId": "current-authorized-clarification-policy",
+    "round": "current-source-clarification-preparation",
+    "sourceRevision": "CSR0008-frozen-product-plus-future-helper-proposal",
+    "acceptancePolicy": "explicit-user-authority-current-clarification-local-v1",
+    "path": "architecture/quality/evidence/clarification-policy.json",
+    "sha256": "00f60da2d580d97c9491ab11a966d26469193c386b61077201967022b6f7e2e3",
+    "role": "local-public-helper-red-green",
+    "observationId": "CSR-0009"
+  },
+  "realR7SourceFingerprint": {
+    "scheme": "public-git-visible-v1",
+    "fileCount": 1419,
+    "sha256": "297b9d2e944f28d3ad80a79d491053bdee81cb6465ddf3ca7ac0029b4a83fb81"
+  },
+  "mechanisms": [
+    "described-authorized-workflow-versus-current-canvas-comparison",
+    "source-bound-action-subject-and-exact-original-using-method-relationship",
+    "source-bound-binary-passive-choice-and-repeated-intent",
+    "three-distinct-role-deictic-task-with-explicit-original-initial-task-and-one-off-referent"
+  ],
+  "privateGenuineR7MainBoundary": {
+    "actualOldHarnessSelectedTests": 4,
+    "actualOldHarnessAssertionFailures": 4,
+    "actualCandidatePassedTests": 181,
+    "retainedHistorical177Cases": 177,
+    "privateActualMainBytesUnchangedExceptReviewedDependencyImports": true,
+    "scope": "local test-tool boundary; no new real case or model invocation",
+    "evidence": {
+      "path": "work/handoff-resume-20261012/clarification-policy-v10-preparation/grammar-runtime-wiring-r5/preparation-manifest.actual-v1.json",
+      "sha256": "fffe9146a7987f2953c1576ff1268b621a132a46dbf9e9cac639804a3e9860b5",
+      "bytes": 5408
+    }
+  },
+  "semanticBoundaryProofReferences": {
+    "genuineFourMainBoundary": {
+      "path": "work/handoff-resume-20261012/clarification-policy-v10-preparation/grammar-runtime-wiring-r5/preparation-manifest.actual-v1.json",
+      "sha256": "fffe9146a7987f2953c1576ff1268b621a132a46dbf9e9cac639804a3e9860b5",
+      "bytes": 5408
+    },
+    "semanticR5Manifest": {
+      "path": "work/handoff-resume-20261012/clarification-policy-v10-preparation/deictic-task-r5/preparation-manifest.actual-v1.json",
+      "sha256": "20849ca23fc251c908b645c2fbe42e9c4e9be402cc6cb0bbf1b5176919a85f45",
+      "bytes": 6811
+    },
+    "semanticR5ExecutionProof": {
+      "path": "work/handoff-resume-20261012/clarification-policy-v10-preparation/deictic-task-r5/execution-proof.actual-v1.json",
+      "sha256": "3d5a619a14a0980092801ae6f631c6d887b2999a9a5b3e445b0c752471eafa59",
+      "bytes": 12137
+    }
+  },
+  "installedPublicSource": {
+    "helper": {
+      "path": "scripts/chat-clarification-policy.mjs",
+      "sha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "bytes": 18098
+    },
+    "tests": {
+      "path": "scripts/lib/chat-clarification-policy.test.ts",
+      "sha256": "988b9e6c1ceffe79a98d71a759736023e901a41e1ff70546bae6b203a4243d06",
+      "bytes": 18114
+    },
+    "installation": {
+      "path": "work/handoff-resume-20261012/clarification-grammar-batch-actual-r1/install.actual.json",
+      "sha256": "5a5adb58563c4344c89b69b5d371ef30db1fdb0c30e8029bf9cf18b0ec169223",
+      "bytes": 3687
+    },
+    "independentR5Review": {
+      "path": "work/handoff-resume-20261012/independent-final-portable-grammar-review-r5/review.actual-r5.json",
+      "sha256": "ae2511576eb5f29193ec0a0162053a0ecd03daf827c4e81a480baa28364226be",
+      "bytes": 39247
+    },
+    "selectedR5Manifest": {
+      "path": "work/handoff-resume-20261012/clarification-policy-v10-preparation/portable-public-proposal-r5/preparation-manifest.actual-v1.json",
+      "sha256": "7fb5abfaff9076a78d11ccca70c9616703d9c16cf4c5f24fea1df5566026e748",
+      "bytes": 4787
+    },
+    "oldSevenSelectorsAndTestPrefixBytesUnchanged": true,
+    "publicContextCallbackHook": false,
+    "optionalLiteralFreeCriterionContextActivation": false,
+    "existingTrustedCurrentRequestAuthorityAndDefaultGoalGateRetained": true
+  },
+  "actualInstalledAllElevenExecution": {
+    "bunVersion": "1.3.14",
+    "exactFileArgument": "./scripts/lib/chat-clarification-policy.test.ts",
+    "actualExecutedTests": 11,
+    "actualPassedTests": 11,
+    "actualFailedTests": 0,
+    "actualSkippedOrTodoTests": 0,
+    "JUnitActualExecutedPassed": 11,
+    "nonemptyTextAndJUnitVerified": true,
+    "evidence": {
+      "path": "work/handoff-resume-20261012/clarification-grammar-batch-actual-r1/installed-all-eleven-proof.actual.json",
+      "sha256": "bb5574af9f9fb26651af0b9b7a256f68c3ae389c5106b5dcdb65528bbef18c3e",
+      "bytes": 1955
+    },
+    "logAndJUnitMetadataRefs": [
+      {
+        "path": "work/handoff-resume-20261012/clarification-grammar-batch-actual-r1/installed-all-eleven.actual.log",
+        "sha256": "9d0bdc027f35dd3c61b10112128da1f422994b8db13096e261115ecb343d1823",
+        "bytes": 1191
+      },
+      {
+        "path": "work/handoff-resume-20261012/clarification-grammar-batch-actual-r1/installed-all-eleven.actual.junit.xml",
+        "sha256": "4235f1f591c13d11858fe2871198cdb35118b475b67ea22107cba16a1b72a2fb",
+        "bytes": 2698
+      }
+    ]
+  },
+  "newExactRegressionSelectors": [
+    {
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "cwd": ".",
+      "namePattern": "^portable clarification binds described workflow into current canvas comparison$",
+      "expectedTests": 1,
+      "fullName": "portable clarification binds described workflow into current canvas comparison"
+    },
+    {
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "cwd": ".",
+      "namePattern": "^portable clarification binds selected action subject and method to original source$",
+      "expectedTests": 1,
+      "fullName": "portable clarification binds selected action subject and method to original source"
+    },
+    {
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "cwd": ".",
+      "namePattern": "^portable clarification binds binary passive choice and repeated intent to original source$",
+      "expectedTests": 1,
+      "fullName": "portable clarification binds binary passive choice and repeated intent to original source"
+    },
+    {
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "cwd": ".",
+      "namePattern": "^portable clarification binds three role deictic task to explicit original task$",
+      "expectedTests": 1,
+      "fullName": "portable clarification binds three role deictic task to explicit original task"
+    }
+  ],
+  "individualIsolatedAddedFourExecutionsAndWhole45Gate": "PENDING_ROOT_MAPPED_GATE",
+  "unchangedRealR7Cases": [
+    {
+      "caseId": "S1L1",
+      "soleGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r7-current-grader-review-v1/s1l1.closed-case-grade.actual.json",
+        "sha256": "67f30fbb5de59a2c81f4625a1aa002ae4f4ab517d1da4c86065878e1a290e998",
+        "bytes": 7663
+      },
+      "originalRealGradeUnchanged": "NOT_FULL_PASS",
+      "sourceEpoch": "original12-r7-frozen-source",
+      "productRootCause": "UNKNOWN"
+    },
+    {
+      "caseId": "S1L3",
+      "soleGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r7-current-grader-review-v1/s1l3.closed-case-grade.actual.json",
+        "sha256": "236614cfab97b16b429b1464fc13f01e53d0813d77586c41c6edbc3c05a22473",
+        "bytes": 8916
+      },
+      "originalRealGradeUnchanged": "NOT_FULL_PASS",
+      "sourceEpoch": "original12-r7-frozen-source",
+      "productRootCause": "UNKNOWN"
+    },
+    {
+      "caseId": "S2L3",
+      "soleGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r7-current-grader-review-v1/s2l3.closed-case-grade.actual.json",
+        "sha256": "49c74eb49943ca8821684164d98e317c7da30df2f34a6ea446aba0faf1fd8d7e",
+        "bytes": 8905
+      },
+      "originalRealGradeUnchanged": "NOT_FULL_PASS",
+      "sourceEpoch": "original12-r7-frozen-source",
+      "productRootCause": "UNKNOWN"
+    },
+    {
+      "caseId": "S4L3",
+      "soleGrade": {
+        "path": "work/handoff-resume-20261012/independent-original12-r7-current-grader-review-v1/s4l3.closed-case-grade.actual.json",
+        "sha256": "86ac7d4dde212c1f799d0b9113c5b1afea49b39e1a5808f298d4d4891f139ec4",
+        "bytes": 10478
+      },
+      "originalRealGradeUnchanged": "NOT_FULL_PASS",
+      "sourceEpoch": "original12-r7-frozen-source",
+      "productRootCause": "UNKNOWN"
+    }
+  ],
+  "limits": {
+    "localGrammarCauseScope": "Finite harness grammar boundary only; product/provider/core/identity causes remain UNKNOWN",
+    "newRealR7CaseGradesFixedOrPassed": false,
+    "nativePostFixReplyAdaptationAndRealConvergence": "UNKNOWN",
+    "currentMapped45GREENClaimed": false,
+    "historicalCoverageComplete": false,
+    "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+    "globalProviderScopeAndFinancialCharges": "UNKNOWN",
+    "rawOriginalPromptsTestSetSourcePrivateLogsTokensCredentialsOrProviderReasoningIncluded": false
+  },
+  "recordedAtUTC": "2026-10-12T18:57:21.714923+00:00"
+}

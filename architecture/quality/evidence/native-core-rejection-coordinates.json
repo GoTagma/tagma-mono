@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "kind": "bound-native-core-rejection-coordinate-local-contract",
+  "scope": "source-bound actual generated planner tool local regression; separate from genuine Chat acceptance",
+  "createdAtUTC": "2026-10-13T01:11:29.340777+00:00",
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "confirmedCauseScope": "Only missing finite bound coordinates in the actual generated native rejection message; not a validator false rejection or a proved real Chat nonconvergence cause.",
+  "sourceBinding": {
+    "observedR9SourceManifest": {
+      "path": "work/handoff-resume-20261012/r9-engineering-qualification-actual-r1/actual-source-manifest.json",
+      "sha256": "4273582868bd01c4e53efba27fd143746faa45f087d3c0bc2f84e313e5f37a86",
+      "bytes": 281240
+    },
+    "observedR9PublicFingerprint": {
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1429,
+      "sha256": "6acc4e9960672fb821049e1f95922d558a60a3066f8d574befe8073ab63e7080"
+    },
+    "oldPublicSources": [
+      {
+        "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+        "sha256": "43895d81ca109f1462928228c418b4106d43cfa81b59814c0951ff013eb961e9",
+        "bytes": 46982
+      },
+      {
+        "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+        "sha256": "5f2d536e42850525aaedadbb5af50a60bbe378791ba5c872fe6eeef4c3b33625",
+        "bytes": 76526
+      }
+    ],
+    "selectedPreparedProductionSources": [
+      {
+        "path": "work/handoff-resume-20261012/core-rejection-coordinate-preparation-v3/public/apps/editor/server/chat-trial-resilience-rules.ts",
+        "sha256": "8907b36370792438fb3870ed071c0b65272128e93d68e4a2ed1302680f443894",
+        "bytes": 50252,
+        "publicTarget": "apps/editor/server/chat-trial-resilience-rules.ts"
+      },
+      {
+        "path": "work/handoff-resume-20261012/core-rejection-coordinate-preparation-v3/public/apps/editor/server/opencode-trial-plan-tool.ts",
+        "sha256": "f26e5b18275ae482027ef85c3024b9f757c058e2a55d8a9b6face2fdd6db25ef",
+        "bytes": 80159,
+        "publicTarget": "apps/editor/server/opencode-trial-plan-tool.ts"
+      }
+    ],
+    "selectedPreparedTest": {
+      "path": "work/handoff-resume-20261012/core-rejection-coordinate-preparation-v3/public/apps/editor/tests/chat-trial-rejection-coordinates.test.ts",
+      "sha256": "717ed3e94e7b499b0972b83f455ceabb485f7a10286fe65253b62fe3614fa7ce",
+      "bytes": 16872,
+      "publicTarget": "apps/editor/tests/chat-trial-rejection-coordinates.test.ts"
+    },
+    "selectedPreparationManifest": {
+      "path": "work/handoff-resume-20261012/core-rejection-coordinate-preparation-v3/preparation-manifest.prepared-v3.json",
+      "sha256": "bac3f0587021f353779ab20563dfbd13d31b131fc4928a635425d587b939084e",
+      "bytes": 18151
+    }
+  },
+  "firstGenuineOldAssertionRed": {
+    "reference": {
+      "path": "work/handoff-resume-20261012/core-coordinate-red-green-preparation-v1/results/old-first-selected-junit-resolution.actual-v2.json",
+      "sha256": "5dec0dea247a52b1889f72e363e32df0f5ca7eab148ea0a625368bac0cf79fa1",
+      "bytes": 1638
+    },
+    "executedTests": 1,
+    "assertions": 14,
+    "assertionFailures": 1,
+    "selectedSkipOrTodo": 0,
+    "selectedErrors": 0,
+    "unselectedFilteredXMLRows": 6,
+    "failureMechanism": "Actual generated rejection preserved its original guard and canonical diagnostic, but the native Error.message did not include the finite bound rejectionContext marker.",
+    "missingModuleOrEnvironmentFailure": false,
+    "earlierResultClassificationPreserved": true
+  },
+  "preservedIntermediateCandidateFailure": {
+    "reference": {
+      "path": "work/handoff-resume-20261012/core-coordinate-red-green-preparation-v1/results/candidate-all.execution.actual.json",
+      "sha256": "41a5c182cfe59e393723314cd6fc9bc8b13cc1c7096cfe7aa5ea833dd03e28d2",
+      "bytes": 3502
+    },
+    "executedTests": 7,
+    "passedTests": 5,
+    "failedTests": 2,
+    "errors": 0,
+    "resultRetainedAndNotProjectedAsGreen": true
+  },
+  "selectedV3LocalGreen": {
+    "reference": {
+      "path": "work/handoff-resume-20261012/core-coordinate-red-green-preparation-v3/results/candidate-all-v3.execution.actual.json",
+      "sha256": "4fd347c17fe68a41ab4454d05398ec95209bf337a1e2d0d5c44ac54c918205f6",
+      "bytes": 3774
+    },
+    "executedTests": 7,
+    "passedTests": 7,
+    "assertions": 111,
+    "failedTests": 0,
+    "skippedOrTodoTests": 0,
+    "errors": 0,
+    "rawLog": {
+      "path": "work/handoff-resume-20261012/core-coordinate-red-green-preparation-v3/results/candidate-all-v3.actual.log",
+      "sha256": "10acb912237bad96d0ff1500be3efc05d6106603693a601b83fb266ad8e5fef3",
+      "bytes": 864
+    },
+    "rawJUnit": {
+      "path": "work/handoff-resume-20261012/core-coordinate-red-green-preparation-v3/results/candidate-all-v3.actual.xml",
+      "sha256": "c482e1a58eb1ed26aa68f5065006aa65000c5e68cbad36f931c2c996143fe8ac",
+      "bytes": 1907
+    },
+    "testNames": [
+      "current generated rejection exposes bound failed producer coordinates while preserving the guard",
+      "current generated rejection identifies the exact source mapping without permitting it",
+      "current generated rejection identifies an unsupported selected role index without weakening content",
+      "valid transitive source witness still validates and commits exactly once",
+      "foreign attempt and changed intent still reject before coordinate enrichment",
+      "native coordinate suffix is byte bounded and reports omitted long coordinates",
+      "native coordinate errors preserve counted rejection summaries and attempt fencing"
+    ],
+    "perSelectorMappedGateExecution": "NOT_RUN",
+    "modelCalls": 0,
+    "taskExecutions": 0
+  },
+  "repairScope": {
+    "admissionPredicatesAndOriginalMessagesPreserved": true,
+    "nativeMessageSuffixUTF8ByteCap": 2048,
+    "availability": "unknown",
+    "binding": "Exact current Host attempt, YAML SHA-1/relative path, verified intent digest and exact serialized candidate plan SHA-256; committed plan hash remains a separate identity.",
+    "payload": "Finite rejected role/check/task/index coordinates only; no expected business values, fixture contents, rationale, authored code, provider prose or credentials.",
+    "oldFixturesAssertionsCountersAndBudgetUnchanged": true,
+    "newRPCPrivilegeModelRequestOrTaskExecution": false,
+    "publicApplicationState": "PREPARED_FOR_ROOT_APPLICATION",
+    "productionInstallAndFullGateProof": "NOT_RUN_BY_METADATA_PREPARER"
+  },
+  "limits": {
+    "actualNativeChatSuffixDelivery": "UNKNOWN_NOT_RETESTED",
+    "realChatConvergence": "UNKNOWN_NOT_RETESTED",
+    "falseValidatorRejectionProved": false,
+    "whole13Record62SelectorMappedGate": "NOT_RUN",
+    "historicalCoverageComplete": false,
+    "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+    "oldRuntimeIssueFixedOrRegressedPromotion": false,
+    "futureAcceptance": "Full original12 on fresh product workspaces through Tagma OpenCode Chat, same Flash low and original planning2/repair2 policy; no extra probes or manual Retry."
+  },
+  "metadataPolicy": {
+    "onlyFiniteMetadataAndOpaqueEvidenceReferences": true,
+    "rawPromptsCodeQuestionsDiagnosticProseAuthOrDBIncluded": false,
+    "workEvidenceUploadedOrPublished": false
+  }
+}

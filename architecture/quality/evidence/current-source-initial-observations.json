@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-initial-local-contract-observations",
+  "scope": "current-source",
+  "historicalCoverageComplete": false,
+  "recordedOn": "2026-10-12",
+  "timezone": "Asia/Shanghai",
+  "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+  "role": "local-synthetic-current-source",
+  "liveAcceptance": false,
+  "paidModelRequests": 0,
+  "rawReceipt": {
+    "path": "work/handoff-resume-20261012/current-source-mechanism-subset.json",
+    "sha256": "5458d505c8f8d57d4a1de8d8072bb93bed4ad19a564e30875908009d4fd4f48f",
+    "bytes": 1876,
+    "kind": "local-synthetic-mechanism-subset",
+    "expectedSelectedTests": 4,
+    "fullHistoricalRegressionPass": false
+  },
+  "actualCallCount": 3,
+  "actualExecutedTests": 4,
+  "actualPassedTests": 4,
+  "actualFailedTests": 0,
+  "actualSkippedOrTodoTests": 0,
+  "runOutputs": [
+    {
+      "group": 0,
+      "toolChunkId": "feb00d",
+      "exitCode": 0,
+      "outputSha256": "edacf28332a4ae7b475a7201313cd03b2e2da8dd7afc9784f2d23ce0afec8541",
+      "outputBytes": 495,
+      "actualTests": 2,
+      "actualPass": 2,
+      "actualFail": 0,
+      "actualSkip": 0,
+      "actualTodo": 0,
+      "actualFiles": 1,
+      "tests": [
+        {
+          "status": "pass",
+          "renderedName": "complete rejection with distinct planning and commit counters > zero consumed commits can authorize one bounded planning correction",
+          "fullName": "complete rejection with distinct planning and commit counters zero consumed commits can authorize one bounded planning correction"
+        },
+        {
+          "status": "pass",
+          "renderedName": "no-progress metadata stays separate from rejection telemetry > rejects invented zero counters, unknown fields and a different original request digest",
+          "fullName": "no-progress metadata stays separate from rejection telemetry rejects invented zero counters, unknown fields and a different original request digest"
+        }
+      ],
+      "output": "\ntests/chat-operation-v2-bounded-feedback-convergence.test.ts:\nbun test v1.3.14 (0d9b296a)\n(pass) complete rejection with distinct planning and commit counters > zero consumed commits can authorize one bounded planning correction [0.19ms]\n(pass) no-progress metadata stays separate from rejection telemetry > rejects invented zero counters, unknown fields and a different original request digest [2.20ms]\n\n 2 pass\n 39 filtered out\n 0 fail\n 9 expect() calls\nRan 2 tests across 1 file. [200.00ms]\n",
+      "argvRecorded": false,
+      "junitRecorded": false,
+      "proof": "Observed tool completion, explicit per-test pass records, and internally coherent Bun execution summaries."
+    },
+    {
+      "group": 1,
+      "toolChunkId": "f71f88",
+      "exitCode": 0,
+      "outputSha256": "faf26134f38a130513cbb82ff872e6fba27120ccc0b4058d2c4a5f7d6abfe9fa",
+      "outputBytes": 297,
+      "actualTests": 1,
+      "actualPass": 1,
+      "actualFail": 0,
+      "actualSkip": 0,
+      "actualTodo": 0,
+      "actualFiles": 1,
+      "tests": [
+        {
+          "status": "pass",
+          "renderedName": "semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt",
+          "fullName": "semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt"
+        }
+      ],
+      "output": "bun test v1.3.14 (0d9b296a)\n\ntests/chat-pipeline-trial-plan-tool-boundary.test.ts:\n(pass) semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt [51.45ms]\n\n 1 pass\n 9 filtered out\n 0 fail\n 11 expect() calls\nRan 1 test across 1 file. [170.00ms]\n",
+      "argvRecorded": false,
+      "junitRecorded": false,
+      "proof": "Observed tool completion, explicit per-test pass records, and internally coherent Bun execution summaries."
+    },
+    {
+      "group": 2,
+      "toolChunkId": "c4f3a6",
+      "exitCode": 0,
+      "outputSha256": "82583d4f6034372fea976160249c3dfa2470c889fd8e43cb9aa8286b22722e17",
+      "outputBytes": 255,
+      "actualTests": 1,
+      "actualPass": 1,
+      "actualFail": 0,
+      "actualSkip": 0,
+      "actualTodo": 0,
+      "actualFiles": 1,
+      "tests": [
+        {
+          "status": "pass",
+          "renderedName": "blocked core requires an existing blocking diagnostic and is never green coverage",
+          "fullName": "blocked core requires an existing blocking diagnostic and is never green coverage"
+        }
+      ],
+      "output": "bun test v1.3.14 (0d9b296a)\n\ntests/chat-trial-core-witness.test.ts:\n(pass) blocked core requires an existing blocking diagnostic and is never green coverage [2.79ms]\n\n 1 pass\n 17 filtered out\n 0 fail\n 3 expect() calls\nRan 1 test across 1 file. [220.00ms]\n",
+      "argvRecorded": false,
+      "junitRecorded": false,
+      "proof": "Observed tool completion, explicit per-test pass records, and internally coherent Bun execution summaries."
+    }
+  ],
+  "observations": [
+    {
+      "id": "CSR-0001",
+      "group": 0,
+      "fullName": "complete rejection with distinct planning and commit counters zero consumed commits can authorize one bounded planning correction",
+      "file": "tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+      "title": "Complete zero-commit rejection can authorize bounded planning correction",
+      "mechanism": "trial-plan-rejection-admission-guard",
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
+      "contract": "A complete rejection with zero consumed commits and zero validation rejections can authorize a correction within the original planning budget. This guard does not derive an Engine attempt ID.",
+      "actualSelectedTests": 1,
+      "actualSelectedPass": 1,
+      "actualSelectedFail": 0,
+      "actualSelectedSkipOrTodo": 0,
+      "testBinding": {
+        "path": "apps/editor/tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+        "sha256": "fa96c4f4a0d15d2db70d06d7bd68873105d88a13f989e38af56959277ae09f62",
+        "bytes": 23459,
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "matchesCommittedBytesAtIntake": true
+      },
+      "sourceBindings": [
+        {
+          "path": "apps/editor/server/chat-operations/authoring-runtime.ts",
+          "sha256": "a1d4b41cb132490934173a3fc6d9bfd719e1451ae36d050c7a3868bc8f279790",
+          "bytes": 216236,
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "matchesCommittedBytesAtIntake": true
+        }
+      ]
+    },
+    {
+      "id": "CSR-0002",
+      "group": 0,
+      "fullName": "no-progress metadata stays separate from rejection telemetry rejects invented zero counters, unknown fields and a different original request digest",
+      "file": "tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+      "title": "No-progress evidence rejects invented counters and changed request identity",
+      "mechanism": "no-progress-evidence-validation-guard",
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
+      "contract": "No-progress context accepts its exact original request digest and rejects added commit counters, unknown fields, changed attempt identity, and invalid digests. This guard does not prove a real Engine second-slot invocation.",
+      "actualSelectedTests": 1,
+      "actualSelectedPass": 1,
+      "actualSelectedFail": 0,
+      "actualSelectedSkipOrTodo": 0,
+      "testBinding": {
+        "path": "apps/editor/tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+        "sha256": "fa96c4f4a0d15d2db70d06d7bd68873105d88a13f989e38af56959277ae09f62",
+        "bytes": 23459,
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "matchesCommittedBytesAtIntake": true
+      },
+      "sourceBindings": [
+        {
+          "path": "apps/editor/server/chat-operations/authoring.ts",
+          "sha256": "a3c4ed334be6e6ae2fced63fa15cb2859a27effc7de829b7f314ac816e41a051",
+          "bytes": 207794,
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "matchesCommittedBytesAtIntake": true
+        }
+      ]
+    },
+    {
+      "id": "CSR-0003",
+      "group": 1,
+      "fullName": "semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt",
+      "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+      "title": "Semantic review rejection preserves evidence and counts exactly one native commit",
+      "mechanism": "native-tool-semantic-rejection-accounting",
+      "relatedHistoricalIssues": [
+        "TQ-0001",
+        "TQ-0011"
+      ],
+      "contract": "The installed native tool fixture records one full semantic evidenceReview rejection, rejects no original assertion, and accepts the fixture-supplied distinct second Host attempt. Distinct attempt IDs are supplied by the test rather than derived by the product Engine.",
+      "actualSelectedTests": 1,
+      "actualSelectedPass": 1,
+      "actualSelectedFail": 0,
+      "actualSelectedSkipOrTodo": 0,
+      "testBinding": {
+        "path": "apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+        "sha256": "8ebda0b56fcd2a19144d51ffebc5806cc07412da1c1c422fe9ccd3c943773712",
+        "bytes": 20483,
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "matchesCommittedBytesAtIntake": true
+      },
+      "sourceBindings": [
+        {
+          "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+          "sha256": "5f2d536e42850525aaedadbb5af50a60bbe378791ba5c872fe6eeef4c3b33625",
+          "bytes": 76526,
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "matchesCommittedBytesAtIntake": true
+        },
+        {
+          "path": "apps/editor/server/chat-pipeline-trial-plan.ts",
+          "sha256": "385d0dfd504123a919b88832204e58f0803cec5061eed646ceb3a60ee86e019f",
+          "bytes": 62203,
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "matchesCommittedBytesAtIntake": true
+        }
+      ]
+    },
+    {
+      "id": "CSR-0004",
+      "group": 2,
+      "fullName": "blocked core requires an existing blocking diagnostic and is never green coverage",
+      "file": "tests/chat-trial-core-witness.test.ts",
+      "title": "Blocked core witness requires a blocking diagnostic and cannot establish green coverage",
+      "mechanism": "blocked-core-witness-guard",
+      "relatedHistoricalIssues": [
+        "TQ-0003",
+        "TQ-0004"
+      ],
+      "contract": "A blocked core witness fails without a blocking diagnostic-only finding; adding that finding preserves a blocking plan diagnostic. This does not make dynamic content observable or prove navigation repair.",
+      "actualSelectedTests": 1,
+      "actualSelectedPass": 1,
+      "actualSelectedFail": 0,
+      "actualSelectedSkipOrTodo": 0,
+      "testBinding": {
+        "path": "apps/editor/tests/chat-trial-core-witness.test.ts",
+        "sha256": "e7730314932a6c322c709096375c79f494e8b1bbd79fa6fc529e257f199f75e0",
+        "bytes": 29978,
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "matchesCommittedBytesAtIntake": true
+      },
+      "sourceBindings": [
+        {
+          "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+          "sha256": "43895d81ca109f1462928228c418b4106d43cfa81b59814c0951ff013eb961e9",
+          "bytes": 46982,
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "matchesCommittedBytesAtIntake": true
+        },
+        {
+          "path": "apps/editor/server/chat-pipeline-trial-run.ts",
+          "sha256": "ab45fa65eb32677763e106848ab5a2a85166421c4ec68c64c3edd9462789a361",
+          "bytes": 195811,
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "matchesCommittedBytesAtIntake": true
+        }
+      ]
+    }
+  ],
+  "immutability": "Preserve this initial observation file and its source/output identities. Record later executions and new mechanisms in new evidence files.",
+  "limits": [
+    "Only these four guard contracts were observed.",
+    "The original subset receipt did not record argv or JUnit; neither is invented here. Future mapped gate executions require their own proof.",
+    "Recorded commit and per-file source/test SHA bindings are not a complete original public-source fingerprint.",
+    "No historical first evidence, root cause, repaired product path, full original test-set pass, or live-test admission is established."
+  ]
+}

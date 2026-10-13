@@ -43,3 +43,61 @@ test('managed OpenCode does not inherit unrelated process authority or weaken TL
     }),
   ).toEqual({});
 });
+
+test('managed OpenCode inherits non-enumerable fixed host network keys', () => {
+  const fixed = {
+    HTTP_PROXY: 'http://uppercase-http.example.test',
+    HTTPS_PROXY: 'http://uppercase-https.example.test',
+    NO_PROXY: 'uppercase-local.example.test',
+    http_proxy: 'http://lowercase-http.example.test',
+    https_proxy: 'http://lowercase-https.example.test',
+    no_proxy: 'lowercase-local.example.test',
+    NODE_EXTRA_CA_CERTS: '/configured/node-ca.pem',
+    SSL_CERT_FILE: '/configured/openssl-ca.pem',
+    SSL_CERT_DIR: '/configured/certificates',
+    CURL_CA_BUNDLE: '/configured/curl-ca.pem',
+    REQUESTS_CA_BUNDLE: '/configured/requests-ca.pem',
+    NPM_CONFIG_CAFILE: '/configured/npm-ca.pem',
+    npm_config_cafile: '/configured/lowercase-npm-ca.pem',
+  };
+  const providerCredential = 'fixture-enumerable-provider-credential';
+  const source: Record<string, string | undefined> = {
+    DEEPSEEK_API_KEY: providerCredential,
+  };
+  for (const [key, value] of Object.entries(fixed))
+    Object.defineProperty(source, key, { value, enumerable: false });
+
+  expect(Object.keys(source)).toEqual(['DEEPSEEK_API_KEY']);
+  expect(source.HTTPS_PROXY).toBe(fixed.HTTPS_PROXY);
+  expect(buildOpencodeInheritedEnv(source)).toEqual({
+    ...fixed,
+    DEEPSEEK_API_KEY: providerCredential,
+  });
+});
+
+test('managed OpenCode keeps non-enumerable private authority and inherited settings outside its host boundary', () => {
+  const source = Object.create({
+    HTTPS_PROXY: 'http://inherited-proxy.example.test',
+    NODE_EXTRA_CA_CERTS: '/inherited/node-ca.pem',
+    DEEPSEEK_API_KEY: 'fixture-inherited-provider-credential',
+  }) as Record<string, string | undefined>;
+  const excluded = {
+    HOME: '/unmanaged/home',
+    OPENCODE_DB: '/unmanaged/opencode.db',
+    OPENCODE_SERVER_PASSWORD: 'fixture-private-server-password',
+    TAGMA_CHAT_CONTROL_SECRET: 'fixture-private-control-token',
+    NODE_OPTIONS: '--require untrusted-runtime-hook',
+    NODE_TLS_REJECT_UNAUTHORIZED: '0',
+    NPM_CONFIG_STRICT_SSL: 'false',
+    ALL_PROXY: 'http://unregistered-proxy.example.test',
+    all_proxy: 'http://unregistered-lowercase-proxy.example.test',
+    https_PROXY: 'http://mixed-case-proxy.example.test',
+    OPENAI_API_KEY: 'fixture-non-enumerable-provider-credential',
+  };
+  for (const [key, value] of Object.entries(excluded))
+    Object.defineProperty(source, key, { value, enumerable: false });
+
+  expect(Object.keys(source)).toEqual([]);
+  expect(Object.prototype.hasOwnProperty.call(source, 'HTTPS_PROXY')).toBe(false);
+  expect(buildOpencodeInheritedEnv(source)).toEqual({});
+});

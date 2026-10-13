@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-authorized-clarification-policy-six-class-supplement",
+  "observationId": "CSR-0009",
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "scope": "harness-policy-grammar",
+  "ready": false,
+  "activated": false,
+  "liveAcceptance": "unknown",
+  "priorEvidence": {
+    "path": "architecture/quality/evidence/clarification-policy.json",
+    "sha256": "00f60da2d580d97c9491ab11a966d26469193c386b61077201967022b6f7e2e3"
+  },
+  "genericOldHelperRed": {
+    "logSha256": "29dcee862ae2978e2123bf5ab761b748d9c6e0b9fad0669e97743a4b6b6d2680",
+    "logBytes": 7244,
+    "totals": {
+      "tests": 6,
+      "pass": 0,
+      "fail": 6,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "assertionFailures": 6,
+    "importOrSyntaxFailure": false
+  },
+  "genericPortableGreen": {
+    "logSha256": "c7c006a307c32ab23c0cbc328b715db19db99a5845f351cb2b212cd2b1d93c52",
+    "logBytes": 1526,
+    "totals": {
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "assertionFailures": 0,
+    "importOrSyntaxFailure": false
+  },
+  "formattedWrapperRegression": {
+    "logSha256": "a6834510b44dff16523e24200366ceef40d342ffed202fa86f83fdf8bb812b75",
+    "logBytes": 51344,
+    "totals": {
+      "tests": 177,
+      "pass": 177,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "assertionFailures": 0,
+    "importOrSyntaxFailure": false
+  },
+  "formattedHelper": {
+    "sha256": "b098af02e4df34042fe03f5ce622dcea3370f81145f7af5b107d176c4b90904b",
+    "bytes": 11427
+  },
+  "formattedTests": {
+    "sha256": "f4fd96298550358f3818fe315960ebdfe3d4d56bfdd964d71d35bedee734d4cb",
+    "bytes": 11052
+  },
+  "publicRegressionSelections": [
+    {
+      "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "be3ba9b47eedcbb9e21e5c38147be1e4327456129596e7d90007c190a8ed1792",
+      "junitSha256": "2594e8b54809448f878d7a3c200c21cc82ed259ce8ff4098f41cf18dffa9dba3"
+    },
+    {
+      "namePattern": "^portable clarification requires exact filename and current authority$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "f0d2f48b2c029515778796dd7cd744cf70cf7a16f4775669eb866d41737c4c32",
+      "junitSha256": "916fd334f33624633d2b26375d21a420315ac53fcd0effce4db7c8232f12fe6b"
+    },
+    {
+      "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "0e8bcf5650cf2a4f340696f9e1b8742fafb8a420ee35759710a11b5cd5ff5682",
+      "junitSha256": "50c85ddd64e32feac8d0e1c12c842d67a58c00986ed32c99affbc085b4f2e58d"
+    },
+    {
+      "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "99b16ea17ea64f5e7af0ddbab3284a3c92a933a41699b47e8c22c224c0fdc3b9",
+      "junitSha256": "41806fbd01b899ff3c9fd9bd9698addf16cc1c02738308262d12d5ec3da70e63"
+    },
+    {
+      "namePattern": "^portable clarification requires source bound goal and current identity$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "d960cedfe788c970dbbe9420268f2c02cd998dc68ab68b8ba682e4be2ae451e5",
+      "junitSha256": "7d7668c2b96d0398eb0fb4a3d5642fd3320aed3e12f9d5ff94edf759dcf9a2c6"
+    },
+    {
+      "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "50b898283672780e1ded1fee28be16b90c3d4fba76ea68b32a4e18c066f3b72f",
+      "junitSha256": "fdf8ad88464a384c13e18c9a436a343e78413b5e82bbd736e493b0f4dbba539c"
+    },
+    {
+      "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "99ec87a8ac67e0760007c56e8e53b5212e37b88c3f7206992e96f1f6e3b7bc12",
+      "junitSha256": "19d6f433e21115641e9cd75582bdee97b6ca90573fbb457561b24148e1cf5716"
+    }
+  ],
+  "newGenericClasses": [
+    "Passive created-as brand-new exact-filename choice against replacing/updating the current-canvas pipeline draft",
+    "Two distinct intent options: pipeline plus explanation or one-off under the existing independently supplied user preference",
+    "Whole qualified task reference: qualifier token in authenticated case criterion, task token in the immutable original prompt and other intent option"
+  ],
+  "qualifiedReferenceOriginalPrompt": "A trusted source-inventory caller passes the optional originalPrompt argument; no untrusted question text is copied into the fixed reply. The original three-choice/simple-reference path keeps its prior API behavior.",
+  "specCorrection": "Two newly added earlier negatives assumed all three explanation/one-off/pipeline roles were mandatory. Explicit user preference authorizes the two-way semantic subset. Their exact fixture questions are retained as positive regression cases; unrelated subjects, duplicated roles, mixed instructions, source/authority/current identity negatives remain. Original43 assertions are unchanged.",
+  "unchangedGuards": [
+    "current operation identity",
+    "generation",
+    "operation version",
+    "clarification identity",
+    "waiting-for-user state",
+    "empty candidate list",
+    "independently supplied user authority",
+    "exact source/case/criterion identity",
+    "whole original filename token",
+    "single bounded question",
+    "no additional action/business question/target/suffix"
+  ],
+  "claimLimit": "Local synthetic/helper coverage only. Future live Chat continuation and publication remain unknown. This does not upgrade original real-test failures or historical coverage."
+}

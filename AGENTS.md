@@ -7,6 +7,23 @@ For live acceptance work against a supplied Tagma test set or scenario/level mat
 - Adjudicate each level by conversation rounds: one user message turn per round, and agent-mode automatic repair inside that turn is part of the same round. A clean one-round normal result — passed Trial and published bytes meeting the case's substantive criteria, with no product defect in monitoring — is a one-round pass; a manual real-workspace Run is not required. Otherwise follow the skill's defect-repair or follow-up paths. Monitor every round through the supplied Diagnostics and Chat Control APIs.
 - A confirmed Tagma-owned defect stops the matrix until repaired. After the fix, the developer restarts the local editor, the failed level is re-run from round 1 in a new workspace with fresh API instructions, and only a passing verification unlocks the next level.
 
+## Known-Issue Regression Gate
+
+- Keep `architecture/quality/known-issues.json` append-only for stable issue identities,
+  first evidence, and prior observation/fix history. Keep resolved issues and their executable
+  regressions. Unknown evidence and unresolved import gaps must remain explicit.
+- After each coherent change batch, run `bun run test:known-issues` before expanding a repair.
+  A missing mapping, failed regression, zero selected execution, selected skip/todo, or an
+  incomplete historical import blocks historical GREEN. Tooling self-tests and a current-source
+  subset are separate evidence and never establish a complete historical or live acceptance pass.
+- Use `bun run verify:guarded` for a complete historical regression gate followed by repository
+  qualification. Receipts apply only to their recorded source and catalog bytes; changed source
+  requires a new regression run. The runner must not change issue status automatically.
+- When historical archives are unavailable, preserve their unresolved inventory and use the
+  separately named `current-source-regressions.json` for independently reconstructed mechanisms.
+  Run `bun run test:current-regressions` after each repair batch in that scope. Its receipts must
+  declare `historicalCoverageComplete=false`; current-source GREEN cannot replace historical GREEN.
+
 ## Git Commit Summary Files
 
 When an agent creates a git commit in this repository:

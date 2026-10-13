@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-synthetic-permission-denial-workflow-evidence",
+  "issueId": "CSR-0010",
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "mechanism": "trusted-denial-of-current-unscoped-read",
+  "scope": "test-tool-workflow",
+  "productDefectConfirmed": false,
+  "observation": "The earlier acceptance harness leaves a read/workspace_resource request without a target summary unanswered. With an explicitly opted-in least-privilege denial policy, its normal permission.reply reject can resolve the same live request without a Stop command or additional original Send.",
+  "source": {
+    "commit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+    "legacyHarnessSha256": "467e4132381240bdf6db5dcba44ea187796f17fa5737db03c5d71a36e6fb79c2",
+    "actualProductAuthoringRuntimeSha256": "a1d4b41cb132490934173a3fc6d9bfd719e1451ae36d050c7a3868bc8f279790",
+    "actualHostInteractiveContractSha256": "c918e05c634ffe83e0030126468acaa5a69f4d3e7f13d7d133ac4aa6585001de"
+  },
+  "localExecution": {
+    "legacyHandlerSelected": 1,
+    "legacyHandlerAssertionFailures": 1,
+    "portablePolicySelected": 4,
+    "portablePolicyPassed": 4,
+    "portablePolicyExpectCalls": 32,
+    "handlerAndManagedSelected": 3,
+    "handlerAndManagedPassed": 3,
+    "handlerAndManagedExpectCalls": 23,
+    "selectedSkippedOrTodo": 0,
+    "hostContract": "First-wins deny forwards reject to the original native request and invocation.",
+    "managedFixture": "Actual Managed runtime forwards reject; the synthetic adapter continues that same invocation with an altered authenticated stage snapshot.",
+    "scopeLimit": "The adapter continuation is synthetic. Native model adaptation and real publication are not established."
+  },
+  "guards": [
+    "Exact live operation id, generation, version, pending host request id and conversation grant required.",
+    "Explicit independently supplied workflow policy required; the codes supply no path authority.",
+    "Only read/workspace_resource without any targetSummary or additional content fields is decided.",
+    "Reject must be a currently offered grant choice.",
+    "Existing exact permission rules retain precedence.",
+    "Other permissions remain undecided; once and always are never inferred.",
+    "Resolved, recovery-required, stale, foreign and duplicate requests cannot emit another decision."
+  ],
+  "knownLimits": {
+    "actualTargetScope": "UNKNOWN",
+    "exactHistoricalHostNativeRequestJoin": "UNKNOWN",
+    "displayTupleProvesContainment": false,
+    "realChatConvergence": "UNKNOWN",
+    "historicalCoverageComplete": false
+  },
+  "modelRequests": 0,
+  "productsLaunched": 0,
+  "livePermissionReplies": 0
+}

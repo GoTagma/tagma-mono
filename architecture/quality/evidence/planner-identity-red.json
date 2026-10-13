@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-synthetic-current-source-real-engine-red",
+  "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+  "observedAt": "2026-10-12T15:38:53.853433+08:00",
+  "productionChangedBeforeObservation": false,
+  "providerImplementation": "deterministic FakeOpenCode; actual Managed staging, Trial issuance, SQLite persistence and AuthoringEngine",
+  "paidModelRequests": 0,
+  "sourceBinding": [
+    {
+      "path": "apps/editor/tests/chat-operation-v2-authoring-runtime.test.ts",
+      "sha256": "2b9dcdd04d29a6dcf8b61e6a3988bb37d3dec96f3629da0c01309c0b0b8849db"
+    },
+    {
+      "path": "apps/editor/server/chat-operations/authoring.ts",
+      "sha256": "a3c4ed334be6e6ae2fced63fa15cb2859a27effc7de829b7f314ac816e41a051"
+    },
+    {
+      "path": "apps/editor/server/chat-operations/authoring-runtime.ts",
+      "sha256": "a1d4b41cb132490934173a3fc6d9bfd719e1451ae36d050c7a3868bc8f279790"
+    },
+    {
+      "path": "apps/editor/server/chat-pipeline-trial-run.ts",
+      "sha256": "ab45fa65eb32677763e106848ab5a2a85166421c4ec68c64c3edd9462789a361"
+    }
+  ],
+  "execution": {
+    "selected": 4,
+    "pass": 2,
+    "fail": 2,
+    "expectCalls": 56,
+    "exitCode": 1,
+    "planning": 2,
+    "pipelineRepair": 2
+  },
+  "cases": [
+    {
+      "selector": "real Engine planner identity across the second frozen slot no-tool completed planner receives one fresh second-slot attempt with identical full feedback",
+      "outcome": "assertion_failure",
+      "assertion": "second actual Trial attempt identity must differ"
+    },
+    {
+      "selector": "real Engine planner identity across the second frozen slot uncounted native validation rejection receives a fresh second-slot attempt and complete rejection",
+      "outcome": "assertion_failure",
+      "assertion": "second actual Trial attempt identity must differ"
+    },
+    {
+      "selector": "real Engine planner identity across the second frozen slot counted invalid commits keep ordinal identity and stop at two original submissions",
+      "outcome": "pass",
+      "assertion": "counted commit and length-continuation fences remain valid"
+    },
+    {
+      "selector": "real Engine planner identity across the second frozen slot output-length continuation retains the same counted attempt and cannot commit again",
+      "outcome": "pass",
+      "assertion": "counted commit and length-continuation fences remain valid"
+    }
+  ],
+  "actualCounterexamples": [
+    {
+      "mode": "no-tool",
+      "equalFirstAndSecondAttemptId": "trial-00839fe2a622d7e4cc1c9800e1bbe88d5e6ddad8"
+    },
+    {
+      "mode": "uncounted-validation",
+      "equalFirstAndSecondAttemptId": "trial-114764515cca0444799e1b7b71872313e515c4dd"
+    }
+  ],
+  "cause": "Eligible uncounted local reread did not pass durable verificationAttemptVersion; same Trial identity produced the same attemptId, which the Engine correctly refused for the next planner slot.",
+  "historicalRoundCauseAuthenticated": false,
+  "realChatAcceptance": false,
+  "testIntegrity": "Original assertions retained; helper preserves commitCalls getter; second real Trial identity equality is observed directly."
+}

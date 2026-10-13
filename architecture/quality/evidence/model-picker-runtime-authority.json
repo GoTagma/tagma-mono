@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-model-picker-runtime-membership-red-green",
+  "observationVerified": true,
+  "genericCauseConfirmed": true,
+  "sourceRevisionMeaning": "Exact old and corrected public file bytes in a working tree; HEAD alone is not qualification.",
+  "oldProductionSource": {
+    "path": "apps/editor/src/store/chat-provider-catalog.ts",
+    "sha256": "7290e0de6ce19ecbb66fba73eaffbde29ed90d4e36c688153e378fc9f13cf7ee",
+    "bytes": 10420
+  },
+  "correctedPublicFiles": [
+    {
+      "path": "apps/editor/src/store/chat-provider-catalog.ts",
+      "sha256": "39f0a287dde02e1d0f96b2f78514b5700954ed9fa59a2815ffc902eb61fa800e",
+      "bytes": 10906
+    },
+    {
+      "path": "apps/editor/tests/chat-provider-state.test.ts",
+      "sha256": "cc0aeebb846a34c29c63877d132abba98cc68428b4e28a95649ab14f2650cbb5",
+      "bytes": 15914
+    }
+  ],
+  "actualEvidenceBindings": {
+    "rootProof": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/root-red-green.actual.json",
+      "sha256": "4bc6d77011842169c85af871208246643b94d146ece1ca4db18652510dfae8b9",
+      "bytes": 4235
+    },
+    "redLog": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/old-production-red.actual.log",
+      "sha256": "e0ffd9bd10f99c3ea822cc12a84b8c46efe29d0ca19bdf31e104da0da53d15c3",
+      "bytes": 3330
+    },
+    "redJUnit": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/old-production-red.actual.xml",
+      "sha256": "716084e4e15922a74f923daeadd32d3d4e2e82bfb94aeeafa853d84e56c6488d",
+      "bytes": 2805
+    },
+    "redProcess": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/old-production-red.process-result.actual.json",
+      "sha256": "b23623a5f17a87e4407fab67e737b46f2fcacc7b0c9ba94f6c8f0481fa7f3a02",
+      "bytes": 623
+    },
+    "greenLog": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/new-production-all-history-green.actual.log",
+      "sha256": "9d16cf16fb6aa1fe0096496fdb5da888415ce45c868223acf3a7ef9a6498d1c3",
+      "bytes": 1363
+    },
+    "greenJUnit": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/new-production-all-history-green.actual.xml",
+      "sha256": "d4bb8d2d4fc8b488da942b0bed0c4d5dd251a6c627a10877e26fc8b2d9bbf84b",
+      "bytes": 2492
+    },
+    "greenProcess": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/new-production-all-history-green.process-result.actual.json",
+      "sha256": "4f6e4c9b9b586fedd4fb6360bc05a12a9caae74c0558794bdaebc1c17ddd89a5",
+      "bytes": 1679
+    },
+    "productionPatch": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/production-only.prepared.patch",
+      "sha256": "eb28059ae6608aa1776eadb0753bc3e2fc48d39c806f4fb980f3f6f84c2fbd42",
+      "bytes": 1191
+    },
+    "testOnlyPatch": {
+      "path": "work/handoff-resume-20261012/model-picker-runtime-authority/test-only.prepared.patch",
+      "sha256": "0efef738f632ec291a88360500b1b34b9466de1337409d1893711889e16715e8",
+      "bytes": 6113
+    }
+  },
+  "selectedOldProduction": {
+    "executed": 4,
+    "assertionFailures": 3,
+    "pass": 1,
+    "selectedSkipTodoOrImportFailures": 0,
+    "unselectedFilteredJUnitCases": 6,
+    "environmentFailure": false
+  },
+  "correctedWholeTestFile": {
+    "executed": 10,
+    "pass": 10,
+    "fail": 0,
+    "skip": 0,
+    "retainedLegacyTests": 6,
+    "newMappedTests": 4
+  },
+  "selectors": [
+    {
+      "fullName": "model-picker-runtime-authority excludes catalog-only models from an otherwise configured provider",
+      "oldAssertionFailure": true,
+      "correctedPass": true
+    },
+    {
+      "fullName": "model-picker-runtime-authority retains runtime-only models and their configured variants beside V2 metadata",
+      "oldAssertionFailure": true,
+      "correctedPass": true
+    },
+    {
+      "fullName": "model-picker-runtime-authority keeps an empty configured model inventory empty despite advertised catalog models",
+      "oldAssertionFailure": true,
+      "correctedPass": true
+    },
+    {
+      "fullName": "model-picker-runtime-authority preserves standalone catalog projection and explicit empty-runtime authority",
+      "oldAssertionFailure": false,
+      "correctedPass": true
+    }
+  ],
+  "cause": "With a supplied configured runtime provider map, provider-only catalog filtering admitted catalog-only model IDs and omitted configured runtime-only model IDs. Exact per-model runtime membership and runtime-only preservation align the picker with the unchanged Host admission guard.",
+  "scope": "Actual existing renderer/Host provider-state helpers with deterministic local metadata; no model or provider requests.",
+  "realR3SpecificCause": "UNKNOWN",
+  "realFreeModelAvailability": "UNKNOWN",
+  "historicalCauseAuthenticated": false,
+  "realChatAcceptance": false,
+  "modelRequests": 0,
+  "credentialEnvironmentInherited": false,
+  "hostConfiguredModelGuardChanged": false,
+  "datasetSpecificProductionBranches": 0,
+  "currentSourceWholeBaseline": "PENDING_29_SELECTOR_ROOT_EXECUTION",
+  "full13CompilationAndNewRuntimeAcceptance": "PENDING_NOT_CLAIMED"
+}

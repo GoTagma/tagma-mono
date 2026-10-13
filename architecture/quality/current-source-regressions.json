@@ -1,0 +1,2078 @@
+{
+  "schemaVersion": 1,
+  "scope": "current-source",
+  "historicalCoverageComplete": false,
+  "importComplete": true,
+  "importMeaning": "The nine explicitly recorded current-source mechanisms/guard contracts and their 36 exact executable selectors are mapped. Original records and history are retained; this is not a recovered historical catalog import.",
+  "sourceCommitAtInitialObservation": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+  "sources": [
+    {
+      "id": "initial-current-source-observations",
+      "path": "architecture/quality/evidence/current-source-initial-observations.json",
+      "sha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+      "role": "local-synthetic-current-source"
+    },
+    {
+      "id": "current-planner-identity-engine-red",
+      "path": "architecture/quality/evidence/planner-identity-red.json",
+      "sha256": "92a1586b1dec837aadbefff8adab99dbfb274872427055b965ea6812ea8b149a"
+    },
+    {
+      "id": "current-descendant-test-observer",
+      "path": "architecture/quality/evidence/descendant-observer.json",
+      "sha256": "194b0140c7c01c35bd9c7bb84adedc82413b61b0e4e8a4fe2bc9d76a4b88add1"
+    },
+    {
+      "id": "current-managed-host-proxy-inheritance",
+      "path": "architecture/quality/evidence/proxy-inheritance.json",
+      "sha256": "75a1b2557eb75a428fe62b74c9c5fb21e66d786bc11d73713094d9c3c640fba3"
+    },
+    {
+      "id": "current-model-picker-runtime-authority",
+      "path": "architecture/quality/evidence/model-picker-runtime-authority.json",
+      "sha256": "b6dbc7e27ce3f64b7ed754fac84c717a055be0df49f3fe2a44afbc918dde5f94",
+      "role": "local-public-helper-red-green"
+    },
+    {
+      "id": "current-authorized-clarification-policy",
+      "path": "architecture/quality/evidence/clarification-policy.json",
+      "sha256": "00f60da2d580d97c9491ab11a966d26469193c386b61077201967022b6f7e2e3",
+      "role": "local-public-helper-red-green"
+    },
+    {
+      "id": "current-authorized-clarification-policy-r3",
+      "path": "architecture/quality/evidence/clarification-policy-r3.json",
+      "sha256": "43647befcb72b3772d37626a84bc690fe1a6dbed1f32c2774d0de5500fd28cdb",
+      "role": "local-public-helper-red-green"
+    },
+    {
+      "id": "current-authorized-clarification-policy-r4-entrypoint",
+      "path": "architecture/quality/evidence/clarification-policy-r4.json",
+      "sha256": "3fb0ee9777f436ee95f7bf3ef39cd5eca2fcb2b268aaf111c6576a4d5e03cb72",
+      "role": "local-test-runner-integration"
+    },
+    {
+      "id": "current-permission-denial-workflow",
+      "path": "architecture/quality/evidence/permission-denial-policy.json",
+      "sha256": "6289f900fcd96cf8e733063076d3596416a65df0ccfaeb4b00231fd7d8e9f3dd",
+      "role": "local-public-policy-and-host-contract-red-green"
+    },
+    {
+      "id": "current-permission-denial-id-types",
+      "path": "architecture/quality/evidence/permission-denial-policy-id-types.json",
+      "sha256": "07159474230ce01de12328ac472aba26529a3c64ad26d7281ce3ee686fd7f6dd",
+      "role": "local-public-harness-id-type-hardening-red-green"
+    },
+    {
+      "id": "current-authorized-clarification-real-cases",
+      "path": "architecture/quality/evidence/clarification-policy-real-cases.json",
+      "sha256": "29f816068f16f7b1ab9c20a142eebf30f2b1af46b7c3e84235c4f58ea7be2ab4",
+      "role": "unchanged-real-r6-case-links"
+    },
+    {
+      "id": "current-installed-qualification-command-capture",
+      "path": "architecture/quality/evidence/qualification-command-capture.json",
+      "sha256": "583aa4fc78138cec0e068518e0fcfc447c0551435b3d5c6edca10b48987cbe8d",
+      "role": "local-installed-test-tool-red-green-and-adoption"
+    },
+    {
+      "id": "current-authorized-clarification-r7-installed-grammar",
+      "path": "architecture/quality/evidence/clarification-policy-r7-grammar.json",
+      "sha256": "a91547b52c97d7458939ae317741f66f5636926a479ae4f59c47d58e617fe2a3",
+      "role": "local-genuine-harness-boundary-and-installed-public-guard-proof"
+    },
+    {
+      "id": "current-root-clarification-choice-broker",
+      "path": "architecture/quality/evidence/root-clarification-choice-broker.json",
+      "sha256": "d77174065eaa7c5d0764beb40f3944d55edb451b7dca19dce292f82e82e32371",
+      "role": "local-public-workflow-contract-red-green"
+    },
+    {
+      "path": "architecture/quality/evidence/native-core-rejection-coordinates.json",
+      "sha256": "a7eb63629bcd47005b684d4ae5ebf1adfda2ee545b6b1636333f341483e7f22d",
+      "id": "current-native-core-rejection-coordinates",
+      "role": "actual-generated-native-tool-local-assertion-red-green"
+    },
+    {
+      "path": "architecture/quality/evidence/native-core-rejection-coordinates-installed62.json",
+      "sha256": "cd910acdec3ff5c7941b2f2b4b8c5f801f473d5bde7b7cafd9e600ff059e28f9",
+      "id": "current-native-core-rejection-coordinates-installed62",
+      "role": "later-public-installation-and-whole-current-source-gate"
+    }
+  ],
+  "issues": [
+    {
+      "id": "CSR-0001",
+      "lineage": [],
+      "title": "Complete zero-commit rejection can authorize bounded planning correction",
+      "category": "product-contract",
+      "mechanism": "trial-plan-rejection-admission-guard",
+      "observationVerified": "verified",
+      "causeConfirmed": "unknown",
+      "firstEvidence": {
+        "sourceId": "initial-current-source-observations",
+        "round": "current-source-initial",
+        "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "acceptancePolicy": "local-synthetic-guard-contract-v1",
+        "path": "architecture/quality/evidence/current-source-initial-observations.json",
+        "sha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "role": "local-synthetic-current-source",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "observationId": "CSR-0001"
+      },
+      "history": [
+        {
+          "kind": "observed-local-contract-pass",
+          "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+          "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+          "observationId": "CSR-0001",
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "outputGroup": 0,
+          "outputSha256": "edacf28332a4ae7b475a7201313cd03b2e2da8dd7afc9784f2d23ce0afec8541",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 1,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "guarded-contract",
+      "fixes": [],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+          "namePattern": "^complete rejection with distinct planning and commit counters zero consumed commits can authorize one bounded planning correction$",
+          "expectedTests": 1,
+          "fullName": "complete rejection with distinct planning and commit counters zero consumed commits can authorize one bounded planning correction"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "observed-local-contract-pass",
+        "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+        "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "observationId": "CSR-0001",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "outputGroup": 0,
+        "outputSha256": "edacf28332a4ae7b475a7201313cd03b2e2da8dd7afc9784f2d23ce0afec8541",
+        "actualExecutedTests": 1,
+        "actualPassedTests": 1,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "current-source",
+        "liveAcceptance": false
+      },
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
+      "contract": "A complete rejection with zero consumed commits and zero validation rejections can authorize a correction within the original planning budget. This guard does not derive an Engine attempt ID.",
+      "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
+    },
+    {
+      "id": "CSR-0002",
+      "lineage": [],
+      "title": "No-progress evidence rejects invented counters and changed request identity",
+      "category": "product-contract",
+      "mechanism": "no-progress-evidence-validation-guard",
+      "observationVerified": "verified",
+      "causeConfirmed": "unknown",
+      "firstEvidence": {
+        "sourceId": "initial-current-source-observations",
+        "round": "current-source-initial",
+        "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "acceptancePolicy": "local-synthetic-guard-contract-v1",
+        "path": "architecture/quality/evidence/current-source-initial-observations.json",
+        "sha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "role": "local-synthetic-current-source",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "observationId": "CSR-0002"
+      },
+      "history": [
+        {
+          "kind": "observed-local-contract-pass",
+          "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+          "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+          "observationId": "CSR-0002",
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "outputGroup": 0,
+          "outputSha256": "edacf28332a4ae7b475a7201313cd03b2e2da8dd7afc9784f2d23ce0afec8541",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 1,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "guarded-contract",
+      "fixes": [],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-bounded-feedback-convergence.test.ts",
+          "namePattern": "^no-progress metadata stays separate from rejection telemetry rejects invented zero counters, unknown fields and a different original request digest$",
+          "expectedTests": 1,
+          "fullName": "no-progress metadata stays separate from rejection telemetry rejects invented zero counters, unknown fields and a different original request digest"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "observed-local-contract-pass",
+        "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+        "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "observationId": "CSR-0002",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "outputGroup": 0,
+        "outputSha256": "edacf28332a4ae7b475a7201313cd03b2e2da8dd7afc9784f2d23ce0afec8541",
+        "actualExecutedTests": 1,
+        "actualPassedTests": 1,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "current-source",
+        "liveAcceptance": false
+      },
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
+      "contract": "No-progress context accepts its exact original request digest and rejects added commit counters, unknown fields, changed attempt identity, and invalid digests. This guard does not prove a real Engine second-slot invocation.",
+      "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
+    },
+    {
+      "id": "CSR-0003",
+      "lineage": [],
+      "title": "Semantic review rejection preserves evidence and counts exactly one native commit",
+      "category": "product-contract",
+      "mechanism": "native-tool-semantic-rejection-accounting",
+      "observationVerified": "verified",
+      "causeConfirmed": "unknown",
+      "firstEvidence": {
+        "sourceId": "initial-current-source-observations",
+        "round": "current-source-initial",
+        "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "acceptancePolicy": "local-synthetic-guard-contract-v1",
+        "path": "architecture/quality/evidence/current-source-initial-observations.json",
+        "sha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "role": "local-synthetic-current-source",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "observationId": "CSR-0003"
+      },
+      "history": [
+        {
+          "kind": "observed-local-contract-pass",
+          "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+          "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+          "observationId": "CSR-0003",
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "outputGroup": 1,
+          "outputSha256": "faf26134f38a130513cbb82ff872e6fba27120ccc0b4058d2c4a5f7d6abfe9fa",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 1,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "guarded-contract",
+      "fixes": [],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "namePattern": "^semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt$",
+          "expectedTests": 1,
+          "fullName": "semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "observed-local-contract-pass",
+        "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+        "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "observationId": "CSR-0003",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "outputGroup": 1,
+        "outputSha256": "faf26134f38a130513cbb82ff872e6fba27120ccc0b4058d2c4a5f7d6abfe9fa",
+        "actualExecutedTests": 1,
+        "actualPassedTests": 1,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "current-source",
+        "liveAcceptance": false
+      },
+      "relatedHistoricalIssues": [
+        "TQ-0001",
+        "TQ-0011"
+      ],
+      "contract": "The installed native tool fixture records one full semantic evidenceReview rejection, rejects no original assertion, and accepts the fixture-supplied distinct second Host attempt. Distinct attempt IDs are supplied by the test rather than derived by the product Engine.",
+      "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
+    },
+    {
+      "id": "CSR-0004",
+      "lineage": [],
+      "title": "Blocked core witness requires a blocking diagnostic and cannot establish green coverage",
+      "category": "product-contract",
+      "mechanism": "blocked-core-witness-guard",
+      "observationVerified": "verified",
+      "causeConfirmed": "unknown",
+      "firstEvidence": {
+        "sourceId": "initial-current-source-observations",
+        "round": "current-source-initial",
+        "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "acceptancePolicy": "local-synthetic-guard-contract-v1",
+        "path": "architecture/quality/evidence/current-source-initial-observations.json",
+        "sha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "role": "local-synthetic-current-source",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "observationId": "CSR-0004"
+      },
+      "history": [
+        {
+          "kind": "observed-local-contract-pass",
+          "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+          "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+          "observationId": "CSR-0004",
+          "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+          "outputGroup": 2,
+          "outputSha256": "82583d4f6034372fea976160249c3dfa2470c889fd8e43cb9aa8286b22722e17",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 1,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "guarded-contract",
+      "fixes": [],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-witness.test.ts",
+          "namePattern": "^blocked core requires an existing blocking diagnostic and is never green coverage$",
+          "expectedTests": 1,
+          "fullName": "blocked core requires an existing blocking diagnostic and is never green coverage"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "observed-local-contract-pass",
+        "evidencePath": "architecture/quality/evidence/current-source-initial-observations.json",
+        "evidenceSha256": "669e5fc67d10bbe113e78be07903d1563d7deb09ac915ec0ce01cfc5099c547f",
+        "observationId": "CSR-0004",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "outputGroup": 2,
+        "outputSha256": "82583d4f6034372fea976160249c3dfa2470c889fd8e43cb9aa8286b22722e17",
+        "actualExecutedTests": 1,
+        "actualPassedTests": 1,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "current-source",
+        "liveAcceptance": false
+      },
+      "relatedHistoricalIssues": [
+        "TQ-0003",
+        "TQ-0004"
+      ],
+      "contract": "A blocked core witness fails without a blocking diagnostic-only finding; adding that finding preserves a blocking plan diagnostic. This does not make dynamic content observable or prove navigation repair.",
+      "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
+    },
+    {
+      "id": "CSR-0005",
+      "lineage": [],
+      "title": "Eligible uncounted planner reread reuses the actual Trial identity",
+      "category": "product",
+      "mechanism": "trial-planner-attempt-identity",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-planner-identity-engine-red",
+        "round": "synthetic-engine-red-20261012",
+        "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "acceptancePolicy": "current-source real Engine local regression; no real Chat acceptance",
+        "path": "architecture/quality/evidence/planner-identity-red.json",
+        "sha256": "92a1586b1dec837aadbefff8adab99dbfb274872427055b965ea6812ea8b149a"
+      },
+      "history": [
+        {
+          "event": "current-source-confirmed",
+          "evidenceSha256": "92a1586b1dec837aadbefff8adab99dbfb274872427055b965ea6812ea8b149a",
+          "actualSelectedTests": 4,
+          "pass": 2,
+          "fail": 2
+        },
+        {
+          "event": "current-source-local-regression-green",
+          "receiptSha256": "25991c6aa3f65fabc5aaa716e9f24ae157f1782d43a5191e7c910a8da25bf1df",
+          "currentSourceRegressionsExecuted": 8,
+          "result": "pass",
+          "realChatAcceptance": false
+        }
+      ],
+      "status": "guarded-local-awaiting-real-chat",
+      "fixes": [
+        {
+          "id": "planner-identity-durable-verification-version",
+          "scope": "eligible no-progress / authenticated zero-count local reread only",
+          "productPath": "apps/editor/server/chat-operations/authoring.ts",
+          "productSha256": "b5ffe344ecf86773a06d2a1db8daefde9c10664f101c6e34c95131971cd119ce",
+          "patchSha256": "c8b42ee040087c682776d62e8c0b61d76c3212347b76d169f53ed991ecaa3c7a",
+          "planningBudget": 2,
+          "repairBudget": 2,
+          "liveVerified": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring-runtime.test.ts",
+          "namePattern": "^real Engine planner identity across the second frozen slot no-tool completed planner receives one fresh second-slot attempt with identical full feedback$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring-runtime.test.ts",
+          "namePattern": "^real Engine planner identity across the second frozen slot uncounted native validation rejection receives a fresh second-slot attempt and complete rejection$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring-runtime.test.ts",
+          "namePattern": "^real Engine planner identity across the second frozen slot counted invalid commits keep ordinal identity and stop at two original submissions$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring-runtime.test.ts",
+          "namePattern": "^real Engine planner identity across the second frozen slot output-length continuation retains the same counted attempt and cannot commit again$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
+      "historicalLineageAuthenticated": false,
+      "lastExecution": {
+        "path": "work/handoff-resume-20261012/current-baseline-identity-green-v1.json",
+        "sha256": "25991c6aa3f65fabc5aaa716e9f24ae157f1782d43a5191e7c910a8da25bf1df",
+        "executed": 4,
+        "result": "pass",
+        "scope": "local-real-engine"
+      }
+    },
+    {
+      "id": "CSR-0006",
+      "lineage": [],
+      "title": "Linux exited descendants can be misclassified as executing by the test observer",
+      "category": "test-tool",
+      "mechanism": "process-liveness-observation",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-descendant-test-observer",
+        "round": "full13-attempt1-20261012",
+        "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd + independently recorded identity repair",
+        "acceptancePolicy": "local descendant heartbeat and execution-state regression; original termination timing UNKNOWN",
+        "path": "architecture/quality/evidence/descendant-observer.json",
+        "sha256": "194b0140c7c01c35bd9c7bb84adedc82413b61b0e4e8a4fe2bc9d76a4b88add1"
+      },
+      "history": [
+        {
+          "event": "test-observer-gap-confirmed",
+          "originalTestFailures": 2,
+          "timelyProductTerminationInOriginalWindow": "UNKNOWN"
+        },
+        {
+          "event": "test-observer-only-local-green",
+          "executed": 2,
+          "pass": 2,
+          "allOriginalAssertionsRetained": true
+        }
+      ],
+      "status": "guarded-local-test-observer",
+      "fixes": [
+        {
+          "scope": "test-only Linux explicit Z/X execution state; no production process cleanup change",
+          "path": "packages/runtime-bun/src/bun-process-runner.test.ts",
+          "patchSha256": "cd99e0eb9cb88e32aeffbeae99f28fdb779e155d3b248b3e5547c2285a7c2ba4"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "packages/runtime-bun",
+          "file": "src/bun-process-runner.test.ts",
+          "namePattern": "^runSpawn timeout terminates the descendant process tree$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "packages/runtime-bun",
+          "file": "src/bun-process-runner.test.ts",
+          "namePattern": "^runSpawn external abort terminates the descendant process tree$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "productionTerminationDefectConfirmed": false
+    },
+    {
+      "id": "CSR-0007",
+      "lineage": [],
+      "title": "Managed OpenCode omitted own-readable non-enumerable Host proxy keys",
+      "category": "product",
+      "mechanism": "managed-host-fixed-environment-inheritance",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-managed-host-proxy-inheritance",
+        "round": "local-bun-counterexample-20261012",
+        "sourceRevision": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "acceptancePolicy": "configured environment boundary and privacy regressions; no provider/model requests",
+        "path": "architecture/quality/evidence/proxy-inheritance.json",
+        "sha256": "75a1b2557eb75a428fe62b74c9c5fb21e66d786bc11d73713094d9c3c640fba3"
+      },
+      "history": [
+        {
+          "event": "confirmed-current-source-assertion-red",
+          "executed": 2,
+          "pass": 1,
+          "fail": 1
+        },
+        {
+          "event": "fixed-current-source-local-green",
+          "hostEnvPassed": 4,
+          "originalBrokerLegacyPassed": 11,
+          "liveAcceptance": false
+        },
+        {
+          "event": "typescript-compatibility-correction",
+          "scope": "Object.prototype.hasOwnProperty.call and explicitly string-typed expected credential; existing invariant and assertions retained",
+          "productSha256": "e3346fd0e1d6b5f892adb4f5152a95876d04399ead70c96aa646be210ef9ba4a"
+        }
+      ],
+      "status": "guarded-local-awaiting-real-chat",
+      "fixes": [
+        {
+          "scope": "direct own-property lookup over unchanged fixed Host allowlist; enumerable provider prefixes unchanged",
+          "productPath": "apps/editor/server/opencode-host-env.ts",
+          "patchSha256": "91cbb1d79418cd7cb73b6385aed928e6aff25d03256848c5575721e8b3a1e83a",
+          "allExistingAssertionsRetained": true
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-host-env.test.ts",
+          "namePattern": "^managed OpenCode inherits configured provider authentication and network trust$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-host-env.test.ts",
+          "namePattern": "^managed OpenCode does not inherit unrelated process authority or weaken TLS$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-host-env.test.ts",
+          "namePattern": "^managed OpenCode inherits non-enumerable fixed host network keys$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-host-env.test.ts",
+          "namePattern": "^managed OpenCode keeps non-enumerable private authority and inherited settings outside its host boundary$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^broker managed CLI commands inherits provider authentication, proxy routing and configured CA trust$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^broker managed CLI commands keeps authored overrides authoritative and ordinary command environments minimal$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^broker managed CLI commands supports Core secret-command spawns with task secret precedence and sealed isolation$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^broker managed CLI commands redacts inherited and task credentials across stdout/stderr chunk boundaries$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^broker managed CLI commands redacts malformed authenticated proxy values and separately reported credentials$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^legacy managed CLI commands inherits provider authentication, proxy routing and configured CA trust$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^legacy managed CLI commands keeps authored overrides authoritative and ordinary command environments minimal$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^legacy managed CLI commands supports Core secret-command spawns with task secret precedence and sealed isolation$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^legacy managed CLI commands redacts inherited and task credentials across stdout/stderr chunk boundaries$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^legacy managed CLI commands redacts malformed authenticated proxy values and separately reported credentials$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-command-env.test.ts",
+          "namePattern": "^managed CLI credentials stay redacted in live chunks, result tails and persisted files$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": null,
+      "currentPatchCiStatus": "NOT_RUN"
+    },
+    {
+      "id": "CSR-0008",
+      "lineage": [],
+      "title": "Model picker admits catalog-only models and omits configured runtime-only models",
+      "category": "product",
+      "mechanism": "model-picker-exact-runtime-model-membership",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-model-picker-runtime-authority",
+        "round": "local-public-helper-red-green-20261012",
+        "sourceRevision": "sha256:7290e0de6ce19ecbb66fba73eaffbde29ed90d4e36c688153e378fc9f13cf7ee",
+        "acceptancePolicy": "Exact renderer/Host configured-model helper regression; no real Chat or provider acceptance",
+        "path": "architecture/quality/evidence/model-picker-runtime-authority.json",
+        "sha256": "b6dbc7e27ce3f64b7ed754fac84c717a055be0df49f3fe2a44afbc918dde5f94"
+      },
+      "history": [
+        {
+          "event": "confirmed-current-source-assertion-red",
+          "evidenceSha256": "b6dbc7e27ce3f64b7ed754fac84c717a055be0df49f3fe2a44afbc918dde5f94",
+          "actualSelectedTests": 4,
+          "assertionFailures": 3,
+          "pass": 1,
+          "selectedSkipTodoOrImportFailures": 0,
+          "unselectedFilteredJUnitCases": 6
+        },
+        {
+          "event": "corrected-current-source-helper-file-green",
+          "evidenceSha256": "b6dbc7e27ce3f64b7ed754fac84c717a055be0df49f3fe2a44afbc918dde5f94",
+          "executed": 10,
+          "pass": 10,
+          "retainedLegacyTests": 6,
+          "newMappedTests": 4,
+          "liveAcceptance": false
+        }
+      ],
+      "status": "guarded-local-awaiting-real-chat",
+      "fixes": [
+        {
+          "scope": "Exact configured runtime model membership; preserve runtime-only models and existing metadata/variants; Host admission unchanged",
+          "productPath": "apps/editor/src/store/chat-provider-catalog.ts",
+          "productSha256": "39f0a287dde02e1d0f96b2f78514b5700954ed9fa59a2815ffc902eb61fa800e",
+          "patchSha256": "eb28059ae6608aa1776eadb0753bc3e2fc48d39c806f4fb980f3f6f84c2fbd42",
+          "testPatchSha256": "0efef738f632ec291a88360500b1b34b9466de1337409d1893711889e16715e8",
+          "allExistingAssertionsRetained": true,
+          "liveVerified": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-provider-state.test.ts",
+          "namePattern": "^model-picker-runtime-authority excludes catalog-only models from an otherwise configured provider$",
+          "expectedTests": 1,
+          "fullName": "model-picker-runtime-authority excludes catalog-only models from an otherwise configured provider"
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-provider-state.test.ts",
+          "namePattern": "^model-picker-runtime-authority retains runtime-only models and their configured variants beside V2 metadata$",
+          "expectedTests": 1,
+          "fullName": "model-picker-runtime-authority retains runtime-only models and their configured variants beside V2 metadata"
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-provider-state.test.ts",
+          "namePattern": "^model-picker-runtime-authority keeps an empty configured model inventory empty despite advertised catalog models$",
+          "expectedTests": 1,
+          "fullName": "model-picker-runtime-authority keeps an empty configured model inventory empty despite advertised catalog models"
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-provider-state.test.ts",
+          "namePattern": "^model-picker-runtime-authority preserves standalone catalog projection and explicit empty-runtime authority$",
+          "expectedTests": 1,
+          "fullName": "model-picker-runtime-authority preserves standalone catalog projection and explicit empty-runtime authority"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "local-public-helper-file-green",
+        "evidencePath": "architecture/quality/evidence/model-picker-runtime-authority.json",
+        "evidenceSha256": "b6dbc7e27ce3f64b7ed754fac84c717a055be0df49f3fe2a44afbc918dde5f94",
+        "wholeFileExecuted": 10,
+        "wholeFilePassed": 10,
+        "mappedSelectorsExecuted": 4,
+        "mappedSelectorsPassed": 4,
+        "scope": "current-source",
+        "liveAcceptance": false
+      },
+      "realR3SpecificCause": "UNKNOWN",
+      "realFreeModelAvailability": "UNKNOWN",
+      "claimLimit": "Generic mechanical cause confirmed by actual assertion RED/GREEN. This does not confirm the specific real R3 admission cause, free model availability, full current-source gate, or full original12 acceptance."
+    },
+    {
+      "id": "CSR-0009",
+      "lineage": [
+        "RUI-0013"
+      ],
+      "title": "Authorized pipeline clarifications omitted equivalent named-file and intent-choice wording",
+      "category": "test-tool",
+      "mechanism": "authorized-clarification-policy-grammar",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-authorized-clarification-policy",
+        "round": "current-source-clarification-preparation",
+        "sourceRevision": "CSR0008-frozen-product-plus-future-helper-proposal",
+        "acceptancePolicy": "explicit-user-authority-current-clarification-local-v1",
+        "path": "architecture/quality/evidence/clarification-policy.json",
+        "sha256": "00f60da2d580d97c9491ab11a966d26469193c386b61077201967022b6f7e2e3",
+        "role": "local-public-helper-red-green",
+        "observationId": "CSR-0009"
+      },
+      "history": [
+        {
+          "kind": "prepared-local-causal-red-green",
+          "evidencePath": "architecture/quality/evidence/clarification-policy.json",
+          "evidenceSha256": "00f60da2d580d97c9491ab11a966d26469193c386b61077201967022b6f7e2e3",
+          "actualRedExecutedTests": 4,
+          "actualRedFailedTests": 4,
+          "actualGreenExecutedTests": 7,
+          "actualGreenPassedTests": 7,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "prepared-six-class-causal-red-green-formatted-source",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r3.json",
+          "evidenceSha256": "43647befcb72b3772d37626a84bc690fe1a6dbed1f32c2774d0de5500fd28cdb",
+          "actualRedExecutedTests": 6,
+          "actualRedFailedTests": 6,
+          "actualGreenExecutedTests": 7,
+          "actualGreenPassedTests": 7,
+          "actualWrappedRegressionExecutedTests": 177,
+          "actualWrappedRegressionPassedTests": 177,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "prepared-test-entrypoint-migration-and-nonempty-standard-discovery",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r4.json",
+          "evidenceSha256": "3fb0ee9777f436ee95f7bf3ef39cd5eca2fcb2b268aaf111c6576a4d5e03cb72",
+          "actualGreenExecutedTests": 7,
+          "actualGreenPassedTests": 7,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "test-runner-integration",
+          "liveAcceptance": false,
+          "previousRegressions": [
+            {
+              "cwd": ".",
+              "file": "scripts/chat-clarification-policy.test.mjs",
+              "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+              "expectedTests": 1,
+              "fullName": "portable clarification accepts named and located new pipeline alternatives"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/chat-clarification-policy.test.mjs",
+              "namePattern": "^portable clarification requires exact filename and current authority$",
+              "expectedTests": 1,
+              "fullName": "portable clarification requires exact filename and current authority"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/chat-clarification-policy.test.mjs",
+              "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+              "expectedTests": 1,
+              "fullName": "portable clarification rejects mixed named questions and populated candidates"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/chat-clarification-policy.test.mjs",
+              "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+              "expectedTests": 1,
+              "fullName": "portable clarification accepts three distinct intent alternatives in any order"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/chat-clarification-policy.test.mjs",
+              "namePattern": "^portable clarification requires source bound goal and current identity$",
+              "expectedTests": 1,
+              "fullName": "portable clarification requires source bound goal and current identity"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/chat-clarification-policy.test.mjs",
+              "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+              "expectedTests": 1,
+              "fullName": "portable clarification rejects unrelated or ambiguous intent alternatives"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/chat-clarification-policy.test.mjs",
+              "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+              "expectedTests": 1,
+              "fullName": "portable clarification requires independent caller source and authority configuration"
+            }
+          ],
+          "currentRegressions": [
+            {
+              "cwd": ".",
+              "file": "scripts/lib/chat-clarification-policy.test.ts",
+              "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+              "expectedTests": 1,
+              "fullName": "portable clarification accepts named and located new pipeline alternatives"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/lib/chat-clarification-policy.test.ts",
+              "namePattern": "^portable clarification requires exact filename and current authority$",
+              "expectedTests": 1,
+              "fullName": "portable clarification requires exact filename and current authority"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/lib/chat-clarification-policy.test.ts",
+              "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+              "expectedTests": 1,
+              "fullName": "portable clarification rejects mixed named questions and populated candidates"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/lib/chat-clarification-policy.test.ts",
+              "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+              "expectedTests": 1,
+              "fullName": "portable clarification accepts three distinct intent alternatives in any order"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/lib/chat-clarification-policy.test.ts",
+              "namePattern": "^portable clarification requires source bound goal and current identity$",
+              "expectedTests": 1,
+              "fullName": "portable clarification requires source bound goal and current identity"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/lib/chat-clarification-policy.test.ts",
+              "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+              "expectedTests": 1,
+              "fullName": "portable clarification rejects unrelated or ambiguous intent alternatives"
+            },
+            {
+              "cwd": ".",
+              "file": "scripts/lib/chat-clarification-policy.test.ts",
+              "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+              "expectedTests": 1,
+              "fullName": "portable clarification requires independent caller source and authority configuration"
+            }
+          ]
+        },
+        {
+          "kind": "linked-real-runtime-tool-observations-with-unmodified-grades",
+          "runtimeIssueId": "RUI-0013",
+          "runId": "original12-current-source-20261012-r6",
+          "caseIds": [
+            "S1L1",
+            "S1L3",
+            "S2L3",
+            "S3L2",
+            "S4L2",
+            "S4L3"
+          ],
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "liveAcceptance": false,
+          "acceptancePolicy": "Current genuine DOM+independently viewed PNG Open Pipeline + normal current publication within original UI budget; no added business/math/all-Trial-coverage criteria.",
+          "causeLimit": "Finite source/helper grammar omission is supported by local causal proof; pipeline generation, repair convergence and publication after the fix remain UNKNOWN. This does not upgrade a product cause or any real case result.",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-real-cases.json",
+          "evidenceSha256": "29f816068f16f7b1ab9c20a142eebf30f2b1af46b7c3e84235c4f58ea7be2ab4"
+        },
+        {
+          "kind": "observed-genuine-R7-harness-grammar-assertion-red",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r7-grammar.json",
+          "evidenceSha256": "a91547b52c97d7458939ae317741f66f5636926a479ae4f59c47d58e617fe2a3",
+          "actualExecutedTests": 4,
+          "actualPassedTests": 0,
+          "actualFailedTests": 4,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "test-tool-harness-finite-source-bound-grammar",
+          "originalRealR7CaseGradesChanged": false,
+          "productDefect": false,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "observed-installed-public-R5-eleven-grammar-guard-pass",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r7-grammar.json",
+          "evidenceSha256": "a91547b52c97d7458939ae317741f66f5636926a479ae4f59c47d58e617fe2a3",
+          "actualExecutedTests": 11,
+          "actualPassedTests": 11,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source-test-tool",
+          "retainedOldPublicSelectors": 7,
+          "newMappedExactSelectors": 4,
+          "publicContextCallbackHook": false,
+          "whole45MappedGate": "PENDING_ROOT_EXECUTION",
+          "originalRealR7CaseGradesChanged": false,
+          "realPostFixConvergence": "UNKNOWN",
+          "productDefect": false,
+          "liveAcceptance": false
+        }
+      ],
+      "status": "prepared-local-green-not-activated",
+      "fixes": [
+        {
+          "kind": "portable-generic-policy-helper-proposal",
+          "localRegressionVerified": true,
+          "activated": false,
+          "realChatAcceptance": "unknown"
+        },
+        {
+          "kind": "six-class-generic-policy-extension-proposal",
+          "localRegressionVerified": true,
+          "activated": false,
+          "realChatAcceptance": "unknown"
+        },
+        {
+          "kind": "bun-only-test-relocation-to-existing-nested-typescript-glob",
+          "localRegressionVerified": true,
+          "activated": false,
+          "realChatAcceptance": "unknown"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+          "expectedTests": 1,
+          "fullName": "portable clarification accepts named and located new pipeline alternatives"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "namePattern": "^portable clarification requires exact filename and current authority$",
+          "expectedTests": 1,
+          "fullName": "portable clarification requires exact filename and current authority"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+          "expectedTests": 1,
+          "fullName": "portable clarification rejects mixed named questions and populated candidates"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+          "expectedTests": 1,
+          "fullName": "portable clarification accepts three distinct intent alternatives in any order"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "namePattern": "^portable clarification requires source bound goal and current identity$",
+          "expectedTests": 1,
+          "fullName": "portable clarification requires source bound goal and current identity"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+          "expectedTests": 1,
+          "fullName": "portable clarification rejects unrelated or ambiguous intent alternatives"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+          "expectedTests": 1,
+          "fullName": "portable clarification requires independent caller source and authority configuration"
+        },
+        {
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "cwd": ".",
+          "namePattern": "^portable clarification binds described workflow into current canvas comparison$",
+          "expectedTests": 1,
+          "fullName": "portable clarification binds described workflow into current canvas comparison"
+        },
+        {
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "cwd": ".",
+          "namePattern": "^portable clarification binds selected action subject and method to original source$",
+          "expectedTests": 1,
+          "fullName": "portable clarification binds selected action subject and method to original source"
+        },
+        {
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "cwd": ".",
+          "namePattern": "^portable clarification binds binary passive choice and repeated intent to original source$",
+          "expectedTests": 1,
+          "fullName": "portable clarification binds binary passive choice and repeated intent to original source"
+        },
+        {
+          "file": "scripts/lib/chat-clarification-policy.test.ts",
+          "cwd": ".",
+          "namePattern": "^portable clarification binds three role deictic task to explicit original task$",
+          "expectedTests": 1,
+          "fullName": "portable clarification binds three role deictic task to explicit original task"
+        }
+      ],
+      "realTestSelectors": [
+        {
+          "runId": "original12-current-source-20261012-r6",
+          "caseId": "S1L1",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterFix": "not_run",
+          "opaqueEvidenceReferences": [
+            "r6-independent-complete12",
+            "r6-independent-root-closure-assessment",
+            "r6-root-known-scope-closure"
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261012-r6",
+          "caseId": "S1L3",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterFix": "not_run",
+          "opaqueEvidenceReferences": [
+            "r6-independent-complete12",
+            "r6-independent-root-closure-assessment",
+            "r6-root-known-scope-closure"
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261012-r6",
+          "caseId": "S2L3",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterFix": "not_run",
+          "opaqueEvidenceReferences": [
+            "r6-independent-complete12",
+            "r6-independent-root-closure-assessment",
+            "r6-root-known-scope-closure"
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261012-r6",
+          "caseId": "S3L2",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterFix": "not_run",
+          "opaqueEvidenceReferences": [
+            "r6-independent-complete12",
+            "r6-independent-root-closure-assessment",
+            "r6-root-known-scope-closure"
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261012-r6",
+          "caseId": "S4L2",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterFix": "not_run",
+          "opaqueEvidenceReferences": [
+            "r6-independent-complete12",
+            "r6-independent-root-closure-assessment",
+            "r6-root-known-scope-closure"
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261012-r6",
+          "caseId": "S4L3",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterFix": "not_run",
+          "opaqueEvidenceReferences": [
+            "r6-independent-complete12",
+            "r6-independent-root-closure-assessment",
+            "r6-root-known-scope-closure"
+          ]
+        }
+      ],
+      "lastExecution": {
+        "kind": "prepared-test-entrypoint-migration-and-nonempty-standard-discovery",
+        "evidencePath": "architecture/quality/evidence/clarification-policy-r4.json",
+        "evidenceSha256": "3fb0ee9777f436ee95f7bf3ef39cd5eca2fcb2b268aaf111c6576a4d5e03cb72",
+        "actualGreenExecutedTests": 7,
+        "actualGreenPassedTests": 7,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "test-runner-integration",
+        "liveAcceptance": false,
+        "previousRegressions": [
+          {
+            "cwd": ".",
+            "file": "scripts/chat-clarification-policy.test.mjs",
+            "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+            "expectedTests": 1,
+            "fullName": "portable clarification accepts named and located new pipeline alternatives"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/chat-clarification-policy.test.mjs",
+            "namePattern": "^portable clarification requires exact filename and current authority$",
+            "expectedTests": 1,
+            "fullName": "portable clarification requires exact filename and current authority"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/chat-clarification-policy.test.mjs",
+            "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+            "expectedTests": 1,
+            "fullName": "portable clarification rejects mixed named questions and populated candidates"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/chat-clarification-policy.test.mjs",
+            "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+            "expectedTests": 1,
+            "fullName": "portable clarification accepts three distinct intent alternatives in any order"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/chat-clarification-policy.test.mjs",
+            "namePattern": "^portable clarification requires source bound goal and current identity$",
+            "expectedTests": 1,
+            "fullName": "portable clarification requires source bound goal and current identity"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/chat-clarification-policy.test.mjs",
+            "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+            "expectedTests": 1,
+            "fullName": "portable clarification rejects unrelated or ambiguous intent alternatives"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/chat-clarification-policy.test.mjs",
+            "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+            "expectedTests": 1,
+            "fullName": "portable clarification requires independent caller source and authority configuration"
+          }
+        ],
+        "currentRegressions": [
+          {
+            "cwd": ".",
+            "file": "scripts/lib/chat-clarification-policy.test.ts",
+            "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+            "expectedTests": 1,
+            "fullName": "portable clarification accepts named and located new pipeline alternatives"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/lib/chat-clarification-policy.test.ts",
+            "namePattern": "^portable clarification requires exact filename and current authority$",
+            "expectedTests": 1,
+            "fullName": "portable clarification requires exact filename and current authority"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/lib/chat-clarification-policy.test.ts",
+            "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+            "expectedTests": 1,
+            "fullName": "portable clarification rejects mixed named questions and populated candidates"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/lib/chat-clarification-policy.test.ts",
+            "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+            "expectedTests": 1,
+            "fullName": "portable clarification accepts three distinct intent alternatives in any order"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/lib/chat-clarification-policy.test.ts",
+            "namePattern": "^portable clarification requires source bound goal and current identity$",
+            "expectedTests": 1,
+            "fullName": "portable clarification requires source bound goal and current identity"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/lib/chat-clarification-policy.test.ts",
+            "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+            "expectedTests": 1,
+            "fullName": "portable clarification rejects unrelated or ambiguous intent alternatives"
+          },
+          {
+            "cwd": ".",
+            "file": "scripts/lib/chat-clarification-policy.test.ts",
+            "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+            "expectedTests": 1,
+            "fullName": "portable clarification requires independent caller source and authority configuration"
+          }
+        ]
+      },
+      "claimLimit": "Work-only candidate has local synthetic causal coverage; future harness activation and real Chat acceptance remain unknown."
+    },
+    {
+      "id": "CSR-0010",
+      "lineage": [
+        "RUI-0014"
+      ],
+      "title": "Unscoped read requests may receive an explicit least-privilege denial without cancelling the Chat turn",
+      "category": "test-tool-workflow",
+      "mechanism": "trusted-live-unscoped-read-denial",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-permission-denial-workflow",
+        "round": "current-source-local-permission-denial",
+        "sourceRevision": "467e4132381240bdf6db5dcba44ea187796f17fa5737db03c5d71a36e6fb79c2",
+        "acceptancePolicy": "local-synthetic-workflow-denial-contract-v1",
+        "path": "architecture/quality/evidence/permission-denial-policy.json",
+        "sha256": "6289f900fcd96cf8e733063076d3596416a65df0ccfaeb4b00231fd7d8e9f3dd",
+        "role": "local-synthetic-current-source",
+        "sourceCommit": "f5efe267efd829c1e17e9a52b2bbd4545fef66dd",
+        "observationId": "CSR-0010"
+      },
+      "history": [
+        {
+          "kind": "observed-local-workflow-handler-red",
+          "evidencePath": "architecture/quality/evidence/permission-denial-policy.json",
+          "evidenceSha256": "6289f900fcd96cf8e733063076d3596416a65df0ccfaeb4b00231fd7d8e9f3dd",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 0,
+          "actualFailedTests": 1,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "test-tool-workflow",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "observed-local-workflow-guard-pass",
+          "evidencePath": "architecture/quality/evidence/permission-denial-policy.json",
+          "evidenceSha256": "6289f900fcd96cf8e733063076d3596416a65df0ccfaeb4b00231fd7d8e9f3dd",
+          "actualExecutedTests": 4,
+          "actualPassedTests": 4,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "observed-local-workflow-identifier-guard-red",
+          "evidencePath": "architecture/quality/evidence/permission-denial-policy-id-types.json",
+          "evidenceSha256": "07159474230ce01de12328ac472aba26529a3c64ad26d7281ce3ee686fd7f6dd",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 0,
+          "actualFailedTests": 1,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "test-tool-pure-guard",
+          "liveAcceptance": false,
+          "productDefect": false
+        },
+        {
+          "kind": "observed-local-workflow-identifier-guard-pass",
+          "evidencePath": "architecture/quality/evidence/permission-denial-policy-id-types.json",
+          "evidenceSha256": "07159474230ce01de12328ac472aba26529a3c64ad26d7281ce3ee686fd7f6dd",
+          "actualExecutedTests": 4,
+          "actualPassedTests": 4,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source",
+          "liveAcceptance": false,
+          "expectCalls": 47
+        }
+      ],
+      "status": "guarded-contract-awaiting-real-chat",
+      "fixes": [
+        {
+          "kind": "least-privilege-harness-workflow",
+          "path": "scripts/chat-permission-denial-policy.mjs",
+          "productAuthorityChanged": false,
+          "applied": "proposed-root-review-required",
+          "realChatConvergence": "UNKNOWN"
+        },
+        {
+          "kind": "noncoercing-identifier-guard",
+          "path": "scripts/chat-permission-denial-policy.mjs",
+          "evidencePath": "architecture/quality/evidence/permission-denial-policy-id-types.json",
+          "evidenceSha256": "07159474230ce01de12328ac472aba26529a3c64ad26d7281ce3ee686fd7f6dd",
+          "productAuthorityChanged": false,
+          "applied": "proposed-root-review-required",
+          "realChatConvergence": "UNKNOWN"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-permission-denial-policy.test.ts",
+          "namePattern": "^portable permission denial rejects the current unscoped read without granting a target$",
+          "expectedTests": 1,
+          "fullName": "portable permission denial rejects the current unscoped read without granting a target"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-permission-denial-policy.test.ts",
+          "namePattern": "^portable permission denial requires explicit workflow policy and current request authority$",
+          "expectedTests": 1,
+          "fullName": "portable permission denial requires explicit workflow policy and current request authority"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-permission-denial-policy.test.ts",
+          "namePattern": "^portable permission denial leaves other permissions and display summaries undecided$",
+          "expectedTests": 1,
+          "fullName": "portable permission denial leaves other permissions and display summaries undecided"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-permission-denial-policy.test.ts",
+          "namePattern": "^portable permission denial uses the Host first-wins reject contract for the same invocation$",
+          "expectedTests": 1,
+          "fullName": "portable permission denial uses the Host first-wins reject contract for the same invocation"
+        }
+      ],
+      "realTestSelectors": [
+        {
+          "run": "original12-current-source-20261012-r6",
+          "caseId": "S2L1",
+          "policy": "current-ui-publication-and-bounded-automatic-repair",
+          "result": "NOT_FULL_PASS",
+          "mechanicalProductAuthorizerDefectProven": false,
+          "exactNativeRequestJoin": "UNKNOWN",
+          "nextFreshRunRequired": true
+        }
+      ],
+      "lastExecution": {
+        "kind": "observed-local-workflow-identifier-guard-pass",
+        "evidencePath": "architecture/quality/evidence/permission-denial-policy-id-types.json",
+        "evidenceSha256": "07159474230ce01de12328ac472aba26529a3c64ad26d7281ce3ee686fd7f6dd",
+        "actualExecutedTests": 4,
+        "actualPassedTests": 4,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "current-source",
+        "liveAcceptance": false,
+        "expectCalls": 47
+      },
+      "knownLimits": {
+        "actualHistoricalTargetScope": "UNKNOWN",
+        "realChatConvergence": "UNKNOWN",
+        "historicalCoverageComplete": false,
+        "nativeProviderAdaptationProven": false
+      }
+    },
+    {
+      "id": "CSR-0011",
+      "lineage": [
+        "TQI-QUAL-GIT-BUFFER-001"
+      ],
+      "title": "Qualification command capture bounds Git output and blocks incomplete child output",
+      "category": "test-tool/environment",
+      "mechanism": "Node-spawnSync-Git-output-default-buffer",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-installed-qualification-command-capture",
+        "round": "current-source-installed-qualification-tool",
+        "sourceRevision": "4918c0f1fada25f48491c4208d840b361b2f876567006f2106e311ad99d8e620",
+        "acceptancePolicy": "local-actual-Node-capture-and-installed-read-only-qualification-contract-v1",
+        "path": "architecture/quality/evidence/qualification-command-capture.json",
+        "sha256": "583aa4fc78138cec0e068518e0fcfc447c0551435b3d5c6edca10b48987cbe8d",
+        "role": "local-installed-test-tool-red-green-and-adoption",
+        "observationId": "CSR-0011",
+        "originalQualificationToolFirstEvidence": {
+          "path": "work/handoff-resume-20261012/r7-pre-freeze-git-buffer-failure.actual.json",
+          "sha256": "e93373f9b6b933b11dc53cd73e50c39fe1d9c9bda8a11478582bc01430c8f17c",
+          "bytes": 1453
+        }
+      },
+      "history": [
+        {
+          "kind": "observed-local-qualification-capture-assertion-red",
+          "evidencePath": "architecture/quality/evidence/qualification-command-capture.json",
+          "evidenceSha256": "583aa4fc78138cec0e068518e0fcfc447c0551435b3d5c6edca10b48987cbe8d",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 0,
+          "actualFailedTests": 1,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "test-tool/environment",
+          "errorCode": "ENOBUFS",
+          "productDefect": false,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "observed-installed-qualification-capture-and-private-adoption-pass",
+          "evidencePath": "architecture/quality/evidence/qualification-command-capture.json",
+          "evidenceSha256": "583aa4fc78138cec0e068518e0fcfc447c0551435b3d5c6edca10b48987cbe8d",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 1,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "current-source-test-tool",
+          "actualInnerNodeCases": 4,
+          "actualInnerNodePassedCases": 4,
+          "installedHelperActuallyImported": true,
+          "privateReadOnlySourceOnlySucceeded": true,
+          "mappedWholeGate": "PENDING_ROOT_EXECUTION",
+          "productDefect": false,
+          "liveAcceptance": false
+        }
+      ],
+      "status": "guarded-tool-contract-real-adoption-observed",
+      "fixes": [
+        {
+          "kind": "finite-bounded-child-output-capture",
+          "path": "scripts/lib/qualification-command-capture.mjs",
+          "sha256": "4918c0f1fada25f48491c4208d840b361b2f876567006f2106e311ad99d8e620",
+          "applied": true,
+          "actualPrivateQualificationSourceOnlyAdoption": true,
+          "maximumCaptureBytes": 67108864,
+          "partialOutputIsSuccess": false,
+          "productAuthorityChanged": false
+        }
+      ],
+      "regressions": [
+        {
+          "file": "scripts/lib/qualification-command-capture.test.ts",
+          "namePattern": "^qualification capture uses explicit Node and blocks incomplete output$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "qualification capture uses explicit Node and blocks incomplete output"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "observed-installed-qualification-capture-and-private-adoption-pass",
+        "evidencePath": "architecture/quality/evidence/qualification-command-capture.json",
+        "evidenceSha256": "583aa4fc78138cec0e068518e0fcfc447c0551435b3d5c6edca10b48987cbe8d",
+        "actualExecutedTests": 1,
+        "actualPassedTests": 1,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "current-source-test-tool",
+        "actualInnerNodeCases": 4,
+        "actualInnerNodePassedCases": 4,
+        "installedHelperActuallyImported": true,
+        "privateReadOnlySourceOnlySucceeded": true,
+        "mappedWholeGate": "PENDING_ROOT_EXECUTION",
+        "productDefect": false,
+        "liveAcceptance": false
+      },
+      "knownLimits": {
+        "mappedWhole11Issue41SelectorGate": "PENDING_ROOT_EXECUTION",
+        "historicalCoverageComplete": false,
+        "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+        "productOrRealChatDefectConfirmed": false,
+        "actualOriginal12CaseGradesChanged": false,
+        "realChatConvergence": "NOT_ASSESSED_BY_TEST_TOOL_CAPTURE",
+        "globalProviderScopeAndFinancialCharges": "UNKNOWN"
+      }
+    },
+    {
+      "id": "CSR-0012",
+      "lineage": [
+        "TQI-ROOT-CLARIFICATION-ANCESTOR-001"
+      ],
+      "title": "Root clarification delegation preserves original request identity and one normal typed reply",
+      "category": "test-tool-workflow",
+      "mechanism": "Root-manual-choice-ancestor-normal-Control-session",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "current-root-clarification-choice-broker",
+        "round": "local-new-test-workflow-contract",
+        "sourceRevision": "3f81ac33c08043910ac104d564347ac520a731bca73da082174dbb449a3a1977",
+        "acceptancePolicy": "local-generic-current-source-typed-clarification-contract-v1",
+        "path": "architecture/quality/evidence/root-clarification-choice-broker.json",
+        "sha256": "d77174065eaa7c5d0764beb40f3944d55edb451b7dca19dce292f82e82e32371",
+        "role": "local-workflow-guard-assertion-red-green",
+        "observationId": "CSR-0012"
+      },
+      "history": [
+        {
+          "kind": "observed-generic-broker-admitted-request-assertion-red",
+          "path": "architecture/quality/evidence/root-clarification-choice-broker.json",
+          "sha256": "d77174065eaa7c5d0764beb40f3944d55edb451b7dca19dce292f82e82e32371",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 0,
+          "actualFailedTests": 1,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "new-local-test-workflow-contract",
+          "productDefect": false,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "observed-portable-generic-broker-contract-green",
+          "path": "architecture/quality/evidence/root-clarification-choice-broker.json",
+          "sha256": "d77174065eaa7c5d0764beb40f3944d55edb451b7dca19dce292f82e82e32371",
+          "actualExecutedTests": 10,
+          "actualPassedTests": 10,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "public-target-local-workflow-contract",
+          "productDefect": false,
+          "liveAcceptance": false,
+          "mappedWholeGate": "PENDING_ROOT_EXECUTION"
+        }
+      ],
+      "status": "installed-local-contract-green-real-activation-pending",
+      "fixes": [
+        {
+          "kind": "strict-original-request-normal-Control-join-and-permanent-once-reservation",
+          "path": "scripts/root-clarification-choice-broker.mjs",
+          "sha256": "9000cdef4bb6f6893bd1b2aa7fa9b0ae6ce92444ab0791345162f4c65d257618",
+          "applied": true,
+          "normalTypedCommandOnly": true,
+          "productAuthorityChanged": false
+        }
+      ],
+      "regressions": [
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker named manual choice produces only one normal typed clarification schema$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker named manual choice produces only one normal typed clarification schema"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker pipeline goal requires an existing same-case source-verified literal pipeline criterion$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker pipeline goal requires an existing same-case source-verified literal pipeline criterion"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker strict envelope rejects extra transport text permission and candidate fields$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker strict envelope rejects extra transport text permission and candidate fields"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker requires a fresh full actual Control observation and exact case renderer operation$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker requires a fresh full actual Control observation and exact case renderer operation"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker rejects changed pending model permission candidates resource state and composer$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker rejects changed pending model permission candidates resource state and composer"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker independent user authority and frozen config source joins cannot come from file attestation$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker independent user authority and frozen config source joins cannot come from file attestation"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker inbox reads bind exact filename regular no-symlink private bounded immutable file$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker inbox reads bind exact filename regular no-symlink private bounded immutable file"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker wx reservation is permanent and cannot fork by version question reply grant or time$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker wx reservation is permanent and cannot fork by version question reply grant or time"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker unknown callback acknowledgement keeps reservation and forbids a second typed begin$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker unknown callback acknowledgement keeps reservation and forbids a second typed begin"
+        },
+        {
+          "file": "scripts/lib/root-clarification-choice-broker.test.ts",
+          "namePattern": "^Root broker joins actual admitted Host request to exact original case prompt and empty attachments$",
+          "expectedTests": 1,
+          "cwd": ".",
+          "fullName": "Root broker joins actual admitted Host request to exact original case prompt and empty attachments"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "observed-portable-generic-broker-contract-green",
+        "path": "architecture/quality/evidence/root-clarification-choice-broker.json",
+        "sha256": "d77174065eaa7c5d0764beb40f3944d55edb451b7dca19dce292f82e82e32371",
+        "actualExecutedTests": 10,
+        "actualPassedTests": 10,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "public-target-local-workflow-contract",
+        "mappedWholeGate": "PENDING_ROOT_EXECUTION"
+      },
+      "knownLimits": {
+        "historicalCoverageComplete": false,
+        "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+        "productDefectConfirmed": false,
+        "liveRootReplyActivation": "NOT_RUN",
+        "original12CaseGradesChanged": false,
+        "RootExternalSiblingFDReadabilityNotBypassed": true,
+        "specificHistoricalRootReplyFailureCause": "UNKNOWN",
+        "confirmedCauseScope": "Only generic local admitted-original-request broker counterexample; no product defect or historical standalone Root utility failure cause inferred.",
+        "mappedWholeGate": "PENDING_ROOT_EXECUTION"
+      }
+    },
+    {
+      "id": "CSR-0013",
+      "lineage": [
+        "TQI-NATIVE-CORE-REJECTION-COORDINATES-001"
+      ],
+      "title": "Generated native core rejection exposes finite current bound failed coordinates",
+      "category": "product-observability",
+      "mechanism": "generated-native-core-rejection-bound-coordinate-feedback",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "path": "architecture/quality/evidence/native-core-rejection-coordinates.json",
+        "sha256": "a7eb63629bcd47005b684d4ae5ebf1adfda2ee545b6b1636333f341483e7f22d",
+        "sourceId": "current-native-core-rejection-coordinates",
+        "round": "local-generated-native-tool-red-20261013",
+        "sourceRevision": "sha256:5f2d536e42850525aaedadbb5af50a60bbe378791ba5c872fe6eeef4c3b33625",
+        "acceptancePolicy": "Actual generated planner tool local coordinate-feedback contract; no validator false-rejection or real Chat convergence claim."
+      },
+      "history": [
+        {
+          "path": "architecture/quality/evidence/native-core-rejection-coordinates.json",
+          "sha256": "a7eb63629bcd47005b684d4ae5ebf1adfda2ee545b6b1636333f341483e7f22d",
+          "kind": "observed-generated-native-bound-coordinate-missing-assertion-red",
+          "actualExecutedTests": 1,
+          "actualFailedTests": 1,
+          "actualErrors": 0,
+          "actualSkippedOrTodoTests": 0,
+          "liveAcceptance": false
+        },
+        {
+          "path": "architecture/quality/evidence/native-core-rejection-coordinates.json",
+          "sha256": "a7eb63629bcd47005b684d4ae5ebf1adfda2ee545b6b1636333f341483e7f22d",
+          "kind": "preserved-intermediate-coordinate-candidate-failure",
+          "actualExecutedTests": 7,
+          "actualPassedTests": 5,
+          "actualFailedTests": 2,
+          "actualErrors": 0,
+          "liveAcceptance": false
+        },
+        {
+          "path": "architecture/quality/evidence/native-core-rejection-coordinates.json",
+          "sha256": "a7eb63629bcd47005b684d4ae5ebf1adfda2ee545b6b1636333f341483e7f22d",
+          "kind": "observed-isolated-generated-native-coordinate-v3-green",
+          "actualExecutedTests": 7,
+          "actualPassedTests": 7,
+          "actualFailedTests": 0,
+          "actualAssertions": 111,
+          "actualSkippedOrTodoTests": 0,
+          "actualErrors": 0,
+          "liveAcceptance": false,
+          "mappedWholeGate": "NOT_RUN"
+        },
+        {
+          "path": "architecture/quality/evidence/native-core-rejection-coordinates-installed62.json",
+          "sha256": "cd910acdec3ff5c7941b2f2b4b8c5f801f473d5bde7b7cafd9e600ff059e28f9",
+          "kind": "observed-installed-native-coordinate-whole-current62-gate-green",
+          "actualIssueCount": 13,
+          "actualExecutedTests": 62,
+          "actualPassedTests": 62,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "everySelectorJUnitExecutionVerified": true,
+          "subjectIssueExecutedSelectors": 7,
+          "subjectIssuePassedSelectors": 7,
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1432,
+            "sha256": "ad32e7eeb33b204a859af91f9644cdbe714a792ad8caf357dfc0ac1bed7d115a"
+          },
+          "previousStatus": "prepared-local-seven-green-full-mapped-gate-and-real-chat-pending",
+          "status": "installed-current-source62-green-real-chat-pending",
+          "previousLastExecution": {
+            "path": "architecture/quality/evidence/native-core-rejection-coordinates.json",
+            "sha256": "a7eb63629bcd47005b684d4ae5ebf1adfda2ee545b6b1636333f341483e7f22d",
+            "kind": "observed-isolated-generated-native-coordinate-v3-green",
+            "actualExecutedTests": 7,
+            "actualPassedTests": 7,
+            "actualFailedTests": 0,
+            "actualAssertions": 111,
+            "actualSkippedOrTodoTests": 0,
+            "actualErrors": 0,
+            "scope": "isolated-generated-native-tool",
+            "mappedWholeGate": "NOT_RUN"
+          },
+          "mappedWholeGate": "GREEN_ON_BOUND_SOURCE",
+          "liveAcceptance": false,
+          "historicalCoverageComplete": false
+        },
+        {
+          "kind": "later-post-installation-genuine-original12-current-ui-observations-root-known-owned-closure-bound",
+          "runId": "original12-current-source-20261013-r10",
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1433,
+            "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+          },
+          "samePolicyComplete12Comparison": {
+            "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-comparison-preclosure-0001.actual.json",
+            "sha256": "98af5ec5941c9da879ea43776dbf6cfd41b77a472d5357aab38f05e8e62f108f",
+            "bytes": 204588
+          },
+          "postInstallationCaseSoleGradeCounts": {
+            "PASS": 4,
+            "NOT_FULL_PASS": 8
+          },
+          "postInstallationAllCurrentUIAcceptancePassed": false,
+          "subjectMechanismCauseOfRuntimeFailureOrConvergenceEffect": "UNKNOWN",
+          "falseValidationRejectionProved": false,
+          "currentCoordinateFixMechanismRegressed": "UNKNOWN_NOT_ESTABLISHED",
+          "currentRootWholeReviewAndRunClosure": "COMPLETE_CURRENT_AVAILABLE_OWNED_AND_PAID_SCOPES",
+          "syntheticGuardResultOrIssueStatusRewritten": false,
+          "installedFixLiveVerifiedAutomaticallyPromoted": false,
+          "historicalCoverageComplete": false,
+          "knownOwnedClosureComparisonAppend": {
+            "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-comparison-known-owned-sealed-append-0001.actual.json",
+            "sha256": "88b3b34a7344a575dfd89d3e915857825d272ced72fd13b5f4aca2bac2f47238",
+            "bytes": 17148
+          },
+          "independentLateRootClosureResolution": "UNKNOWN_NOT_YET_PROVIDED"
+        },
+        {
+          "kind": "later-saved-independent-R10-known-owned-closure-resolution",
+          "runId": "original12-current-source-20261013-r10",
+          "evidence": {
+            "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/whole-root-closure-resolution.actual.json",
+            "sha256": "71d19fe035a7b36a87ed0e75d95f2362c15178709c79eee3cbbd2770321b7836",
+            "bytes": 47733
+          },
+          "bindingAppend": {
+            "path": "work/handoff-resume-20261012/r10-same-policy-issue-comparison-preparation-v1/complete12-independent-late-resolution-binding-append-0001.actual.json",
+            "sha256": "76b6dd07a2fa087133c00b18d4093a6868c502630580b8c7e1712957d12c3a7d",
+            "bytes": 2392
+          },
+          "result": "COMPLETE_CURRENT_AVAILABLE_OWNED_AND_PAID_SCOPES",
+          "allCurrentUIAcceptancePassed": false,
+          "subjectMechanismLiveVerified": "UNKNOWN",
+          "historicalCoverageComplete": false,
+          "globalProviderFinancialScope": "UNKNOWN",
+          "oldRecordsUnchanged": true
+        }
+      ],
+      "status": "installed-current-source62-green-real-chat-pending",
+      "fixes": [
+        {
+          "id": "finite-current-bound-native-core-rejection-coordinates",
+          "scope": "Two existing product modules and one new portable generated-tool test file; original guard predicates, summaries, fingerprints, counters and budgets preserved.",
+          "preparedProductionSources": [
+            {
+              "path": "work/handoff-resume-20261012/core-rejection-coordinate-preparation-v3/public/apps/editor/server/chat-trial-resilience-rules.ts",
+              "sha256": "8907b36370792438fb3870ed071c0b65272128e93d68e4a2ed1302680f443894",
+              "bytes": 50252,
+              "publicTarget": "apps/editor/server/chat-trial-resilience-rules.ts"
+            },
+            {
+              "path": "work/handoff-resume-20261012/core-rejection-coordinate-preparation-v3/public/apps/editor/server/opencode-trial-plan-tool.ts",
+              "sha256": "f26e5b18275ae482027ef85c3024b9f757c058e2a55d8a9b6face2fdd6db25ef",
+              "bytes": 80159,
+              "publicTarget": "apps/editor/server/opencode-trial-plan-tool.ts"
+            }
+          ],
+          "preparedTestSource": {
+            "path": "work/handoff-resume-20261012/core-rejection-coordinate-preparation-v3/public/apps/editor/tests/chat-trial-rejection-coordinates.test.ts",
+            "sha256": "717ed3e94e7b499b0972b83f455ceabb485f7a10286fe65253b62fe3614fa7ce",
+            "bytes": 16872,
+            "publicTarget": "apps/editor/tests/chat-trial-rejection-coordinates.test.ts"
+          },
+          "patchSha256": "3c4d69366a3ac777e3e55b2f26445c720e751f243a511f25589440c67db045c0",
+          "applied": false,
+          "liveVerified": false,
+          "allOriginalFixturesAndAssertionsRetained": true
+        },
+        {
+          "id": "finite-current-bound-native-core-rejection-coordinates-installed-actual",
+          "kind": "later-installed-actual-source-and-mapped-gate-proof",
+          "evidence": {
+            "path": "architecture/quality/evidence/native-core-rejection-coordinates-installed62.json",
+            "sha256": "cd910acdec3ff5c7941b2f2b4b8c5f801f473d5bde7b7cafd9e600ff059e28f9"
+          },
+          "productAndPortableTestSources": [
+            {
+              "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+              "sha256": "522155cce9471f10624f4e6fa3cc73b7d46c5620bd7ca7d475d0fbc9a32c0d27",
+              "bytes": 50317
+            },
+            {
+              "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+              "sha256": "f26e5b18275ae482027ef85c3024b9f757c058e2a55d8a9b6face2fdd6db25ef",
+              "bytes": 80159
+            },
+            {
+              "path": "apps/editor/tests/chat-trial-rejection-coordinates.test.ts",
+              "sha256": "4ad444227f46d3154b4329adcbfed9457ab38dd37f2c192e65ad17d344cd19a1",
+              "bytes": 18563
+            }
+          ],
+          "applied": true,
+          "liveVerified": false,
+          "originalPreparedFixEntryRetainedAsOf": true,
+          "oldFixturesAssertionsCountersAndBudgetUnchanged": true
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "fullName": "current generated rejection exposes bound failed producer coordinates while preserving the guard",
+          "namePattern": "^current generated rejection exposes bound failed producer coordinates while preserving the guard$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "fullName": "current generated rejection identifies the exact source mapping without permitting it",
+          "namePattern": "^current generated rejection identifies the exact source mapping without permitting it$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "fullName": "current generated rejection identifies an unsupported selected role index without weakening content",
+          "namePattern": "^current generated rejection identifies an unsupported selected role index without weakening content$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "fullName": "valid transitive source witness still validates and commits exactly once",
+          "namePattern": "^valid transitive source witness still validates and commits exactly once$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "fullName": "foreign attempt and changed intent still reject before coordinate enrichment",
+          "namePattern": "^foreign attempt and changed intent still reject before coordinate enrichment$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "fullName": "native coordinate suffix is byte bounded and reports omitted long coordinates",
+          "namePattern": "^native coordinate suffix is byte bounded and reports omitted long coordinates$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "fullName": "native coordinate errors preserve counted rejection summaries and attempt fencing",
+          "namePattern": "^native coordinate errors preserve counted rejection summaries and attempt fencing$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [
+        {
+          "runKind": "fresh-whole-original12",
+          "caseIds": [
+            "S1L1",
+            "S1L2",
+            "S1L3",
+            "S2L1",
+            "S2L2",
+            "S2L3",
+            "S3L1",
+            "S3L2",
+            "S3L3",
+            "S4L1",
+            "S4L2",
+            "S4L3"
+          ],
+          "originalSourceSHA256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "modelPolicy": {
+            "mode": "deepseek-flash-low",
+            "providerHumanName": "DeepSeek",
+            "modelHumanName": "Flash",
+            "providerId": "deepseek",
+            "modelId": "deepseek-flash",
+            "variant": "low"
+          },
+          "budgets": {
+            "planning": 2,
+            "pipelineRepair": 2,
+            "serial": 1,
+            "originalSendPerCase": 1,
+            "manualRetry": 0,
+            "extraPaidProbes": 0
+          },
+          "acceptancePolicy": "Current genuine DOM+independently viewed PNG Open Pipeline + normal current publication within original UI budget; no added business/math/all-Trial-coverage criteria.",
+          "executionStatus": "NOT_RUN_ON_CANDIDATE_SOURCE"
+        },
+        {
+          "runKind": "fresh-whole-original12",
+          "runId": "original12-current-source-20261013-r10",
+          "caseIds": [
+            "S1L1",
+            "S1L2",
+            "S1L3",
+            "S2L1",
+            "S2L2",
+            "S2L3",
+            "S3L1",
+            "S3L2",
+            "S3L3",
+            "S4L1",
+            "S4L2",
+            "S4L3"
+          ],
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1433,
+            "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+          },
+          "modelPolicy": {
+            "mode": "deepseek-flash-low",
+            "providerId": "deepseek",
+            "modelId": "deepseek-flash",
+            "variant": "low"
+          },
+          "budgets": {
+            "planning": 2,
+            "pipelineRepair": 2,
+            "serial": 1,
+            "originalSendPerCase": 1,
+            "manualRetry": 0,
+            "extraPaidProbes": 0
+          },
+          "acceptancePolicy": "current genuine DOM Open Pipeline and normal current publication within original configured planning2/repair2; unchanged original prompts; no additional business/math/full-Trial-coverage score",
+          "executionStatus": "GENUINE_EXACT12_SOLE_GRADED_ROOT_KNOWN_OWNED_CLOSURE_BOUND_LATE_INDEPENDENT_REVIEW_UNKNOWN",
+          "wholeCurrentUIPass": false,
+          "oldNOTRUNSelectorAndItsAsOfEvidencePreserved": true
+        }
+      ],
+      "lastExecution": {
+        "path": "architecture/quality/evidence/native-core-rejection-coordinates-installed62.json",
+        "sha256": "cd910acdec3ff5c7941b2f2b4b8c5f801f473d5bde7b7cafd9e600ff059e28f9",
+        "kind": "observed-installed-native-coordinate-whole-current62-gate-green",
+        "actualExecutedTests": 62,
+        "actualPassedTests": 62,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "subjectIssueExecutedSelectors": 7,
+        "subjectIssuePassedSelectors": 7,
+        "scope": "current-source",
+        "sourceFingerprint": {
+          "scheme": "public-git-visible-v1",
+          "fileCount": 1432,
+          "sha256": "ad32e7eeb33b204a859af91f9644cdbe714a792ad8caf357dfc0ac1bed7d115a"
+        },
+        "mappedWholeGate": "GREEN_ON_BOUND_SOURCE"
+      },
+      "knownLimits": {
+        "actualNativeChatSuffixDelivery": "UNKNOWN_NOT_RETESTED",
+        "realChatConvergence": "UNKNOWN_NOT_RETESTED",
+        "falseValidatorRejectionProved": false,
+        "whole13Record62SelectorMappedGate": "NOT_RUN",
+        "historicalCoverageComplete": false,
+        "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+        "oldRuntimeIssueFixedOrRegressedPromotion": false,
+        "futureAcceptance": "Full original12 on fresh product workspaces through Tagma OpenCode Chat, same Flash low and original planning2/repair2 policy; no extra probes or manual Retry.",
+        "earlierPreparedLimitsPreservedAsOf": true,
+        "laterInstalledMappedGate": {
+          "evidence": {
+            "path": "architecture/quality/evidence/native-core-rejection-coordinates-installed62.json",
+            "sha256": "cd910acdec3ff5c7941b2f2b4b8c5f801f473d5bde7b7cafd9e600ff059e28f9"
+          },
+          "result": "GREEN_ON_BOUND_SOURCE",
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1432,
+            "sha256": "ad32e7eeb33b204a859af91f9644cdbe714a792ad8caf357dfc0ac1bed7d115a"
+          },
+          "catalog": {
+            "path": "architecture/quality/current-source-regressions.json",
+            "sha256": "940c53f5b4e10d3200e68ee17d737f04b126fef9d6fc070db75ff7862091082c",
+            "bytes": 88104
+          }
+        },
+        "laterRealChatSuffixDeliveryAndConvergence": "UNKNOWN_NOT_RETESTED",
+        "newMetadataSourceEpochQualification": "NOT_RUN",
+        "laterR10CurrentUIObservation": {
+          "runId": "original12-current-source-20261013-r10",
+          "publicSupplement": "architecture/quality/runtime-observations-20261013-r10-supplement.json",
+          "PASS": 4,
+          "NOT_FULL_PASS": 8,
+          "allPassed": false,
+          "currentCauseAndCoordinateFixConvergenceEffect": "UNKNOWN",
+          "independentLateResolution": {
+            "path": "work/handoff-resume-20261012/independent-original12-r10-current-grader-review-v1/whole-root-closure-resolution.actual.json",
+            "sha256": "71d19fe035a7b36a87ed0e75d95f2362c15178709c79eee3cbbd2770321b7836",
+            "bytes": 47733
+          },
+          "historicalCoverageComplete": false
+        }
+      }
+    }
+  ],
+  "historicalCatalog": "architecture/quality/known-issues.json",
+  "liveAcceptanceAdmissionSatisfied": false,
+  "limits": [
+    "Not full historical GREEN.",
+    "Not a report that the original twelve real Chat acceptance cases passed.",
+    "Does not establish that the reported planner identity, stale-plan, navigation, or observability failures are repaired.",
+    "Newly confirmed current mechanisms require new IDs, immutable evidence, and real executable regressions."
+  ]
+}

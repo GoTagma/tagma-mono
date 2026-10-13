@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-clarification-regression-entrypoint-migration",
+  "observationId": "CSR-0009",
+  "scope": "test-runner-integration",
+  "ready": false,
+  "activated": false,
+  "liveAcceptance": "unknown",
+  "productCause": "unknown",
+  "helperBytesUnchangedFromR3": true,
+  "sevenNamesAndAssertionAstUnchanged": true,
+  "oldRegressions": [
+    {
+      "cwd": ".",
+      "file": "scripts/chat-clarification-policy.test.mjs",
+      "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+      "expectedTests": 1,
+      "fullName": "portable clarification accepts named and located new pipeline alternatives"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/chat-clarification-policy.test.mjs",
+      "namePattern": "^portable clarification requires exact filename and current authority$",
+      "expectedTests": 1,
+      "fullName": "portable clarification requires exact filename and current authority"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/chat-clarification-policy.test.mjs",
+      "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+      "expectedTests": 1,
+      "fullName": "portable clarification rejects mixed named questions and populated candidates"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/chat-clarification-policy.test.mjs",
+      "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+      "expectedTests": 1,
+      "fullName": "portable clarification accepts three distinct intent alternatives in any order"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/chat-clarification-policy.test.mjs",
+      "namePattern": "^portable clarification requires source bound goal and current identity$",
+      "expectedTests": 1,
+      "fullName": "portable clarification requires source bound goal and current identity"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/chat-clarification-policy.test.mjs",
+      "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+      "expectedTests": 1,
+      "fullName": "portable clarification rejects unrelated or ambiguous intent alternatives"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/chat-clarification-policy.test.mjs",
+      "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+      "expectedTests": 1,
+      "fullName": "portable clarification requires independent caller source and authority configuration"
+    }
+  ],
+  "currentRegressions": [
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+      "expectedTests": 1,
+      "fullName": "portable clarification accepts named and located new pipeline alternatives"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "namePattern": "^portable clarification requires exact filename and current authority$",
+      "expectedTests": 1,
+      "fullName": "portable clarification requires exact filename and current authority"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+      "expectedTests": 1,
+      "fullName": "portable clarification rejects mixed named questions and populated candidates"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+      "expectedTests": 1,
+      "fullName": "portable clarification accepts three distinct intent alternatives in any order"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "namePattern": "^portable clarification requires source bound goal and current identity$",
+      "expectedTests": 1,
+      "fullName": "portable clarification requires source bound goal and current identity"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+      "expectedTests": 1,
+      "fullName": "portable clarification rejects unrelated or ambiguous intent alternatives"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-policy.test.ts",
+      "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+      "expectedTests": 1,
+      "fullName": "portable clarification requires independent caller source and authority configuration"
+    }
+  ],
+  "migrationReason": "The standard Node script test walker includes every scripts/**/*.test.mjs. A Bun-only test must use the existing nested TypeScript Bun glob instead. The root TypeScript filename also falls outside that existing glob; scripts/lib is selected without changing the runner or package script.",
+  "finiteIntegrationObservations": [
+    {
+      "kind": "proposed-mjs-node-import-failure",
+      "classification": "test-runner-integration",
+      "code": "ERR_UNSUPPORTED_ESM_URL_SCHEME",
+      "protocol": "bun:",
+      "exitCode": 1,
+      "notProductBugOrProductRed": true,
+      "logSha256": "22981aed8dbc005bcca618d30500be7918514148240bb0ddceaf7ac01b36378a"
+    },
+    {
+      "kind": "intermediate-root-ts-not-in-existing-glob",
+      "classification": "test-discovery-integration",
+      "code": "bun_glob_no_matches",
+      "exitCode": 1,
+      "notProductBugOrProductRed": true,
+      "logSha256": "42bc61ca4c993f4847ebcf4ec30f6be02058650a395af3c2a2aab090ddc88aa7"
+    },
+    {
+      "kind": "actual-standard-copied-package-script-nested-ts",
+      "exitCode": 0,
+      "nodeCompatibleSentinelPassed": true,
+      "bunExecuted": 7,
+      "bunPassed": 7,
+      "bunFailed": 0,
+      "logSha256": "1145c1e54415964f72c03687b519b48bcdb2cede808d63ef93c0ac3d2f5cf43c"
+    }
+  ],
+  "actualSevenExactBunJUnitSelections": [
+    {
+      "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "1d7febb250b1eba41c5c31bace917ea8f7150ba69d7f5ba91faef1345816c0f8",
+      "junitSha256": "a466ad5d609f0889687446f6221c3c8238f411f1ab497b2cc4add1e04e846294"
+    },
+    {
+      "namePattern": "^portable clarification requires exact filename and current authority$",
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "c6f2bd7fe210445c1a2c6ca0136663ec31dcda89890375594a10548e3aa3893b",
+      "junitSha256": "f361245cf66df1a4aeb39cdcc9decd392a37b4c60ba3cea49adb456657a8f755"
+    },
+    {
+      "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "820e42a2efcfba43919c74c1c15250f445110fb96afab604cc5a0699edf960c9",
+      "junitSha256": "c954cbb46893a6980488be7e0f61d61a493d1c575caf40797a6f7ee1ca25c2d9"
+    },
+    {
+      "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "78b32ee45d51415c33dd07320a58e204fb0a1dfe09b57095332661f04796ed9e",
+      "junitSha256": "10e42428aaa4f7084b165cba224f6cedcb0a50dd32cc52f22866263f5fa91b88"
+    },
+    {
+      "namePattern": "^portable clarification requires source bound goal and current identity$",
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "fc0e09755c907e85309f6db312c5c76a1f94aa38e8f458e98754732a9ad3a2f3",
+      "junitSha256": "ad6ba3196feff566ab06fbadd19d84905d990e43216c851bb15e5b9e207b14d1"
+    },
+    {
+      "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "9fe42c3c2c967d923a42acb2450381f37473df8704ba0145634e0a2612b5edfe",
+      "junitSha256": "fd00994a8466cf28b8f471680d7e2118dc408dfdaa6f94c2e79f95689f07a8fb"
+    },
+    {
+      "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "d9e0a92afc59b4123f3144b61df38bbb875c7fca19f1bdcec3e709bd9865f37f",
+      "junitSha256": "2d59010640cb5a0566301cb757b9b1ad41cf356b38d8920fe3d8fd6404c45de4"
+    }
+  ],
+  "newTestSha256": "373e76bca2079286fbf6ebe05afd870d433e8ece0e2ebfef2d529d2c325d1f6a",
+  "moduleSha256": "b098af02e4df34042fe03f5ce622dcea3370f81145f7af5b107d176c4b90904b",
+  "earliestEvidenceRetained": true,
+  "claimLimit": "This fixes proposed test-runner placement. The unchanged clarification helper has prior finite causal coverage; real Chat convergence and product causes remain unverified."
+}

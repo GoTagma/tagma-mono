@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-synthetic-permission-denial-id-type-hardening",
+  "issueId": "CSR-0010",
+  "scope": "test-tool-pure-guard",
+  "priorFirstEvidence": {
+    "path": "architecture/quality/evidence/permission-denial-policy.json",
+    "sha256": "6289f900fcd96cf8e733063076d3596416a65df0ccfaeb4b00231fd7d8e9f3dd"
+  },
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "observation": "The earlier pure helper applied RegExp.test to identifier values before checking string type. Numeric identifiers and equal numeric operation/request pairs can therefore produce a denial decision in a synthetic fixture. This is a local harness guard gap; the typed Host command contract is unchanged.",
+  "sourceBindings": {
+    "legacyPureHelperSha256": "355f88f43add9a9081aef616ddc9c5401560f7c4089b229204fd0b24ab3438da",
+    "typedPureHelperSha256": "b7f3e3238247cd8d45e126f52379123b9b184704b6621ff011ea0361ead9f01e",
+    "typedPolicyTestSha256": "7748d66bb6b2cf6057f28ec46daf2f604b000ad248f3f400f29e217d893746d7",
+    "actualHostInteractiveContractSha256": "c918e05c634ffe83e0030126468acaa5a69f4d3e7f13d7d133ac4aa6585001de"
+  },
+  "hardening": "Require typeof string before each identifier regex for operationId, conversationId, and hostRequestId. Foreign, stale, non-live, missing-policy and unavailable-reject guards remain unchanged.",
+  "regressionChanges": {
+    "sameFourExactSelectors": true,
+    "priorAssertionsRetained": true,
+    "newNegativeIdValues": ["number", "boolean", "boxed string", "coercible object", "Symbol"],
+    "eachIdPositionTestedIndependently": true,
+    "operationAndConversationPairsMutatedTogether": true
+  },
+  "localExecution": {
+    "legacySelectedTests": 1,
+    "legacyAssertionFailures": 1,
+    "typedPolicySelectedTests": 4,
+    "typedPolicyPassedTests": 4,
+    "typedPolicyExpectCalls": 47,
+    "handlerAndManagedSelectedTests": 3,
+    "handlerAndManagedPassedTests": 3,
+    "handlerAndManagedExpectCalls": 23,
+    "selectedSkippedOrTodo": 0,
+    "missingModuleRed": false,
+    "standardPublicGlob": "shell-expanded ./scripts/**/*.test.ts",
+    "hostAndManagedScope": "First-wins reject and synthetic same-invocation continuation only; provider adaptation is not demonstrated."
+  },
+  "truthBounds": {
+    "productDefectConfirmed": false,
+    "realHostAcceptedNonStringIdentifiers": false,
+    "permissionGranted": false,
+    "actualHistoricalNativeRequestJoin": "UNKNOWN",
+    "actualTargetContainmentProven": false,
+    "realChatConvergence": "UNKNOWN",
+    "nativeProviderAdaptation": "UNKNOWN",
+    "historicalCoverageComplete": false
+  },
+  "actions": {
+    "publicApplication": false,
+    "productsLaunched": 0,
+    "modelsOrProviderRequests": 0,
+    "livePermissionReplies": 0
+  }
+}

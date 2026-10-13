@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-authorized-clarification-policy-local-red-green",
+  "observationId": "CSR-0009",
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "scope": "harness-policy-grammar",
+  "ready": false,
+  "activated": false,
+  "liveAcceptance": "unknown",
+  "mechanism": "Literal named-file and intent-choice grammar omitted equivalent user-authorized pipeline-generation clarifications.",
+  "independentAuthority": "Trusted wrapper supplies an expected source digest and two user-authority values; incoming policy cannot grant itself new authority.",
+  "genericRed": {
+    "executed": 4,
+    "failed": 4,
+    "assertionFailures": 4,
+    "unexecuted": 0,
+    "importOrSyntaxFailure": false,
+    "logSha256": "116161e5bb7e0dfc40bbdd9668ba268b54045263cc09aea0194aa9787c9d620f",
+    "logBytes": 4711
+  },
+  "genericGreen": {
+    "executed": 4,
+    "passed": 4,
+    "unexecuted": 0,
+    "logSha256": "4e1f0daea22a1b88092ae2f1bcb8c5c1e3628413c9498918c4ef2f9ea33a78f8",
+    "logBytes": 1022
+  },
+  "publicRegressionSelections": [
+    {
+      "namePattern": "^portable clarification accepts named and located new pipeline alternatives$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "095587e78afd5207f9fef1396e74b471e75bf3aa76c5ed91bfa0c5c4ba747872",
+      "junitSha256": "d0f2aae66e52c09464c7e77fe07fa474a431401fa1b79870f899d7966fe2e98a"
+    },
+    {
+      "namePattern": "^portable clarification requires exact filename and current authority$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "60ef06187cabed62a4a0c5de58c591ec7055217b059607e5d769605d134d591d",
+      "junitSha256": "c668197054195e340115963fa657c4e2bff6d0a0ef70b3273fbccf2a8bb8d9f4"
+    },
+    {
+      "namePattern": "^portable clarification rejects mixed named questions and populated candidates$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "1b735a6697dde38054f20be3c99d82a0b8c2bd1902f1213ce8fc68dc78a0a749",
+      "junitSha256": "4b2e4f21f0743a63ca494c84f7df47b04b7679311d1a610b415b4b829d79c7a0"
+    },
+    {
+      "namePattern": "^portable clarification accepts three distinct intent alternatives in any order$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "9b051232f048bcc58fa8d2c7bfb8e20ed486066c2434bedab8c8e8f2ca95cf60",
+      "junitSha256": "79db9a1ce29bf4f205763e65686d3b871e5f46bae7a17a9812d353e63ea132f0"
+    },
+    {
+      "namePattern": "^portable clarification requires source bound goal and current identity$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "9d9660338407fca8ec5aa84365439de081361bf2249c91f42e447b1105d43ec7",
+      "junitSha256": "81f30b726f886ef22e56f299b6e052012b992a20774102812fab81df556562bd"
+    },
+    {
+      "namePattern": "^portable clarification rejects unrelated or ambiguous intent alternatives$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "b91a5ce392ab2ac8caeed173e8b7fe04c846a0daeb6168aca70f0d17632840c7",
+      "junitSha256": "adb902d3abe8d4569bab636b5fa37e5a9665c4ca753025e657c952a6ec3ebe7c"
+    },
+    {
+      "namePattern": "^portable clarification requires independent caller source and authority configuration$",
+      "expectedTests": 1,
+      "actualExecuted": 1,
+      "actualPassed": 1,
+      "selectedSkipOrTodo": 0,
+      "outputSha256": "51dbccece0676cb379a6ec3aa36ac44f4de0236aaca8cc3e1a2a91839c6ed1a0",
+      "junitSha256": "47c8824524db2a3d4b7e98fafc5b04007b596368ba7f2e2f489fdd3b8730c76a"
+    }
+  ],
+  "proposedHelperSha256": "6e719bf7f5a8fe39fcbb10061f4df0d2bc8aa9fbbb060d1e02094bb9e0eb1420",
+  "proposedTestsSha256": "cfd5623f853b0aa35c9c93c9f12e0817f8351ba502a49b588bbfcfb892fc3ef8",
+  "currentOperationGuards": [
+    "operation identity",
+    "generation",
+    "operation version",
+    "clarification identity",
+    "waiting-for-user state",
+    "empty candidates"
+  ],
+  "inputGuards": [
+    "exact original filename basename",
+    "case/source/criterion metadata",
+    "independent explicit authority",
+    "one bounded named choice question",
+    "three distinct intent alternatives in any order",
+    "no extra action/business question or unapproved pipeline option tail"
+  ],
+  "claimLimit": "Local synthetic coverage only. Real Chat handling, publication, and future wording coverage remain unverified. Historical evidence coverage is not complete."
+}

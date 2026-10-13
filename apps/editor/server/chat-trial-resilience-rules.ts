@@ -611,6 +611,44 @@ export function createTrialResilienceRules() {
       core.generatedInputs.some((item) => !generated.has(item.path.toLowerCase()))
     )
       throw new Error('Core generated-input map must match the normal case declaration exactly.');
+    const rejectCoreCoordinate = (
+      message: string,
+      expectationIndex: number,
+      expectation: ChatPipelineTrialExpectation,
+      failedConjunct: string,
+      roleTaskId: string | null = null,
+    ): never => {
+      const error = new Error(message) as Error & { trialPlanDiagnostic?: unknown };
+      const bounded = (value: unknown, maximum: number) =>
+        typeof value === 'string' && value.length <= maximum ? value : undefined;
+      error.trialPlanDiagnostic = {
+        message,
+        missingEvidence: [],
+        issues: [],
+        rejectionContext: {
+          version: 1,
+          availability: 'unknown',
+          normalCaseId: normal.id,
+          roleTaskId,
+          expectationIndex,
+          expectationType: expectation.type,
+          ...('path' in expectation ? { path: bounded(expectation.path, 240) } : {}),
+          ...(expectation.type === 'file-source-text-occurrence'
+            ? {
+                sourcePath: bounded(expectation.sourcePath, 240),
+                sourcePointer: bounded(expectation.sourcePointer, 512),
+                producerTaskId: bounded(expectation.producerTaskId, 128),
+                consumerTaskId: bounded(expectation.consumerTaskId, 128),
+                producerRoleExpectationIndices:
+                  core.taskRoles.find((mapped) => mapped.taskId === expectation.producerTaskId)
+                    ?.expectationIndices ?? [],
+              }
+            : {}),
+          failedConjunct,
+        },
+      };
+      throw error;
+    };
     const independentSourceContent = (path: string, producerTaskId: string) => {
       const producer = core.taskRoles.find((role) => role.taskId === producerTaskId);
       return (
@@ -645,10 +683,41 @@ export function createTrialResilienceRules() {
       !seeded(e.sourcePath) &&
       !overlaps(e.path, e.sourcePath) &&
       independentSourceContent(e.sourcePath, e.producerTaskId);
+    const sourceRelationFailure = (e: ChatPipelineTrialExpectation): string => {
+      if (e.type !== 'file-source-text-occurrence') return 'relation_type';
+      if (e.present !== true) return 'present_true';
+      if (
+        !core.generatedInputs.some(
+          (input) =>
+            input.path === e.sourcePath &&
+            input.producerTaskId === e.producerTaskId &&
+            input.consumerTaskId === e.consumerTaskId,
+        )
+      )
+        return 'generated_input_mapping';
+      if (e.producerTaskId === e.consumerTaskId) return 'distinct_tasks';
+      if (!executed.has(e.producerTaskId)) return 'executed_producer';
+      if (!executed.has(e.consumerTaskId)) return 'executed_consumer';
+      if (!closure(tasks[e.consumerTaskId]?.dependsOn ?? [], tasks).has(e.producerTaskId))
+        return 'dependency_ancestor';
+      if (!(tasks[e.producerTaskId]?.artifactPaths ?? []).includes(e.sourcePath))
+        return 'producer_artifact_ownership';
+      if (!(tasks[e.consumerTaskId]?.artifactPaths ?? []).includes(e.path))
+        return 'consumer_artifact_ownership';
+      if (seeded(e.path)) return 'unseeded_output';
+      if (seeded(e.sourcePath)) return 'unseeded_source';
+      if (overlaps(e.path, e.sourcePath)) return 'distinct_artifact_paths';
+      if (!independentSourceContent(e.sourcePath, e.producerTaskId))
+        return 'independent_producer_content';
+      return 'unknown';
+    };
     for (const expectation of normal.expectations) {
       if (expectation.type === 'file-source-text-occurrence' && !ownedSourceRelation(expectation))
-        throw new Error(
+        rejectCoreCoordinate(
           'Core source-text relation needs owned generated source, dependency, and independent concrete source content.',
+          normal.expectations.indexOf(expectation),
+          expectation,
+          sourceRelationFailure(expectation),
         );
     }
     for (const input of core.generatedInputs) {
@@ -700,8 +769,12 @@ export function createTrialResilienceRules() {
           // Exact produced text still needs the explicit intent-bound semantic rationale.
         } else if (e.type === 'file-source-text-occurrence') {
           if (e.consumerTaskId !== role.taskId || !ownedSourceRelation(e))
-            throw new Error(
+            rejectCoreCoordinate(
               'Core source-text relation needs owned generated source, dependency, and independent concrete source content.',
+              i,
+              e,
+              e.consumerTaskId !== role.taskId ? 'consumer_role_mapping' : sourceRelationFailure(e),
+              role.taskId,
             );
         } else if (e.type === 'json-pointer-text-occurrence' && e.present === true) {
           const generatedSource =
@@ -727,8 +800,12 @@ export function createTrialResilienceRules() {
               'Core source occurrence needs preserved nonempty input bytes or a mapped genuine upstream generated input.',
             );
         } else
-          throw new Error(
+          rejectCoreCoordinate(
             'Core content requires a concrete JSON value, nonempty exact file bytes, or present:true source occurrence; status/existence/schema alone is insufficient.',
+            i,
+            e,
+            'supported_content_shape',
+            role.taskId,
           );
         contentPaths.add(e.path);
       }

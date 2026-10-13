@@ -1065,13 +1065,19 @@
   YAML hash, attempt id, and bounded request; do not consume the pipeline-repair budget or expose
   its text to the renderer. Repair `no_change` ends that chain without identical verification.
   Trial Plan `no_change` also retains the draft, except for a known completed, settled invocation
-  with a counted invalid native commit, verified complete rejection bound to current stage/YAML/
+  with a verified counted invalid native commit or an authenticated complete zero-count rejection,
+  bound to current stage/YAML/
   Host attempt and unchanged completed snapshot, and remaining original frozen planning budget.
   Reuse serial verification to reauthenticate that evidence, issue a fresh Host attempt/invocation,
   and seal its complete redacted feedback into canonical input. Every later commit remains counted;
-  do not expand the budget or bypass the one-commit fence. Missing/stale full evidence, uncounted
-  validation, exhaustion, and provider/unknown failures require explicit Retry. This exception grants
+  do not expand the budget or bypass the one-commit fence. Missing/stale full evidence,
+  exhaustion, and provider/unknown failures require explicit Retry. This exception grants
   no pipeline-write authority and never consumes or expands the separate artifact-repair budget.
+- Eligible completed planner no-progress and zero-count native rejection need a fresh local
+  verification identity derived from the durable verifying operation version. Counted commits
+  retain the next-submission ordinal; same-request replay and output-length continuation retain
+  their original attempt. Test this through actual Trial issuance and the AuthoringEngine, since
+  manually assigning distinct attempt IDs in a fixture can conceal the production collision.
 - Before publication, compare executable references removed from the immutable base YAML with the
   staged agent-owned requirements body/frontmatter. Do not finalize while removed environment
   names, PowerShell cmdlets, or external binaries remain documented; repair YAML and its sibling
@@ -1461,7 +1467,9 @@
   replacing it with a managed prompt task. Do not share the managed prompt database with the CLI
   or inject managed isolation into ordinary command tasks.
 - Managed Chat, prompt tasks, and opted-in `TAGMA_OPENCODE_CLI` commands must share the
-  `opencode-host-env.ts` provider/proxy/CA trust allowlist. Keep runtime/control authority and TLS
+  `opencode-host-env.ts` provider/proxy/CA trust allowlist. Read its fixed own Host keys directly:
+  Bun may expose configured proxy keys as readable but non-enumerable properties. Keep dynamic
+  provider discovery enumerable and reject prototype-inherited settings. Keep runtime/control authority and TLS
   bypass settings excluded. Apply CLI selection to secret-bearing command SpawnSpecs as well as
   `runCommand`: core routes commands with resolved secrets through `runSpawn` with a null driver.
   Authored and synthetic secret overrides remain authoritative; forwarded credentials must be

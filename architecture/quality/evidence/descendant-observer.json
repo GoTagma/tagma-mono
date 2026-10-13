@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-test-observer-regression",
+  "originalFailureSourceBinding": [
+    {
+      "path": "packages/runtime-bun/src/bun-process-runner.test.ts",
+      "sha256": "d1df5fed14d46d13f0effd03d61fd0e7d3c910e3e3ea4b6c02c53ae4f2d826d9",
+      "bytes": 34016
+    },
+    {
+      "path": "packages/runtime-bun/src/bun-process-runner.ts",
+      "sha256": "d2395c7ab35fe1fe5522a3ce7ed290d7c93aa3c6d7b340a4830a545890187291",
+      "bytes": 45631
+    }
+  ],
+  "actualFailedTests": [
+    {
+      "pid": 9732,
+      "message": "grandchild process 9732 did not exit within 2000ms",
+      "test": "runSpawn timeout terminates the descendant process tree"
+    },
+    {
+      "pid": 9746,
+      "message": "grandchild process 9746 did not exit within 2000ms",
+      "test": "runSpawn external abort terminates the descendant process tree"
+    }
+  ],
+  "postFinallyExactObservations": [
+    {
+      "pid": 9732,
+      "state": "Z",
+      "ppid": 1,
+      "startTicks": "217456"
+    },
+    {
+      "pid": 9746,
+      "state": "Z",
+      "ppid": 1,
+      "startTicks": "218060"
+    }
+  ],
+  "timingLimit": "The helper treats Linux exited-but-unreaped Z as alive. Both exact PIDs are currently Z with unchanged startTicks and parent PID1, but observation follows the tests finally cleanup, which can SIGKILL a live process. Timely production termination at the original assertion window remains UNKNOWN.",
+  "productionDefectConfirmed": false,
+  "testObserverGapConfirmed": true,
+  "correction": {
+    "onlyTestHelper": true,
+    "recognizesExplicitLinuxZorX": true,
+    "unknownStatePreservesLiveness": true,
+    "cancelBeforeAliveAssertionsAdded": true,
+    "allOriginalHeartbeatAndClassificationAssertionsRetained": true
+  },
+  "localReverification": {
+    "executed": 2,
+    "pass": 2,
+    "fail": 0,
+    "expectCalls": 14,
+    "newProductionChanges": 0,
+    "testSourceSha256": "17c4a1309e629197ba346dd39a821b16f30f57d7a11c32b2628829f5c8dbba72"
+  },
+  "paidModelRequests": 0,
+  "historicalScope": false
+}

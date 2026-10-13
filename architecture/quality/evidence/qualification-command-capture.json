@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "kind": "sanitized-installed-qualification-command-capture-evidence",
+  "classification": "test-tool/environment",
+  "currentSourceIssueId": "CSR-0011",
+  "qualificationToolLineage": "TQI-QUAL-GIT-BUFFER-001",
+  "originalQualificationToolFirstEvidence": {
+    "path": "work/handoff-resume-20261012/r7-pre-freeze-git-buffer-failure.actual.json",
+    "sha256": "e93373f9b6b933b11dc53cd73e50c39fe1d9c9bda8a11478582bc01430c8f17c",
+    "bytes": 1453
+  },
+  "finiteCause": "Node spawnSync default output buffer truncates qualification Git enumeration; explicit positive bounded maxBuffer and failure-only metadata prevent incomplete child output from becoming success.",
+  "maximumCaptureBytes": 67108864,
+  "baselineLocalAssertion": {
+    "actualExecutedTests": 1,
+    "actualPassedTests": 0,
+    "actualFailedTests": 1,
+    "errorCode": "ENOBUFS",
+    "assertionType": "ERR_ASSERTION",
+    "productDefect": false,
+    "firstEnvironmentEPERMAttemptRetainedAsEnvironmentBlock": true,
+    "proof": {
+      "path": "work/handoff-resume-20261012/qualification-buffer-portable-proposal/v2/evidence/portable-regression.actual.json",
+      "sha256": "91d917952fe069e6aa73668adfc875704875bad998c800729742b433e5d1b865",
+      "bytes": 9479
+    }
+  },
+  "installedAdoption": {
+    "actualInstalledPublicHelperImportedByPrivateQualification": true,
+    "privateQualificationEntry": {
+      "path": "work/handoff-resume-20261012/r7-qualification-preparation/prepare-actual-qualification.r4.prepared.mjs",
+      "sha256": "3ea78e5d718fc4ff45cd126c639d9787101d5c6cc5138a48636a65486b6f65a0",
+      "bytes": 23516
+    },
+    "readOnlySourceOnly": {
+      "kind": "actual-read-only-source-enumeration",
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1422,
+      "sha256": "3c386756c39e6bc78deea2a337e36b38b6ccb669974465e7afafd9077701251c",
+      "evidence": {
+        "path": "work/handoff-resume-20261012/environment-tooling-batch-actual-r2/source-only.actual.json",
+        "sha256": "1b53aaa1af75f8d81afc3566b50404a23d5247426777c944b774050cf977f0a6",
+        "bytes": 173
+      },
+      "externalRequests": 0
+    },
+    "installedPublicFiles": [
+      {
+        "path": "scripts/lib/qualification-command-capture.mjs",
+        "sha256": "4918c0f1fada25f48491c4208d840b361b2f876567006f2106e311ad99d8e620",
+        "bytes": 1603
+      },
+      {
+        "path": "scripts/lib/qualification-command-capture.fixture.mjs",
+        "sha256": "05a52c0afde3352d8ad3ecb4014a0476cf2ec2ef6e84f1698abc0877a7c442aa",
+        "bytes": 4072
+      },
+      {
+        "path": "scripts/lib/qualification-command-capture.test.ts",
+        "sha256": "e5a4f17bbd7214362f038c828fc8bc78828b3481cc2d701c19dbf2882bcb178f",
+        "bytes": 3858
+      },
+      {
+        "path": "scripts/known-issue-regressions.mjs",
+        "sha256": "047056c2d6790b8d137bbcc455e996df94fb22a9cbbc59399706d09ac8923c87",
+        "bytes": 36476
+      },
+      {
+        "path": "scripts/known-issue-regressions.test.mjs",
+        "sha256": "9128b694d9a5d82e7b9422015ce10931ddc980da020c68f7eccd9828e7e16a9d",
+        "bytes": 17086
+      }
+    ],
+    "actualProof": {
+      "path": "work/handoff-resume-20261012/environment-tooling-batch-actual-r2/installed-adoption-proof.actual.json",
+      "sha256": "52c99b141b17e8ab790c0e16267491797b94318e43ab6d69d36e57681e18f38c",
+      "bytes": 5853
+    },
+    "installBeforeVerification": {
+      "path": "work/handoff-resume-20261012/environment-tooling-batch-actual-r2/install.actual.json",
+      "sha256": "540bb70237e6f8a7af2852727338e7dda1cd78ae91b996cc2b7337d297dcb2d2",
+      "bytes": 5518
+    },
+    "independentPreparedReview": {
+      "path": "work/handoff-resume-20261012/independent-qualification-portable-and-sentinel-review-v1/review.actual.json",
+      "sha256": "9cb792844f453cfb8c53702d0e5e6eb020452faa19fad38ce68391b7331363c2",
+      "bytes": 9543
+    }
+  },
+  "exactRegression": {
+    "file": "scripts/lib/qualification-command-capture.test.ts",
+    "namePattern": "^qualification capture uses explicit Node and blocks incomplete output$",
+    "expectedTests": 1,
+    "cwd": ".",
+    "fullName": "qualification capture uses explicit Node and blocks incomplete output"
+  },
+  "actualExactOuterExecution": {
+    "bunVersion": "1.3.14",
+    "actualExecutedTests": 1,
+    "actualPassedTests": 1,
+    "actualFailedTests": 0,
+    "actualSkippedOrTodoTests": 0,
+    "nonemptyStdoutParserVerified": true,
+    "nonemptyJUnitParserVerified": true,
+    "JUnitActualExecutedTests": 1,
+    "textCode": "verified_execution",
+    "JUnitCode": "junit_verified_execution"
+  },
+  "actualInnerNodeExecution": {
+    "nodeVersion": "24.19.0",
+    "bunVersion": null,
+    "executedCases": 4,
+    "passedCases": 4,
+    "failedCases": 0,
+    "skippedCases": 0,
+    "payloadBytes": 2097409,
+    "resultMetadata": [
+      {
+        "id": "complete-large-stdout",
+        "passed": true,
+        "returnedOutput": true,
+        "maxBuffer": 67108864,
+        "exitCode": 0,
+        "exitSignal": null,
+        "errorCode": null,
+        "stdoutBytes": 2097409,
+        "stderrBytes": 31,
+        "stdoutSha256": "06b001477bac07608efa948bf06624cd7f954865ba9b1f429551b3dd3b2895bf",
+        "stderrSha256": "dd49266d07ccd59158e5b4bf49cb1046c0135e6d8b5993bc9eb1fa4fac356805"
+      },
+      {
+        "id": "blocked-output-overflow",
+        "passed": true,
+        "returnedOutput": false,
+        "maxBuffer": 1048576,
+        "exitCode": null,
+        "exitSignal": "SIGTERM",
+        "errorCode": "ENOBUFS",
+        "stdoutBytes": 1059776,
+        "stderrBytes": 0,
+        "stdoutSha256": "7d011ae6fe02746dc39697b33796bb53964b26277d8f2ffbb8c674024e233764",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "id": "blocked-nonzero-exit",
+        "passed": true,
+        "returnedOutput": false,
+        "maxBuffer": 67108864,
+        "exitCode": 7,
+        "exitSignal": null,
+        "errorCode": null,
+        "stdoutBytes": 257,
+        "stderrBytes": 19,
+        "stdoutSha256": "e8d95cc2b4bc198c54b40bd214df958afb65f5e73d2c2eafe0593cf5c635c1f0",
+        "stderrSha256": "e4368c93c3309b9b5b1fc4393491c2fe0eab58d1a35c8f05232e79dd3c711633"
+      },
+      {
+        "id": "complete-large-stderr",
+        "passed": true,
+        "returnedOutput": true,
+        "maxBuffer": 67108864,
+        "exitCode": 0,
+        "exitSignal": null,
+        "errorCode": null,
+        "stdoutBytes": 23,
+        "stderrBytes": 2097409,
+        "stdoutSha256": "897d3e95b65f26676081f8b9f3a98b6ee4424566303e8d4e7c7522ebae219eab",
+        "stderrSha256": "d3fe8fddcc746712a540f2939ab0dfef447b9a815ff3b282b163ad10bab1e544"
+      }
+    ]
+  },
+  "finiteSentinelRunner": {
+    "installedRunnerHash": "047056c2d6790b8d137bbcc455e996df94fb22a9cbbc59399706d09ac8923c87",
+    "installedRunnerTestsHash": "9128b694d9a5d82e7b9422015ce10931ddc980da020c68f7eccd9828e7e16a9d",
+    "actualSelfTestsExecuted": 20,
+    "actualSelfTestsPassed": 20,
+    "old18TestPrefixPreserved": true,
+    "environmentAndAssertionFailuresRemainBlocking": true,
+    "newWrapperOldRunnerProtocolMisclassificationIsProductRegression": false
+  },
+  "priorBroadFileFilterAttempt": {
+    "actualSameNameExecutions": 3,
+    "acceptedAsExactOne": false,
+    "exactCountParserBlocked": true,
+    "metadataEvidence": {
+      "path": "work/handoff-resume-20261012/environment-tooling-batch-actual-r2/qualification-installed.actual.log",
+      "sha256": "247cd3fab7bad274264943ab568c252b534b9326eead2150ed7f414857755fef",
+      "bytes": 5716
+    },
+    "productFailure": false
+  },
+  "exactExecutionEvidenceReferences": [
+    {
+      "path": "work/handoff-resume-20261012/environment-tooling-batch-actual-r2/qualification-installed.exact-file.actual.log",
+      "sha256": "74bcc8cff82721bd9a261dacb39da1348f980fea3c7d0b3be1818e518eaa7109",
+      "bytes": 1914
+    },
+    {
+      "path": "work/handoff-resume-20261012/environment-tooling-batch-actual-r2/qualification-installed.exact-file.actual.junit.xml",
+      "sha256": "5e5ef89f659062cf883a28b8330d42553f906b143d8d145d4e14f485df569b4d",
+      "bytes": 589
+    },
+    {
+      "path": "work/handoff-resume-20261012/environment-tooling-batch-actual-r2/runner-selftests.actual.tap",
+      "sha256": "614f992c923a63bbc08bb5da889e3eca0259c1659806d72d18b55d4fa5829fff",
+      "bytes": 1843
+    }
+  ],
+  "limits": {
+    "mappedWhole11Issue41SelectorGate": "PENDING_ROOT_EXECUTION",
+    "currentSourceGREENClaimed": false,
+    "historicalCoverageComplete": false,
+    "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+    "actualR7CaseGradesChanged": false,
+    "runtimeProductIssuesAutoFixed": false,
+    "realChatConvergence": "NOT_ASSESSED_BY_QUALIFICATION_TOOL_CAPTURE",
+    "globalProviderScopeAndFinancialCharges": "UNKNOWN",
+    "rawPrivatePromptsTestsetSourceCredentialsLogsOrProviderReasoningIncluded": false
+  },
+  "recordedAtUTC": "2026-10-12T18:41:26.740143+00:00"
+}

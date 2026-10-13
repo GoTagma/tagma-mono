@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "kind": "csr0009-real-case-and-runtime-issue-link",
+  "targetIssueId": "CSR-0009",
+  "runtimeIssueId": "RUI-0013",
+  "acceptancePolicy": "Current genuine DOM+independently viewed PNG Open Pipeline + normal current publication within original UI budget; no added business/math/all-Trial-coverage criteria.",
+  "realTestSelectors": [
+    {
+      "runId": "original12-current-source-20261012-r6",
+      "caseId": "S1L1",
+      "statusAtObservation": "NOT_FULL_PASS",
+      "nextFreshRunRequired": true,
+      "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+      "liveConvergence": "unknown",
+      "helperContinuationAfterFix": "not_run",
+      "opaqueEvidenceReferences": [
+        "r6-independent-complete12",
+        "r6-independent-root-closure-assessment",
+        "r6-root-known-scope-closure"
+      ]
+    },
+    {
+      "runId": "original12-current-source-20261012-r6",
+      "caseId": "S1L3",
+      "statusAtObservation": "NOT_FULL_PASS",
+      "nextFreshRunRequired": true,
+      "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+      "liveConvergence": "unknown",
+      "helperContinuationAfterFix": "not_run",
+      "opaqueEvidenceReferences": [
+        "r6-independent-complete12",
+        "r6-independent-root-closure-assessment",
+        "r6-root-known-scope-closure"
+      ]
+    },
+    {
+      "runId": "original12-current-source-20261012-r6",
+      "caseId": "S2L3",
+      "statusAtObservation": "NOT_FULL_PASS",
+      "nextFreshRunRequired": true,
+      "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+      "liveConvergence": "unknown",
+      "helperContinuationAfterFix": "not_run",
+      "opaqueEvidenceReferences": [
+        "r6-independent-complete12",
+        "r6-independent-root-closure-assessment",
+        "r6-root-known-scope-closure"
+      ]
+    },
+    {
+      "runId": "original12-current-source-20261012-r6",
+      "caseId": "S3L2",
+      "statusAtObservation": "NOT_FULL_PASS",
+      "nextFreshRunRequired": true,
+      "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+      "liveConvergence": "unknown",
+      "helperContinuationAfterFix": "not_run",
+      "opaqueEvidenceReferences": [
+        "r6-independent-complete12",
+        "r6-independent-root-closure-assessment",
+        "r6-root-known-scope-closure"
+      ]
+    },
+    {
+      "runId": "original12-current-source-20261012-r6",
+      "caseId": "S4L2",
+      "statusAtObservation": "NOT_FULL_PASS",
+      "nextFreshRunRequired": true,
+      "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+      "liveConvergence": "unknown",
+      "helperContinuationAfterFix": "not_run",
+      "opaqueEvidenceReferences": [
+        "r6-independent-complete12",
+        "r6-independent-root-closure-assessment",
+        "r6-root-known-scope-closure"
+      ]
+    },
+    {
+      "runId": "original12-current-source-20261012-r6",
+      "caseId": "S4L3",
+      "statusAtObservation": "NOT_FULL_PASS",
+      "nextFreshRunRequired": true,
+      "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+      "liveConvergence": "unknown",
+      "helperContinuationAfterFix": "not_run",
+      "opaqueEvidenceReferences": [
+        "r6-independent-complete12",
+        "r6-independent-root-closure-assessment",
+        "r6-root-known-scope-closure"
+      ]
+    }
+  ],
+  "opaqueEvidenceDigests": [
+    {
+      "id": "r6-independent-complete12",
+      "sha256": "a4333e3ba67063ce2c8c83e715c5a624c3ad4cc05872d7ace04503f9aa143ac1",
+      "bytes": 28970
+    },
+    {
+      "id": "r6-independent-root-closure-assessment",
+      "sha256": "453335f47f7131407593fc333f8c4d42bf1bc5051b237af44e180646d1fd42df",
+      "bytes": 32751
+    },
+    {
+      "id": "r6-root-known-scope-closure",
+      "sha256": "81894e01f988b99f64057dc5c3c080c0aef34807fd22a2524f7f5d6613c54e3d",
+      "bytes": 56983
+    }
+  ],
+  "causeAndLiveLimit": "Tool grammar matching has finite synthetic causal coverage. All six current real outcomes remain NOT_FULL_PASS; product cause and live convergence after the fix remain UNKNOWN. A fresh complete original test run is required."
+}

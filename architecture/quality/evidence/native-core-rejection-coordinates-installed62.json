@@ -1,0 +1,281 @@
+{
+  "schemaVersion": 1,
+  "kind": "later-installed-native-core-rejection-coordinate-current62-execution",
+  "createdAtUTC": "2026-10-13T01:27:06.210542+00:00",
+  "scope": "Actual public installation plus the source-bound 13-record/62-selector current-source regression gate; no genuine Chat acceptance claim.",
+  "readingRule": "Append to the immutable earlier local RED/intermediate failure/V3 GREEN/prepared record. This receipt describes the actual gate source epoch; it does not rewrite the initial first evidence or project this GREEN onto later source/catalog bytes.",
+  "initialLocalEvidence": {
+    "path": "architecture/quality/evidence/native-core-rejection-coordinates.json",
+    "sha256": "a7eb63629bcd47005b684d4ae5ebf1adfda2ee545b6b1636333f341483e7f22d",
+    "bytes": 7294
+  },
+  "installation": {
+    "record": {
+      "path": "work/handoff-resume-20261012/core-coordinate-public-batch-actual-r1/source-installation.actual-v1.json",
+      "sha256": "e5e5accc907fe5d3738547b31ffc11ccc331e458f1fc5f13be4a5b7543df0476",
+      "bytes": 6712
+    },
+    "postFormatRecord": {
+      "path": "work/handoff-resume-20261012/core-coordinate-public-batch-actual-r1/format-and-selector.pre-gate.actual-v1.json",
+      "sha256": "7c1a8fb7a4875065aa7175730e2d935bb9b84076eecb4efadac81b62b568b334",
+      "bytes": 1609
+    },
+    "selectorLiteralCorrection": {
+      "path": "work/handoff-resume-20261012/core-coordinate-public-batch-actual-r1/selector-literal-space-correction.actual-v1.json",
+      "sha256": "23f31d1d95331154ada685a239f458994d75a4ca3efd132e38258033c74f7c34",
+      "bytes": 1972
+    },
+    "installedProductAndPortableTestSources": [
+      {
+        "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+        "sha256": "522155cce9471f10624f4e6fa3cc73b7d46c5620bd7ca7d475d0fbc9a32c0d27",
+        "bytes": 50317
+      },
+      {
+        "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+        "sha256": "f26e5b18275ae482027ef85c3024b9f757c058e2a55d8a9b6face2fdd6db25ef",
+        "bytes": 80159
+      },
+      {
+        "path": "apps/editor/tests/chat-trial-rejection-coordinates.test.ts",
+        "sha256": "4ad444227f46d3154b4329adcbfed9457ab38dd37f2c192e65ad17d344cd19a1",
+        "bytes": 18563
+      }
+    ],
+    "old12Records55SelectorsAndSourcesRetained": true,
+    "selectedNewSevenNamesAndAssertionsRetained": true,
+    "selectorCorrectionScope": "Only seven regex escaped spaces were changed to literal spaces before execution, preserving complete selector names. No test or product assertion changed.",
+    "publicCodeInstalled": true
+  },
+  "actualMappedGate": {
+    "record": {
+      "path": "work/handoff-resume-20261012/core-coordinate-public-batch-actual-r1/current62.actual-v1.json",
+      "sha256": "d7c1ee9bde2159bb459b73d80e4c66e4d112b32d51ae7d4b78df66c2f7da4603",
+      "bytes": 68981
+    },
+    "scope": "current-source",
+    "startedAt": "2026-10-13T01:23:35.004Z",
+    "finishedAt": "2026-10-13T01:23:45.762Z",
+    "catalog": {
+      "path": "architecture/quality/current-source-regressions.json",
+      "sha256": "940c53f5b4e10d3200e68ee17d737f04b126fef9d6fc070db75ff7862091082c",
+      "bytes": 88104
+    },
+    "baseline": {
+      "kind": "explicit-file",
+      "path": "work/handoff-resume-20261012/core-coordinate-public-batch-actual-r1/before/architecture/quality/current-source-regressions.json",
+      "sha256": "30408086def4aa682a45c57c3dccfcbee2deb89314deb633c068ccf9bcd03d65"
+    },
+    "sourceFingerprint": {
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1432,
+      "sha256": "ad32e7eeb33b204a859af91f9644cdbe714a792ad8caf357dfc0ac1bed7d115a"
+    },
+    "runtime": {
+      "expectedVersion": "1.3.14",
+      "version": "1.3.14"
+    },
+    "passed": true,
+    "issueCount": 13,
+    "regressionCount": 62,
+    "eachSelectorExpectedExecutedMatchedPassed": 1,
+    "failures": 0,
+    "selectedSkipsOrTodos": 0,
+    "everySelectorChildExitStatus": 0,
+    "everySelectorChildSignal": null,
+    "everySelectorJUnitExecutionVerified": true,
+    "networkIsolation": "not_claimed",
+    "providerCredentialEnvironment": "removed",
+    "subjectCSR0013": {
+      "executedSelectors": 7,
+      "passedSelectors": 7,
+      "failedSelectors": 0,
+      "skippedOrTodoSelectors": 0,
+      "results": [
+        {
+          "issueId": "CSR-0013",
+          "regressionIndex": 0,
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "namePattern": "^current generated rejection exposes bound failed producer coordinates while preserving the guard$",
+          "expectedTests": 1,
+          "executed": 1,
+          "matched": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipOrTodo": 0,
+          "status": 0,
+          "signal": null,
+          "classification": "pass",
+          "code": "verified_execution",
+          "outputBytes": 280,
+          "outputSha256": "2560b7d5fbc3b4ffcac12c9bf2a0aff04243ca5b33b08e4788bc4dc80b8b2b11",
+          "junitSha256": "30ae7d8a4b4d0176f006e4ba806c6d890724588db792f25f3517deee7ba1dc20",
+          "junitBytes": 2052,
+          "junitExecutionVerified": true
+        },
+        {
+          "issueId": "CSR-0013",
+          "regressionIndex": 1,
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "namePattern": "^current generated rejection identifies the exact source mapping without permitting it$",
+          "expectedTests": 1,
+          "executed": 1,
+          "matched": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipOrTodo": 0,
+          "status": 0,
+          "signal": null,
+          "classification": "pass",
+          "code": "verified_execution",
+          "outputBytes": 269,
+          "outputSha256": "4b98542777426533d843d30ee781ea33b347d0131a56a2c69a4b3d8f77b3d16a",
+          "junitSha256": "8a07d76ced82b0221850175ef3abc920e51dd08496aff1d52c80ab0f65dedd96",
+          "junitBytes": 2052,
+          "junitExecutionVerified": true
+        },
+        {
+          "issueId": "CSR-0013",
+          "regressionIndex": 2,
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "namePattern": "^current generated rejection identifies an unsupported selected role index without weakening content$",
+          "expectedTests": 1,
+          "executed": 1,
+          "matched": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipOrTodo": 0,
+          "status": 0,
+          "signal": null,
+          "classification": "pass",
+          "code": "verified_execution",
+          "outputBytes": 283,
+          "outputSha256": "d3353f612c8f45fbf99315f4bc9a0a3820c1b271cde42ac4239880f7804ab07b",
+          "junitSha256": "cc8011ab1846182c221ff2182502c79b635fbeb16539f97743ac577712fff421",
+          "junitBytes": 2052,
+          "junitExecutionVerified": true
+        },
+        {
+          "issueId": "CSR-0013",
+          "regressionIndex": 3,
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "namePattern": "^valid transitive source witness still validates and commits exactly once$",
+          "expectedTests": 1,
+          "executed": 1,
+          "matched": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipOrTodo": 0,
+          "status": 0,
+          "signal": null,
+          "classification": "pass",
+          "code": "verified_execution",
+          "outputBytes": 254,
+          "outputSha256": "669629b6c4d607c89975a57a3f60d179962e070b2671de36031f2269728e66a7",
+          "junitSha256": "2d77a5e11679fe417073c9dff347fb34282fca18cb7c072ef19296dee6576d6b",
+          "junitBytes": 2049,
+          "junitExecutionVerified": true
+        },
+        {
+          "issueId": "CSR-0013",
+          "regressionIndex": 4,
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "namePattern": "^foreign attempt and changed intent still reject before coordinate enrichment$",
+          "expectedTests": 1,
+          "executed": 1,
+          "matched": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipOrTodo": 0,
+          "status": 0,
+          "signal": null,
+          "classification": "pass",
+          "code": "verified_execution",
+          "outputBytes": 259,
+          "outputSha256": "641da36ade8aac5ebc3e879c976fb02a39da961d752443bfc8a94bb87718400b",
+          "junitSha256": "8c0d6d3a37cb14d815ca681186257e36601a9ba2989fd0915849a57327c5ed24",
+          "junitBytes": 2049,
+          "junitExecutionVerified": true
+        },
+        {
+          "issueId": "CSR-0013",
+          "regressionIndex": 5,
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "namePattern": "^native coordinate suffix is byte bounded and reports omitted long coordinates$",
+          "expectedTests": 1,
+          "executed": 1,
+          "matched": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipOrTodo": 0,
+          "status": 0,
+          "signal": null,
+          "classification": "pass",
+          "code": "verified_execution",
+          "outputBytes": 261,
+          "outputSha256": "37c274e06a503447087aa075b422b7e1aae008f58584324f6f9f5497db15578d",
+          "junitSha256": "bed8b657965b7cd2b03e5cd3a082e40d654a0d1c14efbe281c27271186713c26",
+          "junitBytes": 2052,
+          "junitExecutionVerified": true
+        },
+        {
+          "issueId": "CSR-0013",
+          "regressionIndex": 6,
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-rejection-coordinates.test.ts",
+          "namePattern": "^native coordinate errors preserve counted rejection summaries and attempt fencing$",
+          "expectedTests": 1,
+          "executed": 1,
+          "matched": 1,
+          "pass": 1,
+          "fail": 0,
+          "skipOrTodo": 0,
+          "status": 0,
+          "signal": null,
+          "classification": "pass",
+          "code": "verified_execution",
+          "outputBytes": 265,
+          "outputSha256": "5e5f6d6183b13ef6078c14a74714e335d2f25398b0fb276c9f9179526ed28c50",
+          "junitSha256": "640af176aed62833b1489fb2698a0bc2c7d879264e6307763853a1aa231b3a1c",
+          "junitBytes": 2052,
+          "junitExecutionVerified": true
+        }
+      ]
+    },
+    "fullResultsAreBoundByOpaqueReceiptReference": true,
+    "rawPrivateOperationDataOrTestOutputCopied": false
+  },
+  "laterCurrentStatus": {
+    "issueId": "CSR-0013",
+    "previousStatus": "prepared-local-seven-green-full-mapped-gate-and-real-chat-pending",
+    "status": "installed-current-source62-green-real-chat-pending",
+    "localCoordinatesGapObservedAndMapped": true,
+    "realChatSuffixDelivery": "UNKNOWN_NOT_RETESTED",
+    "realChatConvergence": "UNKNOWN_NOT_RETESTED",
+    "validatorFalseRejectionProved": false,
+    "runtimeIssuesAutomaticallyMarkedFixedOrRegressed": false
+  },
+  "limits": {
+    "historicalCoverageComplete": false,
+    "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+    "fullEngineeringQualificationOnThisSource": "UNASSESSED_BY_METADATA_PREPARER",
+    "freshOriginal12OnInstalledSource": "NOT_RUN",
+    "futureOriginal12Policy": "Same original prompts, fresh product workspaces, normal Tagma OpenCode Chat, Flash low, planning2/repair2, one original Send, no manual Retry or extra paid probe.",
+    "gateProofAppliesOnlyToBoundActualSourceAndCatalog": true,
+    "applyingThisNewMetadataChangesPublicSourceAndCatalogBindings": true,
+    "newMetadataSourceEpochGateOrQualificationProof": "NOT_RUN",
+    "oldReceiptHashesMustNotBeReplacedToFabricateLaterQualification": true,
+    "unknownGlobalProcessesOrProviderFinancialFacts": "UNKNOWN"
+  },
+  "metadataPolicy": {
+    "onlyFiniteMetadataAndOpaqueEvidenceReferences": true,
+    "rawPromptsCodeQuestionsProviderProseAuthDBOrPrivateOperationIdentitiesCopied": false,
+    "privateWorkEvidenceUploadedOrPublished": false
+  }
+}

@@ -11,11 +11,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseYaml, resolveConfig, serializePipeline } from '@tagma/sdk/yaml';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import * as trialRunModule from '../server/chat-pipeline-trial-run.js';
 import * as trialPlanModule from '../server/chat-pipeline-trial-plan.js';
+import { buildTagmaTrialPlanTool } from '../server/opencode-trial-plan-tool.js';
 import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness.js';
 import { CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS } from '../server/chat-pipeline-trial-plan.js';
 import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent.js';
@@ -6055,4 +6056,271 @@ describe('sequential relocation writes retain their exact authenticated before-r
       expect(value.openCode.admissions).toEqual([]);
     },
   );
+});
+
+type PlannerIdentityMode =
+  'no-tool' | 'uncounted-validation' | 'counted-commit' | 'truncated-commit';
+
+async function plannerIdentityEngineFixture(mode: PlannerIdentityMode) {
+  const value = timeoutHostFixture({ repairMaxAttempts: 2 });
+  const toolRoot = mkdtempSync(join(tmpdir(), 'tagma-planner-identity-tool-'));
+  roots.push(toolRoot);
+  const pluginDir = join(toolRoot, 'node_modules', '@opencode-ai', 'plugin');
+  mkdirSync(dirname(pluginDir), { recursive: true });
+  symlinkSync(
+    dirname(dirname(fileURLToPath(import.meta.resolve('@opencode-ai/plugin')))),
+    pluginDir,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+  const toolPath = join(toolRoot, 'tagma_trial_plan.mjs');
+  writeFileSync(toolPath, buildTagmaTrialPlanTool());
+  const tool = (await import(pathToFileURL(toolPath).href)).default as {
+    execute(args: Record<string, unknown>, context: { directory: string }): Promise<string>;
+  };
+  const yaml = serializePipeline({
+    name: 'Local planner identity',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        cwd: '.tagma/alpha',
+        tasks: [
+          {
+            id: 'observe',
+            name: 'Observe',
+            command: { argv: [process.execPath, '-e', 'process.stdout.write("local")'] },
+          },
+        ],
+      },
+    ],
+  });
+  const toolRejections: Array<{
+    attemptId: string;
+    message: string;
+    telemetry: ReturnType<typeof trialPlanModule.readChatPipelineTrialPlanToolTelemetry>;
+    evidence: ReturnType<typeof trialPlanModule.readChatPipelineTrialPlanRejectionEvidence>;
+  }> = [];
+  value.openCode.onExecuteRequest = async (input) => {
+    const targetPath = join(input.stageDirectory, input.targetRelativePath);
+    if (input.purpose === 'authoring') {
+      mkdirSync(dirname(targetPath), { recursive: true });
+      writeFileSync(targetPath, yaml);
+      return;
+    }
+    expect(input.purpose).toBe('trial_plan');
+    const request = input.trialPlanRequest;
+    if (!request) throw new Error('The real Host must issue a planner request.');
+    expect(request.maxAttempts).toBe(2);
+    const plannerCount = value.openCode.incomingRequests.filter(
+      ({ purpose }) => purpose === 'trial_plan',
+    ).length;
+    if (mode === 'no-tool' || (mode === 'uncounted-validation' && plannerCount > 1)) return;
+    const call = (operation: string, fields: Record<string, unknown> = {}) =>
+      tool.execute(
+        {
+          operation,
+          attempt_id: request.attemptId,
+          pipeline_path: targetPath,
+          ...fields,
+        },
+        { directory: input.stageDirectory },
+      );
+    if (mode !== 'truncated-commit' || plannerCount === 1)
+      await call('begin', {
+        summary: 'Exercise the local command without a complete case.',
+        goals: ['Retain a real Host rejection without changing any pipeline artifact.'],
+      });
+    let rejection: Error | null = null;
+    try {
+      await call(mode === 'uncounted-validation' ? 'validate' : 'commit');
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      rejection = error;
+    }
+    if (!rejection) throw new Error('The incomplete native plan must be rejected.');
+    toolRejections.push({
+      attemptId: request.attemptId,
+      message: rejection.message,
+      telemetry: trialPlanModule.readChatPipelineTrialPlanToolTelemetry(targetPath, 2),
+      evidence: trialPlanModule.readChatPipelineTrialPlanRejectionEvidence(
+        targetPath,
+        2,
+        request.attemptId,
+      ),
+    });
+    if (mode === 'truncated-commit')
+      value.openCode.execution = {
+        kind: 'completed',
+        text: null,
+        finishCode: 'length',
+        usage: null,
+      };
+  };
+  return Object.assign(value, { toolRejections, yaml });
+}
+
+function assertPlannerIdentityRetained(
+  value: Awaited<ReturnType<typeof plannerIdentityEngineFixture>>,
+) {
+  expect(value.commitCalls).toBe(0);
+  expect(value.store.listCommitWal('scope-1')).toHaveLength(0);
+  expect(value.store.getOperation('operation-1')).toMatchObject({
+    terminalOutcome: null,
+    repairAttempts: 0,
+    repairMaxAttempts: 2,
+    activeInvocationId: null,
+  });
+  const operation = value.store.getOperation('operation-1')!;
+  const stage = listChatYamlStage(value.workspace, operation.stageId!, true);
+  expect(stage.trialPlanMaxAttempts).toBe(2);
+  const target = stage.entries.find(({ relativePath }) => relativePath === 'alpha/alpha.yaml');
+  expect(target).toBeDefined();
+  expect(readFileSync(target!.stagedPath, 'utf8')).toBe(value.yaml);
+  expect(existsSync(target!.stagedPath.replace(/\.yaml$/, '.trial-plan.json'))).toBe(false);
+  expect(existsSync(join(value.workspace.workDir!, '.tagma/alpha/alpha.yaml'))).toBe(false);
+  for (const { result } of value.trials) expect(result.ran).toBe(false);
+}
+
+describe('real Engine planner identity across the second frozen slot', () => {
+  test('no-tool completed planner receives one fresh second-slot attempt with identical full feedback', async () => {
+    const value = await plannerIdentityEngineFixture('no-tool');
+    try {
+      await value.engine.dispatch(value.dispatchInput());
+      expect(value.trials).toHaveLength(2);
+      expect(value.trials.map(({ result }) => result.kind)).toEqual([
+        'plan-required',
+        'plan-required',
+      ]);
+      expect(value.trials[1]!.result.planRequest!.attemptId).not.toBe(
+        value.trials[0]!.result.planRequest!.attemptId,
+      );
+      const planners = value.openCode.incomingRequests.filter(
+        ({ purpose }) => purpose === 'trial_plan',
+      );
+      expect(planners).toHaveLength(2);
+      expect(planners[1]!.trialPlanRequest!.attemptId).not.toBe(
+        planners[0]!.trialPlanRequest!.attemptId,
+      );
+      const first = JSON.parse(new TextDecoder().decode(planners[0]!.canonicalRequestBytes));
+      const second = JSON.parse(new TextDecoder().decode(planners[1]!.canonicalRequestBytes));
+      expect(second.verificationErrorEvidence).toEqual(first.verificationErrorEvidence);
+      expect(second.trialPlanNoProgress.observation).toMatchObject({
+        kind: 'completed_planner_no_progress',
+        errorEvidenceHash: first.verificationErrorEvidence.hash,
+        planArtifactStatus: 'absent',
+      });
+      expect(value.store.getOperation('operation-1')).toMatchObject({
+        phase: 'trial-running',
+        waitReason: 'user_retry',
+      });
+      assertPlannerIdentityRetained(value);
+    } finally {
+      await value.dispose();
+    }
+  });
+
+  test('uncounted native validation rejection receives a fresh second-slot attempt and complete rejection', async () => {
+    const value = await plannerIdentityEngineFixture('uncounted-validation');
+    try {
+      await value.engine.dispatch(value.dispatchInput());
+      expect(value.toolRejections).toHaveLength(1);
+      const rejection = value.toolRejections[0]!;
+      expect(rejection.telemetry).toMatchObject({
+        toolAttemptCount: 0,
+        validationRejectionCount: 0,
+        successfulWriteCount: 0,
+      });
+      expect(rejection.evidence).toMatchObject({
+        attemptId: rejection.attemptId,
+        submissionConsumed: false,
+        toolAttemptCount: 0,
+        validationRejectionCount: 0,
+      });
+      expect(value.trials).toHaveLength(2);
+      expect(value.trials[1]!.result.planRequest!.attemptId).not.toBe(rejection.attemptId);
+      const planners = value.openCode.incomingRequests.filter(
+        ({ purpose }) => purpose === 'trial_plan',
+      );
+      expect(planners).toHaveLength(2);
+      expect(planners[1]!.trialPlanRequest!.attemptId).not.toBe(rejection.attemptId);
+      const canonical = JSON.parse(new TextDecoder().decode(planners[1]!.canonicalRequestBytes));
+      expect(sha256(canonical.verificationErrorEvidence.errors)).toBe(
+        canonical.verificationErrorEvidence.hash,
+      );
+      const complete = JSON.parse(canonical.verificationErrorEvidence.errors);
+      expect(complete.planRejectionEvidence).toMatchObject({
+        attemptId: rejection.attemptId,
+        submissionConsumed: false,
+        toolAttemptCount: 0,
+        validationRejectionCount: 0,
+      });
+      expect(canonical.verificationErrorEvidence.errors).toContain(rejection.message);
+      expect(value.verifications[1]!.result).toMatchObject({
+        kind: 'trial_plan_required',
+        trialPlanRejection: { attemptId: rejection.attemptId, submissionConsumed: false },
+      });
+      assertPlannerIdentityRetained(value);
+    } finally {
+      await value.dispose();
+    }
+  });
+
+  test('counted invalid commits keep ordinal identity and stop at two original submissions', async () => {
+    const value = await plannerIdentityEngineFixture('counted-commit');
+    try {
+      await value.engine.dispatch(value.dispatchInput());
+      const planners = value.openCode.incomingRequests.filter(
+        ({ purpose }) => purpose === 'trial_plan',
+      );
+      expect(planners).toHaveLength(2);
+      expect(value.toolRejections).toHaveLength(2);
+      expect(planners[1]!.trialPlanRequest!.attemptId).not.toBe(
+        planners[0]!.trialPlanRequest!.attemptId,
+      );
+      expect(planners[1]!.trialPlanRequest!.attemptId).toStartWith('trial_plan_repair_2_');
+      expect(value.toolRejections.map(({ telemetry }) => telemetry.toolAttemptCount)).toEqual([
+        1, 2,
+      ]);
+      expect(value.toolRejections[1]!.telemetry.attemptIds).toEqual(
+        planners.map((input) => input.trialPlanRequest!.attemptId),
+      );
+      expect(value.store.getOperation('operation-1')).toMatchObject({
+        phase: 'trial-running',
+        waitReason: 'user_retry',
+      });
+      assertPlannerIdentityRetained(value);
+    } finally {
+      await value.dispose();
+    }
+  });
+
+  test('output-length continuation retains the same counted attempt and cannot commit again', async () => {
+    const value = await plannerIdentityEngineFixture('truncated-commit');
+    try {
+      await value.engine.dispatch(value.dispatchInput());
+      const planners = value.openCode.incomingRequests.filter(
+        ({ purpose }) => purpose === 'trial_plan',
+      );
+      expect(planners).toHaveLength(2);
+      expect(planners[1]!.trialPlanRequest!.attemptId).toBe(
+        planners[0]!.trialPlanRequest!.attemptId,
+      );
+      expect(planners[1]!.sessionId).toBe(planners[0]!.sessionId);
+      expect(planners[1]!.invocationId).not.toBe(planners[0]!.invocationId);
+      expect(planners[1]!.inputId).not.toBe(planners[0]!.inputId);
+      expect(value.toolRejections).toHaveLength(2);
+      expect(value.toolRejections[1]!.message).toMatch(/already (?:submitted|attempted)/);
+      expect(value.toolRejections.map(({ telemetry }) => telemetry.toolAttemptCount)).toEqual([
+        1, 1,
+      ]);
+      expect(value.trials).toHaveLength(1);
+      expect(value.store.getOperation('operation-1')).toMatchObject({
+        phase: 'trial-running',
+        waitReason: 'provider_unavailable',
+      });
+      assertPlannerIdentityRetained(value);
+    } finally {
+      await value.dispose();
+    }
+  });
 });

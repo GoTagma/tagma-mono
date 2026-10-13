@@ -48,11 +48,16 @@ export function buildOpencodeInheritedEnv(
   source: Readonly<Record<string, string | undefined>> = process.env,
 ): Record<string, string> {
   const env: Record<string, string> = {};
+  // Bun can expose configured proxy keys as non-enumerable properties. Read
+  // the finite Host allowlist directly while keeping provider discovery enumerable.
+  for (const key of OPENCODE_HOST_ENV_KEYS) {
+    const value = Object.prototype.hasOwnProperty.call(source, key) ? source[key] : undefined;
+    if (typeof value === 'string') env[key] = value;
+  }
   for (const [key, value] of Object.entries(source)) {
     if (
       typeof value === 'string' &&
-      (OPENCODE_HOST_ENV_KEYS.has(key) ||
-        OPENCODE_PROVIDER_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)))
+      OPENCODE_PROVIDER_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
     ) {
       env[key] = value;
     }

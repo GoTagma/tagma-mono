@@ -144,6 +144,20 @@ function fixturePid(path: string): number | null {
 function processIsAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
+    if (process.platform === 'linux') {
+      try {
+        // A non-reaping container may retain an exited process as a zombie.
+        // Signal zero confirms PID presence, while /proc records execution state.
+        const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+        const state = stat
+          .slice(stat.lastIndexOf(')') + 2)
+          .trim()
+          .split(/\s+/)[0];
+        if (state === 'Z' || state === 'X') return false;
+      } catch {
+        // Unknown /proc state preserves the signal-zero liveness check.
+      }
+    }
     return true;
   } catch {
     return false;
@@ -873,6 +887,9 @@ test('runSpawn timeout terminates the descendant process tree', async () => {
       { timeoutMs: 3_000, signal: controller.signal },
     );
     await waitForHeartbeatCount(heartbeatPath, 3, 2_500);
+    const activePid = fixturePid(pidPath);
+    if (activePid === null) throw new Error('grandchild did not publish its pid');
+    expect(processIsAlive(activePid)).toBe(true);
 
     const result = await runPromise;
 
@@ -927,6 +944,9 @@ test('runSpawn external abort terminates the descendant process tree', async () 
       { signal: controller.signal },
     );
     await waitForHeartbeatCount(heartbeatPath, 3, 4_000);
+    const activePid = fixturePid(pidPath);
+    if (activePid === null) throw new Error('grandchild did not publish its pid');
+    expect(processIsAlive(activePid)).toBe(true);
     controller.abort();
 
     const result = await runPromise;
