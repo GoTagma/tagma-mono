@@ -21,4 +21,7 @@
 // Older cached decisions cannot replace that evidence or authorize a continuation.
 // v48: counted planner payload rejection and trusted-create delivery checks invalidate older
 // signed decisions; substantive arithmetic and branch guidance is refreshed.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 48 as const;
+// v49: owned repaired YAML may revalidate an unchanged authenticated full contract;
+// every original case/repeat runs afresh before a current-source Host receipt grants authority.
+// Native plan bytes/counters remain unchanged; older cache records grant no such authority.
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 49 as const;

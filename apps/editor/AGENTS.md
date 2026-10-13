@@ -753,6 +753,26 @@
   run it twice, require successful task status, mark only repeat-run covered, and mark every other
   structural dimension not-applicable. Bind the canonical generated plan hash into Trial cache and
   finalize verification exactly like an authored plan.
+- V2 may revalidate the complete retained Trial contract after a genuinely admitted, completed,
+  owned pipeline-artifact repair changes only its YAML. Capture the exact current tool-committed
+  raw plan, frozen intent, source/owner/request/error bindings and full stage companions before
+  that repair executes; older stages without this baseline are ineligible. Keep the original
+  plan file and counted native planner telemetry byte-for-byte unchanged. Supporting files,
+  layout, requirements, intent and every original case, repeat, fixture, target, coverage,
+  finding and assertion must stay unchanged. A current candidate may change only its YAML hash,
+  remains private to the isolated execution snapshot, and must pass the existing full plan,
+  fixture, prerequisite, blocked-core/finding, runtime and witness gates. This is a new Host
+  current-source authority; it proves no arbitrary equivalence between old and repaired code.
+  Bypass both completed-response and historical case reuse only for this authenticated fresh
+  revalidation, and execute every original repeat through the real Engine. Only a genuine full
+  pass, exact current stage equality and authenticated current cache/witness may atomically seal
+  the bounded private receipt. Bind its verified digest conditionally into the current stage and
+  every late commit material read. Missing, foreign, corrupt, incomplete or changed proof never
+  authorizes publication. Ordinary raw-plan readers keep their stale/hash fences. An internal
+  verified receipt may install the same candidate in a new isolated snapshot for ordinary same-id
+  completed-response replay, which stays read-only and retains current finalize witness checks.
+  This path issues no new planner invocation/attempt, changes no budget or native commit count,
+  grants no renderer/repair-agent plan tool permission, and never publishes plan/receipt artifacts.
 - Generated OpenCode tool rules must serialize a self-contained factory with explicit
   dependencies. Never embed a function that captures module imports: bundled sidecars rename
   those bindings. Guard emitted bundled tools with unrelated import collisions and execute
@@ -775,7 +795,7 @@
   Planning exhaustion cannot erase independently established recovery-failure-policy repair
   authority, grant another plan submission, or derive authority from a planner finding alone.
   Pipeline repair retains its finite budget and successful Trial remains mandatory for publication.
-  Trial Plan v12, draft v3 and cache v47 invalidate older semantic, fault and repair-diagnostic evidence.
+  Trial Plan v12, draft v3 and cache v49 invalidate older semantic, fault and repair-diagnostic evidence.
   Only `commit`
   consumes that draft's formal attempt. Keep drafts stage-owned, path-and-hash-bound, locked,
   size-bounded, resumable, resettable, and unpublished. For a new YAML hash, `begin` may seed only

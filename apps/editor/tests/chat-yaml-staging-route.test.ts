@@ -4726,7 +4726,7 @@ describe('chat YAML staging routes', () => {
     test(
       action === 'finalize'
         ? `does not grant finalize authority to a correctly signed v${legacyVersion} Trial cache`
-        : `reexecutes a same-input signed v${legacyVersion} Trial cache under v48 and replays only the new result`,
+        : `reexecutes a same-input signed v${legacyVersion} Trial cache under v49 and replays only the new result`,
       async () => {
         const { ws, sourcePath } = makeWorkspace();
         const getRoute = createHarness();
@@ -4840,7 +4840,7 @@ describe('chat YAML staging routes', () => {
           } else {
             const rerun = await runTrial();
             expect(rerun.body).toMatchObject({
-              version: 48,
+              version: 49,
               success: true,
               ran: true,
               cases: [expect.objectContaining({ executionSource: 'current-trial' })],
@@ -4848,9 +4848,9 @@ describe('chat YAML staging routes', () => {
             expect(readFileSync(counterPath, 'utf-8')).toBe('2');
             const refreshed = readAuthenticatedServerRecordSync<CacheFixture>(cachePath, context);
             expect(refreshed).toMatchObject({
-              version: 48,
+              version: 49,
               inputHash: current.inputHash,
-              result: { version: 48 },
+              result: { version: 49 },
             });
             const replay = await runTrial();
             expect(replay.body).toEqual(rerun.body);

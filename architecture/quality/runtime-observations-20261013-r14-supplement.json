@@ -1,0 +1,507 @@
+{
+  "schemaVersion": 1,
+  "kind": "sanitized-current-r14-free-only-partial-observation-and-workflow-issue-supplement",
+  "preparedOnly": false,
+  "publicSourceMaterialized": true,
+  "runId": "original12-current-source-20261013-r14",
+  "acceptancePolicy": "Current genuine UI Open Pipeline + normal current publication within original planning2/repair2; no added business/math/all-Trial-coverage score.",
+  "sourceFingerprint": {
+    "scheme": "public-git-visible-v1",
+    "fileCount": 1469,
+    "sha256": "70667045bafa20b2226b5d22ac824a80e4ee5904b9ff4f1dc070e7db1a91f6a6"
+  },
+  "sourceEvidence": {
+    "repositorySourceSha256": "36d6018462b23ffebe8b0f4a255b93521eddf48830556abb7096e81c806a316a",
+    "compiledSourceSha256": "201cd94864d6d23b1232340504d0222cb5e3b871dde781ce96f76fc7ef1d9d7d",
+    "actualConfigSha256": "c1fa4d91fed9cc73beece7f70a50f7de2a818c503c9de489b87d30d3769d5b0b",
+    "actualQualificationSha256": "d94e8959dec976a3c74c9a0dd9a010e8d9e17dcca845d36306e2e9bf9a00d70b",
+    "actualModelAdmissionSha256": "55be1e61006207564e0663898fa68c63934b7790b0449963e221402e21046884",
+    "actualLaunchSha256": "bf93cc9d478de6aeb542560d51ce40466fe14bc64b16c92f5d4bc001ce05919c"
+  },
+  "scope": {
+    "genuineStartedClosedCases": 1,
+    "genuineSoleGradedCases": 1,
+    "actualOriginalSendsInClosedCase": 1,
+    "NOT_FULL_PASS": 1,
+    "PASS": 0,
+    "remainingOriginalSlotsNOT_RUN": 11,
+    "completeOriginalInventory": false,
+    "currentAllPassed": false,
+    "remainingCaseGradesCreated": 0,
+    "stopReason": "current_free_provider_rejection_wait_required"
+  },
+  "operatorObservationIssueReferences": ["RUI-0012"],
+  "observationAssociationMeaning": "Same typed current provider request rejection family across an explicit new model/source scope; not a shared upstream root cause or confirmed old source regression.",
+  "appendToExistingIssues": [
+    {
+      "issueId": "RUI-0012",
+      "kind": "same-typed-provider-rejection-distinct-current-free-only-model-scope",
+      "caseId": "S1L1",
+      "observationVerified": true,
+      "causeConfirmed": "UNKNOWN",
+      "sharedUnderlyingCauseConfirmed": false,
+      "productRegressionConfirmed": false,
+      "fixedPromotionAllowed": false,
+      "historicalFirstEvidenceReplaced": false,
+      "currentModel": {
+        "providerId": "opencode",
+        "modelId": "step-5-preview-free",
+        "variant": "low",
+        "modelPolicyMode": "opencode-free-only-user-preferred",
+        "modelScope": "opencode-free-only-user-preferred-wait-distinct-model"
+      },
+      "independentGrade": "NOT_FULL_PASS",
+      "currentPublished": false,
+      "currentEnabledOpenPipelineObserved": false,
+      "actualPNGViewedBySoleReviewer": true,
+      "typedFailure": {
+        "stage": "classification",
+        "code": "provider_request_rejected",
+        "outboxStatus": "failed_terminal"
+      },
+      "currentPhase": "awaiting_input",
+      "currentWaitReason": "provider_unavailable",
+      "currentExecutionState": "retryable_failure",
+      "currentResultPresent": false,
+      "planningInvocations": 0,
+      "repairInvocations": 0,
+      "actualOriginalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "currentUsage": {
+        "rows": 1,
+        "purpose": "classifier",
+        "status": "unavailable"
+      },
+      "freshSignedHostInvocations": {
+        "preparedRows": 1,
+        "status": "failed_terminal"
+      },
+      "diagnosticsCurrentOperationMatches": false,
+      "caseProcessKnownClosed": true,
+      "casePaidScopeKnownSettled": true,
+      "providerAcceptance": "REJECTED_CURRENT_REQUEST; future availability UNKNOWN",
+      "specificProviderRejectionCause": "UNKNOWN",
+      "actualProviderCharges": "UNKNOWN",
+      "evidence": {
+        "soleGradeSha256": "d471f9e12bad905cc36ee82ac1e59d33b63323cba83c402e2e5a2a3fcc55ba25",
+        "soleGradeBytes": 10574,
+        "reportSha256": "ad3e50b59ad04eac6f016aa12021c0a089ce0a6e57ad08b2da3e4872ac234f31",
+        "reportBytes": 40530,
+        "PNGsha256": "f93be99f6964ef8a6ad141f65c0a2af28bd7fc3d91aaef0c8751019f36bb185b",
+        "PNGbytes": 98331,
+        "matrixSha256": "c5503651dde7d8a1a6d3f538e4b1351ffbb95e4b13579c7d0e9cfca646a7bd6d",
+        "matrixBytes": 3112
+      }
+    }
+  ],
+  "relatedWorkflowRegressionSelectors": [
+    {
+      "issueId": "CSR-0020",
+      "scope": "Existing workflow policy guards, not a repair or executable reproduction of the unknown supplier root cause",
+      "selectors": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free closed current Host typed DTO stops extension without inferring provider channel cause",
+          "namePattern": "^Free closed current Host typed DTO stops extension without inferring provider channel cause$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary reads each current typed DTO coordinate independently",
+          "namePattern": "^Free boundary reads each current typed DTO coordinate independently$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary keeps exactly four registered provider codes on current typed diagnostic DTO",
+          "namePattern": "^Free boundary keeps exactly four registered provider codes on current typed diagnostic DTO$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary retains legacy code failureCode and top failure code coordinates",
+          "namePattern": "^Free boundary retains legacy code failureCode and top failure code coordinates$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary never derives provider authority from prose unknown literals or diagnostic objects",
+          "namePattern": "^Free boundary never derives provider authority from prose unknown literals or diagnostic objects$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary keeps model mode and both current closure flags separate from typed rejection",
+          "namePattern": "^Free boundary keeps model mode and both current closure flags separate from typed rejection$",
+          "expectedTests": 1
+        }
+      ],
+      "originalIssueStatusNotChanged": true
+    },
+    {
+      "issueId": "CSR-0022",
+      "scope": "Existing workflow policy guards, not a repair or executable reproduction of the unknown supplier root cause",
+      "selectors": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only wait authority is distinct from a valid legacy Free then DeepSeek receipt",
+          "namePattern": "^Free only wait authority is distinct from a valid legacy Free then DeepSeek receipt$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only source bound selection retains exact tuple zero price toolcall and explicit low",
+          "namePattern": "^Free only source bound selection retains exact tuple zero price toolcall and explicit low$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only parsed authority prohibits all paid and legacy fallback routes including omitted receipt",
+          "namePattern": "^Free only parsed authority prohibits all paid and legacy fallback routes including omitted receipt$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only decision branding and authorization tuple cannot be substituted",
+          "namePattern": "^Free only decision branding and authorization tuple cannot be substituted$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only decision rejects changed binding run metadata and known rejected intersection",
+          "namePattern": "^Free only decision rejects changed binding run metadata and known rejected intersection$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only receipt preserves independent authority fixed exclusions budgets and no retry or probes",
+          "namePattern": "^Free only receipt preserves independent authority fixed exclusions budgets and no retry or probes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only current metadata still fails closed on price toolcall membership variant and foreign workspace",
+          "namePattern": "^Free only current metadata still fails closed on price toolcall membership variant and foreign workspace$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only closed provider rejection requests waiting and cannot authorize DeepSeek or retries",
+          "namePattern": "^Free only closed provider rejection requests waiting and cannot authorize DeepSeek or retries$",
+          "expectedTests": 1
+        }
+      ],
+      "originalIssueStatusNotChanged": true
+    }
+  ],
+  "currentObservedWorkflowBoundary": "After the genuine rejected Free request closed, normal existing Free-only policy stopped extension and left the remaining 11 slots NOT RUN. No DeepSeek, Retry or extra model probe was authorized by this rejection.",
+  "preservedHistoricalSupplierIssueState": {
+    "status": "current-supplier-request-rejected-underlying-cause-unknown",
+    "causeConfirmed": "unknown",
+    "regressionMappingStatus": "MISSING",
+    "existingRegressionCount": 0,
+    "firstEvidenceCanonicalSHA256": "c2624a629e1429efaccb1bd1fc7929b01d5c9e6e662cd7a7c29635edc2fbeb9b",
+    "firstHistoryCountAtPublicDefinition": 26,
+    "firstAndAllHistoricalRowsRemainImmutable": true
+  },
+  "supplierRegressionMappingInterpretation": "RUI-0012 executable supplier-cause regression remains MISSING. CSR-0020/CSR-0022 test typed classification and wait authority only; they do not turn supplier rejection into Fixed or prove provider availability.",
+  "strictBusinessScores": "NOT_APPLIED",
+  "globalProviderFinancialAndUnregisteredProcessScope": "UNKNOWN",
+  "privacy": "Opaque source/evidence fingerprints, public selector paths, and typed engineering fields only. Exact private workflow locations and command argv stay in an opaque bound private annex; no raw prompt, provider error prose/logs, private paths, cache/auth/DB/business bodies, or image content.",
+  "preparedAtUTC": "2026-10-13T18:07:54.835821+00:00",
+  "sourceObservationEpoch": "Immutable R14 actual run as-of repository source 1469/70667045; a later documentation or portable regression install creates a new source epoch and cannot rewrite this real grade or its qualification.",
+  "previousCandidatePreserved": {
+    "sha256": "dfec89bd1f335628ba3fdb83e57bbd068b27d633b12a038d01f34125be02a5b0",
+    "bytes": 11274
+  },
+  "currentUserModelPolicy": {
+    "mode": "opencode-free-only-user-preferred",
+    "whenFreeUnavailable": "WAIT",
+    "DeepSeekFallbackAllowed": false,
+    "manualRetryAllowed": false,
+    "extraModelProbesAllowed": false,
+    "currentSelectedFreeRequestAcceptance": "REJECTED_CURRENT_REQUEST",
+    "otherFreeModelOriginalAcceptance": "UNKNOWN",
+    "futureFreeProviderAvailability": "UNKNOWN",
+    "paidModelFallback": "NOT_AUTHORIZED"
+  },
+  "caseSlotLedger": [
+    {
+      "caseId": "S1L1",
+      "status": "NOT_FULL_PASS",
+      "genuineClosedCase": true,
+      "soleGradePresent": true,
+      "originalSend": 1
+    },
+    {
+      "caseId": "S1L2",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S1L3",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S2L1",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S2L2",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S2L3",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S3L1",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S3L2",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S3L3",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S4L1",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S4L2",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    },
+    {
+      "caseId": "S4L3",
+      "status": "NOT RUN",
+      "individualClosedReportPresent": false,
+      "soleGradePresent": false,
+      "reason": "current_free_provider_rejection_wait_required",
+      "originalSendReceipt": "NOT_PRESENT_NOT_RUN"
+    }
+  ],
+  "controlledPartialClosure": {
+    "kind": "Root-genuine-R14-Free-provider-rejected-partial-controlled-scope-closure",
+    "ready": true,
+    "counts": {
+      "originalSent": 1,
+      "closedSent": 1,
+      "NOT_FULL_PASS": 1,
+      "notStartedNOT_RUN": 11,
+      "PASS": 0
+    },
+    "originalInventoryComplete": false,
+    "knownCurrentClassifierHostUsageTerminal": true,
+    "registeredNativeScopeKnownInactive": true,
+    "registeredParentChildAndMetadataOperatorInactiveTwoPasses": true,
+    "ownerNaturallyExited": true,
+    "ownerExitCode": 1,
+    "ownerExitSignal": null,
+    "rootSignals": [],
+    "metadataOperatorCurrentSavedScopeCompleted": true,
+    "ownMetadataObserverLeaseReleased": true,
+    "noOriginalSendAddedByMetadataOperator": true,
+    "noRetryOrProbeAddedByMetadataOperator": true,
+    "closedNoSendStartedSlots": 0,
+    "closureEvidence": {
+      "sha256": "f0ceaf04a73a290d49c6f25e896ab5963721922ad20962e87667f5fbb7ec872f",
+      "bytes": 3562
+    },
+    "ownerResultEvidence": {
+      "sha256": "07958d456b3bb79d6504d67c4992018e90eb057e0298c738f1445d58fec80f32",
+      "bytes": 507
+    },
+    "operatorFinalEvidence": {
+      "sha256": "fe9d5377c9dfe553816c782fec97d78a65047bc0f0d41192beea29ad8b756add",
+      "bytes": 3060
+    },
+    "operatorOwnLeaseReleaseEvidence": {
+      "sha256": "2d06d44788b234aa8695afb02a4a2fdd843d5d8e050d449608b04fe95946e30a",
+      "bytes": 901
+    },
+    "normalProductPublication": "NOT_OBSERVED",
+    "scopeMeaning": "Finite current known owned scope closed naturally; one actual closed/graded submission and eleven unstarted placeholders. Neither completeOriginal12 nor ALL_PASS is asserted.",
+    "globalOrUnregisteredProcesses": "UNKNOWN",
+    "globalProviderFinancialScope": "UNKNOWN",
+    "noCleanupOrFutureLaunchGrant": true
+  },
+  "newPrivateWorkflowIssueObservations": [
+    {
+      "issueId": "CSR-0024",
+      "kind": "source-exact-private-operator-closed-zero-send-count-preparation-defect",
+      "category": "test-harness",
+      "observationVerified": true,
+      "causeConfirmed": "CONFIRMED_FOR_PRIVATE_PREPARATION_PREDICATE_ONLY",
+      "mechanism": "Status-only started-count excludes a genuine closed zero-Send NOT RUN slot although the companion caseClosed contract admits zero-Send closure. Count startedness from submission facts, preserve closed zero-Send slots, and require the exact serial source prefix.",
+      "sourceLocationPublicReference": {
+        "workflow": "private acceptance metadata observer",
+        "oldSourceRevision": "private-operator-V6",
+        "oldSourceSHA256": "765aeb82ac5807dbc89bdd78ec1989d4aaae8895d05b454e4e70a5ac4af4c5a4",
+        "selectedSourceRevision": "private-operator-V8",
+        "selectedSourceSHA256": "1b3cdeb278d5f77b2495a4c401c3c09937ede9c01f93c043c74bbd8e9fb77ca9"
+      },
+      "firstObservedEvidence": {
+        "sha256": "d6d11481b6f60d38cc56f3b424b0090fe00c6943e68c825f3afe73b106a49878",
+        "bytes": 1474
+      },
+      "genuineOldRegression": {
+        "result": "REAL_OLD_PREDICATE_ASSERTION_RED",
+        "executed": 1,
+        "failed": 1,
+        "errors": 0,
+        "skipped": 0,
+        "healthySentClosureBeforeFailurePassed": true,
+        "executionEvidence": {
+          "sha256": "e985751743fb1ebbe2c4f92d0ca9f3167c45514c38b5e93ae6e5c9634b13aa5c",
+          "bytes": 1914
+        },
+        "JUnitEvidence": {
+          "sha256": "5d3c8a990557a144efa4622df714896bbc4f7c7f729f2f6c694e0ebe6c63c972",
+          "bytes": 1676
+        },
+        "testSourceEvidence": {
+          "sha256": "63aa34796bb074cf451538b93b1afe17c9f637c3ba902affc175dd21fbab3e57",
+          "bytes": 2041
+        }
+      },
+      "selectedPrivateRegression": {
+        "result": "GREEN",
+        "executed": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "exactActualNamesMatchedExpected": true,
+        "evidence": {
+          "sha256": "cd49c6e88c34f09e188360e05af0292f2e42f723e840bc2a0e7b482e400dd671",
+          "bytes": 3048
+        },
+        "executionEvidence": {
+          "sha256": "91856649009ac214b7a9053ab7b64d1239a649712a46263951562e388ac87c23",
+          "bytes": 2931
+        },
+        "JUnitEvidence": {
+          "sha256": "e70dc657e9da4faffe0103e943c41ab7d70e6327eb37a62b4844b8a6eba484cc",
+          "bytes": 1211
+        },
+        "testSourceEvidence": {
+          "sha256": "3bad913cc9b746a7e14f60e1f25e9b5586d0152460de98c7009d054d6153469a",
+          "bytes": 3454
+        },
+        "inputsStable": true
+      },
+      "currentStatus": "portable-public-regression-materialized-private-V8-closure-green-new-current-source-gate-required",
+      "portablePublicRegressionModule": "scripts/lib/closed-matrix-identity.mjs",
+      "portablePublicRegressionSelectors": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/closed-matrix-identity.test.ts",
+          "fullName": "closed matrix preserves closed zero Send slots and derives sent count from submission facts",
+          "namePattern": "^closed matrix preserves closed zero Send slots and derives sent count from submission facts$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/closed-matrix-identity.test.ts",
+          "fullName": "closed matrix separates unstarted slots and rejects unknown closure evidence",
+          "namePattern": "^closed matrix separates unstarted slots and rejects unknown closure evidence$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/closed-matrix-identity.test.ts",
+          "fullName": "closed matrix rejects mismatched source run inventory and nonserial closed identities",
+          "namePattern": "^closed matrix rejects mismatched source run inventory and nonserial closed identities$",
+          "expectedTests": 1
+        }
+      ],
+      "portableProof": {
+        "sha256": "3455869cc2ed820e03d5cb495b4723218cf9b980177c2635fb7e300b2623d1e6",
+        "bytes": 4014,
+        "role": "actual-uninstalled-portable-source-RED-to-three-GREEN-proof",
+        "oldSelectedFailed": 1,
+        "newSelectedPassed": 3,
+        "selectedSkipTodo": 0
+      },
+      "actualPublicInstallationProof": {
+        "kind": "Root-reviewed-portable-public-source-materialization",
+        "evidencePath": "architecture/quality/evidence/closed-matrix-identity.json",
+        "evidenceSha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
+        "newCurrentSourceGateRequired": true,
+        "gateReceiptLocationClass": "separate-source-bound-work-receipt"
+      },
+      "newCurrentGateProof": null,
+      "nextPrivateRegressionCommandCanonicalSHA256": "1b932ac9ed77556776806a6f588f40f654b36357e31bfde36b993374cd1d4aca",
+      "nextPublicGateCommandCanonicalSHA256": "d1d6a27100db67c96cf717696d3f7c648921573845332d6378a1e407de6c7a61",
+      "privateProvenanceAnnexEvidence": {
+        "sha256": "2e1efbf641b7d88989675fa177e926c26d382a64bbce192c2787932b37131bf1",
+        "bytes": 12152
+      },
+      "historicalR13ActorCauseConfirmed": "UNKNOWN",
+      "productionDefectObservedByThisCounterexample": false,
+      "productRegressionConfirmed": "UNKNOWN",
+      "supplierAvailabilityFixed": false,
+      "automaticFixedPromotionAllowed": false,
+      "oldSourceAndFailedProofPreserved": true,
+      "noNewTestOrEntryExecutionByThisMetadataPreparation": true
+    }
+  ],
+  "rootMaterializationEpoch": "2026-10-13T18:22:21.996208+00:00"
+}

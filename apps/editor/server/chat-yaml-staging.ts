@@ -1,12 +1,19 @@
 import {
+  chmodSync,
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   readdirSync,
   rmSync,
   statSync,
+  unlinkSync,
 } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -14,11 +21,22 @@ import yaml from 'js-yaml';
 import type { PipelineConfig } from '@tagma/sdk';
 import { loadPipeline, parseYaml, resolveConfig, serializePipeline } from '@tagma/sdk/yaml';
 
-import { pipelineTrialPlanPath, readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
+import {
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT,
+  parseChatPipelineTrialPlan,
+  pipelineTrialPlanPath,
+  readChatPipelineTrialPlan,
+  readChatPipelineTrialPlanToolTelemetry,
+  validateChatPipelineTrialFixtureSetup,
+  validateChatPipelineTrialPlanTargetPaths,
+  validateChatPipelineTrialPlanTaskPathCoordinates,
+} from './chat-pipeline-trial-plan.js';
 import {
   buildTrialPlanValidationContext,
   trialIntentDigest,
   parseTrialPlanValidationContext,
+  requiredTrialEvidence,
+  inspectTrialEvidence,
   type TrialPlanValidationContext,
 } from './chat-trial-intent-coverage.js';
 import { TRIAL_EVIDENCE_KINDS } from './chat-trial-resilience-rules.js';
@@ -49,7 +67,9 @@ import type { EditorLayout, WorkspaceState } from './workspace-state.js';
 import { atomicWriteFileSync, isPathWithin } from './path-utils.js';
 import {
   ensureServerRecordControlRootSync,
+  MAX_SERVER_RECORD_BYTES,
   readAuthenticatedServerRecordSync,
+  syncAuthenticatedServerRecordSync,
   writeAuthenticatedServerRecordSync,
   type ServerRecordContext,
 } from './server-record-auth.js';
@@ -107,6 +127,7 @@ const STAGE_RESULT_FILE = 'finalized.json';
 const STAGE_TARGET_RESULTS_DIR = 'finalized-results';
 const STAGE_VERSION = 3;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
+const RETAINED_TRIAL_CONTRACT_FILE = 'retained-trial-contract.json';
 const MAX_PIPELINE_SUPPORT_FILE_BYTES = 16 * 1024 * 1024;
 const MAX_PIPELINE_SUPPORT_TREE_BYTES = 64 * 1024 * 1024;
 const MAX_PIPELINE_SUPPORT_TREE_ENTRIES = 1_024;
@@ -336,6 +357,98 @@ interface ChatYamlStageRouteIntentAttestation {
   routeIntent: ChatPipelineRouteIntent;
 }
 
+/** Private Host repair identity; renderer data cannot grant this authority. */
+export interface ChatYamlStageRetainedTrialOwner {
+  readonly workspaceScopeId: string;
+  readonly operationId: string;
+  readonly operationGeneration: number;
+  readonly stageId: string;
+  readonly bindingId: string;
+  readonly targetId: string;
+  readonly invocationId: string;
+  readonly requestDigest: string;
+  readonly repairAttempt: number;
+  readonly errorEvidenceHash: string;
+  readonly baselineSnapshotHash: string;
+}
+
+export interface ChatYamlStageRetainedContractSourceEntry {
+  readonly relativePath: string;
+  readonly yamlHash: string;
+  readonly layoutHash: string | null;
+  readonly requirementsHash: string | null;
+  readonly supportHash: string;
+  readonly planHash: string | null;
+}
+
+export interface ChatYamlStageRetainedContractSource {
+  readonly stageSourceHash: string;
+  readonly entries: readonly ChatYamlStageRetainedContractSourceEntry[];
+}
+
+export interface ChatYamlStageRetainedTrialCandidate {
+  readonly owner: ChatYamlStageRetainedTrialOwner;
+  readonly relativePath: string;
+  readonly intentDigest: string;
+  readonly baselineHash: string;
+  readonly completedSnapshotHash: string;
+  readonly currentStageSourceHash: string;
+  readonly currentYamlHash: string;
+  readonly originalPlanHash: string;
+  readonly candidatePlanRaw: string;
+  readonly candidatePlanHash: string;
+  readonly contractHash: string;
+}
+
+export interface ChatYamlStageRetainedTrialVerification {
+  readonly digest: string;
+  readonly owner: ChatYamlStageRetainedTrialOwner;
+  readonly completedSnapshotHash: string;
+}
+
+export interface ChatYamlStageRetainedTrialReceipt extends ChatYamlStageRetainedTrialVerification {
+  readonly relativePath: string;
+  readonly baselineHash: string;
+  /** Live pre-promotion source, still containing the unchanged original plan. */
+  readonly currentStageSourceHash: string;
+  /** Promotion changes only the companion: this equals currentStageSourceHash. */
+  readonly verifiedStageSourceHash: string;
+  readonly currentYamlHash: string;
+  readonly candidatePlanRaw: string;
+  readonly candidatePlanHash: string;
+  readonly contractHash: string;
+  readonly originalPlanHash: string;
+  readonly trialId: string;
+  readonly inputHash: string;
+  readonly verificationHash: string;
+  readonly hostWitnessDigest: string;
+  readonly resultHash: string;
+}
+
+interface ChatYamlStageRetainedTrialBaseline {
+  readonly version: 1;
+  readonly owner: ChatYamlStageRetainedTrialOwner;
+  readonly relativePath: string;
+  readonly intentDigest: string;
+  readonly intentText: string;
+  readonly required: NonNullable<ChatYamlStageMetadata['trialEvidenceContract']>['required'];
+  readonly trialPlanMaxAttempts: number;
+  readonly trialPlanAttemptHash: string;
+  readonly beforeSource: ChatYamlStageRetainedContractSource;
+  readonly originalPlanRaw: string;
+  readonly originalPlanHash: string;
+  readonly contractHash: string;
+}
+
+type ChatYamlStageRetainedTrialRecord = {
+  readonly version: 1;
+  readonly baseline: ChatYamlStageRetainedTrialBaseline;
+  readonly baselineHash: string;
+} & (
+  | { readonly state: 'captured' }
+  | { readonly state: 'verified'; readonly receipt: ChatYamlStageRetainedTrialReceipt }
+);
+
 interface ChatYamlStageMetadata {
   version: typeof STAGE_VERSION;
   id: string;
@@ -362,6 +475,10 @@ interface ChatYamlStageMetadata {
   baseEntries: ChatYamlStageBaseEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
   lifecycleOwner?: 'chat-operation-v2';
+  /** Created only by the current Host V2 factory; existing stages are never upgraded. */
+  retainedTrialContractVersion?: 1;
+  /** In-memory authenticated companion; never copied back into stage.json. */
+  retainedTrialContract?: ChatYamlStageRetainedTrialRecord;
 }
 
 interface ChatYamlStageBaseEntry {
@@ -413,6 +530,7 @@ export interface ChatYamlStageDescriptor {
   pipelineBinding: ChatPipelineBinding | null;
   entries: ChatYamlStageEntry[];
   sessionRelocation?: ChatYamlStageSessionRelocationBinding;
+  retainedTrialVerification?: ChatYamlStageRetainedTrialVerification;
 }
 
 export interface ChatYamlStageLocalBranch {
@@ -869,6 +987,1008 @@ function assertRegularTextFile(path: string, label: string): string {
   return readFileSync(path, 'utf-8');
 }
 
+const retainedTrialWrites = new Set<string>();
+
+function retainedObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Retained Trial record is invalid.');
+  return value as Record<string, unknown>;
+}
+
+function retainedKeys(value: Record<string, unknown>, keys: readonly string[]): void {
+  if (Object.keys(value).sort().join('\0') !== [...keys].sort().join('\0'))
+    throw new Error('Retained Trial record fields are invalid.');
+}
+
+function retainedText(value: unknown, max = 256): string {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > max ||
+    value.trim() !== value ||
+    value.split('').some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    })
+  )
+    throw new Error('Retained Trial identity is invalid.');
+  return value;
+}
+
+function retainedDigest(value: unknown, sha1Value = false): string {
+  if (typeof value !== 'string' || !(sha1Value ? /^[0-9a-f]{40}$/ : /^[0-9a-f]{64}$/).test(value))
+    throw new Error('Retained Trial digest is invalid.');
+  return value;
+}
+
+function retainedJson(value: unknown): string {
+  if (value === undefined) throw new Error('Retained Trial record is not canonical JSON.');
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(retainedJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${retainedJson(record[key])}`)
+    .join(',')}}`;
+}
+
+function retainedHash(kind: string, value: unknown): string {
+  return createHash('sha256')
+    .update(`tagma-retained-trial-${kind}-v1\0${retainedJson(value)}`)
+    .digest('hex');
+}
+
+function parseRetainedOwner(value: unknown): ChatYamlStageRetainedTrialOwner {
+  const raw = retainedObject(value);
+  retainedKeys(raw, [
+    'workspaceScopeId',
+    'operationId',
+    'operationGeneration',
+    'stageId',
+    'bindingId',
+    'targetId',
+    'invocationId',
+    'requestDigest',
+    'repairAttempt',
+    'errorEvidenceHash',
+    'baselineSnapshotHash',
+  ]);
+  if (
+    !Number.isSafeInteger(raw.operationGeneration) ||
+    Number(raw.operationGeneration) < 0 ||
+    !Number.isSafeInteger(raw.repairAttempt) ||
+    Number(raw.repairAttempt) < 1 ||
+    Number(raw.repairAttempt) > 50
+  )
+    throw new Error('Retained Trial owner counters are invalid.');
+  return {
+    workspaceScopeId: retainedText(raw.workspaceScopeId),
+    operationId: retainedText(raw.operationId),
+    operationGeneration: Number(raw.operationGeneration),
+    stageId: assertStageId(retainedText(raw.stageId)),
+    bindingId: retainedText(raw.bindingId),
+    targetId: retainedText(raw.targetId),
+    invocationId: retainedText(raw.invocationId),
+    requestDigest: retainedDigest(raw.requestDigest),
+    repairAttempt: Number(raw.repairAttempt),
+    errorEvidenceHash: retainedDigest(raw.errorEvidenceHash),
+    baselineSnapshotHash: retainedDigest(raw.baselineSnapshotHash),
+  };
+}
+
+function retainedRawPlan(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    Buffer.byteLength(value, 'utf8') > CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.planBytes
+  )
+    throw new Error('Retained Trial raw plan exceeds its original bound.');
+  parseChatPipelineTrialPlan(JSON.parse(value));
+  return value;
+}
+
+function retainedContractHash(raw: string): string {
+  const value = { ...retainedObject(JSON.parse(retainedRawPlan(raw))) };
+  delete value.yamlHash;
+  return retainedHash('contract', value);
+}
+
+function retainedPlanAllowed(raw: string): boolean {
+  const plan = parseChatPipelineTrialPlan(JSON.parse(raw));
+  return (
+    plan.evidenceReview?.coreWitness?.status !== 'blocked' &&
+    !plan.findings.some(
+      (finding) => finding.severity === 'blocking' || finding.repairScope === 'pipeline-artifact',
+    )
+  );
+}
+
+function retainedRegularBytes(path: string, max: number): Buffer {
+  const before = lstatSync(path, { bigint: true });
+  if (
+    !before.isFile() ||
+    before.isSymbolicLink() ||
+    before.nlink !== 1n ||
+    before.size > BigInt(max)
+  )
+    throw new Error('Retained Trial source must be a bounded private regular file.');
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const opened = fstatSync(fd, { bigint: true });
+    const bytes = readFileSync(fd);
+    const finished = fstatSync(fd, { bigint: true });
+    const after = lstatSync(path, { bigint: true });
+    for (const observed of [opened, finished, after]) {
+      if (
+        !observed.isFile() ||
+        observed.isSymbolicLink() ||
+        observed.nlink !== 1n ||
+        observed.dev !== before.dev ||
+        observed.ino !== before.ino ||
+        observed.size !== before.size ||
+        observed.mtimeNs !== before.mtimeNs ||
+        observed.ctimeNs !== before.ctimeNs
+      )
+        throw new Error('Retained Trial source changed during its bounded read.');
+    }
+    if (bytes.length !== Number(before.size))
+      throw new Error('Retained Trial source read is incomplete.');
+    return bytes;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function retainedRawFile(path: string): string {
+  const bytes = retainedRegularBytes(path, CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.planBytes);
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes))
+    throw new Error('Retained Trial plan is not exact UTF-8.');
+  return retainedRawPlan(text);
+}
+
+function retainedFileHash(path: string): string | null {
+  return retainedLeafPresent(path)
+    ? createHash('sha256').update(retainedRegularBytes(path, MAX_ARTIFACT_BYTES)).digest('hex')
+    : null;
+}
+
+function retainedSource(
+  entries: readonly ChatYamlStageRetainedContractSourceEntry[],
+): ChatYamlStageRetainedContractSource {
+  return { stageSourceHash: retainedHash('source', entries), entries };
+}
+
+function retainedSourceOnce(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+): ChatYamlStageRetainedContractSource {
+  return retainedSource(
+    listStageEntries(ws, paths, metadata)
+      .map((entry) => ({
+        relativePath: entry.relativePath,
+        yamlHash: createHash('sha1')
+          .update(retainedRegularBytes(entry.stagedPath, MAX_ARTIFACT_BYTES))
+          .digest('hex'),
+        layoutHash: retainedFileHash(pipelineLayoutPath(entry.stagedPath)),
+        requirementsHash: retainedFileHash(pipelineRequirementsPath(entry.stagedPath)),
+        supportHash: hashPipelineSupportTree(entry.stagedPath),
+        planHash: retainedFileHash(pipelineTrialPlanPath(entry.stagedPath)),
+      }))
+      .sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
+  );
+}
+
+function currentRetainedSource(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+): ChatYamlStageRetainedContractSource {
+  const before = retainedSourceOnce(ws, paths, metadata);
+  const after = retainedSourceOnce(ws, paths, metadata);
+  if (before.stageSourceHash !== after.stageSourceHash)
+    throw new Error('Retained Trial stage source changed while reading.');
+  return after;
+}
+
+function assertOnlyRetainedYamlChanged(
+  before: ChatYamlStageRetainedContractSource,
+  current: ChatYamlStageRetainedContractSource,
+  relativePath: string,
+): void {
+  if (before.entries.length !== current.entries.length)
+    throw new Error('Retained Trial source inventory changed.');
+  let changedYaml = false;
+  before.entries.forEach((entry, index) => {
+    const observed = current.entries[index]!;
+    const expected =
+      entry.relativePath === relativePath ? { ...entry, yamlHash: observed.yamlHash } : entry;
+    if (retainedJson(expected) !== retainedJson(observed))
+      throw new Error('Retained Trial non-YAML source or original plan changed.');
+    if (entry.relativePath === relativePath) changedYaml = entry.yamlHash !== observed.yamlHash;
+  });
+  if (!changedYaml) throw new Error('Retained Trial requires an actual owned YAML repair.');
+}
+
+function validateRetainedCandidatePlan(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  baseline: ChatYamlStageRetainedTrialBaseline,
+  raw: string,
+): void {
+  const plan = parseChatPipelineTrialPlan(JSON.parse(retainedRawPlan(raw)));
+  const stagedPath = resolveStagedYamlPath(paths, baseline.relativePath);
+  const content = assertRegularTextFile(stagedPath, 'retained Trial current YAML');
+  const config = resolveConfig(parseYaml(content), ws.workDir);
+  if (plan.yamlHash !== sha1(content) || !retainedPlanAllowed(raw))
+    throw new Error('Retained Trial candidate is blocked or stale.');
+  validateChatPipelineTrialPlanTargetPaths(plan, baseline.relativePath);
+  validateChatPipelineTrialFixtureSetup(plan, stagedPath, baseline.relativePath);
+  validateChatPipelineTrialPlanTaskPathCoordinates(plan, config, baseline.relativePath, ws.workDir);
+  const required = requiredTrialEvidence(
+    plan,
+    baseline.intentDigest,
+    metadata.trialEvidenceContract!.required,
+  );
+  const inspection = inspectTrialEvidence(
+    required,
+    plan,
+    config,
+    { relativeYamlPath: baseline.relativePath, workDir: ws.workDir },
+    true,
+  );
+  if (inspection.missing.length)
+    throw new Error('Retained Trial candidate lacks current required evidence.');
+}
+
+function parseRetainedSource(value: unknown): ChatYamlStageRetainedContractSource {
+  const raw = retainedObject(value);
+  retainedKeys(raw, ['stageSourceHash', 'entries']);
+  if (!Array.isArray(raw.entries) || raw.entries.length === 0 || raw.entries.length > 1_024)
+    throw new Error('Retained Trial source inventory is invalid.');
+  const entries = raw.entries.map((value) => {
+    const entry = retainedObject(value);
+    retainedKeys(entry, [
+      'relativePath',
+      'yamlHash',
+      'layoutHash',
+      'requirementsHash',
+      'supportHash',
+      'planHash',
+    ]);
+    const relativePath = retainedText(entry.relativePath, 1_024);
+    if (relativePath !== assertPortableRelativePath(relativePath))
+      throw new Error('Retained Trial source coordinate is invalid.');
+    return {
+      relativePath,
+      yamlHash: retainedDigest(entry.yamlHash, true),
+      layoutHash: entry.layoutHash === null ? null : retainedDigest(entry.layoutHash),
+      requirementsHash:
+        entry.requirementsHash === null ? null : retainedDigest(entry.requirementsHash),
+      supportHash: retainedDigest(entry.supportHash),
+      planHash: entry.planHash === null ? null : retainedDigest(entry.planHash),
+    };
+  });
+  if (
+    new Set(entries.map((entry) => entry.relativePath)).size !== entries.length ||
+    entries.some(
+      (entry, index) =>
+        index > 0 && entries[index - 1]!.relativePath.localeCompare(entry.relativePath) >= 0,
+    )
+  )
+    throw new Error('Retained Trial source inventory is not uniquely ordered.');
+  const source = retainedSource(entries);
+  if (retainedDigest(raw.stageSourceHash) !== source.stageSourceHash)
+    throw new Error('Retained Trial source digest is invalid.');
+  return source;
+}
+
+function parseRetainedBaseline(value: unknown): ChatYamlStageRetainedTrialBaseline {
+  const raw = retainedObject(value);
+  retainedKeys(raw, [
+    'version',
+    'owner',
+    'relativePath',
+    'intentDigest',
+    'intentText',
+    'required',
+    'trialPlanMaxAttempts',
+    'trialPlanAttemptHash',
+    'beforeSource',
+    'originalPlanRaw',
+    'originalPlanHash',
+    'contractHash',
+  ]);
+  if (
+    raw.version !== 1 ||
+    typeof raw.intentText !== 'string' ||
+    !raw.intentText ||
+    Buffer.byteLength(raw.intentText, 'utf8') > MAX_SERVER_RECORD_BYTES ||
+    !isValidChatPipelineTrialPlanAttempts(raw.trialPlanMaxAttempts)
+  )
+    throw new Error('Retained Trial frozen intent is invalid.');
+  const intentDigest = retainedDigest(raw.intentDigest);
+  if (trialIntentDigest(raw.intentText) !== intentDigest)
+    throw new Error('Retained Trial frozen intent digest differs.');
+  const relativePath = retainedText(raw.relativePath, 1_024);
+  if (relativePath !== assertPortableRelativePath(relativePath))
+    throw new Error('Retained Trial target is invalid.');
+  const originalPlanRaw = retainedRawPlan(raw.originalPlanRaw);
+  const originalPlanHash = createHash('sha256').update(originalPlanRaw, 'utf8').digest('hex');
+  const contractHash = retainedContractHash(originalPlanRaw);
+  if (
+    originalPlanHash !== retainedDigest(raw.originalPlanHash) ||
+    contractHash !== retainedDigest(raw.contractHash) ||
+    !retainedPlanAllowed(originalPlanRaw)
+  )
+    throw new Error('Retained Trial original contract is invalid or blocked.');
+  const beforeSource = parseRetainedSource(raw.beforeSource);
+  const active = beforeSource.entries.find((entry) => entry.relativePath === relativePath);
+  if (
+    !active ||
+    active.planHash !== originalPlanHash ||
+    parseChatPipelineTrialPlan(JSON.parse(originalPlanRaw)).yamlHash !== active.yamlHash
+  )
+    throw new Error('Retained Trial original contract is not bound to its source.');
+  return {
+    version: 1,
+    owner: parseRetainedOwner(raw.owner),
+    relativePath,
+    intentDigest,
+    intentText: raw.intentText,
+    required: parseStageEvidenceContract({ intentDigest, required: raw.required }).required,
+    trialPlanMaxAttempts: raw.trialPlanMaxAttempts,
+    trialPlanAttemptHash: retainedDigest(raw.trialPlanAttemptHash),
+    beforeSource,
+    originalPlanRaw,
+    originalPlanHash,
+    contractHash,
+  };
+}
+
+function parseRetainedReceipt(value: unknown): ChatYamlStageRetainedTrialReceipt {
+  const raw = retainedObject(value);
+  retainedKeys(raw, [
+    'digest',
+    'owner',
+    'completedSnapshotHash',
+    'relativePath',
+    'baselineHash',
+    'currentStageSourceHash',
+    'verifiedStageSourceHash',
+    'currentYamlHash',
+    'candidatePlanRaw',
+    'candidatePlanHash',
+    'contractHash',
+    'originalPlanHash',
+    'trialId',
+    'inputHash',
+    'verificationHash',
+    'hostWitnessDigest',
+    'resultHash',
+  ]);
+  const receipt = {
+    owner: parseRetainedOwner(raw.owner),
+    completedSnapshotHash: retainedDigest(raw.completedSnapshotHash),
+    relativePath: retainedText(raw.relativePath, 1_024),
+    baselineHash: retainedDigest(raw.baselineHash),
+    currentStageSourceHash: retainedDigest(raw.currentStageSourceHash),
+    verifiedStageSourceHash: retainedDigest(raw.verifiedStageSourceHash),
+    currentYamlHash: retainedDigest(raw.currentYamlHash, true),
+    candidatePlanRaw: retainedRawPlan(raw.candidatePlanRaw),
+    candidatePlanHash: retainedDigest(raw.candidatePlanHash),
+    contractHash: retainedDigest(raw.contractHash),
+    originalPlanHash: retainedDigest(raw.originalPlanHash),
+    trialId: retainedText(raw.trialId),
+    inputHash: retainedDigest(raw.inputHash),
+    verificationHash: retainedDigest(raw.verificationHash),
+    hostWitnessDigest: retainedDigest(raw.hostWitnessDigest),
+    resultHash: retainedDigest(raw.resultHash),
+  };
+  const digest = retainedHash('receipt', receipt);
+  if (
+    digest !== retainedDigest(raw.digest) ||
+    receipt.currentStageSourceHash !== receipt.verifiedStageSourceHash ||
+    createHash('sha256').update(receipt.candidatePlanRaw).digest('hex') !==
+      receipt.candidatePlanHash ||
+    retainedContractHash(receipt.candidatePlanRaw) !== receipt.contractHash ||
+    parseChatPipelineTrialPlan(JSON.parse(receipt.candidatePlanRaw)).yamlHash !==
+      receipt.currentYamlHash ||
+    normalizeFinalizeTrialId(receipt.trialId) !== receipt.trialId
+  )
+    throw new Error('Retained Trial receipt is invalid.');
+  return { digest, ...receipt };
+}
+
+function parseRetainedTrialRecord(value: unknown): ChatYamlStageRetainedTrialRecord {
+  const raw = retainedObject(value);
+  if (raw.version !== 1 || (raw.state !== 'captured' && raw.state !== 'verified'))
+    throw new Error('Retained Trial record state is unsupported.');
+  retainedKeys(raw, [
+    'version',
+    'state',
+    'baseline',
+    'baselineHash',
+    ...(raw.state === 'verified' ? ['receipt'] : []),
+  ]);
+  const baseline = parseRetainedBaseline(raw.baseline);
+  const baselineHash = retainedHash('baseline', baseline);
+  if (baselineHash !== retainedDigest(raw.baselineHash))
+    throw new Error('Retained Trial baseline digest is invalid.');
+  if (raw.state === 'captured') return { version: 1, state: 'captured', baseline, baselineHash };
+  const receipt = parseRetainedReceipt(raw.receipt);
+  if (
+    receipt.baselineHash !== baselineHash ||
+    receipt.relativePath !== baseline.relativePath ||
+    receipt.contractHash !== baseline.contractHash ||
+    receipt.originalPlanHash !== baseline.originalPlanHash ||
+    retainedJson(receipt.owner) !== retainedJson(baseline.owner)
+  )
+    throw new Error('Retained Trial verified receipt has a foreign baseline.');
+  return { version: 1, state: 'verified', baseline, baselineHash, receipt };
+}
+
+function retainedRecordPath(paths: StagePaths): string {
+  return join(paths.rootDir, RETAINED_TRIAL_CONTRACT_FILE);
+}
+function retainedLockPath(paths: StagePaths): string {
+  return `${retainedRecordPath(paths)}.write.lock`;
+}
+
+function retainedLeafPresent(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function assertRetainedReadUnlocked(paths: StagePaths): void {
+  if (!retainedTrialWrites.has(paths.rootDir) && retainedLeafPresent(retainedLockPath(paths)))
+    throw new Error(
+      'Retained Trial write outcome is unknown; the draft cannot be verified or published.',
+    );
+}
+
+function readRetainedTrialRecord(paths: StagePaths): ChatYamlStageRetainedTrialRecord | null {
+  assertRetainedReadUnlocked(paths);
+  const path = retainedRecordPath(paths);
+  if (!retainedLeafPresent(path)) return null;
+  const stat = lstatSync(path, { bigint: true });
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    stat.nlink !== 1n ||
+    (process.platform !== 'win32' && (stat.mode & 0o777n) !== 0o600n)
+  )
+    throw new Error('Retained Trial companion is not a private regular file.');
+  return parseRetainedTrialRecord(
+    readAuthenticatedServerRecordSync<object>(path, stageRecordContext(paths, 'stage-metadata')),
+  );
+}
+
+function withRetainedTrialLock<T>(paths: StagePaths, action: () => T): T {
+  ensureServerRecordControlRootSync(stageRecordContext(paths, 'stage-metadata'));
+  if (process.platform !== 'win32') chmodSync(paths.rootDir, 0o700);
+  const path = retainedLockPath(paths);
+  const fd = openSync(
+    path,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+    0o600,
+  );
+  let identity: { dev: bigint; ino: bigint } | null = null;
+  let result: T;
+  try {
+    const observed = fstatSync(fd, { bigint: true });
+    identity = { dev: observed.dev, ino: observed.ino };
+    if (
+      !observed.isFile() ||
+      observed.nlink !== 1n ||
+      (process.platform !== 'win32' && (observed.mode & 0o777n) !== 0o600n)
+    )
+      throw new Error('Retained Trial write lock is invalid.');
+    fsyncSync(fd);
+    retainedTrialWrites.add(paths.rootDir);
+    result = action();
+  } finally {
+    retainedTrialWrites.delete(paths.rootDir);
+    closeSync(fd);
+    // Unknown outcomes intentionally keep the exact lock: no automatic reclaim.
+  }
+  if (identity) {
+    const named = lstatSync(path, { bigint: true });
+    if (
+      !named.isFile() ||
+      named.isSymbolicLink() ||
+      named.dev !== identity.dev ||
+      named.ino !== identity.ino ||
+      named.nlink !== 1n
+    )
+      throw new Error('Retained Trial write lock identity changed.');
+    unlinkSync(path);
+  }
+  return result;
+}
+
+function writeRetainedTrialRecord(
+  paths: StagePaths,
+  record: ChatYamlStageRetainedTrialRecord,
+): void {
+  if (!retainedTrialWrites.has(paths.rootDir))
+    throw new Error('Retained Trial mutation lacks its private lock.');
+  parseRetainedTrialRecord(record);
+  if (Buffer.byteLength(JSON.stringify(record, null, 2), 'utf8') > MAX_SERVER_RECORD_BYTES - 2_048)
+    throw new Error('Retained Trial record exceeds its authenticated byte limit.');
+  const path = retainedRecordPath(paths);
+  writeAuthenticatedServerRecordSync(path, stageRecordContext(paths, 'stage-metadata'), record);
+  if (process.platform !== 'win32') chmodSync(path, 0o600);
+  syncAuthenticatedServerRecordSync(path, stageRecordContext(paths, 'stage-metadata'));
+  if (retainedJson(readRetainedTrialRecord(paths)) !== retainedJson(record))
+    throw new Error('Retained Trial atomic seal did not read back exactly.');
+}
+
+function assertRetainedStage(
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  relativePath: string,
+  owner: ChatYamlStageRetainedTrialOwner,
+): void {
+  if (
+    metadata.lifecycleOwner !== 'chat-operation-v2' ||
+    metadata.retainedTrialContractVersion !== 1 ||
+    metadata.pipelineBinding !== null ||
+    owner.stageId !== paths.id ||
+    metadata.activeRelativePath !== relativePath ||
+    readFinalizeResult(paths)
+  )
+    throw new Error('Retained Trial contract lacks current Host stage authority.');
+}
+
+function assertRetainedPinnedContract(
+  metadata: ChatYamlStageMetadata,
+  baseline: ChatYamlStageRetainedTrialBaseline,
+  intentText = baseline.intentText,
+): void {
+  const pin = metadata.trialEvidenceContract;
+  if (
+    !pin ||
+    intentText !== baseline.intentText ||
+    trialIntentDigest(intentText) !== baseline.intentDigest ||
+    pin.intentDigest !== baseline.intentDigest ||
+    retainedJson(pin.required) !== retainedJson(baseline.required) ||
+    metadata.trialPlanMaxAttempts !== baseline.trialPlanMaxAttempts ||
+    retainedHash('native-attempt', metadata.trialPlanAttempt) !== baseline.trialPlanAttemptHash
+  )
+    throw new Error('Retained Trial frozen intent, requirements or planner authority changed.');
+}
+
+function retainedCandidateFrom(
+  record: ChatYamlStageRetainedTrialRecord,
+  current: ChatYamlStageRetainedContractSource,
+  completedSnapshotHash: string,
+): ChatYamlStageRetainedTrialCandidate {
+  const baseline = record.baseline;
+  assertOnlyRetainedYamlChanged(baseline.beforeSource, current, baseline.relativePath);
+  const active = current.entries.find((entry) => entry.relativePath === baseline.relativePath)!;
+  const candidatePlanRaw = JSON.stringify({
+    ...retainedObject(JSON.parse(baseline.originalPlanRaw)),
+    yamlHash: active.yamlHash,
+  });
+  retainedRawPlan(candidatePlanRaw);
+  if (
+    retainedContractHash(candidatePlanRaw) !== baseline.contractHash ||
+    active.planHash !== baseline.originalPlanHash
+  )
+    throw new Error('Retained Trial candidate changed the original contract.');
+  return {
+    owner: baseline.owner,
+    relativePath: baseline.relativePath,
+    intentDigest: baseline.intentDigest,
+    baselineHash: record.baselineHash,
+    completedSnapshotHash: retainedDigest(completedSnapshotHash),
+    currentStageSourceHash: current.stageSourceHash,
+    currentYamlHash: active.yamlHash,
+    originalPlanHash: baseline.originalPlanHash,
+    candidatePlanRaw,
+    candidatePlanHash: createHash('sha256').update(candidatePlanRaw, 'utf8').digest('hex'),
+    contractHash: baseline.contractHash,
+  };
+}
+
+function validateRetainedCachedTrial(
+  paths: StagePaths,
+  baseline: ChatYamlStageRetainedTrialBaseline,
+  proof: {
+    trialId: string;
+    inputHash: string;
+    verificationHash: string;
+    hostWitnessDigest: string;
+    resultHash: string;
+    candidatePlanHash: string;
+  },
+): void {
+  if (normalizeFinalizeTrialId(proof.trialId) !== proof.trialId)
+    throw new Error('Retained Trial identity is invalid.');
+  for (const value of [
+    proof.inputHash,
+    proof.verificationHash,
+    proof.hostWitnessDigest,
+    proof.resultHash,
+  ])
+    retainedDigest(value);
+  const path = trialFinalizeCachePath(paths, proof.trialId, baseline.relativePath, proof.inputHash);
+  const rawHash = createHash('sha256')
+    .update(retainedRegularBytes(path, MAX_SERVER_RECORD_BYTES))
+    .digest('hex');
+  const cached = readAuthenticatedServerRecordSync<
+    CachedTrialFinalizeRecord & { result: Record<string, unknown> }
+  >(path, stageRecordContext(paths, 'trial-cache', dirname(path)));
+  const stagedTreeHash = hashChatPipelineTrialTree(
+    dirname(resolveStagedYamlPath(paths, baseline.relativePath)),
+  );
+  if (
+    !stagedTreeHash ||
+    buildChatPipelineTrialInputHash({
+      stagedTreeHash,
+      planHash: retainedDigest(proof.candidatePlanHash),
+      trialabilityReportHash: retainedDigest(cached.trialabilityReportHash),
+    }) !== proof.inputHash
+  )
+    throw new Error(
+      'Retained Trial execution did not bind the exact current source and candidate.',
+    );
+  if (
+    rawHash !== proof.resultHash ||
+    cached.version !== TRIAL_CACHE_VERSION ||
+    cached.inputHash !== proof.inputHash ||
+    cached.verificationHash !== proof.verificationHash ||
+    cached.hostWitness?.digest !== proof.hostWitnessDigest ||
+    buildChatPipelineTrialVerificationHash(proof) !== proof.verificationHash ||
+    cached.result?.version !== TRIAL_CACHE_VERSION ||
+    cached.result.success !== true ||
+    cached.result.ran !== true ||
+    !['passed', 'passed-with-warnings'].includes(String(cached.result.kind))
+  )
+    throw new Error('Retained Trial success lacks exact authenticated current execution evidence.');
+  const original = parseChatPipelineTrialPlan(JSON.parse(baseline.originalPlanRaw));
+  const cases = cached.result.cases;
+  if (
+    !Array.isArray(cases) ||
+    cases.length !== original.cases.length ||
+    (Array.isArray(cached.result.notRunCases) && cached.result.notRunCases.length !== 0)
+  )
+    throw new Error('Retained Trial did not execute every original case.');
+  const caseIds = new Set<string>();
+  const runIds = new Set<string>();
+  for (const value of cases) {
+    const result = retainedObject(value);
+    const id = retainedText(result.id);
+    const testCase = original.cases.find((entry) => entry.id === id);
+    if (
+      !testCase ||
+      caseIds.has(id) ||
+      result.success !== true ||
+      result.executionSource !== 'current-trial' ||
+      !Array.isArray(result.runIds) ||
+      result.runIds.length !== testCase.runs ||
+      !Array.isArray(result.expectations) ||
+      result.expectations.length < testCase.expectations.length ||
+      result.expectations.some((expectation) => retainedObject(expectation).passed !== true)
+    )
+      throw new Error('Retained Trial case evidence is incomplete or reused.');
+    caseIds.add(id);
+    for (const value of result.runIds) {
+      const runId = retainedText(value);
+      if (runIds.has(runId)) throw new Error('Retained Trial repeat identities are not unique.');
+      runIds.add(runId);
+    }
+  }
+  if (
+    createHash('sha256')
+      .update(retainedRegularBytes(path, MAX_SERVER_RECORD_BYTES))
+      .digest('hex') !== rawHash
+  )
+    throw new Error('Retained Trial cache changed while authenticating its proof.');
+}
+
+function verifiedRetainedTrialReceipt(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  intentText?: string,
+  owner?: ChatYamlStageRetainedTrialOwner,
+  describedEntries?: readonly ChatYamlStageEntry[],
+): ChatYamlStageRetainedTrialReceipt | null {
+  const record = metadata.retainedTrialContract;
+  if (!record || record.state !== 'verified') return null;
+  const baseline = record.baseline;
+  const receipt = record.receipt;
+  assertRetainedStage(paths, metadata, baseline.relativePath, baseline.owner);
+  assertRetainedPinnedContract(metadata, baseline, intentText);
+  if (owner && retainedJson(parseRetainedOwner(owner)) !== retainedJson(baseline.owner))
+    throw new Error('Retained Trial verified receipt belongs to another repair.');
+  const current = currentRetainedSource(ws, paths, metadata);
+  const context = retainedCandidateFrom(record, current, receipt.completedSnapshotHash);
+  if (
+    current.stageSourceHash !== receipt.verifiedStageSourceHash ||
+    context.candidatePlanRaw !== receipt.candidatePlanRaw ||
+    context.candidatePlanHash !== receipt.candidatePlanHash ||
+    context.currentYamlHash !== receipt.currentYamlHash ||
+    retainedRawFile(pipelineTrialPlanPath(resolveStagedYamlPath(paths, baseline.relativePath))) !==
+      baseline.originalPlanRaw
+  )
+    throw new Error('Retained Trial verified source or original plan changed.');
+  validateRetainedCandidatePlan(ws, paths, metadata, baseline, receipt.candidatePlanRaw);
+  validateRetainedCachedTrial(paths, baseline, receipt);
+  if (
+    currentRetainedSource(ws, paths, metadata).stageSourceHash !== current.stageSourceHash ||
+    retainedJson(readRetainedTrialRecord(paths)) !== retainedJson(record)
+  )
+    throw new Error('Retained Trial verified material changed while reading.');
+  if (describedEntries) {
+    const projection = (entries: readonly ChatYamlStageEntry[]) =>
+      entries.map((entry) => ({
+        relativePath: entry.relativePath,
+        contentHash: entry.contentHash,
+        layoutHash: entry.layoutHash,
+        requirementsHash: entry.requirementsHash,
+        supportHash: entry.supportHash,
+        trialPlanHash: entry.trialPlanHash,
+      }));
+    if (
+      retainedJson(projection(describedEntries)) !==
+      retainedJson(projection(listStageEntries(ws, paths, metadata)))
+    )
+      throw new Error('Retained Trial descriptor changed while joining its verified receipt.');
+  }
+  return receipt;
+}
+
+/** Private source projection; it carries no planner attempt or publication authority. */
+export function readChatYamlStageRetainedContractSource(
+  ws: WorkspaceState,
+  stageId: string,
+  relativePath: string,
+): ChatYamlStageRetainedContractSource {
+  const { paths, metadata } = readMetadata(ws, stageId);
+  if (
+    metadata.lifecycleOwner !== 'chat-operation-v2' ||
+    metadata.activeRelativePath !== assertPortableRelativePath(relativePath)
+  )
+    throw new Error('Retained Trial source is outside the owned active stage.');
+  return currentRetainedSource(ws, paths, metadata);
+}
+
+/** Capture before a specifically admitted Host repair; absent/ineligible baselines are never invented later. */
+export function captureChatYamlStageRetainedTrialContract(
+  ws: WorkspaceState,
+  input: {
+    relativePath: string;
+    owner: ChatYamlStageRetainedTrialOwner;
+    intentText: string;
+  },
+): boolean {
+  const owner = parseRetainedOwner(input.owner);
+  const initial = readMetadata(ws, owner.stageId);
+  if (initial.metadata.retainedTrialContractVersion !== 1) return false;
+  return withRetainedTrialLock(initial.paths, () => {
+    const { paths, metadata } = readMetadata(ws, owner.stageId);
+    const relativePath = assertPortableRelativePath(input.relativePath);
+    assertRetainedStage(paths, metadata, relativePath, owner);
+    const pin = metadata.trialEvidenceContract;
+    if (
+      !pin ||
+      typeof input.intentText !== 'string' ||
+      !input.intentText ||
+      trialIntentDigest(input.intentText) !== pin.intentDigest
+    )
+      return false;
+    const current = currentRetainedSource(ws, paths, metadata);
+    const existing = metadata.retainedTrialContract;
+    if (existing)
+      return (
+        existing.state === 'captured' &&
+        retainedJson(existing.baseline.owner) === retainedJson(owner) &&
+        existing.baseline.intentText === input.intentText &&
+        existing.baseline.beforeSource.stageSourceHash === current.stageSourceHash
+      );
+    const stagedPath = resolveStagedYamlPath(paths, relativePath);
+    if (!existsSync(pipelineTrialPlanPath(stagedPath))) return false;
+    const originalPlanRaw = retainedRawFile(pipelineTrialPlanPath(stagedPath));
+    const originalPlanHash = createHash('sha256').update(originalPlanRaw, 'utf8').digest('hex');
+    const telemetry = readChatPipelineTrialPlanToolTelemetry(
+      stagedPath,
+      metadata.trialPlanMaxAttempts,
+    );
+    if (
+      telemetry.successfulWriteCount < 1 ||
+      telemetry.committedPlanHash !== originalPlanHash ||
+      !retainedPlanAllowed(originalPlanRaw)
+    )
+      return false;
+    let eligible = false;
+    try {
+      const config = resolveConfig(
+        parseYaml(assertRegularTextFile(stagedPath, 'retained Trial baseline YAML')),
+        ws.workDir,
+      );
+      const read = readChatPipelineTrialPlan(
+        stagedPath,
+        relativePath,
+        telemetry.yamlHash,
+        metadata.trialPlanMaxAttempts,
+        config,
+        ws.workDir,
+        originalPlanHash,
+        undefined,
+        input.intentText,
+        pin.required,
+      );
+      eligible = read.status === 'ready' && read.planHash === originalPlanHash;
+    } catch {
+      return false;
+    }
+    if (!eligible) return false;
+    const baseline: ChatYamlStageRetainedTrialBaseline = {
+      version: 1,
+      owner,
+      relativePath,
+      intentDigest: pin.intentDigest,
+      intentText: input.intentText,
+      required: [...pin.required],
+      trialPlanMaxAttempts: metadata.trialPlanMaxAttempts,
+      trialPlanAttemptHash: retainedHash('native-attempt', metadata.trialPlanAttempt),
+      beforeSource: current,
+      originalPlanRaw,
+      originalPlanHash,
+      contractHash: retainedContractHash(originalPlanRaw),
+    };
+    if (
+      currentRetainedSource(ws, paths, metadata).stageSourceHash !== current.stageSourceHash ||
+      retainedRawFile(pipelineTrialPlanPath(stagedPath)) !== originalPlanRaw
+    )
+      throw new Error('Retained Trial baseline changed before capture.');
+    writeRetainedTrialRecord(paths, {
+      version: 1,
+      state: 'captured',
+      baseline,
+      baselineHash: retainedHash('baseline', baseline),
+    });
+    return true;
+  });
+}
+
+export function readChatYamlStageRetainedTrialCandidate(
+  ws: WorkspaceState,
+  input: {
+    relativePath: string;
+    owner: ChatYamlStageRetainedTrialOwner;
+    completedSnapshotHash: string;
+    intentText: string;
+  },
+): ChatYamlStageRetainedTrialCandidate | null {
+  const owner = parseRetainedOwner(input.owner);
+  const { paths, metadata } = readMetadata(ws, owner.stageId);
+  const record = metadata.retainedTrialContract;
+  if (
+    !record ||
+    record.state !== 'captured' ||
+    record.baseline.relativePath !== input.relativePath ||
+    retainedJson(record.baseline.owner) !== retainedJson(owner)
+  )
+    return null;
+  assertRetainedStage(paths, metadata, record.baseline.relativePath, owner);
+  assertRetainedPinnedContract(metadata, record.baseline, input.intentText);
+  const current = currentRetainedSource(ws, paths, metadata);
+  let context: ChatYamlStageRetainedTrialCandidate;
+  try {
+    context = retainedCandidateFrom(record, current, input.completedSnapshotHash);
+    validateRetainedCandidatePlan(ws, paths, metadata, record.baseline, context.candidatePlanRaw);
+  } catch {
+    return null;
+  }
+  if (
+    retainedRawFile(pipelineTrialPlanPath(resolveStagedYamlPath(paths, input.relativePath))) !==
+      record.baseline.originalPlanRaw ||
+    currentRetainedSource(ws, paths, metadata).stageSourceHash !== current.stageSourceHash ||
+    retainedJson(readRetainedTrialRecord(paths)) !== retainedJson(record)
+  )
+    throw new Error('Retained Trial candidate authority changed while reading.');
+  return context;
+}
+
+/** A single private-record seal after genuine fresh execution. The original plan is never written. */
+export function promoteChatYamlStageRetainedTrialCandidate(
+  ws: WorkspaceState,
+  input: {
+    context: ChatYamlStageRetainedTrialCandidate;
+    trialId: string;
+    inputHash: string;
+    verificationHash: string;
+    hostWitnessDigest: string;
+    resultHash: string;
+  },
+): ChatYamlStageRetainedTrialReceipt {
+  const context = input.context;
+  const owner = parseRetainedOwner(context.owner);
+  const initial = readMetadata(ws, owner.stageId);
+  return withRetainedTrialLock(initial.paths, () => {
+    const { paths, metadata } = readMetadata(ws, owner.stageId);
+    const record = metadata.retainedTrialContract;
+    if (
+      !record ||
+      record.state !== 'captured' ||
+      retainedJson(record.baseline.owner) !== retainedJson(owner)
+    )
+      throw new Error('Retained Trial promotion lacks its exact captured baseline.');
+    assertRetainedStage(paths, metadata, context.relativePath, owner);
+    assertRetainedPinnedContract(metadata, record.baseline);
+    const current = currentRetainedSource(ws, paths, metadata);
+    const expected = retainedCandidateFrom(record, current, context.completedSnapshotHash);
+    if (retainedJson(expected) !== retainedJson(context))
+      throw new Error('Retained Trial promotion context changed.');
+    validateRetainedCandidatePlan(ws, paths, metadata, record.baseline, context.candidatePlanRaw);
+    validateRetainedCachedTrial(paths, record.baseline, {
+      ...input,
+      candidatePlanHash: context.candidatePlanHash,
+    });
+    const body: Omit<ChatYamlStageRetainedTrialReceipt, 'digest'> = {
+      owner,
+      completedSnapshotHash: context.completedSnapshotHash,
+      relativePath: context.relativePath,
+      baselineHash: context.baselineHash,
+      currentStageSourceHash: current.stageSourceHash,
+      verifiedStageSourceHash: current.stageSourceHash,
+      currentYamlHash: context.currentYamlHash,
+      candidatePlanRaw: context.candidatePlanRaw,
+      candidatePlanHash: context.candidatePlanHash,
+      contractHash: context.contractHash,
+      originalPlanHash: context.originalPlanHash,
+      trialId: input.trialId,
+      inputHash: input.inputHash,
+      verificationHash: input.verificationHash,
+      hostWitnessDigest: input.hostWitnessDigest,
+      resultHash: input.resultHash,
+    };
+    const receipt = { digest: retainedHash('receipt', body), ...body };
+    if (
+      currentRetainedSource(ws, paths, metadata).stageSourceHash !== current.stageSourceHash ||
+      retainedRawFile(pipelineTrialPlanPath(resolveStagedYamlPath(paths, context.relativePath))) !==
+        record.baseline.originalPlanRaw ||
+      retainedJson(readRetainedTrialRecord(paths)) !== retainedJson(record)
+    )
+      throw new Error('Retained Trial source or baseline changed before its private seal.');
+    validateRetainedCachedTrial(paths, record.baseline, receipt);
+    writeRetainedTrialRecord(paths, { ...record, state: 'verified', receipt });
+    verifiedRetainedTrialReceipt(ws, paths, {
+      ...metadata,
+      retainedTrialContract: { ...record, state: 'verified', receipt },
+    });
+    return receipt;
+  });
+}
+
+export function readChatYamlStageVerifiedRetainedTrialReceipt(
+  ws: WorkspaceState,
+  input: {
+    stageId: string;
+    relativePath: string;
+    owner?: ChatYamlStageRetainedTrialOwner;
+    intentText?: string;
+  },
+): ChatYamlStageRetainedTrialReceipt | null {
+  const { paths, metadata } = readMetadata(ws, input.stageId);
+  if (
+    metadata.retainedTrialContract &&
+    metadata.retainedTrialContract.baseline.relativePath !== input.relativePath
+  )
+    throw new Error('Retained Trial verified read targets another pipeline.');
+  return verifiedRetainedTrialReceipt(ws, paths, metadata, input.intentText, input.owner);
+}
+
 function copyTextArtifact(sourcePath: string, destinationPath: string): void {
   if (!existsSync(sourcePath)) return;
   const content = assertRegularTextFile(sourcePath, basename(sourcePath));
@@ -1057,10 +2177,12 @@ function copyPipelineArtifactsToTarget(sourceYamlPath: string, destinationYamlPa
 }
 
 function writeMetadata(paths: StagePaths, metadata: ChatYamlStageMetadata): void {
+  const payload = { ...metadata };
+  delete payload.retainedTrialContract;
   writeAuthenticatedServerRecordSync(
     paths.metadataPath,
     stageRecordContext(paths, 'stage-metadata'),
-    metadata,
+    payload,
   );
 }
 
@@ -1160,6 +2282,7 @@ function readMetadata(
     !Array.isArray(raw.sourceRelativePaths) ||
     !raw.sourceRelativePaths.every((item) => typeof item === 'string') ||
     trialPlanMaxAttempts === null ||
+    (raw.retainedTrialContractVersion !== undefined && raw.retainedTrialContractVersion !== 1) ||
     (raw.lifecycleOwner !== undefined && raw.lifecycleOwner !== 'chat-operation-v2') ||
     (raw.routeIntentRequired !== undefined && typeof raw.routeIntentRequired !== 'boolean') ||
     routeIntentAttestation === false ||
@@ -1209,6 +2332,7 @@ function readMetadata(
   ) {
     throw new Error('Chat YAML stage metadata is invalid.');
   }
+  const retainedTrialContract = readRetainedTrialRecord(paths);
   return {
     paths,
     metadata: {
@@ -1234,6 +2358,9 @@ function readMetadata(
       ...(raw.lifecycleOwner === 'chat-operation-v2'
         ? { lifecycleOwner: 'chat-operation-v2' as const }
         : {}),
+      ...(raw.retainedTrialContractVersion === 1
+        ? { retainedTrialContractVersion: 1 as const }
+        : {}),
       sourceRelativePaths: raw.sourceRelativePaths.map(assertPortableRelativePath),
       baseEntries: raw.baseEntries.map((entry) => ({
         relativePath: assertPortableRelativePath(entry.relativePath),
@@ -1243,6 +2370,7 @@ function readMetadata(
         supportHash: entry.supportHash,
       })),
       ...(sessionRelocation ? { sessionRelocation } : {}),
+      ...(retainedTrialContract ? { retainedTrialContract } : {}),
     },
   };
 }
@@ -1406,6 +2534,14 @@ function descriptor(
   const reservedCreateTarget = metadata.createTargetRelativePath
     ? resolveRelativeInside(paths.agentTagmaDir, metadata.createTargetRelativePath)
     : null;
+  const retainedReceipt = verifiedRetainedTrialReceipt(
+    ws,
+    paths,
+    metadata,
+    undefined,
+    undefined,
+    entries,
+  );
   return {
     id: metadata.id,
     rootDir: paths.rootDir,
@@ -1424,6 +2560,15 @@ function descriptor(
     pipelineBinding: metadata.pipelineBinding,
     entries,
     ...(metadata.sessionRelocation ? { sessionRelocation: metadata.sessionRelocation } : {}),
+    ...(retainedReceipt
+      ? {
+          retainedTrialVerification: {
+            digest: retainedReceipt.digest,
+            owner: retainedReceipt.owner,
+            completedSnapshotHash: retainedReceipt.completedSnapshotHash,
+          },
+        }
+      : {}),
   };
 }
 
@@ -1666,7 +2811,9 @@ export function createChatYamlStage(
       routeIntentAttestation: null,
       createTargetRelativePath,
       pipelineBinding,
-      ...(options.stageId !== undefined ? { lifecycleOwner: 'chat-operation-v2' as const } : {}),
+      ...(options.stageId !== undefined
+        ? { lifecycleOwner: 'chat-operation-v2' as const, retainedTrialContractVersion: 1 as const }
+        : {}),
       sourceRelativePaths,
       baseEntries,
     };

@@ -1,0 +1,298 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-public-safe-new-FreeOnly-wait-policy-schema-and-local-regression",
+  "createdAtUTC": "2026-10-13T15:39:07.397262+00:00",
+  "ready": false,
+  "issueId": "CSR-0022",
+  "lineage": [
+    "CSR-0016",
+    "CSR-0020"
+  ],
+  "category": "test-tool-workflow",
+  "entryKind": "new-user-policy-contract-support",
+  "observationVerified": "verified",
+  "finiteLatestPolicyCompatibilityCauseConfirmed": true,
+  "providerOrProductRootCause": "UNKNOWN",
+  "previousLegacyReaderWasIncorrect": false,
+  "latestPolicy": {
+    "futureProvider": "OpenCode",
+    "futureModelClass": "Free",
+    "requiredVariant": "low",
+    "fallbackPolicy": "wait",
+    "automaticDeepSeekFallbackAllowed": false,
+    "rechargeAuthorized": false,
+    "newAuthority": "user-explicit-opencode-free-only-wait-2026-10-13",
+    "newMode": "opencode-free-only-user-preferred",
+    "scope": "opencode-free-only-user-preferred-wait-distinct-model",
+    "supersedesEarlierFallbackForFutureRuns": true,
+    "olderFreeThenDeepSeekRecordsRemainTrueAsOf": true
+  },
+  "firstEvidenceAsOf": {
+    "immutableMetadata": {
+      "sha256": "41cb1ea07b39ae92632d7033911904e334ed89ded21ce5295bfc58a3850348e6",
+      "bytes": 2003,
+      "role": "first-latest-policy-contract-evidence"
+    },
+    "oldPublicSource": {
+      "path": "scripts/lib/user-preferred-model-policy.mjs",
+      "sha256": "eb4925046ef20ea443439dda88d044844bec556706041b8bce8a314db0b72c89",
+      "bytes": 20717
+    },
+    "actualNewRootAuthorizationReceipt": null,
+    "actualNewRootSelectionDecision": null,
+    "publicActivated": false,
+    "syntheticReceiptIsActualGrant": false
+  },
+  "oldReaderSelectedRED": {
+    "proof": {
+      "sha256": "b994052b402de9dac1d9b6f16c4663d241105dd12c2d02a57080be15a9aa9f20",
+      "bytes": 2908,
+      "role": "actual-old-exported-reader-selected-assertion-RED"
+    },
+    "selectedName": "Free only wait authority is distinct from a valid legacy Free then DeepSeek receipt",
+    "actualSelectedExecuted": 1,
+    "failed": 1,
+    "errors": 0,
+    "selectedSkipTodo": 0,
+    "unselectedFilteredSkipped": 7,
+    "exitCode": 1,
+    "healthyLegacyControlPassedBeforeNewTypeAssertion": true,
+    "mechanism": "Existing legacy reader rejects the distinct new FreeOnly/wait receipt type at its exact authority guard. The assertion tests support for the newly authorized policy; no missing module/export or provider failure is substituted.",
+    "scope": "finite-latest-policy-compatibility-only",
+    "productRegressionClaimed": false,
+    "providerQuotaBillingCauseClaimed": false
+  },
+  "firstCandidateFailurePreservedAsOf": {
+    "proof": {
+      "sha256": "1992046d76c90ac7ea7df0497009bdf0d43a998d714a55625888d04a98bc6662",
+      "bytes": 5580,
+      "role": "actual-first31-execution-30PASS-1FAIL"
+    },
+    "candidateHelperSha256": "3ccf11aff1e718c9f9e2c6111020fa4ca05b5089db8288af58e4a4a1af251261",
+    "executed": 31,
+    "passed": 30,
+    "failed": 1,
+    "errors": 0,
+    "selectedSkipTodo": 0,
+    "original23Passed": 23,
+    "causeAsOfFirstExecution": "UNKNOWN_REQUIRES_REVIEW",
+    "classifiedAsPublicProductRED": false
+  },
+  "laterPreparationFixtureResolutionAppend": {
+    "proof": {
+      "sha256": "d0e9ffd08b7a3836269b30639a340991514cbfd016778e61cc568be8aa94c1f6",
+      "bytes": 2445,
+      "role": "finite-independent-fixture-alias-resolution"
+    },
+    "classification": "test-fixture-preparation-only",
+    "finiteFixtureCauseConfirmed": true,
+    "mechanism": "Two intended independent metadata-evidence references shared one synthetic object; a negative mutation changed both authorities. Two shallow copies restore independent tamper preconditions.",
+    "sourceHelperChanged": false,
+    "oldAssertionsRetained": true,
+    "firstFailureOverwrittenOrPromoted": false,
+    "correctedTestSha256": "6d6fc5e81c2b4ee26723c5b155155c3d8ed8877f16585899562b086428b5b396"
+  },
+  "expectCountWordingCorrectionAppend": {
+    "proof": {
+      "sha256": "883e7cdde5714673b85a96765016ed6dadc09503c013c42ae6e3817929746e91",
+      "bytes": 1024,
+      "role": "saved-assertion-count-wording-correction"
+    },
+    "numericBunExpect124AlreadyCorrect": true,
+    "originalNodeAssertionTotalClaimed": false,
+    "noRerun": true
+  },
+  "lastExecution": {
+    "kind": "saved-candidate-source-identical-local-portable-all31",
+    "classification": "ACTUAL_GREEN",
+    "proof": {
+      "sha256": "47c8c5d0bce0708c9490f42140a8d5446470b3c04f85e46bc7bb9228338987e9",
+      "bytes": 5747,
+      "role": "actual31-candidate-local-GREEN"
+    },
+    "candidateHelperSha256": "3ccf11aff1e718c9f9e2c6111020fa4ca05b5089db8288af58e4a4a1af251261",
+    "newTestSha256": "6d6fc5e81c2b4ee26723c5b155155c3d8ed8877f16585899562b086428b5b396",
+    "original23TestSha256": "4af690ff3680c6feb2bc88690b9033f7915ff2646175c72116906f222a187a4a",
+    "expected": 31,
+    "executed": 31,
+    "passed": 31,
+    "failed": 0,
+    "errors": 0,
+    "selectedSkipTodo": 0,
+    "additionalTests": 8,
+    "originalNodeAssertTestsActuallyExecuted": 23,
+    "BunExpectAssertionsForAdditionalEightOnly": 124,
+    "naturalExit0": true,
+    "JUnit": {
+      "sha256": "0adcbd0f4cae3a2976739e7ec568ad24f4e1fa3077ed40c8f8aa92c654314c87",
+      "bytes": 7260,
+      "role": "saved31-nonempty-passed-JUnit"
+    },
+    "sourceBeforeAfterUnchanged": true,
+    "newPublicSourceAndCurrent151Gate": null,
+    "newPublicSourceAndCurrent151GateState": "PENDING_ROOT_INSTALL_FORMAT_AND_WHOLE_CURRENT_GATE",
+    "scope": "local-test-tool-policy-only",
+    "liveAcceptance": false
+  },
+  "publicCandidateSources": [
+    {
+      "path": "scripts/lib/user-preferred-model-policy.mjs",
+      "sha256": "3ccf11aff1e718c9f9e2c6111020fa4ca05b5089db8288af58e4a4a1af251261",
+      "bytes": 26493,
+      "role": "candidate-before-Root-format-and-install"
+    },
+    {
+      "path": "scripts/lib/user-free-only-model-policy.test.ts",
+      "sha256": "6d6fc5e81c2b4ee26723c5b155155c3d8ed8877f16585899562b086428b5b396",
+      "bytes": 14762,
+      "role": "new-eight-candidate-portable-regressions"
+    },
+    {
+      "path": "scripts/lib/user-preferred-model-policy.test.ts",
+      "sha256": "4af690ff3680c6feb2bc88690b9033f7915ff2646175c72116906f222a187a4a",
+      "bytes": 17916,
+      "role": "original23-byte-identical-retained"
+    }
+  ],
+  "newExactRegressions": [
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only wait authority is distinct from a valid legacy Free then DeepSeek receipt",
+      "namePattern": "^Free only wait authority is distinct from a valid legacy Free then DeepSeek receipt$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only source bound selection retains exact tuple zero price toolcall and explicit low",
+      "namePattern": "^Free only source bound selection retains exact tuple zero price toolcall and explicit low$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only parsed authority prohibits all paid and legacy fallback routes including omitted receipt",
+      "namePattern": "^Free only parsed authority prohibits all paid and legacy fallback routes including omitted receipt$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only decision branding and authorization tuple cannot be substituted",
+      "namePattern": "^Free only decision branding and authorization tuple cannot be substituted$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only decision rejects changed binding run metadata and known rejected intersection",
+      "namePattern": "^Free only decision rejects changed binding run metadata and known rejected intersection$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only receipt preserves independent authority fixed exclusions budgets and no retry or probes",
+      "namePattern": "^Free only receipt preserves independent authority fixed exclusions budgets and no retry or probes$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only current metadata still fails closed on price toolcall membership variant and foreign workspace",
+      "namePattern": "^Free only current metadata still fails closed on price toolcall membership variant and foreign workspace$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/user-free-only-model-policy.test.ts",
+      "fullName": "Free only closed provider rejection requests waiting and cannot authorize DeepSeek or retries",
+      "namePattern": "^Free only closed provider rejection requests waiting and cannot authorize DeepSeek or retries$",
+      "expectedTests": 1
+    }
+  ],
+  "newRegressionExecutionBinding": {
+    "savedAll31JUnitNamesExact": true,
+    "additionalEightEachHasOnePassedNonemptyJUnitCase": true,
+    "eachIsolatedCurrentPublicSelectorRun": "NOT_RUN",
+    "newPublicWhole151Gate": "NOT_RUN"
+  },
+  "laterRootAuthorizationMetadataAppend": {
+    "receipt": {
+      "sha256": "f94ff5286839bd5a7126130c9f5880cda79f52ed28881eecc19ff823bd46fc0e",
+      "bytes": 2654,
+      "role": "later-actual-Root-FreeOnly-authorization-receipt-opaque-only"
+    },
+    "fileOnlyParserMetadata": {
+      "sha256": "3103442d2f0ff018c58a1cc90adf8f2895378bce9f3920f8377d10a777c59566",
+      "bytes": 1898,
+      "role": "later-Root-file-only-parser-metadata-opaque-only"
+    },
+    "receiptPrivateBodyReadOrPublishedByThisProposal": false,
+    "RootSuppliedOpaqueBindingsOnly": true,
+    "parserProofHasNoModelOrAPICall": true,
+    "actualSelectionDecisionFullOpaqueReference": "PENDING_ROOT_METADATA_REFERENCE",
+    "newPublicSource": null,
+    "newCurrent151Gate": null,
+    "futureRealRunAdmission": null,
+    "providerAcceptanceAvailabilityChargesOrPublicationEstablished": false
+  },
+  "constraintsRetained": {
+    "fixedBudgets": {
+      "planning": 2,
+      "pipelineRepair": 2,
+      "serial": 1,
+      "originalSendPerCase": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0
+    },
+    "explicitLowRequired": true,
+    "currentUIAndSameWorkspacePublicMetadataRequired": true,
+    "zeroPriceMetadataAndToolcallRequired": true,
+    "metadataDoesNotProveAvailabilityOrCharges": true,
+    "exactBrandedAuthorizationAndSelectionDecisionRequired": true,
+    "forgedClonedMutatedOrCrossRunAuthorityRejected": true,
+    "selectedKnownRejectedIntersectionRejected": true,
+    "legacyFixedExclusionsUnmodified": true,
+    "trustedCallerMustRetainNewestAuthorityContext": true
+  },
+  "futureIntegration": "New source-bound consumers must pass parsed FreeOnly authority and selection decision. Existing V15/R13 qualification remains as-of; no automatic legacy or DeepSeek fallback under the newest instruction.",
+  "currentInstalledBaseGateAsOf": {
+    "issueCount": 21,
+    "selectorCount": 143,
+    "sourceFileCount": 1463,
+    "sourceFingerprintSha256": "3274b6f8bead079081db1f647839796ece475c4ae0498528d817969f7f75be36",
+    "receipt": {
+      "sha256": "173454c471351c301d1728931827ce1cc936b74d7f83506ca300de0c37e83cab",
+      "bytes": 152628,
+      "role": "prior-current143-GREEN-as-of-source-only"
+    }
+  },
+  "futureMappedGate": {
+    "issueCount": 22,
+    "selectorCount": 151,
+    "newSelectors": 8,
+    "classification": "PENDING_NEW_PUBLIC_SOURCE_WHOLE_CURRENT_GATE",
+    "receipt": null,
+    "sourceFingerprint": null,
+    "historicalCoverageComplete": false
+  },
+  "status": "local-policy-contract-green-public-source-and-new-gate-pending",
+  "publicCandidateApplied": false,
+  "automaticIssueStatusMutation": false,
+  "allPreviousIssueIDsFirstEvidenceStatusesHistoryFixesAndMappingsPreserved": true,
+  "realFreeOnlyConvergence": "UNKNOWN_NOT_RUN",
+  "currentProviderAvailabilityAndActualCharges": "UNKNOWN",
+  "historicalCoverageComplete": false,
+  "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+  "privateWorkPathsPromptBusinessAuthDBProviderLogsOrSecretsPublished": false,
+  "modelsTestsAPIsControlsGitVersionExecutedForThisMetadataProposal": 0,
+  "callerAuthorityBoundary": {
+    "statelessHelperCannotDetectCallerDeletingAllLatestAuthorityContext": true,
+    "newFreeOnlyConsumersMustRecognizeModeAndPassBrandedAuthorityAndDecision": true,
+    "oldV15AndR13QualificationRemainsAsOf": true,
+    "currentNewConsumerActivationAndQualification": "PENDING_ROOT",
+    "wordingOnlyNoPolicySourceTestOrSavedEvidenceChange": true
+  }
+}

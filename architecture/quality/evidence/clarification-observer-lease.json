@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "createdAtUTC": "2026-10-13T07:46:54.265239+00:00",
+  "immutableAsOf": true,
+  "readyForRootMetadataReview": true,
+  "actualProductUIAcceptanceOnProposedSources": "NOT_RUN",
+  "actualLiveArming": "NOT_RUN",
+  "paidModelsOrProbes": 0,
+  "freshCurrentHistoricalMappedGateOnProposedSources": "NOT_RUN",
+  "historicalCoverageComplete": false,
+  "oldPublicEvidenceAndIssueHistoryChanged": false,
+  "kind": "portable-test-harness-clarification-observer-boundary-and-local-lease-proof",
+  "observationId": "CSR-0015",
+  "classification": "observed-test-harness-boundary-with-preventive-local-contract-proof",
+  "observationVerified": "verified",
+  "causeConfirmed": "unknown",
+  "firstObservation": {
+    "runId": "original12-current-source-20261013-r10",
+    "caseId": "S1L3",
+    "currentUIAssessment": "NOT_FULL_PASS",
+    "sourceFingerprint": {
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1433,
+      "sha256": "6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec"
+    },
+    "typedFailure": {
+      "code": "original_prompt_answer_unavailable_wait",
+      "type": "HarnessFault"
+    },
+    "plannerInvocations": 0,
+    "repairInvocations": 0,
+    "authorizedClarificationUnanswered": true,
+    "lateChoiceWriterRejectedWithoutMetadataChoiceOrDirectTypedReply": true,
+    "newProductMechanicalDefectAsserted": false,
+    "historicalParaphraseCauseOrRegressionConfirmed": false,
+    "publicReference": {
+      "path": "architecture/quality/runtime-observations-20261013-r10-supplement.json",
+      "sha256": "5e6edbd2f0d5c3f2502d824be8a68eb0e6b7540931f6a87d421600152898b8f1",
+      "bytes": 69131,
+      "caseJsonPointer": "/caseObservations/2",
+      "mechanismFactId": "R10-clarification-workflow-latency"
+    }
+  },
+  "localProof": {
+    "selectedPortable": 4,
+    "executedPortable": 4,
+    "passedPortable": 4,
+    "failed": 0,
+    "skippedOrTodo": 0,
+    "literalFullNames": [
+      "Portable observer prearms and periodic saved reads include the first 60sec question",
+      "Portable observer reserves once across text version change and unknown acknowledgement",
+      "Portable observer true saved freshness and Host expiry block delayed metadata writes",
+      "Portable observer unknown business choice remains unguessed and writer failure stays once"
+    ],
+    "junit": {
+      "sha256": "6904de23a1f22417c9b93f3d8b039fbb9ea534ef0474356a7bc3ae7ad0d8ebec",
+      "bytes": 6606
+    },
+    "totalCompositionSuiteExecuted": 18,
+    "totalCompositionSuitePassed": 18,
+    "localProofReceipt": {
+      "sha256": "915190129315ecf4f415eee1c73063daea5a42f40941b408ca946b54b3ac0519",
+      "bytes": 6306
+    },
+    "rawLog": {
+      "sha256": "725ad14717bfef12247a6db2e3ca244c74a62c793186c7b333a65f64f4985d65",
+      "bytes": 2124
+    },
+    "normalReplyTransport": "synthetic callback using existing normal broker/schema in additional composition tests; no product API",
+    "testAssertionAccounting": "node:assert/strict assertions execute inside Bun tests; saved Bun JUnit reports zero expect() counts, not zero selected tests."
+  },
+  "publicSources": [
+    {
+      "path": "scripts/lib/clarification-observer-lease.mjs",
+      "sha256": "b9a03d338065b19e8629181f87c45629dd36cfe4b315114f3d1e8b428091eab4",
+      "bytes": 10413,
+      "mode": 420
+    },
+    {
+      "path": "scripts/lib/clarification-observer-lease.test.ts",
+      "sha256": "acc9dd312ecf59141e7b66afd30a94c900c4226ca08be375511a499b1161bd0f",
+      "bytes": 5091,
+      "mode": 420
+    }
+  ],
+  "guardFacts": [
+    "Exclusive run/config/source-bound lease must arm before actual launch; portable module never launches or watches by itself.",
+    "Saved observations must bind run/case/config/source plus current pending question SHA; observation<=3000ms and unexpired Host question; answer window60000ms.",
+    "Slot uses workspace/operation/generation/clarification identity; text/version changes never unlock repost; reserve precedes awaiting writer.",
+    "Only the two already-authorized pipeline-choice classes may reach metadata writer; unknown business values remain UNKNOWN.",
+    "Failed or unknown metadata writes retain the attempted slot; executed/UNKNOWN_HELD normal ancestor receipts also retain it.",
+    "Metadata write success never proves normal typed reply execution; portable helper has no UI/API/model/control authority."
+  ],
+  "limits": [
+    "Current R10 latency is a test-harness boundary; exact underlying scheduling/source cause UNKNOWN.",
+    "Existing CSR0012 broker and RUI0013 earlier history are related lineage only, not reconfirmed cause or regression.",
+    "Periodic production scheduling/actual lease durability/actual normal reply still depend on separately qualified operator and normal ancestor.",
+    "Portable4 proof does not qualify excluded private operator/writer/constructor or original12 convergence."
+  ],
+  "revision": 2,
+  "publicModuleAndTestSourcesInstalledAsOf": true,
+  "publicEvidenceCapsuleInstalledAsOf": false,
+  "localExecutedCandidateSourcesAsOf": [
+    {
+      "path": "scripts/lib/clarification-observer-lease.mjs",
+      "sha256": "939e4b88d6e341c41255238dc5dd54f1d014e9c1ad2632d615774f7058c01202",
+      "bytes": 10433
+    },
+    {
+      "path": "scripts/lib/clarification-observer-lease.test.ts",
+      "sha256": "acc9dd312ecf59141e7b66afd30a94c900c4226ca08be375511a499b1161bd0f",
+      "bytes": 5091
+    }
+  ],
+  "installedSourceQualificationAsOf": {
+    "wholeCurrent94Gate": "NOT_RUN",
+    "sameTestsBytesAsExecutedCandidate": true,
+    "moduleBehaviorChanged": false,
+    "moduleDifference": "Only publication comments changed; current helper source differs from saved candidate hash. No old assertions or rules changed."
+  },
+  "previousUnappliedCapsuleDigest": {
+    "sha256": "f656b5d63ab81e32a50d6359dce7671083419ab21478a9b994d42983e6614ec2",
+    "bytes": 4874
+  }
+}

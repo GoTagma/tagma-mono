@@ -1,0 +1,309 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-public-safe-owned-finalization-source-counterexample-and-local-preparation-proof",
+  "createdAtUTC": "2026-10-13T16:05:52.943358+00:00",
+  "ready": false,
+  "issueId": "CSR-0023",
+  "lineage": [
+    "V15-owned-finalization-source-mechanism"
+  ],
+  "category": "test-harness-workflow",
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "causeScope": "Finite source-extracted V15 finally behavior only; actual live S3L3 cause remains UNKNOWN.",
+  "firstEvidence": {
+    "resolution": {
+      "sha256": "907c38814c118447ef0d25e485fbedb67c648d610ec7df8165e6a975fbef2d74",
+      "bytes": 2309,
+      "role": "old-source-finally-first-assertion-RED-resolution"
+    },
+    "execution": {
+      "sha256": "571b98a2428d12ba4cbda8f3980d7ffe0e682e5678697506b29ffebad1ad06da",
+      "bytes": 3110,
+      "role": "old-source-finally-selected-assertion-RED"
+    },
+    "frozenOldHarness": {
+      "sha256": "7aee41ca4a6c8b7e95ddfe99201d46e47aa08b4572724c159a8fba863aa2e8da",
+      "bytes": 96176,
+      "role": "immutable-old-harness-source-opaque-only"
+    },
+    "frozenFinallyFragment": {
+      "sha256": "f6182986b53f92bf701890237a3572fe3defa5ef9ddf299d2ebe7d8139598dbd",
+      "bytes": 1097,
+      "role": "exact-source-finally-fragment"
+    },
+    "actualSelectedExecuted": 1,
+    "failed": 1,
+    "errors": 0,
+    "selectedSkipTodo": 0,
+    "healthyControlExecutedExactHooks": true,
+    "stopReceiptSettledInFixture": false,
+    "realNativeOrProductCalls": 0,
+    "mechanism": "A monitor failure followed by an awaited evidence-write ENOSPC in the finally path skips the later close, background-drain and credential-forget hooks. This was tested against the exact existing source fragment."
+  },
+  "actualR13S3L3Cause": "UNKNOWN",
+  "actualR13S3L3CauseConfirmed": false,
+  "nativeV6": {
+    "sourceChanged": false,
+    "stageJournalWriteCatchNonthrow": true,
+    "previousThrowingJournalMechanismClaim": "WITHDRAWN",
+    "nativeV7RequiredByThisMechanism": false
+  },
+  "preparedCandidateGreenEpochsAsOf": [
+    {
+      "revision": 1,
+      "proof": {
+        "sha256": "916574be939a4767387d6baf32ef43fc96db61203362f0f80704b028f7ef1658",
+        "bytes": 4795,
+        "role": "immutable-candidate-asof-local-GREEN"
+      },
+      "actualPassed": 8,
+      "expectCalls": 60,
+      "asOfOnly": true,
+      "publicOrProductDefectClaimed": false
+    },
+    {
+      "revision": 2,
+      "proof": {
+        "sha256": "dec66ff774aa7af93988d6be7b31dd40835bf63626de69d7b4e0d9ae1b83418f",
+        "bytes": 4816,
+        "role": "immutable-candidate-asof-local-GREEN"
+      },
+      "actualPassed": 8,
+      "expectCalls": 64,
+      "asOfOnly": true,
+      "publicOrProductDefectClaimed": false
+    },
+    {
+      "revision": 3,
+      "proof": {
+        "sha256": "56b86143b62a72b1a8e8ac1e6093e2759b37003fa5aca7f20383001439b441af",
+        "bytes": 4882,
+        "role": "immutable-candidate-asof-local-GREEN"
+      },
+      "actualPassed": 8,
+      "expectCalls": 69,
+      "asOfOnly": true,
+      "publicOrProductDefectClaimed": false
+    }
+  ],
+  "distinctCandidateOnlyCounterexamples": [
+    {
+      "mechanism": "unstable thrown code/name getter after validation",
+      "proof": {
+        "sha256": "c26cac71e92dd3e0cf5496d64e1ef02ea26ae600f7dcd4cac61b6b73c5a0c676",
+        "bytes": 4441,
+        "role": "unpublished-candidate-preparation-counterexample-RED"
+      },
+      "actualSelectedFailed": 1,
+      "unselectedFiltered": 7,
+      "expectCalls": 5,
+      "publicOrProductionDefectClaimed": false,
+      "actualCaseRootCauseClaimed": false
+    },
+    {
+      "mechanism": "unstable step name/run getters after validation",
+      "proof": {
+        "sha256": "16167c8fff8348f79726cb3163d64142f1d408883a55f33261c80cd29d9c951d",
+        "bytes": 4480,
+        "role": "unpublished-candidate-preparation-counterexample-RED"
+      },
+      "actualSelectedFailed": 1,
+      "unselectedFiltered": 7,
+      "expectCalls": 6,
+      "publicOrProductionDefectClaimed": false,
+      "actualCaseRootCauseClaimed": false
+    },
+    {
+      "mechanism": "callback this mutates internal captured step name",
+      "proof": {
+        "sha256": "12dabd23f5ab470e1e37f678b2b649a9cee949d8c88c27c56777c05a8e18bf84",
+        "bytes": 4481,
+        "role": "unpublished-candidate-preparation-counterexample-RED"
+      },
+      "actualSelectedFailed": 1,
+      "unselectedFiltered": 7,
+      "expectCalls": 11,
+      "publicOrProductionDefectClaimed": false,
+      "actualCaseRootCauseClaimed": false
+    }
+  ],
+  "preparationCorrectionsAreProductOrOldRuntimeRegressions": false,
+  "finalCandidate": {
+    "revision": 4,
+    "publicSources": [
+      {
+        "path": "scripts/lib/owned-harness-finalization.mjs",
+        "sha256": "d4485768f3a833d943e64f853880fb2622572a2f8b4ec5ccfecdaa2b7c7124e9",
+        "bytes": 2596,
+        "role": "candidate-before-Root-install-format-and-new-gate"
+      },
+      {
+        "path": "scripts/lib/owned-harness-finalization.test.ts",
+        "sha256": "430b9d2bf69ccb5e431ceff0428ff40b34e098e025921bbb31f96fe87505e6c9",
+        "bytes": 10630,
+        "role": "eight-existing-name-portable-tests"
+      }
+    ],
+    "proofResolution": {
+      "sha256": "7195d3c6b2d15d8daeebb35c80202fe4cd0396a27089e87ba0368ee4e19f0087",
+      "bytes": 5391,
+      "role": "immutable-final-V4-proof-resolution"
+    },
+    "originalEightSelectorNamesUnchanged": true,
+    "allOriginal60AssertionsPreserved": true,
+    "allV2_64AssertionsPreserved": true,
+    "allV3_69AssertionsPreserved": true,
+    "final73ExpectAssertions": 73,
+    "singleCapturedGetterValuesAndFrozenStepRecords": true
+  },
+  "lastExecution": {
+    "kind": "saved-candidate-V4-synthetic-hook-local-execution",
+    "classification": "ACTUAL_GREEN",
+    "proof": {
+      "sha256": "7ac9c94f19258d113d08b1082735b17b46843fe1d203ae0ca5fa4c1afabd1661",
+      "bytes": 4882,
+      "role": "actual-final-V4-all8-GREEN"
+    },
+    "candidateHelperSha256": "d4485768f3a833d943e64f853880fb2622572a2f8b4ec5ccfecdaa2b7c7124e9",
+    "candidateTestSha256": "430b9d2bf69ccb5e431ceff0428ff40b34e098e025921bbb31f96fe87505e6c9",
+    "executed": 8,
+    "passed": 8,
+    "failed": 0,
+    "errors": 0,
+    "selectedSkipTodo": 0,
+    "expectCalls": 73,
+    "sourceBindingsStable": true,
+    "JUnit": {
+      "sha256": "43ed94507595c3aba6bc908bebc5675fbd326294a1f710b3e3760fa22f3f826a",
+      "bytes": 1935,
+      "role": "saved-final-V4-JUnit-eight-nonempty-passes"
+    },
+    "scope": "synthetic-owned-hooks-only",
+    "realNativeOrProductCalls": 0,
+    "models": 0,
+    "currentPublic159Gate": null,
+    "liveAcceptance": false
+  },
+  "newExactRegressions": [
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization closes exact resources after monitor evidence ENOSPC",
+      "namePattern": "^owned\\ finalization\\ closes\\ exact\\ resources\\ after\\ monitor\\ evidence\\ ENOSPC$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization continues after usage evidence ENOSPC",
+      "namePattern": "^owned\\ finalization\\ continues\\ after\\ usage\\ evidence\\ ENOSPC$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization preserves primary error and surfaces independent cleanup errors",
+      "namePattern": "^owned\\ finalization\\ preserves\\ primary\\ error\\ and\\ surfaces\\ independent\\ cleanup\\ errors$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization does not manufacture settlement ownership or matrix closure",
+      "namePattern": "^owned\\ finalization\\ does\\ not\\ manufacture\\ settlement\\ ownership\\ or\\ matrix\\ closure$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization freezes its finite step plan and executes each hook once",
+      "namePattern": "^owned\\ finalization\\ freezes\\ its\\ finite\\ step\\ plan\\ and\\ executes\\ each\\ hook\\ once$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization bounds fault projections without retaining thrown prose",
+      "namePattern": "^owned\\ finalization\\ bounds\\ fault\\ projections\\ without\\ retaining\\ thrown\\ prose$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization rejects malformed duplicate or unbounded plans before hooks execute",
+      "namePattern": "^owned\\ finalization\\ rejects\\ malformed\\ duplicate\\ or\\ unbounded\\ plans\\ before\\ hooks\\ execute$",
+      "expectedTests": 1
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/owned-harness-finalization.test.ts",
+      "fullName": "owned finalization preserves explicit cleanup UNKNOWN and continues credential teardown",
+      "namePattern": "^owned\\ finalization\\ preserves\\ explicit\\ cleanup\\ UNKNOWN\\ and\\ continues\\ credential\\ teardown$",
+      "expectedTests": 1
+    }
+  ],
+  "executionBinding": {
+    "allEightSavedJUnitNamesExactAndPassedOnce": true,
+    "eachIsolatedCurrentPublicSelectorExecution": "NOT_RUN",
+    "newWholeCurrent159Gate": "NOT_RUN"
+  },
+  "helperAuthority": {
+    "pure": true,
+    "ownsFilesystemProcessesProviderBrowserOrUIAuthority": false,
+    "trustedCallerOwnsEveryDeclaredHook": true,
+    "maximumDeclaredSteps": 16,
+    "snapshotCapturedAndFrozenBeforeHooks": true,
+    "eachDeclaredHookCalledOnceInOrder": true,
+    "hookFaultDoesNotSkipIndependentLaterHooks": true,
+    "faultProjectionFields": [
+      "step",
+      "code",
+      "type"
+    ],
+    "rawCleanupErrorMessageStackAndCallbackReturnsProjected": false,
+    "primaryErrorPreservedByIdentityInMemoryOnly": true,
+    "rawPrimaryErrorMayBeSerializedOrPersisted": false,
+    "callbackFulfilledIsPaidSettlementOwnerMatrixOrPublicationProof": false,
+    "explicitUNKNOWNRetained": true
+  },
+  "integrationLimits": [
+    "A new source-qualified caller must supply exact owned hooks; the pure helper grants no process or cleanup scope.",
+    "Do not serialize raw primaryError; persist only finite typed cleanup faults and bounded step results.",
+    "Actual paid/Host/native/Root closure requires separate receipts, identities and known-scope proof.",
+    "Old source and V1/V2/V3 proof epochs remain immutable as-of; no original grade is rewritten."
+  ],
+  "currentBaseAtPreparation": {
+    "catalogSha256": "b6836e52b18c093d055d1bd127efe196820af6f492be0e4b2862cc9cfd3c6556",
+    "bytes": 196396,
+    "issueCount": 22,
+    "selectorCount": 151,
+    "Root151Gate": "PENDING_ROOT_COMPLETED_RECEIPT",
+    "actual151Receipt": null
+  },
+  "activationPrerequisite": {
+    "actualRoot151WholeGateMustBeGREEN": true,
+    "actualRoot151Receipt": null,
+    "actualRoot151SourceFingerprint": null,
+    "exactCurrent22CatalogMustMatchReviewedBase": true,
+    "laterRootActivationHistoryRequiresFreshRebaseRatherThanOverwrite": true
+  },
+  "futureMappedGate": {
+    "issueCount": 23,
+    "selectorCount": 159,
+    "newExactSelectors": 8,
+    "receipt": null,
+    "sourceFingerprint": null,
+    "classification": "PENDING_ROOT_PRIOR151_GREEN_SOURCE_SELECTION_AND_NEW159_GATE"
+  },
+  "publicCandidateApplied": false,
+  "actualH16Integration": "PENDING_ROOT_SOURCE_QUALIFICATION",
+  "realNativeOwnerPaidOrMatrixClosure": "UNKNOWN_NOT_ESTABLISHED_BY_HELPER",
+  "realOriginal12Convergence": "UNKNOWN",
+  "productDefectOrProviderCauseClaimed": false,
+  "automaticIssueStatusMutation": false,
+  "historicalCoverageComplete": false,
+  "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+  "privateWorkPathsRawPromptsBusinessAuthProviderLogsSecretsPublished": false,
+  "testModelAPIProcessControlPublicGitVersionActionsForMetadataProposal": 0
+}

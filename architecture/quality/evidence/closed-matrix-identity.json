@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-public-safe-source-closed-matrix-identity-regression",
+  "observationId": "CSR-0024",
+  "category": "test-harness-workflow",
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "causeScope": "Source-extracted private V6 matrix gate rejects genuine started and closed Send0 slots whose adjudication status is NOT RUN. No actual R13/product/provider cause inferred.",
+  "firstEvidence": {
+    "oldPrivateSource": {
+      "sha256": "765aeb82ac5807dbc89bdd78ec1989d4aaae8895d05b454e4e70a5ac4af4c5a4",
+      "bytes": 25761,
+      "role": "immutable-existing-private-V6-operator-source"
+    },
+    "resolution": {
+      "sha256": "d6d11481b6f60d38cc56f3b424b0090fe00c6943e68c825f3afe73b106a49878",
+      "bytes": 1474,
+      "role": "immutable-first-genuine-old-source-assertion-RED"
+    },
+    "execution": {
+      "sha256": "e985751743fb1ebbe2c4f92d0ca9f3167c45514c38b5e93ae6e5c9634b13aa5c",
+      "bytes": 1914
+    },
+    "selectedExecuted": 1,
+    "selectedFailed": 1,
+    "selectedErrors": 0,
+    "selectedSkipped": 0,
+    "healthySentClosureControlPassed": true,
+    "acceptancePolicy": "Local source-extracted metadata identity predicate only; not real UI acceptance, provider acceptance, current product cause, or full historical coverage."
+  },
+  "privateV8Green": {
+    "resolution": {
+      "sha256": "cd49c6e88c34f09e188360e05af0292f2e42f723e840bc2a0e7b482e400dd671",
+      "bytes": 3048,
+      "role": "immutable-private-V8-three-contract-GREEN"
+    },
+    "source": {
+      "sha256": "1b3cdeb278d5f77b2495a4c401c3c09937ede9c01f93c043c74bbd8e9fb77ca9",
+      "bytes": 27002,
+      "role": "existing-private-V8-operator-source"
+    },
+    "selectedExecuted": 3,
+    "selectedPassed": 3,
+    "selectedFailed": 0,
+    "selectedSkipped": 0,
+    "selectedErrors": 0
+  },
+  "portableRegressions": {
+    "moduleAndTests": [
+      {
+        "path": "scripts/lib/closed-matrix-identity.mjs",
+        "sha256": "f990555b9637e02fb862125b205dd07bffe0c59ff16582c7b75b572c8dfc7b7f",
+        "bytes": 1709,
+        "role": "uninstalled-pure-generic-helper-candidate"
+      },
+      {
+        "path": "scripts/lib/closed-matrix-identity.test.ts",
+        "sha256": "7f5f7fe698668502cbbd04ee7f11cf2396cedf828e52fc7ac05a97daa7f80f80",
+        "bytes": 4395,
+        "role": "portable-three-literal-selector-candidate"
+      }
+    ],
+    "oldSourceGateAdapter": {
+      "sha256": "fb3056d357f683059e5d151ea25a67406d87a9d4d908650cfa287569d1590262",
+      "bytes": 1405,
+      "role": "source-exact-V6-guard-interface-adapter-not-published-production"
+    },
+    "testBodiesIdenticalAcrossOldAndNew": true,
+    "resolution": {
+      "sha256": "3455869cc2ed820e03d5cb495b4723218cf9b980177c2635fb7e300b2623d1e6",
+      "bytes": 4014,
+      "role": "portable-source-red-green-nonempty-resolution"
+    },
+    "oldSourceRed": {
+      "selectedExecuted": 1,
+      "selectedPassed": 0,
+      "selectedFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "filteredUnselected": 2,
+      "bunExpectCalls": 2,
+      "actualSelectedNames": [
+        "closed matrix preserves closed zero Send slots and derives sent count from submission facts"
+      ]
+    },
+    "oldSourceEvidence": {
+      "execution": {
+        "sha256": "222cfc2fd5215ac963fb50b9c43991f17239de78910b6c1db1b53c749168eefe",
+        "bytes": 2462
+      },
+      "rawLog": {
+        "sha256": "6d761000e99805dc71d31436715f9c4892fd75ee8bd151ba54a64efc0873ce15",
+        "bytes": 1106
+      },
+      "junit": {
+        "sha256": "a503c21e12602d92f9ecc0de1c3abcfe44a03ccf13ad2fc5d58ea56e75bf1308",
+        "bytes": 1106
+      }
+    },
+    "candidateGreen": {
+      "selectedExecuted": 3,
+      "selectedPassed": 3,
+      "selectedFailed": 0,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "filteredUnselected": 0,
+      "bunExpectCalls": 29,
+      "actualSelectedNames": [
+        "closed matrix preserves closed zero Send slots and derives sent count from submission facts",
+        "closed matrix separates unstarted slots and rejects unknown closure evidence",
+        "closed matrix rejects mismatched source run inventory and nonserial closed identities"
+      ]
+    },
+    "candidateEvidence": {
+      "execution": {
+        "sha256": "95f22afc3b704b461c74e578d8cb78799fe3fbd706d22a3fbc39bcdbc68139bb",
+        "bytes": 2461
+      },
+      "rawLog": {
+        "sha256": "0477855703f7a7704b2001eab1ef3a3b972888c14b95f9ff912df6c6201c8ade",
+        "bytes": 449
+      },
+      "junit": {
+        "sha256": "9f9798b5605ab643ad22f5803953a51ad103f7d98b216799e73abd6880d2709c",
+        "bytes": 1008
+      }
+    }
+  },
+  "contract": {
+    "identityFields": [
+      "runId",
+      "sourceManifestSha256",
+      "caseIds"
+    ],
+    "typedStartedOriginalSendCount": [
+      0,
+      1
+    ],
+    "knownPaidAndProcessClosureMustBeTrue": true,
+    "exactOriginalSerialPrefixRequired": true,
+    "closedSetMustMatchStartedRows": true,
+    "adjudicationStatusDoesNotDetermineStartedOrSentCount": true,
+    "unstartedRowsExactKeys": [
+      "caseId",
+      "reason",
+      "status"
+    ],
+    "unknownRemainsRejected": true,
+    "noBusinessOrModelPredicates": true
+  },
+  "activation": {
+    "publicInstalled": false,
+    "newWholeCurrent162Gate": null,
+    "privateFutureV9Used": false,
+    "currentPublic159Unchanged": true,
+    "noVersionGitOrNativeModelAction": true
+  },
+  "knownLimits": {
+    "actualR13ProductCause": "UNKNOWN",
+    "realFreeProviderAcceptanceNotProved": true,
+    "historicalCoverageComplete": false,
+    "currentSourceCoverageIsLocalOnly": true,
+    "automaticFixedPromotionAllowed": false,
+    "callbackFactsDoNotDiscoverOwnerOrPaidClosure": true
+  },
+  "privacy": "Only public logical paths, generic contract text, opaque source/proof hashes and nonempty local counts. No private workspace paths, run contents, auth, DB, raw provider messages or reasoning."
+}

@@ -90,7 +90,10 @@ import {
   readChatYamlStageTargetBaseline,
   prepareChatYamlStageSessionRelocation,
   readChatYamlStageSessionRelocation,
+  captureChatYamlStageRetainedTrialContract,
   type ChatYamlStageDescriptor,
+  type ChatYamlStageRetainedTrialOwner,
+  type ChatYamlStageRetainedTrialVerification,
   type ChatYamlStageSessionRelocationBinding,
 } from '../chat-yaml-staging.js';
 import { createStreamingLoopbackFetch } from '../loopback-fetch.js';
@@ -453,6 +456,9 @@ function stageSnapshotHash(descriptor: ChatYamlStageDescriptor): string {
           supportHash: entry.supportHash ?? null,
           trialPlanHash: entry.trialPlanHash,
         })),
+      ...(descriptor.retainedTrialVerification
+        ? { retainedTrialVerificationDigest: descriptor.retainedTrialVerification.digest }
+        : {}),
     })}`,
   );
 }
@@ -611,6 +617,7 @@ export interface ManagedChatOperationV2AuthoringStageSnapshot {
   readonly artifactCount: number;
   /** Frozen stage setting; absence is readable legacy state, never new planning authority. */
   readonly trialPlanMaxAttempts?: number;
+  readonly retainedTrialVerification?: ChatYamlStageRetainedTrialVerification;
 }
 
 export interface ManagedTrialPlanDefinitiveProviderFailure {
@@ -683,7 +690,79 @@ export interface ManagedChatOperationV2CompileResult {
   };
 }
 
+function retainedRepairOwner(
+  authority: ManagedChatOperationV2AuthoringAuthorityRecord,
+  invocation: ManagedChatOperationV2InvocationAuthority,
+  repairAttempt: number,
+  errorEvidenceHash: string,
+): ChatYamlStageRetainedTrialOwner {
+  return {
+    workspaceScopeId: authority.workspaceScopeId,
+    operationId: authority.stage.operationId,
+    operationGeneration: authority.stage.operationGeneration,
+    stageId: authority.stage.stageId,
+    bindingId: authority.stage.bindingId,
+    targetId: authority.stage.targetId,
+    invocationId: invocation.invocationId,
+    requestDigest: invocation.requestDigest,
+    repairAttempt,
+    errorEvidenceHash,
+    baselineSnapshotHash: invocation.baselineSnapshotHash,
+  };
+}
+
+function retainedRepairIntentText(request: ChatOperationV2AuthoringInvocationRequest): string {
+  return (
+    buildChatOperationV2ClarifiedRequestText(
+      request.admission.request.text,
+      request.clarificationThread,
+    ) +
+    request.admission.request.attachments
+      .filter((item) =>
+        /requirements?|spec(?:ification)?|acceptance|instructions?|brief|需求|规格|验收|说明/iu.test(
+          item.label,
+        ),
+      )
+      .map((item) => `\n${item.content}`)
+      .join('')
+  );
+}
+
+function assertRetainedTrialVerificationAuthority(
+  authority: ManagedChatOperationV2AuthoringAuthorityRecord,
+  snapshot: ManagedChatOperationV2AuthoringStageSnapshot,
+): void {
+  const proof = snapshot.retainedTrialVerification;
+  if (!proof) return;
+  const owner = proof.owner;
+  const invocation = authority.invocations[owner.invocationId];
+  if (
+    !invocation ||
+    invocation.purpose !== 'repair' ||
+    invocation.executionSubmitted !== true ||
+    invocation.completed?.disposition !== 'changed' ||
+    incompleteAuthoringFinishCode(invocation.completed.finishCode) !== null ||
+    invocation.completedSnapshotHash !== proof.completedSnapshotHash ||
+    Object.values(authority.invocations).at(-1)?.invocationId !== invocation.invocationId ||
+    authority.repairErrorEvidence?.hash !== owner.errorEvidenceHash ||
+    canonicalJson(owner) !==
+      canonicalJson(
+        retainedRepairOwner(authority, invocation, owner.repairAttempt, owner.errorEvidenceHash),
+      )
+  ) {
+    throw new ChatOperationV2AuthoringProtocolError(
+      'authority_mismatch',
+      'Retained Trial verification does not match its completed owned repair.',
+    );
+  }
+}
+
 export interface ManagedChatOperationV2AuthoringStagingAdapter {
+  captureRetainedTrialContract?(input: {
+    readonly relativePath: string;
+    readonly owner: ChatYamlStageRetainedTrialOwner;
+    readonly intentText: string;
+  }): Promise<boolean>;
   accessDraft?(stageId: string, fileId?: string, edit?: ChatOperationDraftEdit): ChatOperationDraft;
   createStage(input: {
     readonly stageId: string;
@@ -738,6 +817,10 @@ export interface ManagedChatOperationV2AuthoringStagingAdapter {
     readonly streamEvidenceOwner?: ChatRepairEvidenceOwner;
     readonly affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     readonly intentText?: string;
+    readonly retainedRepair?: {
+      readonly owner: ChatYamlStageRetainedTrialOwner;
+      readonly completedSnapshotHash: string;
+    };
     readonly onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult>;
 }
@@ -1372,6 +1455,9 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
       artifactSetHash: commitArtifacts.artifactSetHash,
       artifactCount: commitArtifacts.artifacts.length,
       trialPlanMaxAttempts: descriptor.trialPlanMaxAttempts,
+      ...(descriptor.retainedTrialVerification
+        ? { retainedTrialVerification: descriptor.retainedTrialVerification }
+        : {}),
     };
   }
 
@@ -1675,6 +1761,10 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     streamEvidenceOwner?: ChatRepairEvidenceOwner;
     affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     intentText?: string;
+    retainedRepair?: {
+      readonly owner: ChatYamlStageRetainedTrialOwner;
+      readonly completedSnapshotHash: string;
+    };
     onProgress?: (progress: ChatPipelineTrialProgress) => void;
   }): Promise<ChatPipelineTrialRunResult> {
     const abort = () =>
@@ -1737,12 +1827,21 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
         ...(taskStreamEvidenceSink ? { taskStreamEvidenceSink } : {}),
         ...(input.affectedCases ? { affectedCases: input.affectedCases } : {}),
         ...(input.intentText ? { intentText: input.intentText } : {}),
+        ...(input.retainedRepair ? { retainedRepair: input.retainedRepair } : {}),
       });
     } finally {
       emitProgress();
       clearInterval(progressTimer);
       input.signal.removeEventListener('abort', abort);
     }
+  }
+
+  async captureRetainedTrialContract(input: {
+    readonly relativePath: string;
+    readonly owner: ChatYamlStageRetainedTrialOwner;
+    readonly intentText: string;
+  }): Promise<boolean> {
+    return captureChatYamlStageRetainedTrialContract(this.workspace, input);
   }
 }
 
@@ -3751,6 +3850,38 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
           }
         : { kind: 'provider_unavailable', code: safeCode(admitted.code, 'request_conflict') };
     }
+    if (request.purpose === 'repair' && this.staging.captureRetainedTrialContract) {
+      const canonical = sdkRecord(
+        JSON.parse(new TextDecoder().decode(request.canonicalRequestBytes)),
+      );
+      const evidence = sdkRecord(canonical?.repairEvidence);
+      const errorEvidenceHash = authority.repairErrorEvidence?.hash;
+      if (
+        authoringContinuationOf(request.canonicalRequestBytes) === null &&
+        canonical?.purpose === 'repair' &&
+        canonical.repairAttempt === request.repairAttempt &&
+        Number.isSafeInteger(request.repairAttempt) &&
+        request.repairAttempt > 0 &&
+        errorEvidenceHash &&
+        evidence?.errorEvidenceHash === errorEvidenceHash &&
+        typeof evidence.errors === 'string' &&
+        sha256(evidence.errors) === errorEvidenceHash
+      ) {
+        const current = await this.requireCurrentSnapshot(authority);
+        if (current.snapshotHash !== invocation.baselineSnapshotHash)
+          return { kind: 'provider_unavailable', code: 'retained_contract_source_changed' };
+        await this.staging.captureRetainedTrialContract({
+          relativePath: authority.workingRelativePath,
+          owner: retainedRepairOwner(
+            authority,
+            invocation,
+            request.repairAttempt,
+            errorEvidenceHash,
+          ),
+          intentText: retainedRepairIntentText(request),
+        });
+      }
+    }
     invocation = { ...invocation, executionSubmitted: true };
     await this.writeInvocation(await this.authority(request.stage.stageId), invocation);
     const execution = await this.openCode.execute({
@@ -4286,6 +4417,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         'Current staged snapshot does not match Host authority.',
       );
     }
+    assertRetainedTrialVerificationAuthority(authority, current);
     return current;
   }
 
@@ -4617,6 +4749,28 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         (latestInvocation?.purpose === 'trial_plan' && latestInvocation.completed !== null
           ? latestInvocation.planReviewAffectedCases
           : undefined);
+      const current = await this.requireCurrentSnapshot(authority);
+      const errorEvidenceHash = authority.repairErrorEvidence?.hash;
+      const retainedRepair =
+        !planReviewAffectedCases?.length &&
+        input.intentText &&
+        input.repairAttempts > 0 &&
+        latestInvocation?.purpose === 'repair' &&
+        latestInvocation.executionSubmitted === true &&
+        latestInvocation.completed?.disposition === 'changed' &&
+        incompleteAuthoringFinishCode(latestInvocation.completed.finishCode) === null &&
+        latestInvocation.completedSnapshotHash === current.snapshotHash &&
+        errorEvidenceHash
+          ? {
+              owner: retainedRepairOwner(
+                authority,
+                latestInvocation,
+                input.repairAttempts,
+                errorEvidenceHash,
+              ),
+              completedSnapshotHash: latestInvocation.completedSnapshotHash,
+            }
+          : undefined;
       trial = await this.staging.runTrial({
         stageId: input.stage.stageId,
         targetRelativePath: authority.workingRelativePath,
@@ -4625,6 +4779,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         streamEvidenceOwner: evidenceOwner(authority),
         ...(planReviewAffectedCases ? { affectedCases: planReviewAffectedCases } : {}),
         ...(input.intentText ? { intentText: input.intentText } : {}),
+        ...(retainedRepair ? { retainedRepair } : {}),
         onProgress: (progress) =>
           input.onTrialProgress?.({
             stageId: progress.stageId,
@@ -5015,6 +5170,7 @@ export async function readManagedChatOperationV2CommitStageMaterial(input: {
     );
   }
   if (authority.relocation) parseChatOperationV2SessionRelocation(authority.relocation);
+  assertRetainedTrialVerificationAuthority(authority, snapshot);
   const descriptor = listChatYamlStage(workspace, input.stageId, true);
   const artifactSet = deriveManagedChatOperationV2CommitArtifactSet(descriptor);
   const existingTarget =
@@ -5029,6 +5185,7 @@ export async function readManagedChatOperationV2CommitStageMaterial(input: {
       : null,
   }));
   if (
+    stageSnapshotHash(descriptor) !== snapshot.snapshotHash ||
     artifactSet.artifactSetHash !== snapshot.artifactSetHash ||
     artifactSet.artifacts.length !== snapshot.artifactCount
   ) {

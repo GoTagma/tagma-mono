@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-public-tooling-incident-and-real-local-prevention-proof",
+  "ready": false,
+  "issueId": "CSR-0018",
+  "lineage": [
+    "TWI-R11-0001"
+  ],
+  "category": "testing-tool",
+  "title": "Preserve prior test evidence using exclusive immutable captures",
+  "observationVerified": true,
+  "causeConfirmed": true,
+  "localPreventiveGuardVerified": true,
+  "historicalMissingRaw": "UNKNOWN_BLOCKED_NOT_RECONSTRUCTED",
+  "historicalCoverageComplete": false,
+  "realChatConvergence": "UNKNOWN_NOT_RUN_BY_THIS_CHANGE",
+  "automaticIssueStatusMutation": false,
+  "localProof": {
+    "sha256": "4120e55752cc647cde6cd5ec360d09025b4db1a4e5813a29aa6ae12dcd76fadd",
+    "bytes": 4837,
+    "sourceModuleSha256": "1807787ee454feb37a849d22eb3972a62ff3fa40860b5ae9fe4790faa43b00f6",
+    "sourceTestSha256": "8cc5ad3c8b6e964fb40ce31173c9ffff97d95ea02c1259a39fc06e84918e9ed5",
+    "totalTests": 9,
+    "pass": 9,
+    "fail": 0,
+    "skip": 0,
+    "todo": 0,
+    "actualWriterIntegrationTests": 24
+  },
+  "firstEvidence": {
+    "sha256": "704b5a23a67f1138088b847f3214146be6c6ad64064d5e87630936e2a640b738",
+    "bytes": 4832
+  },
+  "regressions": [
+    {
+      "file": "scripts/lib/immutable-node-test-proof.test.ts",
+      "testName": "Immutable proof captures real Node named execution and actual argv in new wx files",
+      "selector": "Immutable proof captures real Node named execution and actual argv in new wx files",
+      "scope": "portable-local-real-node-tooling"
+    },
+    {
+      "file": "scripts/lib/immutable-node-test-proof.test.ts",
+      "testName": "Immutable proof existing output preserves old bytes and blocks before real Node child",
+      "selector": "Immutable proof existing output preserves old bytes and blocks before real Node child",
+      "scope": "portable-local-real-node-tooling"
+    }
+  ],
+  "fixScope": "Prevent future mutable output overwrite and copied invocation metadata; preserve historic unknown evidence.",
+  "immutableAsOf": true,
+  "publicSourcesInstalledAsOf": true,
+  "newInstalledSourceWholeGate": "PENDING_AS_OF_CAPSULE",
+  "localExecutionScope": "Candidate source-identical bytes; public modes644. New public whole mapped gate required.",
+  "originalProposalSha256": "8c5b16eb7254325db80889453ca790151d161a50da78af5cb19dc208606f6292",
+  "publicSources": [
+    {
+      "path": "scripts/lib/immutable-node-test-proof.mjs",
+      "sha256": "1807787ee454feb37a849d22eb3972a62ff3fa40860b5ae9fe4790faa43b00f6",
+      "bytes": 10627,
+      "mode": 420
+    },
+    {
+      "path": "scripts/lib/immutable-node-test-proof.test.ts",
+      "sha256": "8cc5ad3c8b6e964fb40ce31173c9ffff97d95ea02c1259a39fc06e84918e9ed5",
+      "bytes": 11003,
+      "mode": 420
+    }
+  ],
+  "observedCause": "Mutable shell redirection reused an existing local proof log path and overwrote its old raw bytes.",
+  "oldRawEvidenceRecovered": false,
+  "genuineOriginal12OnThisInstalledSource": "NOT_RUN"
+}

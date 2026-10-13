@@ -55,8 +55,12 @@ import {
   hashChatPipelineTrialTree,
   issueChatYamlStageTrialPlanAttempt,
   pinChatYamlStageEvidenceContract,
+  readChatYamlStageRetainedTrialCandidate,
+  readChatYamlStageVerifiedRetainedTrialReceipt,
+  promoteChatYamlStageRetainedTrialCandidate,
   listChatYamlStage,
   samePipelineRelativePath,
+  type ChatYamlStageRetainedTrialOwner,
 } from './chat-yaml-staging.js';
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import { TRIAL_STREAM_EVIDENCE_BYTES } from '../shared/chat-pipeline-trial-evidence.js';
@@ -70,6 +74,7 @@ import {
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
   readChatPipelineTrialPlanRejectionEvidence,
+  pipelineTrialPlanPath,
   type ChatPipelineTrialExpectation,
   type ChatPipelineTrialPlan,
   type ChatPipelineTrialPlanCase,
@@ -396,6 +401,11 @@ export interface ChatPipelineTrialRunInput {
   affectedCases?: ChatPipelineTrialPlanRequest['affectedCases'];
   /** Frozen, Host-authenticated user intent for independent coverage review. */
   intentText?: string;
+  /** Internal completed-repair identity; renderer Trial routes never forward this field. */
+  retainedRepair?: {
+    owner: ChatYamlStageRetainedTrialOwner;
+    completedSnapshotHash: string;
+  };
 }
 
 export type ChatPipelineTrialProgressPhase =
@@ -4914,6 +4924,35 @@ export async function trialRunChatYamlStage(
     samePipelineRelativePath(candidate.relativePath, input.relativePath),
   );
   if (!entry) throw new Error(`Staged YAML not found: ${input.relativePath}`);
+  const retainedRepair =
+    input.retainedRepair === undefined ? undefined : structuredClone(input.retainedRepair);
+  if (
+    retainedRepair !== undefined &&
+    (input.trustedOperationV2 !== true ||
+      !input.intentText ||
+      retainedRepair.owner.stageId !== stage.id)
+  ) {
+    throw new Error('Retained Trial repair requires the current internal Host stage authority.');
+  }
+  const retainedTrialCandidate =
+    retainedRepair && input.intentText
+      ? readChatYamlStageRetainedTrialCandidate(ws, {
+          relativePath: entry.relativePath,
+          owner: retainedRepair.owner,
+          completedSnapshotHash: retainedRepair.completedSnapshotHash,
+          intentText: input.intentText,
+        })
+      : null;
+  const verifiedRetainedTrialReceipt =
+    input.trustedOperationV2 === true && input.intentText && !retainedTrialCandidate
+      ? readChatYamlStageVerifiedRetainedTrialReceipt(ws, {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          intentText: input.intentText,
+          ...(retainedRepair ? { owner: retainedRepair.owner } : {}),
+        })
+      : null;
+  const retainedTrialPlan = retainedTrialCandidate ?? verifiedRetainedTrialReceipt;
   const startedAt = Date.now();
   const compile = compileChatYamlStage(
     ws,
@@ -4937,6 +4976,34 @@ export async function trialRunChatYamlStage(
   );
   let pendingRunReservation: ReturnType<typeof beginRunSessionStart> = null;
   try {
+    if (retainedTrialPlan) {
+      const snapshotPlanPath = pipelineTrialPlanPath(snapshot.yamlPath);
+      const originalPlanRaw = readFileSync(snapshotPlanPath, 'utf-8');
+      const originalPlan = JSON.parse(originalPlanRaw) as unknown;
+      if (
+        retainedTrialPlan.currentYamlHash !== snapshot.contentHash ||
+        !originalPlan ||
+        typeof originalPlan !== 'object' ||
+        Array.isArray(originalPlan) ||
+        createHash('sha256').update(originalPlanRaw, 'utf8').digest('hex') !==
+          retainedTrialPlan.originalPlanHash ||
+        createHash('sha256').update(retainedTrialPlan.candidatePlanRaw, 'utf8').digest('hex') !==
+          retainedTrialPlan.candidatePlanHash ||
+        !isDeepStrictEqual(JSON.parse(retainedTrialPlan.candidatePlanRaw), {
+          ...originalPlan,
+          yamlHash: snapshot.contentHash,
+        })
+      ) {
+        throw new Error('Retained Trial contract does not match the immutable execution snapshot.');
+      }
+      // Only this stage-owned snapshot receives the candidate. The original
+      // committed plan stays byte-identical throughout repair and verification.
+      atomicWriteFileSync(snapshotPlanPath, retainedTrialPlan.candidatePlanRaw);
+      const treeHash = hashChatPipelineTrialTree(dirname(snapshot.yamlPath));
+      if (!treeHash) throw new Error('Retained Trial snapshot tree hash is missing.');
+      snapshot.treeHash = treeHash;
+      snapshot.supportTreeHash = hashChatPipelineTrialReusableSupportTree(snapshot.yamlPath);
+    }
     const planTelemetry = readChatPipelineTrialPlanToolTelemetry(
       entry.stagedPath,
       stage.trialPlanMaxAttempts,
@@ -4994,7 +5061,7 @@ export async function trialRunChatYamlStage(
       stage.trialPlanMaxAttempts,
       pipelineConfig,
       ws.workDir,
-      planTelemetry.committedPlanHash,
+      retainedTrialPlan?.candidatePlanHash ?? planTelemetry.committedPlanHash,
       input.trustedOperationV2 === true ? input.affectedCases : undefined,
       input.trustedOperationV2 === true ? input.intentText : undefined,
       stage.trialEvidenceContract?.required ?? [],
@@ -5129,13 +5196,9 @@ export async function trialRunChatYamlStage(
     // Same stage/trial-id/input bytes replay the completed response. This is
     // not current verification authority: Finalize separately authenticates
     // the host witness and recomputes the full live readiness projection.
-    const cached = readCompletedTrialResponse(
-      ws,
-      stage.id,
-      cachePath,
-      inputHash,
-      trialabilityReportHash,
-    );
+    const cached = retainedTrialCandidate
+      ? null
+      : readCompletedTrialResponse(ws, stage.id, cachePath, inputHash, trialabilityReportHash);
     if (cached) return resultWithTrialPlan(cached, plan);
     const inFlightKey = cachePath;
     const existing = inFlightByCacheKey.get(inFlightKey);
@@ -5323,14 +5386,16 @@ export async function trialRunChatYamlStage(
           );
           if (fingerprint) caseReuseFingerprints.set(testCase.id, fingerprint);
         }
-        const reusableCases = readReusableTrialCases({
-          ws,
-          stageId: stage.id,
-          trialRunsDir: join(stage.rootDir, '.trial-runs'),
-          desiredFingerprints: caseReuseFingerprints,
-          trialabilityReportHash,
-          prerequisiteDigest: preWitness.prerequisiteDigest,
-        });
+        const reusableCases = retainedTrialCandidate
+          ? new Map<string, ChatPipelineTrialCaseResult>()
+          : readReusableTrialCases({
+              ws,
+              stageId: stage.id,
+              trialRunsDir: join(stage.rootDir, '.trial-runs'),
+              desiredFingerprints: caseReuseFingerprints,
+              trialabilityReportHash,
+              prerequisiteDigest: preWitness.prerequisiteDigest,
+            });
         const result = await executeTrial(
           ws,
           stage,
@@ -5426,6 +5491,23 @@ export async function trialRunChatYamlStage(
             ),
             { ...resultWithTrialPlan(result, plan), planTelemetry },
           );
+          if (retainedTrialCandidate && result.success) {
+            try {
+              promoteChatYamlStageRetainedTrialCandidate(ws, {
+                context: retainedTrialCandidate,
+                trialId,
+                inputHash,
+                verificationHash: postVerificationHash,
+                hostWitnessDigest: postWitness.witness.digest,
+                resultHash: createHash('sha256').update(readFileSync(cachePath)).digest('hex'),
+              });
+            } catch {
+              return resultForHostWitnessFailure(
+                result,
+                'The current retained Trial contract could not be authenticated after execution; verification is required before finalize.',
+              );
+            }
+          }
         }
         return result;
       } finally {

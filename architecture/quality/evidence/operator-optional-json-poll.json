@@ -1,0 +1,284 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-operator-optional-json-poll-dto",
+  "issueId": "CSR-0021",
+  "classification": "test-tooling",
+  "actualR12Observation": {
+    "operatorNaturalExitCode": 2,
+    "publicFailureCode": "UNKNOWN",
+    "actualTypedPOSTCount": 0,
+    "automaticRepost": false,
+    "rawToolStreamFile": "UNAVAILABLE_NOT_CAPTURED",
+    "rootReportedActualToolResult": true,
+    "causeConfirmed": false,
+    "cause": "UNKNOWN",
+    "operatorRearmed": false
+  },
+  "localMechanism": {
+    "observationVerified": true,
+    "causeConfirmed": true,
+    "sourceOriginalSha256": "6955220db119ea41eb5ecc570544667689b0b1195beeb6f9633a50c8c16d26c8",
+    "sourceOriginalBytes": 18583,
+    "actualFunctionExtractionSha256": "9aa5c82981b443863a802ac40e4d6a075f2100f836f2a984869e66dff6bd6e46",
+    "optionalJSONExactSourceSubstring": {
+      "sha256": "2110268f2d688c8c9ade7a2d3b5e67e45fd36c4320995f3d000360e3cc328bb8",
+      "bytes": 141,
+      "exactSourceSubstring": true
+    },
+    "confirmedCounterexample": "Direct JSON.parse of regular/private/stable incomplete producer bytes throws untyped SyntaxError; cannot identify the earlier actual R12 instantaneous read."
+  },
+  "localRed": {
+    "result": "EXPECTED_ASSERTION_RED",
+    "actualSelectedTests": 1,
+    "fail": 1,
+    "errors": 0,
+    "selectedSkipped": 0,
+    "unselectedFiltered": 13,
+    "receiptSha256": "97f987bff893c4e818506f499ba62c049d37c3a625fe449a346a1a738444ba4f",
+    "exactChildExitCode": "UNKNOWN_NOT_PERSISTED_BEFORE_CAPTURE_CLASSIFICATION_ERROR",
+    "childExitNonzeroObserved": true,
+    "rawStdoutSha256": "d6684989b8dd63b37d2f1954270826fbe1bd89a8debd12bcacf03ed1c6140ef6",
+    "rawStderrSha256": "5ff5a02c532741f3f114ad6564661b5e0b3518ec0e19d2dc2b5b3a14290ba60e",
+    "junitSha256": "7d4917e86ddcd2d92ae31248ed1575c0485d7c10ef6196726986b0bcdec65e10"
+  },
+  "candidatePublicProof": {
+    "result": "passed",
+    "exitCode": 0,
+    "actualSelectedTests": 14,
+    "counts": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "errors": 0,
+      "skipped": 0,
+      "todo": 0,
+      "unselectedFiltered": 0
+    },
+    "receiptSha256": "fb635f32ca61343973011152410196ea2a7a9c84b5725170919afb58ef2fada9",
+    "readerSha256": "83198282366f8725a7d21e71f1d6e92482f77815a2e46062fa7376798c7fd454",
+    "testSha256": "1041ad70e3fbd2f1aca517fef209257a72f988b3574c50cb42df3f81b822181e",
+    "regressionFile": "scripts/lib/optional-json-poll-reader.test.ts",
+    "selectors": [
+      "optional JSON poll holds incomplete bytes then accepts the completed document",
+      "optional JSON poll rejects unchanged malformed JSON at the bounded deadline",
+      "optional JSON poll does not reset its deadline when malformed bytes change",
+      "optional JSON poll does not reset its deadline when malformed metadata disappears",
+      "optional JSON poll clears a completed document interval before a later producer write",
+      "optional JSON poll keeps independent deadlines for separate metadata coordinates",
+      "optional JSON poll propagates exact reader failures without retrying a read or mutation",
+      "optional JSON poll never holds non-syntax decoding exceptions",
+      "optional JSON poll rejects invalid grace and backward or invalid clocks",
+      "optional JSON poll returns ordinary complete JSON values without fabricating objects",
+      "optional JSON poll and real observer lease tolerate a partial observation and never repost",
+      "optional JSON poll and real observer reject stable malformed evidence without authority",
+      "optional JSON poll and real observer keep unknown semantic choices held through expiry",
+      "optional JSON poll and real observer preserve saved freshness and Host question expiry"
+    ]
+  },
+  "oldObserverProofAssertions": {
+    "testFiles": [
+      {
+        "sha256": "79832c12bb663fbc0d4514de3cba798951023758e5caa21a034ea391aaefac70",
+        "bytes": 18330,
+        "testCount": 14,
+        "assertionsPreservedByteForByte": true
+      },
+      {
+        "sha256": "b49010816ea881e4ba66af1e7d4a8af8a3ecb795e386a796fa8c6a10cb644f27",
+        "bytes": 5113,
+        "testCount": 4,
+        "assertionsPreservedByteForByte": true
+      }
+    ],
+    "totalOldAssertionsTests": 18,
+    "oldSourceFilesChanged": false,
+    "oldTestsRerun": "NOT_RUN; historical saved current18 proof remains source/epoch-bound, not relabeled as this helper proof"
+  },
+  "candidateChange": {
+    "status": "LOCAL_VERIFIED_UNAPPLIED",
+    "graceMs": 1000,
+    "deadlineResetOnInvalidChanges": false,
+    "deadlineResetOnDisappearance": false,
+    "strictReadAndBoundDigestParserUnchanged": true,
+    "partialJSONAuthorizesObjectOrReply": false,
+    "stableMalformedStaysFailure": true,
+    "continuouslyChangingInvalidStaysFailure": true,
+    "typedPOSTAdded": 0,
+    "originalSendAdded": 0,
+    "manualRetryAdded": 0,
+    "providerRequests": 0,
+    "freshLiveAcceptance": "NOT_RUN"
+  },
+  "historicalCoverageComplete": false,
+  "globalProviderFinancialAndUnregisteredScopes": "UNKNOWN",
+  "ready": false,
+  "publicCandidateApplied": true,
+  "RootPublicActivationBeforeFormat": {
+    "proof": {
+      "sha256": "2de1634a50eab12c3f8efcb44e3701f971702ac40f6978fbb309b7c7b64c97cb",
+      "bytes": 4934,
+      "role": "Root-six-source-install-before-format"
+    },
+    "activated": true,
+    "scope": "portable public reader and tests only; future private operator adoption pending",
+    "newCurrent143Gate": "PENDING_ROOT_FORMAT_AND_EXECUTION",
+    "newRealConvergence": "UNKNOWN_NOT_RUN"
+  },
+  "lastExecution": {
+    "kind": "source-identical-before-format-portable-public-reader-local-test",
+    "classification": "ACTUAL_GREEN",
+    "proof": {
+      "sha256": "fb635f32ca61343973011152410196ea2a7a9c84b5725170919afb58ef2fada9",
+      "bytes": 3659,
+      "role": "actual-portable-14-GREEN"
+    },
+    "readerSha256": "83198282366f8725a7d21e71f1d6e92482f77815a2e46062fa7376798c7fd454",
+    "testSha256": "1041ad70e3fbd2f1aca517fef209257a72f988b3574c50cb42df3f81b822181e",
+    "actualSelectedTests": 14,
+    "passed": 14,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "todo": 0,
+    "naturalExit0": true,
+    "stdoutEOF": true,
+    "stderrEOF": true,
+    "newCurrent143Gate": "PENDING_ROOT_FORMAT_METADATA_INSTALL_AND_EXECUTION",
+    "scope": "local-test-tool-only",
+    "liveAcceptance": false
+  },
+  "futureMappedGate": {
+    "classification": "PENDING_ROOT_FORMAT_METADATA_INSTALL_AND_CURRENT143_WHOLE_GATE",
+    "prospectiveIssues": 21,
+    "prospectiveExactSelectors": 143
+  },
+  "newExactRegressions": [
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll holds incomplete bytes then accepts the completed document$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll holds incomplete bytes then accepts the completed document"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll rejects unchanged malformed JSON at the bounded deadline$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll rejects unchanged malformed JSON at the bounded deadline"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll does not reset its deadline when malformed bytes change$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll does not reset its deadline when malformed bytes change"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll does not reset its deadline when malformed metadata disappears$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll does not reset its deadline when malformed metadata disappears"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll clears a completed document interval before a later producer write$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll clears a completed document interval before a later producer write"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll keeps independent deadlines for separate metadata coordinates$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll keeps independent deadlines for separate metadata coordinates"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll propagates exact reader failures without retrying a read or mutation$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll propagates exact reader failures without retrying a read or mutation"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll never holds non\\-syntax decoding exceptions$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll never holds non-syntax decoding exceptions"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll rejects invalid grace and backward or invalid clocks$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll rejects invalid grace and backward or invalid clocks"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll returns ordinary complete JSON values without fabricating objects$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll returns ordinary complete JSON values without fabricating objects"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll and real observer lease tolerate a partial observation and never repost$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll and real observer lease tolerate a partial observation and never repost"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll and real observer reject stable malformed evidence without authority$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll and real observer reject stable malformed evidence without authority"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll and real observer keep unknown semantic choices held through expiry$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll and real observer keep unknown semantic choices held through expiry"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/optional-json-poll-reader.test.ts",
+      "namePattern": "^optional JSON poll and real observer preserve saved freshness and Host question expiry$",
+      "expectedTests": 1,
+      "fullName": "optional JSON poll and real observer preserve saved freshness and Host question expiry"
+    }
+  ],
+  "originalSourceAuthorDTOPreserved": {
+    "sha256": "c5d0d13093d3f0697d1b07e08c8ee41fab7a01dcd4976e07c0fc61d736eb1c48",
+    "bytes": 5019,
+    "role": "source-author-CSR0021-DTO"
+  },
+  "actualR12Cause": "UNKNOWN",
+  "automaticIssueStatusMutation": false,
+  "independentReview": "PENDING_ROOT_METADATA_REVIEW",
+  "privatePathsBusinessBodyAuthDBProviderLogsPublished": false,
+  "futurePrivateCompanionSelectionOnly": {
+    "base": {
+      "sha256": "6955220db119ea41eb5ecc570544667689b0b1195beeb6f9633a50c8c16d26c8",
+      "bytes": 18583,
+      "role": "future-private-base"
+    },
+    "candidate": {
+      "sha256": "1883d9f04d2ba3d5321a65e0050d7225bc27a71a256b12fb7645de6719e00578",
+      "bytes": 18617,
+      "role": "future-private-candidate"
+    },
+    "delta": {
+      "sha256": "89514344184d13560aeb009eb080b46f7a4c9f5f33b410578a033e7414b500cb",
+      "bytes": 1029,
+      "role": "future-private-forward"
+    },
+    "currentR12CompanionRewritten": false,
+    "newRunSourceAndAuthorityRebindingRequired": true,
+    "scope": "only optional JSON helper import/read delegation; strict read, case, once, POST unchanged"
+  }
+}

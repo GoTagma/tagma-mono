@@ -341,3 +341,80 @@ coverage remain UNKNOWN. Three NOT-to-PASS and four PASS-to-NOT differences
 against R9 do not establish causal repairs or historical regressions. CSR-0013
 retains its seven selectors, original evidence and installed fix history; these
 runtime observations do not automatically promote it to live verified.
+
+## Retained contract after an owned repair
+
+CSR-0014 records an Engine counterexample: after two planners, a genuine failed
+Trial and one owned YAML repair, the unchanged plan contract could not resume
+verification. Its normal publication control passed; the stale raw-plan guard
+remains correct. The new Host path captures the original contract before repair,
+keeps its live bytes unchanged, and revalidates every original case and repeat
+against the repaired source before granting current publication authority.
+
+Ten portable regressions cover real coordinator publication, authority refusal,
+the ordinary stale reader and inactive companion symlinks. The current catalog
+now maps fourteen issues to seventy-two exact selectors. Run the complete mapped
+gate after each coherent change; a failed, missing, skipped or zero-execution
+selector blocks further changes and real testing. Earlier issue identities,
+first evidence, histories and regressions remain present.
+
+The first captured eligible repair is supported. A second owner cannot inherit
+that authority; its continuation requires a separate regression and repair.
+Current R10 case eligibility and fresh real Chat convergence remain unknown.
+The receipt authenticates the execution's post-witness and current source; it
+does not prove that mutable external prerequisites stay equal forever.
+The next real run follows the user's current preference for an available
+OpenCode free model, with DeepSeek Flash low as fallback in a distinct fresh
+run. Original prompts and Send/planning/repair budgets remain unchanged.
+
+The retained-contract mechanism also maps a separate cache/replay scenario: original cases and repeats execute freshly after owned repair even when an independent branch cache is eligible; normal replay preserves genuine run and archive identities. Its local candidate proof does not establish real Chat convergence. The current inventory has 14 issues and 73 exact selectors as of this addition.
+
+The current inventory also retains CSR-0015, the genuine unanswered-clarification test-harness observation with four observer regressions, and CSR-0016, seventeen preventive guards for the newly authorized Free-first model workflow. CSR-0016 is a local workflow contract, with no previous product defect asserted. Unknown causes remain unknown. This addition maps 16 entries to 94 exact selectors; original12 acceptance and actual observer activation still require new source-bound evidence.
+
+CSR-0017 records the full engineering check failure caused by two obsolete cache protocol expectations. Its four signed legacy-cache route regressions retain fresh execution, authenticated cache, replay counters and finalize rejection. The inventory now maps 17 records to 98 selectors; the failed engineering run remains failed and requires a new source-bound qualification.
+
+CSR-0018 and CSR-0019 preserve confirmed local proof-log overwrite and copied invocation metadata incidents. Their nine real-Node regression guards prevent capture-path reuse and require one actual command, complete captured streams, matching source bytes and nonempty named execution. The missing old raw proof remains UNKNOWN; future prevention does not reconstruct it. The current inventory now maps 19 records to 107 selectors.
+
+CSR-0020 retains the genuine current typed Host DTO mismatch in the Free-run boundary collector. Monitoring errorCode/diagnosticCodes and adjudication typedFailure.code carry the provider rejection, while the old collector ignored those coordinates. Six exact regressions keep the four provider codes, legacy fields, unknown/prose negatives, Free-mode scope and current closure controls. The local candidate preserves seventeen existing assertions and passed twenty-three Bun tests; The minimal public collector and all six mapped guards are installed; the new 113-selector current gate and a distinct fresh real run remain pending. The original R11 reports and qualification are immutable; no provider channel cause or genuine workflow PASS is inferred. This addition maps twenty records to 113 exact selectors without removing resolved or unresolved history.
+
+R12 clarification regressions retain the seven actual closed waits and the old
+helper assertion failures. The portable policy now recognizes complete ownership
+and pipeline-intent alternatives while keeping original-source, caller-authority
+and current-operation checks. CSR-0021 separately covers bounded optional JSON
+polling: incomplete producer bytes confer no reply authority, and persistent
+malformed or unsettled bytes block. Its local counterexample does not establish
+the cause of the actual R12 observer exit. Both mechanisms remain in the current
+regression gate; fresh product publication and missing historical evidence are
+separate from local regression results.
+
+The latest user instruction supersedes the earlier DeepSeek fallback for future
+runs: use only a usable OpenCode Free model with the explicit low variant. If
+none is usable, wait; do not switch automatically to DeepSeek or recharge.
+Earlier Free-first and Free-then-DeepSeek records remain unchanged as-of evidence.
+Current metadata does not prove provider availability or actual charges; both
+remain UNKNOWN.
+
+CSR-0022 adds eight portable FreeOnly/wait authority and selection guards while
+retaining all twenty-one earlier issues and 143 mappings. The old reader's
+selected assertion RED establishes support missing for the new policy type; the
+first candidate's 30-pass/1-fail fixture result and its later correction remain
+separate evidence. The saved final candidate passed all 31 local tests, including
+the unchanged original 23. The proposed inventory maps 22 issues to 151 selectors;
+public installation, a new source-bound whole current gate and fresh real
+acceptance remain separate. Missing historical evidence remains blocked.
+
+The managed session also records `ENV-current-node-child-capture`, linked to the
+existing CSR-0011 qualification fixture. Two current gates stopped before that
+selected test because a child Node returned empty stdout in the default execution
+context. A version-only comparison and the later complete 151-selector gate
+verified the native execution context mitigation. The underlying environment cause
+remains unknown; these are environment failures, not product regression evidence.
+Keep the explicit Node binary and the configured native execution context for
+actual child-process checks in this session. The regression runner removes provider
+credentials, and these checks make no model requests.
+
+CSR-0024 retains a source-extracted private operator counterexample: a genuinely started and closed slot with zero original Sends can have NOT RUN adjudication, so adjudication status cannot determine the started or sent count. The portable closed-matrix-identity helper checks the run and source joins, exact original serial prefix, explicit 0/1 submission facts, and known paid/process closure facts. Its three synthetic metadata regressions preserve the old failure evidence and reject unknown closure and foreign identities. Public installation and the next whole current-source gate are separate evidence; these tests do not establish provider acceptance, product convergence, or complete historical coverage.
+
+Later verification epochs for CSR-0022 and CSR-0023 record actual public installation, the complete 23-issue/159-selector current-source gate, and genuine H16 caller execution. Their earlier pending preparation fields remain unchanged as-of; consult the appended history and latestVerificationState for the later mechanism verification. CSR-0023 preserves independent finalization hooks after evidence failures without treating successful callbacks as proof of scope closure.
+
+The public inventory now maps 24 reconstructed current-source issues to 162 executable selectors. Run the complete current-source gate after this coherent batch; its source-bound receipt is kept separately to avoid a catalog self-reference. Historical import gaps remain explicit. [The R14 observation supplement](runtime-observations-20261013-r14-supplement.json) preserves one genuinely closed NOT_FULL_PASS submission and eleven unstarted slots after the selected Free request was rejected. Supplier cause and availability of other Free models remain UNKNOWN. The current policy waits and permits no DeepSeek fallback, manual Retry, or extra model probe.

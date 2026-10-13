@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "kind": "owned-YAML-repair-retained-full-Trial-contract-Engine-regression",
+  "scope": "Synthetic OpenCode transport; real generated plan tool, Managed runtime, Trial Engine, worker witnesses and publication coordinator. No model requests or real Chat acceptance.",
+  "firstObserved": {
+    "evidenceSha256": "1fc8ece44625954c1e770d5da4ac0fdae107f12df26374857280e2cfee4ff47b",
+    "executionSha256": "e885bed7f353ed226b63e03d46156abf26cfd15e4e75b2a0ab97904717399e4f",
+    "junitSha256": "4a1a995dbbca81d275d4c8216fab4d7295fa62cda90e8baed73c99fef3c7addf",
+    "tests": 1,
+    "assertions": 41,
+    "failures": 1,
+    "skipped": 0,
+    "environmentOrImportFailure": false,
+    "expectedDispatch": "commit_preparing",
+    "actualDispatch": "provider_unavailable",
+    "beforeFailure": {
+      "normalControlActuallyPublished": true,
+      "plannerInvocations": 2,
+      "ownedRepairInvocations": 1,
+      "originalFailedRepeats": 2,
+      "repairSourceEqualsPublishedControl": true,
+      "rawPlanContractIntentSupportPreserved": true,
+      "ordinaryReaderCorrectlyRejectsStalePlan": true
+    },
+    "boundBehaviorSources": [
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-pipeline-trial-plan.ts",
+        "sha256": "385d0dfd504123a919b88832204e58f0803cec5061eed646ceb3a60ee86e019f",
+        "bytes": 62203
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-pipeline-trial-run.ts",
+        "sha256": "ab45fa65eb32677763e106848ab5a2a85166421c4ec68c64c3edd9462789a361",
+        "bytes": 195811
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-operations/authoring-runtime.ts",
+        "sha256": "0c055a6a8a41c1d21b43ae7d5bc74da8b47b65a17ab964a1e6fe05ba6ede1a36",
+        "bytes": 217287
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-operations/authoring.ts",
+        "sha256": "b5ffe344ecf86773a06d2a1db8daefde9c10664f101c6e34c95131971cd119ce",
+        "bytes": 208157
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-operations/commit-runtime.ts",
+        "sha256": "bf408693ff06402c0d367c952b9122e361e0524336be352d6f4d838fcd12b1a3",
+        "bytes": 59287
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/opencode-trial-plan-tool.ts",
+        "sha256": "f26e5b18275ae482027ef85c3024b9f757c058e2a55d8a9b6face2fdd6db25ef",
+        "bytes": 80159
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-trial-resilience-rules.ts",
+        "sha256": "522155cce9471f10624f4e6fa3cc73b7d46c5620bd7ca7d475d0fbc9a32c0d27",
+        "bytes": 50317
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-trial-intent-coverage.ts",
+        "sha256": "e08fddab8b4b7312d73de4bc6f88141f5e93089528d5507f92fba682e687f066",
+        "bytes": 5369
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-authoring-runtime.test.ts",
+        "sha256": "2b9dcdd04d29a6dcf8b61e6a3988bb37d3dec96f3629da0c01309c0b0b8849db",
+        "bytes": 241717
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/server-record-auth.ts",
+        "sha256": "972d1f8763735e9d3be9def54211f811920f910085eded7bfcfe2db5d7110ace",
+        "bytes": 20102
+      },
+      {
+        "path": "/workspace/tagma-mono/apps/editor/server/chat-operations/control-root.ts",
+        "sha256": "cfc49c3735a74e965a03cecfaf2515fcc289120dcd0f568bdac277b137919856",
+        "bytes": 9180
+      }
+    ]
+  },
+  "selectedCandidate": {
+    "manifestSha256": "4fa629c12c875e25d8e7b2ec6e9bb7bc0c9011263ec99131d31bcc26c332de74",
+    "independentStaticReviewSha256": "049499527b1ad759ad05710abc77e5e0faf3a85ac4d299a41dc13566ec34a325",
+    "logicalBehaviorModules": 3,
+    "cacheVersion": 49,
+    "originalLivePlanRewritten": false,
+    "onlyCandidateYamlHashChangesInIsolatedSnapshot": true,
+    "beforeRepairCapturedOwnerIntentSourceContract": true,
+    "freshOriginalCasesAndRepeatsRequired": true,
+    "secondRepairOwnerLineage": "UNSUPPORTED_PENDING_SEPARATE_REGRESSION"
+  },
+  "actualCandidateGuards": {
+    "savedResolutionSha256": "3745e1cad6d92306d02ef0001e1a6e37ea23d57c08d24d653b0c7696f5c2662f",
+    "tests": 10,
+    "assertions": 398,
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0,
+    "errors": 0,
+    "actualFreshNativeRunIdsDistinctFromFailedRepeats": true,
+    "realWorkerPrePostCurrentYamlWitnesses": true,
+    "actualCoordinatorPublished": true,
+    "noPlannerThree": true,
+    "selectors": [
+      {
+        "file": "tests/chat-retained-trial-contract-engine.test.ts",
+        "fullName": "fresh Host repeats publish retained full core after owned shell YAML repair without a third planner",
+        "assertions": 68,
+        "executionSha256": "a1285c45bd72a5aa3f421d39299d1d857d29e2e23e3be9e00f8e288a34474c6d",
+        "junitSha256": "b6e826deaf942af538cc736d91cc0ec79f728ae3bfe6545d06948947d9f2c7e3"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-authority.test.ts",
+        "fullName": "Host retained contract refuses support-bytes without a verified receipt or publication",
+        "assertions": 45,
+        "executionSha256": "b5e3e17eadd2eedfb32ce8fb31b9c770d8af57dd2e1c097e070ebfdba20d3313",
+        "junitSha256": "c722159ee06903eb92143c241151fcb1a50b018bae5bfe71bd721d5d33ddc1d8"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-authority.test.ts",
+        "fullName": "Host retained contract refuses old-plan-bytes without a verified receipt or publication",
+        "assertions": 45,
+        "executionSha256": "b5e3e17eadd2eedfb32ce8fb31b9c770d8af57dd2e1c097e070ebfdba20d3313",
+        "junitSha256": "c722159ee06903eb92143c241151fcb1a50b018bae5bfe71bd721d5d33ddc1d8"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-authority.test.ts",
+        "fullName": "Host retained contract refuses frozen-intent without a verified receipt or publication",
+        "assertions": 44,
+        "executionSha256": "b5e3e17eadd2eedfb32ce8fb31b9c770d8af57dd2e1c097e070ebfdba20d3313",
+        "junitSha256": "c722159ee06903eb92143c241151fcb1a50b018bae5bfe71bd721d5d33ddc1d8"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-authority.test.ts",
+        "fullName": "Host retained contract refuses foreign-generation without a verified receipt or publication",
+        "assertions": 45,
+        "executionSha256": "b5e3e17eadd2eedfb32ce8fb31b9c770d8af57dd2e1c097e070ebfdba20d3313",
+        "junitSha256": "c722159ee06903eb92143c241151fcb1a50b018bae5bfe71bd721d5d33ddc1d8"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-authority.test.ts",
+        "fullName": "Host retained contract refuses blocked-core without a verified receipt or publication",
+        "assertions": 18,
+        "executionSha256": "b5e3e17eadd2eedfb32ce8fb31b9c770d8af57dd2e1c097e070ebfdba20d3313",
+        "junitSha256": "c722159ee06903eb92143c241151fcb1a50b018bae5bfe71bd721d5d33ddc1d8"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-reader.test.ts",
+        "fullName": "ordinary reader strictly rejects original committed raw plan for repaired shell YAML",
+        "assertions": 19,
+        "executionSha256": "52fe3d521e41c13849908c9a6939f1720f8e278d5582522b70611555bd77dc10",
+        "junitSha256": "7b9e6d8582a34c838fd836be028f76dcd7bf493264c0252e024e35ca8067471e"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-inactive-leaf.test.ts",
+        "fullName": "Host retained full-stage contract refuses inactive layout absence becoming a dangling symlink",
+        "assertions": 38,
+        "executionSha256": "609b6589c330949b7216ddc73fd4bc83dbd2a2bc98f02f10202440f78e55b8ec",
+        "junitSha256": "70d93aeab896ffab72ec66fae0996166acb27c5ab4103deb905a0b5183444b3b"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-inactive-leaf.test.ts",
+        "fullName": "Host retained full-stage contract refuses inactive requirements absence becoming a dangling symlink",
+        "assertions": 38,
+        "executionSha256": "609b6589c330949b7216ddc73fd4bc83dbd2a2bc98f02f10202440f78e55b8ec",
+        "junitSha256": "70d93aeab896ffab72ec66fae0996166acb27c5ab4103deb905a0b5183444b3b"
+      },
+      {
+        "file": "tests/chat-retained-trial-contract-inactive-leaf.test.ts",
+        "fullName": "Host retained full-stage contract refuses inactive plan absence becoming a dangling symlink",
+        "assertions": 38,
+        "executionSha256": "609b6589c330949b7216ddc73fd4bc83dbd2a2bc98f02f10202440f78e55b8ec",
+        "junitSha256": "70d93aeab896ffab72ec66fae0996166acb27c5ab4103deb905a0b5183444b3b"
+      }
+    ]
+  },
+  "limits": {
+    "allMappedCurrent72Gate": "NOT_RUN_AS_OF_THIS_CAPSULE",
+    "historicalCoverageComplete": false,
+    "historicalGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+    "realOriginal12OnNewSource": "NOT_RUN",
+    "actualR10S1L2S4L2EligibilityOrFix": "UNKNOWN",
+    "blockedCoreAndBlockingFindings": "Remain ineligible; never promoted from prose",
+    "lateExternalEnvironment": "Receipt authenticates captured execution post-witness; no perpetual external equality claim",
+    "oldGuardWasIncorrect": "NOT_CLAIMED"
+  }
+}

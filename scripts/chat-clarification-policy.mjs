@@ -61,21 +61,102 @@ export function createClarificationPolicyResolvers({
     )
       return null;
     const suffix = (parts[1] ?? '').trim();
+    const existingFirstChoice =
+      /^\s*Do\s+you\s+want\s+this\s+((?:[A-Za-z][A-Za-z0-9_-]*\s+){0,3}pipeline)\s+built\s+into\s+the\s+existing\s+untitled\s+draft\s+already\s+on\s+your\s+current\s+canvas,\s*or\s+created\s+as\s+a\s+separate\s+brand[- ]new\s+pipeline\s*$/i.exec(
+        parts[0],
+      );
+    const existingFirstSuffix =
+      /^Please\s+confirm,\s*since\s+the\s+named\s+file\s+([`"']?)([A-Za-z0-9_-]+\.ya?ml)\1\s+does\s+not\s+match\s+the\s+current\s+canvas\s+pipeline\.?$/i.exec(
+        suffix,
+      );
     if (
       suffix &&
       !/^(?:The\s+request\s+names\s+a\s+file\s+that\s+(?:doesn't|does\s+not)\s+match\s+the\s+(?:inventoried|existing|current)\s+pipeline|The\s+requested\s+(?:file|filename)\s+(?:doesn't|does\s+not)\s+match\s+the\s+(?:inventoried|existing|current)\s+pipeline)\.?$/i.test(
         suffix,
-      )
+      ) &&
+      !(existingFirstChoice && existingFirstSuffix)
     )
       return null;
     const question = parts[0];
+    // The independent authority still chooses ownership only. Context labels do
+    // not establish draft emptiness or authorize additional business decisions.
+    const contextChoice =
+      /^\s*You\s+named\s+([`"']?)([A-Za-z0-9_-]+\.ya?ml)\1,\s*but\s+the\s+only\s+inventoried\s+pipeline\s+is\s+the\s+current[- ]canvas\s+draft\s+([`"'])([A-Za-z0-9 _-]{1,80})\3\s*\(\s*([`"']?)([A-Za-z0-9_-]+\.ya?ml)\5\s*\)\.\s*Should\s+I\s+create\s+a\s+new\s+pipeline(?:\s+for\s+(?:this|the\s+requested)\s+((?:[A-Za-z][A-Za-z0-9_-]*\s+){0,3}(?:workflow|pipeline|task)))?,\s*or\s+edit\s+that\s+existing\s+draft\s*$/i.exec(
+        question,
+      );
+    let contextualFilename = null;
+    if (contextChoice) {
+      const requested = contextChoice[2];
+      const existing = contextChoice[6];
+      if (
+        requested === existing ||
+        /\b(?:and|or|then|also)\b/i.test(contextChoice[4]) ||
+        /\b(?:and|or|then|also|with|without|using)\b/i.test(contextChoice[7] ?? '')
+      )
+        return null;
+      const sourceFilenames = new Set(
+        [
+          ...originalPrompt.matchAll(
+            /(?:^|[^A-Za-z0-9_.\\/-])([A-Za-z0-9_-]+\.ya?ml)(?=$|[^A-Za-z0-9_.\\/-]|\.(?=$|[^A-Za-z0-9_.\\/-]))/gi,
+          ),
+        ].map((match) => match[1]),
+      );
+      if (sourceFilenames.size !== 1 || !sourceFilenames.has(requested)) return null;
+      contextualFilename = requested;
+    }
+    const stemChoice =
+      /^\s*Should\s+this\s+new\s+([A-Za-z0-9_-]+)\s+pipeline\s+be\s+created\s+as\s+a\s+brand[- ]new\s+pipeline,\s*or\s+should\s+it\s+populate\s+the\s+current\s+untitled\s+draft\s+pipeline\s+on\s+the\s+canvas\s*$/i.exec(
+        question,
+      );
+    const describedChoice =
+      /^\s*You\s+described\s+a\s+pipeline\s+for\s+([`"']?)([A-Za-z0-9_-]+\.ya?ml)\1,\s*but\s+the\s+only\s+inventoried\s+pipeline\s+is\s+the\s+current[- ]canvas\s+draft\s+([`"'])([A-Za-z0-9 _-]{1,80})\3\s*\(\s*([`"']?)([A-Za-z0-9_-]+\.ya?ml)\5\s*\)\.\s*Should\s+I\s+treat\s+([`"']?)([A-Za-z0-9_-]+\.ya?ml)\7\s+as\s+a\s+new\s+pipeline\s+to\s+create,\s*or\s+edit\s+the\s+existing\s+inventoried\s+draft\s*$/i.exec(
+        question,
+      );
+    const fileExampleChoice =
+      /^\s*Do\s+you\s+want\s+me\s+to\s+build\s+this\s+into\s+the\s+existing\s+untitled\s+pipeline\s+draft\s+on\s+the\s+current\s+canvas,\s*or\s+create\s+a\s+new\s+pipeline\s+file\s*\(\s*e\.g\.,\s*([`"']?)([A-Za-z0-9_-]+\.ya?ml)\1\s*\)\s*$/i.exec(
+        question,
+      );
+    if (
+      stemChoice ||
+      describedChoice ||
+      fileExampleChoice ||
+      (existingFirstChoice && existingFirstSuffix)
+    ) {
+      const sourceFilenames = new Set(
+        [
+          ...originalPrompt.matchAll(
+            /(?:^|[^A-Za-z0-9_.\\/-])([A-Za-z0-9_-]+\.ya?ml)(?=$|[^A-Za-z0-9_.\\/-]|\.(?=$|[^A-Za-z0-9_.\\/-]))/gi,
+          ),
+        ].map((match) => match[1]),
+      );
+      if (sourceFilenames.size !== 1) return null;
+      const requested = [...sourceFilenames][0];
+      if (
+        (stemChoice && requested.replace(/\.ya?ml$/i, '') !== stemChoice[1]) ||
+        (fileExampleChoice && fileExampleChoice[2] !== requested) ||
+        (existingFirstChoice &&
+          (existingFirstSuffix[2] !== requested ||
+            /\b(?:and|or|then|also|with|without|using)\b/i.test(existingFirstChoice[1]))) ||
+        (describedChoice &&
+          (describedChoice[2] !== requested ||
+            describedChoice[8] !== requested ||
+            describedChoice[6] === requested ||
+            /\b(?:and|or|then|also)\b/i.test(describedChoice[4])))
+      )
+        return null;
+      contextualFilename = requested;
+    }
     const creationPattern =
       /\b(?:create\s+(?:(?:this|it)\s+as\s+)?(?:(?:a|the)\s+)?(?:brand[- ]?)?new\s+pipeline|created\s+as\s+(?:(?:a|the)\s+)?(?:brand[- ]?)?new\s+pipeline)\s+(?:(?:at|named|called)\s+([`"']?)([A-Za-z0-9_-]+\.ya?ml)\1|\(\s*([`"']?)([A-Za-z0-9_-]+\.ya?ml)\3\s*\))(?=$|[\s,.;:])/gi;
     const creations = [...question.matchAll(creationPattern)].map((match) => ({
       match,
       filename: match[2] ?? match[4],
     }));
-    if (new Set(creations.map(({ filename }) => filename)).size !== 1) return null;
+    if (
+      contextualFilename === null &&
+      new Set(creations.map(({ filename }) => filename)).size !== 1
+    )
+      return null;
     const comparisons = creations.filter(({ match }) => {
       const remaining = question.slice(match.index + match[0].length);
       const existing =
@@ -122,8 +203,8 @@ export function createClarificationPolicyResolvers({
         replace[1],
       );
     });
-    if (comparisons.length !== 1) return null;
-    const filename = comparisons[0].filename;
+    if (contextualFilename === null && comparisons.length !== 1) return null;
+    const filename = contextualFilename ?? comparisons[0].filename;
     if (
       !new RegExp(
         String.raw`(?:^|[^A-Za-z0-9_.\\/-])${filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^A-Za-z0-9_.\\/-]|\.(?=$|[^A-Za-z0-9_.\\/-]))`,
@@ -285,6 +366,50 @@ export function createClarificationPolicyResolvers({
     );
     if (sourceBoundOneOff.size > 0 && alternatives.length !== 2) return null;
     if (intentStems.length === 2 && sourceBoundOneOff.size !== 1) return null;
+    // A complete three-role choice may describe the same task with a deictic
+    // object and a nominal support label. The reply still names only the
+    // independently authorized original task, never an added business rule.
+    const deicticSupportReferences = new Set();
+    if (alternatives.length === 3) {
+      const explanations = alternatives.map((alternative) => ({
+        alternative,
+        match:
+          /^(?:(?:a|an|the)\s+)?explanation\s+of\s+how\s+to\s+([A-Za-z][A-Za-z0-9_-]{0,63})\s+((?:a|an|the|this|that|your|my|our)(?:\s+(?:draft|requested|local|input|source|current|existing|specified|provided|uploaded|text|markdown|json|html|csv|record)){0,6}\s+(?:file|document|report|record))$/i.exec(
+            alternative,
+          ),
+      }));
+      const explanation = explanations.filter((item) => item.match !== null);
+      if (explanation.length === 1) {
+        const term = explanation[0].match[1];
+        const object = explanation[0].match[2];
+        if (
+          !/\b(?:and|or|then|also|but|with|without|using|ignore|instructions)\b/i.test(
+            `${term} ${object}`,
+          )
+        ) {
+          const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const oneOff = new RegExp(
+            `^(?:(?:a|an|the)\\s+)?one[- ]off\\s+${escaped}\\s+performed\\s+on\\s+it$`,
+            'i',
+          );
+          const gerunds = [
+            term + 'ing',
+            /e$/i.test(term) ? term.slice(0, -1) + 'ing' : null,
+          ].filter(Boolean);
+          const support = new RegExp(
+            `^(?:(?:a|the)\\s+)?change\\s+to\\s+the\\s+current\\s+pipeline\\s+to\\s+support\\s+(?:${gerunds.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`,
+            'i',
+          );
+          if (
+            alternatives.filter((item) => oneOff.test(item)).length === 1 &&
+            alternatives.filter((item) => support.test(item)).length === 1
+          ) {
+            for (const item of alternatives.filter((item) => support.test(item)))
+              deicticSupportReferences.add(item);
+          }
+        }
+      }
+    }
     const roles = [];
     for (const alternative of alternatives) {
       if (sourceBoundOneOff.has(alternative)) {
@@ -314,8 +439,30 @@ export function createClarificationPolicyResolvers({
       if (!pipeline) return null;
       let remaining = alternative.slice(pipeline[0].length).trim();
       if (remaining.startsWith('(')) {
-        const parenthetical = /^\(\s*new\s+or\s+edited\s+pipeline\s*\)/i.exec(remaining);
-        if (!parenthetical) return null;
+        let parenthetical = /^\(\s*new\s+or\s+edited\s+pipeline\s*\)/i.exec(remaining);
+        if (!parenthetical) {
+          const example =
+            /^\(\s*for\s+example,\s*adding\s+(?:a|an)\s+([A-Za-z][A-Za-z0-9_-]{0,63})\s+step\s*\)\s*$/i.exec(
+              remaining,
+            );
+          if (!example || alternatives.length !== 3 || /^(?:and|or|then|also)$/i.test(example[1]))
+            return null;
+          const others = alternatives.filter((item) => item !== alternative);
+          const explanation =
+            /^(?:(?:a|an|the)\s+)?(?:explanation|overview)(?:\s+of\s+how\s+to\s+do\s+(?:this|that|it))?$/i;
+          const oneOff = new RegExp(
+            `^(?:(?:a|an|the)\\s+)?one[- ]off\\s+${example[1]}\\s+action$`,
+            'i',
+          );
+          if (
+            others.filter((item) => explanation.test(item)).length !== 1 ||
+            others.filter((item) => oneOff.test(item)).length !== 1
+          )
+            return null;
+          // This is a nonbinding example label shared with the one-off option.
+          // The reply below remains bound to the original authorized task.
+          parenthetical = example;
+        }
         remaining = remaining.slice(parenthetical[0].length).trim();
       }
       const simpleReference =
@@ -414,6 +561,7 @@ export function createClarificationPolicyResolvers({
       }
       if (
         !simpleReference &&
+        !deicticSupportReferences.has(alternative) &&
         !(criterionBound && taskBound) &&
         !sourceActionBound &&
         !sourceBoundPassiveReference &&

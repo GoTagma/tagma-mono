@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "createdAtUTC": "2026-10-13T07:46:54.265239+00:00",
+  "immutableAsOf": true,
+  "readyForRootMetadataReview": true,
+  "actualProductUIAcceptanceOnProposedSources": "NOT_RUN",
+  "actualLiveArming": "NOT_RUN",
+  "paidModelsOrProbes": 0,
+  "freshCurrentHistoricalMappedGateOnProposedSources": "NOT_RUN",
+  "historicalCoverageComplete": false,
+  "oldPublicEvidenceAndIssueHistoryChanged": false,
+  "kind": "preventive-user-preferred-model-workflow-guard-local-proof",
+  "observationId": "CSR-0016",
+  "classification": "preventive-verified-workflow-hazard",
+  "observationVerified": "verified",
+  "causeConfirmed": "unknown",
+  "observationMeaning": "Verified local guard contract: incomplete/foreign metadata, forged or mismatched authorization, altered budgets, or a nonexplicit-low tuple cannot satisfy the new user-preferred Free selection. No previously verified product defect or provider root cause is asserted.",
+  "previousProductDefectObserved": false,
+  "oldProductionREDProved": false,
+  "localProof": {
+    "selected": 17,
+    "executed": 17,
+    "passed": 17,
+    "failed": 0,
+    "skippedOrTodo": 0,
+    "literalFullNames": [
+      "User free preference fresh metadata selects exact explicit low without claiming execution",
+      "User preference refuses forged or legacy financial authorization",
+      "User preference exact receipt digest bytes and fresh run are required",
+      "User preference fixed budgets and no spoof retry probe are preserved",
+      "Known native channel rejected Free tuples remain excluded individually",
+      "Free label alone and missing prices remain UNKNOWN and block Send",
+      "Free toolcall must be positively present on same current public metadata row",
+      "Free cached model absence from actual UI cannot establish membership",
+      "Free metadata foreign workspace absent source or omitted UI is unusable",
+      "Free duplicate provider model or variants cannot be silently deduplicated",
+      "High only null and Pro tuples cannot be treated as explicit low",
+      "DeepSeek fallback exact Flash low tuple uses distinct preference-bound run",
+      "DeepSeek ordinary frozen policy compatibility remains unchanged",
+      "Actual selected UI and keyed Usage still require exactly configured tuple",
+      "Free rejected original case ends extension with cause UNKNOWN and requires fresh fallback",
+      "Current native cache projects safe fields only and refuses unknown cost schema",
+      "Preference policy cannot substitute a different fresh metadata evidence binding"
+    ],
+    "junit": {
+      "sha256": "9496b0fc98ae67e1406cdeb258bbaf417e1a3caa341cbbeefdaeac0ef1ecff1a",
+      "bytes": 5939
+    },
+    "localProofReceipt": {
+      "sha256": "83f84ed3140c68eda9bc76ad174568d243a864ed800e409f9082dd5f705bbb69",
+      "bytes": 26268
+    },
+    "rawLog": {
+      "sha256": "1430fcd48651449643201daa638a946e953c2a8268d6d16fc9b73125c5ce0a4d",
+      "bytes": 1762
+    },
+    "actualModelsOrAPICallsOrUIOrNativeLaunches": 0,
+    "testAssertionAccounting": "node:assert/strict assertions execute inside Bun tests; saved Bun JUnit reports zero expect() counts, not zero selected tests."
+  },
+  "publicSources": [
+    {
+      "path": "scripts/lib/user-preferred-model-policy.mjs",
+      "sha256": "22f48dbdfd6e6e43832abf9cf84b48f5fdcc43e3cccb8a685ad391b4235ceb3e",
+      "bytes": 20379,
+      "mode": 420
+    },
+    {
+      "path": "scripts/lib/user-preferred-model-policy.test.ts",
+      "sha256": "89525171f22d144f2bfeb41922d61bcb1f9d414e991e2d511173fac93c66d713",
+      "bytes": 13102,
+      "mode": 420
+    }
+  ],
+  "policyLimits": {
+    "preferred": "Exact source-bound user-authorized OpenCode Free tuple with explicit low and current same-workspace advertised tool_call and finite zero prices.",
+    "fallback": "DeepSeek Flash explicit low; distinct fresh preference-bound run, without current-workspace Retry or provider spoof.",
+    "budgets": {
+      "planning": 2,
+      "pipelineRepair": 2,
+      "serial": 1,
+      "originalSendPerCase": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0
+    },
+    "providerAcceptance": "UNKNOWN",
+    "actualProviderCharges": "UNKNOWN",
+    "privateNativeChannelRestrictionCause": "UNKNOWN_NOT_RECONFIRMED_BY_LOCAL_TESTS"
+  },
+  "guardFacts": [
+    "Only the identity returned by the exact receipt parser is authorized; copies/legacy financial receipts are not new user-preference authority.",
+    "Receipt hash/bytes/fresh run/budgets/fallback scope and policy metadata evidence binding must match.",
+    "UI membership must be exact and unomitted; same-workspace public native cache must advertise tool_call:true, finite numeric zero input/output costs and supported extra cost fields.",
+    "Absent/ambiguous/foreign/pro/high/max/null-as-low metadata blocks eligibility; known configured exclusions remain separate exact IDs.",
+    "Selected UI and keyed invocation Usage must match the exact provider/model/variant tuple.",
+    "Typed closed-case Free provider rejection stops extension pending known owned closure; it does not prove channel restriction, account balance or quota cause.",
+    "Metadata advertises eligibility and does not prove actual execution or prices charged; legacy frozen DeepSeek policy remains supported."
+  ],
+  "limits": [
+    "This entry tracks a newly authorized preventive workflow hazard, not a historical product regression.",
+    "Current free runtime membership, native channel acceptance and real charges are UNKNOWN_NOT_RUN.",
+    "The pure module checks capturedAt is an integer but has no independent elapsed-time freshness validator; trusted startup must source-bind freshly observed same-workspace metadata.",
+    "Actual live use, new source qualification, excluded constructors/writers and current whole gate remain separate pending work."
+  ],
+  "revision": 2,
+  "publicModuleAndTestSourcesInstalledAsOf": true,
+  "publicEvidenceCapsuleInstalledAsOf": false,
+  "localExecutedCandidateSourcesAsOf": [
+    {
+      "path": "scripts/lib/user-preferred-model-policy.mjs",
+      "sha256": "129b8261c7534bb22b4609d8689359c39ddb6c40c33805373d3224aee15f5d9b",
+      "bytes": 20405
+    },
+    {
+      "path": "scripts/lib/user-preferred-model-policy.test.ts",
+      "sha256": "89525171f22d144f2bfeb41922d61bcb1f9d414e991e2d511173fac93c66d713",
+      "bytes": 13102
+    }
+  ],
+  "installedSourceQualificationAsOf": {
+    "wholeCurrent94Gate": "NOT_RUN",
+    "sameTestsBytesAsExecutedCandidate": true,
+    "moduleBehaviorChanged": false,
+    "moduleDifference": "Only publication comments changed; current helper source differs from saved candidate hash. No old assertions or rules changed."
+  },
+  "previousUnappliedCapsuleDigest": {
+    "sha256": "7a8da5ed9065dfe0edcd0cd3ba60589eeb08d86af650ccfd90ca37d4615d9317",
+    "bytes": 5826
+  }
+}

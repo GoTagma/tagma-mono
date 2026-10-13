@@ -1,0 +1,794 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-public-safe-R12-clarification-tool-grammar-observations-and-prepared-local-regression",
+  "ready": false,
+  "issueId": "CSR-0009",
+  "runtimeLineage": ["RUI-0013", "RUI-0001"],
+  "category": "test-tool",
+  "observationVerified": true,
+  "finiteOldHelperGrammarCauseConfirmed": true,
+  "productRootCause": "UNKNOWN",
+  "status": "root-public-source-installed-before-format-new143-gate-and-fresh-real-pending",
+  "publicCandidateApplied": true,
+  "oldIssueStatusFirstEvidenceAndHistoryPreserved": true,
+  "historicalCoverageComplete": false,
+  "automaticIssueStatusMutation": false,
+  "genuineClosedClarificationWaitsAsOfThisRevision": [
+    {
+      "caseId": "S1L1",
+      "grade": "NOT_FULL_PASS",
+      "soleGrade": {
+        "sha256": "f6ef68a8843327f1bd15168af5234d6874a309bab2023e9dbd8a8f2bb0226a91",
+        "bytes": 10637,
+        "role": "sole-genuine-closed-case-grade"
+      },
+      "closedReport": {
+        "sha256": "2f1c554a291de3fc0eab563d901926f4609daa976d7ff62c9dce5095b5fafb04",
+        "bytes": 39942,
+        "role": "opaque-genuine-closed-report"
+      },
+      "questionSha256": "1d2dc520c51a3c7b0d5b42568e129e581fe3d5614f747c1e50a8a70ab451c039",
+      "questionBytes": 229,
+      "savedClarificationCoordinates": {
+        "eventSequence": 47,
+        "observedAt": 1791890534367,
+        "lastSavedEventSequence": 327,
+        "lastSavedObservedAt": 1791890595846,
+        "unansweredEventCount": 41
+      },
+      "originalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "planning": 0,
+      "repair": 0,
+      "settledClassifierRows": 1,
+      "actualPNGViewedBySoleGrader": true,
+      "noCurrentPublication": true,
+      "originalSourceAndCurrentNativeQualificationVerifiedBySoleGrader": true,
+      "productRootCause": "UNKNOWN",
+      "realConvergenceAfterPreparedCandidate": "UNKNOWN_NOT_RUN",
+      "originalGradeChanged": false
+    },
+    {
+      "caseId": "S1L3",
+      "grade": "NOT_FULL_PASS",
+      "soleGrade": {
+        "sha256": "c0a044bb701a9fdd03a75f1cc25e1379e1eb0defea525e68fe1d416f79ba603e",
+        "bytes": 10561,
+        "role": "sole-genuine-closed-case-grade"
+      },
+      "closedReport": {
+        "sha256": "97a623aef5d8866680a55c6d8f0082be7ff4580c64a88b1725b3f6850c9063cd",
+        "bytes": 39206,
+        "role": "opaque-genuine-closed-report"
+      },
+      "questionSha256": "9629b3ae7fa80baf57d84c4fddd7802da388c4105246b937d9e7c94d9ee03cb9",
+      "questionBytes": 151,
+      "savedClarificationCoordinates": {
+        "eventSequence": 35,
+        "observedAt": 1791891281027,
+        "lastSavedEventSequence": 315,
+        "lastSavedObservedAt": 1791891342491,
+        "unansweredEventCount": 41
+      },
+      "originalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "planning": 0,
+      "repair": 0,
+      "settledClassifierRows": 1,
+      "actualPNGViewedBySoleGrader": true,
+      "noCurrentPublication": true,
+      "originalSourceAndCurrentNativeQualificationVerifiedBySoleGrader": true,
+      "productRootCause": "UNKNOWN",
+      "realConvergenceAfterPreparedCandidate": "UNKNOWN_NOT_RUN",
+      "originalGradeChanged": false
+    },
+    {
+      "caseId": "S2L2",
+      "grade": "NOT_FULL_PASS",
+      "soleGrade": {
+        "sha256": "6c6b79728b2781f79c6744878bbaa23136981d534aaa273768ac5fceaa27bbf8",
+        "bytes": 10555,
+        "role": "sole-genuine-closed-case-grade"
+      },
+      "closedReport": {
+        "sha256": "482e16b619881be89bf3750d12aa1caa0b02da315e8c304984830b1b1651cf00",
+        "bytes": 39206,
+        "role": "opaque-genuine-closed-report"
+      },
+      "questionSha256": "5e9df007592a2cce1ad85902291dd3490f759e7db829b5294c4ad7c97cb06286",
+      "questionBytes": 148,
+      "savedClarificationCoordinates": {
+        "eventSequence": 41,
+        "observedAt": 1791892465341,
+        "lastSavedEventSequence": 314,
+        "lastSavedObservedAt": 1791892525410,
+        "unansweredEventCount": 40
+      },
+      "originalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "planning": 0,
+      "repair": 0,
+      "settledClassifierRows": 1,
+      "actualPNGViewedBySoleGrader": true,
+      "noCurrentPublication": true,
+      "originalSourceAndCurrentNativeQualificationVerifiedBySoleGrader": true,
+      "productRootCause": "UNKNOWN",
+      "realConvergenceAfterPreparedCandidate": "UNKNOWN_NOT_RUN",
+      "originalGradeChanged": false
+    },
+    {
+      "caseId": "S2L3",
+      "grade": "NOT_FULL_PASS",
+      "soleGrade": {
+        "sha256": "9f1ebcaf87b6fd73b2e86692d80310c2d46edb5019f197a8620d9d36617af5fb",
+        "bytes": 10582,
+        "role": "sole-genuine-closed-case-grade"
+      },
+      "closedReport": {
+        "sha256": "5b02f0083ef8b84e259aa0a4cfdecd741803674813ec9844033e464c52bb0ca6",
+        "bytes": 39212,
+        "role": "opaque-genuine-closed-report"
+      },
+      "questionSha256": "c9363e655ce315a69247ad69dda148f272f07df7c5a1a2c1eeb760d97e696a71",
+      "questionBytes": 172,
+      "savedClarificationCoordinates": {
+        "eventSequence": 47,
+        "observedAt": 1791892559112,
+        "lastSavedEventSequence": 320,
+        "lastSavedObservedAt": 1791892619240,
+        "unansweredEventCount": 40
+      },
+      "originalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "planning": 0,
+      "repair": 0,
+      "settledClassifierRows": 1,
+      "actualPNGViewedBySoleGrader": true,
+      "noCurrentPublication": true,
+      "originalSourceAndCurrentNativeQualificationVerifiedBySoleGrader": true,
+      "productRootCause": "UNKNOWN",
+      "realConvergenceAfterPreparedCandidate": "UNKNOWN_NOT_RUN",
+      "originalGradeChanged": false
+    },
+    {
+      "caseId": "S3L1",
+      "grade": "NOT_FULL_PASS",
+      "soleGrade": {
+        "sha256": "582894089f3d520db32b3140b94e93f13978e880652d282abeb8735c5a1a0efc",
+        "bytes": 10659,
+        "role": "sole-genuine-closed-case-grade"
+      },
+      "closedReport": {
+        "sha256": "9fa36534f0deda19eae0b4f6f7be7d9d2f75f31726546f4e126207e7be74568d",
+        "bytes": 39201,
+        "role": "opaque-genuine-closed-report"
+      },
+      "questionSha256": "2370d849564eb539b64cc6c00122194aa1df43ee4f39aed329bf313a7bdecbd7",
+      "questionBytes": 251,
+      "savedClarificationCoordinates": {
+        "eventSequence": 76,
+        "observedAt": 1791892657621,
+        "lastSavedEventSequence": 350,
+        "lastSavedObservedAt": 1791892717647,
+        "unansweredEventCount": 40
+      },
+      "originalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "planning": 0,
+      "repair": 0,
+      "settledClassifierRows": 1,
+      "actualPNGViewedBySoleGrader": true,
+      "noCurrentPublication": true,
+      "originalSourceAndCurrentNativeQualificationVerifiedBySoleGrader": true,
+      "productRootCause": "UNKNOWN",
+      "realConvergenceAfterPreparedCandidate": "UNKNOWN_NOT_RUN",
+      "originalGradeChanged": false
+    },
+    {
+      "caseId": "S3L2",
+      "grade": "NOT_FULL_PASS",
+      "soleGrade": {
+        "sha256": "2e377914d8b87a8e1d7a80d7131ccc53a7281deab6ee60790dafd54815be0d08",
+        "bytes": 10666,
+        "role": "sole-genuine-closed-case-grade"
+      },
+      "closedReport": {
+        "sha256": "c05e79d0298a6949c2cced1ba5766702961bb879703ef1b2a8fa5a5aca0af725",
+        "bytes": 39217,
+        "role": "opaque-genuine-closed-report"
+      },
+      "questionSha256": "1299ae1b11c109de0adacf745ff3ce5dd420c24233caf5c2013b5375ce230a5f",
+      "questionBytes": 257,
+      "savedClarificationCoordinates": {
+        "eventSequence": 47,
+        "observedAt": 1791892752087,
+        "lastSavedEventSequence": 320,
+        "lastSavedObservedAt": 1791892812131,
+        "unansweredEventCount": 40
+      },
+      "originalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "planning": 0,
+      "repair": 0,
+      "settledClassifierRows": 1,
+      "actualPNGViewedBySoleGrader": true,
+      "noCurrentPublication": true,
+      "originalSourceAndCurrentNativeQualificationVerifiedBySoleGrader": true,
+      "productRootCause": "UNKNOWN",
+      "realConvergenceAfterPreparedCandidate": "UNKNOWN_NOT_RUN",
+      "originalGradeChanged": false
+    },
+    {
+      "caseId": "S4L2",
+      "grade": "NOT_FULL_PASS",
+      "soleGrade": {
+        "sha256": "4e618d911a6f7f31e0858a58cb28575a2e5bb413ffea9c28bb5e833375b3c28f",
+        "bytes": 10557,
+        "role": "seventh-sole-grade"
+      },
+      "closedReport": {
+        "sha256": "891c52c64671a9fac175fa04d37f0f27be3b7ac544de7860e4b407e50b51b37d",
+        "bytes": 39217,
+        "role": "seventh-closed-report"
+      },
+      "questionSha256": "6acdbb148ec934f850b95dc5601a9e142e04bb21bbd6a639d73cae65803d74a5",
+      "questionBytes": 150,
+      "savedClarificationCoordinates": {
+        "eventSequence": 53,
+        "observedAt": 1791894154676,
+        "lastSavedEventSequence": 326,
+        "lastSavedObservedAt": 1791894214688,
+        "unansweredEventCount": 40
+      },
+      "originalSend": 1,
+      "manualRetry": 0,
+      "extraPaidProbes": 0,
+      "planning": 0,
+      "repair": 0,
+      "settledClassifierRows": 1,
+      "actualPNGViewedBySoleGrader": true,
+      "noCurrentPublication": true,
+      "originalSourceAndCurrentNativeQualificationVerifiedBySoleGrader": true,
+      "soleOriginalYamlFilenameBoundByLocalExampleGuard": true,
+      "productRootCause": "UNKNOWN",
+      "realConvergenceAfterPreparedCandidate": "UNKNOWN_NOT_RUN",
+      "originalGradeChanged": false
+    }
+  ],
+  "genuineWaitCountCoveredByThisLocalProof": 7,
+  "retainedOriginalElevenTestBytes": {
+    "target": "scripts/lib/chat-clarification-policy.test.ts",
+    "sha256": "988b9e6c1ceffe79a98d71a759736023e901a41e1ff70546bae6b203a4243d06",
+    "bytes": 18114
+  },
+  "futureAddedTestFiles": [
+    {
+      "target": "scripts/lib/chat-clarification-context.test.ts",
+      "sha256": "8cb449fb70c96bb06e4e9c63f88e977ab35a8f637b0d331bba734038cb10a804",
+      "bytes": 9914,
+      "exactSelectors": 7,
+      "state": "ROOT_PUBLIC_INSTALLED_BEFORE_FORMAT_GATE_PENDING"
+    },
+    {
+      "target": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "sha256": "043f5351e8a1c84916c0b7835b8c4f69c6a150dbd48cc8cae854ba2e8aa1ef69",
+      "bytes": 11906,
+      "exactSelectors": 8,
+      "state": "ROOT_PUBLIC_INSTALLED_BEFORE_FORMAT_GATE_PENDING"
+    },
+    {
+      "target": "scripts/lib/chat-clarification-file-example.test.ts",
+      "sha256": "8d791a7cee4d24a8f9043f33fb5622e59fa84804785926025e9c9f3da4bb6b7d",
+      "bytes": 4319,
+      "exactSelectors": 1,
+      "state": "ROOT_PUBLIC_INSTALLED_BEFORE_FORMAT_GATE_PENDING"
+    }
+  ],
+  "lastExecution": {
+    "kind": "P3-source-identical-before-format-local-test-execution",
+    "classification": "ACTUAL_GREEN",
+    "sourceSha256": "657e0740750f794d3a7abc596c1a826b5d05621f9cef3a10e03ec506608ed849",
+    "proof": {
+      "sha256": "9aa3fa7cf794faad8928d172e01fc4602a77108efd16a6550be41abb09ed0d5c",
+      "bytes": 5629,
+      "role": "actual-P3-27-local-GREEN"
+    },
+    "junit": {
+      "sha256": "16fa2ef34b94a3973edca10409a4edd0d3bc5c9eb1c8aca43b16a248f0899d14",
+      "bytes": 6894,
+      "role": "actual-local-JUnit"
+    },
+    "rawOutput": {
+      "sha256": "bc1fedc0980d0356bceee0367f635a490ba058036bfcfa8e5ac5fd7bd1857d34",
+      "bytes": 2895,
+      "role": "P3-capture-opaque-only"
+    },
+    "executed": 27,
+    "passed": 27,
+    "assertions": 330,
+    "failed": 0,
+    "errors": 0,
+    "selectedSkipTodo": 0,
+    "sourceBeforeAfterUnchanged": true,
+    "newCurrent143Gate": "PENDING_ROOT_FORMAT_AND_NEW_WHOLE_GATE",
+    "scope": "local-test-tool-only",
+    "liveAcceptance": false
+  },
+  "unappliedCandidatePreparationCorrection": {
+    "classification": "candidate-only-noun-boundary-defect-corrected-not-old-public-or-product-regression",
+    "firstV2AsOfPreserved": [
+      {
+        "sha256": "519511b2120c39d21b0ad6a02c702acd205ee7e51f782cefc077fdb61ffbfa1a",
+        "bytes": 24372,
+        "role": "first-prepared-V2-as-of-preserved"
+      },
+      {
+        "sha256": "97440ee55f66dfa93db7aebcef814831a3523c9bd73a96ef40436a760979b85d",
+        "bytes": 14996,
+        "role": "first-prepared-V2-as-of-preserved"
+      },
+      {
+        "sha256": "a633f350e526dc6b26e282365a1cfeb89f55627eddd75fa3f2ac6dc63de05ef6",
+        "bytes": 5203,
+        "role": "first-prepared-V2-as-of-preserved"
+      }
+    ],
+    "candidateOnlySelectedAssertionRED": {
+      "proof": {
+        "sha256": "f17cd0b403321e018f15801b0626a862dc7ad58942e059b218a18ddc0028ca27",
+        "bytes": 2658,
+        "role": "candidate-only-selected-counterexample-RED"
+      },
+      "executed": 1,
+      "failed": 1,
+      "passed": 0,
+      "selectedErrors": 0,
+      "selectedSkip": 0,
+      "unselectedFilteredSkipped": 7
+    },
+    "tightenedCandidateSourceSha256": "96c9039bae149240af81f91eb7e874ddaec003e5457ef52ed8bd6cc9656be907",
+    "candidateOldElevenAndP1SevenByteIdentical": true,
+    "originalEightAssertionsPreservedWithThreeAdditionalNegativeAssertions": true,
+    "actualCorrected26GreenProof": {
+      "sha256": "99bd98c64190b9d3c09996f9b6c74e2996243ccb28b3e12184da1d9984d0b773",
+      "bytes": 5358,
+      "role": "tightened-candidate-local-execution"
+    },
+    "evidence": {
+      "sha256": "9a9842d25cb6fca6bfa06d34a0573554e9ffdf867541fe5f121b15d19d860604",
+      "bytes": 3799,
+      "role": "candidate-only-noun-hardening-history"
+    }
+  },
+  "preservedPreparationAndCollectorCorrections": [
+    {
+      "sha256": "55dee2c748f986d00d8feddaa004e11d4c05092c3a59994c1de3ae384dc23930",
+      "bytes": 1501,
+      "role": "V1InterfaceCorrectionPreserved"
+    },
+    {
+      "sha256": "4364fab3bca2b3bc1cbc6709e530a47c5663645822ca478d1768dd85d18a81e9",
+      "bytes": 55584,
+      "role": "V1IndependentReviewPreserved"
+    },
+    {
+      "sha256": "49d43546387974e8d864c6b35d902ca5848021a70bc8a03ec7476c8dff2077c2",
+      "bytes": 1000,
+      "role": "wrapperCorrectionPreserved"
+    }
+  ],
+  "newExactRegressions": [
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-context.test.ts",
+      "namePattern": "^portable clarification binds requested filename in a current draft context$",
+      "expectedTests": 1,
+      "fullName": "portable clarification binds requested filename in a current draft context"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-context.test.ts",
+      "namePattern": "^portable clarification context supports generic filenames and ownership labels$",
+      "expectedTests": 1,
+      "fullName": "portable clarification context supports generic filenames and ownership labels"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-context.test.ts",
+      "namePattern": "^portable clarification context retains source authority and current identity fences$",
+      "expectedTests": 1,
+      "fullName": "portable clarification context retains source authority and current identity fences"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-context.test.ts",
+      "namePattern": "^portable clarification context rejects extra actions and ambiguous file roles$",
+      "expectedTests": 1,
+      "fullName": "portable clarification context rejects extra actions and ambiguous file roles"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-context.test.ts",
+      "namePattern": "^portable goal clarification permits a nonbinding pipeline step example$",
+      "expectedTests": 1,
+      "fullName": "portable goal clarification permits a nonbinding pipeline step example"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-context.test.ts",
+      "namePattern": "^portable goal step example preserves source criterion and current authority fences$",
+      "expectedTests": 1,
+      "fullName": "portable goal step example preserves source criterion and current authority fences"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-context.test.ts",
+      "namePattern": "^portable goal step example rejects business changes and injected instructions$",
+      "expectedTests": 1,
+      "fullName": "portable goal step example rejects business changes and injected instructions"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable clarification binds an original filename through its unique pipeline stem$",
+      "expectedTests": 1,
+      "fullName": "portable clarification binds an original filename through its unique pipeline stem"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable goal clarification recognizes a shared deictic support task$",
+      "expectedTests": 1,
+      "fullName": "portable goal clarification recognizes a shared deictic support task"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable clarification recognizes existing first ownership with a bound named file$",
+      "expectedTests": 1,
+      "fullName": "portable clarification recognizes existing first ownership with a bound named file"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable clarification recognizes described requested and existing draft file roles$",
+      "expectedTests": 1,
+      "fullName": "portable clarification recognizes described requested and existing draft file roles"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable ownership context variations retain generic source filename and identity guards$",
+      "expectedTests": 1,
+      "fullName": "portable ownership context variations retain generic source filename and identity guards"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable ownership context variations reject ambiguous scopes and added actions$",
+      "expectedTests": 1,
+      "fullName": "portable ownership context variations reject ambiguous scopes and added actions"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable shared support intent keeps original goal source authority and current identity$",
+      "expectedTests": 1,
+      "fullName": "portable shared support intent keeps original goal source authority and current identity"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+      "namePattern": "^portable shared support intent rejects added business choices and injection$",
+      "expectedTests": 1,
+      "fullName": "portable shared support intent rejects added business choices and injection"
+    },
+    {
+      "cwd": ".",
+      "file": "scripts/lib/chat-clarification-file-example.test.ts",
+      "namePattern": "^portable clarification binds a reversed file example to the sole original filename$",
+      "expectedTests": 1,
+      "fullName": "portable clarification binds a reversed file example to the sole original filename"
+    }
+  ],
+  "futureMappedGate": {
+    "classification": "PENDING_ROOT_FORMAT_METADATA_INSTALL_AND_CURRENT143_WHOLE_GATE",
+    "combinedProspectiveCounts": {
+      "issues": 21,
+      "exactSelectors": 143,
+      "CSR0009Added": 16,
+      "CSR0021Added": 14
+    },
+    "old113ReceiptAppliesToFrozenR12OldBytesOnly": true,
+    "newSourceQualificationAccepted": false,
+    "newGenuineRunAccepted": false
+  },
+  "budgetsUnchanged": {
+    "planning": 2,
+    "pipelineRepair": 2,
+    "serial": 1,
+    "originalSendPerCase": 1,
+    "manualRetry": 0,
+    "extraPaidProbes": 0
+  },
+  "originalRealGradesAndCriteriaSourceUnchanged": true,
+  "realPostCandidateConvergence": "UNKNOWN_NOT_RUN",
+  "genuineOriginalInventoryCompletion": "NOT_COMPLETE",
+  "nativeClarificationAdaptation": "UNKNOWN_NOT_TESTED_BY_LOCAL_HELPER_PROOF",
+  "causeLimits": [
+    "Six selected exported-helper assertion failures establish finite local grammar omissions only.",
+    "The tightened candidate uses synthetic trusted source and authority fixtures; local GREEN does not grant real repair or reply authority.",
+    "The candidate-only unsafe noun counterexample is separate preparation history and is not an old production or live-case regression.",
+    "Current real NOT_FULL_PASS grades are retained; new real publication requires a separate qualified fresh run."
+  ],
+  "privatePathsRawBusinessPromptsAuthDBSettingsProviderLogsPublished": false,
+  "modelsAPITestsOrControlsExecutedForThisMetadataProposal": 0,
+  "sevenOldPublicHelperAssertions": [
+    {
+      "caseId": "S1L1",
+      "selector": "portable clarification binds requested filename in a current draft context",
+      "sourceHelperSha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "testSourceSha256": "8cb449fb70c96bb06e4e9c63f88e977ab35a8f637b0d331bba734038cb10a804",
+      "proof": {
+        "sha256": "6881fbf09c08f10c9f5c275ada03d3e1b582093b9575b02827df0ba5608df5b4",
+        "bytes": 3280,
+        "role": "old-public-selected-assertion-RED"
+      },
+      "junit": {
+        "sha256": "0a2c1c4d64aeb512744e611fec6ac67c51dc4119882c9a57df80fb7e6caf04f6",
+        "bytes": 2054,
+        "role": "old-public-selected-assertion-RED-JUnit"
+      },
+      "selectedExecuted": 1,
+      "selectedAssertionFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "selectedAssertions": 2,
+      "unselectedFilteredSkipped": 6,
+      "classification": "genuine-local-selected-assertion-RED-on-old-public-helper-not-model-or-product-RED"
+    },
+    {
+      "caseId": "S1L3",
+      "selector": "portable goal clarification permits a nonbinding pipeline step example",
+      "sourceHelperSha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "testSourceSha256": "8cb449fb70c96bb06e4e9c63f88e977ab35a8f637b0d331bba734038cb10a804",
+      "proof": {
+        "sha256": "b639fa8f683734379c87c7bfbb3b2ac9026acc7dc31b7bda11a5ab78fc4670cd",
+        "bytes": 3002,
+        "role": "old-public-selected-assertion-RED"
+      },
+      "junit": {
+        "sha256": "b14635fbfc5c8fd113d6c1fe6e2805799b3505c36f6ab3295d6955fa6b883b4c",
+        "bytes": 2054,
+        "role": "old-public-selected-assertion-RED-JUnit"
+      },
+      "selectedExecuted": 1,
+      "selectedAssertionFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "selectedAssertions": 2,
+      "unselectedFilteredSkipped": 6,
+      "classification": "genuine-local-selected-assertion-RED-on-old-public-helper-not-model-or-product-RED"
+    },
+    {
+      "caseId": "S2L2",
+      "selector": "portable clarification binds an original filename through its unique pipeline stem",
+      "sourceHelperSha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "testSourceSha256": "e25a3c19cb2083357e7b42b0e402d282e45541b0394dbe8eb6c2f8232f6c2eaa",
+      "proof": {
+        "sha256": "43b40a05a2009ddabcda781968ad4c922383d5bd835e494bacef84b9091481ba",
+        "bytes": 3079,
+        "role": "old-public-selected-assertion-RED"
+      },
+      "junit": {
+        "sha256": "bacb68f2a814bf101a0d4aaebe4d2b41e270155b9595e9b619cb3caa4edde60a",
+        "bytes": 2425,
+        "role": "old-public-selected-assertion-RED-JUnit"
+      },
+      "selectedExecuted": 1,
+      "selectedAssertionFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "selectedAssertions": 2,
+      "unselectedFilteredSkipped": 7,
+      "classification": "genuine-local-selected-assertion-RED-on-old-public-helper-not-model-or-product-RED"
+    },
+    {
+      "caseId": "S2L3",
+      "selector": "portable goal clarification recognizes a shared deictic support task",
+      "sourceHelperSha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "testSourceSha256": "e25a3c19cb2083357e7b42b0e402d282e45541b0394dbe8eb6c2f8232f6c2eaa",
+      "proof": {
+        "sha256": "9c5473f17ff1e39b50dfd8b465ad3db4976ebaedd68247bee360e5590db2beb7",
+        "bytes": 2772,
+        "role": "old-public-selected-assertion-RED"
+      },
+      "junit": {
+        "sha256": "a177e69a192055ab00f64cd769475b3e0ced1c660f898d94e44bb6357061936b",
+        "bytes": 2425,
+        "role": "old-public-selected-assertion-RED-JUnit"
+      },
+      "selectedExecuted": 1,
+      "selectedAssertionFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "selectedAssertions": 2,
+      "unselectedFilteredSkipped": 7,
+      "classification": "genuine-local-selected-assertion-RED-on-old-public-helper-not-model-or-product-RED"
+    },
+    {
+      "caseId": "S3L1",
+      "selector": "portable clarification recognizes existing first ownership with a bound named file",
+      "sourceHelperSha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "testSourceSha256": "e25a3c19cb2083357e7b42b0e402d282e45541b0394dbe8eb6c2f8232f6c2eaa",
+      "proof": {
+        "sha256": "1a4edc5bf4986ba9e2be0049dce2ed5d3b53da99c708a74a24c7fabe33a8e0b7",
+        "bytes": 2821,
+        "role": "old-public-selected-assertion-RED"
+      },
+      "junit": {
+        "sha256": "1b978e32a24247932f2d666505cb5e501dbc9a520213c468d47bf1b279e1712a",
+        "bytes": 2425,
+        "role": "old-public-selected-assertion-RED-JUnit"
+      },
+      "selectedExecuted": 1,
+      "selectedAssertionFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "selectedAssertions": 2,
+      "unselectedFilteredSkipped": 7,
+      "classification": "genuine-local-selected-assertion-RED-on-old-public-helper-not-model-or-product-RED"
+    },
+    {
+      "caseId": "S3L2",
+      "selector": "portable clarification recognizes described requested and existing draft file roles",
+      "sourceHelperSha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "testSourceSha256": "e25a3c19cb2083357e7b42b0e402d282e45541b0394dbe8eb6c2f8232f6c2eaa",
+      "proof": {
+        "sha256": "fe93fa3a0374dc7825eb8a4766fe34282665b45c977c58bcd9a0f3ca13ef93ba",
+        "bytes": 2808,
+        "role": "old-public-selected-assertion-RED"
+      },
+      "junit": {
+        "sha256": "d283c1418f438b0399989a22cfd8b703af578ea08fcaee555bf915d810ed6906",
+        "bytes": 2425,
+        "role": "old-public-selected-assertion-RED-JUnit"
+      },
+      "selectedExecuted": 1,
+      "selectedAssertionFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "selectedAssertions": 2,
+      "unselectedFilteredSkipped": 7,
+      "classification": "genuine-local-selected-assertion-RED-on-old-public-helper-not-model-or-product-RED"
+    },
+    {
+      "caseId": "S4L2",
+      "selector": "portable clarification binds a reversed file example to the sole original filename",
+      "sourceHelperSha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "testSourceSha256": "8d791a7cee4d24a8f9043f33fb5622e59fa84804785926025e9c9f3da4bb6b7d",
+      "proof": {
+        "sha256": "b9fbcd36f0470e5c9c52eedd1d41cf09d4f22c4cbf090423230bc8020eaa0fd3",
+        "bytes": 2490,
+        "role": "seventh-old-public-assertion-RED"
+      },
+      "junit": {
+        "sha256": "35558ab938e4cfe5e6b3c21d0168adabe056402b9c643dddcad97d8a302175a2",
+        "bytes": 658,
+        "role": "seventh-assertion-RED-JUnit"
+      },
+      "selectedExecuted": 1,
+      "selectedAssertionFailed": 1,
+      "selectedErrors": 0,
+      "selectedSkipped": 0,
+      "selectedAssertions": 2,
+      "unselectedFilteredSkipped": 0,
+      "classification": "genuine-local-selected-assertion-RED-on-old-public-helper-not-model-or-product-RED"
+    }
+  ],
+  "genuineRunInventorySnapshot": {
+    "soleLedger": {
+      "sha256": "a45e3b3d065383b1a0ce71729df6df1f7a4168e5aead17de558ae3eb619b49b7",
+      "bytes": 23896,
+      "role": "sole-twelve-slot-partial-ledger"
+    },
+    "uniqueGenuineGradedCases": 11,
+    "PASS": 2,
+    "NOT_FULL_PASS": 9,
+    "NOT_RUN": 1,
+    "S4L3OriginalSend": 0,
+    "S4L3FailureClass": "TimeoutError",
+    "originalInventoryComplete": false,
+    "interrupted": false,
+    "wholeRootScopeOrGlobalFinancialClosure": "UNKNOWN_NOT_ESTABLISHED_BY_THIS_CAPSULE"
+  },
+  "frozenR12SourceAndGateAtActualRun": {
+    "sourceFingerprint": {
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1456,
+      "sha256": "092c9377d40b36377f3dcd6b8a5d409f0691fb7332334f04050404daa7803afa"
+    },
+    "helper": {
+      "path": "scripts/chat-clarification-policy.mjs",
+      "sha256": "a3dce6ad12123fd2fca25556116d0a952e04061aa656112a83ffc3293d29b617",
+      "bytes": 18098
+    },
+    "catalog": {
+      "path": "architecture/quality/current-source-regressions.json",
+      "sha256": "e4bc88c8ddfebaedf858e34f3fa8241c9aa446edf704b3b84e811eb22756eecd",
+      "bytes": 157909
+    },
+    "mappedGate": {
+      "classification": "GREEN",
+      "issues": 20,
+      "exactSelectors": 113,
+      "proof": {
+        "sha256": "19422ae596d51573830b27f4488f0dd6f62dbfe6689cda74f8438c5a73aab2c3",
+        "bytes": 122718,
+        "role": "actual-current-113-gate"
+      },
+      "scope": "current-source-only",
+      "historicalGate": "BLOCKED_UNAVAILABLE_EVIDENCE"
+    },
+    "bindingMeaning": "Historical qualified R12 epoch, not current post-install source."
+  },
+  "selectedP3SourceBeforeFormat": {
+    "target": "scripts/chat-clarification-policy.mjs",
+    "sha256": "657e0740750f794d3a7abc596c1a826b5d05621f9cef3a10e03ec506608ed849",
+    "bytes": 24891,
+    "state": "ROOT_PUBLIC_INSTALLED_BEFORE_FORMAT_GATE_PENDING"
+  },
+  "combinedScope": ["CSR-0009", "CSR-0021"],
+  "earlierP2AsOfMetadataProposalPreserved": {
+    "sha256": "48a1f7c6f6475976749a0031b63a6f108d92f2d6efcc772455f5f1c440258c8f",
+    "bytes": 26698,
+    "role": "earlier-unapplied-P2-proposal"
+  },
+  "earlierP2AsOfDTOPreserved": {
+    "sha256": "be0b9a900f8c7433fed64ee1609c10b802b6a38aaa71af99184c126864b6aa43",
+    "bytes": 26434,
+    "role": "earlier-unapplied-P2-DTO"
+  },
+  "P3FiniteReverseFileExampleScope": {
+    "guard": "complete reverse current-canvas draft versus new file question with sole exact original YAML filename",
+    "sourcePreparedProof": {
+      "sha256": "44a731586fd43e6f9b667c60fbda6f32d7ca19dfe60f5f74fd717fbf9fffec2c",
+      "bytes": 21910,
+      "role": "P3-preparation"
+    },
+    "seventhSelectedOldPublicAssertionRED": {
+      "sha256": "b9fbcd36f0470e5c9c52eedd1d41cf09d4f22c4cbf090423230bc8020eaa0fd3",
+      "bytes": 2490,
+      "role": "seventh-old-public-assertion-RED"
+    },
+    "previousTightenedP2Preserved": {
+      "sha256": "2a8a869ee562d8b5ed5bcdf5e6344318a560e573f0063a464b408289e979bbbd",
+      "bytes": 15914,
+      "role": "opaque-engineering-proof"
+    },
+    "sameSyntheticScopeExistingExportsCheck": {
+      "sha256": "b477015696d5fe4f6ce818e64c2adf4c468a5beec27765aa9ee7f068f5ad8293",
+      "bytes": 1468,
+      "role": "opaque-engineering-proof"
+    }
+  },
+  "independentReview": "PENDING_ROOT_METADATA_REVIEW",
+  "RootPublicActivationBeforeFormat": {
+    "proof": {
+      "sha256": "2de1634a50eab12c3f8efcb44e3701f971702ac40f6978fbb309b7c7b64c97cb",
+      "bytes": 4934,
+      "role": "Root-six-source-install-before-format"
+    },
+    "activated": true,
+    "scope": "public helper and portable test source bytes only",
+    "newMappedGate": "PENDING",
+    "newSourceFingerprint": "PENDING_ROOT_FREEZE",
+    "newRealConvergence": "UNKNOWN_NOT_RUN"
+  }
+}

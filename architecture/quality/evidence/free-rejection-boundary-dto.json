@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-public-safe-current-typed-host-boundary-observation-and-local-regression",
+  "ready": false,
+  "issueId": "CSR-0020",
+  "category": "testing-tool",
+  "title": "Stop extending a Free run on current typed Host provider rejection",
+  "observationVerified": true,
+  "causeConfirmed": true,
+  "mechanism": "current-host-typed-dto-fields-not-consumed-by-free-run-boundary",
+  "causeScope": "Generated real-test workflow boundary collector only; private provider channel cause remains UNKNOWN.",
+  "firstActualObservation": {
+    "runId": "original12-current-source-20261013-r11",
+    "sourceFingerprint": {
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1455,
+      "sha256": "411c52cc21171a28461185c153d6c218f74205e927dab47eff7385d195e81c21"
+    },
+    "reports": [
+      {
+        "caseId": "S1L1",
+        "reportSha256": "969db33fbf956e279eed742afe251aca9f9d72c638b45531fe905e72ff2d6bbb",
+        "reportBytes": 40026,
+        "mode": "0600",
+        "scope": "opaque immutable current closed-case report metadata; raw contents not published"
+      },
+      {
+        "caseId": "S1L2",
+        "reportSha256": "a3398f1a4ff4f88fedf82f50b8c0787f84ddd4a70ff75ab59b128783ce3ca6d4",
+        "reportBytes": 40732,
+        "mode": "0600",
+        "scope": "opaque immutable current closed-case report metadata; raw contents not published"
+      }
+    ],
+    "hostTypedFields": {
+      "monitoring": {
+        "typedFailureCodes": [
+          {
+            "errorCode": "provider_request_rejected",
+            "diagnosticCodes": [
+              "provider_request_rejected"
+            ]
+          }
+        ]
+      },
+      "adjudication": {
+        "typedFailure": {
+          "code": "provider_request_rejected"
+        }
+      }
+    },
+    "oldBoundaryResult": null,
+    "typedFieldsVerifiedBy": "Root reviewed current Host metadata; constructor author only hashed opaque reports",
+    "reportFirstAsOfPreserved": true
+  },
+  "confirmedLocalCause": {
+    "originalPolicySha256": "22f48dbdfd6e6e43832abf9cf84b48f5fdcc43e3cccb8a685ad391b4235ceb3e",
+    "originalPolicyBytes": 20379,
+    "candidatePolicySha256": "eb4925046ef20ea443439dda88d044844bec556706041b8bce8a314db0b72c89",
+    "candidatePolicyBytes": 20717,
+    "missingTypedCoordinates": [
+      "monitoring.typedFailureCodes[].errorCode",
+      "monitoring.typedFailureCodes[].diagnosticCodes[]",
+      "adjudication.typedFailure.code"
+    ],
+    "legacyCoordinatesPreserved": [
+      "monitoring.typedFailureCodes[].code",
+      "monitoring.typedFailureCodes[].failureCode",
+      "failure.code"
+    ],
+    "allowedProviderCodesUnchanged": [
+      "provider_request_rejected",
+      "provider_model_unavailable",
+      "provider_authentication_required",
+      "provider_billing_required"
+    ]
+  },
+  "localProof": {
+    "sha256": "38ad09202862ff05be2b4a8ef5e80d88d1871294fcccf61cfc6f9e449cb45cd1",
+    "bytes": 11481,
+    "junitSha256": "3c1a7c3c711836006c42c64b7615b9995ba22172d29ef12590b69ae603425959",
+    "junitBytes": 7368,
+    "sourceBindingsBeforeAfterEqual": true,
+    "tests": 23,
+    "pass": 23,
+    "fail": 0,
+    "skip": 0,
+    "todo": 0,
+    "oldAssertionBodiesPreserved": 17,
+    "oldProductionDTOREDAndCandidateGREEN": true,
+    "captureSource": "Python subprocess / pinned Bun1.3.14 / JUnit; not a Node helper proof",
+    "paidProcessClosureFlagsInLocalFixture": "SYNTHETIC_CONTROLS_NOT_GENUINE_CLOSURE_PROOF"
+  },
+  "status": "local-fix-prepared-public-gate-and-new-real-run-pending",
+  "publicCandidateApplied": false,
+  "publicMappedGate": "PENDING_ROOT_APPLY_AND_NEW_CURRENT_GATE",
+  "currentR11QualificationRewritten": false,
+  "privateChannelCause": "UNKNOWN",
+  "FreeModelGenuineAcceptance": "NOT_ESTABLISHED_BY_THIS_CHANGE",
+  "historicalCoverageComplete": false,
+  "automaticIssueStatusMutation": false,
+  "modelCallsForFixValidation": 0,
+  "budgetsUnchanged": {
+    "planning": 2,
+    "pipelineRepair": 2,
+    "serial": 1,
+    "originalSendPerCase": 1,
+    "manualRetry": 0,
+    "extraPaidProbes": 0
+  },
+  "privatePathsOrPromptAuthProfileRawLogsPublished": false
+}

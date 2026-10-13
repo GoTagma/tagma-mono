@@ -98,6 +98,103 @@
       "sha256": "cd910acdec3ff5c7941b2f2b4b8c5f801f473d5bde7b7cafd9e600ff059e28f9",
       "id": "current-native-core-rejection-coordinates-installed62",
       "role": "later-public-installation-and-whole-current-source-gate"
+    },
+    {
+      "id": "current-owned-retained-contract-host-revalidation",
+      "path": "architecture/quality/evidence/retained-contract-host-revalidation.json",
+      "sha256": "0451f2de5912d2ddb7590352926aaa29770e53dfdad49f5736438db654a2d4a3",
+      "bytes": 9232,
+      "kind": "synthetic-real-engine-red-and-new-candidate-guard-proof"
+    },
+    {
+      "id": "current-retained-contract-cache-replay",
+      "path": "architecture/quality/evidence/retained-contract-cache-replay.json",
+      "sha256": "7359a3dc0584e373343ff9fa5dd6c9097e8c32879eb9adc8408dd4458e7f2d8f",
+      "bytes": 2343,
+      "kind": "local-real-Engine-cache-replay-regression-proof"
+    },
+    {
+      "id": "current-portable-clarification-observer-lease",
+      "path": "architecture/quality/evidence/clarification-observer-lease.json",
+      "sha256": "a57b79d65499acc65870af4b0d218f536daf67ab5b2c8d2b9bcd33090c86f060",
+      "bytes": 5865,
+      "kind": "immutable-public-safe-workflow-evidence-capsule"
+    },
+    {
+      "id": "current-user-preferred-free-model-policy",
+      "path": "architecture/quality/evidence/user-preferred-model-policy.json",
+      "sha256": "5567bade731638dbd85190bf3f724170d0ed3d382b377bf3973e60e04378aa2c",
+      "bytes": 6816,
+      "kind": "immutable-public-safe-workflow-evidence-capsule"
+    },
+    {
+      "id": "current-cache-protocol-route-fixture-alignment",
+      "path": "architecture/quality/evidence/cache-protocol-route-fixture-alignment.json",
+      "sha256": "e2289184b79c8e07018400b16e9badc36b2882681ab9295221b4a955cc687a73",
+      "bytes": 6430,
+      "kind": "immutable-public-safe-whole-engineering-test-fixture-failure-and-correction"
+    },
+    {
+      "id": "current-immutable-test-proof-0018",
+      "path": "architecture/quality/evidence/immutable-test-proof-0018.json",
+      "sha256": "93ff46c4790900e51857d11ed79aed237040edef508b1a78384744f0b3af3b03",
+      "bytes": 2939,
+      "kind": "immutable-public-safe-local-test-tooling-incident-and-regression"
+    },
+    {
+      "id": "current-immutable-test-proof-0019",
+      "path": "architecture/quality/evidence/immutable-test-proof-0019.json",
+      "sha256": "234e0b3639149e21ae9c4d37a9b6f11e239d981eaa37876b97a2368c557490be",
+      "bytes": 4526,
+      "kind": "immutable-public-safe-local-test-tooling-incident-and-regression"
+    },
+    {
+      "id": "current-free-rejection-boundary-dto",
+      "path": "architecture/quality/evidence/free-rejection-boundary-dto.json",
+      "sha256": "abff2c42e6304c12d5429f82a45dce55a5772f67c51dea5e733ea7189cea4546",
+      "bytes": 4104,
+      "kind": "immutable-public-safe-current-host-dto-boundary-observation-and-local-regression"
+    },
+    {
+      "id": "current-clarification-r12-grammar-local-proof",
+      "path": "architecture/quality/evidence/clarification-policy-r12-grammar.json",
+      "sha256": "879459fe2a546f73b75ad2152427bfed10a016eae49c5801a7754ecae651a450",
+      "bytes": 31597,
+      "kind": "immutable-public-safe-genuine-closed-clarification-and-local-tool-proof"
+    },
+    {
+      "id": "current-operator-optional-json-poll",
+      "path": "architecture/quality/evidence/operator-optional-json-poll.json",
+      "sha256": "c97136e2a26ddb7850d2f4bdfbe9805e0b2d0d9548637243f2845a981533dc84",
+      "bytes": 12286,
+      "kind": "immutable-public-safe-actual-unknown-and-local-poll-counterexample"
+    },
+    {
+      "id": "current-free-only-wait-model-policy",
+      "path": "architecture/quality/evidence/free-only-wait-model-policy.json",
+      "sha256": "fc95f53f03e07c902a37bf054d35832596373aec79b85d7b4a0270ca3dd7cd74",
+      "bytes": 12793,
+      "kind": "immutable-public-safe-new-FreeOnly-wait-policy-schema-and-local-regression"
+    },
+    {
+      "id": "current-owned-harness-finalization",
+      "path": "architecture/quality/evidence/owned-harness-finalization.json",
+      "sha256": "ebc0099948ef40174b421de579945197220be95b672ea7639295ab23a8478b9f",
+      "bytes": 12128,
+      "kind": "immutable-public-safe-owned-finalization-source-counterexample-and-local-preparation-proof"
+    },
+    {
+      "id": "current-native-child-capture-environment",
+      "path": "architecture/quality/evidence/native-child-capture-environment.json",
+      "sha256": "349a92b666fa5dd390de95f9e6b745328c064b12dcf056e703c7cb35563f9e77",
+      "kind": "current-source-observation"
+    },
+    {
+      "id": "current-closed-matrix-identity",
+      "path": "architecture/quality/evidence/closed-matrix-identity.json",
+      "sha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
+      "bytes": 5916,
+      "kind": "immutable-public-safe-existing-private-source-counterexample-and-portable-regression"
     }
   ],
   "issues": [
@@ -164,9 +261,7 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": [
-        "TQ-0001"
-      ],
+      "relatedHistoricalIssues": ["TQ-0001"],
       "contract": "A complete rejection with zero consumed commits and zero validation rejections can authorize a correction within the original planning budget. This guard does not derive an Engine attempt ID.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -233,9 +328,7 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": [
-        "TQ-0001"
-      ],
+      "relatedHistoricalIssues": ["TQ-0001"],
       "contract": "No-progress context accepts its exact original request digest and rejects added commit counters, unknown fields, changed attempt identity, and invalid digests. This guard does not prove a real Engine second-slot invocation.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -302,10 +395,7 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": [
-        "TQ-0001",
-        "TQ-0011"
-      ],
+      "relatedHistoricalIssues": ["TQ-0001", "TQ-0011"],
       "contract": "The installed native tool fixture records one full semantic evidenceReview rejection, rejects no original assertion, and accepts the fixture-supplied distinct second Host attempt. Distinct attempt IDs are supplied by the test rather than derived by the product Engine.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -372,10 +462,7 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": [
-        "TQ-0003",
-        "TQ-0004"
-      ],
+      "relatedHistoricalIssues": ["TQ-0003", "TQ-0004"],
       "contract": "A blocked core witness fails without a blocking diagnostic-only finding; adding that finding preserves a blocking plan diagnostic. This does not make dynamic content observable or prove navigation repair.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -451,9 +538,7 @@
         }
       ],
       "realTestSelectors": [],
-      "relatedHistoricalIssues": [
-        "TQ-0001"
-      ],
+      "relatedHistoricalIssues": ["TQ-0001"],
       "historicalLineageAuthenticated": false,
       "lastExecution": {
         "path": "work/handoff-resume-20261012/current-baseline-identity-green-v1.json",
@@ -754,9 +839,7 @@
     },
     {
       "id": "CSR-0009",
-      "lineage": [
-        "RUI-0013"
-      ],
+      "lineage": ["RUI-0013"],
       "title": "Authorized pipeline clarifications omitted equivalent named-file and intent-choice wording",
       "category": "test-tool",
       "mechanism": "authorized-clarification-policy-grammar",
@@ -915,14 +998,7 @@
           "kind": "linked-real-runtime-tool-observations-with-unmodified-grades",
           "runtimeIssueId": "RUI-0013",
           "runId": "original12-current-source-20261012-r6",
-          "caseIds": [
-            "S1L1",
-            "S1L3",
-            "S2L3",
-            "S3L2",
-            "S4L2",
-            "S4L3"
-          ],
+          "caseIds": ["S1L1", "S1L3", "S2L3", "S3L2", "S4L2", "S4L3"],
           "statusAtObservation": "NOT_FULL_PASS",
           "nextFreshRunRequired": true,
           "liveAcceptance": false,
@@ -961,6 +1037,61 @@
           "realPostFixConvergence": "UNKNOWN",
           "productDefect": false,
           "liveAcceptance": false
+        },
+        {
+          "kind": "observed-seven-genuine-R12-clarification-waits-on-frozen-helper",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r12-grammar.json",
+          "evidenceSha256": "879459fe2a546f73b75ad2152427bfed10a016eae49c5801a7754ecae651a450",
+          "caseIds": ["S1L1", "S1L3", "S2L2", "S2L3", "S3L1", "S3L2", "S4L2"],
+          "statusAtObservation": "NOT_FULL_PASS",
+          "originalGradesChanged": false,
+          "productRootCause": "UNKNOWN",
+          "scope": "genuine-current-closed-observation",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "prepared-seven-old-public-assertion-red-and-P3-local-green",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r12-grammar.json",
+          "evidenceSha256": "879459fe2a546f73b75ad2152427bfed10a016eae49c5801a7754ecae651a450",
+          "actualOldPublicSelectedExecuted": 7,
+          "actualOldPublicSelectedFailed": 7,
+          "actualLocalExecuted": 27,
+          "actualLocalPassed": 27,
+          "actualLocalAssertions": 330,
+          "selectedSkipTodo": 0,
+          "newExactSelectors": 16,
+          "futureMappedWholeGate": "PENDING_ROOT_CURRENT143_EXECUTION",
+          "realPostInstallConvergence": "UNKNOWN",
+          "scope": "local-test-tool-grammar",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "preserved-unapplied-P2-noun-boundary-counterexample-and-hardening",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r12-grammar.json",
+          "evidenceSha256": "879459fe2a546f73b75ad2152427bfed10a016eae49c5801a7754ecae651a450",
+          "candidateOnlySelectedAssertionRED": 1,
+          "candidateCorrectedP2LocalGREEN": 26,
+          "oldPublicOrProductDefect": false,
+          "priorAsOfRecordsRetained": true,
+          "scope": "candidate-preparation-only",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "Root-selected-P3-public-source-installed-before-format",
+          "evidencePath": "architecture/quality/evidence/clarification-policy-r12-grammar.json",
+          "evidenceSha256": "879459fe2a546f73b75ad2152427bfed10a016eae49c5801a7754ecae651a450",
+          "installationProof": {
+            "sha256": "2de1634a50eab12c3f8efcb44e3701f971702ac40f6978fbb309b7c7b64c97cb",
+            "bytes": 4934,
+            "role": "Root-six-source-install-before-format"
+          },
+          "activated": true,
+          "beforeFormatSourceSha256": "657e0740750f794d3a7abc596c1a826b5d05621f9cef3a10e03ec506608ed849",
+          "newCurrent143Gate": "PENDING_ROOT_FORMAT_AND_EXECUTION",
+          "newSourceQualification": "PENDING",
+          "realConvergence": "UNKNOWN",
+          "scope": "public-test-tool-source-installation",
+          "liveAcceptance": false
         }
       ],
       "status": "prepared-local-green-not-activated",
@@ -982,6 +1113,19 @@
           "localRegressionVerified": true,
           "activated": false,
           "realChatAcceptance": "unknown"
+        },
+        {
+          "kind": "Root-selected-P3-public-grammar-source-before-format",
+          "localRegressionVerified": true,
+          "activated": true,
+          "activationProof": {
+            "sha256": "2de1634a50eab12c3f8efcb44e3701f971702ac40f6978fbb309b7c7b64c97cb",
+            "bytes": 4934,
+            "role": "Root-six-source-install-before-format"
+          },
+          "newCurrent143Gate": "PENDING_ROOT_FORMAT_AND_EXECUTION",
+          "realChatAcceptance": "unknown",
+          "activationScope": "public source installed; no fresh real run accepted"
         }
       ],
       "regressions": [
@@ -1061,6 +1205,118 @@
           "namePattern": "^portable clarification binds three role deictic task to explicit original task$",
           "expectedTests": 1,
           "fullName": "portable clarification binds three role deictic task to explicit original task"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-context.test.ts",
+          "namePattern": "^portable clarification binds requested filename in a current draft context$",
+          "expectedTests": 1,
+          "fullName": "portable clarification binds requested filename in a current draft context"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-context.test.ts",
+          "namePattern": "^portable clarification context supports generic filenames and ownership labels$",
+          "expectedTests": 1,
+          "fullName": "portable clarification context supports generic filenames and ownership labels"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-context.test.ts",
+          "namePattern": "^portable clarification context retains source authority and current identity fences$",
+          "expectedTests": 1,
+          "fullName": "portable clarification context retains source authority and current identity fences"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-context.test.ts",
+          "namePattern": "^portable clarification context rejects extra actions and ambiguous file roles$",
+          "expectedTests": 1,
+          "fullName": "portable clarification context rejects extra actions and ambiguous file roles"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-context.test.ts",
+          "namePattern": "^portable goal clarification permits a nonbinding pipeline step example$",
+          "expectedTests": 1,
+          "fullName": "portable goal clarification permits a nonbinding pipeline step example"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-context.test.ts",
+          "namePattern": "^portable goal step example preserves source criterion and current authority fences$",
+          "expectedTests": 1,
+          "fullName": "portable goal step example preserves source criterion and current authority fences"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-context.test.ts",
+          "namePattern": "^portable goal step example rejects business changes and injected instructions$",
+          "expectedTests": 1,
+          "fullName": "portable goal step example rejects business changes and injected instructions"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable clarification binds an original filename through its unique pipeline stem$",
+          "expectedTests": 1,
+          "fullName": "portable clarification binds an original filename through its unique pipeline stem"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable goal clarification recognizes a shared deictic support task$",
+          "expectedTests": 1,
+          "fullName": "portable goal clarification recognizes a shared deictic support task"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable clarification recognizes existing first ownership with a bound named file$",
+          "expectedTests": 1,
+          "fullName": "portable clarification recognizes existing first ownership with a bound named file"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable clarification recognizes described requested and existing draft file roles$",
+          "expectedTests": 1,
+          "fullName": "portable clarification recognizes described requested and existing draft file roles"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable ownership context variations retain generic source filename and identity guards$",
+          "expectedTests": 1,
+          "fullName": "portable ownership context variations retain generic source filename and identity guards"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable ownership context variations reject ambiguous scopes and added actions$",
+          "expectedTests": 1,
+          "fullName": "portable ownership context variations reject ambiguous scopes and added actions"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable shared support intent keeps original goal source authority and current identity$",
+          "expectedTests": 1,
+          "fullName": "portable shared support intent keeps original goal source authority and current identity"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-ownership-variants.test.ts",
+          "namePattern": "^portable shared support intent rejects added business choices and injection$",
+          "expectedTests": 1,
+          "fullName": "portable shared support intent rejects added business choices and injection"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/chat-clarification-file-example.test.ts",
+          "namePattern": "^portable clarification binds a reversed file example to the sole original filename$",
+          "expectedTests": 1,
+          "fullName": "portable clarification binds a reversed file example to the sole original filename"
         }
       ],
       "realTestSelectors": [
@@ -1146,6 +1402,153 @@
             "r6-independent-complete12",
             "r6-independent-root-closure-assessment",
             "r6-root-known-scope-closure"
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261013-r12",
+          "caseId": "S1L1",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterCandidate": "not_run",
+          "opaqueEvidenceReferences": [
+            {
+              "sha256": "f6ef68a8843327f1bd15168af5234d6874a309bab2023e9dbd8a8f2bb0226a91",
+              "bytes": 10637,
+              "role": "sole-genuine-closed-case-grade"
+            },
+            {
+              "sha256": "2f1c554a291de3fc0eab563d901926f4609daa976d7ff62c9dce5095b5fafb04",
+              "bytes": 39942,
+              "role": "opaque-genuine-closed-report"
+            }
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261013-r12",
+          "caseId": "S1L3",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterCandidate": "not_run",
+          "opaqueEvidenceReferences": [
+            {
+              "sha256": "c0a044bb701a9fdd03a75f1cc25e1379e1eb0defea525e68fe1d416f79ba603e",
+              "bytes": 10561,
+              "role": "sole-genuine-closed-case-grade"
+            },
+            {
+              "sha256": "97a623aef5d8866680a55c6d8f0082be7ff4580c64a88b1725b3f6850c9063cd",
+              "bytes": 39206,
+              "role": "opaque-genuine-closed-report"
+            }
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261013-r12",
+          "caseId": "S2L2",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterCandidate": "not_run",
+          "opaqueEvidenceReferences": [
+            {
+              "sha256": "6c6b79728b2781f79c6744878bbaa23136981d534aaa273768ac5fceaa27bbf8",
+              "bytes": 10555,
+              "role": "sole-genuine-closed-case-grade"
+            },
+            {
+              "sha256": "482e16b619881be89bf3750d12aa1caa0b02da315e8c304984830b1b1651cf00",
+              "bytes": 39206,
+              "role": "opaque-genuine-closed-report"
+            }
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261013-r12",
+          "caseId": "S2L3",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterCandidate": "not_run",
+          "opaqueEvidenceReferences": [
+            {
+              "sha256": "9f1ebcaf87b6fd73b2e86692d80310c2d46edb5019f197a8620d9d36617af5fb",
+              "bytes": 10582,
+              "role": "sole-genuine-closed-case-grade"
+            },
+            {
+              "sha256": "5b02f0083ef8b84e259aa0a4cfdecd741803674813ec9844033e464c52bb0ca6",
+              "bytes": 39212,
+              "role": "opaque-genuine-closed-report"
+            }
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261013-r12",
+          "caseId": "S3L1",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterCandidate": "not_run",
+          "opaqueEvidenceReferences": [
+            {
+              "sha256": "582894089f3d520db32b3140b94e93f13978e880652d282abeb8735c5a1a0efc",
+              "bytes": 10659,
+              "role": "sole-genuine-closed-case-grade"
+            },
+            {
+              "sha256": "9fa36534f0deda19eae0b4f6f7be7d9d2f75f31726546f4e126207e7be74568d",
+              "bytes": 39201,
+              "role": "opaque-genuine-closed-report"
+            }
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261013-r12",
+          "caseId": "S3L2",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterCandidate": "not_run",
+          "opaqueEvidenceReferences": [
+            {
+              "sha256": "2e377914d8b87a8e1d7a80d7131ccc53a7281deab6ee60790dafd54815be0d08",
+              "bytes": 10666,
+              "role": "sole-genuine-closed-case-grade"
+            },
+            {
+              "sha256": "c05e79d0298a6949c2cced1ba5766702961bb879703ef1b2a8fa5a5aca0af725",
+              "bytes": 39217,
+              "role": "opaque-genuine-closed-report"
+            }
+          ]
+        },
+        {
+          "runId": "original12-current-source-20261013-r12",
+          "caseId": "S4L2",
+          "statusAtObservation": "NOT_FULL_PASS",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget",
+          "liveConvergence": "unknown",
+          "helperContinuationAfterCandidate": "not_run",
+          "opaqueEvidenceReferences": [
+            {
+              "sha256": "4e618d911a6f7f31e0858a58cb28575a2e5bb413ffea9c28bb5e833375b3c28f",
+              "bytes": 10557,
+              "role": "seventh-sole-grade"
+            },
+            {
+              "sha256": "891c52c64671a9fac175fa04d37f0f27be3b7ac544de7860e4b407e50b51b37d",
+              "bytes": 39217,
+              "role": "seventh-closed-report"
+            }
           ]
         }
       ],
@@ -1265,9 +1668,7 @@
     },
     {
       "id": "CSR-0010",
-      "lineage": [
-        "RUI-0014"
-      ],
+      "lineage": ["RUI-0014"],
       "title": "Unscoped read requests may receive an explicit least-privilege denial without cancelling the Chat turn",
       "category": "test-tool-workflow",
       "mechanism": "trusted-live-unscoped-read-denial",
@@ -1413,9 +1814,7 @@
     },
     {
       "id": "CSR-0011",
-      "lineage": [
-        "TQI-QUAL-GIT-BUFFER-001"
-      ],
+      "lineage": ["TQI-QUAL-GIT-BUFFER-001"],
       "title": "Qualification command capture bounds Git output and blocks incomplete child output",
       "category": "test-tool/environment",
       "mechanism": "Node-spawnSync-Git-output-default-buffer",
@@ -1465,6 +1864,24 @@
           "privateReadOnlySourceOnlySucceeded": true,
           "mappedWholeGate": "PENDING_ROOT_EXECUTION",
           "productDefect": false,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "verified-managed-execution-context-environment-observation",
+          "environmentIssueId": "ENV-current-node-child-capture",
+          "evidencePath": "architecture/quality/evidence/native-child-capture-environment.json",
+          "evidenceSha256": "349a92b666fa5dd390de95f9e6b745328c064b12dcf056e703c7cb35563f9e77",
+          "category": "environment",
+          "observationVerified": "verified",
+          "causeConfirmed": "unknown",
+          "selectedExecutionInFirstTwoFailedGates": 0,
+          "laterActualCurrent151GREEN": {
+            "sha256": "6431f41702fad053b54128a99aaa3232d5707508bedc663a22eb4c49130a56fa",
+            "bytes": 160956
+          },
+          "existingRegressionRetained": "qualification capture uses explicit Node and blocks incomplete output",
+          "oldFirstEvidenceStatusAndHistoriesPreserved": true,
+          "productRegressionClaimed": false,
           "liveAcceptance": false
         }
       ],
@@ -1520,9 +1937,7 @@
     },
     {
       "id": "CSR-0012",
-      "lineage": [
-        "TQI-ROOT-CLARIFICATION-ANCESTOR-001"
-      ],
+      "lineage": ["TQI-ROOT-CLARIFICATION-ANCESTOR-001"],
       "title": "Root clarification delegation preserves original request identity and one normal typed reply",
       "category": "test-tool-workflow",
       "mechanism": "Root-manual-choice-ancestor-normal-Control-session",
@@ -1674,9 +2089,7 @@
     },
     {
       "id": "CSR-0013",
-      "lineage": [
-        "TQI-NATIVE-CORE-REJECTION-COORDINATES-001"
-      ],
+      "lineage": ["TQI-NATIVE-CORE-REJECTION-COORDINATES-001"],
       "title": "Generated native core rejection exposes finite current bound failed coordinates",
       "category": "product-observability",
       "mechanism": "generated-native-core-rejection-bound-coordinate-feedback",
@@ -2064,6 +2477,2298 @@
           },
           "historicalCoverageComplete": false
         }
+      }
+    },
+    {
+      "id": "CSR-0014",
+      "lineage": ["TQ-0002"],
+      "title": "Owned YAML repair can revalidate an unchanged complete Trial contract after planning is exhausted",
+      "category": "product-workflow",
+      "mechanism": "owned-repair-retained-contract-current-source-Host-revalidation",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "path": "architecture/quality/evidence/retained-contract-host-revalidation.json",
+        "sha256": "0451f2de5912d2ddb7590352926aaa29770e53dfdad49f5736438db654a2d4a3",
+        "sourceId": "current-owned-retained-contract-host-revalidation",
+        "round": "local-real-engine-old-source-feature-red-20261013",
+        "sourceRevision": "sha256:ab45fa65eb32677763e106848ab5a2a85166421c4ec68c64c3edd9462789a361",
+        "acceptancePolicy": "Real Managed/Trial Engine local publication after two planners and one owned YAML repair, all original repeats; ordinary stale-reader and trust gates remain. Not real Chat acceptance."
+      },
+      "history": [
+        {
+          "kind": "observed-old-source-feature-red-with-successful-real-publication-control",
+          "path": "architecture/quality/evidence/retained-contract-host-revalidation.json",
+          "sha256": "0451f2de5912d2ddb7590352926aaa29770e53dfdad49f5736438db654a2d4a3",
+          "actualExecutedTests": 1,
+          "actualFailedTests": 1,
+          "actualAssertions": 41,
+          "actualErrors": 0,
+          "actualSkippedOrTodoTests": 0,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "observed-source-identical-isolated-candidate10-guard-green",
+          "path": "architecture/quality/evidence/retained-contract-host-revalidation.json",
+          "sha256": "0451f2de5912d2ddb7590352926aaa29770e53dfdad49f5736438db654a2d4a3",
+          "actualExecutedTests": 10,
+          "actualPassedTests": 10,
+          "actualAssertions": 398,
+          "actualFailedTests": 0,
+          "actualErrors": 0,
+          "actualSkippedOrTodoTests": 0,
+          "liveAcceptance": false,
+          "mappedWholeGate": "NOT_RUN_AS_OF_APPEND"
+        },
+        {
+          "kind": "installed-supplement-preserving-genuine-cache-execution-identities",
+          "path": "architecture/quality/evidence/retained-contract-cache-replay.json",
+          "sha256": "7359a3dc0584e373343ff9fa5dd6c9097e8c32879eb9adc8408dd4458e7f2d8f",
+          "actualExecutedTests": 1,
+          "actualPassedTests": 1,
+          "actualAssertions": 195,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "isolated-candidate-before-public-format",
+          "mappedWholeGate": "PENDING_AS_OF_APPEND",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "installed-synthetic-guards-green-full-mapped-and-real-chat-pending",
+      "fixes": [
+        {
+          "id": "first-owned-YAML-repair-retained-full-contract",
+          "applied": true,
+          "liveVerified": false,
+          "scope": "Three behavior modules, shared cache protocol and authority documentation; six new portable regression sources. Original raw plan/intent/support/contracts/counters/budgets and old tests retained.",
+          "sourceIdenticalExecutedCandidateManifestSha256": "4fa629c12c875e25d8e7b2ec6e9bb7bc0c9011263ec99131d31bcc26c332de74",
+          "firstCapturedOwnerOnly": true,
+          "ordinaryReadersStillRequireCurrentYamlHash": true,
+          "originalFixturesAssertionsUnchanged": true
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-engine.test.ts",
+          "fullName": "fresh Host repeats publish retained full core after owned shell YAML repair without a third planner",
+          "namePattern": "^fresh Host repeats publish retained full core after owned shell YAML repair without a third planner$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-authority.test.ts",
+          "fullName": "Host retained contract refuses support-bytes without a verified receipt or publication",
+          "namePattern": "^Host retained contract refuses support-bytes without a verified receipt or publication$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-authority.test.ts",
+          "fullName": "Host retained contract refuses old-plan-bytes without a verified receipt or publication",
+          "namePattern": "^Host retained contract refuses old-plan-bytes without a verified receipt or publication$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-authority.test.ts",
+          "fullName": "Host retained contract refuses frozen-intent without a verified receipt or publication",
+          "namePattern": "^Host retained contract refuses frozen-intent without a verified receipt or publication$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-authority.test.ts",
+          "fullName": "Host retained contract refuses foreign-generation without a verified receipt or publication",
+          "namePattern": "^Host retained contract refuses foreign-generation without a verified receipt or publication$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-authority.test.ts",
+          "fullName": "Host retained contract refuses blocked-core without a verified receipt or publication",
+          "namePattern": "^Host retained contract refuses blocked-core without a verified receipt or publication$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-reader.test.ts",
+          "fullName": "ordinary reader strictly rejects original committed raw plan for repaired shell YAML",
+          "namePattern": "^ordinary reader strictly rejects original committed raw plan for repaired shell YAML$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-inactive-leaf.test.ts",
+          "fullName": "Host retained full-stage contract refuses inactive layout absence becoming a dangling symlink",
+          "namePattern": "^Host retained full-stage contract refuses inactive layout absence becoming a dangling symlink$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-inactive-leaf.test.ts",
+          "fullName": "Host retained full-stage contract refuses inactive requirements absence becoming a dangling symlink",
+          "namePattern": "^Host retained full-stage contract refuses inactive requirements absence becoming a dangling symlink$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-inactive-leaf.test.ts",
+          "fullName": "Host retained full-stage contract refuses inactive plan absence becoming a dangling symlink",
+          "namePattern": "^Host retained full-stage contract refuses inactive plan absence becoming a dangling symlink$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-retained-trial-contract-cache-replay-v4.test.ts",
+          "fullName": "retained Host reruns an eligible independent cached branch and ordinary same-id replay preserves native run proofs",
+          "namePattern": "^retained Host reruns an eligible independent cached branch and ordinary same-id replay preserves native run proofs$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [
+        {
+          "runKind": "fresh-whole-original12",
+          "caseIds": [
+            "S1L1",
+            "S1L2",
+            "S1L3",
+            "S2L1",
+            "S2L2",
+            "S2L3",
+            "S3L1",
+            "S3L2",
+            "S3L3",
+            "S4L1",
+            "S4L2",
+            "S4L3"
+          ],
+          "originalSourceSHA256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "modelPolicy": "Latest user: prefer a genuinely available OpenCode free model; otherwise DeepSeek Flash + low. Freeze the exact model per fresh run and keep distinct model scopes.",
+          "budgets": {
+            "planning": 2,
+            "pipelineRepair": 2,
+            "serial": 1,
+            "originalSendPerCase": 1,
+            "manualRetry": 0,
+            "extraPaidProbes": 0
+          },
+          "acceptancePolicy": "Current genuine DOM/PNG Open Pipeline and normal current publication within original budgets; no additional business/math/all-Trial-coverage score.",
+          "executionStatus": "NOT_RUN_ON_THIS_INSTALLED_SOURCE"
+        }
+      ],
+      "lastExecution": {
+        "path": "architecture/quality/evidence/retained-contract-host-revalidation.json",
+        "sha256": "0451f2de5912d2ddb7590352926aaa29770e53dfdad49f5736438db654a2d4a3",
+        "kind": "isolated-real-Engine10-guard-green",
+        "actualExecutedTests": 10,
+        "actualPassedTests": 10,
+        "actualAssertions": 398,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "isolated-source-identical-candidate",
+        "mappedWholeGate": "NOT_RUN_AS_OF_APPEND"
+      },
+      "knownLimits": {
+        "historicalCoverageComplete": false,
+        "historicalRegressionGate": "BLOCKED_UNAVAILABLE_EVIDENCE",
+        "legacyTQ0002SpecificCauseOrRegression": "UNKNOWN; lineage is a related observation, not confirmed old-cause attribution",
+        "actualR10CaseEligibilityAndConvergence": "UNKNOWN",
+        "secondOwnedRepairOriginLineage": "PENDING_UNSUPPORTED",
+        "lateExternalWitness": "Captured post-witness authenticated; not continuous external equality",
+        "realChatConvergence": "NOT_RUN_ON_THIS_SOURCE",
+        "sameIdReplayAndIndependentCaseCacheSupplement": "PENDING_SEPARATE_EXECUTION"
+      }
+    },
+    {
+      "id": "CSR-0015",
+      "lineage": ["RUI-0013", "CSR-0012"],
+      "title": "A saved clarification observer must catch authorized questions before expiry and preserve one normal reply slot",
+      "category": "test-harness",
+      "mechanism": "saved-clarification-observer-lease-prelaunch-fresh-once-slot",
+      "entryKind": "observed-test-harness-boundary-with-preventive-regressions",
+      "observationVerified": "verified",
+      "causeConfirmed": "unknown",
+      "observationScope": "Genuine R10 test-harness unanswered-question observation plus verified local preventive lease contract.",
+      "previousProductDefectObserved": false,
+      "firstEvidence": {
+        "sourceId": "current-portable-clarification-observer-lease",
+        "round": "original12-current-source-20261013-r10:S1L3",
+        "sourceRevision": "sha256:6ce431f4a278056d3af5589ac216ab38c3e0ae45c9a87224eabd42ffea3ae1ec",
+        "acceptancePolicy": "Genuine current DOM/PNG and normal publication within original budgets on R10 source; S1L3 authorized clarification unanswered, late writer rejected. This first observed test-harness boundary does not confirm a product cause or historical regression.",
+        "observationId": "CSR-0015",
+        "path": "architecture/quality/evidence/clarification-observer-lease.json",
+        "sha256": "a57b79d65499acc65870af4b0d218f536daf67ab5b2c8d2b9bcd33090c86f060",
+        "bytes": 5865
+      },
+      "history": [
+        {
+          "kind": "observed-genuine-R10-S1L3-unanswered-authorized-clarification-harness-boundary",
+          "evidencePath": "architecture/quality/evidence/clarification-observer-lease.json",
+          "evidenceSha256": "a57b79d65499acc65870af4b0d218f536daf67ab5b2c8d2b9bcd33090c86f060",
+          "currentUIAssessment": "NOT_FULL_PASS",
+          "scope": "test-harness",
+          "productDefect": false,
+          "exactUnderlyingCause": "UNKNOWN",
+          "historicalRegressionConfirmed": false
+        },
+        {
+          "kind": "observed-source-bound-local-preventive-workflow-guards-green",
+          "evidencePath": "architecture/quality/evidence/clarification-observer-lease.json",
+          "evidenceSha256": "a57b79d65499acc65870af4b0d218f536daf67ab5b2c8d2b9bcd33090c86f060",
+          "actualExecutedTests": 4,
+          "actualPassedTests": 4,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "portable-local-workflow-contract",
+          "productDefect": false,
+          "liveAcceptance": false,
+          "installedSourceMappedGate": "NOT_RUN_AS_OF_APPEND"
+        },
+        {
+          "kind": "public-portable-primitives-installed-before-new-current94-gate",
+          "evidencePath": "architecture/quality/evidence/clarification-observer-lease.json",
+          "evidenceSha256": "a57b79d65499acc65870af4b0d218f536daf67ab5b2c8d2b9bcd33090c86f060",
+          "sourceOnlyDifferenceFromExecutedCandidates": "Publication comments only; tests exact bytes.",
+          "publicSources": [
+            {
+              "path": "scripts/lib/clarification-observer-lease.mjs",
+              "sha256": "b9a03d338065b19e8629181f87c45629dd36cfe4b315114f3d1e8b428091eab4",
+              "bytes": 10413,
+              "mode": 420
+            },
+            {
+              "path": "scripts/lib/clarification-observer-lease.test.ts",
+              "sha256": "acc9dd312ecf59141e7b66afd30a94c900c4226ca08be375511a499b1161bd0f",
+              "bytes": 5091,
+              "mode": 420
+            }
+          ],
+          "installedSourceMappedGate": "NOT_RUN",
+          "realOperatorActivation": "NOT_RUN",
+          "productDefect": false
+        }
+      ],
+      "status": "installed-local-contract-green-mapped-gate-and-real-activation-pending",
+      "fixes": [
+        {
+          "id": "saved-clarification-observer-lease-prelaunch-fresh-once-slot-portable-v1",
+          "applied": true,
+          "liveVerified": false,
+          "evidencePath": "architecture/quality/evidence/clarification-observer-lease.json",
+          "evidenceSha256": "a57b79d65499acc65870af4b0d218f536daf67ab5b2c8d2b9bcd33090c86f060",
+          "publicSources": [
+            {
+              "path": "scripts/lib/clarification-observer-lease.mjs",
+              "sha256": "b9a03d338065b19e8629181f87c45629dd36cfe4b315114f3d1e8b428091eab4",
+              "bytes": 10413,
+              "mode": 420
+            },
+            {
+              "path": "scripts/lib/clarification-observer-lease.test.ts",
+              "sha256": "acc9dd312ecf59141e7b66afd30a94c900c4226ca08be375511a499b1161bd0f",
+              "bytes": 5091,
+              "mode": 420
+            }
+          ],
+          "kind": "preventive-test-harness-workflow",
+          "oldFixtureAssertionsRetained": true,
+          "scope": "Only these two public portable pure helper/test primitives; excluded actual operator/writer/constructor activation is NOT_RUN.",
+          "localExecutedCandidateSourceHashesAsOf": [
+            {
+              "path": "scripts/lib/clarification-observer-lease.mjs",
+              "sha256": "939e4b88d6e341c41255238dc5dd54f1d014e9c1ad2632d615774f7058c01202",
+              "bytes": 10433
+            },
+            {
+              "path": "scripts/lib/clarification-observer-lease.test.ts",
+              "sha256": "acc9dd312ecf59141e7b66afd30a94c900c4226ca08be375511a499b1161bd0f",
+              "bytes": 5091
+            }
+          ]
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/clarification-observer-lease.test.ts",
+          "fullName": "Portable observer prearms and periodic saved reads include the first 60sec question",
+          "namePattern": "^Portable observer prearms and periodic saved reads include the first 60sec question$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/clarification-observer-lease.test.ts",
+          "fullName": "Portable observer reserves once across text version change and unknown acknowledgement",
+          "namePattern": "^Portable observer reserves once across text version change and unknown acknowledgement$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/clarification-observer-lease.test.ts",
+          "fullName": "Portable observer true saved freshness and Host expiry block delayed metadata writes",
+          "namePattern": "^Portable observer true saved freshness and Host expiry block delayed metadata writes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/clarification-observer-lease.test.ts",
+          "fullName": "Portable observer unknown business choice remains unguessed and writer failure stays once",
+          "namePattern": "^Portable observer unknown business choice remains unguessed and writer failure stays once$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [
+        {
+          "runKind": "fresh-whole-original12",
+          "caseIds": [
+            "S1L1",
+            "S1L2",
+            "S1L3",
+            "S2L1",
+            "S2L2",
+            "S2L3",
+            "S3L1",
+            "S3L2",
+            "S3L3",
+            "S4L1",
+            "S4L2",
+            "S4L3"
+          ],
+          "originalSourceSHA256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "modelPolicy": "Latest user: genuinely usable authorized OpenCode Free explicit low preferred; otherwise separately qualified distinct fresh DeepSeek Flash low run. Model scopes kept separate.",
+          "budgets": {
+            "planning": 2,
+            "pipelineRepair": 2,
+            "serial": 1,
+            "originalSendPerCase": 1,
+            "manualRetry": 0,
+            "extraPaidProbes": 0
+          },
+          "acceptancePolicy": "Current genuine DOM/PNG Open Pipeline + normal current publication within original budgets; no additional business/math/all-Trial-coverage score.",
+          "executionStatus": "NOT_RUN_ON_PROPOSED_SOURCE"
+        }
+      ],
+      "lastExecution": {
+        "path": "architecture/quality/evidence/clarification-observer-lease.json",
+        "sha256": "a57b79d65499acc65870af4b0d218f536daf67ab5b2c8d2b9bcd33090c86f060",
+        "kind": "actual-portable-local-guard-tests",
+        "actualExecutedTests": 4,
+        "actualPassedTests": 4,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "saved-proposed-source-local; current public module comments differ and new whole gate is pending",
+        "installedSourceMappedGate": "NOT_RUN"
+      },
+      "knownLimits": {
+        "realActivation": "NOT_RUN",
+        "realOriginal12Convergence": "NOT_RUN_ON_PROPOSED_SOURCE",
+        "historicalCoverageComplete": false,
+        "historicalCauseAndRegressionNotPromoted": true,
+        "metadataWriteIsNotNormalReplyExecution": true,
+        "providerAcceptanceAndActualCharges": "UNKNOWN"
+      }
+    },
+    {
+      "id": "CSR-0016",
+      "lineage": [],
+      "title": "Explicit user-preferred Free model selection requires exact authority and verified metadata before Send",
+      "category": "test-tool-workflow",
+      "mechanism": "user-preferred-free-model-exact-authority-current-metadata-low-policy",
+      "entryKind": "preventive-verified-workflow-hazard",
+      "observationVerified": "verified",
+      "causeConfirmed": "unknown",
+      "observationScope": "Verified local guard contract: incomplete/foreign metadata, forged or mismatched authorization, altered budgets, or a nonexplicit-low tuple cannot satisfy the new user-preferred Free selection. No previously verified product defect or provider root cause is asserted.",
+      "previousProductDefectObserved": false,
+      "firstEvidence": {
+        "sourceId": "current-user-preferred-free-model-policy",
+        "round": "new-authorized-local-user-preferred-model-policy-contract",
+        "sourceRevision": "sha256:129b8261c7534bb22b4609d8689359c39ddb6c40c33805373d3224aee15f5d9b",
+        "acceptancePolicy": "Local preventive workflow guard proof for explicit user-preference authority, exact current metadata and model/budget constraints only. No prior product observation, provider acceptance, charges or root-cause confirmation is asserted.",
+        "observationId": "CSR-0016",
+        "path": "architecture/quality/evidence/user-preferred-model-policy.json",
+        "sha256": "5567bade731638dbd85190bf3f724170d0ed3d382b377bf3973e60e04378aa2c",
+        "bytes": 6816
+      },
+      "history": [
+        {
+          "kind": "observed-source-bound-local-preventive-workflow-guards-green",
+          "evidencePath": "architecture/quality/evidence/user-preferred-model-policy.json",
+          "evidenceSha256": "5567bade731638dbd85190bf3f724170d0ed3d382b377bf3973e60e04378aa2c",
+          "actualExecutedTests": 17,
+          "actualPassedTests": 17,
+          "actualFailedTests": 0,
+          "actualSkippedOrTodoTests": 0,
+          "scope": "portable-local-workflow-contract",
+          "productDefect": false,
+          "liveAcceptance": false,
+          "installedSourceMappedGate": "NOT_RUN_AS_OF_APPEND"
+        },
+        {
+          "kind": "public-portable-primitives-installed-before-new-current94-gate",
+          "evidencePath": "architecture/quality/evidence/user-preferred-model-policy.json",
+          "evidenceSha256": "5567bade731638dbd85190bf3f724170d0ed3d382b377bf3973e60e04378aa2c",
+          "sourceOnlyDifferenceFromExecutedCandidates": "Publication comments only; tests exact bytes.",
+          "publicSources": [
+            {
+              "path": "scripts/lib/user-preferred-model-policy.mjs",
+              "sha256": "22f48dbdfd6e6e43832abf9cf84b48f5fdcc43e3cccb8a685ad391b4235ceb3e",
+              "bytes": 20379,
+              "mode": 420
+            },
+            {
+              "path": "scripts/lib/user-preferred-model-policy.test.ts",
+              "sha256": "89525171f22d144f2bfeb41922d61bcb1f9d414e991e2d511173fac93c66d713",
+              "bytes": 13102,
+              "mode": 420
+            }
+          ],
+          "installedSourceMappedGate": "NOT_RUN",
+          "realOperatorActivation": "NOT_RUN",
+          "productDefect": false
+        }
+      ],
+      "status": "installed-local-contract-green-mapped-gate-and-real-activation-pending",
+      "fixes": [
+        {
+          "id": "user-preferred-free-model-exact-authority-current-metadata-low-policy-portable-v1",
+          "applied": true,
+          "liveVerified": false,
+          "evidencePath": "architecture/quality/evidence/user-preferred-model-policy.json",
+          "evidenceSha256": "5567bade731638dbd85190bf3f724170d0ed3d382b377bf3973e60e04378aa2c",
+          "publicSources": [
+            {
+              "path": "scripts/lib/user-preferred-model-policy.mjs",
+              "sha256": "22f48dbdfd6e6e43832abf9cf84b48f5fdcc43e3cccb8a685ad391b4235ceb3e",
+              "bytes": 20379,
+              "mode": 420
+            },
+            {
+              "path": "scripts/lib/user-preferred-model-policy.test.ts",
+              "sha256": "89525171f22d144f2bfeb41922d61bcb1f9d414e991e2d511173fac93c66d713",
+              "bytes": 13102,
+              "mode": 420
+            }
+          ],
+          "kind": "new-explicitly-authorized-workflow-guard",
+          "oldFixtureAssertionsRetained": true,
+          "scope": "Only these two public portable pure helper/test primitives; excluded actual operator/writer/constructor activation is NOT_RUN.",
+          "localExecutedCandidateSourceHashesAsOf": [
+            {
+              "path": "scripts/lib/user-preferred-model-policy.mjs",
+              "sha256": "129b8261c7534bb22b4609d8689359c39ddb6c40c33805373d3224aee15f5d9b",
+              "bytes": 20405
+            },
+            {
+              "path": "scripts/lib/user-preferred-model-policy.test.ts",
+              "sha256": "89525171f22d144f2bfeb41922d61bcb1f9d414e991e2d511173fac93c66d713",
+              "bytes": 13102
+            }
+          ]
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "User free preference fresh metadata selects exact explicit low without claiming execution",
+          "namePattern": "^User free preference fresh metadata selects exact explicit low without claiming execution$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "User preference refuses forged or legacy financial authorization",
+          "namePattern": "^User preference refuses forged or legacy financial authorization$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "User preference exact receipt digest bytes and fresh run are required",
+          "namePattern": "^User preference exact receipt digest bytes and fresh run are required$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "User preference fixed budgets and no spoof retry probe are preserved",
+          "namePattern": "^User preference fixed budgets and no spoof retry probe are preserved$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Known native channel rejected Free tuples remain excluded individually",
+          "namePattern": "^Known native channel rejected Free tuples remain excluded individually$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free label alone and missing prices remain UNKNOWN and block Send",
+          "namePattern": "^Free label alone and missing prices remain UNKNOWN and block Send$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free toolcall must be positively present on same current public metadata row",
+          "namePattern": "^Free toolcall must be positively present on same current public metadata row$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free cached model absence from actual UI cannot establish membership",
+          "namePattern": "^Free cached model absence from actual UI cannot establish membership$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free metadata foreign workspace absent source or omitted UI is unusable",
+          "namePattern": "^Free metadata foreign workspace absent source or omitted UI is unusable$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free duplicate provider model or variants cannot be silently deduplicated",
+          "namePattern": "^Free duplicate provider model or variants cannot be silently deduplicated$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "High only null and Pro tuples cannot be treated as explicit low",
+          "namePattern": "^High only null and Pro tuples cannot be treated as explicit low$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "DeepSeek fallback exact Flash low tuple uses distinct preference-bound run",
+          "namePattern": "^DeepSeek fallback exact Flash low tuple uses distinct preference-bound run$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "DeepSeek ordinary frozen policy compatibility remains unchanged",
+          "namePattern": "^DeepSeek ordinary frozen policy compatibility remains unchanged$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Actual selected UI and keyed Usage still require exactly configured tuple",
+          "namePattern": "^Actual selected UI and keyed Usage still require exactly configured tuple$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free rejected original case ends extension with cause UNKNOWN and requires fresh fallback",
+          "namePattern": "^Free rejected original case ends extension with cause UNKNOWN and requires fresh fallback$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Current native cache projects safe fields only and refuses unknown cost schema",
+          "namePattern": "^Current native cache projects safe fields only and refuses unknown cost schema$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Preference policy cannot substitute a different fresh metadata evidence binding",
+          "namePattern": "^Preference policy cannot substitute a different fresh metadata evidence binding$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [
+        {
+          "runKind": "fresh-whole-original12",
+          "caseIds": [
+            "S1L1",
+            "S1L2",
+            "S1L3",
+            "S2L1",
+            "S2L2",
+            "S2L3",
+            "S3L1",
+            "S3L2",
+            "S3L3",
+            "S4L1",
+            "S4L2",
+            "S4L3"
+          ],
+          "originalSourceSHA256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "modelPolicy": "Latest user: genuinely usable authorized OpenCode Free explicit low preferred; otherwise separately qualified distinct fresh DeepSeek Flash low run. Model scopes kept separate.",
+          "budgets": {
+            "planning": 2,
+            "pipelineRepair": 2,
+            "serial": 1,
+            "originalSendPerCase": 1,
+            "manualRetry": 0,
+            "extraPaidProbes": 0
+          },
+          "acceptancePolicy": "Current genuine DOM/PNG Open Pipeline + normal current publication within original budgets; no additional business/math/all-Trial-coverage score.",
+          "executionStatus": "NOT_RUN_ON_PROPOSED_SOURCE"
+        }
+      ],
+      "lastExecution": {
+        "path": "architecture/quality/evidence/user-preferred-model-policy.json",
+        "sha256": "5567bade731638dbd85190bf3f724170d0ed3d382b377bf3973e60e04378aa2c",
+        "kind": "actual-portable-local-guard-tests",
+        "actualExecutedTests": 17,
+        "actualPassedTests": 17,
+        "actualFailedTests": 0,
+        "actualSkippedOrTodoTests": 0,
+        "scope": "saved-proposed-source-local; current public module comments differ and new whole gate is pending",
+        "installedSourceMappedGate": "NOT_RUN"
+      },
+      "knownLimits": {
+        "realActivation": "NOT_RUN",
+        "realOriginal12Convergence": "NOT_RUN_ON_PROPOSED_SOURCE",
+        "historicalCoverageComplete": false,
+        "historicalCauseAndRegressionNotPromoted": true,
+        "metadataWriteIsNotNormalReplyExecution": "NOT_APPLICABLE",
+        "providerAcceptanceAndActualCharges": "UNKNOWN"
+      }
+    },
+    {
+      "id": "CSR-0017",
+      "lineage": ["CSR-0014"],
+      "title": "Signed-cache route fixtures must align their exact expected version with the shared protocol",
+      "category": "test-harness",
+      "mechanism": "shared-Trial-cache-protocol-old-fixture-expectation-alignment",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Existing test expectations48 became obsolete after intentional protocol49 bump; production correct49 result is not a product regression.",
+      "firstEvidence": {
+        "sourceId": "current-cache-protocol-route-fixture-alignment",
+        "round": "retained-workflow-engineering-qualification-actual-r1-Full13",
+        "sourceRevision": "sha256:95238026d539ed41c832b2bafabaa7ea09097a718076c3575bfe4ca72bd91d79",
+        "acceptancePolicy": "Actual Full13 all13 engineering gates; two unique old test-fixture assertions observed at expected48/received49. Not real Chat acceptance or new feature RED.",
+        "path": "architecture/quality/evidence/cache-protocol-route-fixture-alignment.json",
+        "sha256": "e2289184b79c8e07018400b16e9badc36b2882681ab9295221b4a955cc687a73",
+        "bytes": 6430
+      },
+      "history": [
+        {
+          "kind": "observed-real-whole-Full13-test-fixture-protocol-expectation-failure",
+          "evidencePath": "architecture/quality/evidence/cache-protocol-route-fixture-alignment.json",
+          "evidenceSha256": "e2289184b79c8e07018400b16e9badc36b2882681ab9295221b4a955cc687a73",
+          "selectedGates": 13,
+          "passedGates": 12,
+          "actualUniqueAssertionFailures": 2,
+          "failedGate": "tests",
+          "scope": "test-harness",
+          "productRegression": false,
+          "newFeatureRED": false,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "installed-existing-test-exact-protocol-alignment-before-new-mapped-gate",
+          "evidencePath": "architecture/quality/evidence/cache-protocol-route-fixture-alignment.json",
+          "evidenceSha256": "e2289184b79c8e07018400b16e9badc36b2882681ab9295221b4a955cc687a73",
+          "sourceAfter": {
+            "path": "apps/editor/tests/chat-yaml-staging-route.test.ts",
+            "sha256": "b6aa30f509c75bd25d8f2a2eb82b4feb8c03eda66b9c0c6b2fe63918e9e19444",
+            "bytes": 193098
+          },
+          "literalReplacements": 4,
+          "allOtherSourceBytesAndAssertionsPreserved": true,
+          "newMappedGate": "NOT_RUN"
+        }
+      ],
+      "status": "corrected-fixture-installed-four-mapped-guards-and-new-Full13-pending",
+      "fixes": [
+        {
+          "id": "old-route-fixture-current-cache49-expectation-alignment",
+          "applied": true,
+          "liveVerified": false,
+          "scope": "Test file only; exact 3 protocol constants +1 dynamic title. All original security/physical execution/replay/finalize assertions retained.",
+          "sourceBefore": {
+            "path": "apps/editor/tests/chat-yaml-staging-route.test.ts",
+            "sha256": "6e669695cf31254809e4f6838e0d149053b15ff33e19418f19131e41aef82690",
+            "bytes": 193098
+          },
+          "sourceAfter": {
+            "path": "apps/editor/tests/chat-yaml-staging-route.test.ts",
+            "sha256": "b6aa30f509c75bd25d8f2a2eb82b4feb8c03eda66b9c0c6b2fe63918e9e19444",
+            "bytes": 193098
+          },
+          "productBehaviorChanged": false,
+          "evidencePath": "architecture/quality/evidence/cache-protocol-route-fixture-alignment.json",
+          "evidenceSha256": "e2289184b79c8e07018400b16e9badc36b2882681ab9295221b4a955cc687a73"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-yaml-staging-route.test.ts",
+          "fullName": "chat YAML staging routes does not grant finalize authority to a correctly signed v45 Trial cache",
+          "namePattern": "^chat YAML staging routes does not grant finalize authority to a correctly signed v45 Trial cache$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-yaml-staging-route.test.ts",
+          "fullName": "chat YAML staging routes reexecutes a same-input signed v45 Trial cache under v49 and replays only the new result",
+          "namePattern": "^chat YAML staging routes reexecutes a same-input signed v45 Trial cache under v49 and replays only the new result$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-yaml-staging-route.test.ts",
+          "fullName": "chat YAML staging routes does not grant finalize authority to a correctly signed v46 Trial cache",
+          "namePattern": "^chat YAML staging routes does not grant finalize authority to a correctly signed v46 Trial cache$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-yaml-staging-route.test.ts",
+          "fullName": "chat YAML staging routes reexecutes a same-input signed v46 Trial cache under v49 and replays only the new result",
+          "namePattern": "^chat YAML staging routes reexecutes a same-input signed v46 Trial cache under v49 and replays only the new result$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "knownLimits": [
+        "Old engineeringR1 remains failed. Do not apply corrected source hash to it.",
+        "Cause confirmed solely test-fixture protocol literals; no product runtime defect or new feature RED claim.",
+        "Prior16/94 history remains unchanged; these4 previously unmapped guards now become executable inventory.",
+        "Current historical archive coverage still incomplete; local/current gates do not establish original12 full convergence."
+      ],
+      "lastExecution": {
+        "kind": "old-source-whole-Full1312of13-two-test-expectation-failures",
+        "path": "architecture/quality/evidence/cache-protocol-route-fixture-alignment.json",
+        "sha256": "e2289184b79c8e07018400b16e9badc36b2882681ab9295221b4a955cc687a73",
+        "currentFourMappedSelectorsExecuted": "NOT_RUN",
+        "new17and98Gate": "NOT_RUN",
+        "newFull13Qualification": "NOT_RUN"
+      }
+    },
+    {
+      "id": "CSR-0018",
+      "lineage": ["TWI-R11-0001"],
+      "title": "Preserve prior test evidence using exclusive immutable captures",
+      "category": "testing-tool",
+      "mechanism": "exclusive-local-test-proof-capture-no-overwrite",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Local testing-workflow preparation only; not a product runtime regression.",
+      "firstEvidence": {
+        "sourceId": "current-immutable-test-proof-0018",
+        "path": "architecture/quality/evidence/immutable-test-proof-0018.json",
+        "sha256": "93ff46c4790900e51857d11ed79aed237040edef508b1a78384744f0b3af3b03",
+        "round": "r11-local-writer-preparation-incident-20261013",
+        "sourceRevision": "sha256:704b5a23a67f1138088b847f3214146be6c6ad64064d5e87630936e2a640b738",
+        "acceptancePolicy": "Preserve raw local execution evidence, actual invocation metadata and unknown gaps. Not original12 Chat grading."
+      },
+      "history": [
+        {
+          "kind": "observed-confirmed-local-proof-workflow-incident",
+          "path": "architecture/quality/evidence/immutable-test-proof-0018.json",
+          "sha256": "93ff46c4790900e51857d11ed79aed237040edef508b1a78384744f0b3af3b03",
+          "historicalMissingRaw": "UNKNOWN_BLOCKED_NOT_RECONSTRUCTED",
+          "productRegression": false
+        },
+        {
+          "kind": "installed-portable-real-Node-prevention-regressions",
+          "path": "architecture/quality/evidence/immutable-test-proof-0018.json",
+          "sha256": "93ff46c4790900e51857d11ed79aed237040edef508b1a78384744f0b3af3b03",
+          "actualCandidateSuiteTests": 9,
+          "actualCandidateSuitePass": 9,
+          "actualCandidateSuiteFail": 0,
+          "actualCandidateSelectedSkipTodo": 0,
+          "actualCandidateWriterIntegrationPass": 24,
+          "publicMappedGate": "PENDING_AS_OF_APPEND",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "future-prevention-guards-installed-original-raw-gap-unknown-whole-gate-pending",
+      "fixes": [
+        {
+          "id": "immutable-single-invocation-test-proof-capture",
+          "applied": true,
+          "liveVerified": false,
+          "publicSources": [
+            {
+              "path": "scripts/lib/immutable-node-test-proof.mjs",
+              "sha256": "1807787ee454feb37a849d22eb3972a62ff3fa40860b5ae9fe4790faa43b00f6",
+              "bytes": 10627,
+              "mode": 420
+            },
+            {
+              "path": "scripts/lib/immutable-node-test-proof.test.ts",
+              "sha256": "8cc5ad3c8b6e964fb40ce31173c9ffff97d95ea02c1259a39fc06e84918e9ed5",
+              "bytes": 11003,
+              "mode": 420
+            }
+          ],
+          "scope": "Local test-proof tools only; no production model or publication logic changed.",
+          "historicalRawRestored": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof captures real Node named execution and actual argv in new wx files",
+          "namePattern": "^Immutable proof captures real Node named execution and actual argv in new wx files$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof existing output preserves old bytes and blocks before real Node child",
+          "namePattern": "^Immutable proof existing output preserves old bytes and blocks before real Node child$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "path": "architecture/quality/evidence/immutable-test-proof-0018.json",
+        "sha256": "93ff46c4790900e51857d11ed79aed237040edef508b1a78384744f0b3af3b03",
+        "kind": "candidate-local-suite9-and-writer24-positive-integration",
+        "publicMappedGate": "PENDING_AS_OF_APPEND"
+      },
+      "knownLimits": {
+        "historicalCoverageComplete": false,
+        "historicalRawDependency": "UNKNOWN_BLOCKED_NOT_RECONSTRUCTED",
+        "oldProofsNotRewrittenOrSynthesized": true,
+        "genuineOriginal12": "NOT_RUN_ON_THIS_SOURCE",
+        "platformRuntimeEvidence": "Linux local; no Windows live claim"
+      }
+    },
+    {
+      "id": "CSR-0019",
+      "lineage": ["TWI-R11-0002"],
+      "title": "Bind test proof to actual executed command and selected tests",
+      "category": "testing-tool",
+      "mechanism": "single-source-executed-command-and-nonempty-proof-provenance",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Local testing-workflow preparation only; not a product runtime regression.",
+      "firstEvidence": {
+        "sourceId": "current-immutable-test-proof-0019",
+        "path": "architecture/quality/evidence/immutable-test-proof-0019.json",
+        "sha256": "234e0b3639149e21ae9c4d37a9b6f11e239d981eaa37876b97a2368c557490be",
+        "round": "r11-local-writer-preparation-incident-20261013",
+        "sourceRevision": "sha256:704b5a23a67f1138088b847f3214146be6c6ad64064d5e87630936e2a640b738",
+        "acceptancePolicy": "Preserve raw local execution evidence, actual invocation metadata and unknown gaps. Not original12 Chat grading."
+      },
+      "history": [
+        {
+          "kind": "observed-confirmed-local-proof-workflow-incident",
+          "path": "architecture/quality/evidence/immutable-test-proof-0019.json",
+          "sha256": "234e0b3639149e21ae9c4d37a9b6f11e239d981eaa37876b97a2368c557490be",
+          "historicalMissingRaw": "UNKNOWN_BLOCKED_NOT_RECONSTRUCTED",
+          "productRegression": false
+        },
+        {
+          "kind": "installed-portable-real-Node-prevention-regressions",
+          "path": "architecture/quality/evidence/immutable-test-proof-0019.json",
+          "sha256": "234e0b3639149e21ae9c4d37a9b6f11e239d981eaa37876b97a2368c557490be",
+          "actualCandidateSuiteTests": 9,
+          "actualCandidateSuitePass": 9,
+          "actualCandidateSuiteFail": 0,
+          "actualCandidateSelectedSkipTodo": 0,
+          "actualCandidateWriterIntegrationPass": 24,
+          "publicMappedGate": "PENDING_AS_OF_APPEND",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "future-prevention-guards-installed-original-raw-gap-unknown-whole-gate-pending",
+      "fixes": [
+        {
+          "id": "immutable-single-invocation-test-proof-capture",
+          "applied": true,
+          "liveVerified": false,
+          "publicSources": [
+            {
+              "path": "scripts/lib/immutable-node-test-proof.mjs",
+              "sha256": "1807787ee454feb37a849d22eb3972a62ff3fa40860b5ae9fe4790faa43b00f6",
+              "bytes": 10627,
+              "mode": 420
+            },
+            {
+              "path": "scripts/lib/immutable-node-test-proof.test.ts",
+              "sha256": "8cc5ad3c8b6e964fb40ce31173c9ffff97d95ea02c1259a39fc06e84918e9ed5",
+              "bytes": 11003,
+              "mode": 420
+            }
+          ],
+          "scope": "Local test-proof tools only; no production model or publication logic changed.",
+          "historicalRawRestored": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof copied argv or reporter mismatch blocks before child and output",
+          "namePattern": "^Immutable proof copied argv or reporter mismatch blocks before child and output$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof real Node skip and todo cannot establish selected GREEN",
+          "namePattern": "^Immutable proof real Node skip and todo cannot establish selected GREEN$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof zero execution and wrong expected names cannot establish GREEN",
+          "namePattern": "^Immutable proof zero execution and wrong expected names cannot establish GREEN$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof real assertion failure remains captured BLOCKED",
+          "namePattern": "^Immutable proof real assertion failure remains captured BLOCKED$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof source bytes changed by actual Node child block source-bound GREEN",
+          "namePattern": "^Immutable proof source bytes changed by actual Node child block source-bound GREEN$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof rejects symlink source and manual provenance before execution",
+          "namePattern": "^Immutable proof rejects symlink source and manual provenance before execution$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/immutable-node-test-proof.test.ts",
+          "fullName": "Immutable proof validator rejects tampered actual argv intent or reporter",
+          "namePattern": "^Immutable proof validator rejects tampered actual argv intent or reporter$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "path": "architecture/quality/evidence/immutable-test-proof-0019.json",
+        "sha256": "234e0b3639149e21ae9c4d37a9b6f11e239d981eaa37876b97a2368c557490be",
+        "kind": "candidate-local-suite9-and-writer24-positive-integration",
+        "publicMappedGate": "PENDING_AS_OF_APPEND"
+      },
+      "knownLimits": {
+        "historicalCoverageComplete": false,
+        "historicalRawDependency": "UNKNOWN_BLOCKED_NOT_RECONSTRUCTED",
+        "oldProofsNotRewrittenOrSynthesized": true,
+        "genuineOriginal12": "NOT_RUN_ON_THIS_SOURCE",
+        "platformRuntimeEvidence": "Linux local; no Windows live claim"
+      }
+    },
+    {
+      "id": "CSR-0020",
+      "lineage": ["R11-typed-free-provider-rejection-boundary-dto-mismatch"],
+      "title": "Stop extending a Free run on current typed Host provider rejection",
+      "category": "testing-tool",
+      "mechanism": "current-host-typed-dto-fields-not-consumed-by-free-run-boundary",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Generated real-test workflow boundary collector only; private provider channel cause remains UNKNOWN.",
+      "firstEvidence": {
+        "sourceId": "current-free-rejection-boundary-dto",
+        "path": "architecture/quality/evidence/free-rejection-boundary-dto.json",
+        "sha256": "abff2c42e6304c12d5429f82a45dce55a5772f67c51dea5e733ea7189cea4546",
+        "round": "r11-current-free-original-cases-20261013",
+        "sourceRevision": "public-git-visible-v1:sha256:411c52cc21171a28461185c153d6c218f74205e927dab47eff7385d195e81c21",
+        "acceptancePolicy": "Stop extending current Free run on typed provider rejection after current known scopes close; no channel-cause or genuine workflow PASS inferred. Original UI acceptance remains unchanged."
+      },
+      "history": [
+        {
+          "kind": "observed-current-typed-host-dto-boundary-mismatch",
+          "path": "architecture/quality/evidence/free-rejection-boundary-dto.json",
+          "sha256": "abff2c42e6304c12d5429f82a45dce55a5772f67c51dea5e733ea7189cea4546",
+          "genuineCaseReportMetadata": [
+            {
+              "caseId": "S1L1",
+              "reportSha256": "969db33fbf956e279eed742afe251aca9f9d72c638b45531fe905e72ff2d6bbb",
+              "reportBytes": 40026,
+              "mode": "0600",
+              "scope": "opaque immutable current closed-case report metadata; raw contents not published"
+            },
+            {
+              "caseId": "S1L2",
+              "reportSha256": "a3398f1a4ff4f88fedf82f50b8c0787f84ddd4a70ff75ab59b128783ce3ca6d4",
+              "reportBytes": 40732,
+              "mode": "0600",
+              "scope": "opaque immutable current closed-case report metadata; raw contents not published"
+            }
+          ],
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1455,
+            "sha256": "411c52cc21171a28461185c153d6c218f74205e927dab47eff7385d195e81c21"
+          },
+          "oldBoundaryResult": null,
+          "providerChannelCause": "UNKNOWN",
+          "productRuntimeRegression": false
+        },
+        {
+          "kind": "local-pure-boundary-dto-regression-verified-candidate-not-applied",
+          "path": "architecture/quality/evidence/free-rejection-boundary-dto.json",
+          "sha256": "abff2c42e6304c12d5429f82a45dce55a5772f67c51dea5e733ea7189cea4546",
+          "candidateTests": 23,
+          "candidatePass": 23,
+          "candidateFail": 0,
+          "oldAssertionsPreserved": 17,
+          "publicMappedGate": "PENDING_AS_OF_APPEND",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "root-public-minimal-fix-installed",
+          "atUTC": "2026-10-13T10:00:28.792621+00:00",
+          "boundaryFields": [
+            "monitoring.typedFailureCodes[].errorCode",
+            "monitoring.typedFailureCodes[].diagnosticCodes[]",
+            "adjudication.typedFailure.code"
+          ],
+          "old17AssertionsPreserved": true,
+          "full113Gate": "PENDING_BEFORE_EXECUTION",
+          "newRealAcceptance": "NOT_RUN",
+          "originalR11SourceAndReportsUnchanged": true
+        }
+      ],
+      "status": "fix-installed-all-history-regressions-and-new-real-run-pending",
+      "fixes": [
+        {
+          "id": "consume-current-host-typed-provider-boundary-fields",
+          "applied": true,
+          "localVerified": true,
+          "liveVerified": false,
+          "publicSources": [
+            {
+              "path": "scripts/lib/user-preferred-model-policy.mjs",
+              "sha256": "eb4925046ef20ea443439dda88d044844bec556706041b8bce8a314db0b72c89",
+              "bytes": 20717
+            },
+            {
+              "path": "scripts/lib/user-preferred-model-policy.test.ts",
+              "sha256": "4af690ff3680c6feb2bc88690b9033f7915ff2646175c72116906f222a187a4a",
+              "bytes": 17916
+            }
+          ],
+          "scope": "Test harness Free-run boundary only; no model/API/UI/pipeline logic changes or extra probes."
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free closed current Host typed DTO stops extension without inferring provider channel cause",
+          "namePattern": "^Free closed current Host typed DTO stops extension without inferring provider channel cause$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary reads each current typed DTO coordinate independently",
+          "namePattern": "^Free boundary reads each current typed DTO coordinate independently$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary keeps exactly four registered provider codes on current typed diagnostic DTO",
+          "namePattern": "^Free boundary keeps exactly four registered provider codes on current typed diagnostic DTO$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary retains legacy code failureCode and top failure code coordinates",
+          "namePattern": "^Free boundary retains legacy code failureCode and top failure code coordinates$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary never derives provider authority from prose unknown literals or diagnostic objects",
+          "namePattern": "^Free boundary never derives provider authority from prose unknown literals or diagnostic objects$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-preferred-model-policy.test.ts",
+          "fullName": "Free boundary keeps model mode and both current closure flags separate from typed rejection",
+          "namePattern": "^Free boundary keeps model mode and both current closure flags separate from typed rejection$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [
+        {
+          "runId": "original12-current-source-20261013-r11",
+          "caseIds": ["S1L1", "S1L2"],
+          "originalSourceSHA256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+          "modelScope": "opencode-free-user-preferred-distinct-model",
+          "statusAtObservation": "NOT_FULL_PASS; original typed provider rejection did not trigger old boundary",
+          "newGuardOnFreshFreeRun": "NOT_RUN; no extra paid probe authorized",
+          "nextFreshRunRequired": true,
+          "acceptancePolicy": "current-genuine-ui-open-pipeline-normal-publication-original-budget"
+        }
+      ],
+      "lastExecution": {
+        "path": "architecture/quality/evidence/free-rejection-boundary-dto.json",
+        "sha256": "abff2c42e6304c12d5429f82a45dce55a5772f67c51dea5e733ea7189cea4546",
+        "kind": "candidate-local-Bun23-JUnit-nonempty-oldDTORED-candidateGREEN",
+        "publicMappedGate": "PENDING_AS_OF_APPEND"
+      },
+      "knownLimits": {
+        "historicalCoverageComplete": false,
+        "providerChannelCause": "UNKNOWN",
+        "currentFrozenR11QualificationUnchanged": true,
+        "genuineNewRealRun": "PENDING_NOT_VERIFIED",
+        "fixturePaidProcessClosure": "SYNTHETIC_CONTROLS_ONLY",
+        "futureProviderAcceptance": "UNKNOWN"
+      }
+    },
+    {
+      "id": "CSR-0021",
+      "lineage": ["R12-operator-optional-json-poll"],
+      "title": "Optional JSON polling throws an untyped error on incomplete producer bytes",
+      "category": "test-tool",
+      "mechanism": "bounded-optional-json-metadata-polling",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Confirmed local source-extracted counterexample only; actual R12 operator exit cause remains UNKNOWN.",
+      "actualR12CauseConfirmed": false,
+      "actualR12Cause": "UNKNOWN",
+      "firstEvidence": {
+        "sourceId": "current-operator-optional-json-poll",
+        "round": "R12-poll-reader-preparation",
+        "sourceRevision": "frozen-R12-operator-exact-function-extraction",
+        "path": "architecture/quality/evidence/operator-optional-json-poll.json",
+        "sha256": "c97136e2a26ddb7850d2f4bdfbe9805e0b2d0d9548637243f2845a981533dc84",
+        "role": "actual-unknown-and-confirmed-local-counterexample",
+        "observationId": "CSR-0021",
+        "acceptancePolicy": "No-paid local source-extracted optional parser and real observer-lease regressions; actual R12 operator cause remains UNKNOWN. Real acceptance requires current genuine Open Pipeline and normal publication within original UI budget, with no extra business or coverage score."
+      },
+      "history": [
+        {
+          "kind": "observed-R12-natural-operator-exit-missing-raw-stream",
+          "evidencePath": "architecture/quality/evidence/operator-optional-json-poll.json",
+          "evidenceSha256": "c97136e2a26ddb7850d2f4bdfbe9805e0b2d0d9548637243f2845a981533dc84",
+          "operatorExitCode": 2,
+          "publicFailureCode": "UNKNOWN",
+          "rawStream": "UNAVAILABLE_NOT_CAPTURED",
+          "actualR12CauseConfirmed": false,
+          "actualR12Cause": "UNKNOWN",
+          "scope": "test-tool-runtime-observation",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "confirmed-local-source-extracted-optionalJSON-assertion-red",
+          "evidencePath": "architecture/quality/evidence/operator-optional-json-poll.json",
+          "evidenceSha256": "c97136e2a26ddb7850d2f4bdfbe9805e0b2d0d9548637243f2845a981533dc84",
+          "actualSelectedTests": 1,
+          "failed": 1,
+          "errors": 0,
+          "selectedSkipped": 0,
+          "recordedChildExitCode": "UNKNOWN_NOT_PERSISTED_BEFORE_CAPTURE_CLASSIFICATION_ERROR",
+          "localCauseConfirmed": true,
+          "actualR12CauseConfirmed": false,
+          "scope": "local-test-tool-counterexample",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "Root-public-portable-reader-installed-before-format-with-fourteen-local-green",
+          "evidencePath": "architecture/quality/evidence/operator-optional-json-poll.json",
+          "evidenceSha256": "c97136e2a26ddb7850d2f4bdfbe9805e0b2d0d9548637243f2845a981533dc84",
+          "installationProof": {
+            "sha256": "2de1634a50eab12c3f8efcb44e3701f971702ac40f6978fbb309b7c7b64c97cb",
+            "bytes": 4934,
+            "role": "Root-six-source-install-before-format"
+          },
+          "activated": true,
+          "actualLocalTests": 14,
+          "passed": 14,
+          "failed": 0,
+          "errors": 0,
+          "skippedTodo": 0,
+          "oldObserverAssertionTestsRetained": 18,
+          "newCurrent143Gate": "PENDING_ROOT_FORMAT_AND_EXECUTION",
+          "newPrivateOperatorAdoption": "PENDING_NEW_ROOT_COMPOSITION",
+          "scope": "public-test-tool-source-installation",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "public-helper-installed-new-gate-and-fresh-real-run-pending",
+      "fixes": [
+        {
+          "kind": "bounded-optional-json-poll-reader-public-helper-installed",
+          "localRegressionVerified": true,
+          "activated": true,
+          "activationProof": {
+            "sha256": "2de1634a50eab12c3f8efcb44e3701f971702ac40f6978fbb309b7c7b64c97cb",
+            "bytes": 4934,
+            "role": "Root-six-source-install-before-format"
+          },
+          "realChatAcceptance": "unknown",
+          "graceMs": 1000,
+          "strictReadCaseOncePOSTPreserved": true,
+          "futurePrivateOperatorAdoption": "PENDING_NEW_ROOT_COMPOSITION"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll holds incomplete bytes then accepts the completed document$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll holds incomplete bytes then accepts the completed document"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll rejects unchanged malformed JSON at the bounded deadline$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll rejects unchanged malformed JSON at the bounded deadline"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll does not reset its deadline when malformed bytes change$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll does not reset its deadline when malformed bytes change"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll does not reset its deadline when malformed metadata disappears$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll does not reset its deadline when malformed metadata disappears"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll clears a completed document interval before a later producer write$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll clears a completed document interval before a later producer write"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll keeps independent deadlines for separate metadata coordinates$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll keeps independent deadlines for separate metadata coordinates"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll propagates exact reader failures without retrying a read or mutation$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll propagates exact reader failures without retrying a read or mutation"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll never holds non-syntax decoding exceptions$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll never holds non-syntax decoding exceptions"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll rejects invalid grace and backward or invalid clocks$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll rejects invalid grace and backward or invalid clocks"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll returns ordinary complete JSON values without fabricating objects$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll returns ordinary complete JSON values without fabricating objects"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll and real observer lease tolerate a partial observation and never repost$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll and real observer lease tolerate a partial observation and never repost"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll and real observer reject stable malformed evidence without authority$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll and real observer reject stable malformed evidence without authority"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll and real observer keep unknown semantic choices held through expiry$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll and real observer keep unknown semantic choices held through expiry"
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/optional-json-poll-reader.test.ts",
+          "namePattern": "^optional JSON poll and real observer preserve saved freshness and Host question expiry$",
+          "expectedTests": 1,
+          "fullName": "optional JSON poll and real observer preserve saved freshness and Host question expiry"
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "source-identical-before-format-portable-public-reader-local-test",
+        "classification": "ACTUAL_GREEN",
+        "proof": {
+          "sha256": "fb635f32ca61343973011152410196ea2a7a9c84b5725170919afb58ef2fada9",
+          "bytes": 3659,
+          "role": "actual-portable-14-GREEN"
+        },
+        "readerSha256": "83198282366f8725a7d21e71f1d6e92482f77815a2e46062fa7376798c7fd454",
+        "testSha256": "1041ad70e3fbd2f1aca517fef209257a72f988b3574c50cb42df3f81b822181e",
+        "actualSelectedTests": 14,
+        "passed": 14,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "todo": 0,
+        "naturalExit0": true,
+        "stdoutEOF": true,
+        "stderrEOF": true,
+        "newCurrent143Gate": "PENDING_ROOT_FORMAT_METADATA_INSTALL_AND_EXECUTION",
+        "scope": "local-test-tool-only",
+        "liveAcceptance": false
+      },
+      "claimLimit": "Local counterexample/prevention only. Actual R12 cause, new source143 gate and fresh real convergence remain UNKNOWN; old grades do not change."
+    },
+    {
+      "id": "CSR-0022",
+      "lineage": ["CSR-0016", "CSR-0020"],
+      "title": "Latest FreeOnly and wait policy requires a distinct typed authority and selection decision",
+      "category": "test-tool-workflow",
+      "mechanism": "free-only-wait-policy-typed-authorization-and-source-bound-selection",
+      "entryKind": "new-user-policy-schema-support-with-local-counterexample",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Finite local legacy-reader incompatibility with the newly authorized receipt kind/authority; no provider entitlement, billing, quota, production regression or real convergence cause asserted.",
+      "previousLegacyReaderWasIncorrect": false,
+      "firstEvidence": {
+        "sourceId": "current-free-only-wait-model-policy",
+        "round": "new-FreeOnly-wait-policy-local-preparation",
+        "sourceRevision": "sha256:eb4925046ef20ea443439dda88d044844bec556706041b8bce8a314db0b72c89",
+        "path": "architecture/quality/evidence/free-only-wait-model-policy.json",
+        "sha256": "fc95f53f03e07c902a37bf054d35832596373aec79b85d7b4a0270ca3dd7cd74",
+        "bytes": 12793,
+        "role": "latest-policy-compatibility-contract-and-local-counterexample",
+        "observationId": "CSR-0022",
+        "acceptancePolicy": "Local portable policy schema and authority guards only. Real acceptance retains original source prompts/criteria/Send/planning/repair and current UI normal publication/Open Pipeline; provider availability and charges remain UNKNOWN."
+      },
+      "history": [
+        {
+          "kind": "newest-user-FreeOnly-wait-contract-support-evidence",
+          "evidencePath": "architecture/quality/evidence/free-only-wait-model-policy.json",
+          "evidenceSha256": "fc95f53f03e07c902a37bf054d35832596373aec79b85d7b4a0270ca3dd7cd74",
+          "immutableFirstMetadata": {
+            "sha256": "41cb1ea07b39ae92632d7033911904e334ed89ded21ce5295bfc58a3850348e6",
+            "bytes": 2003,
+            "role": "first-contract-evidence"
+          },
+          "actualRootAuthorizationReceiptAsOfFirstEvidence": null,
+          "actualRootSelectionDecisionAsOfFirstEvidence": null,
+          "legacyFreeThenDeepSeekAsOfRetained": true,
+          "scope": "new-authorized-workflow-contract",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "old-exported-reader-healthy-legacy-control-then-selected-new-policy-assertion-RED",
+          "evidencePath": "architecture/quality/evidence/free-only-wait-model-policy.json",
+          "evidenceSha256": "fc95f53f03e07c902a37bf054d35832596373aec79b85d7b4a0270ca3dd7cd74",
+          "proof": {
+            "sha256": "b994052b402de9dac1d9b6f16c4663d241105dd12c2d02a57080be15a9aa9f20",
+            "bytes": 2908,
+            "role": "actual-selected-old-reader-RED"
+          },
+          "actualSelectedExecuted": 1,
+          "failed": 1,
+          "errors": 0,
+          "selectedSkipTodo": 0,
+          "productRegressionClaimed": false,
+          "scope": "local-latest-policy-schema-only",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "first-candidate31-30PASS-1FAIL-preserved-asof-unknown-cause",
+          "evidencePath": "architecture/quality/evidence/free-only-wait-model-policy.json",
+          "evidenceSha256": "fc95f53f03e07c902a37bf054d35832596373aec79b85d7b4a0270ca3dd7cd74",
+          "proof": {
+            "sha256": "1992046d76c90ac7ea7df0497009bdf0d43a998d714a55625888d04a98bc6662",
+            "bytes": 5580,
+            "role": "first31-actual-failure"
+          },
+          "passed": 30,
+          "failed": 1,
+          "original23Passed": 23,
+          "causeAsOf": "UNKNOWN_REQUIRES_REVIEW",
+          "publicProductREDClaimed": false,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "separate-preparation-fixture-alias-resolution-and-later31-GREEN",
+          "evidencePath": "architecture/quality/evidence/free-only-wait-model-policy.json",
+          "evidenceSha256": "fc95f53f03e07c902a37bf054d35832596373aec79b85d7b4a0270ca3dd7cd74",
+          "fixtureResolution": {
+            "sha256": "d0e9ffd08b7a3836269b30639a340991514cbfd016778e61cc568be8aa94c1f6",
+            "bytes": 2445,
+            "role": "fixture-only-resolution"
+          },
+          "laterGreen": {
+            "sha256": "47c8c5d0bce0708c9490f42140a8d5446470b3c04f85e46bc7bb9228338987e9",
+            "bytes": 5747,
+            "role": "actual-candidate31-GREEN"
+          },
+          "sourceHelperUnchanged": true,
+          "allOriginalAssertionsRetained": true,
+          "actualExecuted": 31,
+          "passed": 31,
+          "additionalPortableTests": 8,
+          "newPublicCurrent151Gate": null,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "later-actual-Root-FreeOnly-authority-opaque-parser-metadata-append",
+          "evidencePath": "architecture/quality/evidence/free-only-wait-model-policy.json",
+          "evidenceSha256": "fc95f53f03e07c902a37bf054d35832596373aec79b85d7b4a0270ca3dd7cd74",
+          "actualRootReceipt": {
+            "sha256": "f94ff5286839bd5a7126130c9f5880cda79f52ed28881eecc19ff823bd46fc0e",
+            "bytes": 2654,
+            "role": "later-actual-Root-FreeOnly-authorization-receipt-opaque-only"
+          },
+          "fileOnlyParserProof": {
+            "sha256": "3103442d2f0ff018c58a1cc90adf8f2895378bce9f3920f8377d10a777c59566",
+            "bytes": 1898,
+            "role": "later-Root-file-only-parser-metadata-opaque-only"
+          },
+          "oldFirstNullFieldsUnchanged": true,
+          "newPublicSource": null,
+          "newCurrent151Gate": null,
+          "providerAvailabilityChargesAndRealConvergence": "UNKNOWN",
+          "scope": "opaque-authority-metadata-only",
+          "liveAcceptance": false
+        },
+        {
+          "sourceObservationEpoch": "repository-source-1469-70667045-current159-before-next-metadata-install",
+          "repositorySource": {
+            "sha256": "36d6018462b23ffebe8b0f4a255b93521eddf48830556abb7096e81c806a316a",
+            "bytes": 288863,
+            "role": "actual-asof-public-repository-manifest"
+          },
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1469,
+            "sha256": "70667045bafa20b2226b5d22ac824a80e4ee5904b9ff4f1dc070e7db1a91f6a6"
+          },
+          "actualPublicSources": [
+            {
+              "path": "scripts/lib/user-preferred-model-policy.mjs",
+              "sha256": "5752bc46c508bd399211011256f6f4d828bb6db28771e7d120636faaeea2b50d",
+              "bytes": 26817,
+              "role": "actual-public-installed-source-asof-159"
+            },
+            {
+              "path": "scripts/lib/user-free-only-model-policy.test.ts",
+              "sha256": "fe444f80215ecf1ede79ff377c129d993708ee49a21efa38c14013c8ef5a926f",
+              "bytes": 16414,
+              "role": "actual-public-installed-source-asof-159"
+            }
+          ],
+          "actualH16CallerExecuted": true,
+          "callerSource": {
+            "sha256": "7e217815e0bcb417d1226818a7cdcdde8675c83d153275398827d6d164ab2fa4",
+            "bytes": 108262,
+            "role": "actual-H16-caller-source"
+          },
+          "historicalCoverageComplete": false,
+          "realOriginal12Convergence": false,
+          "supplierAvailabilityFixed": false,
+          "actualR13Cause": "UNKNOWN",
+          "globalOrUnregisteredProcessAndProviderFinancialScope": "UNKNOWN",
+          "automaticFixedPromotionAllowed": false,
+          "oldFirstEvidenceAndPriorHistoryPreserved": true,
+          "scope": "Workflow mechanism and current caller integration evidence only; neither supplier repair nor current full12 publication nor complete historical coverage.",
+          "kind": "later-Root-public-installed-current159-GREEN-and-genuine-H16-caller-epoch-append",
+          "actualPublicInstalled": true,
+          "selectedExecuted": 8,
+          "selectedPassed": 8,
+          "selectedFailed": 0,
+          "selectedSkipTodo": 0,
+          "currentSourceGate": {
+            "issueCount": 23,
+            "regressionCount": 159,
+            "passed": true,
+            "historicalCoverageComplete": false,
+            "receipt": {
+              "sha256": "9d687ffb48a441ac2f68799a0a7d9e7dfcb8d51404802e03ca2d136ca210d810",
+              "bytes": 169370,
+              "role": "actual-Root-current159-no-model-regression-receipt"
+            }
+          },
+          "genuineZeroSendSmoke": {
+            "report": {
+              "sha256": "1b2c3ba06c2c0bdbc9b00f87599a06a5be50fb4e2af9a78a4b4d7f74be9a5c2e",
+              "bytes": 42010,
+              "role": "actual-genuine-zero-Send-report"
+            },
+            "originalSendCount": 0,
+            "modelCallCount": 0,
+            "registeredNativeScopeClosed": true
+          },
+          "genuineR14PartialExecution": {
+            "closure": {
+              "sha256": "f0ceaf04a73a290d49c6f25e896ab5963721922ad20962e87667f5fbb7ec872f",
+              "bytes": 3562,
+              "role": "actual-Root-finite-R14-partial-controlled-closure"
+            },
+            "originalSent": 1,
+            "NOT_FULL_PASS": 1,
+            "notStartedNOT_RUN": 11,
+            "originalInventoryComplete": false,
+            "registeredCurrentOwnedScopeClosed": true,
+            "providerRequestAcceptance": "REJECTED_CURRENT_REQUEST",
+            "underlyingProviderCause": "UNKNOWN",
+            "futureAndOtherFreeModelAvailability": "UNKNOWN",
+            "DeepSeekFallbackAllowed": false,
+            "manualRetry": 0,
+            "extraModelProbes": 0
+          },
+          "priorPendingFieldsRetainedAsOf": true,
+          "nextPublicMetadataEpochAnd162Proof": "New all162 execution remains a separate WORK receipt after coherent public installation; no public self-reference."
+        }
+      ],
+      "status": "local-policy-contract-green-public-source-and-new-gate-pending",
+      "fixes": [
+        {
+          "kind": "prepared-distinct-FreeOnly-wait-authority-and-source-bound-decision-guard",
+          "localRegressionVerified": true,
+          "activated": false,
+          "candidateHelper": {
+            "path": "scripts/lib/user-preferred-model-policy.mjs",
+            "sha256": "3ccf11aff1e718c9f9e2c6111020fa4ca05b5089db8288af58e4a4a1af251261",
+            "bytes": 26493
+          },
+          "candidateTest": {
+            "path": "scripts/lib/user-free-only-model-policy.test.ts",
+            "sha256": "6d6fc5e81c2b4ee26723c5b155155c3d8ed8877f16585899562b086428b5b396",
+            "bytes": 14762
+          },
+          "latestRootAuthorityOpaqueRef": {
+            "sha256": "f94ff5286839bd5a7126130c9f5880cda79f52ed28881eecc19ff823bd46fc0e",
+            "bytes": 2654,
+            "role": "later-actual-Root-FreeOnly-authorization-receipt-opaque-only"
+          },
+          "actualPublicSource": null,
+          "newCurrent151Gate": null,
+          "actualRuntimeConvergence": "UNKNOWN",
+          "realChatAcceptance": "unknown"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only wait authority is distinct from a valid legacy Free then DeepSeek receipt",
+          "namePattern": "^Free only wait authority is distinct from a valid legacy Free then DeepSeek receipt$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only source bound selection retains exact tuple zero price toolcall and explicit low",
+          "namePattern": "^Free only source bound selection retains exact tuple zero price toolcall and explicit low$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only parsed authority prohibits all paid and legacy fallback routes including omitted receipt",
+          "namePattern": "^Free only parsed authority prohibits all paid and legacy fallback routes including omitted receipt$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only decision branding and authorization tuple cannot be substituted",
+          "namePattern": "^Free only decision branding and authorization tuple cannot be substituted$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only decision rejects changed binding run metadata and known rejected intersection",
+          "namePattern": "^Free only decision rejects changed binding run metadata and known rejected intersection$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only receipt preserves independent authority fixed exclusions budgets and no retry or probes",
+          "namePattern": "^Free only receipt preserves independent authority fixed exclusions budgets and no retry or probes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only current metadata still fails closed on price toolcall membership variant and foreign workspace",
+          "namePattern": "^Free only current metadata still fails closed on price toolcall membership variant and foreign workspace$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/user-free-only-model-policy.test.ts",
+          "fullName": "Free only closed provider rejection requests waiting and cannot authorize DeepSeek or retries",
+          "namePattern": "^Free only closed provider rejection requests waiting and cannot authorize DeepSeek or retries$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "saved-candidate-source-identical-local-portable-all31",
+        "classification": "ACTUAL_GREEN",
+        "proof": {
+          "sha256": "47c8c5d0bce0708c9490f42140a8d5446470b3c04f85e46bc7bb9228338987e9",
+          "bytes": 5747,
+          "role": "actual31-candidate-local-GREEN"
+        },
+        "candidateHelperSha256": "3ccf11aff1e718c9f9e2c6111020fa4ca05b5089db8288af58e4a4a1af251261",
+        "newTestSha256": "6d6fc5e81c2b4ee26723c5b155155c3d8ed8877f16585899562b086428b5b396",
+        "original23TestSha256": "4af690ff3680c6feb2bc88690b9033f7915ff2646175c72116906f222a187a4a",
+        "expected": 31,
+        "executed": 31,
+        "passed": 31,
+        "failed": 0,
+        "errors": 0,
+        "selectedSkipTodo": 0,
+        "additionalTests": 8,
+        "originalNodeAssertTestsActuallyExecuted": 23,
+        "BunExpectAssertionsForAdditionalEightOnly": 124,
+        "naturalExit0": true,
+        "JUnit": {
+          "sha256": "0adcbd0f4cae3a2976739e7ec568ad24f4e1fa3077ed40c8f8aa92c654314c87",
+          "bytes": 7260,
+          "role": "saved31-nonempty-passed-JUnit"
+        },
+        "sourceBeforeAfterUnchanged": true,
+        "newPublicSourceAndCurrent151Gate": null,
+        "newPublicSourceAndCurrent151GateState": "PENDING_ROOT_INSTALL_FORMAT_AND_WHOLE_CURRENT_GATE",
+        "scope": "local-test-tool-policy-only",
+        "liveAcceptance": false
+      },
+      "knownLimits": {
+        "providerAcceptanceAndCharges": "UNKNOWN",
+        "newCurrent151Gate": "PENDING_ROOT_INSTALL_FORMAT_AND_WHOLE_CURRENT_GATE",
+        "newFreeOnlyConsumerQualificationAndRealRun": "PENDING",
+        "oldFirstRootNullAsOfPreserved": true,
+        "old47StableIssueIDsPreserved": true,
+        "historicalCoverageComplete": false,
+        "productCauseOrFixedPromotionAllowed": false
+      },
+      "claimLimit": "Old selected RED verifies support for the latest new policy schema; later31 GREEN covers pure portable guards only. No provider availability, zero-charge, genuine publication, historical GREEN or production-regression claim.",
+      "latestVerificationState": {
+        "epochId": "actual-r14-source159-public-workflow-and-H16-caller",
+        "historyKind": "later-Root-public-installed-current159-GREEN-and-genuine-H16-caller-epoch-append",
+        "actualPublicInstalled": true,
+        "currentSourceRegressionGate": "ACTUAL_GREEN_ASOF_23_ISSUES_159_SELECTORS",
+        "actualH16CallerExecuted": true,
+        "currentOriginal12Result": "PARTIAL_1_NOT_FULL_PASS_11_NOT_RUN",
+        "supplierAvailabilityFixed": false,
+        "historicalCoverageComplete": false,
+        "futureAndOtherFreeAvailability": "UNKNOWN",
+        "meaning": "This appended later epoch supersedes earlier pending preparation claims for mechanism verification only; their original fields remain unchanged."
+      }
+    },
+    {
+      "id": "CSR-0023",
+      "lineage": ["V15-owned-finalization-source-mechanism"],
+      "title": "Finally-path evidence failure can skip later owned finalization hooks",
+      "category": "test-harness-workflow",
+      "mechanism": "ordered-independent-owned-harness-finalization-with-bounded-fault-projection",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Finite source-extracted V15 finally behavior only; actual live S3L3 cause remains UNKNOWN.",
+      "actualR13S3L3Cause": "UNKNOWN",
+      "actualR13S3L3CauseConfirmed": false,
+      "firstEvidence": {
+        "sourceId": "current-owned-harness-finalization",
+        "round": "V15-source-extracted-owned-finalization-local-counterexample",
+        "sourceRevision": "sha256:7aee41ca4a6c8b7e95ddfe99201d46e47aa08b4572724c159a8fba863aa2e8da",
+        "path": "architecture/quality/evidence/owned-harness-finalization.json",
+        "sha256": "ebc0099948ef40174b421de579945197220be95b672ea7639295ab23a8478b9f",
+        "bytes": 12128,
+        "role": "source-extracted-local-finally-mechanism-assertion-RED",
+        "observationId": "CSR-0023",
+        "acceptancePolicy": "No-paid source-extracted and synthetic hook tests only; no actual native closure, product acceptance or actual live-case cause inferred."
+      },
+      "history": [
+        {
+          "kind": "confirmed-old-source-finally-selected-assertion-RED",
+          "evidencePath": "architecture/quality/evidence/owned-harness-finalization.json",
+          "evidenceSha256": "ebc0099948ef40174b421de579945197220be95b672ea7639295ab23a8478b9f",
+          "firstResolution": {
+            "sha256": "907c38814c118447ef0d25e485fbedb67c648d610ec7df8165e6a975fbef2d74",
+            "bytes": 2309,
+            "role": "immutable-first-source-RED"
+          },
+          "execution": {
+            "sha256": "571b98a2428d12ba4cbda8f3980d7ffe0e682e5678697506b29ffebad1ad06da",
+            "bytes": 3110,
+            "role": "actual-source-RED"
+          },
+          "actualSelectedExecuted": 1,
+          "failed": 1,
+          "errors": 0,
+          "selectedSkipTodo": 0,
+          "actualS3L3Cause": "UNKNOWN",
+          "realProductActions": 0,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-unpublished-candidate-local-GREEN-epochs-asof",
+          "evidencePath": "architecture/quality/evidence/owned-harness-finalization.json",
+          "evidenceSha256": "ebc0099948ef40174b421de579945197220be95b672ea7639295ab23a8478b9f",
+          "epochs": [
+            {
+              "revision": 1,
+              "proof": {
+                "sha256": "916574be939a4767387d6baf32ef43fc96db61203362f0f80704b028f7ef1658",
+                "bytes": 4795,
+                "role": "immutable-candidate-asof-local-GREEN"
+              },
+              "actualPassed": 8,
+              "expectCalls": 60,
+              "asOfOnly": true,
+              "publicOrProductDefectClaimed": false
+            },
+            {
+              "revision": 2,
+              "proof": {
+                "sha256": "dec66ff774aa7af93988d6be7b31dd40835bf63626de69d7b4e0d9ae1b83418f",
+                "bytes": 4816,
+                "role": "immutable-candidate-asof-local-GREEN"
+              },
+              "actualPassed": 8,
+              "expectCalls": 64,
+              "asOfOnly": true,
+              "publicOrProductDefectClaimed": false
+            },
+            {
+              "revision": 3,
+              "proof": {
+                "sha256": "56b86143b62a72b1a8e8ac1e6093e2759b37003fa5aca7f20383001439b441af",
+                "bytes": 4882,
+                "role": "immutable-candidate-asof-local-GREEN"
+              },
+              "actualPassed": 8,
+              "expectCalls": 69,
+              "asOfOnly": true,
+              "publicOrProductDefectClaimed": false
+            }
+          ],
+          "liveAcceptance": false
+        },
+        {
+          "kind": "distinct-unpublished-candidate-getter-and-callback-mutation-counterexamples",
+          "evidencePath": "architecture/quality/evidence/owned-harness-finalization.json",
+          "evidenceSha256": "ebc0099948ef40174b421de579945197220be95b672ea7639295ab23a8478b9f",
+          "counterexamples": [
+            {
+              "mechanism": "unstable thrown code/name getter after validation",
+              "proof": {
+                "sha256": "c26cac71e92dd3e0cf5496d64e1ef02ea26ae600f7dcd4cac61b6b73c5a0c676",
+                "bytes": 4441,
+                "role": "unpublished-candidate-preparation-counterexample-RED"
+              },
+              "actualSelectedFailed": 1,
+              "unselectedFiltered": 7,
+              "expectCalls": 5,
+              "publicOrProductionDefectClaimed": false,
+              "actualCaseRootCauseClaimed": false
+            },
+            {
+              "mechanism": "unstable step name/run getters after validation",
+              "proof": {
+                "sha256": "16167c8fff8348f79726cb3163d64142f1d408883a55f33261c80cd29d9c951d",
+                "bytes": 4480,
+                "role": "unpublished-candidate-preparation-counterexample-RED"
+              },
+              "actualSelectedFailed": 1,
+              "unselectedFiltered": 7,
+              "expectCalls": 6,
+              "publicOrProductionDefectClaimed": false,
+              "actualCaseRootCauseClaimed": false
+            },
+            {
+              "mechanism": "callback this mutates internal captured step name",
+              "proof": {
+                "sha256": "12dabd23f5ab470e1e37f678b2b649a9cee949d8c88c27c56777c05a8e18bf84",
+                "bytes": 4481,
+                "role": "unpublished-candidate-preparation-counterexample-RED"
+              },
+              "actualSelectedFailed": 1,
+              "unselectedFiltered": 7,
+              "expectCalls": 11,
+              "publicOrProductionDefectClaimed": false,
+              "actualCaseRootCauseClaimed": false
+            }
+          ],
+          "oldSourceOrProductRegressionClaimed": false,
+          "actualS3L3Cause": "UNKNOWN",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "prepared-V4-eight-selector-local-GREEN-with-all-prior-assertions-retained",
+          "evidencePath": "architecture/quality/evidence/owned-harness-finalization.json",
+          "evidenceSha256": "ebc0099948ef40174b421de579945197220be95b672ea7639295ab23a8478b9f",
+          "resolution": {
+            "sha256": "7195d3c6b2d15d8daeebb35c80202fe4cd0396a27089e87ba0368ee4e19f0087",
+            "bytes": 5391,
+            "role": "final-V4-resolution"
+          },
+          "proof": {
+            "sha256": "7ac9c94f19258d113d08b1082735b17b46843fe1d203ae0ca5fa4c1afabd1661",
+            "bytes": 4882,
+            "role": "actual-final8-GREEN"
+          },
+          "passed": 8,
+          "expectCalls": 73,
+          "publicActivated": false,
+          "newCurrent159Gate": null,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "Root-canonical-selector-grammar-correction",
+          "scope": "Metadata only: unescaped literal spaces match the same eight full names. No test or assertion changed.",
+          "preparedEscapedSpacesWereUnsupportedByActualRunner": true,
+          "allEightSelectorNamesAndExpectedTestsPreserved": true,
+          "oldEvidenceAndProofsUnchanged": true
+        },
+        {
+          "sourceObservationEpoch": "repository-source-1469-70667045-current159-before-next-metadata-install",
+          "repositorySource": {
+            "sha256": "36d6018462b23ffebe8b0f4a255b93521eddf48830556abb7096e81c806a316a",
+            "bytes": 288863,
+            "role": "actual-asof-public-repository-manifest"
+          },
+          "sourceFingerprint": {
+            "scheme": "public-git-visible-v1",
+            "fileCount": 1469,
+            "sha256": "70667045bafa20b2226b5d22ac824a80e4ee5904b9ff4f1dc070e7db1a91f6a6"
+          },
+          "actualPublicSources": [
+            {
+              "path": "scripts/lib/owned-harness-finalization.mjs",
+              "sha256": "47f2a5252506ebd73f1d7d918c0df9a0dc15b852853d5ce25615f292990ed9b7",
+              "bytes": 2642,
+              "role": "actual-public-installed-source-asof-159"
+            },
+            {
+              "path": "scripts/lib/owned-harness-finalization.test.ts",
+              "sha256": "d200f4976b97de4b6b6abae4205bf5839ea097e5f2cbe577748539a66cbae9ad",
+              "bytes": 12480,
+              "role": "actual-public-installed-source-asof-159"
+            }
+          ],
+          "actualH16CallerExecuted": true,
+          "callerSource": {
+            "sha256": "7e217815e0bcb417d1226818a7cdcdde8675c83d153275398827d6d164ab2fa4",
+            "bytes": 108262,
+            "role": "actual-H16-caller-source"
+          },
+          "historicalCoverageComplete": false,
+          "realOriginal12Convergence": false,
+          "supplierAvailabilityFixed": false,
+          "actualR13Cause": "UNKNOWN",
+          "globalOrUnregisteredProcessAndProviderFinancialScope": "UNKNOWN",
+          "automaticFixedPromotionAllowed": false,
+          "oldFirstEvidenceAndPriorHistoryPreserved": true,
+          "scope": "Workflow mechanism and current caller integration evidence only; neither supplier repair nor current full12 publication nor complete historical coverage.",
+          "kind": "later-Root-public-installed-current159-GREEN-and-genuine-H16-caller-epoch-append",
+          "actualPublicInstalled": true,
+          "selectedExecuted": 8,
+          "selectedPassed": 8,
+          "selectedFailed": 0,
+          "selectedSkipTodo": 0,
+          "currentSourceGate": {
+            "issueCount": 23,
+            "regressionCount": 159,
+            "passed": true,
+            "historicalCoverageComplete": false,
+            "receipt": {
+              "sha256": "9d687ffb48a441ac2f68799a0a7d9e7dfcb8d51404802e03ca2d136ca210d810",
+              "bytes": 169370,
+              "role": "actual-Root-current159-no-model-regression-receipt"
+            }
+          },
+          "genuineZeroSendSmoke": {
+            "report": {
+              "sha256": "1b2c3ba06c2c0bdbc9b00f87599a06a5be50fb4e2af9a78a4b4d7f74be9a5c2e",
+              "bytes": 42010,
+              "role": "actual-genuine-zero-Send-report"
+            },
+            "originalSendCount": 0,
+            "modelCallCount": 0,
+            "registeredNativeScopeClosed": true
+          },
+          "genuineR14PartialExecution": {
+            "closure": {
+              "sha256": "f0ceaf04a73a290d49c6f25e896ab5963721922ad20962e87667f5fbb7ec872f",
+              "bytes": 3562,
+              "role": "actual-Root-finite-R14-partial-controlled-closure"
+            },
+            "originalSent": 1,
+            "NOT_FULL_PASS": 1,
+            "notStartedNOT_RUN": 11,
+            "originalInventoryComplete": false,
+            "registeredCurrentOwnedScopeClosed": true,
+            "providerRequestAcceptance": "REJECTED_CURRENT_REQUEST",
+            "underlyingProviderCause": "UNKNOWN",
+            "futureAndOtherFreeModelAvailability": "UNKNOWN",
+            "DeepSeekFallbackAllowed": false,
+            "manualRetry": 0,
+            "extraModelProbes": 0
+          },
+          "priorPendingFieldsRetainedAsOf": true,
+          "nextPublicMetadataEpochAnd162Proof": "New all162 execution remains a separate WORK receipt after coherent public installation; no public self-reference."
+        }
+      ],
+      "status": "local-source-mechanism-and-candidate-green-prior151-and-public159-gate-pending",
+      "fixes": [
+        {
+          "kind": "prepared-pure-owned-finalization-helper",
+          "localRegressionVerified": true,
+          "activated": false,
+          "candidatePublicSources": [
+            {
+              "path": "scripts/lib/owned-harness-finalization.mjs",
+              "sha256": "d4485768f3a833d943e64f853880fb2622572a2f8b4ec5ccfecdaa2b7c7124e9",
+              "bytes": 2596,
+              "role": "candidate-before-Root-install-format-and-new-gate"
+            },
+            {
+              "path": "scripts/lib/owned-harness-finalization.test.ts",
+              "sha256": "430b9d2bf69ccb5e431ceff0428ff40b34e098e025921bbb31f96fe87505e6c9",
+              "bytes": 10630,
+              "role": "eight-existing-name-portable-tests"
+            }
+          ],
+          "requiresPriorActual151GREEN": true,
+          "actualPublicSource": null,
+          "actualCurrent159Gate": null,
+          "actualH16CallerIntegration": "PENDING",
+          "realChatAcceptance": "unknown",
+          "actualNativePaidOrMatrixClosure": "UNKNOWN"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization closes exact resources after monitor evidence ENOSPC",
+          "namePattern": "^owned finalization closes exact resources after monitor evidence ENOSPC$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization continues after usage evidence ENOSPC",
+          "namePattern": "^owned finalization continues after usage evidence ENOSPC$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization preserves primary error and surfaces independent cleanup errors",
+          "namePattern": "^owned finalization preserves primary error and surfaces independent cleanup errors$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization does not manufacture settlement ownership or matrix closure",
+          "namePattern": "^owned finalization does not manufacture settlement ownership or matrix closure$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization freezes its finite step plan and executes each hook once",
+          "namePattern": "^owned finalization freezes its finite step plan and executes each hook once$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization bounds fault projections without retaining thrown prose",
+          "namePattern": "^owned finalization bounds fault projections without retaining thrown prose$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization rejects malformed duplicate or unbounded plans before hooks execute",
+          "namePattern": "^owned finalization rejects malformed duplicate or unbounded plans before hooks execute$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/owned-harness-finalization.test.ts",
+          "fullName": "owned finalization preserves explicit cleanup UNKNOWN and continues credential teardown",
+          "namePattern": "^owned finalization preserves explicit cleanup UNKNOWN and continues credential teardown$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "saved-candidate-V4-synthetic-hook-local-execution",
+        "classification": "ACTUAL_GREEN",
+        "proof": {
+          "sha256": "7ac9c94f19258d113d08b1082735b17b46843fe1d203ae0ca5fa4c1afabd1661",
+          "bytes": 4882,
+          "role": "actual-final-V4-all8-GREEN"
+        },
+        "candidateHelperSha256": "d4485768f3a833d943e64f853880fb2622572a2f8b4ec5ccfecdaa2b7c7124e9",
+        "candidateTestSha256": "430b9d2bf69ccb5e431ceff0428ff40b34e098e025921bbb31f96fe87505e6c9",
+        "executed": 8,
+        "passed": 8,
+        "failed": 0,
+        "errors": 0,
+        "selectedSkipTodo": 0,
+        "expectCalls": 73,
+        "sourceBindingsStable": true,
+        "JUnit": {
+          "sha256": "43ed94507595c3aba6bc908bebc5675fbd326294a1f710b3e3760fa22f3f826a",
+          "bytes": 1935,
+          "role": "saved-final-V4-JUnit-eight-nonempty-passes"
+        },
+        "scope": "synthetic-owned-hooks-only",
+        "realNativeOrProductCalls": 0,
+        "models": 0,
+        "currentPublic159Gate": null,
+        "liveAcceptance": false
+      },
+      "knownLimits": {
+        "actualR13S3L3Cause": "UNKNOWN",
+        "nativeV6StageJournalThrowingMechanism": "WITHDRAWN_NONTHROW_CATCH",
+        "nativeV7Required": false,
+        "helperDoesNotOwnScopeOrGrantProcessAuthority": true,
+        "primaryErrorMemoryIdentityIsNotSafeSerialization": true,
+        "callbackSuccessIsNotScopeClosureProof": true,
+        "prior151AndNew159Gate": "PENDING_ACTUAL_ROOT_RECEIPTS",
+        "historicalCoverageComplete": false,
+        "automaticFixedPromotionAllowed": false
+      },
+      "claimLimit": "Confirmed local old finally counterexample and candidate-only prevention proof. Actual live cause, product convergence, native/global/paid closure and complete historical coverage remain unclaimed.",
+      "latestVerificationState": {
+        "epochId": "actual-r14-source159-public-workflow-and-H16-caller",
+        "historyKind": "later-Root-public-installed-current159-GREEN-and-genuine-H16-caller-epoch-append",
+        "actualPublicInstalled": true,
+        "currentSourceRegressionGate": "ACTUAL_GREEN_ASOF_23_ISSUES_159_SELECTORS",
+        "actualH16CallerExecuted": true,
+        "currentOriginal12Result": "PARTIAL_1_NOT_FULL_PASS_11_NOT_RUN",
+        "supplierAvailabilityFixed": false,
+        "historicalCoverageComplete": false,
+        "futureAndOtherFreeAvailability": "UNKNOWN",
+        "meaning": "This appended later epoch supersedes earlier pending preparation claims for mechanism verification only; their original fields remain unchanged."
+      }
+    },
+    {
+      "id": "CSR-0024",
+      "lineage": [
+        "private-V6-closed-zero-send-matrix-identity",
+        "private-V8-matrix-serial-prefix-and-counts"
+      ],
+      "title": "Status-only matrix counts omit genuinely closed zero Send slots",
+      "category": "test-harness-workflow",
+      "mechanism": "explicit-started-submission-and-closed-serial-identity",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Source-extracted private V6 matrix gate rejects genuine started and closed Send0 slots whose adjudication status is NOT RUN. No actual R13/product/provider cause inferred.",
+      "firstEvidence": {
+        "sourceId": "current-closed-matrix-identity",
+        "round": "private-V6-source-extracted-closed-zero-send-counterexample",
+        "sourceRevision": "sha256:765aeb82ac5807dbc89bdd78ec1989d4aaae8895d05b454e4e70a5ac4af4c5a4",
+        "path": "architecture/quality/evidence/closed-matrix-identity.json",
+        "sha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
+        "bytes": 5916,
+        "role": "immutable-first-source-assertion-RED-capsule",
+        "acceptancePolicy": "Local source-extracted metadata identity predicate only; not real UI acceptance, provider acceptance, current product cause, or full historical coverage."
+      },
+      "history": [
+        {
+          "kind": "genuine-existing-private-source-first-assertion-RED",
+          "evidencePath": "architecture/quality/evidence/closed-matrix-identity.json",
+          "evidenceSha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
+          "firstResolution": {
+            "sha256": "d6d11481b6f60d38cc56f3b424b0090fe00c6943e68c825f3afe73b106a49878",
+            "bytes": 1474,
+            "role": "immutable-first-RED-d6d"
+          },
+          "selectedExecuted": 1,
+          "selectedFailed": 1,
+          "selectedErrors": 0,
+          "selectedSkipped": 0,
+          "healthySentControlPassed": true,
+          "actualR13OrProductCause": "UNKNOWN"
+        },
+        {
+          "kind": "private-V8-source-contract-GREEN-asof",
+          "evidencePath": "architecture/quality/evidence/closed-matrix-identity.json",
+          "evidenceSha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
+          "resolution": {
+            "sha256": "cd49c6e88c34f09e188360e05af0292f2e42f723e840bc2a0e7b482e400dd671",
+            "bytes": 3048,
+            "role": "private-cd49-GREEN"
+          },
+          "selectedExecuted": 3,
+          "selectedPassed": 3,
+          "publicInstalled": false,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "portable-source-identical-tests-existing-gate-RED-to-helper-GREEN",
+          "evidencePath": "architecture/quality/evidence/closed-matrix-identity.json",
+          "evidenceSha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
+          "resolution": {
+            "sha256": "3455869cc2ed820e03d5cb495b4723218cf9b980177c2635fb7e300b2623d1e6",
+            "bytes": 4014,
+            "role": "portable-local-proof"
+          },
+          "oldSelectedExecuted": 1,
+          "oldSelectedFailed": 1,
+          "oldUnselectedFiltered": 2,
+          "newSelectedExecuted": 3,
+          "newSelectedPassed": 3,
+          "newSkipped": 0,
+          "newErrors": 0,
+          "expectCalls": 29,
+          "wholeCurrent162Gate": null,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "Root-reviewed-public-portable-regression-materialization",
+          "publicInstalled": true,
+          "materializedPublicPaths": [
+            "scripts/lib/closed-matrix-identity.mjs",
+            "scripts/lib/closed-matrix-identity.test.ts"
+          ],
+          "immutableEvidencePath": "architecture/quality/evidence/closed-matrix-identity.json",
+          "immutableEvidenceSha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
+          "candidateActualPassed": 3,
+          "candidateSelectedSkipTodo": 0,
+          "candidateProofSha256": "3455869cc2ed820e03d5cb495b4723218cf9b980177c2635fb7e300b2623d1e6",
+          "currentWholeGate": "Separately execute all162 after coherent public-source installation; do not self-reference a source-bound receipt in this catalog.",
+          "privateFutureV9Integration": "PREPARED_UNAPPLIED",
+          "actualExistingPrivateV8ThreeContractGreenPreserved": true,
+          "supplierAvailabilityFixed": false,
+          "historicalCoverageComplete": false,
+          "realOriginal12Convergence": false
+        }
+      ],
+      "status": "local-source-mechanism-and-portable-green-public-install-and-current-gate-pending",
+      "fixes": [
+        {
+          "kind": "prepared-pure-closed-matrix-identity-helper",
+          "localRegressionVerified": true,
+          "activated": false,
+          "candidatePublicSources": [
+            {
+              "path": "scripts/lib/closed-matrix-identity.mjs",
+              "sha256": "f990555b9637e02fb862125b205dd07bffe0c59ff16582c7b75b572c8dfc7b7f",
+              "bytes": 1709,
+              "role": "uninstalled-pure-generic-helper-candidate"
+            },
+            {
+              "path": "scripts/lib/closed-matrix-identity.test.ts",
+              "sha256": "7f5f7fe698668502cbbd04ee7f11cf2396cedf828e52fc7ac05a97daa7f80f80",
+              "bytes": 4395,
+              "role": "portable-three-literal-selector-candidate"
+            }
+          ],
+          "actualPublicSource": null,
+          "actualCurrent162Gate": null,
+          "futurePrivateV9Integration": "PREPARED_UNAPPLIED",
+          "actualModelOrProductCause": "UNKNOWN"
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/closed-matrix-identity.test.ts",
+          "fullName": "closed matrix preserves closed zero Send slots and derives sent count from submission facts",
+          "namePattern": "^closed matrix preserves closed zero Send slots and derives sent count from submission facts$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/closed-matrix-identity.test.ts",
+          "fullName": "closed matrix separates unstarted slots and rejects unknown closure evidence",
+          "namePattern": "^closed matrix separates unstarted slots and rejects unknown closure evidence$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/closed-matrix-identity.test.ts",
+          "fullName": "closed matrix rejects mismatched source run inventory and nonserial closed identities",
+          "namePattern": "^closed matrix rejects mismatched source run inventory and nonserial closed identities$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "local-portable-three-selector-GREEN",
+        "classification": "ACTUAL_GREEN",
+        "proof": {
+          "sha256": "3455869cc2ed820e03d5cb495b4723218cf9b980177c2635fb7e300b2623d1e6",
+          "bytes": 4014,
+          "role": "portable-red-green-resolution"
+        },
+        "executed": 3,
+        "passed": 3,
+        "failed": 0,
+        "errors": 0,
+        "selectedSkipTodo": 0,
+        "expectCalls": 29,
+        "sourceBindingsStable": true,
+        "scope": "synthetic-metadata-identity-only",
+        "modelsNativeAPIProcCalls": 0,
+        "newCurrent162Gate": null,
+        "liveAcceptance": false
+      },
+      "knownLimits": {
+        "actualR13ProductCause": "UNKNOWN",
+        "realFreeProviderAcceptanceNotProved": true,
+        "historicalCoverageComplete": false,
+        "currentSourceCoverageIsLocalOnly": true,
+        "automaticFixedPromotionAllowed": false,
+        "callbackFactsDoNotDiscoverOwnerOrPaidClosure": true
+      },
+      "claimLimit": "Confirmed existing private gate mechanism and executable portable prevention only; no provider/product/root-cause or real UI convergence claim.",
+      "latestVerificationState": {
+        "publicInstalled": true,
+        "portableCandidateRegression": "ACTUAL_GREEN_3_SELECTORS",
+        "currentWholeGateCommand": "bun run test:current-regressions",
+        "currentWholeGateReceipt": "REQUIRED_SEPARATELY_FOR_ACTUAL_PUBLIC_SOURCE",
+        "privateV9Integration": "PREPARED_UNAPPLIED",
+        "meaning": "Later public materialization epoch; earlier prepared fields remain immutable as-of. The source-bound runner receipt decides the current all162 result.",
+        "historicalCoverageComplete": false
       }
     }
   ],

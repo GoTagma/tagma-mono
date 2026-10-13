@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-public-safe-native-child-capture-environment-observation",
+  "createdAtUTC": "2026-10-13T16:21:05.130898+00:00",
+  "issueId": "ENV-current-node-child-capture",
+  "lineage": [
+    "CSR-0011"
+  ],
+  "category": "environment",
+  "observationVerified": "verified",
+  "causeConfirmed": "unknown",
+  "underlyingKernelOrSandboxCause": "UNKNOWN",
+  "status": "execution-context-mitigation-verified",
+  "symptom": "The qualification fixture could not parse child Node output in the default managed execution context. It did not execute the selected test or establish a product assertion failure.",
+  "pairedLocalReadinessObservation": {
+    "source": {
+      "sha256": "2ada3ef86b85953e210b1c2151bdb43479ad874643499c8df51202efc3fd8049",
+      "role": "local-version-only-source"
+    },
+    "samePinnedBunAndNode": true,
+    "defaultContext": {
+      "status": 0,
+      "signal": null,
+      "stdoutBytes": 0,
+      "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrBytes": 0,
+      "actualVersionProjection": null,
+      "toolOutputChunkId": "873e55"
+    },
+    "originalNativeExecutionContext": {
+      "status": 0,
+      "signal": null,
+      "stdoutBytes": 126,
+      "stdoutSHA256": "035332a5a693ff4e465f614572dbf97b4d5359a7c7b131b0983859cad2c43203",
+      "stderrBytes": 0,
+      "nodeVersion": "24.19.0",
+      "bunVersion": null,
+      "toolOutputChunkId": "271cd5"
+    },
+    "modelsOrAPICalls": 0,
+    "rawEnvironmentOrCredentialsReadOrPublished": false,
+    "differentialDoesNotEstablishUnderlyingCause": true
+  },
+  "preservedGateHistory": [
+    {
+      "phase": "default-context-first",
+      "proof": {
+        "sha256": "e852b8f04f5e983a6516e2dcf649c60a631bfef0f9e8f381c10e03aa8d969122",
+        "bytes": 91953
+      },
+      "passed": false,
+      "actualResults": 61,
+      "failures": [
+        {
+          "kind": "environment",
+          "code": "qualification_Node_environment_invalid_response",
+          "issueId": "CSR-0011",
+          "regressionIndex": 0
+        }
+      ],
+      "scope": "current-source-only",
+      "historicalCoverageComplete": false
+    },
+    {
+      "phase": "explicit-Node-default-context",
+      "proof": {
+        "sha256": "57976b550e4a9cca471633c8a2a3d9b09b72313155a3b1a83d311cc82297e426",
+        "bytes": 91953
+      },
+      "passed": false,
+      "actualResults": 61,
+      "failures": [
+        {
+          "kind": "environment",
+          "code": "qualification_Node_environment_invalid_response",
+          "issueId": "CSR-0011",
+          "regressionIndex": 0
+        }
+      ],
+      "scope": "current-source-only",
+      "historicalCoverageComplete": false
+    },
+    {
+      "phase": "native-child-context-current151-GREEN",
+      "proof": {
+        "sha256": "6431f41702fad053b54128a99aaa3232d5707508bedc663a22eb4c49130a56fa",
+        "bytes": 160956
+      },
+      "passed": true,
+      "actualResults": 151,
+      "failures": [],
+      "scope": "current-source-only",
+      "historicalCoverageComplete": false
+    }
+  ],
+  "regressionLinks": [
+    {
+      "issueId": "CSR-0011",
+      "file": "scripts/lib/qualification-command-capture.test.ts",
+      "namePattern": "^qualification capture uses explicit Node and blocks incomplete output$",
+      "expectedTests": 1,
+      "newDuplicateSelectorAdded": false
+    }
+  ],
+  "mitigation": "Use the already configured native execution context and explicit Node binary for actual Bun-to-Node checks in this managed session. Provider credentials are removed by the regression runner; no model request is part of this check.",
+  "finiteCurrent151Verified": true,
+  "sourceBeforeAfter": {
+    "scheme": "public-git-visible-v1",
+    "fileCount": 1465,
+    "sha256": "fa4725a891ba71b4f8925a8854ea4cb395479963564fb8304239d301f2d8a6e5"
+  },
+  "realChatAcceptanceOrHistoricalGreenEstablished": false,
+  "allFutureUnknownEnvironmentFailuresPrevented": false,
+  "privatePathsProviderLogsOrPromptsPublished": false
+}

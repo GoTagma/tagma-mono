@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "kind": "confirmed-test-fixture-outdated-cache-protocol-expectation",
+  "observationId": "CSR-0017",
+  "observationVerified": "verified",
+  "causeConfirmed": "confirmed",
+  "category": "test-harness",
+  "productRegressionObserved": false,
+  "newFeatureREDClaimed": false,
+  "firstEngineeringObservation": {
+    "sourceFingerprint": {
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1450,
+      "sha256": "95238026d539ed41c832b2bafabaa7ea09097a718076c3575bfe4ca72bd91d79"
+    },
+    "oldSourceManifest": {
+      "sha256": "70faf08363cb55a9e8e67558aa606576889e2754b9a4420f6bdd317980ecbbd5",
+      "bytes": 285582
+    },
+    "full13ProcessResult": {
+      "sha256": "51bab2a459780fb95949eac0fdc0f3398ed5dc8d87b1bdebed6a45401b633a36",
+      "bytes": 941
+    },
+    "orchestrationFailure": {
+      "sha256": "da395bf4f27984d1ed37eab610e0043c40fe66ac60fb8e93c631a5140268dfaf",
+      "bytes": 778
+    },
+    "full13Log": {
+      "sha256": "77f53a044d76268efa01c0274313700e354db50d187931d9ea9860a96821ffa4",
+      "bytes": 1251439
+    },
+    "full13Passed": false,
+    "selectedGateCount": 13,
+    "passedGateCount": 12,
+    "checks": [
+      {
+        "status": "PASS",
+        "id": "text",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "deps",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "focus",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "imports",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "cycles",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "secrets",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "format",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "types",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "lint",
+        "detail": "ok"
+      },
+      {
+        "status": "FAIL",
+        "id": "tests",
+        "detail": "exit 1"
+      },
+      {
+        "status": "PASS",
+        "id": "scripts",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "build",
+        "detail": "ok"
+      },
+      {
+        "status": "PASS",
+        "id": "publish",
+        "detail": "ok"
+      }
+    ],
+    "actualUniqueAssertionFailures": [
+      {
+        "fullName": "chat YAML staging routes reexecutes a same-input signed v45 Trial cache under v48 and replays only the new result",
+        "initialExecutionFailLine": 8218,
+        "duplicateSummaryIsNotSecondExecution": true,
+        "assertion": "toMatchObject",
+        "oldExpectedProtocolVersion": 48,
+        "actualProtocolVersion": 49,
+        "publicSourceLocation": "apps/editor/tests/chat-yaml-staging-route.test.ts:4842",
+        "cause": "outdated test expectation after intentional shared protocol bump",
+        "productDefect": false
+      },
+      {
+        "fullName": "chat YAML staging routes reexecutes a same-input signed v46 Trial cache under v48 and replays only the new result",
+        "initialExecutionFailLine": 8729,
+        "duplicateSummaryIsNotSecondExecution": true,
+        "assertion": "toMatchObject",
+        "oldExpectedProtocolVersion": 48,
+        "actualProtocolVersion": 49,
+        "publicSourceLocation": "apps/editor/tests/chat-yaml-staging-route.test.ts:4842",
+        "cause": "outdated test expectation after intentional shared protocol bump",
+        "productDefect": false
+      }
+    ],
+    "original12TestStarted": false,
+    "packageAndZeroSendSmokeQualification": "NOT_REACHED",
+    "oldCurrent94PassDoesNotCoverThesePreviouslyUnmappedFixtures": true
+  },
+  "fixtureBefore": {
+    "path": "apps/editor/tests/chat-yaml-staging-route.test.ts",
+    "sha256": "6e669695cf31254809e4f6838e0d149053b15ff33e19418f19131e41aef82690",
+    "bytes": 193098
+  },
+  "fixtureAfter": {
+    "path": "apps/editor/tests/chat-yaml-staging-route.test.ts",
+    "sha256": "b6aa30f509c75bd25d8f2a2eb82b4feb8c03eda66b9c0c6b2fe63918e9e19444",
+    "bytes": 193098
+  },
+  "sharedCurrentProtocolSource": {
+    "path": "apps/editor/server/chat-pipeline-trial-cache.ts",
+    "sha256": "a28ff30f5947fe3a3043a0a9e0c7217a2dfd185810db8b91fd08a79c64108cd7",
+    "bytes": 2267,
+    "cacheProtocolVersion": 49
+  },
+  "RootCorrectionReceipt": {
+    "sha256": "69780a0a5945363817840791f079973d4aa0bfdb1d3545e0f3c750e363d38677",
+    "bytes": 1144
+  },
+  "correction": {
+    "scope": "Existing test file only; exact4 replacements, three protocol version48 expectations\u219249 and one dynamic rerun title under48\u219249.",
+    "allOtherSourceBytesUnchanged": true,
+    "legacySignedProtocols": [
+      45,
+      46
+    ],
+    "firstRerunReplayPhysicalCounterAssertions": [
+      1,
+      2,
+      2
+    ],
+    "freshExecutionSourceAssertionRetained": true,
+    "authenticatedSignedCacheAndInputEqualityRetained": true,
+    "rawOriginalSourcePreservationRetained": true,
+    "finalizeRejectionAndNoAddedRunAssertionsRetained": true,
+    "existingFixturesAndAssertionsRemovedOrWeakened": false,
+    "newProductionBehaviorModified": false
+  },
+  "fourExactFullNamesAfterCorrection": [
+    "chat YAML staging routes does not grant finalize authority to a correctly signed v45 Trial cache",
+    "chat YAML staging routes reexecutes a same-input signed v45 Trial cache under v49 and replays only the new result",
+    "chat YAML staging routes does not grant finalize authority to a correctly signed v46 Trial cache",
+    "chat YAML staging routes reexecutes a same-input signed v46 Trial cache under v49 and replays only the new result"
+  ],
+  "asOf": {
+    "sourceCorrectionInstalled": true,
+    "newFourMappedSelectorsExecuted": "NOT_RUN",
+    "current17and98MappedGate": "NOT_RUN",
+    "newFull13": "NOT_RUN",
+    "original12Chat": "NOT_RUN",
+    "priorEngineeringR1Requalified": false,
+    "versionBumpAgain": false,
+    "oldReceiptsAndFirstHistoryRewritten": false
+  },
+  "limits": [
+    "Old engineeringR1 remains failed. Do not apply corrected source hash to it.",
+    "Cause confirmed solely test-fixture protocol literals; no product runtime defect or new feature RED claim.",
+    "Prior16/94 history remains unchanged; these4 previously unmapped guards now become executable inventory.",
+    "Current historical archive coverage still incomplete; local/current gates do not establish original12 full convergence."
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-real-Engine-retained-contract-cache-replay-regression",
+  "asOf": "2026-10-13",
+  "publicInstalled": true,
+  "actualLocalPreparedScenario": {
+    "matched": 1,
+    "executed": 1,
+    "passed": 1,
+    "assertions": 195,
+    "failures": 0,
+    "skippedOrTodo": 0,
+    "sourceScope": "isolated-current-candidate-before-public-format-and-equivalent-test-library-correction",
+    "executionSha256": "e06e8f13dd70f89d1bc5a5cb7a4e0eb58c843eb5ee7fb8822afe77c1bc39aa99",
+    "junitSha256": "ef909065393464e88b3e6d799038b36480de52c1b01ae873ba93adefb6011de9",
+    "independentReviewSha256": "290adb04911ad87bfff667792d72516c3b7ea8e380f8cc1a909d0dcb7fe3419e"
+  },
+  "mechanism": {
+    "originalCases": 2,
+    "originalRepeatsPerCase": 2,
+    "originalPlanners": 2,
+    "ownedRepair": 1,
+    "priorIndependentCaseActuallyPassed": true,
+    "independentCaseCacheMeaningfullyEligible": true,
+    "firstRetainedVerificationNativeRunIds": "four disjoint from prior runs",
+    "authenticatedArchives": "six fresh task archives from original cases/repeats",
+    "sameIdReplay": "exact result and archive references; no new witness; signed cache bytes unchanged",
+    "ordinaryNewIdReuse": "genuine successful equivalent branch, preserving original trial/run/archive owners",
+    "normalCoordinatorPublication": true
+  },
+  "publicRegressionSources": [
+    {
+      "path": "apps/editor/tests/chat-retained-trial-contract-cache-v4.fixture.ts",
+      "sha256": "f28f60aa0b15f7a2e6e2f74f816005d2b6f4eaec73326a7850f21d593828672f",
+      "bytes": 28041
+    },
+    {
+      "path": "apps/editor/tests/chat-retained-trial-contract-cache-replay-v4.test.ts",
+      "sha256": "b2570e7e73b24dc8e6fcc0cba1d6f4eedef2205dfab2b0fceee35388df6379ed",
+      "bytes": 12293
+    }
+  ],
+  "publicWholeMappedGate": "PENDING_AS_OF_CAPSULE",
+  "firstCapturedOwnerOnly": true,
+  "secondOwnedRepairOriginLineage": "UNSUPPORTED_PENDING",
+  "realOriginal12Chat": "NOT_RUN_ON_NEW_SOURCE",
+  "historicalCoverageComplete": false,
+  "paidModelCalls": 0,
+  "limits": [
+    "Local real Engine evidence does not prove a genuine Chat acceptance pass.",
+    "Current public formatting and equivalent compiler-library correction require their own mapped gate.",
+    "Earlier fixture preparation errors remain recorded separately and are not product RED."
+  ]
+}
