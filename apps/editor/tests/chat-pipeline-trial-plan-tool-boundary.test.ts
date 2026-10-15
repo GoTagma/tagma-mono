@@ -22,6 +22,10 @@ import {
   readChatPipelineTrialPlanToolTelemetry,
 } from '../server/chat-pipeline-trial-plan';
 import { buildTagmaTrialPlanTool } from '../server/opencode-trial-plan-tool';
+import {
+  createTrialResilienceRules,
+  TRIAL_EVIDENCE_KINDS,
+} from '../server/chat-trial-resilience-rules';
 
 type JsonSchema = ReturnType<typeof pluginTool.schema.toJSONSchema>['schemas'][string];
 
@@ -161,22 +165,72 @@ function validPayload() {
 
 function validReview() {
   return {
-    version: 1,
+    version: 1 as const,
     intentDigest: 'a'.repeat(64),
-    decisions: [
-      'timeout-recovery',
-      'failure-recovery',
-      'empty-result',
-      'unlocated-source',
-      'source-preservation',
-    ].map((type) => ({
+    decisions: TRIAL_EVIDENCE_KINDS.map((type) => ({
       type,
       required: false,
-      taskIds: [],
+      taskIds: [] as string[],
       rationale: 'This command has no such requirement.',
     })),
   };
 }
+
+test('generated tool commits blocked artifact feedback with the same Host core rules and finite counter', async () => {
+  const h = await fixture();
+  try {
+    const review = {
+      ...validReview(),
+      coreWitness: {
+        status: 'blocked' as const,
+        taskIds: ['main.run'],
+        code: 'missing_observable_result',
+        rationale:
+          'The current staged artifact can expose its business result through a permitted repair.',
+      },
+    };
+    const payload = {
+      ...validPayload(),
+      evidence_review: review,
+      findings: [
+        {
+          severity: 'blocking',
+          repairScope: 'pipeline-artifact',
+          summary: 'Missing observable business result',
+          evidence: 'The authored command exposes no promised result artifact.',
+        },
+      ],
+    };
+    const host = createTrialResilienceRules();
+    const plan = { ...payload, evidenceReview: review } as unknown as Parameters<
+      typeof host.validateCoreWitness
+    >[0];
+    expect(() =>
+      host.validateCoreWitness(plan, { 'main.run': { dependsOn: [] } }, true),
+    ).not.toThrow();
+    const call = h.issue('host-blocked-artifact-1');
+    await call('commit-plan', payload);
+    expect(h.telemetry()).toMatchObject({
+      toolAttemptCount: 1,
+      successfulWriteCount: 1,
+      validationRejectionCount: 0,
+    });
+    const written = JSON.parse(
+      readFileSync(h.yamlPath.replace(/\.yaml$/, '.trial-plan.json'), 'utf8'),
+    );
+    expect(written.evidenceReview.coreWitness.status).toBe('blocked');
+    expect(written.findings[0].repairScope).toBe('pipeline-artifact');
+    await expect(call('commit-plan', payload)).rejects.toThrow();
+    expect(h.telemetry()).toMatchObject({
+      toolAttemptCount: 1,
+      successfulWriteCount: 1,
+      validationRejectionCount: 0,
+    });
+    h.assertUnlocked();
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
 
 async function failure(call: () => Promise<unknown>): Promise<Error> {
   try {
@@ -188,7 +242,90 @@ async function failure(call: () => Promise<unknown>): Promise<Error> {
   throw new Error('Expected a rejected tool call.');
 }
 
-test('pinned Plugin/Zod keeps nested first-branch hints and strict identity schemas', async () => {
+test('model schema distinguishes repairable core gaps from intrinsic observation limits', async () => {
+  const h = await fixture();
+  try {
+    const properties = pluginTool.schema.toJSONSchema(h.outer).properties!;
+    const review = schemaObject(properties.evidence_review);
+    const core = schemaObject(review.properties!.coreWitness);
+    expect(core.description).toContain('pipeline-artifact');
+    expect(core.description).toContain('diagnostic-only');
+    const finding = schemaObject(schemaObject(properties.findings).items);
+    const scope = schemaObject(finding.properties!.repairScope);
+    expect(scope.description).toContain('read-only');
+    expect(scope.description).toContain('pipeline-artifact');
+    expect(scope.description).toContain('diagnostic-only');
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+test('model review task scope schema explains required and not-required dispositions', async () => {
+  const h = await fixture();
+  try {
+    const review = schemaObject(
+      pluginTool.schema.toJSONSchema(h.outer).properties!.evidence_review,
+    );
+    const decision = schemaObject(schemaObject(review.properties!.decisions).items);
+    const tasks = schemaObject(decision.properties!.taskIds);
+    expect(tasks.description).toContain('required: true');
+    expect(tasks.description).toContain('required: false');
+    expect(tasks.description).toContain('empty');
+    expect(tasks.description).toContain('track.task');
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+test('review scope corrections preserve draft and counted commit boundaries', async () => {
+  const h = await fixture();
+  try {
+    const host = createTrialResilienceRules();
+    const call = h.issue('host-review-scope-1');
+    await call('begin', { summary: validPayload().summary, goals: validPayload().goals });
+    const control = validReview();
+    control.decisions[2]!.required = true;
+    control.decisions[2]!.taskIds = ['main.run'];
+    expect(host.parseReview(control)).toEqual(control);
+    await call('set-evidence-review', { evidence_review: control });
+    for (const invalid of [
+      { index: 3, required: false, taskIds: ['main.run'], fragments: ['required: false', 'empty'] },
+      { index: 2, required: true, taskIds: [], fragments: ['required: true', 'at least one'] },
+      { index: 2, required: true, taskIds: ['run'], fragments: ['qualified', 'track.task'] },
+      { index: 2, required: true, taskIds: ['main.run', 'main.run'], fragments: ['unique'] },
+    ]) {
+      const review = structuredClone(control);
+      review.decisions[invalid.index]!.required = invalid.required;
+      review.decisions[invalid.index]!.taskIds = invalid.taskIds;
+      const hostError = await failure(async () => host.parseReview(review));
+      const toolError = await failure(() =>
+        call('set-evidence-review', { evidence_review: review }),
+      );
+      expect(toolError.message).toBe(hostError.message);
+      expect(hostError.message).toContain(
+        'evidenceReview.decisions[' + invalid.index + '].taskIds',
+      );
+      for (const fragment of invalid.fragments) expect(hostError.message).toContain(fragment);
+    }
+    expect(h.telemetry()).toMatchObject({ toolAttemptCount: 0, successfulWriteCount: 0 });
+    const invalid = validReview();
+    invalid.decisions[3]!.taskIds = ['main.run'];
+    const error = await failure(() =>
+      call('commit-plan', { ...validPayload(), evidence_review: invalid }),
+    );
+    expect(error.message).toContain('required: false');
+    expect(h.telemetry()).toMatchObject({
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
+      successfulWriteCount: 0,
+    });
+    h.evidence('host-review-scope-1', error.message);
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+test('pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas', async () => {
   const h = await fixture();
   try {
     expect(JSON.parse(readFileSync(join(h.pluginRoot, 'package.json'), 'utf8')).version).toBe(
@@ -200,26 +337,27 @@ test('pinned Plugin/Zod keeps nested first-branch hints and strict identity sche
     expect(JSON.parse(readFileSync(join(zodRoot, 'package.json'), 'utf8')).version).toBe('4.1.8');
     const json = pluginTool.schema.toJSONSchema(h.outer);
     const properties = json.properties!;
-    for (const name of [
-      'summary',
-      'goals',
-      'reset',
-      'coverage',
-      'findings',
-      'evidence_review',
-      'case',
-      'cases',
-    ]) {
+    for (const [name, type] of Object.entries({
+      summary: 'string',
+      goals: 'array',
+      reset: 'boolean',
+      coverage: 'array',
+      findings: 'array',
+      evidence_review: 'object',
+      case: 'object',
+      cases: 'array',
+    } as const)) {
       const schema = schemaObject(properties[name]);
-      expect(schema.anyOf).toHaveLength(2);
-      expect(schema.anyOf![1]).toEqual({});
-      expect(schema.anyOf![0]).not.toEqual({});
+      expect(schema.type).toBe(type);
+      expect(schema.anyOf).toBeUndefined();
+      expect(schema.$schema).toBeUndefined();
+      expect(json.required).not.toContain(name);
     }
     for (const name of ['operation', 'pipeline_path', 'attempt_id']) {
       expect(schemaObject(properties[name]).anyOf).toBeUndefined();
       expect(json.required).toContain(name);
     }
-    const cases = schemaObject(properties.cases).anyOf![0]!;
+    const cases = schemaObject(properties.cases);
     expect(cases.maxItems).toBe(CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.cases);
     const caseItem = schemaObject(cases.items);
     expect(caseItem.required).toContain('expectations');
@@ -238,14 +376,14 @@ test('pinned Plugin/Zod keeps nested first-branch hints and strict identity sche
         }),
       ]),
     );
-    const coverage = schemaObject(schemaObject(properties.coverage).anyOf![0]!.items);
+    const coverage = schemaObject(schemaObject(properties.coverage).items);
     expect(schemaObject(coverage.properties!.dimension).enum).toEqual([
       ...CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.coverageDimensions,
     ]);
     expect(schemaObject(coverage.properties!.status).enum).toEqual([
       ...CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.coverageStatuses,
     ]);
-    expect(schemaObject(properties.evidence_review).anyOf![0]!.required).toEqual([
+    expect(schemaObject(properties.evidence_review).required).toEqual([
       'version',
       'intentDigest',
       'decisions',
@@ -561,6 +699,36 @@ test('semantic plan validation remains one counted rejection outside the constru
       validationRejectionCount: 1,
       successfulWriteCount: 0,
     });
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+test('generated-input guidance names both supported witnesses without weakening case validation', async () => {
+  const h = await fixture();
+  try {
+    const properties = pluginTool.schema.toJSONSchema(h.outer).properties!;
+    const cases = schemaObject(properties.cases);
+    const item = schemaObject((cases.anyOf?.[0] ?? cases).items);
+    const description = schemaObject(item.properties!.generatedInputPaths).description!;
+    expect(description).toContain('file-equals');
+    expect(description).toContain('file-source-text-occurrence');
+    expect(description).toContain('sourcePath');
+    expect(description).toContain('independent concrete producer content');
+    const call = h.issue('generated-witness-guidance');
+    const payload = validPayload();
+    const testCase = {
+      ...payload.cases[0],
+      generatedInputPaths: ['data/source.json'],
+      fixtures: [{ path: 'data/source.json', content: null }],
+    };
+    await expect(call('upsert-case', { case: testCase })).rejects.toThrow();
+    await call('begin', { summary: payload.summary, goals: payload.goals });
+    await expect(call('upsert-case', { case: testCase })).rejects.toThrow(
+      'file-equals or present:true file-source-text-occurrence',
+    );
+    expect(h.telemetry().toolAttemptCount).toBe(0);
+    h.assertUnlocked();
   } finally {
     rmSync(h.root, { recursive: true, force: true });
   }

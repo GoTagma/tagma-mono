@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "kind": "loopback-integrity-real-tcp-green",
+  "productSourceSha256": "ff08436c35b1e03721503e92ec16cc8ad8ba809ea119d4cdfcadd73e72c5b204",
+  "testSourceSha256": "947d11b999b655b124705816817ccf9dda95dd2e086b4553a3d9ee21e7f25079",
+  "tcpTests": {
+    "executed": 16,
+    "passed": 16,
+    "failed": 0,
+    "expectCalls": 36,
+    "logSha256": "3843b3a430a8a8253c40cd780004a7a7aec25b93025d6472135d75b1827f537a"
+  },
+  "native": {
+    "version": "1.18.18",
+    "executed": 2,
+    "passed": 2,
+    "failed": 0,
+    "expectCalls": 129,
+    "logSha256": "d396ec215267af624788a28093de8b150b5ae9a3d9be109957febc254de56891",
+    "vendorModelCalls": 0
+  },
+  "testTypesPassed": true,
+  "testTypesLogSha256": "a77046aada8dc916da9698e8ce1dcf467c46b326dd19b40bdbd0c263638c9938",
+  "controls": [
+    "complete length, fragmented chunks and trailers, until-close and HEAD",
+    "SSE delivery before close",
+    "proxy bypass and origin restrictions",
+    "preheader and body abort, reader cancellation",
+    "small and8MiB upload byte counts and SHA256",
+    "actual paused raw TCP reader with aborted pending upload"
+  ],
+  "realAcceptance": false,
+  "historicalCoverageComplete": false
+}

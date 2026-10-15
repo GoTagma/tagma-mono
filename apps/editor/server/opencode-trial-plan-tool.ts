@@ -314,7 +314,7 @@ function validateCase(value, index) {
   for (const generatedInputPath of normalizedGeneratedInputPaths) {
     if (!generatedInputExpectationPaths.has(generatedInputPath)) {
       throw new Error(
-        label + ".generatedInputPaths requires a file-equals expectation for " + generatedInputPath + ".",
+        label + ".generatedInputPaths requires file-equals or present:true file-source-text-occurrence sourcePath evidence for " + generatedInputPath + ".",
       );
     }
   }
@@ -1393,7 +1393,7 @@ const coverageEntrySchema = tool.schema.object({
 
 const findingSchema = tool.schema.object({
   severity: tool.schema.enum(FINDING_SEVERITIES),
-  repairScope: tool.schema.enum(FINDING_REPAIR_SCOPES),
+  repairScope: tool.schema.enum(FINDING_REPAIR_SCOPES).describe("Classify the change needed, not this read-only planner permission: pipeline-artifact for an independently evidenced repair to staged YAML or user-owned companions, including a missing verifiable output; diagnostic-only for fixture/assertion corrections or an intrinsic harness limit that no permitted pipeline repair can expose. Never request artifact repair to weaken expected business content."),
   summary: tool.schema.string().min(1).max(500),
   evidence: tool.schema.string().min(1).max(2000),
 });
@@ -1412,8 +1412,8 @@ const evidenceSchema = tool.schema.union([
 const coreWitnessSchema = tool.schema.union([
   tool.schema.object({ status: tool.schema.literal("covered"), normalCaseId: tool.schema.string().min(1).max(64), taskRoles: tool.schema.array(tool.schema.object({ taskId: tool.schema.string(), role: tool.schema.enum(["content", "execution"]), rationale: tool.schema.string().min(1).max(1000), expectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).max(32) }).passthrough()).min(1).max(32), generatedInputs: tool.schema.array(tool.schema.object({ path: tool.schema.string().min(1).max(240), producerTaskId: tool.schema.string(), consumerTaskId: tool.schema.string() }).passthrough()).max(32) }).passthrough(),
   tool.schema.object({ status: tool.schema.literal("blocked"), taskIds: tool.schema.array(tool.schema.string()).min(1).max(32), code: tool.schema.string().min(1).max(96), rationale: tool.schema.string().min(1).max(1000) }).passthrough(),
-]).describe("Covered core maps every terminal-closure task to success and every declared output artifact to concrete intent-bound content: stable JSON pointer values, meaningful finite numeric/boolean values, exact nonempty text, or supported source occurrence. Genuine unobservable core stays blocked with a blocking diagnostic-only finding; it cannot pass.");
-const evidenceReviewSchema = tool.schema.object({ version: tool.schema.literal(1), intentDigest: tool.schema.string().min(64).max(64), decisions: tool.schema.array(tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source","source-preservation"]), required: tool.schema.boolean(), taskIds: tool.schema.array(tool.schema.string()).max(32), rationale: tool.schema.string().min(1).max(1000) }).passthrough()).min(5).max(5), coreWitness: coreWitnessSchema.optional() }).passthrough();
+]).describe("Covered core maps every terminal-closure task to success and every declared output artifact to concrete intent-bound content: stable JSON pointer values, meaningful finite numeric/boolean values, exact nonempty text, or supported source occurrence. If the current YAML lacks an observable result that a permitted workflow repair can expose, keep the core blocked and commit a blocking pipeline-artifact finding naming that repair. Use diagnostic-only only for a genuine observation limit that no permitted workflow repair can expose; being a read-only planner does not make a YAML repair diagnostic-only. A blocked core cannot pass.");
+const evidenceReviewSchema = tool.schema.object({ version: tool.schema.literal(1), intentDigest: tool.schema.string().min(64).max(64), decisions: tool.schema.array(tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source","source-preservation"]), required: tool.schema.boolean(), taskIds: tool.schema.array(tool.schema.string()).max(32).describe("Unique qualified track.task identifiers for the responsible task scope. When required: true, name at least one task. When required: false, this array must be empty."), rationale: tool.schema.string().min(1).max(1000) }).passthrough()).min(5).max(5), coreWitness: coreWitnessSchema.optional() }).passthrough();
 
 const caseSchema = tool.schema.object({
   id: tool.schema.string(),
@@ -1440,7 +1440,7 @@ const caseSchema = tool.schema.object({
     .array(tool.schema.string())
     .max(CONTRACT.limits.generatedInputPathsPerCase)
     .optional()
-    .describe("Files the targeted closure must generate before consuming them as downstream inputs. Exact content:null fixtures remove only these files before each actual repeat; no write fixture may pre-seed them. Host requires exact file-equals evidence."),
+    .describe("Files the targeted closure must generate before consuming them as downstream inputs. Exact content:null fixtures remove only these files before each actual repeat; no write fixture may pre-seed them. Require file-equals for the generated path, or present:true file-source-text-occurrence whose sourcePath is that generated JSON and whose path is the downstream text report. The relation also requires independent concrete producer content, an exact content:null removal fixture, and authenticated core producer/consumer ownership and dependency mappings; it is not a substitute for producer content evidence."),
   expectations: tool.schema
     .array(expectationSchema)
     .min(1)
@@ -1823,13 +1823,14 @@ export default tool({
       .min(1)
       .max(128)
       .describe("Exact Host attempt ID from the current host prompt; every call in the draft lifecycle must use the same value."),
-    // Keep the nested contract visible to the model while allowing a malformed
-    // business payload to reach the counted commit validator. Identity schemas
-    // above stay strict; unknown is never used for operation/path/attempt.
-    ...Object.fromEntries(Object.entries(TRIAL_PLAN_PAYLOAD_SCHEMAS).map(([name, schema]) => [
-      name,
-      tool.schema.union([schema, tool.schema.unknown()]).optional(),
-    ])),
+    // Advertise the actual typed contract without an unconstrained JSON-schema
+    // union branch. Runtime business values remain opaque so malformed commits
+    // reach the counted validator unchanged. Identity schemas above stay strict.
+    ...Object.fromEntries(Object.entries(TRIAL_PLAN_PAYLOAD_SCHEMAS).map(([name, schema]) => {
+      const json = tool.schema.toJSONSchema(schema, { io: "input" });
+      delete json.$schema;
+      return [name, tool.schema.unknown().meta(json).optional()];
+    })),
   },
   async execute(args, context) {
     return executeTrialPlanOperation(args, context);

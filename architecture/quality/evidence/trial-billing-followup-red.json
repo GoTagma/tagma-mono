@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "kind": "verify2-followup-confirmed-contract-red",
+  "observedLiveEvidence": [
+    "s1-l1-verify2: native HTTP429 error code1113 with explicit depleted balance/resource billing; Host reported provider_rate_limited",
+    "s1-l3-verify2: model followed pipeline-artifact blocked-core hint but shared validator still demanded diagnostic-only; an extra formal plan was spent before artifact repair"
+  ],
+  "reopenedIssue": "CSR-0029",
+  "newIssue": "CSR-0034",
+  "firstRepairLimitation": "Earlier CSR-0029 schema-only GREEN is preserved; it did not cover the actual shared validator.",
+  "unit": {
+    "executed": 114,
+    "passed": 110,
+    "failed": 4,
+    "expectCalls": 527,
+    "log": "architecture/quality/evidence/trial-billing-followup-red.txt",
+    "logSha256": "a646578c6cca6c4418011f3a96be0a49590a88744641e267fc0d8e111d2ecefa"
+  },
+  "scope": "Permanent generated-tool/Host semantic and bounded provider-classification regressions before source correction. Host lifecycle test was subsequently added and is not claimed as a RED execution.",
+  "realAcceptance": false,
+  "historicalCoverageComplete": false
+}

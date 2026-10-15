@@ -18,6 +18,10 @@ test('managed-runtime CI runs both Chat Operation V2 native conformance contract
     'bun test tests/opencode-managed-runtime-smoke.test.ts --timeout 360000',
   );
   expect(managedRuntimeJob).toContain(
+    'bun test tests/opencode-trial-plan-schema-smoke.test.ts tests/opencode-stage-scope-native.test.ts --timeout 360000',
+  );
+  expect(workflow).toContain('run: bun run test:current-regressions');
+  expect(managedRuntimeJob).toContain(
     'bun test tests/opencode-v2-question-conformance.test.ts --timeout 360000',
   );
   expect(managedRuntimeJob?.indexOf('opencode-v2-question-conformance.test.ts')).toBeGreaterThan(
@@ -36,6 +40,9 @@ test('desktop release build re-verifies both native conformance contracts after 
   expect(buildJob).toContain("TAGMA_OPENCODE_NATIVE_SMOKE: '1'");
   expect(buildJob).toContain(
     'bun test tests/opencode-managed-runtime-smoke.test.ts --timeout 360000',
+  );
+  expect(buildJob).toContain(
+    'bun test tests/opencode-trial-plan-schema-smoke.test.ts tests/opencode-stage-scope-native.test.ts --timeout 360000',
   );
   expect(buildJob).toContain(
     'bun test tests/opencode-v2-question-conformance.test.ts --timeout 360000',

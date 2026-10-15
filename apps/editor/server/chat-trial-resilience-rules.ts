@@ -167,19 +167,24 @@ export function createTrialResilienceRules() {
       keys(item, ['type', 'required', 'taskIds', 'rationale'], 'decision');
       if (!kinds.includes(item.type as never) || typeof item.required !== 'boolean')
         throw new Error('Evidence review disposition is invalid.');
+      const scope = item.taskIds;
+      const scopeLabel = 'evidenceReview.decisions[' + i + '].taskIds (' + String(item.type) + ')';
+      if (!Array.isArray(scope)) throw new Error(scopeLabel + ' must be an array.');
+      if (scope.length > 32) throw new Error(scopeLabel + ' must contain at most 32 task ids.');
+      if (item.required && scope.length === 0)
+        throw new Error(scopeLabel + ' must name at least one task when required: true.');
+      if (!item.required && scope.length > 0)
+        throw new Error(scopeLabel + ' must be empty when required: false.');
       if (
-        !Array.isArray(item.taskIds) ||
-        item.taskIds.length > 32 ||
-        (item.required && item.taskIds.length === 0) ||
-        (!item.required && item.taskIds.length > 0) ||
-        item.taskIds.some(
+        scope.some(
           (id) =>
             typeof id !== 'string' ||
             !/^[A-Za-z_][A-Za-z0-9_-]*\.[A-Za-z_][A-Za-z0-9_-]*$/.test(id),
-        ) ||
-        new Set(item.taskIds).size !== item.taskIds.length
+        )
       )
-        throw new Error('Required evidence must name its bounded responsible task scope.');
+        throw new Error(scopeLabel + ' must use qualified track.task identifiers.');
+      if (new Set(scope).size !== scope.length)
+        throw new Error(scopeLabel + ' must contain unique task ids.');
       return {
         type: item.type as ExplicitResilienceObligation,
         required: item.required,
@@ -555,11 +560,14 @@ export function createTrialResilienceRules() {
       if (
         core.taskIds.some((id) => !known(id)) ||
         !plan.findings.some(
-          (finding) => finding.severity === 'blocking' && finding.repairScope === 'diagnostic-only',
+          (finding) =>
+            finding.severity === 'blocking' &&
+            (finding.repairScope === 'diagnostic-only' ||
+              finding.repairScope === 'pipeline-artifact'),
         )
       )
         throw new Error(
-          'Blocked core witness requires known tasks and an existing blocking diagnostic-only finding; it cannot pass Trial.',
+          'Blocked core witness requires known tasks and an existing blocking pipeline-artifact or diagnostic-only finding; it cannot pass Trial.',
         );
       return;
     }

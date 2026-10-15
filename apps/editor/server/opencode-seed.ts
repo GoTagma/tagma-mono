@@ -6,6 +6,7 @@ import {
   clampOpencodeAgentMaxSteps,
 } from '../shared/opencode-agent-step-limit.js';
 
+import { buildTagmaStageRemoveTool } from './opencode-stage-remove-tool.js';
 import { buildTagmaTrialPlanTool } from './opencode-trial-plan-tool.js';
 import { resolveOpencodeRuntimePaths } from './opencode-config.js';
 import {
@@ -860,7 +861,7 @@ permission:
     tagma-memory-context: "allow"
 ---
 
-You are the Tagma YAML assistant. Your cwd is workspace \`.tagma/\` or the staged \`<agent-root>\`. Maintain runnable YAML and only genuinely user-owned companion or helper content. Keep context small with targeted reads/skills; compile.log is the schema source of truth.
+Author runnable YAML and user-owned companions in workspace \`.tagma/\` or staged \`<agent-root>\`. Keep context small with targeted reads/skills; compile.log is the schema source of truth.
 
 ## Mutation Authorization Gate
 
@@ -2166,6 +2167,21 @@ export function applyOpencodeAgentMaxSteps(content: string, requestedSteps: numb
   return withSteps + content.slice(closingFrontmatter);
 }
 
+// Apply to every managed profile, including advisory profiles without a tools map.
+function applyStageRemovePolicy(content: string, enabled: boolean): string {
+  const end = content.indexOf('\n---', 4);
+  let head = content.slice(0, end);
+  const toolRule = `  tagma_stage_remove: ${enabled ? 'true' : 'false'}`;
+  const permissionRule = `  tagma_stage_remove: ${enabled ? 'allow' : 'deny'}`;
+  head = /^tools:\s*$/mu.test(head)
+    ? head.replace(/^tools:\s*$/mu, `tools:\n${toolRule}`)
+    : head + `\ntools:\n${toolRule}`;
+  head = /^permission:\s*$/mu.test(head)
+    ? head.replace(/^permission:\s*$/mu, `permission:\n${permissionRule}`)
+    : head + `\npermission:\n${permissionRule}`;
+  return head + content.slice(end);
+}
+
 function seedAgentFile(
   tagmaCwd: string,
   filename: string,
@@ -2175,7 +2191,10 @@ function seedAgentFile(
   return seedFile(
     join(tagmaCwd, '.opencode', 'agents'),
     filename,
-    applyOpencodeAgentMaxSteps(content, agentMaxSteps),
+    applyOpencodeAgentMaxSteps(
+      applyStageRemovePolicy(content, filename === `${TAGMA_PIPELINE_AGENT}.md`),
+      agentMaxSteps,
+    ),
   );
 }
 
@@ -2253,6 +2272,7 @@ export function seedOpencodeArtifacts(
     tagma_yaml_skeleton: buildTagmaYamlSkeletonTool(),
     tagma_placement_plan: buildTagmaPlacementTool(),
     tagma_trial_plan: buildTagmaTrialPlanTool(),
+    tagma_stage_remove: buildTagmaStageRemoveTool(),
   };
   for (const { id, filename } of TAGMA_MANAGED_OPENCODE_TOOLS) {
     changed = seedFile(runtime.managedToolsDir, filename, managedToolContents[id]) || changed;

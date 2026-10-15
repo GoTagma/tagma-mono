@@ -9,6 +9,7 @@ import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-tri
 import {
   CHAT_PIPELINE_TRIAL_PLAN_CONTRACT,
   parseChatPipelineTrialPlan,
+  readChatPipelineTrialPlanToolTelemetry,
   type ChatPipelineTrialPlan,
 } from '../server/chat-pipeline-trial-plan';
 import {
@@ -352,7 +353,7 @@ test('blocked core requires an existing blocking diagnostic and is never green c
       rationale: 'The current permitted normal input is unavailable within the existing budget.',
     },
   };
-  expect(() => rules.validateCoreWitness(plan, tasks, true)).toThrow('blocking diagnostic-only');
+  expect(() => rules.validateCoreWitness(plan, tasks, true)).toThrow('blocking');
   plan.findings.push({
     severity: 'blocking',
     repairScope: 'diagnostic-only',
@@ -361,6 +362,205 @@ test('blocked core requires an existing blocking diagnostic and is never green c
   });
   expect(() => rules.validateCoreWitness(plan, tasks, true)).not.toThrow();
   expect(planBlockingDiagnostics(plan)).toHaveLength(1);
+});
+
+test('blocked core admits typed artifact repair feedback while rejecting unknown or nonblocking findings', () => {
+  const plan = normalContentPlan();
+  plan.evidenceReview = {
+    ...plan.evidenceReview!,
+    coreWitness: {
+      status: 'blocked',
+      taskIds: ['odd.beta'],
+      code: 'missing_observable_result',
+      rationale:
+        'The current YAML can expose the missing verifiable business result through a permitted repair.',
+    },
+  };
+  plan.findings = [
+    {
+      severity: 'blocking',
+      repairScope: 'pipeline-artifact',
+      summary: 'Missing observable result',
+      evidence: 'The staged result contract omits the requested output.',
+    },
+  ];
+  expect(() => rules.validateCoreWitness(plan, tasks, true)).not.toThrow();
+  expect(planBlockingDiagnostics(plan)).toMatchObject([{ scope: 'pipeline-artifact' }]);
+  for (const findings of [[], [{ ...plan.findings[0]!, severity: 'warning' as const }]]) {
+    expect(() => rules.validateCoreWitness({ ...plan, findings }, tasks, true)).toThrow('blocking');
+  }
+  const unknown = structuredClone(plan);
+  if (unknown.evidenceReview!.coreWitness!.status !== 'blocked') throw new Error('Fixture');
+  unknown.evidenceReview = {
+    ...unknown.evidenceReview!,
+    coreWitness: { ...unknown.evidenceReview!.coreWitness!, taskIds: ['odd.unknown'] },
+  };
+  expect(() => rules.validateCoreWitness(unknown, tasks, true)).toThrow('known tasks');
+});
+
+test('Host blocked artifact repair requires a fresh positive revision plan before actual Sandbox execution', async () => {
+  const workDir = root();
+  const sourcePath = pipelineYamlPath(workDir, 'repair');
+  const initialYaml = serializePipeline({
+    name: 'Observable result',
+    tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'run', command: 'echo incomplete' }] }],
+  });
+  mkdirSync(dirname(sourcePath), { recursive: true });
+  writeFileSync(sourcePath, initialYaml);
+  writeFileSync(
+    join(workDir, '.tagma', 'editor-settings.json'),
+    JSON.stringify({
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+      opencodeChatTrialPlanMaxAttempts: 2,
+    }),
+  );
+  const ws = new WorkspaceState(workDir);
+  ws.workDir = workDir;
+  ws.yamlPath = sourcePath;
+  ws.config = parseYaml(initialYaml);
+  bootstrapBuiltins(ws.registry);
+  const stage = createChatYamlStage(ws, { activePath: sourcePath });
+  const entry = stage.entries.find((item) => item.sourcePath === sourcePath)!;
+  const planPath = entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json');
+  const folder = entry.relativePath.slice(0, entry.relativePath.lastIndexOf('/'));
+  const plan = normalContentPlan();
+  plan.yamlHash = createHash('sha1').update(initialYaml).digest('hex');
+  plan.findings = [
+    {
+      severity: 'blocking',
+      repairScope: 'pipeline-artifact',
+      summary: 'Missing result',
+      evidence:
+        'The staged command only echoes a marker instead of exposing the requested JSON result.',
+    },
+  ];
+  plan.evidenceReview = {
+    ...plan.evidenceReview!,
+    coreWitness: {
+      status: 'blocked',
+      taskIds: ['main.run'],
+      code: 'missing_observable_result',
+      rationale: 'A permitted staged YAML change can expose the requested result.',
+    },
+  };
+  plan.cases = [
+    {
+      id: 'normal',
+      title: 'Concrete result',
+      objective: intent,
+      runs: 1,
+      targetTaskIds: ['main.run'],
+      fixtures: [],
+      expectations: [{ type: 'task-status', taskId: 'main.run', status: 'success' }],
+    },
+  ];
+  writeFileSync(planPath, JSON.stringify(plan));
+  writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
+  const oldKey = createHash('sha256')
+    .update(entry.relativePath + '\0' + plan.yamlHash)
+    .digest('hex');
+  const oldCounterPath = join(stage.rootDir, '.trial-plan-telemetry', oldKey + '.json');
+  try {
+    const blocked = await trialRunChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      trialId: 'blocked_artifact',
+      intentText: intent,
+    });
+    expect(blocked).toMatchObject({
+      ran: false,
+      success: false,
+      kind: 'plan-failed',
+      repairAuthorization: 'pipeline-change-allowed',
+      cases: [],
+    });
+    const oldCounter = readFileSync(oldCounterPath, 'utf8');
+    expect(readChatPipelineTrialPlanToolTelemetry(entry.stagedPath, 2)).toMatchObject({
+      toolAttemptCount: 1,
+      successfulWriteCount: 1,
+      validationRejectionCount: 0,
+    });
+    // Simulate the authorized author's artifact edit within the original stage.
+    // The old blocked plan must never become execution or publication authority.
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Observable result',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            cwd: `.tagma/${folder}`,
+            tasks: [
+              {
+                id: 'run',
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    'require("node:fs").writeFileSync("result.json",JSON.stringify({value:7}))',
+                  ],
+                },
+                completion: { type: 'file_exists', path: 'result.json' },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(compileChatYamlStage(ws, stage.id, entry.relativePath).success).toBe(true);
+    const stale = await trialRunChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      trialId: 'stale_blocked_plan',
+      intentText: intent,
+    });
+    expect(stale.ran).toBe(false);
+    expect(stale.success).toBe(false);
+    expect(stale.summary).toContain('older YAML revision');
+    expect(readFileSync(oldCounterPath, 'utf8')).toBe(oldCounter);
+    plan.yamlHash = createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex');
+    plan.findings = [];
+    plan.evidenceReview = {
+      ...plan.evidenceReview!,
+      coreWitness: {
+        status: 'covered',
+        normalCaseId: 'normal',
+        taskRoles: [
+          {
+            taskId: 'main.run',
+            role: 'content',
+            expectationIndices: [1],
+            rationale:
+              'The requested exact computed value is present; a diagnostic marker or null fails.',
+          },
+        ],
+        generatedInputs: [],
+      },
+    };
+    plan.cases[0]!.expectations.push({
+      type: 'json-pointer-equals',
+      path: `${folder}/result.json`,
+      pointer: '',
+      expectedJson: '{"value":7}',
+    });
+    writeFileSync(planPath, JSON.stringify(plan));
+    writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
+    const passed = await trialRunChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      trialId: 'fresh_positive_plan',
+      intentText: intent,
+    });
+    expect(passed).toMatchObject({ ran: true, success: true, taskStatusCounts: { success: 1 } });
+    expect(passed.cases[0]?.expectations.every((item) => item.passed)).toBe(true);
+    expect(readFileSync(oldCounterPath, 'utf8')).toBe(oldCounter);
+  } finally {
+    discardChatYamlStage(ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  }
 });
 
 test('no-intent compatibility does not silently supply a managed positive witness', () => {

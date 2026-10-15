@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-plugin-installer-test-fixture-runtime-path-red",
+  "baselineCommit": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "unchangedProductPath": "apps/editor/server/plugins/install.ts",
+  "productSha256": "13e5c96cb4b8dc8f54f0931961bead0c5f114070e062a032de758f72c7c47a66",
+  "testPath": "apps/editor/tests/plugin-install-load.test.ts",
+  "baseTestSha256": "ea3b10a1125f149491e8c1b47a967c3363fb1737a8a6f9cb18ac3097d00cc80b",
+  "red": {
+    "command": "bun test apps/editor/tests/plugin-install-load.test.ts --test-name-pattern \"installFromLocalPath records the plugin and triggers workspace dependency resolution\"",
+    "executed": 1,
+    "failed": 1,
+    "errors": 0,
+    "logSha256": "b79935223c542e4b71d0b3151b2444d30a1f17723fd4feaf12001b79e1a53c0c",
+    "expectedPath": "/workspace/.cloud-tools/node_modules/bun/bin/bun.exe",
+    "actualValidPath": "/workspace/.cloud-tools/node_modules/.bin/bun"
+  },
+  "counterexample": {
+    "supportedExplicitRuntimeOverride": "TAGMA_BUN_BIN set to actual process.execPath",
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "logSha256": "2856806cbba5b34f372c48c8cd0f3bcaef91020a8f96e875684536a1dec1032e"
+  },
+  "cause": "The fixture asserts one exact executable but allows ambient runtime resolution to legitimately select a different alias. Pin and restore its asserted runtime in the fixture; do not change application resolution.",
+  "productDefect": false,
+  "historicalCoverageComplete": false,
+  "liveAcceptance": false
+}

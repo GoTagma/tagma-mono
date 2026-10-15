@@ -95,9 +95,9 @@ describe('provider HTTP 403 failure categories', () => {
       'provider_billing_required',
     ],
     [
-      '429 over billing code',
+      'structured billing code over 429',
       apiError(429, { code: 'insufficient_quota' }),
-      'provider_rate_limited',
+      'provider_billing_required',
     ],
   ] as const)('classifies %s using bounded machine evidence', (_label, error, expected) => {
     expect(openCodeProviderFailureCode(error)).toBe(expected);
@@ -169,6 +169,77 @@ describe('provider HTTP 403 failure categories', () => {
     ]) {
       expect(serialized).not.toContain(privateValue);
     }
+  });
+});
+
+describe('provider HTTP 429 structured billing evidence', () => {
+  const message = '余额不足或无可用资源包,请充值。';
+  const apiError = (responseBody: string, statusCode = 429) => ({
+    name: 'APIError',
+    data: { statusCode, isRetryable: true, responseBody },
+  });
+
+  test('classifies corroborated resource billing and standard quota categories without exposing bodies', async () => {
+    for (const code of ['1113', 1113]) {
+      const error = apiError(JSON.stringify({ error: { code, message } }));
+      expect(openCodeProviderFailureCode(error)).toBe('provider_billing_required');
+      const { runner, store } = setup({
+        richPrompt: (input) => ({ info: { parentID: input.messageID, error }, parts: [] }),
+      });
+      const input = request();
+      const result = await runner.run(input);
+      expect(result).toEqual({ kind: 'provider_unavailable', code: 'provider_billing_required' });
+      const serialized = JSON.stringify({
+        result,
+        persisted: store.getInvocationOutbox(input.invocationId),
+      });
+      expect(serialized).not.toContain(message);
+      expect(serialized).not.toContain('1113');
+    }
+    expect(
+      openCodeProviderFailureCode(
+        apiError(JSON.stringify({ error: { code: 'insufficient_quota' } })),
+      ),
+    ).toBe('provider_billing_required');
+    expect(
+      openCodeProviderFailureCode(apiError(JSON.stringify({ error: { type: 'billing_error' } }))),
+    ).toBe('provider_billing_required');
+  });
+
+  test('keeps uncorroborated codes, prose, malformed bodies and ordinary throttling as rate limits', () => {
+    for (const responseBody of [
+      JSON.stringify({ error: { code: 1113 } }),
+      JSON.stringify({ error: { code: 1113, message: 'Too many requests' } }),
+      JSON.stringify({ error: { code: 'unknown', message } }),
+      JSON.stringify({ message }),
+      JSON.stringify({ error: { code: 'rate_limit_exceeded', message: 'insufficient credits' } }),
+      JSON.stringify({ error: { error: { code: 1113, message } } }),
+      JSON.stringify({ error: { code: 1113, message, padding: '界'.repeat(700) } }),
+      '{',
+    ])
+      expect(openCodeProviderFailureCode(apiError(responseBody))).toBe('provider_rate_limited');
+    const body = JSON.stringify({ error: { code: 1113, message } });
+    expect(openCodeProviderFailureCode(apiError(body, 401))).toBe('provider_authentication_failed');
+    expect(openCodeProviderFailureCode(apiError(body, 503))).toBe('provider_unavailable');
+    expect(
+      openCodeProviderFailureCode({
+        name: 'UnknownError',
+        data: { statusCode: 429, responseBody: body },
+      }),
+    ).toBe('provider_rate_limited');
+    let invoked = 0;
+    const data = { statusCode: 429 };
+    Object.defineProperty(data, 'responseBody', {
+      get() {
+        invoked++;
+        throw new Error('Synthetic accessor');
+      },
+    });
+    expect(openCodeProviderFailureCode({ name: 'APIError', data })).toBe('provider_rate_limited');
+    expect(invoked).toBe(0);
+    const cyclic: Record<string, unknown> = { name: 'APIError', data: { statusCode: 429 } };
+    cyclic.cause = cyclic;
+    expect(openCodeProviderFailureCode(cyclic)).toBe('provider_rate_limited');
   });
 });
 

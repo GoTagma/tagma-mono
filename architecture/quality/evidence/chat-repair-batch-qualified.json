@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "kind": "final-local-repair-batch-qualification-before-verify2",
+  "baseRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "sourceSha256": {
+    "apps/editor/server/opencode-stage-remove-tool.ts": "bbbf966aa6c994b7d695c62d58ceaaff16bb12355b025c244caa56fb69638008",
+    "apps/editor/server/opencode-seed.ts": "f8669bd7ba408e1f555c538a6f6594bf055135c3abc3c38a2b7bcd7f48b8d35b",
+    "apps/editor/server/opencode-config.ts": "0ee3c715746fa22bcfb03be0b97f938c211e6687cfbf67e77143a1e49454e1e1",
+    "apps/editor/server/opencode-trial-plan-tool.ts": "ac1a8276db89483b6e9bc24218c3056c18b3f81aebaf7a2ebf33b7be1b6a5aa5",
+    "apps/editor/server/chat-trial-resilience-rules.ts": "ff7daca92aaeb1e8193a96594fae2d9834e80d4daaaecb09e484c5efcdd3ebba",
+    "apps/editor/server/loopback-fetch.ts": "ff08436c35b1e03721503e92ec16cc8ad8ba809ea119d4cdfcadd73e72c5b204",
+    "apps/editor/server/chat-operations/authoring-runtime.ts": "1c93bbb180aeddf14a7080a476be8f2127b59a7bcae25f28133d226bdd150e55"
+  },
+  "fullVerification": {
+    "passed": 13,
+    "failed": 0,
+    "gates": [
+      "text",
+      "deps",
+      "focus",
+      "imports",
+      "cycles",
+      "secrets",
+      "format",
+      "types",
+      "lint",
+      "tests",
+      "scripts",
+      "build",
+      "publish"
+    ],
+    "logSha256": "9f8dff45526661248aa1a5dc3236776e618f052e48e8bc8ce3a9f1ef0592efbc"
+  },
+  "nativeVerification": {
+    "version": "1.18.18",
+    "passed": 4,
+    "failed": 0,
+    "expects": 151,
+    "files": [
+      "opencode-managed-runtime-smoke.test.ts",
+      "opencode-stage-scope-native.test.ts",
+      "opencode-trial-plan-schema-smoke.test.ts"
+    ],
+    "logSha256": "1e8a4d2f2687a0561abf42451b6a668c5f45adba8416dd4d22e91d3592f46443",
+    "vendorCredentials": false,
+    "actualVendorRequests": 0
+  },
+  "targetedAuthorToolVerification": {
+    "passed": 114,
+    "failed": 0,
+    "expects": 1350,
+    "logSha256": "443419c744ebc00aa1335106df7a604ce92cbadf83421a5a4d99bf7feec56f9c"
+  },
+  "qualificationFailureHistory": [
+    {
+      "attempt": "work/verify-full-repair-batch.log",
+      "passed": 10,
+      "failed": [
+        "types",
+        "lint",
+        "tests"
+      ],
+      "logSha256": "588d20c801fd99a146e9af741e0f944f94912f3c160cbc7d7630797a415a8046",
+      "cause": "New test ReadableStream typings/unused import/any, and existing native CI command-string contract. Fixed without weakening checks."
+    },
+    {
+      "attempt": "work/verify-full-qualified-final.log",
+      "passed": 12,
+      "failed": [
+        "tests"
+      ],
+      "logSha256": "2f80b1eb91c14e3ef543729ff27802a74f1fc63dd09b5c7b00072cc72b545328",
+      "cause": "Three existing Windows/normalized prompt budget checks rejected 22198/22208 characters. Removed redundant addition and compressed existing introduction; preserved 22000 budget. Seeded-profile budget asserted in default unit and actual native cross-platform CI."
+    }
+  ],
+  "packageRule": {
+    "trackedPackageChanges": false,
+    "versionBumpExecuted": false,
+    "reason": "No packages/ source or version changes; apps, tests, CI and documentation only."
+  },
+  "historicalCoverageComplete": false,
+  "historicalGate": "Known archive/mapping gaps remain RED as at baseline. Current-source guard is independent.",
+  "liveAcceptance": false,
+  "claimLimit": "All local gates GREEN; no claim of one-round business acceptance. Restarted editor/fresh workspaces with fresh handoffs required next."
+}

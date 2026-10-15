@@ -1,0 +1,593 @@
+{
+  "scope": "real-provider-test-matrix-observations-not-a-pass",
+  "baseCommit": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "historicalCoverageComplete": false,
+  "attempts": [
+    {
+      "attempt": "s1-l1-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-b56c403e-2f12-4f1b-924a-e43550e51076",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 0,
+      "submitReceiptCoverage": "missing; original Host userMessage is retained",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-4.7-flash"
+      },
+      "phase": "awaiting_input",
+      "waitReason": "provider_unavailable",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "classification",
+        "code": "provider_rate_limited",
+        "invocationId": "classifier-invocation-6194f0b7-d0b2-43c1-a2ef-41d7dbd12bef",
+        "outboxStatus": "failed_terminal",
+        "recordedAt": 1792038099059
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 76915,
+      "invocations": {
+        "classifier": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s1-l1-attempt1/latest.json",
+          "sha256": "dc89a157fa8fa816f612b7a44818a67a6e7d812ad89b0679f5390bcc42d982ce",
+          "bytes": 21635
+        },
+        {
+          "path": "s1-l1-attempt1/observations.jsonl",
+          "sha256": "3a68c0ad2e9d0e0051d02dd17b7fc53f47b95dff196dea917b6332f8a7949fbf",
+          "bytes": 1077835
+        }
+      ]
+    },
+    {
+      "attempt": "s1-l1-attempt1",
+      "operationOrdinal": 2,
+      "operationId": "operation-ae9e9527-4f3f-4460-9874-da65cdde7a8c",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 0,
+      "submitReceiptCoverage": "missing; original Host userMessage is retained",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-4.5-flash"
+      },
+      "phase": "terminal",
+      "waitReason": null,
+      "terminalOutcome": "cancelled_precommit",
+      "failure": null,
+      "observationBudgetInterruption": null,
+      "elapsedMs": 532420,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "repair": 2
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s1-l1-attempt1/latest.json",
+          "sha256": "dc89a157fa8fa816f612b7a44818a67a6e7d812ad89b0679f5390bcc42d982ce",
+          "bytes": 21635
+        },
+        {
+          "path": "s1-l1-attempt1/observations.jsonl",
+          "sha256": "3a68c0ad2e9d0e0051d02dd17b7fc53f47b95dff196dea917b6332f8a7949fbf",
+          "bytes": 1077835
+        }
+      ]
+    },
+    {
+      "attempt": "s1-l2-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-abc8a1c9-d1fe-4534-bd04-1592832b3fc1",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "opencode",
+        "modelID": "mimo-v2.6-flash-free"
+      },
+      "phase": "awaiting_input",
+      "waitReason": "provider_unavailable",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "classification",
+        "code": "provider_request_rejected",
+        "invocationId": "classifier-invocation-15ac308d-ee92-4175-81e7-b5f98176053b",
+        "outboxStatus": "failed_terminal",
+        "recordedAt": 1792038748377
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 4940,
+      "invocations": {
+        "classifier": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s1-l2-attempt1/latest.json",
+          "sha256": "cb23a9732e2c8cefbf1c2874c718312275c397acc52ba1babcc3e176e85c2c6c",
+          "bytes": 20137
+        },
+        {
+          "path": "s1-l2-attempt1/observations.jsonl",
+          "sha256": "dc8d20959d6ec5bf5ce8f296d21e1a84c6a157db54604d828ed59eb425349e30",
+          "bytes": 46592
+        },
+        {
+          "path": "s1-l2-attempt1/commands.jsonl",
+          "sha256": "23032125b8a58cf9acf3385a1a150102230b8390243d1eb7c9344ca45d134590",
+          "bytes": 3643
+        }
+      ]
+    },
+    {
+      "attempt": "s1-l3-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-8558c5e6-7a08-4790-8d03-6bf25237462c",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 1251278,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s1-l3-attempt1/latest.json",
+          "sha256": "15ffd7ec85aa38690e870727d48cc6b51490861d018d160b16b9aaf53428881b",
+          "bytes": 18915
+        },
+        {
+          "path": "s1-l3-attempt1/observations.jsonl",
+          "sha256": "9736a7b82f89a553cfa92c6c252c79ec7235f1aad12ad960a621a43f1b8b09c7",
+          "bytes": 2908154
+        },
+        {
+          "path": "s1-l3-attempt1/commands.jsonl",
+          "sha256": "5245fd4e2d169f11133270386035930d8ca639e5c76cbf7357722ff20f1ff6e7",
+          "bytes": 3652
+        }
+      ]
+    },
+    {
+      "attempt": "s2-l1-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-a3e171b2-60c7-4a8c-b366-13e8638cddc5",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792041089682
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 1008987,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s2-l1-attempt1/latest.json",
+          "sha256": "1e62d6d52b9761da7915dc772fb3de76ae784555d8d8c82632fe7709c586004f",
+          "bytes": 28163
+        },
+        {
+          "path": "s2-l1-attempt1/observations.jsonl",
+          "sha256": "b776b5267fa2abf86e146097ad057c1b47c316efc8dd3d444b4abb24245d94bd",
+          "bytes": 2683608
+        },
+        {
+          "path": "s2-l1-attempt1/commands.jsonl",
+          "sha256": "6a940217954790f2a9e85f6b5c4874a4690b7b7fb6faa6dd7283eecb11971dc6",
+          "bytes": 4197
+        }
+      ]
+    },
+    {
+      "attempt": "s2-l2-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-a88c9a03-1a16-4e4b-955b-399ad65f9681",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "deepseek",
+        "modelID": "deepseek-flash"
+      },
+      "phase": "authoring",
+      "waitReason": "provider_unavailable",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "authoring",
+        "code": "provider_billing_required",
+        "invocationId": "authoring-invocation-34396eac-10f7-48d0-b30d-f4e75b4eaae5",
+        "outboxStatus": "failed_terminal",
+        "recordedAt": 1792041238173
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 91067,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s2-l2-attempt1/latest.json",
+          "sha256": "38ffe4be8e44a2180189320205de1acbd2ede10eb0a610ff9bfe3ef6874ec5b7",
+          "bytes": 19666
+        },
+        {
+          "path": "s2-l2-attempt1/observations.jsonl",
+          "sha256": "fb7f295060ef12a1cd2c21d0b557792bda534de66583cb922cf4068713b2a347",
+          "bytes": 188906
+        },
+        {
+          "path": "s2-l2-attempt1/commands.jsonl",
+          "sha256": "9e6a6b2011bfe2a34fa4dad51e5066124a968b72e93ad440dcc98eea45586855",
+          "bytes": 3691
+        }
+      ]
+    },
+    {
+      "attempt": "s2-l3-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-3f9b54df-4f65-4e63-8e04-7708da90713e",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792042578540
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 1266113,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s2-l3-attempt1/latest.json",
+          "sha256": "ce43ce5553095ddb4dbdd28e7b641110e4fc3363f207a48323e2cde44578902f",
+          "bytes": 30330
+        },
+        {
+          "path": "s2-l3-attempt1/observations.jsonl",
+          "sha256": "d79007e5b8266a614d79dc56a67aa786d32207c47598663c2dda3b3358256ca6",
+          "bytes": 3191807
+        },
+        {
+          "path": "s2-l3-attempt1/commands.jsonl",
+          "sha256": "b12da608fe465d4e4640492885c5643c8be1f1d55e9525e14cb9d2ff5034c673",
+          "bytes": 6135
+        }
+      ]
+    },
+    {
+      "attempt": "s3-l1-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-22a727fb-d6aa-4507-812e-eaadbeec049d",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "protocol-observation-stop.json",
+      "elapsedMs": 672927,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 1
+      },
+      "trialPlanAttempts": 1,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s3-l1-attempt1/latest.json",
+          "sha256": "a1c1cd88446da8dd37293decc31347ff973de6028854390a465d5b33bc288cdf",
+          "bytes": 20325
+        },
+        {
+          "path": "s3-l1-attempt1/observations.jsonl",
+          "sha256": "1b7de46a934a8206d537f200f92cdb62204641ea2693cc919bd66b3c09ddb6f4",
+          "bytes": 1725659
+        },
+        {
+          "path": "s3-l1-attempt1/commands.jsonl",
+          "sha256": "ffa883de3b528e0d5c96f9fbdf826369ed3487077fd8890a1407a9d0ac5a1ab7",
+          "bytes": 4178
+        }
+      ]
+    },
+    {
+      "attempt": "s3-l2-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-ef17ab10-a729-42bc-9edc-65e4c92dfe69",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "protocol-observation-stop.json",
+      "elapsedMs": 581005,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 1
+      },
+      "trialPlanAttempts": 1,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s3-l2-attempt1/latest.json",
+          "sha256": "2978cb722bdad8c4b2de95c20394d1ebb5ace75bdcd334de456c95ee9f68b666",
+          "bytes": 19310
+        },
+        {
+          "path": "s3-l2-attempt1/observations.jsonl",
+          "sha256": "faa7b4a974bfb99d0592ea9176b9ccbb8e331d27213ed923a861ee90be850564",
+          "bytes": 1279678
+        },
+        {
+          "path": "s3-l2-attempt1/commands.jsonl",
+          "sha256": "d0c0d919f975a4b69eaf24331a7e42a148667068fbe3b810256cdb866cf93f9d",
+          "bytes": 6592
+        }
+      ]
+    },
+    {
+      "attempt": "s3-l3-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-e2b66b2f-26bf-4ce5-b148-30395f1af688",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "protocol-observation-stop.json",
+      "elapsedMs": 1014784,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 1
+      },
+      "trialPlanAttempts": 1,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s3-l3-attempt1/latest.json",
+          "sha256": "bc85331fb6ede412d8822f2b38eae31984d1059cabf9b62feb89e913693c98b8",
+          "bytes": 18987
+        },
+        {
+          "path": "s3-l3-attempt1/observations.jsonl",
+          "sha256": "1d6b7468e312f0109e07d3d48b471f8d8a67458e7c16fc10e4d4b12a5ebcef87",
+          "bytes": 2363113
+        },
+        {
+          "path": "s3-l3-attempt1/commands.jsonl",
+          "sha256": "2dd2073464231e196bf550c74eb18e0dc8c806ddc08b36f21feee952ddbc50d9",
+          "bytes": 3509
+        }
+      ]
+    },
+    {
+      "attempt": "s4-l1-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-9fc8f0ae-44e3-487d-b9e4-30abe7a9383c",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "authoring",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 1223894,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s4-l1-attempt1/latest.json",
+          "sha256": "8d331bebd7794c1c37b73b2dd4c7d3349e3ae0f4aa62ea85523e5e96efa88521",
+          "bytes": 20337
+        },
+        {
+          "path": "s4-l1-attempt1/observations.jsonl",
+          "sha256": "1336f30dfefade8f6f88c42286208f5843cfbafe29c7121865e15bf173df5fd2",
+          "bytes": 3253331
+        },
+        {
+          "path": "s4-l1-attempt1/commands.jsonl",
+          "sha256": "df3e198d8944869458735631c56ab3ab7c6c59190c7924b92b0f6d7c293a5c08",
+          "bytes": 4389
+        }
+      ]
+    },
+    {
+      "attempt": "s4-l2-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-5e8a6c9c-2822-44a3-86ca-e61ba9e61088",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "authoring",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 1265351,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s4-l2-attempt1/latest.json",
+          "sha256": "efd22a02e8f2abe270f8f3272bf06057972e3ece99029925ca526ddaa8a85664",
+          "bytes": 18947
+        },
+        {
+          "path": "s4-l2-attempt1/observations.jsonl",
+          "sha256": "c8a113b394bade784a379e19e5aafe3db4d951ebe7b2abbb3490a58b9fa03b01",
+          "bytes": 2934026
+        },
+        {
+          "path": "s4-l2-attempt1/commands.jsonl",
+          "sha256": "0dd5a366048928260421d3a727022b822d4b546edda3d0c8e8c4df9ebb8ddf0b",
+          "bytes": 6560
+        }
+      ]
+    },
+    {
+      "attempt": "s4-l3-attempt1",
+      "operationOrdinal": 1,
+      "operationId": "operation-88e541bc-4091-4145-b2ff-f4d836cbe49d",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "authoring",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 1265860,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "No sealed publication observed; cannot accept.",
+      "evidence": [
+        {
+          "path": "s4-l3-attempt1/latest.json",
+          "sha256": "b5e52f2ab6534a6e52053698e6defd51a70be4af1529f771b8685aa7a2999609",
+          "bytes": 18519
+        },
+        {
+          "path": "s4-l3-attempt1/observations.jsonl",
+          "sha256": "0597e19b706d0dd1440be608b56cab40e7e71c10c55c6223e7c641ac111e61f7",
+          "bytes": 2830693
+        },
+        {
+          "path": "s4-l3-attempt1/commands.jsonl",
+          "sha256": "43c37773bebd686414927311b54bc8fa01d4f6f2c3d57b340ae3cf0811a87f87",
+          "bytes": 6202
+        }
+      ]
+    }
+  ],
+  "originalTestSetSha256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
+  "report": "architecture/quality/reports/2026-10-15-chat-acceptance.md"
+}

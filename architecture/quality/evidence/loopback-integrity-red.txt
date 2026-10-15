@@ -1,0 +1,91 @@
+bun test v1.3.14 (0d9b296a)
+
+work/loopback-final-fixture-baseline/tests/loopback-fetch.test.ts:
+(pass) createStreamingLoopbackFetch > closes the upstream SSE socket on post-header abort [9.67ms]
+(pass) createStreamingLoopbackFetch > closes the upstream SSE socket on post-header cancel [2.55ms]
+(pass) createStreamingLoopbackFetch > reaches a loopback server even with HTTP/HTTPS/ALL proxies set (proxy present) [5.45ms]
+(pass) createStreamingLoopbackFetch > works with no proxy configured (proxy absent) [2.77ms]
+(pass) createStreamingLoopbackFetch > streams the body incrementally before the connection closes (SSE) [2.67ms]
+(pass) createStreamingLoopbackFetch > sends a request body and returns the JSON response [2.20ms]
+(pass) createStreamingLoopbackFetch > refuses a non-loopback baseUrl [0.04ms]
+(pass) createStreamingLoopbackFetch > refuses a request that escapes the loopback origin [1.36ms]
+(pass) createStreamingLoopbackFetch > rejects when the abort signal fires before the response [1.60ms]
+
+work/loopback-final-fixture-baseline/tests/loopback-integrity.test.ts:
+(pass) loopback accepts complete length chunked trailers and close delimited responses [27.73ms]
+54 |   ).toBe('{}');
+55 |   expect(await readWire([head + 'Content-Length: 500\r\n\r\n'], 'HEAD')).toBe('');
+56 | });
+57 | 
+58 | test('loopback rejects incomplete content length even with a valid JSON prefix', async () => {
+59 |   await expect(readWire([head + 'Content-Length: 12\r\n\r\n{}'])).rejects.toThrow();
+                                                                               ^
+error: 
+
+Expected promise that rejects
+Received promise that resolved: Promise { <resolved> }
+
+      at <anonymous> (/workspace/tagma-mono/work/loopback-final-fixture-baseline/tests/loopback-integrity.test.ts:59:75)
+(fail) loopback rejects incomplete content length even with a valid JSON prefix [2.55ms]
+60 | });
+61 | 
+62 | test('loopback rejects chunked bodies missing the final zero chunk', async () => {
+63 |   await expect(
+64 |     readWire([head + 'Transfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n']),
+65 |   ).rejects.toThrow();
+                 ^
+error: 
+
+Expected promise that rejects
+Received promise that resolved: Promise { <resolved> }
+
+      at <anonymous> (/workspace/tagma-mono/work/loopback-final-fixture-baseline/tests/loopback-integrity.test.ts:65:13)
+(fail) loopback rejects chunked bodies missing the final zero chunk [2.44ms]
+66 | });
+67 | 
+68 | test('loopback rejects chunked bodies missing the trailer section terminator', async () => {
+69 |   await expect(
+70 |     readWire([head + 'Transfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n']),
+71 |   ).rejects.toThrow();
+                 ^
+error: 
+
+Expected promise that rejects
+Received promise that resolved: Promise { <resolved> }
+
+      at <anonymous> (/workspace/tagma-mono/work/loopback-final-fixture-baseline/tests/loopback-integrity.test.ts:71:13)
+(fail) loopback rejects chunked bodies missing the trailer section terminator [2.45ms]
+72 | });
+73 | 
+74 | test('loopback rejects a malformed chunk data terminator', async () => {
+75 |   await expect(
+76 |     readWire([head + 'Transfer-Encoding: chunked\r\n\r\n2\r\n{}XX0\r\n\r\n']),
+77 |   ).rejects.toThrow();
+                 ^
+error: 
+
+Expected promise that rejects
+Received promise that resolved: Promise { <resolved> }
+
+      at <anonymous> (/workspace/tagma-mono/work/loopback-final-fixture-baseline/tests/loopback-integrity.test.ts:77:13)
+(fail) loopback rejects a malformed chunk data terminator [3.68ms]
+166 | }
+167 | 
+168 | test('loopback sends complete small and large request bodies through real socket backpressure', async () => {
+169 |   for (const size of [64 * 1024, 8 * 1024 * 1024]) {
+170 |     const result = await slowPost(size, false);
+171 |     expect(result.received).toBe(size);
+                                  ^
+error: expect(received).toBe(expected)
+
+Expected: 8388608
+Received: 3919368
+
+      at <anonymous> (/workspace/tagma-mono/work/loopback-final-fixture-baseline/tests/loopback-integrity.test.ts:171:29)
+(fail) loopback sends complete small and large request bodies through real socket backpressure [2133.34ms]
+(pass) loopback abort disposes a request blocked on socket backpressure [127.54ms]
+
+ 11 pass
+ 5 fail
+ 32 expect() calls
+Ran 16 tests across 2 files. [2.40s]

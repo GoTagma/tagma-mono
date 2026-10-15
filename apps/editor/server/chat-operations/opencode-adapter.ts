@@ -330,7 +330,7 @@ const FORBIDDEN_PROVIDER_FAILURE_CODES = new Map<string, OpenCodePromptProviderF
   ['quotaexceeded', 'provider_rate_limited'],
 ]);
 
-/** Read machine categories only; provider bodies and prose never leave this boundary. */
+/** Read bounded structured categories; provider bodies and prose never leave this boundary. */
 function sdkProviderErrorBodySignals(value: unknown, depth = 0): string[] {
   if (depth > 2 || typeof value !== 'object' || value === null || Array.isArray(value)) return [];
   try {
@@ -349,6 +349,21 @@ function sdkProviderErrorBodySignals(value: unknown, depth = 0): string[] {
           const nested = Object.getOwnPropertyDescriptor(envelope, 'error');
           for (const node of [envelope, record(nested?.value)]) {
             if (!node) continue;
+            // This provider reuses HTTP 429 for exhausted billing resources.
+            // Its numeric code alone is ambiguous: require the same structured
+            // error to explicitly identify unavailable balance/resources and
+            // request recharge. Never classify arbitrary prose or a bare 1113.
+            const code = Object.getOwnPropertyDescriptor(node, 'code')?.value;
+            const message = Object.getOwnPropertyDescriptor(node, 'message')?.value;
+            if (
+              (code === '1113' || code === 1113) &&
+              typeof message === 'string' &&
+              message.length <= 512 &&
+              /余额不足|无可用资源包/.test(message) &&
+              /充值/.test(message)
+            ) {
+              signals.push('billingrequired');
+            }
             for (const key of ['code', 'type']) {
               const field = Object.getOwnPropertyDescriptor(node, key);
               if (
@@ -400,7 +415,15 @@ export function openCodeProviderFailureCode(
   if (identifiers.includes('contentfiltererror')) return 'provider_content_filtered';
   if (status === 401) return 'provider_authentication_failed';
   if (status === 402) return 'provider_billing_required';
-  if (status === 429) return 'provider_rate_limited';
+  if (status === 429) {
+    const bodySignals = identifiers.includes('apierror') ? sdkProviderErrorBodySignals(error) : [];
+    const billing = [...identifiers, ...bodySignals].some(
+      (identifier) =>
+        FORBIDDEN_PROVIDER_FAILURE_CODES.get(identifier.replace(/[_-]/g, '')) ===
+        'provider_billing_required',
+    );
+    return billing ? 'provider_billing_required' : 'provider_rate_limited';
+  }
   if (status === 408 || (status !== null && status >= 500)) {
     return 'provider_unavailable';
   }

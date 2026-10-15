@@ -78,7 +78,7 @@ type BodyMode =
  */
 class ChunkedDecoder {
   private buf: Buffer = Buffer.alloc(0);
-  private state: 'size' | 'data' | 'data-crlf' = 'size';
+  private state: 'size' | 'data' | 'data-crlf' | 'trailers' = 'size';
   private need = 0;
   done = false;
 
@@ -91,13 +91,13 @@ class ChunkedDecoder {
         if (nl < 0) return out;
         const sizeLine = this.buf.subarray(0, nl).toString('ascii').split(';', 1)[0].trim();
         const size = Number.parseInt(sizeLine, 16);
-        if (!Number.isFinite(size) || size < 0) {
+        if (!/^[0-9a-f]+$/i.test(sizeLine) || !Number.isSafeInteger(size) || size < 0) {
           throw new Error('OpenCode loopback response has invalid chunk size');
         }
         this.buf = this.buf.subarray(nl + 2);
         if (size === 0) {
-          this.done = true;
-          return out;
+          this.state = 'trailers';
+          continue;
         }
         this.need = size;
         this.state = 'data';
@@ -108,11 +108,22 @@ class ChunkedDecoder {
         this.buf = this.buf.subarray(take);
         this.need -= take;
         if (this.need === 0) this.state = 'data-crlf';
-      } else {
+      } else if (this.state === 'data-crlf') {
         // Consume the CRLF that trails each chunk's data.
         if (this.buf.length < 2) return out;
+        if (this.buf[0] !== 13 || this.buf[1] !== 10) {
+          throw new Error('OpenCode loopback response has invalid chunk framing');
+        }
         this.buf = this.buf.subarray(2);
         this.state = 'size';
+      } else {
+        const nl = this.buf.indexOf('\r\n');
+        if (nl < 0) return out;
+        this.buf = this.buf.subarray(nl + 2);
+        if (nl === 0) {
+          this.done = true;
+          return out;
+        }
       }
     }
   }
@@ -159,6 +170,7 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
     let bodyClosed = false;
     let socketRef: { end: () => void } | null = null;
     let onAbort: (() => void) | null = null;
+    let requestOffset = 0;
 
     const detachAbort = () => {
       if (onAbort) {
@@ -187,6 +199,27 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
         controller?.error(err);
       } catch {
         /* already errored */
+      }
+    };
+
+    const flushRequest = (socket: { write(bytes: Uint8Array): number }) => {
+      if (request.signal.aborted || bodyClosed || requestOffset === payload.length) return;
+      try {
+        const remaining = payload.subarray(requestOffset);
+        const written = socket.write(remaining);
+        if (!Number.isInteger(written) || written < 0 || written > remaining.length) {
+          throw new Error('OpenCode loopback request write failed');
+        }
+        requestOffset += written;
+        // Bun resumes partial writes through drain; retaining the offset avoids
+        // both dropping bytes and sending an already accepted prefix twice.
+      } catch (error) {
+        if (headParsed) failBody(error);
+        else {
+          detachAbort();
+          socketRef?.end();
+          reject(error);
+        }
       }
     };
 
@@ -220,12 +253,17 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
     };
 
     const onHeadComplete = (parsed: ParsedHead) => {
-      headParsed = true;
       const te = (parsed.headers.get('transfer-encoding') ?? '').toLowerCase();
       const cl = parsed.headers.get('content-length');
-      if (te.includes('chunked')) {
+      const bodyless = request.method === 'HEAD' || [204, 205, 304].includes(parsed.status);
+      if (bodyless) {
+        mode = { kind: 'length', remaining: 0 };
+      } else if (te.includes('chunked')) {
         mode = { kind: 'chunked' };
       } else if (cl !== null && cl !== '') {
+        if (!/^\d+$/.test(cl) || !Number.isSafeInteger(Number(cl))) {
+          throw new Error('OpenCode loopback response has invalid content length');
+        }
         mode = { kind: 'length', remaining: Number(cl) };
       } else {
         mode = { kind: 'until-close' };
@@ -238,27 +276,32 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
       outHeaders.delete('connection');
 
       const empty = mode.kind === 'length' && (mode as { remaining: number }).remaining <= 0;
-      const stream = new ReadableStream<Uint8Array>({
-        start(c) {
-          controller = c;
-          if (empty) closeBody();
-        },
-        cancel() {
-          closeBody();
-          socketRef?.end();
-        },
-      });
+      const stream = empty
+        ? null
+        : new ReadableStream<Uint8Array>({
+            start(c) {
+              controller = c;
+            },
+            cancel() {
+              closeBody();
+              socketRef?.end();
+            },
+          });
+      if (empty) closeBody();
       detachAbort();
-      onAbort = () => failBody(toAbortError(request.signal));
-      request.signal.addEventListener('abort', onAbort, { once: true });
-      resolve(
-        new Response(empty ? null : stream, {
-          status: parsed.status,
-          statusText: parsed.statusText,
-          headers: outHeaders,
-        }),
-      );
+      if (!bodyClosed) {
+        onAbort = () => failBody(toAbortError(request.signal));
+        request.signal.addEventListener('abort', onAbort, { once: true });
+      }
+      const response = new Response(stream, {
+        status: parsed.status,
+        statusText: parsed.statusText,
+        headers: outHeaders,
+      });
+      headParsed = true;
+      resolve(response);
       if (parsed.rest.length > 0) feedBody(parsed.rest);
+      if (empty) socketRef?.end();
     };
 
     const abortPreHead = () => {
@@ -275,7 +318,10 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
       socket: {
         open(socket) {
           socketRef = { end: () => socket.end() };
-          socket.write(payload);
+          flushRequest(socket);
+        },
+        drain(socket) {
+          flushRequest(socket);
         },
         data(_socket, chunk) {
           const data = Buffer.from(chunk);
@@ -287,13 +333,13 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
           let parsed: ParsedHead | null;
           try {
             parsed = parseHead(headBuf);
+            if (parsed) onHeadComplete(parsed);
           } catch (err) {
             detachAbort();
             socketRef?.end();
             reject(err);
             return;
           }
-          if (parsed) onHeadComplete(parsed);
         },
         close() {
           if (!headParsed) {
@@ -301,9 +347,15 @@ async function streamingLoopbackRequest(request: Request, url: URL): Promise<Res
             reject(new Error('OpenCode loopback connection closed before any response'));
             return;
           }
-          // `until-close` bodies end here; chunked/length already closed on
-          // their terminator but a premature close still needs to unblock the
-          // reader.
+          if (
+            !bodyClosed &&
+            ((mode.kind === 'length' && mode.remaining > 0) ||
+              (mode.kind === 'chunked' && !decoder?.done))
+          ) {
+            failBody(new Error('OpenCode loopback response closed before its body was complete'));
+            return;
+          }
+          // Only an unframed body may use connection close as its terminator.
           closeBody();
         },
         error(_socket, err) {

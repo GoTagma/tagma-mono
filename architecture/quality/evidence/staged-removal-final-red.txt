@@ -1,0 +1,44 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-stage-scope-native.test.ts:
+282 |           await req(`/session/${session.id}/abort`, {}).catch(() => {});
+283 |           await message.catch(() => {});
+284 |         }
+285 |       }
+286 |       expect(toolNames.has('bash')).toBe(false);
+287 |       for (const path of paths) expect(existsSync(join(cwd, path))).toBe(false);
+                                                                          ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/opencode-stage-scope-native.test.ts:287:69)
+(fail) native author removes fresh staged files and empty directories through scoped edit grants [3710.92ms]
+
+ 0 pass
+ 1 fail
+ 4 expect() calls
+Ran 1 test across 1 file. [3.89s]
+
+Canonical target compatibility counterexample:
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-stage-remove.test.ts:
+44 |       binding.stageId !== metadata.id ||
+45 |       binding.sessionId !== context.sessionID ||
+46 |       binding.phase !== 'staged' ||
+47 |       binding.targetDirectory !== root
+48 |     )
+49 |       throw new Error('Staged removal requires the current Host session binding.');
+                     ^
+error: Staged removal requires the current Host session binding.
+      at authorize (/workspace/tagma-mono/apps/editor/server/opencode-stage-remove-tool.ts:49:17)
+      at removeStagedEntry (/workspace/tagma-mono/apps/editor/server/opencode-stage-remove-tool.ts:52:16)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/opencode-stage-remove.test.ts:220:29)
+(fail) staged removal compares canonical Host relocation targets across filesystem aliases [1.63ms]
+
+ 0 pass
+ 9 filtered out
+ 1 fail
+Ran 1 test across 1 file. [128.00ms]

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "test-fixture-runtime-path-isolation-green",
+  "testPath": "apps/editor/tests/plugin-install-load.test.ts",
+  "testSha256": "c7be2563812b95988f4e34acdba03f7a82a6b14095f0702aaca0c939cce2b791",
+  "withoutExternalRuntimeOverride": {
+    "executed": 54,
+    "passed": 54,
+    "failed": 0,
+    "expectCalls": 157,
+    "logSha256": "6153acaffd13535d15c7009d7f29a9abcc5126d19dcc57e61a0580c36af1a1e9"
+  },
+  "exactSelector": {
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "logSha256": "4af1146d98a0f7f3703090960188c49f8a6951ca24657c24291bcbac94e66208"
+  },
+  "broaderQualification": {
+    "fullVerifyInitial": "12/13 gates passed; tests failed only on this unchanged fixture runtime alias assertion",
+    "fullVerifyLogSha256": "0c0226670623a4d40a0f54326bfa79d4a50eaa99256de54b15a94f8498203323",
+    "testGateWithSupportedExplicitOverride": "PASS full repository test gate, before fixture source correction; not a same-final-source receipt",
+    "qualifiedTestLogSha256": "6a61346f286b5e609a498ab4a2ce833f085800089153e79474c0140547ab5dce"
+  },
+  "applicationInstallerChanged": false,
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

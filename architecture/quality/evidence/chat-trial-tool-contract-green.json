@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-trial-tool-contract-local-green",
+  "productSourceSha256": "7a6e6ae9fcd34c7a61872fbe6ab6f54b29f03a3bcc92d0ad7af45f251826cd7d",
+  "readerSourceSha256": "b47f48f40d88be0f940f07a4b102d58e1288cc02adb6a437d95090749fd52b0d",
+  "boundary": {
+    "executed": 11,
+    "passed": 11,
+    "failed": 0,
+    "expectCalls": 181,
+    "testPath": "apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+    "testSha256": "3c91240d5e481cbada006c5d8f24392144e8e4832444f0997f818f6d0017f2ed",
+    "logSha256": "cdd13961ef92bd2aacc5b9cc8d2688e087fd3e1f18cccd032e0e302a0fb5b4e8"
+  },
+  "readerAndSourceRelation": {
+    "executed": 45,
+    "passed": 45,
+    "failed": 0,
+    "expectCalls": 195,
+    "logSha256": "3fd78d03787c95b6f588ac32918821061a54a798e70320968bab9b9f15409c4c"
+  },
+  "nativeManagedSmoke": {
+    "pinnedVersion": "1.18.18",
+    "executed": 2,
+    "passed": 2,
+    "failed": 0,
+    "expectCalls": 122,
+    "nativeSchemaCheckIsPermanentInCI": true,
+    "logSha256": "94de67dbf5a41b0cc6bc16e302bcf7dab1fd19d00d0f804a34dda52d2b16b5f8"
+  },
+  "nativeActualGeneratedTool": {
+    "scope": "isolated-native-synthetic-generated-Tagma-postfix-not-live-acceptance",
+    "candidateOnly": false,
+    "observed": [
+      {
+        "call": 1,
+        "toolSchemas": [
+          {
+            "name": "tagma_trial_plan",
+            "goals": {
+              "minItems": 1,
+              "maxItems": 16,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            }
+          }
+        ]
+      },
+      {
+        "call": 2,
+        "toolSchemas": [
+          {
+            "name": "tagma_trial_plan",
+            "goals": {
+              "minItems": 1,
+              "maxItems": 16,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "toolAttemptCount": 1,
+    "validationRejectionCount": 1,
+    "successfulWriteCount": 0,
+    "resultSha256": "523f7ddb4bc6597f287954ec99245a5a3105ea9a191672ef9e8858119080aae8",
+    "credentials": "synthetic localhost only; no real provider request"
+  },
+  "typeChecks": {
+    "server": true,
+    "tests": true
+  },
+  "historicalCoverageComplete": false,
+  "realAcceptance": false,
+  "claimLimit": "Protocol/schema and semantic-validation regression evidence, not provider convergence or publication acceptance."
+}

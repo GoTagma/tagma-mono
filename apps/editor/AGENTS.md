@@ -2239,3 +2239,46 @@
   it scales automatically with zoom. Breakpoints (e.g. `RIGHT_DOCK_COMPACT_BREAKPOINT`) compare
   against `viewportW()`, never the raw `window.innerWidth`, so compact layouts engage at the same
   effective size in both zoom modes.
+
+## Trial Tool Model Schema And Generated Inputs
+
+- Advertise typed business parameters to the pinned native model catalog without an unconstrained
+  union branch. Keep runtime business transport opaque so malformed complete commits reach the
+  counted validator unchanged; operation, target path, and attempt identity remain strict. Preserve
+  the generated-tool boundary tests and the native ToolRegistry schema smoke when changing this.
+- `generatedInputPaths` supports exact `file-equals` or a positive `file-source-text-occurrence`
+  whose `sourcePath` is the generated JSON and `path` is its dependent report. Document both forms
+  in schema descriptions and matching Host/tool errors. Preserve independent concrete producer
+  content, exact removal fixtures, ownership/dependency mappings and per-repeat source integrity;
+  a relation, status, schema, or file-existence assertion alone does not establish core content.
+
+- Tests asserting an exact plugin-installer Bun executable must pin and restore `TAGMA_BUN_BIN`
+  to that runtime. Ambient executable aliases or a POSIX installation named `bun.exe` may
+  legitimately resolve a different path; do not change production resolution to satisfy a fixture.
+- Staged scope repair must restore actual absence, including fresh empty directories. Keep
+  `tagma_stage_remove` limited to the pipeline author in a Host-bound, relocated private stage;
+  ask the existing exact-path `edit` permission and recheck session, abort, path and inode after
+  approval. Never allow root/outside/link/nonempty-recursive deletion or enable shell cleanup.
+  All other managed agents must explicitly deny the tool. Preserve the classified artifact and
+  publication scope fences. Run the real pinned native scoped-cleanup and malformed Trial
+  transport fixtures in CI; synthetic local-model success never substitutes for live acceptance.
+- Native provider config comparison must use the pinned runtime's supported cost projection
+  (input/output/cache and extended-context cost), retaining unknown stored pricing metadata.
+  Never relax provider/model/auth/variant identity because the runtime omits a pricing field.
+- Trial model hints must distinguish remediable pipeline gaps from intrinsic observation limits;
+  read-only worker access does not determine repair ownership. Keep typed repairScope authoritative.
+  The shared validator and generated handler must admit blocked core with known tasks and an
+  existing blocking artifact or diagnostic finding. Blocked core never passes execution. Cover
+  actual generated commits and Host repair/fresh-revision/Sandbox behavior, not only descriptions;
+  preserve earlier revision counters and reject stale or retained blocked plans.
+  Review taskIds must be nonempty for required evidence and empty for not-required evidence;
+  rejection feedback must identify the exact decision and rule without changing acceptance.
+- Raw loopback transport must reject incomplete declared-length/chunked frames, including missing
+  trailer termination, and honor socket backpressure with bounded offset/drain writes. Preserve
+  until-close/SSE and cancellation behavior; real TCP byte/hash and paused-upload tests guard this.
+- HTTP 429 may carry structured billing exhaustion. Prefer known billing categories over ordinary
+  throttling; numeric vendor codes require explicit corroboration within the bounded structured
+  error. Preserve authentication precedence, ordinary rate limits, own-data/accessor safety and
+  content-free diagnostics/outbox records. Arbitrary billing prose is insufficient.
+- Native schema-smoke metadata requests use the five-minute cold-start readiness deadline;
+  never overlap shorter retries or change application execution budgets to satisfy this fixture.

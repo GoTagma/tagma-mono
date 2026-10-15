@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "kind": "native-pricing-projection-local-green",
+  "productionSourceSha256": "7dd43c962c2a33201df0f7e59f90023d0da399a793728ddced9f7c47b111b4be",
+  "unit": {
+    "executed": 18,
+    "passed": 18,
+    "failed": 0,
+    "expectCalls": 105,
+    "testPath": "apps/editor/tests/opencode-isolation.test.ts",
+    "logSha256": "b260e1402236a3b116a195bd935cebc06f4622d46c4803cbfd897e7be23e0507"
+  },
+  "realPinnedNative": {
+    "version": "1.18.18",
+    "executed": 2,
+    "passed": 2,
+    "failed": 0,
+    "expectCalls": 124,
+    "testPath": "apps/editor/tests/opencode-managed-runtime-smoke.test.ts",
+    "logSha256": "f5e1195dd1e813b358cfa382e390607a5b0fad70c3076473eeff81df50a92300",
+    "vendorModelCalls": 0,
+    "permanentInCI": true
+  },
+  "contract": "Project only native pricing fields on emission; preserve stored metadata, execution options, provider authentication, model reasoning capabilities and variants; keep strict identity checks.",
+  "realProviderAcceptance": false,
+  "historicalCoverageComplete": false
+}

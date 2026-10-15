@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "pinned-native-staged-cleanup-capability-green",
+  "nativeVersion": "1.18.18",
+  "nativeBatch": {
+    "passed": 4,
+    "failed": 0,
+    "expectCalls": 150,
+    "logSha256": "d02142250920405667752e2fba753e955a896fbcdabc8b93bcaaca1a745d8a6a"
+  },
+  "unitBatch": {
+    "passed": 11,
+    "failed": 0,
+    "expectCalls": 100,
+    "logSha256": "d1185ad65e1e72ea9b9ce15e8523801f440ff9d4831eacf82fdadf8acf17fb98"
+  },
+  "sourceSha256": "52af54d76a63c6fdf996e60864fc7938cca28a30ea615d03c93ab13bc8cc6a80",
+  "fixtureSha256": "3a45b3f134f6aecbd42ea9cae50920082a3c42b10e1e1666d527655885b3caf4",
+  "controls": [
+    "Actual native pipeline profile, non-GPT model with no apply_patch, no bash, exact-path Host edit grants",
+    "Fresh file unlink and bottom-up empty directory removal; classified target bytes preserved",
+    "Outside/root, symlink ancestor, hardlink, nonempty directory denied before grant",
+    "Wrong agent, session, relocation phase, owner and live root denied",
+    "Permission rejection, abort, binding change, inode replacement and linked ancestor during grant preserve bytes",
+    "All seeded non-author profiles explicitly deny capability"
+  ],
+  "ci": "Native fixture and malformed counted Trial transport run in existing cross-platform native CI job.",
+  "serverTypesPassed": true,
+  "testTypesPassed": true,
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "kind": "native-pricing-projection-red",
+  "baseCommit": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "cause": "Pinned native Config removes unsupported model pricing fields, making raw startup provider identity fail across all selected models.",
+  "productionSourceAtRedSha256": "cdc1b3a6ed0b1aec41f5f6cc82d835292a42baa9bc9d9e6a70b02d9780d2811f",
+  "unit": {
+    "executed": 1,
+    "passed": 0,
+    "failed": 1,
+    "expectCalls": 10,
+    "logSha256": "f8eb76e31646ef201d1e1d2e8d80e49f9c6a823b69788ae8dbdfec83be8226f3"
+  },
+  "realPinnedNative": {
+    "version": "1.18.18",
+    "executed": 2,
+    "passed": 1,
+    "failed": 1,
+    "expectCalls": 13,
+    "error": "catalog_identity_unavailable",
+    "logSha256": "b25562da9fd3c9a44e694ab485e7ccf40d9044d843309e709769e912bf420f9c"
+  },
+  "realProviderAcceptance": false,
+  "historicalCoverageComplete": false
+}

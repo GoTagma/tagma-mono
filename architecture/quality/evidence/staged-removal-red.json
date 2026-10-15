@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "pinned-native-staged-cleanup-capability-red",
+  "nativeVersion": "1.18.18",
+  "baselineRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "fixture": "apps/editor/tests/opencode-stage-scope-native.test.ts",
+  "fixtureSha256": "3a45b3f134f6aecbd42ea9cae50920082a3c42b10e1e1666d527655885b3caf4",
+  "sourceReplay": "Literal Git baseline opencode-seed.ts and opencode-managed-tools.ts; candidates restored in finally; editor stopped.",
+  "result": {
+    "passed": 0,
+    "failed": 1,
+    "failure": "unintended file remains (emptied by native write), expected absent",
+    "bashExposed": false,
+    "applyPatchAvailable": false
+  },
+  "rawEvidenceSha256": "8e628f743ebcba72ed3494b662b71bbfc1b3d33f0d83414058cbd61a2a058545",
+  "vendorCalls": 0,
+  "liveAcceptance": false,
+  "ownershipLimit": "Capability gap independently confirmed; no claim it caused generic provider_invocation_failed."
+}

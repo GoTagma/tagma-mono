@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "kind": "trial-review-hints-and-feedback-local-green",
+  "sourceHashes": {
+    "apps/editor/server/opencode-trial-plan-tool.ts": "ac1a8276db89483b6e9bc24218c3056c18b3f81aebaf7a2ebf33b7be1b6a5aa5",
+    "apps/editor/server/chat-trial-resilience-rules.ts": "ff7daca92aaeb1e8193a96594fae2d9834e80d4daaaecb09e484c5efcdd3ebba"
+  },
+  "semanticSuite": {
+    "executed": 95,
+    "passed": 95,
+    "failed": 0,
+    "expectCalls": 600,
+    "logSha256": "3ca09e1cca20ca77c5473492ae695308e57c209229b046e5bc9787a6f5284db7"
+  },
+  "realPinnedNative": {
+    "version": "1.18.18",
+    "executed": 2,
+    "passed": 2,
+    "failed": 0,
+    "expectCalls": 129,
+    "logSha256": "d7a95be826ca83070911168a3e908f4ec36583786a6f6a2d325e9315996dc228",
+    "vendorModelCalls": 0,
+    "permanentInCI": true
+  },
+  "testTypes": {
+    "passed": true,
+    "logSha256": "a77046aada8dc916da9698e8ce1dcf467c46b326dd19b40bdbd0c263638c9938"
+  },
+  "preserved": [
+    "typed artifact repair authority",
+    "unchanged review acceptance semantics",
+    "zero formal count for invalid drafts",
+    "one counted malformed complete commit",
+    "strict producer content, ownership and repeated source integrity"
+  ],
+  "realAcceptance": false,
+  "historicalCoverageComplete": false
+}

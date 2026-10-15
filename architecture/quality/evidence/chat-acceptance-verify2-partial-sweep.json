@@ -1,0 +1,539 @@
+{
+  "scope": "User-ended second post-fix live sweep; partial and not acceptance GREEN",
+  "completedAt": "2026-10-15T15:35:01.127327+00:00",
+  "baseCommit": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "editorPid": 102508,
+  "editorRestartedBeforeSweep": true,
+  "liveSourceChangedDuringSweep": false,
+  "trackedDiffSha256": "94016dcb5623b904df29afe1f9543162a213f4eaee6c44199c6f335d459cf294",
+  "historicalCoverageComplete": false,
+  "plannedCaseCount": 12,
+  "completedCaseCount": 6,
+  "userInterruptedCaseCount": 1,
+  "notStartedCaseCount": 5,
+  "acceptedCount": 0,
+  "stopReason": "User: 停止吧 修复问题后提交push到main",
+  "configurationQualification": {
+    "firstFour": "GLM FlashX low, then MiMo Flash low; outcomes retained.",
+    "lastThree": "MiMo Flash off (thinking disabled), workspace-only qualified configuration; official docs, pinned native wire probe and bounded real API availability evidence. Do not attribute differences solely to source fixes.",
+    "evidence": "/workspace/tagma-cloud/reports/mimo-off-configuration-qualification.json"
+  },
+  "attempts": [
+    {
+      "attempt": "s1-l1-verify2",
+      "operationOrdinal": 1,
+      "operationId": "operation-3a4fcda5-95a2-439f-ad99-922dd6485349",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flashx"
+      },
+      "phase": "awaiting_input",
+      "waitReason": "provider_unavailable",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "classification",
+        "code": "provider_rate_limited",
+        "invocationId": "classifier-invocation-999badee-664e-4523-ad79-ca639ec1f429",
+        "outboxStatus": "failed_terminal",
+        "recordedAt": 1792067700539
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 75960,
+      "invocations": {
+        "classifier": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "Natural classifier APIError; Host provider_rate_limited. No authoring, Trial or publication. Original request sent once; no Retry.",
+      "evidence": [
+        {
+          "path": "s1-l1-verify2/latest.json",
+          "sha256": "fb4610adf9aee36bad4ffdf531d9efc5e73c7b98c719a1080ae0c0dd62a1da07",
+          "bytes": 22508
+        },
+        {
+          "path": "s1-l1-verify2/observations.jsonl",
+          "sha256": "6e24449c5a70618907ee1667e6cdf8bcd28564bd433d6b826e61570328a72277",
+          "bytes": 916013
+        },
+        {
+          "path": "s1-l1-verify2/commands.jsonl",
+          "sha256": "a4d5e0ee952accdfdb9ab1d15d66aa0cfde33de252cf54804fdfc2d1d7f98192",
+          "bytes": 4242
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-3a4fcda5-95a2-439f-ad99-922dd6485349",
+        "oneRoundAcceptance": false,
+        "verdict": "Natural classifier APIError; Host provider_rate_limited. No authoring, Trial or publication. Original request sent once; no Retry.",
+        "failureClass": "provider_rate_limited",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": false,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flashx",
+        "variant": "low",
+        "actualTrialExecuted": false,
+        "terminalOutcome": null,
+        "waitReason": "provider_unavailable",
+        "nativeErrorName": "APIError",
+        "providerCauseSupplement": {
+          "actualNativeHttpStatus": 429,
+          "providerErrorCode": "1113",
+          "providerMessage": "余额不足或无可用资源包,请充值。",
+          "qualifiedCause": "provider billing/resources unavailable, not ordinary rate limiting",
+          "hostReportedCodePreserved": "provider_rate_limited",
+          "confirmedProductFinding": "Provider failure classification prioritized HTTP429 over explicit billing error; repair after whole verify2 sweep, with permanent regression.",
+          "evidence": "native-error-code-facts.json"
+        }
+      }
+    },
+    {
+      "attempt": "s1-l2-verify2",
+      "operationOrdinal": 1,
+      "operationId": "operation-56eacceb-e7ff-4ec3-9727-a871e04965f4",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 2703516,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 1
+      },
+      "trialPlanAttempts": 1,
+      "oneRoundAcceptance": false,
+      "artifactReview": "Tester interrupted at 45-minute observation budget in first Trial planning attempt; no actual case execution or publication. Not a natural product timeout or confirmed hang.",
+      "evidence": [
+        {
+          "path": "s1-l2-verify2/latest.json",
+          "sha256": "453f1424005eccd8f7c22bc505440960160d1c7dcdea4c24b85e608da9bfd2cb",
+          "bytes": 19609
+        },
+        {
+          "path": "s1-l2-verify2/observations.jsonl",
+          "sha256": "a91302d5c917ed557416df92a7b3e197887a8ffb2ee0bfd8df014d3544f66cef",
+          "bytes": 44935669
+        },
+        {
+          "path": "s1-l2-verify2/commands.jsonl",
+          "sha256": "216b0f37e0a13e269aea41d80e4f265f86318004c8bdcfd1ae5c843cfa68d5f1",
+          "bytes": 3700
+        },
+        {
+          "path": "s1-l2-verify2/harness-stop.json",
+          "sha256": "f16f30066c10bb44041aecfcb3d59b62aedff017e2df519628d081aedb24aef2",
+          "bytes": 3063
+        },
+        {
+          "path": "s1-l2-verify2/post-stop-state.json",
+          "sha256": "59e37710df8425ee7ab7a76dbfafdbe49bfa00da9fe600f7353b1149ab16219a",
+          "bytes": 19098
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-56eacceb-e7ff-4ec3-9727-a871e04965f4",
+        "oneRoundAcceptance": false,
+        "verdict": "Tester interrupted at 45-minute observation budget in first Trial planning attempt; no actual case execution or publication. Not a natural product timeout or confirmed hang.",
+        "failureClass": "observation_budget_interruption_during_trial_planning",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-flash",
+        "variant": "low",
+        "actualTrialExecuted": false,
+        "terminalOutcome": "cancelled_precommit",
+        "actualFormalToolAttemptCount": 0,
+        "actualSuccessfulPlanWrites": 0,
+        "skeletonValidationRejections": 4,
+        "draftCaseValidationRejections": 1,
+        "candidateFinding": "Repeated conceptual runtime input with unbound optional task input; attempted undeclared environment override correctly rejected. Cross-model observation, not a confirmed runtime validator defect.",
+        "sourceTargetPublished": false,
+        "uncompletedNativeCallObservedMsBeforeStop": 272849,
+        "nativeCallOwnership": "Unknown; no finish, error or final usage before tester Stop. Do not claim a natural provider timeout or Tagma hang.",
+        "longCompletedNativeCallBeforeStop": {
+          "durationMs": 1017967,
+          "finish": "tool-calls",
+          "reasoningTokens": 4387,
+          "outputTokens": 185,
+          "cachedInputTokens": 81344,
+          "claimLimit": "Completed naturally before a subsequent pending call; long wait is not proof of hang or vendor cause."
+        }
+      }
+    },
+    {
+      "attempt": "s1-l3-verify2",
+      "operationOrdinal": 1,
+      "operationId": "operation-f4ac3e61-41e8-42c1-b421-1a9a899c68c0",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792072706261
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 2015577,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 2,
+        "repair": 1
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "Natural verification pause after automatic author repair: previous accepted plan targets older YAML. Both formal submissions used before artifact repair; no actual Trial or publication.",
+      "evidence": [
+        {
+          "path": "s1-l3-verify2/latest.json",
+          "sha256": "bc369cefdbe1fc7cf33532c0c1dd99fb38bf02e358fa242d18844c78d5653632",
+          "bytes": 22773
+        },
+        {
+          "path": "s1-l3-verify2/observations.jsonl",
+          "sha256": "c4f3ad87d490cfba60c381a98e0d3b04b7aade3d8c1682577209aef8cce25381",
+          "bytes": 32366835
+        },
+        {
+          "path": "s1-l3-verify2/commands.jsonl",
+          "sha256": "00db2af9b13882ea5466147bad5e61223534565bddb76585dfdaa7dee20d0882",
+          "bytes": 6131
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-f4ac3e61-41e8-42c1-b421-1a9a899c68c0",
+        "oneRoundAcceptance": false,
+        "verdict": "Natural verification pause after automatic author repair: previous accepted plan targets older YAML. Both formal submissions used before artifact repair; no actual Trial or publication.",
+        "failureClass": "stale_plan_after_repair_with_prior_blocked_core_owner_conflict",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": false,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 1,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-flash",
+        "variant": "low",
+        "actualTrialExecuted": false,
+        "terminalOutcome": null,
+        "waitReason": "user_retry",
+        "verificationFeedback": "The trial plan targets an older YAML revision.  The trial plan targets an older YAML revision.  Targeted trial plan required: The trial plan targets an older YAML revision.",
+        "originalRevisionFormalToolAttempts": 2,
+        "originalRevisionSuccessfulPlanWrites": 2,
+        "originalRevisionPlanAttemptLimit": 2,
+        "confirmedProductFinding": "CSR0029 reopened: model schema promises remediable blocked core plus artifact finding, shared validator requires diagnostic-only. Actual model switched to diagnostic scope after rejection, then a second plan combined both scopes to trigger artifact repair. Extra formal plan consumed before repair. Do not fix by resetting budget or reusing blocked plan.",
+        "claimLimit": "Fixing this confirmed mismatch does not by itself prove a working input binding, successful fresh plan or real Trial. Post-repair claim input remains unbound optional; input clarity candidate retained."
+      }
+    },
+    {
+      "attempt": "s2-l1-verify2",
+      "operationOrdinal": 1,
+      "operationId": "operation-7a489b24-0e27-49f7-9ab7-cc5b573126bc",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "terminal",
+      "waitReason": null,
+      "terminalOutcome": "cancelled_precommit",
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 2704422,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 1
+      },
+      "trialPlanAttempts": 1,
+      "oneRoundAcceptance": false,
+      "artifactReview": "Tester interrupted at 45-minute observation budget in first Trial preparation, no actual case execution or publication; not natural product timeout.",
+      "evidence": [
+        {
+          "path": "s2-l1-verify2/latest.json",
+          "sha256": "ed748aaf41723fbfa872b02e8201ac085c34442a949e6577643a5428190152bf",
+          "bytes": 20093
+        },
+        {
+          "path": "s2-l1-verify2/observations.jsonl",
+          "sha256": "51680f98a53b2a0ef35137d3d2f8ef24b15a2a478a0e8c3c3d1f98d4930843d9",
+          "bytes": 50759437
+        },
+        {
+          "path": "s2-l1-verify2/commands.jsonl",
+          "sha256": "07207989ea902e4c2ea43cc97232d9c7121f8f6954fd14341bed5ff1040b2204",
+          "bytes": 4197
+        },
+        {
+          "path": "s2-l1-verify2/harness-stop.json",
+          "sha256": "6b19ac9191c6a9ee46d0db93b3ecac39c427de4e0a672d91d6ea7357e20ce515",
+          "bytes": 3560
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-7a489b24-0e27-49f7-9ab7-cc5b573126bc",
+        "oneRoundAcceptance": false,
+        "verdict": "Tester interrupted at 45-minute observation budget in first Trial preparation, no actual case execution or publication; not natural product timeout.",
+        "failureClass": "observation_budget_interruption_during_trial_planning",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-flash",
+        "variant": "low",
+        "actualTrialExecuted": false,
+        "terminalOutcome": "cancelled_precommit",
+        "formalCounterQualification": "Read attempted after Stop had removed stage; no before-Stop counter receipt. Do not invent an exact counter from missing file.",
+        "skillReadQualification": "Named skill tool returned full untruncated content; extra outside-root reads denied. Actor cwd verified private; no confirmed resource or context-root defect.",
+        "workflowInputs": "Required document_path has a real default and downstream source bindings; no unbound conceptual scalar input claim."
+      }
+    },
+    {
+      "attempt": "s2-l2-verify2",
+      "operationOrdinal": 1,
+      "operationId": "operation-accbb837-8255-4dda-a7c8-6e7b890df0d4",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792077506830
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 1299891,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "Natural trial_verification_paused after two Host planning attempts; no valid committed plan, no actual case execution or publication. Not a tester budget stop.",
+      "evidence": [
+        {
+          "path": "s2-l2-verify2/latest.json",
+          "sha256": "1e5488967a74d3c56392b5d4a83b99ed78ba09f29b87a33819e7ae67d7b93b23",
+          "bytes": 22526
+        },
+        {
+          "path": "s2-l2-verify2/observations.jsonl",
+          "sha256": "3d1b30c6c323d409268d48ec0064b25b3ba4a1467cbaf54cad9cd79d6ce945b9",
+          "bytes": 21834182
+        },
+        {
+          "path": "s2-l2-verify2/commands.jsonl",
+          "sha256": "1d850d4fcf0d43300f3dade77b7a19a7d470b92176f061c81aebfda3f7f53992",
+          "bytes": 3691
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-accbb837-8255-4dda-a7c8-6e7b890df0d4",
+        "oneRoundAcceptance": false,
+        "verdict": "Natural trial_verification_paused after two Host planning attempts; no valid committed plan, no actual case execution or publication. Not a tester budget stop.",
+        "failureClass": "no_valid_trial_plan",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-flash",
+        "variant": "off",
+        "actualTrialExecuted": false,
+        "hostPlanAttempts": 2,
+        "formalCounterQualification": "No telemetry file exists for this current YAML revision at pre-execution or final capture. This is not evidence of a counted commit rejection. Native draft validation errors are recorded separately.",
+        "skeletonQualification": "Wrong output-map shapes passed where schema requires string arrays; preserve errors without claiming valid array rejection. See skeleton-shape-qualification.json.",
+        "artifactReview": "Read-only authored snapshot shows no declared input file path binding and scripts hardcode a draft location. Actual execution did not occur; substantive output is unproved."
+      }
+    },
+    {
+      "attempt": "s2-l3-verify2",
+      "operationOrdinal": 1,
+      "operationId": "operation-8e4140d5-3bf5-4c34-8096-3b18fdefe714",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792078109420
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 532654,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "Natural pause after second Host plan attempt committed blocked core with blocking diagnostic-only finding; no actual case execution or publication.",
+      "evidence": [
+        {
+          "path": "s2-l3-verify2/latest.json",
+          "sha256": "871a3a4a629465407a95ed1fe59265397b1188ffbcc14b2eed6acbc522be5382",
+          "bytes": 28015
+        },
+        {
+          "path": "s2-l3-verify2/observations.jsonl",
+          "sha256": "0990e349088ce48ce3ff545f49e6cf25b17c1eefd5dbe2a83e23280fd9a15969",
+          "bytes": 10132972
+        },
+        {
+          "path": "s2-l3-verify2/commands.jsonl",
+          "sha256": "15d6cb6f376d74223a72790309c2521af170fb455df396c08c99009c57524218",
+          "bytes": 6090
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-8e4140d5-3bf5-4c34-8096-3b18fdefe714",
+        "oneRoundAcceptance": false,
+        "verdict": "Natural pause after second Host plan attempt committed blocked core with blocking diagnostic-only finding; no actual case execution or publication.",
+        "failureClass": "model_classifies_remediable_observability_gap_as_diagnostic_only",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 1,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-flash",
+        "variant": "off",
+        "actualTrialExecuted": false,
+        "hostPlanAttempts": 2,
+        "formalToolAttempts": 1,
+        "successfulPlanWrites": 1,
+        "formalValidationRejections": 0,
+        "scopeQualification": "Native finding says no permitted repair within read-only planner scope; source schema explicitly says classify required change, not current worker permissions. This is a model scope error despite correct hint; no observed artifact-scoped validator rejection in this case. Do not infer artifact authority from prose.",
+        "workflowInputs": "Required draft_path has an actual default draft.md; no unbound conceptual input claim.",
+        "taskModelQualification": "Authored prompt task omits model, so Chat model must not be attributed to an unexecuted runtime Task.",
+        "evidence": [
+          "finding-detail-facts.json",
+          "final-plan-counter.json",
+          "plan-error-history.jsonl",
+          "authored-before-first-plan.json"
+        ]
+      }
+    },
+    {
+      "attempt": "s3-l1-verify2",
+      "operationOrdinal": 1,
+      "operationId": "operation-2b3961a9-2991-4c5c-802c-92fab1e72ece",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "terminal",
+      "waitReason": null,
+      "terminalOutcome": "cancelled_precommit",
+      "failure": null,
+      "observationBudgetInterruption": null,
+      "elapsedMs": 191666,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "User explicitly stopped the test sweep during authoring and requested repairs and main push; no Trial/publication. Not a naturally failed case.",
+      "evidence": [
+        {
+          "path": "s3-l1-verify2/latest.json",
+          "sha256": "81f69285b5526f2d5a5a6ff474d9fc8ad19a8aee2bb0c5de7b3edea4cf0119cf",
+          "bytes": 20372
+        },
+        {
+          "path": "s3-l1-verify2/observations.jsonl",
+          "sha256": "75d922cb00b9ae4f3b40d4a9337d0ba3c9f1854c20ccbe4a3eec96c8c59d7063",
+          "bytes": 2631829
+        },
+        {
+          "path": "s3-l1-verify2/commands.jsonl",
+          "sha256": "ca85567f1ee2986bd0c1fa961cc5125a46c10cbfc41178622cebd12cf29cca36",
+          "bytes": 6908
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-2b3961a9-2991-4c5c-802c-92fab1e72ece",
+        "oneRoundAcceptance": false,
+        "verdict": "User explicitly stopped the test sweep during authoring and requested repairs and main push; no Trial/publication. Not a naturally failed case.",
+        "failureClass": "user_requested_stop",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "actualTrialExecuted": false,
+        "terminalOutcome": "cancelled_precommit"
+      },
+      "userRequestedInterruption": true
+    }
+  ],
+  "notStarted": [
+    "s3-l2",
+    "s3-l3",
+    "s4-l1",
+    "s4-l2",
+    "s4-l3"
+  ],
+  "naturallyPausedCaseCount": 4,
+  "observationBudgetInterruptedCaseCount": 2
+}

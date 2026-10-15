@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "final-staged-removal-native-and-unit-qualification",
+  "nativeVersion": "1.18.18",
+  "nativeFixtureSha256": "0ced5739babfc70bcdafc1f1cfd1f24c62fc0c6d59715325ae513b7dafa710b2",
+  "productionToolSha256": "bbbf966aa6c994b7d695c62d58ceaaff16bb12355b025c244caa56fb69638008",
+  "finalFixtureBaselineReplay": {
+    "revision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+    "files": [
+      "apps/editor/server/opencode-seed.ts",
+      "apps/editor/server/opencode-managed-tools.ts"
+    ],
+    "passed": 0,
+    "failed": 1,
+    "observed": "fresh file still present after original native write fallback; no shell/apply_patch",
+    "rawEvidenceSha256": "c6b601537335ead12aca0e367be62266b4d0dfbf8c22e5552b31b3bceb40f238"
+  },
+  "unitBatch": {
+    "passed": 14,
+    "failed": 0,
+    "expects": 117,
+    "logSha256": "3550d74dd5e1947d0535cd9c1635df4bf6d18731cc3722fe17ffb849ea6d9439"
+  },
+  "testTypes": {
+    "passed": true,
+    "logSha256": "a77046aada8dc916da9698e8ce1dcf467c46b326dd19b40bdbd0c263638c9938"
+  },
+  "lint": {
+    "passed": true,
+    "logSha256": "a36ed55bc79b9d674aabbc87b6d86b85f7a9a490d2709fd0fec7bcdd5d94474e"
+  },
+  "qualificationHistory": "Initial full attempt failed newly installed native test stream typings and lint, and a CI command-string contract; all retained in work/verify-full-repair-batch.log. Stream readers changed to getReader/read/releaseLock; CI keeps original native commands and adds a dedicated step. Initial staged-removal-green testTypesPassed was recorded before the async typecheck had completed; this final receipt supersedes that premature field. First-red log preserved; its earlier fixture digest was captured after formatting, not exact pre-format execution bytes; this baseline replay uses the final fixture digest above.",
+  "canonicalAliasControl": "Trusted Host target realpath must match the private root, allowing OS filesystem aliases without relaxing ownership or path fences. Literal comparison RED, canonical comparison GREEN.",
+  "nativeBatch": {
+    "passed": 4,
+    "failed": 0,
+    "expects": 150,
+    "logSha256": "07887cef98b9d9396d12dfb924e74d5e83f0889630288d35e4069267f279b180"
+  },
+  "vendorCalls": "Local synthetic model requests only, no real vendor credentials or requests.",
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

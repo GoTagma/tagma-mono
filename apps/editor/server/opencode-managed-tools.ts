@@ -9,6 +9,7 @@ export const TAGMA_MANAGED_OPENCODE_TOOLS = [
   { id: 'tagma_yaml_skeleton', filename: 'tagma_yaml_skeleton.ts' },
   { id: 'tagma_placement_plan', filename: 'tagma_placement_plan.ts' },
   { id: 'tagma_trial_plan', filename: 'tagma_trial_plan.ts' },
+  { id: 'tagma_stage_remove', filename: 'tagma_stage_remove.ts' },
 ] as const;
 
 export const TAGMA_MANAGED_OPENCODE_TOOL_IDS = TAGMA_MANAGED_OPENCODE_TOOLS.map(({ id }) => id);

@@ -195,6 +195,60 @@
       "sha256": "b5a605150b2fbac73a3eb16d857e6c5520d27b888bd00612a2cdbc1d8f2e28b0",
       "bytes": 5916,
       "kind": "immutable-public-safe-existing-private-source-counterexample-and-portable-regression"
+    },
+    {
+      "id": "current-trial-tool-contract-red",
+      "path": "architecture/quality/evidence/chat-trial-tool-contract-red.json",
+      "sha256": "a8c835c44c8b9f61f11d95690ed4f599da2b2d726e468ba9a3381c3530240ac6",
+      "role": "current-source-real-discovery-and-isolated-generated-tool-red"
+    },
+    {
+      "id": "current-trial-tool-contract-green",
+      "path": "architecture/quality/evidence/chat-trial-tool-contract-green.json",
+      "sha256": "10618a0c3670a97f8fddde45dbb2af08a745080419b3ba414c7547de1629f7dc",
+      "role": "current-source-boundary-and-native-protocol-green"
+    },
+    {
+      "id": "current-plugin-runtime-fixture-red",
+      "path": "architecture/quality/evidence/plugin-runtime-fixture-red.json",
+      "sha256": "2f4893f87e8b9df1d57fc7fcc4ac78dba30fbe4926a20d87b3b2d33b5788a128",
+      "role": "isolated-test-fixture-red"
+    },
+    {
+      "id": "current-plugin-runtime-fixture-green",
+      "path": "architecture/quality/evidence/plugin-runtime-fixture-green.json",
+      "sha256": "ca19b328d944f3264e67eab26c51cc2cfe4c273ad5e64684edc6f5cdc0ae1f78",
+      "role": "isolated-test-fixture-green"
+    },
+    {
+      "id": "current-native-pricing-projection-red",
+      "path": "architecture/quality/evidence/native-pricing-projection-red.json",
+      "sha256": "a914922285ac89d9c3b394f6a669ed6b87cc3811c939710f32dfb58908fc709a",
+      "role": "actual-pinned-native-and-unit-red"
+    },
+    {
+      "id": "current-trial-review-contract-red",
+      "path": "architecture/quality/evidence/trial-review-contract-red.json",
+      "sha256": "a93662c17993e4323fddaf4a972cfbba8fde71fdd5ca95ae183bdd31c4374d30",
+      "role": "current-source-real-boundary-red"
+    },
+    {
+      "id": "current-loopback-integrity-real-tcp-red",
+      "path": "architecture/quality/evidence/loopback-integrity-red.json",
+      "sha256": "b0b93fc6bb2775afcba52407e5d3d25e60e47d4b5c6fb197bc5016dff31c2775",
+      "role": "current-source-real-boundary-red"
+    },
+    {
+      "id": "staged-removal-native-red",
+      "path": "architecture/quality/evidence/staged-removal-red.json",
+      "sha256": "29591b522e2e4a6352eb33bcd4324edd5d689e98f741fcbf387a0c82143db09f",
+      "role": "current-source-real-boundary-red"
+    },
+    {
+      "id": "current-trial-billing-followup-red",
+      "path": "architecture/quality/evidence/trial-billing-followup-red.json",
+      "sha256": "4195fb0f7a7b5bb04698b649cf5d73db0f8eaeab956054a0a9ed8bccd30ce230",
+      "role": "current-source-real-boundary-red"
     }
   ],
   "issues": [
@@ -261,7 +315,9 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": ["TQ-0001"],
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
       "contract": "A complete rejection with zero consumed commits and zero validation rejections can authorize a correction within the original planning budget. This guard does not derive an Engine attempt ID.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -328,7 +384,9 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": ["TQ-0001"],
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
       "contract": "No-progress context accepts its exact original request digest and rejects added commit counters, unknown fields, changed attempt identity, and invalid digests. This guard does not prove a real Engine second-slot invocation.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -395,7 +453,10 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": ["TQ-0001", "TQ-0011"],
+      "relatedHistoricalIssues": [
+        "TQ-0001",
+        "TQ-0011"
+      ],
       "contract": "The installed native tool fixture records one full semantic evidenceReview rejection, rejects no original assertion, and accepts the fixture-supplied distinct second Host attempt. Distinct attempt IDs are supplied by the test rather than derived by the product Engine.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -462,7 +523,10 @@
         "scope": "current-source",
         "liveAcceptance": false
       },
-      "relatedHistoricalIssues": ["TQ-0003", "TQ-0004"],
+      "relatedHistoricalIssues": [
+        "TQ-0003",
+        "TQ-0004"
+      ],
       "contract": "A blocked core witness fails without a blocking diagnostic-only finding; adding that finding preserves a blocking plan diagnostic. This does not make dynamic content observable or prove navigation repair.",
       "claimLimit": "Current local guard coverage only; related historical problems remain unresolved/unknown in known-issues.json."
     },
@@ -538,7 +602,9 @@
         }
       ],
       "realTestSelectors": [],
-      "relatedHistoricalIssues": ["TQ-0001"],
+      "relatedHistoricalIssues": [
+        "TQ-0001"
+      ],
       "historicalLineageAuthenticated": false,
       "lastExecution": {
         "path": "work/handoff-resume-20261012/current-baseline-identity-green-v1.json",
@@ -839,7 +905,9 @@
     },
     {
       "id": "CSR-0009",
-      "lineage": ["RUI-0013"],
+      "lineage": [
+        "RUI-0013"
+      ],
       "title": "Authorized pipeline clarifications omitted equivalent named-file and intent-choice wording",
       "category": "test-tool",
       "mechanism": "authorized-clarification-policy-grammar",
@@ -998,7 +1066,14 @@
           "kind": "linked-real-runtime-tool-observations-with-unmodified-grades",
           "runtimeIssueId": "RUI-0013",
           "runId": "original12-current-source-20261012-r6",
-          "caseIds": ["S1L1", "S1L3", "S2L3", "S3L2", "S4L2", "S4L3"],
+          "caseIds": [
+            "S1L1",
+            "S1L3",
+            "S2L3",
+            "S3L2",
+            "S4L2",
+            "S4L3"
+          ],
           "statusAtObservation": "NOT_FULL_PASS",
           "nextFreshRunRequired": true,
           "liveAcceptance": false,
@@ -1042,7 +1117,15 @@
           "kind": "observed-seven-genuine-R12-clarification-waits-on-frozen-helper",
           "evidencePath": "architecture/quality/evidence/clarification-policy-r12-grammar.json",
           "evidenceSha256": "879459fe2a546f73b75ad2152427bfed10a016eae49c5801a7754ecae651a450",
-          "caseIds": ["S1L1", "S1L3", "S2L2", "S2L3", "S3L1", "S3L2", "S4L2"],
+          "caseIds": [
+            "S1L1",
+            "S1L3",
+            "S2L2",
+            "S2L3",
+            "S3L1",
+            "S3L2",
+            "S4L2"
+          ],
           "statusAtObservation": "NOT_FULL_PASS",
           "originalGradesChanged": false,
           "productRootCause": "UNKNOWN",
@@ -1668,7 +1751,9 @@
     },
     {
       "id": "CSR-0010",
-      "lineage": ["RUI-0014"],
+      "lineage": [
+        "RUI-0014"
+      ],
       "title": "Unscoped read requests may receive an explicit least-privilege denial without cancelling the Chat turn",
       "category": "test-tool-workflow",
       "mechanism": "trusted-live-unscoped-read-denial",
@@ -1814,7 +1899,9 @@
     },
     {
       "id": "CSR-0011",
-      "lineage": ["TQI-QUAL-GIT-BUFFER-001"],
+      "lineage": [
+        "TQI-QUAL-GIT-BUFFER-001"
+      ],
       "title": "Qualification command capture bounds Git output and blocks incomplete child output",
       "category": "test-tool/environment",
       "mechanism": "Node-spawnSync-Git-output-default-buffer",
@@ -1937,7 +2024,9 @@
     },
     {
       "id": "CSR-0012",
-      "lineage": ["TQI-ROOT-CLARIFICATION-ANCESTOR-001"],
+      "lineage": [
+        "TQI-ROOT-CLARIFICATION-ANCESTOR-001"
+      ],
       "title": "Root clarification delegation preserves original request identity and one normal typed reply",
       "category": "test-tool-workflow",
       "mechanism": "Root-manual-choice-ancestor-normal-Control-session",
@@ -2089,7 +2178,9 @@
     },
     {
       "id": "CSR-0013",
-      "lineage": ["TQI-NATIVE-CORE-REJECTION-COORDINATES-001"],
+      "lineage": [
+        "TQI-NATIVE-CORE-REJECTION-COORDINATES-001"
+      ],
       "title": "Generated native core rejection exposes finite current bound failed coordinates",
       "category": "product-observability",
       "mechanism": "generated-native-core-rejection-bound-coordinate-feedback",
@@ -2481,7 +2572,9 @@
     },
     {
       "id": "CSR-0014",
-      "lineage": ["TQ-0002"],
+      "lineage": [
+        "TQ-0002"
+      ],
       "title": "Owned YAML repair can revalidate an unchanged complete Trial contract after planning is exhausted",
       "category": "product-workflow",
       "mechanism": "owned-repair-retained-contract-current-source-Host-revalidation",
@@ -2681,7 +2774,10 @@
     },
     {
       "id": "CSR-0015",
-      "lineage": ["RUI-0013", "CSR-0012"],
+      "lineage": [
+        "RUI-0013",
+        "CSR-0012"
+      ],
       "title": "A saved clarification observer must catch authorized questions before expiry and preserve one normal reply slot",
       "category": "test-harness",
       "mechanism": "saved-clarification-observer-lease-prelaunch-fresh-once-slot",
@@ -3140,7 +3236,9 @@
     },
     {
       "id": "CSR-0017",
-      "lineage": ["CSR-0014"],
+      "lineage": [
+        "CSR-0014"
+      ],
       "title": "Signed-cache route fixtures must align their exact expected version with the shared protocol",
       "category": "test-harness",
       "mechanism": "shared-Trial-cache-protocol-old-fixture-expectation-alignment",
@@ -3254,7 +3352,9 @@
     },
     {
       "id": "CSR-0018",
-      "lineage": ["TWI-R11-0001"],
+      "lineage": [
+        "TWI-R11-0001"
+      ],
       "title": "Preserve prior test evidence using exclusive immutable captures",
       "category": "testing-tool",
       "mechanism": "exclusive-local-test-proof-capture-no-overwrite",
@@ -3347,7 +3447,9 @@
     },
     {
       "id": "CSR-0019",
-      "lineage": ["TWI-R11-0002"],
+      "lineage": [
+        "TWI-R11-0002"
+      ],
       "title": "Bind test proof to actual executed command and selected tests",
       "category": "testing-tool",
       "mechanism": "single-source-executed-command-and-nonempty-proof-provenance",
@@ -3475,7 +3577,9 @@
     },
     {
       "id": "CSR-0020",
-      "lineage": ["R11-typed-free-provider-rejection-boundary-dto-mismatch"],
+      "lineage": [
+        "R11-typed-free-provider-rejection-boundary-dto-mismatch"
+      ],
       "title": "Stop extending a Free run on current typed Host provider rejection",
       "category": "testing-tool",
       "mechanism": "current-host-typed-dto-fields-not-consumed-by-free-run-boundary",
@@ -3614,7 +3718,10 @@
       "realTestSelectors": [
         {
           "runId": "original12-current-source-20261013-r11",
-          "caseIds": ["S1L1", "S1L2"],
+          "caseIds": [
+            "S1L1",
+            "S1L2"
+          ],
           "originalSourceSHA256": "f0377237ff8e47793671ecf1658bae518f82fc2a387258efa14e28248fe4465e",
           "modelScope": "opencode-free-user-preferred-distinct-model",
           "statusAtObservation": "NOT_FULL_PASS; original typed provider rejection did not trigger old boundary",
@@ -3640,7 +3747,9 @@
     },
     {
       "id": "CSR-0021",
-      "lineage": ["R12-operator-optional-json-poll"],
+      "lineage": [
+        "R12-operator-optional-json-poll"
+      ],
       "title": "Optional JSON polling throws an untyped error on incomplete producer bytes",
       "category": "test-tool",
       "mechanism": "bounded-optional-json-metadata-polling",
@@ -3853,7 +3962,10 @@
     },
     {
       "id": "CSR-0022",
-      "lineage": ["CSR-0016", "CSR-0020"],
+      "lineage": [
+        "CSR-0016",
+        "CSR-0020"
+      ],
       "title": "Latest FreeOnly and wait policy requires a distinct typed authority and selection decision",
       "category": "test-tool-workflow",
       "mechanism": "free-only-wait-policy-typed-authorization-and-source-bound-selection",
@@ -4197,7 +4309,9 @@
     },
     {
       "id": "CSR-0023",
-      "lineage": ["V15-owned-finalization-source-mechanism"],
+      "lineage": [
+        "V15-owned-finalization-source-mechanism"
+      ],
       "title": "Finally-path evidence failure can skip later owned finalization hooks",
       "category": "test-harness-workflow",
       "mechanism": "ordered-independent-owned-harness-finalization-with-bounded-fault-projection",
@@ -4770,6 +4884,903 @@
         "meaning": "Later public materialization epoch; earlier prepared fields remain immutable as-of. The source-bound runner receipt decides the current all162 result.",
         "historicalCoverageComplete": false
       }
+    },
+    {
+      "id": "CSR-0025",
+      "lineage": [
+        "OBS-004"
+      ],
+      "title": "Trial tool business schema advertises an unconstrained escape branch",
+      "category": "product-contract",
+      "mechanism": "typed-model-schema-with-opaque-counted-business-validation",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Generated tool declaration/guidance mismatch only; provider-wide convergence and all matrix failure causality are not established.",
+      "firstEvidence": {
+        "sourceId": "current-trial-tool-contract-red",
+        "path": "architecture/quality/evidence/chat-trial-tool-contract-red.json",
+        "sha256": "a8c835c44c8b9f61f11d95690ed4f599da2b2d726e468ba9a3381c3530240ac6",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "original12-discovery-plus-generated-tool-counterexample",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Tool schema/guidance contract only; synthetic native probes are never real acceptance."
+      },
+      "history": [
+        {
+          "kind": "unchanged-product-generated-tool-assertion-red",
+          "evidencePath": "architecture/quality/evidence/chat-trial-tool-contract-red.json",
+          "evidenceSha256": "a8c835c44c8b9f61f11d95690ed4f599da2b2d726e468ba9a3381c3530240ac6",
+          "selectedExecuted": 11,
+          "selectedPassed": 9,
+          "selectedFailed": 2,
+          "selectedErrors": 0,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "local-boundary-and-native-contract-green",
+          "evidencePath": "architecture/quality/evidence/chat-trial-tool-contract-green.json",
+          "evidenceSha256": "10618a0c3670a97f8fddde45dbb2af08a745080419b3ba414c7547de1629f7dc",
+          "liveAcceptance": false,
+          "historicalCoverageComplete": false
+        },
+        {
+          "kind": "native-counted-malformed-transport-ci-qualification",
+          "evidencePath": "architecture/quality/evidence/staged-removal-final.json",
+          "evidenceSha256": "b62577c64f2f2ec83c062d36883f5989bfb9f2e3c5723d75704db4a9991a0045",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "kind": "app-only-model-schema-and-guidance-correction",
+          "paths": [
+            "apps/editor/server/opencode-trial-plan-tool.ts",
+            "apps/editor/server/chat-pipeline-trial-plan.ts"
+          ],
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas",
+          "namePattern": "^pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection",
+          "namePattern": "^malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "invalid identity, target, and YAML revision cannot consume a malformed commit",
+          "namePattern": "^invalid identity, target, and YAML revision cannot consume a malformed commit$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "malformed draft preflight preserves draft bytes and never consumes a submission",
+          "namePattern": "^malformed draft preflight preserves draft bytes and never consumes a submission$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "explicit draft commit counts malformed supplied payload and records no duplicate rejection",
+          "namePattern": "^explicit draft commit counts malformed supplied payload and records no duplicate rejection$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call",
+          "namePattern": "^two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "local-boundary-and-native-contract-green",
+        "evidencePath": "architecture/quality/evidence/chat-trial-tool-contract-green.json",
+        "evidenceSha256": "10618a0c3670a97f8fddde45dbb2af08a745080419b3ba414c7547de1629f7dc",
+        "liveAcceptance": false,
+        "historicalCoverageComplete": false
+      },
+      "contract": "Expose exact model-visible business types without coercion or opaque JSON strings; preserve malformed-commit counting, duplicate fences, strict identity and complete rejection evidence.",
+      "claimLimit": "Executable current-source contracts only. Historical archive gaps remain unresolved; real matrix acceptance requires fresh restarted-editor observations and substantive publication review."
+    },
+    {
+      "id": "CSR-0026",
+      "lineage": [
+        "OBS-005"
+      ],
+      "title": "Generated-input guidance omits the supported source-text witness",
+      "category": "product-contract",
+      "mechanism": "generated-input-witness-guidance-parity",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Generated tool declaration/guidance mismatch only; provider-wide convergence and all matrix failure causality are not established.",
+      "firstEvidence": {
+        "sourceId": "current-trial-tool-contract-red",
+        "path": "architecture/quality/evidence/chat-trial-tool-contract-red.json",
+        "sha256": "a8c835c44c8b9f61f11d95690ed4f599da2b2d726e468ba9a3381c3530240ac6",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "original12-discovery-plus-generated-tool-counterexample",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Tool schema/guidance contract only; synthetic native probes are never real acceptance."
+      },
+      "history": [
+        {
+          "kind": "unchanged-product-generated-tool-assertion-red",
+          "evidencePath": "architecture/quality/evidence/chat-trial-tool-contract-red.json",
+          "evidenceSha256": "a8c835c44c8b9f61f11d95690ed4f599da2b2d726e468ba9a3381c3530240ac6",
+          "selectedExecuted": 11,
+          "selectedPassed": 9,
+          "selectedFailed": 2,
+          "selectedErrors": 0,
+          "liveAcceptance": false
+        },
+        {
+          "kind": "local-boundary-and-native-contract-green",
+          "evidencePath": "architecture/quality/evidence/chat-trial-tool-contract-green.json",
+          "evidenceSha256": "10618a0c3670a97f8fddde45dbb2af08a745080419b3ba414c7547de1629f7dc",
+          "liveAcceptance": false,
+          "historicalCoverageComplete": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "kind": "app-only-model-schema-and-guidance-correction",
+          "paths": [
+            "apps/editor/server/opencode-trial-plan-tool.ts",
+            "apps/editor/server/chat-pipeline-trial-plan.ts"
+          ],
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "generated-input guidance names both supported witnesses without weakening case validation",
+          "namePattern": "^generated-input guidance names both supported witnesses without weakening case validation$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "normal core accepts dynamic text only with independent concrete source content and explicit mappings",
+          "namePattern": "^normal core accepts dynamic text only with independent concrete source content and explicit mappings$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "normal relation rejects preseed, missing removal, wrong producer, dependency and artifact ownership",
+          "namePattern": "^normal relation rejects preseed, missing removal, wrong producer, dependency and artifact ownership$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "generated tool draft/full validators mirror the relation gate without consuming a validation slot",
+          "namePattern": "^generated tool draft/full validators mirror the relation gate without consuming a validation slot$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "local-boundary-and-native-contract-green",
+        "evidencePath": "architecture/quality/evidence/chat-trial-tool-contract-green.json",
+        "evidenceSha256": "10618a0c3670a97f8fddde45dbb2af08a745080419b3ba414c7547de1629f7dc",
+        "liveAcceptance": false,
+        "historicalCoverageComplete": false
+      },
+      "contract": "Describe both accepted witness forms in the model schema and matching Host/tool errors; retain independent concrete producer content, removal fixtures, ownership, dependency and per-repeat source integrity.",
+      "claimLimit": "Executable current-source contracts only. Historical archive gaps remain unresolved; real matrix acceptance requires fresh restarted-editor observations and substantive publication review."
+    },
+    {
+      "id": "CSR-0027",
+      "lineage": [
+        "ENV-001"
+      ],
+      "title": "Installer fixture asserts an exact Bun runtime without pinning ambient resolution",
+      "category": "test-harness-workflow",
+      "mechanism": "explicit-fixture-runtime-and-environment-restoration",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Fixture isolation only; the application legitimately resolves executable aliases. No plugin installation product defect inferred.",
+      "firstEvidence": {
+        "sourceId": "current-plugin-runtime-fixture-red",
+        "path": "architecture/quality/evidence/plugin-runtime-fixture-red.json",
+        "sha256": "2f4893f87e8b9df1d57fc7fcc4ac78dba30fbe4926a20d87b3b2d33b5788a128",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "whole-repository-qualification",
+        "role": "immutable-first-runtime-alias-red",
+        "acceptancePolicy": "Local test fixture portability, not real Chat acceptance."
+      },
+      "history": [
+        {
+          "kind": "unchanged-fixture-exact-command-assertion-red",
+          "evidencePath": "architecture/quality/evidence/plugin-runtime-fixture-red.json",
+          "evidenceSha256": "2f4893f87e8b9df1d57fc7fcc4ac78dba30fbe4926a20d87b3b2d33b5788a128",
+          "executed": 1,
+          "failed": 1
+        },
+        {
+          "kind": "pinned-and-restored-fixture-green-without-external-override",
+          "evidencePath": "architecture/quality/evidence/plugin-runtime-fixture-green.json",
+          "evidenceSha256": "ca19b328d944f3264e67eab26c51cc2cfe4c273ad5e64684edc6f5cdc0ae1f78",
+          "executed": 54,
+          "passed": 54,
+          "failed": 0
+        }
+      ],
+      "status": "guarded-local-fixture",
+      "fixes": [
+        {
+          "path": "apps/editor/tests/plugin-install-load.test.ts",
+          "kind": "pin-and-restore-TAGMA_BUN_BIN-to-asserted-runtime",
+          "applicationBehaviorChanged": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/plugin-install-load.test.ts",
+          "fullName": "plugin install/import hardening installFromLocalPath records the plugin and triggers workspace dependency resolution",
+          "namePattern": "^plugin install/import hardening installFromLocalPath records the plugin and triggers workspace dependency resolution$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "evidencePath": "architecture/quality/evidence/plugin-runtime-fixture-green.json",
+        "evidenceSha256": "ca19b328d944f3264e67eab26c51cc2cfe4c273ad5e64684edc6f5cdc0ae1f78",
+        "executed": 54,
+        "passed": 54,
+        "failed": 0
+      },
+      "contract": "A fixture asserting an exact package-manager executable pins that supported override and restores its prior value, independent of Bun binary basename or PATH alias. Preserve the installer environment redaction assertions.",
+      "claimLimit": "Test isolation only. Product source, runtime resolution policy, provider availability and historical import remain unchanged."
+    },
+    {
+      "id": "CSR-0028",
+      "lineage": [
+        "OBS-010"
+      ],
+      "title": "Unsupported native pricing metadata blocks configured model execution",
+      "category": "product-contract",
+      "mechanism": "native-pricing-wire-projection-preserves-strict-execution-identity",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Real pinned native config normalization and strict execution snapshot; unsupported cost metadata from one provider blocked other providers too.",
+      "firstEvidence": {
+        "sourceId": "current-native-pricing-projection-red",
+        "path": "architecture/quality/evidence/native-pricing-projection-red.json",
+        "sha256": "a914922285ac89d9c3b394f6a669ed6b87cc3811c939710f32dfb58908fc709a",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "verify1-complete-before-batch-repair",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Actual native metadata integration plus unit counterexamples, not live pipeline acceptance."
+      },
+      "history": [
+        {
+          "kind": "unit-and-pinned-native-red",
+          "evidencePath": "architecture/quality/evidence/native-pricing-projection-red.json",
+          "evidenceSha256": "a914922285ac89d9c3b394f6a669ed6b87cc3811c939710f32dfb58908fc709a",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "unit-and-pinned-native-green",
+          "evidencePath": "architecture/quality/evidence/native-pricing-projection-green.json",
+          "evidenceSha256": "3e7a7b30c52304847b4c57ffb68e973ee71baa273dbe573ee946f7a95dff51b2",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/opencode-config.ts",
+          "kind": "emit-native-pricing-shape-without-mutating-stored-config",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-isolation.test.ts",
+          "fullName": "native pricing projection preserves stored metadata and execution identity",
+          "namePattern": "^native pricing projection preserves stored metadata and execution identity$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "unit-and-pinned-native-green",
+        "evidencePath": "architecture/quality/evidence/native-pricing-projection-green.json",
+        "evidenceSha256": "3e7a7b30c52304847b4c57ffb68e973ee71baa273dbe573ee946f7a95dff51b2",
+        "liveAcceptance": false
+      },
+      "contract": "Project only native pricing fields on emission; preserve stored metadata, execution options, provider authentication, model reasoning capabilities and variants; keep strict identity checks.",
+      "claimLimit": "Local contract GREEN only; restarted fresh-workspace live acceptance still required. Historical archive gaps remain."
+    },
+    {
+      "id": "CSR-0029",
+      "lineage": [
+        "OBS-013"
+      ],
+      "title": "Blocked core repair ownership must agree across hints, generated validator and Host",
+      "category": "product-contract",
+      "mechanism": "repair-scope-model-hints-preserve-typed-authority",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "First model-hint repair was incomplete: shared validation still required diagnostic-only. Corrected shared semantic path with generated commits and Host pre-execution repair/fresh-plan/actual Sandbox regressions.",
+      "firstEvidence": {
+        "sourceId": "current-trial-review-contract-red",
+        "path": "architecture/quality/evidence/trial-review-contract-red.json",
+        "sha256": "a93662c17993e4323fddaf4a972cfbba8fde71fdd5ca95ae183bdd31c4374d30",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "verify1-complete-before-batch-repair",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Executable local/native contract counterexamples only; never substitute for real published pipeline acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/trial-review-contract-red.json",
+          "evidenceSha256": "a93662c17993e4323fddaf4a972cfbba8fde71fdd5ca95ae183bdd31c4374d30",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/trial-review-contract-green.json",
+          "evidenceSha256": "6d7e60a2bfcc0febf8835db533076da2ae274b33f2d714c87783735e89fc7510",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "reopened-after-live-verification",
+          "evidencePath": "architecture/quality/evidence/trial-billing-followup-red.json",
+          "evidenceSha256": "4195fb0f7a7b5bb04698b649cf5d73db0f8eaeab956054a0a9ed8bccd30ce230",
+          "liveAcceptance": false,
+          "reason": "Schema-only first repair omitted the shared validator; live S1-L3 verify2 rejected the artifact scope recommended by the hint."
+        },
+        {
+          "kind": "qualified-semantic-contract-green",
+          "evidencePath": "architecture/quality/evidence/trial-billing-followup-green.json",
+          "evidenceSha256": "7bc1042e397ee01140bb60a2fce2553e995108843a7f98b5e69bd1fa74e87479",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+          "kind": "precise-model-hints-and-semantic-error-feedback",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+          "kind": "shared-blocked-core-artifact-feedback-admission",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "model schema distinguishes repairable core gaps from intrinsic observation limits",
+          "namePattern": "^model schema distinguishes repairable core gaps from intrinsic observation limits$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-witness.test.ts",
+          "fullName": "blocked core admits typed artifact repair feedback while rejecting unknown or nonblocking findings",
+          "namePattern": "^blocked core admits typed artifact repair feedback while rejecting unknown or nonblocking findings$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-witness.test.ts",
+          "fullName": "Host blocked artifact repair requires a fresh positive revision plan before actual Sandbox execution",
+          "namePattern": "^Host blocked artifact repair requires a fresh positive revision plan before actual Sandbox execution$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "generated tool commits blocked artifact feedback with the same Host core rules and finite counter",
+          "namePattern": "^generated tool commits blocked artifact feedback with the same Host core rules and finite counter$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "qualified-semantic-contract-green",
+        "evidencePath": "architecture/quality/evidence/trial-billing-followup-green.json",
+        "evidenceSha256": "7bc1042e397ee01140bb60a2fce2553e995108843a7f98b5e69bd1fa74e87479",
+        "liveAcceptance": false
+      },
+      "contract": "Use pipeline-artifact for a permitted staged workflow correction even when the planner is read-only; diagnostic-only for intrinsic observation or plan corrections. Never derive write authority from narrative.",
+      "claimLimit": "Local shared-validator/generated/native/Host regression GREEN only. User stopped further live testing; no post-final-fix live acceptance claim. Original first evidence and incomplete repair history remain."
+    },
+    {
+      "id": "CSR-0030",
+      "lineage": [
+        "OBS-014"
+      ],
+      "title": "Review scope feedback asks for task IDs when the invalid disposition requires none",
+      "category": "product-contract",
+      "mechanism": "review-disposition-specific-task-scope-feedback",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Precise validation feedback and model hints only; accepted/rejected payload semantics and formal counting remain unchanged.",
+      "firstEvidence": {
+        "sourceId": "current-trial-review-contract-red",
+        "path": "architecture/quality/evidence/trial-review-contract-red.json",
+        "sha256": "a93662c17993e4323fddaf4a972cfbba8fde71fdd5ca95ae183bdd31c4374d30",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "verify1-complete-before-batch-repair",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Executable local/native contract counterexamples only; never substitute for real published pipeline acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/trial-review-contract-red.json",
+          "evidenceSha256": "a93662c17993e4323fddaf4a972cfbba8fde71fdd5ca95ae183bdd31c4374d30",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/trial-review-contract-green.json",
+          "evidenceSha256": "6d7e60a2bfcc0febf8835db533076da2ae274b33f2d714c87783735e89fc7510",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+          "kind": "precise-model-hints-and-semantic-error-feedback",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+          "kind": "precise-model-hints-and-semantic-error-feedback",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "model review task scope schema explains required and not-required dispositions",
+          "namePattern": "^model review task scope schema explains required and not-required dispositions$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "review scope corrections preserve draft and counted commit boundaries",
+          "namePattern": "^review scope corrections preserve draft and counted commit boundaries$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "qualified-contract-green",
+        "evidencePath": "architecture/quality/evidence/trial-review-contract-green.json",
+        "evidenceSha256": "6d7e60a2bfcc0febf8835db533076da2ae274b33f2d714c87783735e89fc7510",
+        "liveAcceptance": false
+      },
+      "contract": "Required true needs nonempty unique qualified task IDs; required false needs an empty list. Report the actual decision field and violated condition identically through Host and generated tool, preserving formal commit counting.",
+      "claimLimit": "Current-source contract GREEN only; restarted-editor fresh-workspace live acceptance remains required. Historical archive gaps remain."
+    },
+    {
+      "id": "CSR-0031",
+      "lineage": [
+        "OBS-011"
+      ],
+      "title": "Loopback fetch accepts incomplete framed responses as complete",
+      "category": "product-contract",
+      "mechanism": "raw-loopback-response-framing-completeness",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Real TCP framing counterexamples; no claim that this caused earlier live provider failures.",
+      "firstEvidence": {
+        "sourceId": "current-loopback-integrity-real-tcp-red",
+        "path": "architecture/quality/evidence/loopback-integrity-red.json",
+        "sha256": "b0b93fc6bb2775afcba52407e5d3d25e60e47d4b5c6fb197bc5016dff31c2775",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "verify1-complete-before-batch-repair",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Executable local/native contract counterexamples only; never substitute for real published pipeline acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/loopback-integrity-red.json",
+          "evidenceSha256": "b0b93fc6bb2775afcba52407e5d3d25e60e47d4b5c6fb197bc5016dff31c2775",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/loopback-integrity-green.json",
+          "evidenceSha256": "9618d4dcc260a85de121be547c2708f9648d6701413b907fbd8d353dd2868116",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/loopback-fetch.ts",
+          "kind": "complete-bounded-raw-socket-http-transfer",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/loopback-integrity.test.ts",
+          "fullName": "loopback accepts complete length chunked trailers and close delimited responses",
+          "namePattern": "^loopback accepts complete length chunked trailers and close delimited responses$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/loopback-integrity.test.ts",
+          "fullName": "loopback rejects incomplete content length even with a valid JSON prefix",
+          "namePattern": "^loopback rejects incomplete content length even with a valid JSON prefix$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/loopback-integrity.test.ts",
+          "fullName": "loopback rejects chunked bodies missing the final zero chunk",
+          "namePattern": "^loopback rejects chunked bodies missing the final zero chunk$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/loopback-integrity.test.ts",
+          "fullName": "loopback rejects chunked bodies missing the trailer section terminator",
+          "namePattern": "^loopback rejects chunked bodies missing the trailer section terminator$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/loopback-integrity.test.ts",
+          "fullName": "loopback rejects a malformed chunk data terminator",
+          "namePattern": "^loopback rejects a malformed chunk data terminator$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "qualified-contract-green",
+        "evidencePath": "architecture/quality/evidence/loopback-integrity-green.json",
+        "evidenceSha256": "9618d4dcc260a85de121be547c2708f9648d6701413b907fbd8d353dd2868116",
+        "liveAcceptance": false
+      },
+      "contract": "Require the declared byte count or complete chunked termination including trailers before reader completion. Connection close terminates only an unframed body; preserve bodyless responses, incremental SSE and cancellation.",
+      "claimLimit": "Current-source contract GREEN only; restarted-editor fresh-workspace live acceptance remains required. Historical archive gaps remain."
+    },
+    {
+      "id": "CSR-0032",
+      "lineage": [
+        "OBS-012"
+      ],
+      "title": "Loopback request writes discard the suffix under socket backpressure",
+      "category": "product-contract",
+      "mechanism": "raw-loopback-request-offset-and-drain",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Real TCP partial writes at4MiB and8MiB; live failure causality remains unconfirmed.",
+      "firstEvidence": {
+        "sourceId": "current-loopback-integrity-real-tcp-red",
+        "path": "architecture/quality/evidence/loopback-integrity-red.json",
+        "sha256": "b0b93fc6bb2775afcba52407e5d3d25e60e47d4b5c6fb197bc5016dff31c2775",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "verify1-complete-before-batch-repair",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Executable local/native contract counterexamples only; never substitute for real published pipeline acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/loopback-integrity-red.json",
+          "evidenceSha256": "b0b93fc6bb2775afcba52407e5d3d25e60e47d4b5c6fb197bc5016dff31c2775",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/loopback-integrity-green.json",
+          "evidenceSha256": "9618d4dcc260a85de121be547c2708f9648d6701413b907fbd8d353dd2868116",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/loopback-fetch.ts",
+          "kind": "complete-bounded-raw-socket-http-transfer",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/loopback-integrity.test.ts",
+          "fullName": "loopback sends complete small and large request bodies through real socket backpressure",
+          "namePattern": "^loopback sends complete small and large request bodies through real socket backpressure$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/loopback-integrity.test.ts",
+          "fullName": "loopback abort disposes a request blocked on socket backpressure",
+          "namePattern": "^loopback abort disposes a request blocked on socket backpressure$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "qualified-contract-green",
+        "evidencePath": "architecture/quality/evidence/loopback-integrity-green.json",
+        "evidenceSha256": "9618d4dcc260a85de121be547c2708f9648d6701413b907fbd8d353dd2868116",
+        "liveAcceptance": false
+      },
+      "contract": "Retain the unsent request suffix and resume through drain without duplicating bytes or spinning. Abort or reader cancellation disposes the socket and prevents further suffix writes.",
+      "claimLimit": "Current-source contract GREEN only; restarted-editor fresh-workspace live acceptance remains required. Historical archive gaps remain."
+    },
+    {
+      "id": "CSR-0033",
+      "lineage": [
+        "OBS-009"
+      ],
+      "title": "Native authors need bounded removal to restore absence after staged scope violations",
+      "category": "product-contract",
+      "mechanism": "Actual GLM/MiMo native tool catalogs omit apply_patch while author shell is disabled; write empty content cannot restore absence or support-tree identity.",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Native staged-cleanup capability only; generic provider failure ownership remains unknown.",
+      "firstEvidence": {
+        "sourceId": "staged-removal-native-red",
+        "path": "architecture/quality/evidence/staged-removal-red.json",
+        "sha256": "29591b522e2e4a6352eb33bcd4324edd5d689e98f741fcbf387a0c82143db09f",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "verify1-complete-before-batch-repair",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Executable local/native contract counterexamples only; never substitute for real published pipeline acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/staged-removal-red.json",
+          "evidenceSha256": "29591b522e2e4a6352eb33bcd4324edd5d689e98f741fcbf387a0c82143db09f",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/staged-removal-green.json",
+          "evidenceSha256": "15967ca7b73d3d4ad8e50ddeca40df7ecdb46f3f98f008053d2ad07b1cbcb0d1",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "final-native-and-unit-qualification",
+          "evidencePath": "architecture/quality/evidence/staged-removal-final.json",
+          "evidenceSha256": "b62577c64f2f2ec83c062d36883f5989bfb9f2e3c5723d75704db4a9991a0045",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "final-compact-author-and-full-qualification",
+          "evidencePath": "architecture/quality/evidence/chat-repair-batch-qualified.json",
+          "evidenceSha256": "c7f324e0e1612dcd587ff34c4dfb8167c1ae3031c66bc296398fcfd9667997e8",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/opencode-stage-remove-tool.ts",
+          "kind": "authenticated-private-stage-removal",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-seed.ts",
+          "kind": "authenticated-private-stage-removal",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-managed-tools.ts",
+          "kind": "authenticated-private-stage-removal",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/chat-operations/authoring-runtime.ts",
+          "kind": "authenticated-private-stage-removal",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "authenticated-private-stage-removal",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal restores actual absence with exact edit grants and bottom-up empty directories",
+          "namePattern": "^staged removal restores actual absence with exact edit grants and bottom-up empty directories$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal rejects outside paths, root, symlinks, hardlinks and nonempty directories",
+          "namePattern": "^staged removal rejects outside paths, root, symlinks, hardlinks and nonempty directories$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal rejects foreign agents, sessions, phases and forged live workspace roots",
+          "namePattern": "^staged removal rejects foreign agents, sessions, phases and forged live workspace roots$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal preserves bytes when reject occurs during approval",
+          "namePattern": "^staged removal preserves bytes when reject occurs during approval$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal preserves bytes when abort occurs during approval",
+          "namePattern": "^staged removal preserves bytes when abort occurs during approval$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal preserves bytes when binding occurs during approval",
+          "namePattern": "^staged removal preserves bytes when binding occurs during approval$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal preserves bytes when replacement occurs during approval",
+          "namePattern": "^staged removal preserves bytes when replacement occurs during approval$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal preserves bytes when ancestor-link occurs during approval",
+          "namePattern": "^staged removal preserves bytes when ancestor-link occurs during approval$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "only seeded pipeline author exposes staged removal; advisory and planner profiles deny it",
+          "namePattern": "^only seeded pipeline author exposes staged removal; advisory and planner profiles deny it$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged removal compares canonical Host relocation targets across filesystem aliases",
+          "namePattern": "^staged removal compares canonical Host relocation targets across filesystem aliases$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "final-compact-author-and-full-qualification",
+        "evidencePath": "architecture/quality/evidence/chat-repair-batch-qualified.json",
+        "evidenceSha256": "c7f324e0e1612dcd587ff34c4dfb8167c1ae3031c66bc296398fcfd9667997e8",
+        "liveAcceptance": false
+      },
+      "contract": "Remove exactly one regular single-link file or empty directory in the Host-bound current author stage after scoped edit grant and identity/abort rechecks. Deny root, outside, links, nonempty recursion and all other agents. Preserve final source/classified-target/Trial/publication fences.",
+      "claimLimit": "Current-source contract GREEN only; restarted-editor fresh-workspace live acceptance remains required. Historical archive gaps remain."
+    },
+    {
+      "id": "CSR-0034",
+      "lineage": [
+        "verify2-s1-l1-billing-429"
+      ],
+      "title": "Structured depleted billing resources misclassified as rate limiting under HTTP429",
+      "category": "product-contract",
+      "mechanism": "bounded-structured-billing-priority-under-429",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Host returned provider_rate_limited before considering actual structured provider billing evidence. No credential, funding or provider retry changes.",
+      "firstEvidence": {
+        "sourceId": "current-trial-billing-followup-red",
+        "path": "architecture/quality/evidence/trial-billing-followup-red.json",
+        "sha256": "4195fb0f7a7b5bb04698b649cf5d73db0f8eaeab956054a0a9ed8bccd30ce230",
+        "sourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+        "round": "verify2-user-ended-before-final-repair",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Local/native contract evidence is not live publication acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/trial-billing-followup-red.json",
+          "evidenceSha256": "4195fb0f7a7b5bb04698b649cf5d73db0f8eaeab956054a0a9ed8bccd30ce230",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/trial-billing-followup-green.json",
+          "evidenceSha256": "7bc1042e397ee01140bb60a2fce2553e995108843a7f98b5e69bd1fa74e87479",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/chat-operations/opencode-adapter.ts",
+          "kind": "structured-billing-precedence",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-opencode-adapter.test.ts",
+          "fullName": "provider HTTP 429 structured billing evidence classifies corroborated resource billing and standard quota categories without exposing bodies",
+          "namePattern": "^provider HTTP 429 structured billing evidence classifies corroborated resource billing and standard quota categories without exposing bodies$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-opencode-adapter.test.ts",
+          "fullName": "provider HTTP 429 structured billing evidence keeps uncorroborated codes, prose, malformed bodies and ordinary throttling as rate limits",
+          "namePattern": "^provider HTTP 429 structured billing evidence keeps uncorroborated codes, prose, malformed bodies and ordinary throttling as rate limits$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "qualified-contract-green",
+        "evidencePath": "architecture/quality/evidence/trial-billing-followup-green.json",
+        "evidenceSha256": "7bc1042e397ee01140bb60a2fce2553e995108843a7f98b5e69bd1fa74e87479",
+        "liveAcceptance": false
+      },
+      "contract": "Known structured billing outranks HTTP429. Numeric vendor codes require corroboration in the same bounded structured error. Preserve ordinary throttling, authentication, server-error precedence, accessors/cycles and content-free outcomes.",
+      "claimLimit": "Local classification and persisted-outbox regressions only; user stopped further live acceptance. Historical archives remain incomplete."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

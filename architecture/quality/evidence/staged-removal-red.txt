@@ -1,0 +1,22 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-stage-scope-native.test.ts:
+81 |           await Bun.sleep(20);
+82 |         }
+83 |         await message;
+84 |       } finally { if (!settled) { await req(`/session/${session.id}/abort`, {}).catch(() => {}); await message.catch(() => {}); } }
+85 |       expect(toolNames.has('bash')).toBe(false);
+86 |       for (const path of paths) expect(existsSync(join(cwd, path))).toBe(false);
+                                                                         ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/opencode-stage-scope-native.test.ts:86:69)
+(fail) native author removes fresh staged files and empty directories through scoped edit grants [4280.17ms]
+
+ 0 pass
+ 1 fail
+ 4 expect() calls
+Ran 1 test across 1 file. [4.50s]

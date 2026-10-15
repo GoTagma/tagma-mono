@@ -55,6 +55,12 @@ jobs:
           TAGMA_OPENCODE_NATIVE_SMOKE: '1'
         run: bun test tests/opencode-managed-runtime-smoke.test.ts --timeout 360000
 
+      - name: Native staged repair and counted Trial transport
+        working-directory: apps/editor
+        env:
+          TAGMA_OPENCODE_NATIVE_SMOKE: '1'
+        run: bun test tests/opencode-trial-plan-schema-smoke.test.ts tests/opencode-stage-scope-native.test.ts --timeout 360000
+
       - name: Native OpenCode V2 question conformance
         working-directory: apps/editor
         env:
@@ -115,6 +121,9 @@ jobs:
 
       - name: Type check
         run: bun run check
+
+      - name: Current source regression ledger
+        run: bun run test:current-regressions
 
       - name: Script tests
         run: bun run test:scripts

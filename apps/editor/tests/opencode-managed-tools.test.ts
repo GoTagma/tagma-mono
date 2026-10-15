@@ -31,6 +31,7 @@ test('managed OpenCode tools load from the isolated runtime and migrate legacy w
     'tagma_yaml_skeleton.ts',
     'tagma_placement_plan.ts',
     'tagma_trial_plan.ts',
+    'tagma_stage_remove.ts',
   ] as const;
 
   try {

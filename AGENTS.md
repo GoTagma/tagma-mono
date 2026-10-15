@@ -363,3 +363,10 @@ Do not amend the same commit to include these files after naming them with the c
   On installer downgrade or a newly detected install instance, clear the editor and sidecar
   userData overrides and force bundled runtime paths for that launch. Do not advance the persisted
   installer baseline until override removal is verified, so failed cleanup retries next launch.
+
+## Package Changes Before Main Push
+
+- If a change batch modifies any file under `packages/`, run `bun run version all patch`
+  once after completing that batch and before its final commit/push to `main`. Include the
+  resulting version changes and refreshed `bun.lock`; run dependency checks on those final bytes.
+  Do not bump a batch that changes only apps, scripts, or documentation.

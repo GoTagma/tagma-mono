@@ -707,6 +707,9 @@ describe('plugin install/import hardening', () => {
 
     const previousOpenai = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = 'test-secret';
+    const previousBunBin = process.env.TAGMA_BUN_BIN;
+    // This fixture asserts the exact runtime, independent of ambient aliases.
+    process.env.TAGMA_BUN_BIN = process.execPath;
     const originalSpawn = Bun.spawn;
     (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = ((
       cmd: string[],
@@ -735,6 +738,8 @@ describe('plugin install/import hardening', () => {
     }) as typeof Bun.spawn;
     restoreSpawn = () => {
       (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = originalSpawn;
+      if (previousBunBin === undefined) delete process.env.TAGMA_BUN_BIN;
+      else process.env.TAGMA_BUN_BIN = previousBunBin;
       if (previousOpenai === undefined) {
         delete process.env.OPENAI_API_KEY;
       } else {

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "kind": "verify2-followup-local-contract-green",
+  "unit": {
+    "passed": 115,
+    "failed": 0,
+    "expectCalls": 556,
+    "logSha256": "267be3be5cd105ec10c6071c7d5bba88938a08c067f24b91e7b211e0f0eeb5fd"
+  },
+  "native": {
+    "version": "1.18.18",
+    "passed": 5,
+    "failed": 0,
+    "expectCalls": 161,
+    "logSha256": "83d75fbf97ff08b93db418a7cca31b8b301bfc4076a7fd2c9bb10c444cde289a",
+    "scope": "Actual pinned OpenCode with isolated synthetic localhost protocol; no real provider credentials or acceptance claim."
+  },
+  "hostLifecycle": "Blocked artifact feedback stops before Sandbox and authorizes artifact repair; revised YAML rejects old plan; fresh positive-core plan enables an actual passing command Sandbox. Prior revision counter bytes remain unchanged. This simulates the authorized author edit, not a real-model Chat journey.",
+  "providerBoundary": "Known structured billing overrides HTTP429; numeric1113 requires explicit same-error depleted-balance/resource and recharge message. Ordinary rate and conflicting prose remain rate limits. 401/5xx precedence, bounded UTF8 JSON, unknown/getter/cyclic inputs and content-free classifier/outbox controls preserved.",
+  "qualificationHistory": [
+    {
+      "kind": "test-fixture-type-errors",
+      "details": "Initial new lifecycle fixture assigned readonly review fields and omitted explicit runs; replaced immutable review objects and supplied runs:1. Production semantic regression already passed; final check:tests passed.",
+      "logSha256": "7e807e05f674c12d16c6665fe098dc22e8f13ff5c7008a0cca5d88e587139127"
+    },
+    {
+      "kind": "final-test-types-pass",
+      "logSha256": "a77046aada8dc916da9698e8ce1dcf467c46b326dd19b40bdbd0c263638c9938"
+    }
+  ],
+  "realAcceptance": false,
+  "historicalCoverageComplete": false,
+  "userEndedLiveTesting": true
+}

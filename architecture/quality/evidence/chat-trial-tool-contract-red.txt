@@ -1,0 +1,45 @@
+bun test v1.3.14 (0d9b296a)
+
+work/trial-boundary.test.ts:
+203 |     for (const [name, type] of Object.entries({
+204 |       summary: 'string', goals: 'array', reset: 'boolean', coverage: 'array',
+205 |       findings: 'array', evidence_review: 'object', case: 'object', cases: 'array',
+206 |     })) {
+207 |       const schema = schemaObject(properties[name]);
+208 |       expect(schema.type).toBe(type);
+                                ^
+error: expect(received).toBe(expected)
+
+Expected: "string"
+Received: undefined
+
+      at <anonymous> (/workspace/tagma-mono/work/trial-boundary.test.ts:208:27)
+(fail) pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas [25.03ms]
+(pass) malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection [26.58ms]
+(pass) semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt [36.59ms]
+(pass) known commit preserves unknown review keys for the existing strict semantic rejection [15.13ms]
+(pass) known commit preserves unknown decision keys for the existing strict semantic rejection [10.03ms]
+(pass) invalid identity, target, and YAML revision cannot consume a malformed commit [11.67ms]
+(pass) malformed draft preflight preserves draft bytes and never consumes a submission [11.72ms]
+(pass) explicit draft commit counts malformed supplied payload and records no duplicate rejection [13.49ms]
+(pass) two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call [10.28ms]
+(pass) semantic plan validation remains one counted rejection outside the construction catch [9.52ms]
+567 |     const properties = pluginTool.schema.toJSONSchema(h.outer).properties!;
+568 |     const cases = schemaObject(properties.cases);
+569 |     const item = schemaObject((cases.anyOf?.[0] ?? cases).items);
+570 |     const description = schemaObject(item.properties!.generatedInputPaths).description!;
+571 |     expect(description).toContain('file-equals');
+572 |     expect(description).toContain('file-source-text-occurrence');
+                              ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "file-source-text-occurrence"
+Received: "Files the targeted closure must generate before consuming them as downstream inputs. Exact content:null fixtures remove only these files before each actual repeat; no write fixture may pre-seed them. Host requires exact file-equals evidence."
+
+      at <anonymous> (/workspace/tagma-mono/work/trial-boundary.test.ts:572:25)
+(fail) generated-input guidance names both supported witnesses without weakening case validation [7.28ms]
+
+ 9 pass
+ 2 fail
+ 131 expect() calls
+Ran 11 tests across 1 file. [279.00ms]

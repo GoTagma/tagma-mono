@@ -1,0 +1,57 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+193 |   const h = await fixture();
+194 |   try {
+195 |     const properties = pluginTool.schema.toJSONSchema(h.outer).properties!;
+196 |     const review = schemaObject(properties.evidence_review);
+197 |     const core = schemaObject(review.properties!.coreWitness);
+198 |     expect(core.description).toContain('pipeline-artifact');
+                                   ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "pipeline-artifact"
+Received: "Covered core maps every terminal-closure task to success and every declared output artifact to concrete intent-bound content: stable JSON pointer values, meaningful finite numeric/boolean values, exact nonempty text, or supported source occurrence. Genuine unobservable core stays blocked with a blocking diagnostic-only finding; it cannot pass."
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:198:30)
+(fail) model schema distinguishes repairable core gaps from intrinsic observation limits [22.91ms]
+211 |   const h = await fixture();
+212 |   try {
+213 |     const review = schemaObject(pluginTool.schema.toJSONSchema(h.outer).properties!.evidence_review);
+214 |     const decision = schemaObject(schemaObject(review.properties!.decisions).items);
+215 |     const tasks = schemaObject(decision.properties!.taskIds);
+216 |     expect(tasks.description).toContain('required: true');
+                                    ^
+error: Received value must be an array type, or both received and expected values must be strings.
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:216:31)
+(fail) model review task scope schema explains required and not-required dispositions [10.17ms]
+243 |       review.decisions[invalid.index]!.required = invalid.required;
+244 |       review.decisions[invalid.index]!.taskIds = invalid.taskIds;
+245 |       const hostError = await failure(async () => host.parseReview(review));
+246 |       const toolError = await failure(() => call('set-evidence-review', { evidence_review: review }));
+247 |       expect(toolError.message).toBe(hostError.message);
+248 |       expect(hostError.message).toContain('evidenceReview.decisions[' + invalid.index + '].taskIds');
+                                      ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "evidenceReview.decisions[3].taskIds"
+Received: "Required evidence must name its bounded responsible task scope."
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:248:33)
+(fail) review scope corrections preserve draft and counted commit boundaries [13.69ms]
+(pass) pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas [10.05ms]
+(pass) malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection [28.12ms]
+(pass) semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt [22.37ms]
+(pass) known commit preserves unknown review keys for the existing strict semantic rejection [18.80ms]
+(pass) known commit preserves unknown decision keys for the existing strict semantic rejection [9.74ms]
+(pass) invalid identity, target, and YAML revision cannot consume a malformed commit [26.11ms]
+(pass) malformed draft preflight preserves draft bytes and never consumes a submission [11.11ms]
+(pass) explicit draft commit counts malformed supplied payload and records no duplicate rejection [12.78ms]
+(pass) two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call [14.84ms]
+(pass) semantic plan validation remains one counted rejection outside the construction catch [10.36ms]
+(pass) generated-input guidance names both supported witnesses without weakening case validation [11.95ms]
+
+ 11 pass
+ 3 fail
+ 186 expect() calls
+Ran 14 tests across 1 file. [341.00ms]

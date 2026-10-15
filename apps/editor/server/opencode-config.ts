@@ -727,6 +727,19 @@ function readSanitizedConfigAt(path: string): RawConfig {
   return sanitizeEmbeddedConfig(readConfigAt(path));
 }
 
+/** Match the pinned native pricing schema without discarding stored provider metadata. */
+function nativeModelCost(value: unknown, extended = true): unknown {
+  if (!isPlainObject(value)) return value;
+  const cost: Record<string, unknown> = {};
+  for (const key of ['input', 'output', 'cache_read', 'cache_write']) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) cost[key] = value[key];
+  }
+  if (extended && Object.prototype.hasOwnProperty.call(value, 'context_over_200k')) {
+    cost.context_over_200k = nativeModelCost(value.context_over_200k, false);
+  }
+  return cost;
+}
+
 function writeEmbeddedConfigAt(path: string, next: RawConfig): void {
   writeConfigAt(path, sanitizeEmbeddedConfig(next));
 }
@@ -776,6 +789,16 @@ export function buildEmbeddedOpencodeRuntimeConfig(paths: EmbeddedOpencodeRuntim
       if (isPlainObject(provider) && isPlainObject(provider.options)) {
         if (provider.options.chunkTimeout === undefined) {
           provider.options = { ...provider.options, chunkTimeout: DEFAULT_CHUNK_TIMEOUT_MS };
+        }
+      }
+      // Native Config strips unsupported pricing keys (such as cost.reasoning).
+      // Emit that same pricing shape so the strict execution identity comparison
+      // stays meaningful. Execution options and the persisted user config remain intact.
+      if (isPlainObject(provider) && isPlainObject(provider.models)) {
+        for (const model of Object.values(provider.models)) {
+          if (isPlainObject(model) && Object.prototype.hasOwnProperty.call(model, 'cost')) {
+            model.cost = nativeModelCost(model.cost);
+          }
         }
       }
     }

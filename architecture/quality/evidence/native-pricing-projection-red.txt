@@ -1,0 +1,69 @@
+Unit counterexample before product repair:
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-isolation.test.ts:
+618 |   expect(emitted.options.customOption).toEqual(definition.options.customOption);
+619 |   expect(emitted.models.priced.variants).toEqual(definition.models.priced.variants);
+620 |   expect(emitted.models.priced.provider).toEqual(definition.models.priced.provider);
+621 |   expect(emitted.models.priced.options).toEqual(definition.models.priced.options);
+622 |   expect(emitted.models.unpriced).toEqual(definition.models.unpriced);
+623 |   expect(emitted.models.priced.cost).toEqual(nativeCost);
+                                           ^
+error: expect(received).toEqual(expected)
+
+  {
+    "cache_read": 0.1,
+    "cache_write": 0.2,
+    "context_over_200k": {
+      "cache_read": 0.3,
+      "cache_write": 0.4,
+      "input": 3,
+      "output": 4,
++     "reasoning": 7,
+    },
++   "customEstimate": 6,
+    "input": 1,
+    "output": 2,
++   "reasoning": 5,
+  }
+
+- Expected  - 0
++ Received  + 3
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/opencode-isolation.test.ts:623:38)
+(fail) native pricing projection preserves stored metadata and execution identity [2.16ms]
+
+ 0 pass
+ 17 filtered out
+ 1 fail
+ 10 expect() calls
+Ran 1 test across 1 file. [107.00ms]
+
+Actual pinned native counterexample before product repair:
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-managed-runtime-smoke.test.ts:
+(pass) native filesystem path comparison resolves directory aliases [0.53ms]
+[opencode] spawning: /workspace/tagma-mono/apps/electron/build/opencode/linux-x64/bin/opencode serve --hostname 127.0.0.1 --port 34625 --cors http://localhost:3001 --cors http://127.0.0.1:3001 cwd= /tmp/tagma native opencode 中文-W3soUd/workspace with spaces 中文/.tagma
+[opencode] opencode server listening on http://127.0.0.1:34625
+[opencode] health check passed via /global/health (200)
+[opencode] database check passed via /session?limit=1 (200)
+[opencode] managed tool registry check passed via /experimental/tool/ids?directory=%2Ftmp%2Ftagma+native+opencode+%E4%B8%AD%E6%96%87-W3soUd%2Fworkspace+with+spaces+%E4%B8%AD%E6%96%87%2F.tagma (200)
+15 | }
+16 | function safeId(value: unknown): value is string {
+17 |   return typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,255}$/u.test(value);
+18 | }
+19 | function fail(code: string): never {
+20 |   throw new Error(`Managed OpenCode effort resolution failed (${code}).`);
+                 ^
+error: Managed OpenCode effort resolution failed (catalog_identity_unavailable).
+      at fail (/workspace/tagma-mono/apps/editor/server/opencode-execution-snapshot.ts:20:13)
+      at async snapshotManagedOpencodeExecution (/workspace/tagma-mono/apps/editor/server/opencode-lifecycle.ts:1122:25)
+      at async <anonymous> (/workspace/tagma-mono/apps/editor/tests/opencode-managed-runtime-smoke.test.ts:228:39)
+[opencode] exited code=null signal=SIGTERM cwd=/tmp/tagma native opencode 中文-W3soUd/workspace with spaces 中文/.tagma
+(fail) pinned OpenCode CLI serves both SDK clients from a fresh isolated native profile [3103.02ms]
+
+ 1 pass
+ 1 fail
+ 13 expect() calls
+Ran 2 tests across 1 file. [3.22s]

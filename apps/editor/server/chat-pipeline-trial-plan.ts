@@ -899,7 +899,7 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
   for (const generatedInputPath of normalizedGeneratedInputPaths) {
     if (!generatedInputExpectationPaths.has(generatedInputPath)) {
       throw new Error(
-        `${label}.generatedInputPaths requires a file-equals expectation for ${generatedInputPath}.`,
+        `${label}.generatedInputPaths requires file-equals or present:true file-source-text-occurrence sourcePath evidence for ${generatedInputPath}.`,
       );
     }
   }

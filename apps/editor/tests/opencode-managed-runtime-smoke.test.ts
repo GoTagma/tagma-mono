@@ -12,14 +12,19 @@ import {
   symlinkSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
-import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
+import {
+  listCustomProviders,
+  resolveOpencodeRuntimePaths,
+  upsertCustomProvider,
+} from '../server/opencode-config';
 import { readOpencodeContextWindowPluginReady } from '../server/opencode-context-window-plugin';
 import {
   ensureOpencode,
   getOpencodeRuntimeDiagnostics,
   restartOpencode,
+  snapshotManagedOpencodeExecution,
   stopOpencodeProcesses,
 } from '../server/opencode-lifecycle';
 import {
@@ -202,6 +207,19 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       const tagmaCwd = canonicalFilesystemPath(tagmaCwdPath);
       expect(seedOpencodeArtifacts(tagmaCwd)).toBe(true);
       stagePinnedOpencodePluginFixture(tagmaCwd, expectedVersion);
+      upsertCustomProvider('workspace', dirname(tagmaCwd), 'native-pricing-fixture', {
+        name: 'Native pricing metadata fixture',
+        npm: '@ai-sdk/openai-compatible',
+        options: { baseURL: 'http://127.0.0.1:9/v1', apiKey: 'unit-only-not-a-real-secret' },
+        models: {
+          probe: {
+            name: 'Metadata only; never invoked',
+            reasoning: true,
+            variants: { low: { reasoning_effort: 'low' } },
+            cost: { input: 0.1, output: 0.2, reasoning: 0.3 },
+          },
+        },
+      });
 
       const runtime = resolveOpencodeRuntimePaths(tagmaCwd);
       for (const { filename } of TAGMA_MANAGED_OPENCODE_TOOLS) {
@@ -211,6 +229,13 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
 
       const handle = await ensureOpencode(tagmaCwd);
       expect(handle.cwd).toBe(tagmaCwd);
+      const executionSnapshot = await snapshotManagedOpencodeExecution(tagmaCwd);
+      expect(executionSnapshot.resolveVariant('native-pricing-fixture/probe', 'low')).toBe('low');
+      expect(
+        listCustomProviders(dirname(tagmaCwd)).find(
+          (provider) => provider.id === 'native-pricing-fixture',
+        )?.def.models.probe?.cost,
+      ).toEqual({ input: 0.1, output: 0.2, reasoning: 0.3 });
       expect(readOpencodeContextWindowPluginReady(tagmaCwd)).toEqual({
         ready: true,
         schema: 1,
@@ -747,6 +772,58 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
       for (const id of TAGMA_MANAGED_OPENCODE_TOOL_IDS) {
         expect(compatibilityToolIds).toContain(id);
       }
+
+      // Assert the schema after the actual pinned native loader, not just Zod
+      // serialization. Catalog inspection makes no model/provider request.
+      const nativeTools = await readSdkData(
+        legacyClient.tool.list({ query: { provider: 'opencode', model: 'big-pickle' } }),
+        'native Trial tool parameter schemas',
+      );
+      const trialParameters = nativeTools.find(
+        (entry) => entry.id === 'tagma_trial_plan',
+      )?.parameters;
+      expect(trialParameters).toMatchObject({
+        type: 'object',
+        properties: {
+          goals: { type: 'array', items: { type: 'string' } },
+          cases: { type: 'array', items: { type: 'object' } },
+          case: { type: 'object' },
+          evidence_review: { type: 'object' },
+          reset: { type: 'boolean' },
+        },
+      });
+      for (const field of [
+        'summary',
+        'goals',
+        'reset',
+        'cases',
+        'case',
+        'coverage',
+        'findings',
+        'evidence_review',
+      ]) {
+        expect(trialParameters).not.toHaveProperty('properties.' + field + '.anyOf');
+      }
+      expect(trialParameters).toHaveProperty(
+        'properties.evidence_review.properties.coreWitness.description',
+        expect.stringContaining('pipeline-artifact'),
+      );
+      expect(trialParameters).toHaveProperty(
+        'properties.evidence_review.properties.coreWitness.description',
+        expect.stringContaining('diagnostic-only'),
+      );
+      expect(trialParameters).toHaveProperty(
+        'properties.findings.items.properties.repairScope.description',
+        expect.stringContaining('read-only'),
+      );
+      expect(trialParameters).toHaveProperty(
+        'properties.evidence_review.properties.decisions.items.properties.taskIds.description',
+        expect.stringContaining('required: true'),
+      );
+      expect(trialParameters).toHaveProperty(
+        'properties.evidence_review.properties.decisions.items.properties.taskIds.description',
+        expect.stringContaining('required: false'),
+      );
 
       const legacyCreated = await readSdkData(
         legacyClient.session.create({ body: { title: 'Tagma native smoke legacy' } }),

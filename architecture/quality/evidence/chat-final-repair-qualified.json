@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "kind": "final-local-repair-qualification-after-user-ended-live-tests",
+  "at": "2026-10-15T15:50:17.373933+00:00",
+  "baseCommit": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false,
+  "fullRepository": {
+    "passed": true,
+    "gates": 13,
+    "summary": [
+      "  PASS text 108ms ok",
+      "  PASS deps 291ms ok",
+      "  PASS focus 242ms ok",
+      "  PASS imports 82ms ok",
+      "  PASS cycles 42ms ok",
+      "  PASS secrets 308ms ok",
+      "  PASS format 23.9s ok",
+      "  PASS types 51.5s ok",
+      "  PASS lint 20.7s ok",
+      "  PASS tests 216.3s ok",
+      "  PASS scripts 3.1s ok",
+      "  PASS build 20.2s ok",
+      "  PASS publish 12.2s ok"
+    ],
+    "logSha256": "e8bd7f113d9cc80dfc7e3f7b167f8f84404bb75a7b3b7eb6da380612246bb212"
+  },
+  "targeted": {
+    "passed": 115,
+    "expectCalls": 556,
+    "logSha256": "267be3be5cd105ec10c6071c7d5bba88938a08c067f24b91e7b211e0f0eeb5fd"
+  },
+  "pinnedNative": {
+    "passed": 5,
+    "expectCalls": 161,
+    "logSha256": "83d75fbf97ff08b93db418a7cca31b8b301bfc4076a7fd2c9bb10c444cde289a",
+    "scope": "Actual pinned 1.18.18; synthetic localhost protocol, not business acceptance."
+  },
+  "currentSourceRegressions": {
+    "passed": true,
+    "executed": 199,
+    "issues": 34,
+    "sourceFingerprintBeforeThisDocumentation": {
+      "scheme": "public-git-visible-v1",
+      "fileCount": 1505,
+      "sha256": "0cafde1cfc6fbc1e1877f70a64fdc7d4816ab857bfb8636e90f7d5a1c750de56"
+    },
+    "logSha256": "1f0e0ace7d63381328c59bae03a970713ab881cca29baf50bb425e4e43a233be",
+    "finalBytesPolicy": "Run again after writing this capsule/report. Final fingerprint receipt stays in ignored work/ to avoid a self-referential tracked receipt; main CI executes the default gate again."
+  },
+  "preservedQualificationFailures": [
+    {
+      "kind": "restricted-loopback-environment",
+      "failures": [
+        {
+          "kind": "environment",
+          "code": "qualification_Node_environment_invalid_response",
+          "issueId": "CSR-0011",
+          "regressionIndex": 0
+        }
+      ],
+      "logSha256": "64a19ae99da86640c740c3bb6ba8d17b022659acf03cad36f76b2597dff96f6f"
+    },
+    {
+      "kind": "single-retained-support-assertion-during-concurrent-full-check",
+      "failures": [
+        {
+          "kind": "assertion_failure",
+          "code": "test_assertion_failure",
+          "issueId": "CSR-0014",
+          "regressionIndex": 1
+        }
+      ],
+      "cause": "Unconfirmed. Exact isolated selector passed45assertions; complete serial gate later passed199. No assertion, timeout or product code relaxed.",
+      "logSha256": "5be342df8dc80881bca212772100b1f4fed303fb0f373d740f1b5e16e0c46ba1",
+      "isolatedReproductionLogSha256": "dcf3de899c5670c88dc6351471ed29002620fb33bf0cab2dccdc9dd23665339e"
+    }
+  ],
+  "historicalGate": {
+    "passed": false,
+    "reason": "Pre-existing missing archives, first evidence and executable mappings; preserved, not replaced by current-source GREEN.",
+    "logSha256": "32e9bdef40a1dd25decdb7137ff774b0e0f02f4fec76aae62bb443f8af302e8b"
+  },
+  "versionRule": {
+    "trackedPackagesChanged": false,
+    "bunLockChanged": false,
+    "versionAllPatchRuns": 0,
+    "reason": "No packages/ source or version changes in this repair batch."
+  },
+  "stopScope": {
+    "ended": 6,
+    "naturallyPaused": 4,
+    "observationBudgetInterrupted": 2,
+    "userInterrupted": 1,
+    "notStarted": 5,
+    "accepted": 0,
+    "noPostFinalFixLiveSweep": true
+  }
+}

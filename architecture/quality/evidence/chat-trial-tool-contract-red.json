@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-source-trial-tool-model-schema-and-guidance-red",
+  "baselineCommit": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "productSourceSha256": "f26e5b18275ae482027ef85c3024b9f757c058e2a55d8a9b6face2fdd6db25ef",
+  "readerSourceSha256": "385d0dfd504123a919b88832204e58f0803cec5061eed646ceb3a60ee86e019f",
+  "red": {
+    "command": "bun test work/trial-boundary.test.ts",
+    "scope": "real generated tool with pinned Plugin 1.18.18 / Zod 4.1.8; isolated scratch test imports point to unchanged repository source",
+    "testSha256": "b5e510d7df554ab89ef0b7d09c52478005d270403cf1b764e8255e059a10e5a3",
+    "logSha256": "78076765c3b465d3105fcef202cb32f5a6fb00f88300e35c1651a922541a2445",
+    "executed": 11,
+    "passed": 9,
+    "failed": 2,
+    "errors": 0,
+    "expectCalls": 131,
+    "failures": [
+      "pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas",
+      "generated-input guidance names both supported witnesses without weakening case validation"
+    ]
+  },
+  "confirmedMechanisms": [
+    {
+      "id": "CSR-0025",
+      "observation": "OBS-004",
+      "scope": "all generated Trial tool business parameter schemas",
+      "actual": "anyOf with an unconstrained empty schema branch",
+      "required": "model-visible typed schema with unchanged opaque business transport and strict operation/path/attempt identity",
+      "realDiscoveryCases": [
+        "s1-l3-attempt1",
+        "s3-l1-attempt1",
+        "s3-l2-attempt1",
+        "s3-l3-attempt1"
+      ],
+      "causalityLimit": "The schema is proven overpermissive; this does not prove that every model-generation failure is caused by it or that typed guidance guarantees all providers converge."
+    },
+    {
+      "id": "CSR-0026",
+      "observation": "OBS-005",
+      "scope": "generatedInputPaths model-facing description and matching generated-tool/Host error messages",
+      "actual": "claims exact file-equals is mandatory although present:true file-source-text-occurrence sourcePath is supported",
+      "required": "explain both legal witness forms and retain independent concrete producer content, exact removal fixture and authenticated ownership/dependency mappings",
+      "counterexample": "S2-L3 real provider successfully committed a source relation plan and executed actual Trial; dynamic prose is not categorically unsupported."
+    }
+  ],
+  "isolatedNativeCandidateProof": {
+    "pinnedVersion": "1.18.18",
+    "syntheticModelOnly": true,
+    "liveAcceptance": false,
+    "typedGoalsAdvertisedByNativeLoaderAndModelRequest": true,
+    "invalidBusinessGoalsStringReachesHandlerUnchanged": true,
+    "malformedDuplicateAndIdentityCalls": 3,
+    "toolAttemptCount": 1,
+    "validationRejectionCount": 1,
+    "successfulWriteCount": 0,
+    "candidateResultSha256": "8e29a98ece154e08e67523424284643ebf8729bd1ca9abdec00620de30271f53"
+  },
+  "notConfirmed": {
+    "OBS-006": "cold unknown finish / 0 tokens ownership remains UNKNOWN; no blind retry or weakened verification justified"
+  },
+  "historicalCoverageComplete": false,
+  "realAcceptance": false
+}

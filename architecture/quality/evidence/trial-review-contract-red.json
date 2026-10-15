@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "trial-review-hints-and-feedback-red",
+  "observedLiveEvidence": [
+    "s3-l2-verify1: proposed YAML repair marked diagnostic-only",
+    "s3-l3-verify1: false dispositions with nonempty taskIds elicited misleading required-scope error"
+  ],
+  "productToolSourceAtRedSha256": "7a6e6ae9fcd34c7a61872fbe6ab6f54b29f03a3bcc92d0ad7af45f251826cd7d",
+  "hostRulesAtRedSha256": "522155cce9471f10624f4e6fa3cc73b7d46c5620bd7ca7d475d0fbc9a32c0d27",
+  "unit": {
+    "executed": 14,
+    "passed": 11,
+    "failed": 3,
+    "expectCalls": 186,
+    "logSha256": "d99d55b83e49c4ef1f99d54a6f6bbc76c70f298e7f9a9fd4034b14352e937f50"
+  },
+  "realAcceptance": false,
+  "historicalCoverageComplete": false
+}

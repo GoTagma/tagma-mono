@@ -1,0 +1,889 @@
+{
+  "scope": "completed first post-fix real-provider sweep; not acceptance GREEN",
+  "completedAt": "2026-10-15T11:25:40.664328+00:00",
+  "baseCommit": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "editorPid": 41450,
+  "editorRestartedBeforeSweep": true,
+  "liveSourceChangedDuringSweep": false,
+  "trackedDiffSha256": "255cc914935a7d1b532659b68e673f8ef22550c72c490c6bf2be9868b59a5b39",
+  "historicalCoverageComplete": false,
+  "caseCount": 12,
+  "acceptedCount": 0,
+  "attempts": [
+    {
+      "attempt": "s1-l1-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-77b60765-71af-49cf-9d5a-6ced2d597608",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-pro"
+      },
+      "phase": "authoring",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 2704904,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 2
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "tester interrupted at 45-minute observation budget; unfinished authoring, no actual Trial or publication",
+      "evidence": [
+        {
+          "path": "s1-l1-verify1/latest.json",
+          "sha256": "e41a633ff317c4745579991fddadc8cccda7f91ba71c78f8c62e24a4dc6eb0af",
+          "bytes": 20258
+        },
+        {
+          "path": "s1-l1-verify1/observations.jsonl",
+          "sha256": "7ec717b93ea70974d09dc83f9481ed45065cd6c5bda52abe44a7da87ca3fde4e",
+          "bytes": 6892002
+        },
+        {
+          "path": "s1-l1-verify1/commands.jsonl",
+          "sha256": "efb1d4e9adec9a4432d61bfd2accc07127c672cb45ddc3736040336b04c02ddb",
+          "bytes": 7095
+        },
+        {
+          "path": "s1-l1-verify1/harness-stop.json",
+          "sha256": "9ed7115c85b208c1fe6d004f32fce3bffe88e7526edaa156252a2e15869e793e",
+          "bytes": 3610
+        },
+        {
+          "path": "s1-l1-verify1/post-stop-state.json",
+          "sha256": "f10839886025d177d7169737cfee29282524611a58bf05e84fe853fe4becac0f",
+          "bytes": 20156
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-77b60765-71af-49cf-9d5a-6ced2d597608",
+        "oneRoundAcceptance": false,
+        "verdict": "tester interrupted at 45-minute observation budget; unfinished authoring, no actual Trial or publication",
+        "failureClass": "tester_observation_budget_interruption",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 1,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-pro",
+        "variant": "low",
+        "notANaturalProductTimeout": true
+      }
+    },
+    {
+      "attempt": "s1-l2-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-2456eaf8-c3e9-4a0f-bc08-0cc66ec168af",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792053505186
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 843717,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural verification pause after two rejected planning attempts; missing producer dependency in authored graph; no actual Trial/publication",
+      "evidence": [
+        {
+          "path": "s1-l2-verify1/latest.json",
+          "sha256": "68f24f018377d2533735fb64ecaed3958e530ae3fd09f3e50f1a5de3e2e5c240",
+          "bytes": 22364
+        },
+        {
+          "path": "s1-l2-verify1/observations.jsonl",
+          "sha256": "c57a88424f2cf622fdc4fdcbf2d91b9b0576ba0cc5e2ac9b8cdf29ab4b3b097a",
+          "bytes": 2085091
+        },
+        {
+          "path": "s1-l2-verify1/commands.jsonl",
+          "sha256": "75096b5910aaa2b2eb39f42d8b4aba081c91d855b7d272d23ebed800a77340ad",
+          "bytes": 3700
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-2456eaf8-c3e9-4a0f-bc08-0cc66ec168af",
+        "oneRoundAcceptance": false,
+        "verdict": "natural verification pause after two rejected planning attempts; missing producer dependency in authored graph; no actual Trial/publication",
+        "failureClass": "generated_pipeline_and_plan_contract_failure",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flash",
+        "variant": "low",
+        "naturalVerificationPause": true,
+        "typedGoalsObservedAsArray": true
+      }
+    },
+    {
+      "attempt": "s1-l3-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-72d008c9-8a82-44e6-afd5-d81d110289c3",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 2,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792054460746
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 724789,
+      "invocations": {
+        "classifier": 3,
+        "authoring": 1,
+        "trial_plan": 2,
+        "repair": 1
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural verification pause; automatic repair changed YAML then retained plan was rejected as older revision; no actual Trial/publication",
+      "evidence": [
+        {
+          "path": "s1-l3-verify1/latest.json",
+          "sha256": "7b755e5ef509e0907f1103931a98baec3ff916111a4086ec02e67587b3d1f43e",
+          "bytes": 21989
+        },
+        {
+          "path": "s1-l3-verify1/observations.jsonl",
+          "sha256": "9dbfcfea5d11414f010f99be8f9f66657bba2992e9437ea3f9c3efd33911bcf9",
+          "bytes": 1211093
+        },
+        {
+          "path": "s1-l3-verify1/commands.jsonl",
+          "sha256": "97fb4bb49102da5d6cba05828f5fe50765151e5b7028bfe923e53d5664573f36",
+          "bytes": 8780
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-72d008c9-8a82-44e6-afd5-d81d110289c3",
+        "oneRoundAcceptance": false,
+        "verdict": "natural verification pause; automatic repair changed YAML then retained plan was rejected as older revision; no actual Trial/publication",
+        "failureClass": "stale_plan_after_automatic_repair_observation_ownership_unconfirmed",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 2,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flash",
+        "variant": "low",
+        "naturalVerificationPause": true,
+        "typedGoalsObservedAsArray": true,
+        "candidateFindings": [
+          "Authored claim remained a replacement placeholder rather than input binding",
+          "No workspace business report output in authored YAML",
+          "OBS-008: stale plan after internal YAML repair; qualify plan budget and revalidation eligibility before assigning ownership"
+        ]
+      }
+    },
+    {
+      "attempt": "s2-l1-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-ce7a6002-9f81-4bb3-9b17-81f4b0d52663",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flash"
+      },
+      "phase": "repairing",
+      "waitReason": "provider_unavailable",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "repair",
+        "code": "provider_invocation_failed",
+        "invocationId": "repair-invocation-30926c6d-1447-42e7-aec2-f4d17d8b861b",
+        "outboxStatus": "failed_terminal",
+        "recordedAt": 1792055391162
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 637447,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "repair": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "repair invocation retained as provider_invocation_failed; native assistant finished stop and reported compile-scope repair, no actual Trial/publication",
+      "evidence": [
+        {
+          "path": "s2-l1-verify1/latest.json",
+          "sha256": "fc876ce54566549d7b866e5c224f37f296ca6e9cd4c8f861e0d251f994254b20",
+          "bytes": 20900
+        },
+        {
+          "path": "s2-l1-verify1/observations.jsonl",
+          "sha256": "42340cf237438efa97e37e76d1f8828b4100726e9f1faacceae7edad88645e19",
+          "bytes": 1647455
+        },
+        {
+          "path": "s2-l1-verify1/commands.jsonl",
+          "sha256": "b65abe48f161a900032bec48c698d780f47a2294956af003dcc8b776437aed00",
+          "bytes": 4197
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-ce7a6002-9f81-4bb3-9b17-81f4b0d52663",
+        "oneRoundAcceptance": false,
+        "verdict": "repair invocation retained as provider_invocation_failed; native assistant finished stop and reported compile-scope repair, no actual Trial/publication",
+        "failureClass": "repair_invocation_failure_ownership_unconfirmed",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flash",
+        "variant": "low",
+        "nativeFinish": "stop",
+        "candidateFindings": [
+          "OBS-009: normal native finish versus Host provider_invocation_failed requires qualification",
+          "Scope repair required deletion of fresh unintended files; model emptied them; check tool capability and baseline equality before assigning ownership"
+        ]
+      }
+    },
+    {
+      "attempt": "s2-l2-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-324548cf-a625-4cff-8abf-8d71f40d1f5d",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flash"
+      },
+      "phase": "trial-running",
+      "waitReason": "provider_unavailable",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "model_error",
+        "invocationId": "trial_plan-invocation-9aae3e50-f8ce-4360-b9fd-ab2b18da8834",
+        "outboxStatus": "failed_terminal",
+        "recordedAt": 1792056992024
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 863037,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 1
+      },
+      "trialPlanAttempts": 1,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural planner interruption: native finish unknown with zero input/output/reasoning tokens after about 180 seconds; no actual Trial/publication",
+      "evidence": [
+        {
+          "path": "s2-l2-verify1/latest.json",
+          "sha256": "1aca93f0a4728385a99f9c33e1b6bc70f85bb332230bd96b7a93d9d2fe844c9d",
+          "bytes": 20260
+        },
+        {
+          "path": "s2-l2-verify1/observations.jsonl",
+          "sha256": "9a66ebe0439d2e833f769568a724f328aefe593efb13b18bb87ba59432eee326",
+          "bytes": 2123011
+        },
+        {
+          "path": "s2-l2-verify1/commands.jsonl",
+          "sha256": "8281cc1f608ec8c801aa5f2e35097676262fa3bef90840c61494002f830dee08",
+          "bytes": 3691
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-324548cf-a625-4cff-8abf-8d71f40d1f5d",
+        "oneRoundAcceptance": false,
+        "verdict": "natural planner interruption: native finish unknown with zero input/output/reasoning tokens after about 180 seconds; no actual Trial/publication",
+        "failureClass": "indeterminate_native_model_response_ownership_unconfirmed",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flash",
+        "variant": "low",
+        "typedGoalsObservedAsArray": true,
+        "nativeFinish": "unknown",
+        "nativeTokenCounts": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "attempt": "s2-l3-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-0f2620c1-3579-4654-94a7-9cf35e5ff084",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "repairing",
+      "waitReason": null,
+      "terminalOutcome": null,
+      "failure": null,
+      "observationBudgetInterruption": "harness-stop.json",
+      "elapsedMs": 2702107,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 2,
+        "repair": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "tester interrupted at 45-minute observation budget during automatic artifact repair after actual four-case Trial spawn errors; no publication",
+      "evidence": [
+        {
+          "path": "s2-l3-verify1/latest.json",
+          "sha256": "2c6ab7ec0c023688b9846c283f0f9df1d5626d1ccb237dcf930cb030b0f968d5",
+          "bytes": 18786
+        },
+        {
+          "path": "s2-l3-verify1/observations.jsonl",
+          "sha256": "ef0ebe7694e379f748a0eb5c768c0c3b16b37652cf7edb76383f5930c5a6b73a",
+          "bytes": 6196798
+        },
+        {
+          "path": "s2-l3-verify1/commands.jsonl",
+          "sha256": "915a30da58f8ee35cae34bc65ff7150a04ebcc469c4b3261c84cd5fd943a0e05",
+          "bytes": 6139
+        },
+        {
+          "path": "s2-l3-verify1/harness-stop.json",
+          "sha256": "7bd1c57fa2499cd481b8099f1e1fda3d6a79f37f67e5fa26fcb4683d7abdb8cb",
+          "bytes": 2847
+        },
+        {
+          "path": "s2-l3-verify1/post-stop-state.json",
+          "sha256": "ba58a950ec8ca8383a68ccbae1e4b92f8ddd97d90a106d49bd5417d84fa7167c",
+          "bytes": 18662
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-0f2620c1-3579-4654-94a7-9cf35e5ff084",
+        "oneRoundAcceptance": false,
+        "verdict": "tester interrupted at 45-minute observation budget during automatic artifact repair after actual four-case Trial spawn errors; no publication",
+        "failureClass": "confirmed_native_config_pricing_projection_mismatch_and_tester_interruption",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": false,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 1,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-flash",
+        "variant": "low",
+        "actualTrialCaseCount": 4,
+        "firstTrialFailure": "catalog_identity_unavailable",
+        "qualifiedOwningMechanism": "Pinned native config drops cost.reasoning; Host startup-provider identity comparison blocks all models",
+        "qualificationEvidence": "../native-execution-catalog-real-shape-diff.json",
+        "notANaturalProductTimeout": true,
+        "typedGoalsObservedAsArray": true
+      }
+    },
+    {
+      "attempt": "s3-l1-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-8fbc81e7-6fc2-4082-9318-77ddb0cb62be",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flashx"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792060813279
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 762827,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 2,
+        "repair": 1
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural verification pause after actual Trial: 16 successful business tasks, only 1/3 cases passed; positive and repeat produced no claims, no publication",
+      "evidence": [
+        {
+          "path": "s3-l1-verify1/latest.json",
+          "sha256": "6fb5c19e4c1ded53da66f5723a456d2844ee6b224374420f16a72e0f0533e4be",
+          "bytes": 30337
+        },
+        {
+          "path": "s3-l1-verify1/observations.jsonl",
+          "sha256": "140fd03461cee713ab72edb7af3a0a180bbd66f5a9648176be0e7ef47a624259",
+          "bytes": 2049043
+        },
+        {
+          "path": "s3-l1-verify1/commands.jsonl",
+          "sha256": "69922bc647407c71a0004252350a30e579531b97ab5dc1fae591a730735771e0",
+          "bytes": 4180
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-8fbc81e7-6fc2-4082-9318-77ddb0cb62be",
+        "oneRoundAcceptance": false,
+        "verdict": "natural verification pause after actual Trial: 16 successful business tasks, only 1/3 cases passed; positive and repeat produced no claims, no publication",
+        "failureClass": "confirmed_catalog_pricing_projection_defect_and_generated_trial_fixture_mismatch",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": false,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flashx",
+        "variant": "low",
+        "naturalVerificationPause": true,
+        "typedGoalsObservedAsArray": true,
+        "firstTrial": {
+          "caseCount": 3,
+          "failure": "catalog_identity_unavailable",
+          "taskModel": "zhipuai/glm-5.3-flashx"
+        },
+        "automaticArtifactChange": "Removed explicit model and reasoning_effort; actual subsequent runtime used opencode/big-pickle, not the selected Chat model",
+        "subsequentTrial": {
+          "caseCount": 3,
+          "passedCases": 1,
+          "totalSuccessfulTasks": 16,
+          "actualTaskModels": [
+            "opencode/big-pickle"
+          ],
+          "failedCases": [
+            "normal",
+            "repeat"
+          ],
+          "passedCase": "empty_sites",
+          "observation": "numeric todo JSON IDs are not guaranteed statistical/benchmark/product-comparison claims; plan assumed nonempty extraction but observed claims=[]"
+        },
+        "evidence": [
+          "runtime-model-facts.json",
+          "native-artifact-write-facts.json",
+          "round-result.json"
+        ]
+      }
+    },
+    {
+      "attempt": "s3-l2-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-bdc29a41-527e-4378-a91d-853e0785045e",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flashx"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792061219877
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 301038,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural verification pause after two planning attempts; blocked free-form report core; planner marked its proposed YAML change diagnostic-only, so no artifact repair or actual Trial/publication",
+      "evidence": [
+        {
+          "path": "s3-l2-verify1/latest.json",
+          "sha256": "799dbd16aa99440a6d47678d5295d65141978111cee8cd8dc18e6a9b361050c6",
+          "bytes": 25112
+        },
+        {
+          "path": "s3-l2-verify1/observations.jsonl",
+          "sha256": "19fbb65bfdb33a0ea4d00b00210a234abe7b0e724ab46b31e8cfcb94cbe92774",
+          "bytes": 677017
+        },
+        {
+          "path": "s3-l2-verify1/commands.jsonl",
+          "sha256": "784ac3d6e3ef22edf76770e92aef2000d04470eb3891f5e89d144fe41f56906e",
+          "bytes": 3680
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-bdc29a41-527e-4378-a91d-853e0785045e",
+        "oneRoundAcceptance": false,
+        "verdict": "natural verification pause after two planning attempts; blocked free-form report core; planner marked its proposed YAML change diagnostic-only, so no artifact repair or actual Trial/publication",
+        "failureClass": "generated_plan_repair_scope_misclassification",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flashx",
+        "variant": "low",
+        "naturalVerificationPause": true,
+        "typedGoalsObservedAsArray": true,
+        "candidateFinding": "Model prose requests adding a produced JSON summary, but authoritative finding repairScope is diagnostic-only; never grant write authority by interpreting prose",
+        "actualTrialExecuted": false
+      }
+    },
+    {
+      "attempt": "s3-l3-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-e59f7486-fc9e-45cb-ae39-e0c17fde3f19",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flashx"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792061787082
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 382496,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 2,
+        "repair": 2
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural verification pause after actual five-case Trial and automatic repairs; normal/repeat cases blocked by catalog identity failure; no publication",
+      "evidence": [
+        {
+          "path": "s3-l3-verify1/latest.json",
+          "sha256": "a87d7076bbb87440c49f24a5f22b0a41352f875dfa42381fcadc6ebf76457955",
+          "bytes": 23535
+        },
+        {
+          "path": "s3-l3-verify1/observations.jsonl",
+          "sha256": "bed3763f21e3df4f3a91697356ba62b813165856b218844a6bb079a634933bdb",
+          "bytes": 880815
+        },
+        {
+          "path": "s3-l3-verify1/commands.jsonl",
+          "sha256": "7d098de37b578ec06673717077fb41cc258c0875dcd7aa49218c83bfa8605dc6",
+          "bytes": 6215
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-e59f7486-fc9e-45cb-ae39-e0c17fde3f19",
+        "oneRoundAcceptance": false,
+        "verdict": "natural verification pause after actual five-case Trial and automatic repairs; normal/repeat cases blocked by catalog identity failure; no publication",
+        "failureClass": "confirmed_native_pricing_config_identity_projection_defect",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": false,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 1,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flashx",
+        "variant": "low",
+        "naturalVerificationPause": true,
+        "typedGoalsObservedAsArray": true,
+        "actualTrial": {
+          "caseCount": 5,
+          "passedCases": 2,
+          "passedCaseIds": [
+            "empty-sites",
+            "missing-sites"
+          ],
+          "failedCaseIds": [
+            "normal-e2e",
+            "repeat-e2e",
+            "empty-claims"
+          ],
+          "taskStatusCounts": {
+            "failed": 6,
+            "skipped": 6
+          },
+          "failure": "catalog_identity_unavailable",
+          "note": "Negative case status pass does not certify correct input handling when provider startup itself failed"
+        },
+        "additionalFindings": [
+          "Four repeated review errors conflated not-required nonempty scopes with required missing scopes; native arguments captured in review-scope-error-facts.json"
+        ]
+      }
+    },
+    {
+      "attempt": "s4-l1-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-394c2d54-2c70-48ab-b038-a98f57045f4a",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flashx"
+      },
+      "phase": "trial-running",
+      "waitReason": "user_retry",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "trial_verification_paused",
+        "invocationId": null,
+        "outboxStatus": null,
+        "recordedAt": 1792062447287
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 511072,
+      "invocations": {
+        "classifier": 1,
+        "authoring": 1,
+        "trial_plan": 2,
+        "repair": 1
+      },
+      "trialPlanAttempts": 2,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural verification pause after two planning attempts and automatic DAG repair; no actual Trial/publication",
+      "evidence": [
+        {
+          "path": "s4-l1-verify1/latest.json",
+          "sha256": "456093af73a1c1d5de4e9e7e825ab129e34ccd9653acd91c2d6beb1d17bec738",
+          "bytes": 24610
+        },
+        {
+          "path": "s4-l1-verify1/observations.jsonl",
+          "sha256": "caf94ca8d86d18010fe4c228b0653f830231e431e15c459fff17056a32bf2572",
+          "bytes": 1319566
+        },
+        {
+          "path": "s4-l1-verify1/commands.jsonl",
+          "sha256": "738984e1f9540ab9c541d42d24f59d4fdd63210fb2633d05ab632f82e2548763",
+          "bytes": 4391
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-394c2d54-2c70-48ab-b038-a98f57045f4a",
+        "oneRoundAcceptance": false,
+        "verdict": "natural verification pause after two planning attempts and automatic DAG repair; no actual Trial/publication",
+        "failureClass": "generated_pipeline_dependency_failure_and_exhausted_planning_after_yaml_repair",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flashx",
+        "variant": "low",
+        "naturalVerificationPause": true,
+        "typedGoalsObservedAsArray": true,
+        "actualTrialExecuted": false,
+        "candidateFindings": [
+          "Missing stage_input to parse_metrics dependency was correctly reported and repaired within the original operation",
+          "Post-repair plan revision/remaining-budget eligibility requires qualification; never reset counts or reuse a blocked plan"
+        ]
+      }
+    },
+    {
+      "attempt": "s4-l2-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-c0b3c925-5fa1-4c5c-87d7-65104cc32860",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 1,
+      "model": {
+        "providerID": "zhipuai",
+        "modelID": "glm-5.3-flashx"
+      },
+      "phase": "trial-running",
+      "waitReason": "provider_unavailable",
+      "terminalOutcome": null,
+      "failure": {
+        "stage": "verification",
+        "code": "provider_rate_limited",
+        "invocationId": "trial_plan-invocation-710609cd-39a6-46b1-bee0-a35e33dccf58",
+        "outboxStatus": "failed_terminal",
+        "recordedAt": 1792063110348
+      },
+      "observationBudgetInterruption": null,
+      "elapsedMs": 538755,
+      "invocations": {
+        "classifier": 2,
+        "authoring": 1,
+        "trial_plan": 1
+      },
+      "trialPlanAttempts": 1,
+      "oneRoundAcceptance": false,
+      "artifactReview": "natural planner interruption with native APIError and Host provider_rate_limited; no actual Trial/publication",
+      "evidence": [
+        {
+          "path": "s4-l2-verify1/latest.json",
+          "sha256": "59209b312a8194e0090bec09ffa8247c52109f2b89f627037caa37c73d611a8b",
+          "bytes": 20307
+        },
+        {
+          "path": "s4-l2-verify1/observations.jsonl",
+          "sha256": "2d29e90f37145a745cce9faf83037720649a8facaeb90d6b7c3c35e1e9912d25",
+          "bytes": 1099997
+        },
+        {
+          "path": "s4-l2-verify1/commands.jsonl",
+          "sha256": "e823fb5697cbbba041a08848723e21fa3fdfbff373d7ffc56c26d523d1b53826",
+          "bytes": 6603
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-c0b3c925-5fa1-4c5c-87d7-65104cc32860",
+        "oneRoundAcceptance": false,
+        "verdict": "natural planner interruption with native APIError and Host provider_rate_limited; no actual Trial/publication",
+        "failureClass": "provider_rate_limited",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 1,
+        "provider": "zhipuai",
+        "model": "glm-5.3-flashx",
+        "variant": "low",
+        "typedGoalsObservedAsArray": true,
+        "actualTrialExecuted": false,
+        "nativeErrorType": "APIError",
+        "nativeFinalCallDurationMs": 78013,
+        "inputBoundaryQualification": "Initial multiline claims used literal backslash-n; Host correctly rejected until actual newlines were supplied",
+        "evidence": [
+          "input-newline-facts.json",
+          "round-result.json"
+        ]
+      }
+    },
+    {
+      "attempt": "s4-l3-verify1",
+      "operationOrdinal": 1,
+      "operationId": "operation-6393b3bb-950f-44ef-a710-30197be00524",
+      "originalPromptMatches": true,
+      "observedSubmitReceipts": 1,
+      "submitReceiptCoverage": "complete",
+      "observedClarificationReplies": 0,
+      "model": {
+        "providerID": "xiaomi",
+        "modelID": "mimo-v2.6-flash"
+      },
+      "phase": "terminal",
+      "waitReason": null,
+      "terminalOutcome": "completed_readonly",
+      "failure": null,
+      "observationBudgetInterruption": null,
+      "elapsedMs": 49738,
+      "invocations": {
+        "classifier": 1,
+        "diagnosis": 1
+      },
+      "trialPlanAttempts": 0,
+      "oneRoundAcceptance": false,
+      "artifactReview": "sealed completed_readonly diagnosis of unrelated blank canvas; requested text/sources and no pipeline creation, Trial or publication",
+      "evidence": [
+        {
+          "path": "s4-l3-verify1/latest.json",
+          "sha256": "a48983b20e68ff5b236978bc899e93af8e7edb12a9ba0752429238e543958d16",
+          "bytes": 27227
+        },
+        {
+          "path": "s4-l3-verify1/observations.jsonl",
+          "sha256": "08f203da337ce27ada06618b15d87fcc9dcaf653a74e1ddf998fc11c5ddf69a4",
+          "bytes": 36017
+        },
+        {
+          "path": "s4-l3-verify1/commands.jsonl",
+          "sha256": "fe9bd403f6465213978316bbac5f0fe1e3068f7a01983f8200bd5d3240ecb24b",
+          "bytes": 3489
+        }
+      ],
+      "adjudication": {
+        "operationId": "operation-6393b3bb-950f-44ef-a710-30197be00524",
+        "oneRoundAcceptance": false,
+        "verdict": "sealed completed_readonly diagnosis of unrelated blank canvas; requested text/sources and no pipeline creation, Trial or publication",
+        "failureClass": "readonly_diagnosis_routing_instead_of_reusable_business_workflow",
+        "trialPassed": false,
+        "substantiveCriteriaPassed": false,
+        "noConfirmedProductDefect": true,
+        "originalBusinessRequestCount": 1,
+        "hostTargetClarificationReplies": 0,
+        "provider": "xiaomi",
+        "model": "mimo-v2.6-flash",
+        "variant": "low",
+        "actualTrialExecuted": false,
+        "terminalOutcome": "completed_readonly",
+        "candidateFinding": "Qualify classifier business-content versus canvas-diagnosis instructions; never grant mutation from an ambiguous audit request or add test-specific routing branches"
+      }
+    }
+  ]
+}

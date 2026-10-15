@@ -1,0 +1,234 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-operation-v2-opencode-adapter.test.ts:
+(pass) provider HTTP 403 failure categories > classifies authentication code using bounded machine evidence [0.74ms]
+(pass) provider HTTP 403 failure categories > classifies billing code using bounded machine evidence [0.05ms]
+(pass) provider HTTP 403 failure categories > classifies rate code using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies JSON authentication code using bounded machine evidence [0.09ms]
+(pass) provider HTTP 403 failure categories > classifies JSON billing code using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies JSON rate code using bounded machine evidence [0.03ms]
+(pass) provider HTTP 403 failure categories > classifies free-tier rejection using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies unknown category using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies malformed JSON using bounded machine evidence [0.41ms]
+(pass) provider HTTP 403 failure categories > classifies conflicting prose using bounded machine evidence [0.07ms]
+(pass) provider HTTP 403 failure categories > classifies 401 over billing code using bounded machine evidence [0.36ms]
+(pass) provider HTTP 403 failure categories > classifies 402 over rate code using bounded machine evidence [0.03ms]
+ 98 |       'structured billing code over 429',
+ 99 |       apiError(429, { code: 'insufficient_quota' }),
+100 |       'provider_billing_required',
+101 |     ],
+102 |   ] as const)('classifies %s using bounded machine evidence', (_label, error, expected) => {
+103 |     expect(openCodeProviderFailureCode(error)).toBe(expected);
+                                                     ^
+error: expect(received).toBe(expected)
+
+Expected: "provider_billing_required"
+Received: "provider_rate_limited"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-opencode-adapter.test.ts:103:48)
+(fail) provider HTTP 403 failure categories > classifies structured billing code over 429 using bounded machine evidence [0.58ms]
+(pass) provider HTTP 403 failure categories > ignores oversized, nested, and unrecognized response-body signals [1.06ms]
+(pass) provider HTTP 403 failure categories > does not invoke provider accessors or interpret a body on an unknown error [0.26ms]
+(pass) provider HTTP 403 failure categories > keeps a free-tier rejection content-free through classifier response and outbox [7.69ms]
+180 |   });
+181 | 
+182 |   test('classifies corroborated resource billing and standard quota categories without exposing bodies', async () => {
+183 |     for (const code of ['1113', 1113]) {
+184 |       const error = apiError(JSON.stringify({ error: { code, message } }));
+185 |       expect(openCodeProviderFailureCode(error)).toBe('provider_billing_required');
+                                                       ^
+error: expect(received).toBe(expected)
+
+Expected: "provider_billing_required"
+Received: "provider_rate_limited"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-opencode-adapter.test.ts:185:50)
+(fail) provider HTTP 429 structured billing evidence > classifies corroborated resource billing and standard quota categories without exposing bodies [0.59ms]
+(pass) provider HTTP 429 structured billing evidence > keeps uncorroborated codes, prose, malformed bodies and ordinary throttling as rate limits [0.31ms]
+(pass) Chat Operation V2 OpenCode adapter > interrupts both the provider execution and native admission channels for the same session [0.33ms]
+(pass) Chat Operation V2 OpenCode adapter > preserves a native session-not-found response instead of reporting transport ambiguity [962.92ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a malformed successful native response in bounded history ambiguity [1918.46ms]
+(pass) Chat Operation V2 OpenCode adapter > does not label an unrelated native 404 as a missing session [956.88ms]
+(pass) Chat Operation V2 OpenCode adapter > writes the durable outbox before resolving or calling any SDK client [1.75ms]
+(pass) Chat Operation V2 OpenCode adapter > waits for a newly admitted history event without resubmitting the native prompt [103.54ms]
+(pass) Chat Operation V2 OpenCode adapter > reports bounded history unavailability without claiming response loss [1.87ms]
+(pass) Chat Operation V2 OpenCode adapter > admits natively, then sends one tool-free text classifier message [1.12ms]
+(pass) Chat Operation V2 OpenCode adapter > implements the orchestrator runner with authenticated bytes and a safe Host decision [1.54ms]
+(pass) Chat Operation V2 OpenCode adapter > runs discussion as native admission followed by one tool-free compatibility text message [2.27ms]
+(pass) Chat Operation V2 OpenCode adapter > preserves a specific safe provider failure for discussion without requiring text parts [1.12ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive read-only SDK rejection distinct from response loss [1.17ms]
+(pass) Chat Operation V2 OpenCode adapter > derives a restart-stable execution message id from Host invocation identity [0.50ms]
+(pass) Chat Operation V2 OpenCode adapter > runs diagnosis with only the sealed snapshot context and no provider-facing tools [1.00ms]
+(pass) Chat Operation V2 OpenCode adapter > runs diagnosis without a canvas snapshot as authenticated request-only context [0.58ms]
+(pass) Chat Operation V2 OpenCode adapter > rejects diagnosis when the caller snapshot differs from the authenticated canonical bytes [0.30ms]
+(pass) Chat Operation V2 OpenCode adapter > recovers a lost text response by replaying the identical Host message id once [0.47ms]
+(pass) Chat Operation V2 OpenCode adapter > restart reconcile recovers cached text with the same Host id and no provider reinvocation [2.49ms]
+(pass) Chat Operation V2 OpenCode adapter > reconcile rejects changed caller bytes before replaying the cached text id [0.53ms]
+(pass) Chat Operation V2 OpenCode adapter > rejects classifier text with provider-authored extra fields [0.49ms]
+(pass) Chat Operation V2 OpenCode adapter > rejects non-canonical orchestrator bytes before outbox or SDK access [1.98ms]
+(pass) Chat Operation V2 OpenCode adapter > strictly resolves a successful discussion result [0.53ms]
+(pass) Chat Operation V2 OpenCode adapter > strictly resolves a successful diagnosis result [0.51ms]
+(pass) Chat Operation V2 OpenCode adapter > strictly resolves a successful clarify result [0.74ms]
+(pass) Chat Operation V2 OpenCode adapter > continues text classification after recovering a native 409 from history [0.76ms]
+(pass) Chat Operation V2 OpenCode adapter > continues text classification after a lost native admission response [0.53ms]
+(pass) Chat Operation V2 OpenCode adapter > recovers one classifier transport loss through the identical cached text id [0.77ms]
+(pass) Chat Operation V2 OpenCode adapter > coalesces concurrent calls for the same Host invocation and execution id [0.82ms]
+(pass) Chat Operation V2 OpenCode adapter > restart run recovers cached classifier text with the same execution id [1.21ms]
+(pass) Chat Operation V2 OpenCode adapter > orchestrator reconciliation recovers cached classifier text after restart [1.68ms]
+(pass) Chat Operation V2 OpenCode adapter > reconciliation starts text classification from a proven native admission [0.81ms]
+(pass) Chat Operation V2 OpenCode adapter > fails closed on malformed classifier text [0.52ms]
+(pass) Chat Operation V2 OpenCode adapter > orchestrator runner rejects malformed classifier text before settling completion [0.60ms]
+(pass) Chat Operation V2 OpenCode adapter > returns a typed provider failure for unknown errors without leaking the provider payload [0.84ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider authentication without persisting provider content [0.72ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich unknown provider failure without persisting provider content [0.44ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich malformed scalar provider failure without persisting provider content [0.67ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich model output length without persisting provider content [0.50ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich aborted provider message without persisting provider content [0.34ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich model context overflow without persisting provider content [0.37ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider content filter without persisting provider content [0.30ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider billing without persisting provider content [0.29ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider rate limit without persisting provider content [0.35ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich retryable provider outage without persisting provider content [0.38ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich authentication status over conflicting model text without persisting provider content [0.49ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich authentication status over conflicting structured-output text without persisting provider content [0.32ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich billing status over conflicting rate-limit text without persisting provider content [0.44ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich rate-limit status over conflicting billing text without persisting provider content [0.59ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich rate-limit status over conflicting content-policy text without persisting provider content [0.30ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider request rejection without persisting provider content [0.36ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich retryable API error without status without persisting provider content [0.42ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies bounded APIError signal unknown model without returning the message [0.65ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies bounded APIError signal unsupported structured output without returning the message [0.30ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies bounded APIError signal billing without status without returning the message [0.21ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive missing model SDK rejection distinct from response loss [0.39ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive unsupported structured tool SDK rejection distinct from response loss [0.23ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive provider authentication SDK rejection distinct from response loss [0.20ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive provider rate limit SDK rejection distinct from response loss [0.18ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive bounded provider rejection SDK rejection distinct from response loss [0.23ms]
+(pass) Chat Operation V2 OpenCode adapter > does not retry a legacy pinned StructuredOutputError response [0.60ms]
+(pass) Chat Operation V2 OpenCode adapter > aborts without reusing or replacing the rich execution message id [0.83ms]
+(pass) Chat Operation V2 OpenCode adapter > native request marker carries exactly the durable request digest [0.55ms]
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+184 |       coreWitness: { status: 'blocked' as const, taskIds: ['main.run'], code: 'missing_observable_result', rationale: 'The current staged artifact can expose its business result through a permitted repair.' },
+185 |     };
+186 |     const payload = { ...validPayload(), evidence_review: review, findings: [{ severity: 'blocking', repairScope: 'pipeline-artifact', summary: 'Missing observable business result', evidence: 'The authored command exposes no promised result artifact.' }] };
+187 |     const host = createTrialResilienceRules();
+188 |     const plan = { ...payload, evidenceReview: review } as unknown as Parameters<typeof host.validateCoreWitness>[0];
+189 |     expect(() => host.validateCoreWitness(plan, { 'main.run': { dependsOn: [] } }, true)).not.toThrow();
+                                                                                                    ^
+error: expect(received).not.toThrow()
+
+Error name: "Error"
+Error message: "Blocked core witness requires known tasks and an existing blocking diagnostic-only finding; it cannot pass Trial."
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:189:95)
+(fail) generated tool commits blocked artifact feedback with the same Host core rules and finite counter [24.38ms]
+(pass) model schema distinguishes repairable core gaps from intrinsic observation limits [14.02ms]
+(pass) model review task scope schema explains required and not-required dispositions [10.52ms]
+(pass) review scope corrections preserve draft and counted commit boundaries [32.58ms]
+(pass) pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas [14.72ms]
+(pass) malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection [24.85ms]
+(pass) semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt [38.48ms]
+(pass) known commit preserves unknown review keys for the existing strict semantic rejection [19.01ms]
+(pass) known commit preserves unknown decision keys for the existing strict semantic rejection [17.86ms]
+(pass) invalid identity, target, and YAML revision cannot consume a malformed commit [14.39ms]
+(pass) malformed draft preflight preserves draft bytes and never consumes a submission [10.79ms]
+(pass) explicit draft commit counts malformed supplied payload and records no duplicate rejection [17.12ms]
+(pass) two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call [16.58ms]
+(pass) semantic plan validation remains one counted rejection outside the construction catch [13.52ms]
+(pass) generated-input guidance names both supported witnesses without weakening case validation [12.11ms]
+
+apps/editor/tests/chat-trial-core-witness.test.ts:
+(pass) normal generated producer and consumer cover the terminal closure without task-name inference [3.66ms]
+(pass) null or empty normal content cannot replace the concrete positive contract [1.37ms]
+(pass) a legal empty edge remains valid beside a genuinely nonempty normal witness [0.73ms]
+(pass) missing or unrelated task mappings and missing intermediate success cannot pass [0.47ms]
+(pass) factory embedded into the managed tool preserves strict core fields and expectation indices [2.84ms]
+(pass) generated maps must match exact removals, genuine dependencies, and asserted produced bytes [0.93ms]
+(pass) positive source occurrence needs present:true and exact preserved or genuinely generated input [0.68ms]
+(pass) blocked core requires an existing blocking diagnostic and is never green coverage [0.35ms]
+368 |   plan.evidenceReview!.coreWitness = {
+369 |     status: 'blocked', taskIds: ['odd.beta'], code: 'missing_observable_result',
+370 |     rationale: 'The current YAML can expose the missing verifiable business result through a permitted repair.',
+371 |   };
+372 |   plan.findings = [{ severity: 'blocking', repairScope: 'pipeline-artifact', summary: 'Missing observable result', evidence: 'The staged result contract omits the requested output.' }];
+373 |   expect(() => rules.validateCoreWitness(plan, tasks, true)).not.toThrow();
+                                                                       ^
+error: expect(received).not.toThrow()
+
+Error name: "Error"
+Error message: "Blocked core witness requires known tasks and an existing blocking diagnostic-only finding; it cannot pass Trial."
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-core-witness.test.ts:373:66)
+(fail) blocked core admits typed artifact repair feedback while rejecting unknown or nonblocking findings [0.20ms]
+(pass) no-intent compatibility does not silently supply a managed positive witness [0.27ms]
+(pass) normal core reuse keys cannot accept historical final-only proofs or changed review mappings [0.24ms]
+(pass) an explicitly reviewed pure execution contract passes but declared content cannot be exempted [0.16ms]
+(pass) nonempty diagnostic or qualified-unknown output cannot satisfy the promised concrete normal result [1.54ms]
+(pass) generated-input reset rejects pre-seeding, directories, and symlink parents without touching outside files [1.18ms]
+15:36:02.901 [pipeline] start "Fresh generation" run_id=run_mv9pb0wf_62b0c6f28c4f
+15:36:02.912 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+15:36:02.945 [task:odd.alpha] success (0.0s)
+15:36:02.946 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+15:36:02.972 [task:odd.beta] success (0.0s)
+15:36:02.973 [pipeline] completed "Fresh generation"
+15:36:02.973 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:36:02.973 [pipeline] Duration: 0.1s
+15:36:02.973 [pipeline] Log: /tmp/tagma-core-witness-ChEOuQ/.tagma/.chat-staging/11a8a160-e8dd-464a-8bb4-57c334579d6e/.trial-cases/normal-m0mBfO/workspace/.tagma/logs/run_mv9pb0wf_62b0c6f28c4f/pipeline.log
+15:36:02.979 [pipeline] start "Fresh generation" run_id=run_mv9pb0yp_087041e53937
+15:36:02.982 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+15:36:03.005 [task:odd.alpha] success (0.0s)
+15:36:03.005 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+15:36:03.032 [task:odd.beta] success (0.0s)
+15:36:03.032 [pipeline] completed "Fresh generation"
+15:36:03.032 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:36:03.032 [pipeline] Duration: 0.1s
+15:36:03.032 [pipeline] Log: /tmp/tagma-core-witness-ChEOuQ/.tagma/.chat-staging/11a8a160-e8dd-464a-8bb4-57c334579d6e/.trial-cases/normal-m0mBfO/workspace/.tagma/logs/run_mv9pb0yp_087041e53937/pipeline.log
+(pass) actual command producer executes fresh each repeat; earlier wrong content survives later correction=false [571.32ms]
+15:36:03.439 [pipeline] start "Fresh generation" run_id=run_mv9pb1bg_632ebc2459f3
+15:36:03.441 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+15:36:03.466 [task:odd.alpha] success (0.0s)
+15:36:03.467 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',n===0?JSON.stringify({text:'nonempty diagnostic',verdict:'UNVERIFIED',delta:null}):\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+15:36:03.494 [task:odd.beta] success (0.0s)
+15:36:03.494 [pipeline] completed "Fresh generation"
+15:36:03.494 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:36:03.494 [pipeline] Duration: 0.1s
+15:36:03.494 [pipeline] Log: /tmp/tagma-core-witness-cn7CJY/.tagma/.chat-staging/70a63182-8561-4bf8-bc23-9e381c1489fa/.trial-cases/normal-YvzgjI/workspace/.tagma/logs/run_mv9pb1bg_632ebc2459f3/pipeline.log
+15:36:03.496 [pipeline] start "Fresh generation" run_id=run_mv9pb1d3_0100ec97e8da
+15:36:03.497 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+15:36:03.526 [task:odd.alpha] success (0.0s)
+15:36:03.527 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',n===0?JSON.stringify({text:'nonempty diagnostic',verdict:'UNVERIFIED',delta:null}):\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+15:36:03.548 [task:odd.beta] success (0.0s)
+15:36:03.549 [pipeline] completed "Fresh generation"
+15:36:03.549 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:36:03.549 [pipeline] Duration: 0.1s
+15:36:03.549 [pipeline] Log: /tmp/tagma-core-witness-cn7CJY/.tagma/.chat-staging/70a63182-8561-4bf8-bc23-9e381c1489fa/.trial-cases/normal-YvzgjI/workspace/.tagma/logs/run_mv9pb1d3_0100ec97e8da/pipeline.log
+(pass) actual command producer executes fresh each repeat; earlier wrong content survives later correction=true [518.28ms]
+(pass) explicit promised finite numeric and boolean values remain legal core content types [2.22ms]
+(pass) exact nonempty plain text is a content witness while blanks and diagnostic substitutes do not pass [0.86ms]
+15:36:03.939 [pipeline] start "Legacy first creation and reuse" run_id=run_mv9pb1pe_486ba4b0279d
+15:36:03.940 [task:legacy.generate] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const result=fs.existsSync(\"reuse.json\")?JSON.parse(fs.readFileSync(\"reuse.json\",\"utf8\")):{generated:0,reused:0};if(fs.existsSync(\"generated.txt\")){result.reused++;}else{fs.writeFileSync(\"generated.txt\",\"seed\");result.generated++;}fs.writeFileSync(\"reuse.json\",JSON.stringify(result));"]
+15:36:03.966 [task:legacy.generate] success (0.0s)
+15:36:03.966 [pipeline] completed "Legacy first creation and reuse"
+15:36:03.966 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:36:03.966 [pipeline] Duration: 0.0s
+15:36:03.966 [pipeline] Log: /tmp/tagma-core-witness-UYXEzj/.tagma/.chat-staging/d83602d8-faa7-4b4d-8199-2a85a3e1022e/.trial-cases/legacy-reuse-Q6Omt4/workspace/.tagma/logs/run_mv9pb1pe_486ba4b0279d/pipeline.log
+15:36:03.968 [pipeline] start "Legacy first creation and reuse" run_id=run_mv9pb1q7_556ce8e9bd1a
+15:36:03.968 [task:legacy.generate] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const result=fs.existsSync(\"reuse.json\")?JSON.parse(fs.readFileSync(\"reuse.json\",\"utf8\")):{generated:0,reused:0};if(fs.existsSync(\"generated.txt\")){result.reused++;}else{fs.writeFileSync(\"generated.txt\",\"seed\");result.generated++;}fs.writeFileSync(\"reuse.json\",JSON.stringify(result));"]
+15:36:03.995 [task:legacy.generate] success (0.0s)
+15:36:03.996 [pipeline] completed "Legacy first creation and reuse"
+15:36:03.996 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:36:03.996 [pipeline] Duration: 0.0s
+15:36:03.996 [pipeline] Log: /tmp/tagma-core-witness-UYXEzj/.tagma/.chat-staging/d83602d8-faa7-4b4d-8199-2a85a3e1022e/.trial-cases/legacy-reuse-Q6Omt4/workspace/.tagma/logs/run_mv9pb1q7_556ce8e9bd1a/pipeline.log
+(pass) legacy no-core generated input remains available for reuse on the second actual repeat [441.46ms]
+
+4 tests failed:
+(fail) provider HTTP 403 failure categories > classifies structured billing code over 429 using bounded machine evidence [0.58ms]
+(fail) provider HTTP 429 structured billing evidence > classifies corroborated resource billing and standard quota categories without exposing bodies [0.59ms]
+(fail) generated tool commits blocked artifact feedback with the same Host core rules and finite counter [24.38ms]
+(fail) blocked core admits typed artifact repair feedback while rejecting unknown or nonblocking findings [0.20ms]
+
+ 110 pass
+ 4 fail
+ 527 expect() calls
+Ran 114 tests across 3 files. [6.09s]

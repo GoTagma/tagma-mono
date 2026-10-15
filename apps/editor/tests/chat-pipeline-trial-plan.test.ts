@@ -642,7 +642,7 @@ describe('chat pipeline trial plan', () => {
     unverifiedCase.generatedInputPaths = ['generated/missing.txt'];
     unverifiedCase.expectations.push({ type: 'path-exists', path: 'generated/missing.txt' });
     expect(() => parseChatPipelineTrialPlan(unverified)).toThrow(
-      'generatedInputPaths requires a file-equals expectation for generated/missing.txt',
+      'generatedInputPaths requires file-equals or present:true file-source-text-occurrence sourcePath evidence for generated/missing.txt',
     );
 
     const duplicateAssertions = structuredClone(completePlan());

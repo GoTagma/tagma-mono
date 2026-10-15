@@ -13,12 +13,14 @@ import { dirname, join } from 'node:path';
 import {
   OPENCODE_SCHEMA_URL,
   REDACTED_API_KEY,
+  buildEmbeddedOpencodeRuntimeConfig,
   listCustomProviders,
   prepareEmbeddedOpencodeRuntime,
   redactProviderApiKey,
   resolveOpencodeRuntimePaths,
   upsertCustomProvider,
   validateCustomProvider,
+  type CustomProviderDef,
 } from '../server/opencode-config';
 import { buildOpencodeEnv, createOpencodeServerAuth } from '../server/opencode-lifecycle';
 import {
@@ -573,6 +575,58 @@ test('preparing an unchanged embedded runtime does not rewrite workspace config'
 
   expect(readFileSync(paths.workspaceConfigPath, 'utf-8')).toBe(before);
   expect(statSync(paths.workspaceConfigPath).mtimeMs).toBe(stableTime.getTime());
+});
+
+test('native pricing projection preserves stored metadata and execution identity', () => {
+  const paths = resolveOpencodeRuntimePaths(tagmaCwd);
+  const nativeCost = {
+    input: 1,
+    output: 2,
+    cache_read: 0.1,
+    cache_write: 0.2,
+    context_over_200k: { input: 3, output: 4, cache_read: 0.3, cache_write: 0.4 },
+  };
+  const storedCost = {
+    ...nativeCost,
+    reasoning: 5,
+    customEstimate: 6,
+    context_over_200k: { ...nativeCost.context_over_200k, reasoning: 7 },
+  };
+  const definition = {
+    ...providerDef,
+    options: { ...providerDef.options, customOption: { exact: true } },
+    models: {
+      priced: {
+        name: 'Priced model',
+        cost: storedCost,
+        reasoning: true,
+        variants: { low: { reasoning_effort: 'low' }, high: { disabled: true } },
+        provider: { npm: '@ai-sdk/openai-compatible', api: 'http://127.0.0.1:9/v1' },
+        options: { temperature: 0 },
+      },
+      unpriced: { name: 'Unpriced model' },
+    },
+  };
+  writeJson(paths.workspaceConfigPath, { provider: { priced: definition } });
+  const before = readFileSync(paths.workspaceConfigPath, 'utf8');
+  const config = buildEmbeddedOpencodeRuntimeConfig(paths);
+  const emitted = (config.provider as Record<string, CustomProviderDef>).priced!;
+  const model = emitted.models.priced!;
+
+  expect(readFileSync(paths.workspaceConfigPath, 'utf8')).toBe(before);
+  expect(
+    listCustomProviders(tempRoot).find((provider) => provider.id === 'priced')?.def.models.priced
+      ?.cost,
+  ).toEqual(storedCost);
+  expect(emitted.options.apiKey).toBe(definition.options.apiKey);
+  expect(emitted.options.baseURL).toBe(definition.options.baseURL);
+  expect(emitted.options.customOption).toEqual(definition.options.customOption);
+  expect(model.reasoning).toBe(true);
+  expect(model.variants).toEqual(definition.models.priced.variants);
+  expect(model.provider).toEqual(definition.models.priced.provider);
+  expect(model.options).toEqual(definition.models.priced.options);
+  expect(emitted.models.unpriced).toEqual(definition.models.unpriced);
+  expect(model.cost).toEqual(nativeCost);
 });
 
 test('embedded opencode server env enables Basic Auth with generated credentials', () => {

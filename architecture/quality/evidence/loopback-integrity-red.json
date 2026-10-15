@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "loopback-integrity-real-tcp-red",
+  "originalSourceRevision": "fae35abfc2c1422b4f81bbe72ded22f121d32718",
+  "originalSourceSha256": "abdfccfe6586c752b774e45df1b5f5d556ddc86edddd13800b68dc02f45f81e6",
+  "firstPermanentTests": {
+    "executed": 7,
+    "passed": 2,
+    "failed": 5,
+    "expectCalls": 17,
+    "logSha256": "83d308dfe814e37abf4871bfa1cb2d76a4ebccfebaeba5f6c98bb317308e07a8"
+  },
+  "finalRealTcpFixtureOnLiteralGitOriginal": {
+    "executed": 16,
+    "passed": 11,
+    "failed": 5,
+    "expectCalls": 32,
+    "logSha256": "683073fd83b580f79e79797e89d5a30865089577d26d57c8f7f5071dc13041f5",
+    "fixtureSha256": "54d7e3fc705a8b23b93c0497d1eba58c95d96612f26e0165de4560b9aa566fd9",
+    "note": "Baseline replay uses the literal Git original in an isolated scratch directory; the later fixture Buffer type annotation changes no runtime behavior."
+  },
+  "failures": [
+    "incomplete content length accepted despite valid JSON prefix",
+    "missing zero chunk accepted",
+    "missing final trailer delimiter accepted",
+    "invalid chunk data delimiter accepted",
+    "8388608 request bytes truncated to3919368"
+  ],
+  "liveFailureCausality": "Not established for earlier native provider errors",
+  "realAcceptance": false,
+  "historicalCoverageComplete": false
+}
