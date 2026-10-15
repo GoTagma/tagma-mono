@@ -109,3 +109,9 @@ MiMo 的 `off` 只加在隔离测试工作区，表示官方支持的 `thinking.
 用户已停止后续实测，因此这些修复只有本地回归资格，**没有最终修复后的真实一轮发布验收结论**。历史档案缺口仍然存在；最终 `packages/` 无改动，不触发 `bun run version all patch`。
 
 最终完整仓库检查 **13/13 门通过**，串行当前源码回归 **199 次执行全部通过**，原生 **5/5** 通过。当前回归首次受本地网络权限限制，允许网络后的并行运行又有一个既有保留权限断言失败；精确单项及完整串行复验均通过，归属未确认，未修改断言或提高预算。所有资格历史保存在 `chat-final-repair-qualified.json`，不会将这些本地 GREEN 记作真实业务验收。最终提交字节的当前源码收据在补齐本报告后另行执行，CI 继续强制相同默认门。
+
+### 首次 push 后 CI 追加发现
+
+提交 `3c4e64b6` 的 GitHub `full-check` 在第一项回归门失败：测试本身通过，但 JUnit 被标成 `execution_unproven`。使用真实 Bun 1.3.14 及 CI job/commit 元数据复现，确认解析器遗漏了 Bun 自动写入的 suite `properties` / `property`。**CSR-0035** 修复仅允许这些无执行权限的元数据节点，严格限制位置和 name/value 形状；仍必须证明准确选中的测试实际执行、未跳过、未失败且总数一致。伪造 metadata 内测试、计数、失败/跳过及 DTD/entity 反例保持拒绝。两项永久回归从 0 PASS / 2 FAIL 变为 2 PASS / 17 次断言；不移除 JUnit 要求，不采用 stdout 伪成功回退。
+
+同次 CI 的 Linux/macOS 原生任务通过，Windows 的暂存删除 fixture 未恢复全部路径，Trial 错误提交和 blocked-artifact 两项原生测试均通过。首次 Windows 错误没有工具结果，原因保持 UNKNOWN；CSR-0033 重开跨平台验证，并仅在测试端包裹未改动的生成执行器收集非敏感原生错误/文件属性，未放宽权限或链接检查。证据保存在 `ci-first-push-findings.json`。

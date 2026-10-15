@@ -1,0 +1,46 @@
+bun test v1.3.14 (0d9b296a)
+
+scripts/lib/known-issue-junit-properties.test.ts:
+17 |     expect(child.status).toBe(0);
+18 |     const xml = readFileSync(report, 'utf8');
+19 |     expect(xml).toContain('<properties>');
+20 |     expect(xml).toContain('name="ci"');
+21 |     expect(xml).toContain('name="commit"');
+22 |     expect(parseBunJunit(xml, '^metadata suite selected proof$', 1)).toMatchObject({ passed: true, matched: 1, executed: 1 });
+                                                                          ^
+error: expect(received).toMatchObject(expected)
+
+  {
+-   "executed": 1,
+-   "matched": 1,
+-   "passed": true,
++   "code": "junit_execution_unproven",
++   "executed": 0,
++   "matched": 0,
++   "passed": false,
+  }
+
+- Expected  - 3
++ Received  + 4
+
+      at <anonymous> (/workspace/tagma-mono/scripts/lib/known-issue-junit-properties.test.ts:22:70)
+(fail) real Bun CI metadata properties preserve exact selected JUnit execution proof [20.88ms]
+27 | 
+28 | test('JUnit metadata cannot forge selected tests, counts or successful outcomes', () => {
+29 |   const property = '<properties><property name="ci" value="https://ci.example.invalid/?a=1&amp;b=2" /></properties>';
+30 |   const caseXml = '<testcase name="proof" />';
+31 |   const document = (body: string, counts = 'tests="1" failures="0" skipped="0"') => `<testsuites ${counts}><testsuite name="file">${body}</testsuite></testsuites>`;
+32 |   expect(parseBunJunit(document(property + caseXml), '^proof$', 1).passed).toBe(true);
+                                                                                ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/scripts/lib/known-issue-junit-properties.test.ts:32:76)
+(fail) JUnit metadata cannot forge selected tests, counts or successful outcomes [0.16ms]
+
+ 0 pass
+ 2 fail
+ 6 expect() calls
+Ran 2 tests across 1 file. [113.00ms]

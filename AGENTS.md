@@ -19,6 +19,10 @@ For live acceptance work against a supplied Tagma test set or scenario/level mat
 - Use `bun run verify:guarded` for a complete historical regression gate followed by repository
   qualification. Receipts apply only to their recorded source and catalog bytes; changed source
   requires a new regression run. The runner must not change issue status automatically.
+- Bun's real CI JUnit reporter includes suite-local `properties`/`property` metadata. Accept that
+  inert metadata with strict containment; never allow it to supply test cases, counts or outcomes.
+  Preserve exact selected execution/count/skip/failure checks and test the actual reporter with
+  CI job/commit metadata, not only local XML without CI fields.
 - When historical archives are unavailable, preserve their unresolved inventory and use the
   separately named `current-source-regressions.json` for independently reconstructed mechanisms.
   Run `bun run test:current-regressions` after each repair batch in that scope. Its receipts must

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "strict-CI-JUnit-metadata-green",
+  "unit": {
+    "passed": 2,
+    "failed": 0,
+    "expectCalls": 17,
+    "logSha256": "3b4fbada5f6685e79da59cb6cb4c8675fd28e3a651f5fb4c7d18d87665e72612"
+  },
+  "contract": "Allow only suite-contained properties and self-closing name/value property nodes. Metadata cannot introduce cases, nested suites, counts or outcomes; selected tests, root counts, skipped/failed/missing matches and DTD/entity rejection remain authoritative.",
+  "actualBunFixture": "Generate the metadata with real pinned Bun and isolated non-secret CI_JOB_URL/CI_COMMIT_SHA, plus a filtered unselected test; no canned success output.",
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

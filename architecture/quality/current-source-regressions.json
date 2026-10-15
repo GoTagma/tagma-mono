@@ -249,6 +249,12 @@
       "path": "architecture/quality/evidence/trial-billing-followup-red.json",
       "sha256": "4195fb0f7a7b5bb04698b649cf5d73db0f8eaeab956054a0a9ed8bccd30ce230",
       "role": "current-source-real-boundary-red"
+    },
+    {
+      "id": "current-junit-ci-properties-red",
+      "path": "architecture/quality/evidence/junit-ci-properties-red.json",
+      "sha256": "20926d944b34a88d8d0646b87b4ab229d8b48eda180799901e76ad8c7fffd71d",
+      "role": "current-source-real-CI-and-Bun-red"
     }
   ],
   "issues": [
@@ -5596,9 +5602,16 @@
           "evidencePath": "architecture/quality/evidence/chat-repair-batch-qualified.json",
           "evidenceSha256": "c7f324e0e1612dcd587ff34c4dfb8167c1ae3031c66bc296398fcfd9667997e8",
           "liveAcceptance": false
+        },
+        {
+          "kind": "reopened-native-windows-verification",
+          "evidencePath": "architecture/quality/evidence/ci-first-push-findings.json",
+          "evidenceSha256": "5831be8e7108f38a5645d3706c47a698730a996e2927b5a34134f4cc04179d99",
+          "liveAcceptance": false,
+          "reason": "Actual Windows native cleanup did not remove all paths; cause unknown until observed native outcomes."
         }
       ],
-      "status": "local-contract-fixed-live-acceptance-pending",
+      "status": "reopened-native-windows-verification",
       "fixes": [
         {
           "path": "apps/editor/server/opencode-stage-remove-tool.ts",
@@ -5781,6 +5794,75 @@
       },
       "contract": "Known structured billing outranks HTTP429. Numeric vendor codes require corroboration in the same bounded structured error. Preserve ordinary throttling, authentication, server-error precedence, accessors/cycles and content-free outcomes.",
       "claimLimit": "Local classification and persisted-outbox regressions only; user stopped further live acceptance. Historical archives remain incomplete."
+    },
+    {
+      "id": "CSR-0035",
+      "lineage": [
+        "CI-38764079071-full-check"
+      ],
+      "title": "Actual Bun CI JUnit metadata rejected as unproven execution",
+      "category": "test-tool",
+      "mechanism": "strict-JUnit-suite-metadata-without-execution-authority",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Actual final-SHA GitHub full-check failed despite selected test passing; real Bun CI metadata reproduced the missing whitelist/grammar boundary.",
+      "firstEvidence": {
+        "sourceId": "current-junit-ci-properties-red",
+        "path": "architecture/quality/evidence/junit-ci-properties-red.json",
+        "sha256": "20926d944b34a88d8d0646b87b4ab229d8b48eda180799901e76ad8c7fffd71d",
+        "sourceRevision": "3c4e64b651b55eeff71865aad184201e0292c882",
+        "round": "post-push-CI",
+        "role": "immutable-CI-and-real-reporter-red",
+        "acceptancePolicy": "Regression runner protocol only, not business acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/junit-ci-properties-red.json",
+          "evidenceSha256": "20926d944b34a88d8d0646b87b4ab229d8b48eda180799901e76ad8c7fffd71d",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/junit-ci-properties-green.json",
+          "evidenceSha256": "4892e3ca9bfeb24a4a0d105e6cd2291414e7a196b712292429ccbadf9e960fe7",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "scripts/known-issue-regressions.mjs",
+          "kind": "strict-suite-metadata-parsing",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": ".",
+          "file": "scripts/lib/known-issue-junit-properties.test.ts",
+          "fullName": "real Bun CI metadata properties preserve exact selected JUnit execution proof",
+          "namePattern": "^real Bun CI metadata properties preserve exact selected JUnit execution proof$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": ".",
+          "file": "scripts/lib/known-issue-junit-properties.test.ts",
+          "fullName": "JUnit metadata cannot forge selected tests, counts or successful outcomes",
+          "namePattern": "^JUnit metadata cannot forge selected tests, counts or successful outcomes$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "qualified-contract-green",
+        "evidencePath": "architecture/quality/evidence/junit-ci-properties-green.json",
+        "evidenceSha256": "4892e3ca9bfeb24a4a0d105e6cd2291414e7a196b712292429ccbadf9e960fe7",
+        "liveAcceptance": false
+      },
+      "contract": "CI metadata is inert and suite-local. Keep complete JUnit structure/count validation and exact selected executed non-skipped successful cases; no stdout-only fallback.",
+      "claimLimit": "Tooling protocol repair only. Prior business and historical-archive outcomes remain unchanged."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

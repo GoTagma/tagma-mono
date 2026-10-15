@@ -42,6 +42,31 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         join(cwd, '.opencode', 'agents', 'tagma-pipeline.md'),
       );
       const runtime = resolveOpencodeRuntimePaths(source);
+      // Observe native-platform failures around the unchanged generated handler.
+      // No permission, deletion or binding rule is changed by this test wrapper.
+      const removalPath = join(runtime.managedToolsDir, 'tagma_stage_remove.ts');
+      const removalSource = readFileSync(removalPath, 'utf8');
+      expect(removalSource).toContain('export default tool({');
+      writeFileSync(
+        removalPath,
+        removalSource.replace('export default tool({', 'const observedTool = tool({') +
+          `
+export default { ...observedTool, async execute(args, context) {
+  try { return await observedTool.execute(args, context); }
+  catch (error) {
+    const root = realpathSync(context.directory);
+    let facts = {};
+    try {
+      const metadataPath = join(dirname(dirname(root)), 'stage.json');
+      const stat = lstatSync(metadataPath);
+      const binding = JSON.parse(readFileSync(metadataPath, 'utf8')).sessionRelocation;
+      facts = { metadataRegular:stat.isFile(), metadataSymlink:stat.isSymbolicLink(), metadataLinkCount:stat.nlink, sessionMatches:binding?.sessionId===context.sessionID, rootMatches:realpathSync(binding.targetDirectory)===root };
+    } catch {}
+    throw new Error('Synthetic scope observation: '+JSON.stringify({ message:error instanceof Error?error.message:'unknown', nativeBunVersion:Bun.version, agent:context.agent, privateRoot:basename(root)==='.tagma'&&basename(dirname(root))==='agent-workspace', ...facts }));
+  }
+}};
+`,
+      );
       const metadata = JSON.parse(
         readFileSync(resolve(import.meta.dirname, '../../electron/package.json'), 'utf8'),
       ) as { tagma: { bundledOpencodeVersion: string } };
@@ -58,11 +83,18 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         stagePinnedOpencodePluginRuntime(directory, version);
       let turns = 0;
       const toolNames = new Set<string>();
+      const toolResponses = new Set<string>();
       const model = Bun.serve({
         hostname: '127.0.0.1',
         port: 0,
         async fetch(request) {
-          const body = (await request.json()) as { tools?: Array<{ function: { name: string } }> };
+          const body = (await request.json()) as {
+            tools?: Array<{ function: { name: string } }>;
+            messages?: Array<{ role?: string; content?: unknown }>;
+          };
+          for (const message of body.messages ?? [])
+            if (message.role === 'tool')
+              toolResponses.add(JSON.stringify(message.content).slice(0, 1500));
           const names = body.tools?.map((item) => item.function.name) ?? [];
           names.forEach((name) => toolNames.add(name));
           const bounded = names.includes('tagma_stage_remove');
@@ -287,6 +319,17 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         }
       }
       expect(toolNames.has('bash')).toBe(false);
+      const remainingPaths = paths.filter((path) => existsSync(join(cwd, path)));
+      if (remainingPaths.length)
+        throw new Error(
+          'Synthetic native scope failure: ' +
+            JSON.stringify({
+              removalOffered: toolNames.has('tagma_stage_remove'),
+              remainingPaths,
+              grants,
+              toolResponses: [...toolResponses].slice(-4),
+            }),
+        );
       for (const path of paths) expect(existsSync(join(cwd, path))).toBe(false);
       expect(grants.length).toBe(3);
       expect(grants.every((grant) => grant === 'edit')).toBe(true);

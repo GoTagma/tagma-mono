@@ -486,6 +486,8 @@ export function parseBunJunit(xml, namePattern, expectedTests) {
           'error',
           'system-out',
           'system-err',
+          'properties',
+          'property',
         ].includes(opening[1])
       )
         return failed;
@@ -498,6 +500,26 @@ export function parseBunJunit(xml, namePattern, expectedTests) {
       }
       if (attrsText) return failed;
       const tag = opening[1];
+      // Bun adds these non-execution properties when CI job/commit metadata is
+      // present. They are valid only inside a suite, never an alternate place
+      // to supply test cases, counts or outcomes.
+      const parent = stack.at(-1)?.tag;
+      if (parent === 'properties' && tag !== 'property') return failed;
+      if (
+        tag === 'properties' &&
+        (parent !== 'testsuite' || current || Object.keys(attrs).length !== 0)
+      )
+        return failed;
+      if (
+        tag === 'property' &&
+        (parent !== 'properties' ||
+          current ||
+          !opening[3] ||
+          Object.keys(attrs).length !== 2 ||
+          typeof attrs.name !== 'string' ||
+          typeof attrs.value !== 'string')
+      )
+        return failed;
       if (tag === 'testsuites') {
         if (stack.length !== 0 || ++roots !== 1) return failed;
         rootCounts = attrs;

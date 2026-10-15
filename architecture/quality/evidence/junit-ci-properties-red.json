@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "actual-CI-JUnit-metadata-rejection-red",
+  "commit": "3c4e64b651b55eeff71865aad184201e0292c882",
+  "workflowRun": "https://github.com/GoTagma/tagma-mono/actions/runs/38764079071",
+  "jobId": 116522618408,
+  "actualFailure": {
+    "testPassed": 1,
+    "testFailed": 0,
+    "code": "junit_execution_unproven",
+    "issueId": "CSR-0001",
+    "junitBytes": 15395,
+    "junitSha256": "fc875c5f4422d80f947815352cfc302401f68a36762221d7e61539fd8f7e000b"
+  },
+  "cause": "Pinned Bun1.3.14 emits suite properties/property metadata for CI job URL and commit. The parser whitelist omitted these tags. Reproduced with actual Bun, without real model/provider calls.",
+  "parserSourceAtRedSha256": "047056c2d6790b8d137bbcc455e996df94fb22a9cbbc59399706d09ac8923c87",
+  "unit": {
+    "passed": 0,
+    "failed": 2,
+    "expectCalls": 6,
+    "log": "architecture/quality/evidence/junit-ci-properties-red.txt",
+    "logSha256": "7b3363136dbc181c71edcfa34d52452bfffd6ca031f6c6f9744abd7dcd9d1f59"
+  },
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

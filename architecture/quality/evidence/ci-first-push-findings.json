@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "commit": "3c4e64b651b55eeff71865aad184201e0292c882",
+  "workflowRun": "https://github.com/GoTagma/tagma-mono/actions/runs/38764079071",
+  "nativeJobs": {
+    "ubuntu": "success",
+    "macos": "success",
+    "windows": "failure"
+  },
+  "windowsFailure": {
+    "jobId": 116522619039,
+    "test": "native author removes fresh staged files and empty directories through scoped edit grants",
+    "elapsedMs": 148767.96,
+    "observed": "At least one unintended support path still existed; failure occurred before assertions of permission-grant count.",
+    "nativeHandlerCause": "UNKNOWN: original fixture did not surface tool outcomes. Added test-only observation wrapper around unchanged generated execution for next Windows run.",
+    "trialMalformedAndBlockedNativeTests": "Both passed on Windows; only staged cleanup fixture failed."
+  },
+  "fullCheckFailure": {
+    "jobId": 116522618408,
+    "issue": "CSR-0035",
+    "causeConfirmed": "Real Bun CI suite metadata omitted by parser; reproduced before correction."
+  },
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}
