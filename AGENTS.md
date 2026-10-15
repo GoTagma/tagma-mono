@@ -23,6 +23,9 @@ For live acceptance work against a supplied Tagma test set or scenario/level mat
   inert metadata with strict containment; never allow it to supply test cases, counts or outcomes.
   Preserve exact selected execution/count/skip/failure checks and test the actual reporter with
   CI job/commit metadata, not only local XML without CI fields.
+- Immutable Node proof uses the stable `--test-isolation` option. Pin Node 24 and probe the actual
+  option in CI before running the ledger; an ambient older Node must not be treated as a proof
+  failure or replaced by a Bun child while still claiming real Node execution.
 - When historical archives are unavailable, preserve their unresolved inventory and use the
   separately named `current-source-regressions.json` for independently reconstructed mechanisms.
   Run `bun run test:current-regressions` after each repair batch in that scope. Its receipts must

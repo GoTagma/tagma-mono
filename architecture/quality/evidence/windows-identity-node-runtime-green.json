@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "directory-identity-and-Node-prerequisite-local-green",
+  "unit": {
+    "passed": 23,
+    "expectCalls": 99,
+    "logSha256": "98ed54a410b0ff9579bf311bd718dca8363c972297fd0c94ee9bb8a462871e08"
+  },
+  "nativeLinux": {
+    "passed": 1,
+    "expectCalls": 11,
+    "logSha256": "7080f0a21b80e94046a441ba3aca936b73bffa993cae0bfd5a1ac1bcdcde8a1b"
+  },
+  "contract": "Root spellings may differ only when real directory identities match using full-width inode/device; zero/unknown identity, foreign directories, files, hardlinks and symlink entries cannot establish alias authority. Existing Host/session, target path, permission, abort and post-approval checks remain. Node24 is selected and actual isolation-option support checked before CI regression execution.",
+  "WindowsNativeVerification": "Required on next actual CI; local Linux cannot prove that final Windows path.",
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

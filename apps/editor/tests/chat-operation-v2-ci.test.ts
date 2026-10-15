@@ -2,6 +2,22 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+test('full-check pins the supported real Node proof runtime before regression execution', () => {
+  const workflow = readFileSync(
+    resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows', 'ci.yml'),
+    'utf8',
+  );
+  const job = workflow.match(/\n {2}full-check:[\s\S]*?\n {2}public-check-fork:/)?.[0];
+  expect(job).toBeDefined();
+  expect(job).toContain('actions/setup-node@v7');
+  expect(job).toContain("node-version: '24'");
+  expect(job).toContain('run: node --test-isolation=none --version');
+  expect(job!.indexOf('node-version:')).toBeLessThan(job!.indexOf('test:current-regressions'));
+  expect(job!.indexOf('node --test-isolation=none --version')).toBeLessThan(
+    job!.indexOf('test:current-regressions'),
+  );
+});
+
 test('managed-runtime CI runs both Chat Operation V2 native conformance contracts on every desktop OS', () => {
   const workflow = readFileSync(
     resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows', 'ci.yml'),

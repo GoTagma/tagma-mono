@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "actual-native-Windows-root-binding-rejection-red",
+  "commit": "c06bcfed53d1d7ebaf87c6886bfcefb40de19746",
+  "workflowRun": "https://github.com/GoTagma/tagma-mono/actions/runs/38766636518",
+  "jobId": 116531445523,
+  "testElapsedMs": 83747.25,
+  "nativeFacts": {
+    "removalOffered": true,
+    "remainingPaths": [
+      "extra/nested/stray.txt",
+      "extra/nested",
+      "extra"
+    ],
+    "grants": [],
+    "error": "Staged removal requires the current Host session binding.",
+    "nativeBunVersion": "1.3.14",
+    "agent": "tagma-pipeline",
+    "privateRoot": true,
+    "metadataRegular": true,
+    "metadataSymlink": false,
+    "metadataLinkCount": 1,
+    "sessionMatches": true,
+    "rootMatches": false
+  },
+  "sourceAtRedSha256": "bbbf966aa6c994b7d695c62d58ceaaff16bb12355b025c244caa56fb69638008",
+  "cause": "Binding used literal canonical-string equality. Native Windows representations differed; preserve exact filesystem identity rather than infer ownership from case folding. New different-spelling admission requires actual directory type and matching nonzero full-width inode/device. Foreign objects must still fail.",
+  "firstUnknownPreserved": "ci-first-push-findings.json",
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

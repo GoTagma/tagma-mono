@@ -12,10 +12,36 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { removeStagedEntry } from '../server/opencode-stage-remove-tool';
+import { basename, join, sep } from 'node:path';
+import { removeStagedEntry, sameStagedDirectory } from '../server/opencode-stage-remove-tool';
 import { seedOpencodeArtifacts } from '../server/opencode-seed';
 import { load } from 'js-yaml';
+
+test('staged directory aliases require the same real directory identity, never case-folded authority', () => {
+  const temp = realpathSync(mkdtempSync(join(tmpdir(), 'tagma-stage-directory-identity-')));
+  try {
+    const root = join(temp, 'private');
+    const foreign = join(temp, 'foreign');
+    mkdirSync(root);
+    mkdirSync(foreign);
+    const alias = root + sep + '..' + sep + basename(root);
+    expect(alias).not.toBe(root);
+    expect(sameStagedDirectory(root, alias)).toBe(true);
+    expect(sameStagedDirectory(root, foreign)).toBe(false);
+    const file = join(temp, 'file');
+    writeFileSync(file, 'original');
+    const hardlink = join(temp, 'file-link');
+    linkSync(file, hardlink);
+    expect(sameStagedDirectory(file, hardlink)).toBe(false);
+    expect(sameStagedDirectory(file, file)).toBe(false);
+    const symlink = join(temp, 'directory-link');
+    symlinkSync(root, symlink, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(sameStagedDirectory(root, symlink)).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe('original');
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
 
 function fixture() {
   const temp = realpathSync(mkdtempSync(join(tmpdir(), 'tagma-stage-remove-')));

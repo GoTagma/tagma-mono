@@ -255,6 +255,12 @@
       "path": "architecture/quality/evidence/junit-ci-properties-red.json",
       "sha256": "20926d944b34a88d8d0646b87b4ab229d8b48eda180799901e76ad8c7fffd71d",
       "role": "current-source-real-CI-and-Bun-red"
+    },
+    {
+      "id": "current-node-proof-runtime-red",
+      "path": "architecture/quality/evidence/node-proof-runtime-red.json",
+      "sha256": "de839beb8baa34aad0d493bcf0b8c1fc64a3c304dcdde439fbdc4f6cd9b806a3",
+      "role": "current-source-real-runtime-red"
     }
   ],
   "issues": [
@@ -5609,9 +5615,21 @@
           "evidenceSha256": "5831be8e7108f38a5645d3706c47a698730a996e2927b5a34134f4cc04179d99",
           "liveAcceptance": false,
           "reason": "Actual Windows native cleanup did not remove all paths; cause unknown until observed native outcomes."
+        },
+        {
+          "kind": "native-Windows-cause-qualified",
+          "evidencePath": "architecture/quality/evidence/native-windows-directory-identity-red.json",
+          "evidenceSha256": "999a857d230173587e0dc08ab9b96551d34921d5b4bfecdf8e713a6f4f260124",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-filesystem-identity-local-green",
+          "evidencePath": "architecture/quality/evidence/windows-identity-node-runtime-green.json",
+          "evidenceSha256": "681128458146d46444bddc5375638a52434c91156635302a0f1426a95540a9c5",
+          "liveAcceptance": false
         }
       ],
-      "status": "reopened-native-windows-verification",
+      "status": "local-contract-fixed-live-acceptance-pending",
       "fixes": [
         {
           "path": "apps/editor/server/opencode-stage-remove-tool.ts",
@@ -5640,6 +5658,12 @@
         {
           "path": ".github/workflows/ci.yml",
           "kind": "authenticated-private-stage-removal",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-stage-remove-tool.ts",
+          "kind": "full-width-real-directory-identity-for-native-canonical-spellings",
           "localRegressionVerified": true,
           "liveAcceptance": false
         }
@@ -5714,13 +5738,20 @@
           "fullName": "staged removal compares canonical Host relocation targets across filesystem aliases",
           "namePattern": "^staged removal compares canonical Host relocation targets across filesystem aliases$",
           "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-stage-remove.test.ts",
+          "fullName": "staged directory aliases require the same real directory identity, never case-folded authority",
+          "namePattern": "^staged directory aliases require the same real directory identity, never case-folded authority$",
+          "expectedTests": 1
         }
       ],
       "realTestSelectors": [],
       "lastExecution": {
-        "kind": "final-compact-author-and-full-qualification",
-        "evidencePath": "architecture/quality/evidence/chat-repair-batch-qualified.json",
-        "evidenceSha256": "c7f324e0e1612dcd587ff34c4dfb8167c1ae3031c66bc296398fcfd9667997e8",
+        "kind": "qualified-filesystem-identity-local-green",
+        "evidencePath": "architecture/quality/evidence/windows-identity-node-runtime-green.json",
+        "evidenceSha256": "681128458146d46444bddc5375638a52434c91156635302a0f1426a95540a9c5",
         "liveAcceptance": false
       },
       "contract": "Remove exactly one regular single-link file or empty directory in the Host-bound current author stage after scoped edit grant and identity/abort rechecks. Deny root, outside, links, nonempty recursion and all other agents. Preserve final source/classified-target/Trial/publication fences.",
@@ -5863,6 +5894,68 @@
       },
       "contract": "CI metadata is inert and suite-local. Keep complete JUnit structure/count validation and exact selected executed non-skipped successful cases; no stdout-only fallback.",
       "claimLimit": "Tooling protocol repair only. Prior business and historical-archive outcomes remain unchanged."
+    },
+    {
+      "id": "CSR-0036",
+      "lineage": [
+        "CI-38766636518-CSR0018-runtime"
+      ],
+      "title": "CI does not select the Node runtime required by immutable execution proof",
+      "category": "test-environment",
+      "mechanism": "explicit-Node24-and-actual-test-isolation-capability",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Actual CI proof regression failed; Node version was unrecorded. Real Node22 reproduces unsupported stable isolation option and the same BLOCKED proof result. CI prerequisite fixed, proof semantics unchanged.",
+      "firstEvidence": {
+        "sourceId": "current-node-proof-runtime-red",
+        "path": "architecture/quality/evidence/node-proof-runtime-red.json",
+        "sha256": "de839beb8baa34aad0d493bcf0b8c1fc64a3c304dcdde439fbdc4f6cd9b806a3",
+        "sourceRevision": "c06bcfed53d1d7ebaf87c6886bfcefb40de19746",
+        "round": "post-push-CI-followup",
+        "role": "immutable-real-runtime-red",
+        "acceptancePolicy": "Execution-proof tooling only; not live business acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-contract-red",
+          "evidencePath": "architecture/quality/evidence/node-proof-runtime-red.json",
+          "evidenceSha256": "de839beb8baa34aad0d493bcf0b8c1fc64a3c304dcdde439fbdc4f6cd9b806a3",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/windows-identity-node-runtime-green.json",
+          "evidenceSha256": "681128458146d46444bddc5375638a52434c91156635302a0f1426a95540a9c5",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-contract-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "pin-supported-real-Node-and-feature-preflight",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-ci.test.ts",
+          "fullName": "full-check pins the supported real Node proof runtime before regression execution",
+          "namePattern": "^full-check pins the supported real Node proof runtime before regression execution$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "qualified-contract-green",
+        "evidencePath": "architecture/quality/evidence/windows-identity-node-runtime-green.json",
+        "evidenceSha256": "681128458146d46444bddc5375638a52434c91156635302a0f1426a95540a9c5",
+        "liveAcceptance": false
+      },
+      "contract": "Full CI must select Node24 and prove actual --test-isolation support before requiring immutable named Node test execution. Never manufacture GREEN from unsupported invocations.",
+      "claimLimit": "CI prerequisites and local contracts only. Actual next final-SHA CI required; historical archives and live acceptance remain separate."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

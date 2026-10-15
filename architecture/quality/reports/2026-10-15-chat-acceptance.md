@@ -115,3 +115,10 @@ MiMo 的 `off` 只加在隔离测试工作区，表示官方支持的 `thinking.
 提交 `3c4e64b6` 的 GitHub `full-check` 在第一项回归门失败：测试本身通过，但 JUnit 被标成 `execution_unproven`。使用真实 Bun 1.3.14 及 CI job/commit 元数据复现，确认解析器遗漏了 Bun 自动写入的 suite `properties` / `property`。**CSR-0035** 修复仅允许这些无执行权限的元数据节点，严格限制位置和 name/value 形状；仍必须证明准确选中的测试实际执行、未跳过、未失败且总数一致。伪造 metadata 内测试、计数、失败/跳过及 DTD/entity 反例保持拒绝。两项永久回归从 0 PASS / 2 FAIL 变为 2 PASS / 17 次断言；不移除 JUnit 要求，不采用 stdout 伪成功回退。
 
 同次 CI 的 Linux/macOS 原生任务通过，Windows 的暂存删除 fixture 未恢复全部路径，Trial 错误提交和 blocked-artifact 两项原生测试均通过。首次 Windows 错误没有工具结果，原因保持 UNKNOWN；CSR-0033 重开跨平台验证，并仅在测试端包裹未改动的生成执行器收集非敏感原生错误/文件属性，未放宽权限或链接检查。证据保存在 `ci-first-push-findings.json`。
+
+第二次 CI（`c06bcfed`）已通过 JUnit 元数据问题，继续发现两项可定位边界：
+
+- **CSR-0036：Node 前置环境。** CI 未选择 Node 版本，真实 Node 执行证明失败；首个 CI 的具体 Node 版本保持未知。本地使用真实 Node 22 复现不支持 `--test-isolation=none` 及同一 BLOCKED 断言。将 `full-check` 按现有发布流程固定为 Node 24，并在回归前实际探测该选项，不降低执行证明标准。
+- **CSR-0033 的 Windows 根目录比较。** 新诊断确认原生工具已提供、会话匹配、元数据普通文件且链接数为 1，但 canonical root 字符串不同，所有删除在权限申请前被拒绝。改为对不同表示验证实际目录的完整非零 inode/device，继续拒绝外部对象、文件、硬链接文件及符号链接；不按大小写猜测授权。新增默认回归及真实原生 Linux 校验通过，最终 Windows 结论由下一次固定版本 CI 实际验证。
+
+首次 UNKNOWN、后续具体原因和修复证据分别保存在 `native-windows-directory-identity-red.json`、`node-proof-runtime-red.json`、`windows-identity-node-runtime-green.json`，不覆盖之前失败。以上仍不代表停止后的业务场景验收。

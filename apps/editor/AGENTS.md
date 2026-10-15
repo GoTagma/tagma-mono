@@ -2262,6 +2262,9 @@
   All other managed agents must explicitly deny the tool. Preserve the classified artifact and
   publication scope fences. Run the real pinned native scoped-cleanup and malformed Trial
   transport fixtures in CI; synthetic local-model success never substitutes for live acceptance.
+  Native Windows canonical directory spellings may differ. A differing Host-root spelling must
+  prove the same real directory using full-width nonzero inode/device identity; never grant
+  ownership by case folding or accept a foreign file, directory, or symlink as an alias.
 - Native provider config comparison must use the pinned runtime's supported cost projection
   (input/output/cache and extended-context cost), retaining unknown stored pricing metadata.
   Never relax provider/model/auth/variant identity because the runtime omits a pricing field.

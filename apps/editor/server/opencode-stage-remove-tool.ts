@@ -14,6 +14,23 @@ type StageRemoveContext = {
   }): Promise<void>;
 };
 
+/** Canonical spellings can differ on Windows; filesystem identity stays authoritative. */
+export function sameStagedDirectory(left: string, right: string): boolean {
+  const a = lstatSync(left, { bigint: true });
+  if (!a.isDirectory() || a.isSymbolicLink()) return false;
+  if (left === right) return true;
+  const b = lstatSync(right, { bigint: true });
+  return (
+    a.isDirectory() &&
+    b.isDirectory() &&
+    !a.isSymbolicLink() &&
+    !b.isSymbolicLink() &&
+    a.ino > 0n &&
+    a.ino === b.ino &&
+    a.dev === b.dev
+  );
+}
+
 /** Only the Host-relocated author may remove one entry in its private staging root. */
 export async function removeStagedEntry(
   args: { path: string },
@@ -45,7 +62,7 @@ export async function removeStagedEntry(
       binding.sessionId !== context.sessionID ||
       binding.phase !== 'staged' ||
       typeof binding.targetDirectory !== 'string' ||
-      realpathSync(binding.targetDirectory) !== root
+      !sameStagedDirectory(realpathSync(binding.targetDirectory), root)
     )
       throw new Error('Staged removal requires the current Host session binding.');
     return root;
@@ -112,6 +129,7 @@ export function buildTagmaStageRemoveTool(): string {
   return `import { lstatSync, readFileSync, readdirSync, realpathSync, rmdirSync, unlinkSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { tool } from '@opencode-ai/plugin';
+const sameStagedDirectory = (${sameStagedDirectory.toString()});
 const removeStagedEntry = (${removeStagedEntry.toString()});
 export default tool({
   description: 'Remove one unintended staged regular file or EMPTY directory inside the authenticated private author workspace. For scope repair, remove fresh files and then empty directories bottom-up. Never recursively deletes, uses shell, accesses the live workspace, or changes the classified target. Existing Host scope and publication checks still apply.',

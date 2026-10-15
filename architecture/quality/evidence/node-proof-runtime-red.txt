@@ -1,0 +1,30 @@
+bun test v1.3.14 (0d9b296a)
+
+scripts/lib/immutable-node-test-proof.test.ts:
+36 | }
+37 | 
+38 | test('Immutable proof captures real Node named execution and actual argv in new wx files', async () => {
+39 |   await fixture(async ({ root, file, options, dependency }) => {
+40 |     const actual = await captureImmutableNodeTestProof(options);
+41 |     assert.equal(actual.result.classification, 'GREEN');
+                ^
+AssertionError: Expected values to be strictly equal:
+
+'BLOCKED' !== 'GREEN'
+
+ generatedMessage: true,
+     actual: "BLOCKED",
+   expected: "GREEN",
+   operator: "strictEqual",
+       code: "ERR_ASSERTION"
+
+      at /workspace/tagma-mono/scripts/lib/immutable-node-test-proof.test.ts:41:12
+      at fixture (/workspace/tagma-mono/scripts/lib/immutable-node-test-proof.test.ts:30:20)
+      at /workspace/tagma-mono/scripts/lib/immutable-node-test-proof.test.ts:38:6
+      at processTicksAndRejections (native:7:39)
+(fail) Immutable proof captures real Node named execution and actual argv in new wx files [24.16ms]
+
+ 0 pass
+ 8 filtered out
+ 1 fail
+Ran 1 test across 1 file. [125.00ms]

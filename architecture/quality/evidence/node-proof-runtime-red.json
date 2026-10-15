@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "CI-real-Node-runtime-prerequisite-red",
+  "commit": "c06bcfed53d1d7ebaf87c6886bfcefb40de19746",
+  "workflowRun": "https://github.com/GoTagma/tagma-mono/actions/runs/38766636518",
+  "jobId": 116531445122,
+  "actualCI": {
+    "failureIssue": "CSR-0018",
+    "classification": "test_assertion_failure",
+    "test": "Immutable proof captures real Node named execution and actual argv in new wx files",
+    "runtimeVersion": "UNKNOWN: workflow had no explicit Node setup or version preflight"
+  },
+  "qualifiedReproduction": {
+    "runtime": "Real official Node22 from isolated work cache",
+    "option": "--test-isolation=none",
+    "optionExitCode": 9,
+    "optionError": "node: bad option: --test-isolation=none",
+    "sameProofTest": {
+      "passed": 0,
+      "failed": 1,
+      "actualClassification": "BLOCKED",
+      "expectedClassification": "GREEN",
+      "logSha256": "6f24c229e88c8df2a05f10cb1d735df664fc24b61c2f18ed338dd828eefaac53"
+    }
+  },
+  "cause": "Proof invocation requires stable --test-isolation support but CI did not select a compatible Node. Pin Node24, already used by publishing, and probe this actual feature before regression execution. Do not replace Node with Bun or relax invocation proof.",
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}
