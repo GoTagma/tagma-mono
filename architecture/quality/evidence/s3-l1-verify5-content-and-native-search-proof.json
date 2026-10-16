@@ -1,0 +1,837 @@
+{
+  "scope": "Read-only post-Trial content audit from complete SHA-verified actual native tool streams and exact independent-review snapshots; no additional model call or business run",
+  "normalWriteSnapshotBindings": [
+    {
+      "path": "site_monitor/artifacts/MONITOR_REPORT.md",
+      "reviewerSnapshotSha256": "c45480b9f1fc78d8b69f969c14abda51574b18b79e52189b14f1d2cf9362c238",
+      "nativeWriteRequestSha256": "c45480b9f1fc78d8b69f969c14abda51574b18b79e52189b14f1d2cf9362c238",
+      "rawBytesEqual": true,
+      "typedJsonDataEqual": null,
+      "note": "Exact Markdown bytes match"
+    },
+    {
+      "path": "site_monitor/artifacts/cross_check.json",
+      "reviewerSnapshotSha256": "23a8fa5645fa3d77da6e2f2f2c4f619f6aafbe0c1b74209b862188e4e2637b3c",
+      "nativeWriteRequestSha256": "c4319c0b6155b8dfc6aa17f100749873737496189df526975c339a5bd33fb764",
+      "rawBytesEqual": false,
+      "typedJsonDataEqual": true,
+      "note": "JSON formatter changes whitespace only; original request/snapshot hashes retained independently"
+    },
+    {
+      "path": "site_monitor/artifacts/monitored_claims.json",
+      "reviewerSnapshotSha256": "31d4d3a50b93b7ed05669f7bbf9d33085550bb5654a97c373a872a45e8a7c1fe",
+      "nativeWriteRequestSha256": "c9f6a34f340fc740b2f6876775c9883e22998583cfbf302322eeccfe423d80bc",
+      "rawBytesEqual": false,
+      "typedJsonDataEqual": true,
+      "note": "JSON formatter changes whitespace only; original request/snapshot hashes retained independently"
+    },
+    {
+      "path": "site_monitor/artifacts/scraped.json",
+      "reviewerSnapshotSha256": "cb39f35ea97203a1ee2fed032b6e4c08bef358d50af943eb06ccd773d7dfee4b",
+      "nativeWriteRequestSha256": "58fea4c19989c7ad085bcf5f648af46cb1b4401469c73a79c9ca6ba75ebd297d",
+      "rawBytesEqual": false,
+      "typedJsonDataEqual": true,
+      "note": "JSON formatter changes whitespace only; original request/snapshot hashes retained independently"
+    }
+  ],
+  "contentRuns": [
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "producedArtifactSha256": {
+        "scraped.json": "58fea4c19989c7ad085bcf5f648af46cb1b4401469c73a79c9ca6ba75ebd297d",
+        "cross_check.json": "c4319c0b6155b8dfc6aa17f100749873737496189df526975c339a5bd33fb764",
+        "monitored_claims.json": "c9f6a34f340fc740b2f6876775c9883e22998583cfbf302322eeccfe423d80bc",
+        "MONITOR_REPORT.md": "c45480b9f1fc78d8b69f969c14abda51574b18b79e52189b14f1d2cf9362c238"
+      },
+      "sites": 2,
+      "siteStatusCounts": {
+        "ok": 2
+      },
+      "webfetchCalls": 2,
+      "websearchCalls": 14,
+      "claims": 13,
+      "checks": 13,
+      "uniqueIdsAndExactCoverage": true,
+      "verdictCounts": {
+        "consistent": 12,
+        "discrepancy": 1
+      },
+      "reportSummary": {
+        "total": 13,
+        "discrepancy": 1,
+        "unverified": 0,
+        "consistent": 12
+      },
+      "allClaimQuotesLiteralFetchedContent": true,
+      "literalClaimQuoteChecks": [
+        {
+          "id": "c1",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c2",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c3",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c4",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c5",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c6",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c7",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c8",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c9",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c10",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c11",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c12",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c13",
+          "quoteIsLiteralFetchedContent": true
+        }
+      ],
+      "citedUrls": [
+        "https://apnews.com/article/world-population-8-billion-acc94296d8aeb06e64daff9e597e0214",
+        "https://courses.cs.vt.edu/cs3214/fall2025/lecturenotes/http.pdf",
+        "https://database.earth/population/median-age",
+        "https://database.earth/population/world/deaths",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Evolution_of_HTTP",
+        "https://jeremyklammer.com/2024/10/24/global-population-an-exponential-surge/",
+        "https://ourworldindata.org/births-and-deaths",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC8393076/",
+        "https://pubmed.ncbi.nlm.nih.gov/12286464/",
+        "https://statisticstimes.com/demographics/world-population.php",
+        "https://www.johnstonsarchive.net/other/worldpop.html",
+        "https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2022-11-1/NET-2022-11-1_11.pdf",
+        "https://www.studycountry.com/wiki/why-did-the-population-drop-in-1350",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2022_global_population_growth.pdf",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2025_wfr_2024_final.pdf",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/wpp2022_summary_of_results.pdf",
+        "https://www.un.org/en/dayof8billion",
+        "https://www.w3.org/Protocols/History.html",
+        "https://www.worldometers.info/demographics/world-demographics/",
+        "https://www.worldometers.info/world-population/"
+      ],
+      "citationsActuallyInSameRunNativeSearchOutputs": 20,
+      "flaggedSourceUrlsAllInReport": true
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "producedArtifactSha256": {
+        "scraped.json": "050adc96068034421313d3650c8f7568692aa60393107676e7feab14174fb094",
+        "cross_check.json": "0a934ea85dc17767d23ca507a2436c31ac406de7513e09e26cba0c1d81d700f0",
+        "monitored_claims.json": "8af8633b678b5b17f899badcacc4c6322428f88490eaf58a9fd706fe3f83227b",
+        "MONITOR_REPORT.md": "be4cdb69c029922c048826f08035cf71a99f0cf4b4a7ec6b4026319c842735fb"
+      },
+      "sites": 2,
+      "siteStatusCounts": {
+        "ok": 2
+      },
+      "webfetchCalls": 2,
+      "websearchCalls": 13,
+      "claims": 14,
+      "checks": 14,
+      "uniqueIdsAndExactCoverage": true,
+      "verdictCounts": {
+        "consistent": 12,
+        "discrepancy": 2
+      },
+      "reportSummary": {
+        "total": 14,
+        "consistent": 12,
+        "discrepancy": 2,
+        "unverified": 0
+      },
+      "allClaimQuotesLiteralFetchedContent": true,
+      "literalClaimQuoteChecks": [
+        {
+          "id": "c1",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c2",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c3",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c4",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c5",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c6",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c7",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c8",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c9",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c10",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c11",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c12",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c13",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c14",
+          "quoteIsLiteralFetchedContent": true
+        }
+      ],
+      "citedUrls": [
+        "http://www.gabormelli.com/RKB/World_Population_Statistic",
+        "https://apnews.com/article/world-population-8-billion-acc94296d8aeb06e64daff9e597e0214",
+        "https://database.earth/population/deaths/2100",
+        "https://database.earth/population/median-age/2026",
+        "https://database.earth/population/world/deaths",
+        "https://jeremyklammer.com/2024/10/24/global-population-an-exponential-surge/",
+        "https://ourworldindata.org/births-and-deaths",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC8393076/",
+        "https://populartimelines.com/timeline/World-population/full",
+        "https://statisticstimes.com/demographics/world-death-and-birth-rate.php",
+        "https://www.jircas.go.jp/en/program/proc/blog/20260714",
+        "https://www.theworldcounts.com/humanity/populations/world-population",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2022_global_population_growth.pdf",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2025_wfr_2024_final.pdf",
+        "https://www.un.org/en/desa/world-population-reach-8-billion-15-november-2022",
+        "https://www.worldometers.info/demographics/world-demographics/",
+        "https://www.worldometers.info/world-population/"
+      ],
+      "citationsActuallyInSameRunNativeSearchOutputs": 17,
+      "flaggedSourceUrlsAllInReport": true
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "producedArtifactSha256": {
+        "scraped.json": "bb06e3fb417415db721bd78f43cbbd292f4a876b6213b38153d998f75f98905b",
+        "cross_check.json": "9cc8310bc388cc6e6842de74088e997d8058b2bce398c2abde4d3b5076557819",
+        "monitored_claims.json": "40edd861cb1a52eddf7c347f09cbae7f1d2c3c449d993ed73d695271e182872a",
+        "MONITOR_REPORT.md": "c75cf07068e09003e16efe61d479c87d31144141e518edebbd5f10b9672e8fe8"
+      },
+      "sites": 2,
+      "siteStatusCounts": {
+        "ok": 2
+      },
+      "webfetchCalls": 2,
+      "websearchCalls": 9,
+      "claims": 8,
+      "checks": 8,
+      "uniqueIdsAndExactCoverage": true,
+      "verdictCounts": {
+        "consistent": 7,
+        "discrepancy": 1
+      },
+      "reportSummary": {
+        "total": 8,
+        "discrepancy": 1,
+        "unverified": 0,
+        "consistent": 7
+      },
+      "allClaimQuotesLiteralFetchedContent": true,
+      "literalClaimQuoteChecks": [
+        {
+          "id": "c1",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c2",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c3",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c4",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c5",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c6",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c7",
+          "quoteIsLiteralFetchedContent": true
+        },
+        {
+          "id": "c8",
+          "quoteIsLiteralFetchedContent": true
+        }
+      ],
+      "citedUrls": [
+        "https://database.earth/population/deaths/2100",
+        "https://database.earth/population/world/deaths",
+        "https://geofactbook.com/countries/world/median-age-of-population",
+        "https://jeremyklammer.com/2024/10/24/global-population-an-exponential-surge/",
+        "https://mahb.stanford.edu/library-item/earth-now-has-8-billion-people-and-counting-where-do-we-go-from-here/",
+        "https://measuredworld.com/categories/population/median-age",
+        "https://ourworldindata.org/births-and-deaths",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC8393076/",
+        "https://statisticstimes.com/demographics/world-population.php",
+        "https://www.jircas.go.jp/en/program/proc/blog/20260714",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2022_global_population_growth.pdf",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2025_wfr_2024_final.pdf",
+        "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/wpp2022_summary_of_results.pdf",
+        "https://www.un.org/en/desa/world-population-reach-8-billion-15-november-2022",
+        "https://www.unfpa.org/press/world-set-reach-8-billion-people-15-november-2022",
+        "https://www.worldometers.info/demographics/world-demographics/",
+        "https://www.worldometers.info/world-population/"
+      ],
+      "citationsActuallyInSameRunNativeSearchOutputs": 17,
+      "flaggedSourceUrlsAllInReport": true
+    },
+    {
+      "caseId": "duplicate-urls",
+      "runId": "run_mvbdwo8d_43403c441bd0",
+      "producedArtifactSha256": {
+        "scraped.json": "b2f3dcd1025eb32188ae084adff34d18b549a0ed371a388e8752963347fab125"
+      },
+      "sites": 2,
+      "siteStatusCounts": {
+        "ok": 2
+      },
+      "webfetchCalls": 1,
+      "websearchCalls": 0
+    },
+    {
+      "caseId": "special-characters",
+      "runId": "run_mvbdwxdv_1ba15637482c",
+      "producedArtifactSha256": {
+        "scraped.json": "19078807be4275d30e6474c3a416b0bb5afb80cc54066ff705b4f89dc3416448"
+      },
+      "sites": 1,
+      "siteStatusCounts": {
+        "error": 1
+      },
+      "webfetchCalls": 1,
+      "websearchCalls": 0
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "producedArtifactSha256": {
+        "scraped.json": "d31b1f1b8592d0f2ce83cc331d01dc9ad133df7e408385d1bd915409586c0a88",
+        "cross_check.json": "eb974a7f5ec1b337afeb736d5f5f55eb466edf8c0efbe67fec328b9db844faf1",
+        "monitored_claims.json": "9ab10f0f885c9c17b9bb160e685330f8e0891ef8f13bba2ae0d86091e62bb844",
+        "MONITOR_REPORT.md": "728d0affe6782af33ed492b7d8106793823619106ab7cbe65edfdb1daa82fc9d"
+      },
+      "sites": 2,
+      "siteStatusCounts": {
+        "ok": 1,
+        "error": 1
+      },
+      "webfetchCalls": 2,
+      "websearchCalls": 0,
+      "claims": 0,
+      "checks": 0,
+      "uniqueIdsAndExactCoverage": true,
+      "verdictCounts": {},
+      "reportSummary": {
+        "total": 0,
+        "discrepancy": 0,
+        "unverified": 0,
+        "consistent": 0
+      },
+      "allClaimQuotesLiteralFetchedContent": true,
+      "literalClaimQuoteChecks": [],
+      "citedUrls": [],
+      "citationsActuallyInSameRunNativeSearchOutputs": 0,
+      "flaggedSourceUrlsAllInReport": true
+    }
+  ],
+  "nativeWebTools": [
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://en.wikipedia.org/wiki/World_population",
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://en.wikipedia.org/wiki/HTTP",
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "error",
+      "url": null,
+      "error": "StatusCode: non 2xx status code (429 POST https://mcp.exa.ai/mcp)"
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "error",
+      "url": null,
+      "error": "StatusCode: non 2xx status code (429 POST https://mcp.exa.ai/mcp)"
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://en.wikipedia.org/wiki/World_population",
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://en.wikipedia.org/wiki/HTTP",
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "error",
+      "url": null,
+      "error": "StatusCode: non 2xx status code (429 POST https://mcp.exa.ai/mcp)"
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "error",
+      "url": null,
+      "error": "StatusCode: non 2xx status code (429 POST https://mcp.exa.ai/mcp)"
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://en.wikipedia.org/wiki/HTTP",
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://en.wikipedia.org/wiki/World_population",
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "error",
+      "url": null,
+      "error": "StatusCode: non 2xx status code (429 POST https://mcp.exa.ai/mcp)"
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "error",
+      "url": null,
+      "error": "StatusCode: non 2xx status code (429 POST https://mcp.exa.ai/mcp)"
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "taskId": "web_research.cross_check",
+      "tool": "websearch",
+      "status": "completed",
+      "url": null,
+      "error": null
+    },
+    {
+      "caseId": "duplicate-urls",
+      "runId": "run_mvbdwo8d_43403c441bd0",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://example.com",
+      "error": null
+    },
+    {
+      "caseId": "special-characters",
+      "runId": "run_mvbdwxdv_1ba15637482c",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "error",
+      "url": "https://example.com/search?q=caf%C3%A9&limit=10&note=%22quoted%22",
+      "error": "StatusCode: non 2xx status code (404 GET https://example.com/search?q=caf%C3%A9&limit=10&note=%22quoted%22)"
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://example.com",
+      "error": null
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "taskId": "web_research.scrape_targets",
+      "tool": "webfetch",
+      "status": "error",
+      "url": "https://no-such-host.invalid/page",
+      "error": "StatusCode: non 2xx status code (403 GET https://no-such-host.invalid/page)"
+    }
+  ],
+  "normalCoreWitness": {
+    "normalCaseId": "positive-core",
+    "contentTaskIds": [
+      "web_research.scrape_targets",
+      "local_analysis.extract_bold_claims",
+      "web_research.cross_check",
+      "local_analysis.alert_report"
+    ]
+  },
+  "responseContract": {
+    "maxReasonCodeUnits": 1600,
+    "maxEvidenceItems": 4,
+    "maxQuoteCodeUnits": 512,
+    "maxResponseBytes": 65536
+  },
+  "rawEvidenceCounts": [
+    1,
+    1,
+    2,
+    2
+  ],
+  "emptyResultMixedFailureFullChainVerified": true
+}

@@ -627,6 +627,30 @@
       "path": "architecture/quality/evidence/s3-l1-verify4-cross-track-first-failure.json",
       "sha256": "d877421041f889847f83a282dfd4227950d18326767c1c9f61b5c9ed8516caaf",
       "role": "same-run-successful-cross-track-owner-rejected-before-critic"
+    },
+    {
+      "id": "s3-l2-noncore-source-first-red",
+      "path": "architecture/quality/evidence/s3-l2-noncore-source-first-red.txt",
+      "sha256": "392ede0f685b92c267f7ef1130f173f9fa9a590b5c99dcb2d974dd92208f6326",
+      "role": "Host-and-real-Plugin-accept-impossible-repeat-owner-before-fix"
+    },
+    {
+      "id": "s3-l2-noncore-source-green",
+      "path": "architecture/quality/evidence/s3-l2-noncore-source-green.txt",
+      "sha256": "874dca75ec80cc7809b4cc3f9283a50fde66812dd7fd9dc143800acc00ead58b",
+      "role": "resolved-SDK-context-three-tests29-assertions"
+    },
+    {
+      "id": "s3-l2-noncore-source-related63-green",
+      "path": "architecture/quality/evidence/s3-l2-noncore-source-related63-green.txt",
+      "sha256": "b9ce049efb3d2cdea8e324e5ca38b5d9c278a7dbe625ad48b0c2f6d3814eec9c",
+      "role": "six-related-files63-tests567-assertions"
+    },
+    {
+      "id": "s3-l2-repeat-relation-live-first-failure",
+      "path": "architecture/quality/evidence/s3-l2-verify3-repeat-relation-first-failure.json",
+      "sha256": "7e8b40efa428d8ab7949c4e30fb076f9e171e6128a107f40680fc11f1ad95058",
+      "role": "failed-repeat-wrong-consumer-runtime-correctly-rejected"
     }
   ],
   "issues": [
@@ -7790,7 +7814,7 @@
           "summary": "Newly enabled OS test fixture isolates a canonical temporary persistent auth-key file, restores prior environment after the suite, and uses realpathSync.native workspace paths consistently with staging. Production symlink/containment fences remain unchanged; final local20tests113assertions and test types pass. Await exact Windows/macOS CI."
         }
       ],
-      "status": "locally-guarded-awaiting-fresh-S3-L1",
+      "status": "guarded-and-fresh-S3-L1-verify5-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -7854,7 +7878,7 @@
           "summary": "Two different real SDK direct/transitive command pipelines reproduce false rejection before fix. Qualified control and shadow/ambiguity/missing/cycle counterexamples retain rejection. Final3tests23assertions and related60tests538assertions pass; OS CI explicitly selects new actual-SDK tests."
         }
       ],
-      "status": "locally-guarded-awaiting-full-current-gate-and-fresh-S3-L1",
+      "status": "guarded-and-fresh-S3-L1-verify5-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -7881,6 +7905,86 @@
       "realTestSelectors": [],
       "contract": "The Trial and SDK must agree about declared dependency resolution. Retain same-run successful owner/result proof, producer observation before consumer start, distinct regular owned files, final source hash identity, exact source text occurrence, strict path/read bounds and finite planning counters. Do not require qualified YAML spelling or guess an ambiguous producer.",
       "claimLimit": "Actual SDK regressions prove dependency resolution, not the semantic content or live acceptance of the previous failed Trial. No independent critic ran in verify4 because mandatory deterministic checks failed."
+    },
+    {
+      "id": "CSR-0051",
+      "lineage": [
+        "CSR-0025",
+        "CSR-0026",
+        "CSR-0038",
+        "CSR-0042",
+        "CSR-0047",
+        "CSR-0049",
+        "CSR-0050"
+      ],
+      "title": "Reject statically impossible repeat and edge source ownership before committing an executable Trial plan",
+      "category": "validated-fail-fast-admission-guard",
+      "mechanism": "non-core-owner-and-execution-closure-preflight-after-valid-normal-core",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l2-repeat-relation-live-first-failure",
+        "path": "architecture/quality/evidence/s3-l2-verify3-repeat-relation-first-failure.json",
+        "sha256": "7e8b40efa428d8ab7949c4e30fb076f9e171e6128a107f40680fc11f1ad95058",
+        "sourceRevision": "53002e063871f07cfac8068605bdfb025b8948d2",
+        "round": "S3-L2-verify3-original-round-1",
+        "acceptancePolicy": "Original remains failed/unpublished. Runtime correctly rejects generated wrong consumer; prevent this known static contradiction earlier without refunds or dropping assertions."
+      },
+      "history": [
+        {
+          "kind": "Host-and-real-Plugin-accept-impossible-repeat-owner-before-fix",
+          "evidencePath": "architecture/quality/evidence/s3-l2-noncore-source-first-red.txt",
+          "evidenceSha256": "392ede0f685b92c267f7ef1130f173f9fa9a590b5c99dcb2d974dd92208f6326",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "resolved-SDK-context-three-tests29-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l2-noncore-source-green.txt",
+          "evidenceSha256": "874dca75ec80cc7809b4cc3f9283a50fde66812dd7fd9dc143800acc00ead58b",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "six-related-files63-tests567-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l2-noncore-source-related63-green.txt",
+          "evidenceSha256": "b9ce049efb3d2cdea8e324e5ca38b5d9c278a7dbe625ad48b0c2f6d3814eec9c",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "After existing covered normal-core validation, preflight other cases source relations against known selected tasks, normalized dependency closure and declared source/consumer artifact paths. Preserve old normal-core messages and stronger independent-content mappings; ordinary other-case present:false is still allowed without invented core maps. Blocked/legacy no-core behavior remains unchanged."
+        },
+        {
+          "summary": "Return existing bounded native attempt/YAML/candidate-bound rejection coordinates with actual case/index/conjunct/owners and plan-only guidance. Validated correction commits once with0 counted rejections; deliberate invalid commit spends1 rejection, writesno plan, and still cannot edit or reuse its closed draft. No runtime guard, schema, scope, budget or package change."
+        }
+      ],
+      "status": "locally-guarded-awaiting-full-current-gate-CI-fresh-S3-L2",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "non-core source relations reject impossible owners in compiled Host preflight while normal messages stay stable",
+          "namePattern": "^non-core source relations reject impossible owners in compiled Host preflight while normal messages stay stable$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "non-core source relation Plugin preflight exposes bound plan-only correction before one normal commit",
+          "namePattern": "^non-core source relation Plugin preflight exposes bound plan-only correction before one normal commit$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "non-core source relation invalid Plugin commit still spends exactly one rejection and writes no plan",
+          "namePattern": "^non-core source relation invalid Plugin commit still spends exactly one rejection and writes no plan$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "All admissible frozen-intent cases must name a possible same-run source/consumer ownership relationship before execution. Preserve normal-core original errors/fingerprints, selected closures, source observations/final hashes, actual runtime status and text checks, exact counters, readonly planning and bounded current-attempt feedback. Correct the plan rather than relocating valid business outputs.",
+      "claimLimit": "A fail-fast improvement for a generated bad repeat assertion; not a false engine rejection or recurrence of CSR50. First bad round remains failed. Fresh original live S3-L2 is required, and legacy/blocked core validation behavior is not expanded."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

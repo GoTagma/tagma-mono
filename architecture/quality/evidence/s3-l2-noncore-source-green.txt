@@ -1,0 +1,12 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:
+(pass) non-core source relations reject impossible owners in compiled Host preflight while normal messages stay stable [14.47ms]
+(pass) non-core source relation Plugin preflight exposes bound plan-only correction before one normal commit [52.16ms]
+(pass) non-core source relation invalid Plugin commit still spends exactly one rejection and writes no plan [29.22ms]
+
+ 3 pass
+ 16 filtered out
+ 0 fail
+ 29 expect() calls
+Ran 3 tests across 1 file. [285.00ms]

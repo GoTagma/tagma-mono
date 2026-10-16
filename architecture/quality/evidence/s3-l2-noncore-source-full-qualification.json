@@ -1,0 +1,24 @@
+{
+  "scope": "Final local CSR51 full qualification, not live S3-L2 acceptance",
+  "command": "bun run verify:full",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "c9eb14ec8f563aaee97367c922f4e676cee00a93b3e0e178fa9cb2359283c68a",
+  "summary": [
+    "PASS text 84ms ok",
+    "PASS deps 255ms ok",
+    "PASS focus 250ms ok",
+    "PASS imports 62ms ok",
+    "PASS cycles 43ms ok",
+    "PASS secrets 335ms ok",
+    "PASS format 20.8s ok",
+    "PASS types 44.9s ok",
+    "PASS lint 17.3s ok",
+    "PASS tests 206.8s ok",
+    "PASS scripts 2.5s ok",
+    "PASS build 17.9s ok",
+    "PASS publish 9.2s ok"
+  ],
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0
+}

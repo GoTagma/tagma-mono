@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -16,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { EngineResult } from '@tagma/sdk';
 import type { TaskResult, TaskState, TrackConfig } from '@tagma/types';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
-import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
+import { parseYaml, resolveConfig, serializePipeline } from '@tagma/sdk/yaml';
 import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 import {
   CHAT_PIPELINE_TRIAL_PLAN_CONTRACT,
@@ -44,6 +45,10 @@ import {
 } from '../server/chat-yaml-staging';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
+import {
+  buildTrialPlanValidationContext,
+  inspectTrialEvidence,
+} from '../server/chat-trial-intent-coverage';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 
 const roots: string[] = [];
@@ -928,3 +933,257 @@ for (const { wrongRun, wrongSum, mutateSource } of [
       ws.layoutWatcher.stopWatching();
     }
   });
+
+function auxiliaryRelationFixture() {
+  const workDir = realpathSync.native(root());
+  mkdirSync(join(workDir, '.tagma', 'flow'), { recursive: true });
+  const config = resolveConfig(
+    parseYaml(
+      serializePipeline({
+        name: 'Three-stage source ownership',
+        tracks: [
+          {
+            id: 'odd',
+            name: 'Source and report',
+            cwd: '.tagma/flow',
+            tasks: [
+              {
+                id: 'alpha',
+                name: 'Compute source',
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    "require('node:fs').writeFileSync('input.json',JSON.stringify({text:'Derived '+(3+4),total:3+4}))",
+                  ],
+                },
+                completion: { type: 'file_exists', path: 'input.json' },
+              },
+              {
+                id: 'beta',
+                name: 'Render source',
+                depends_on: ['gate.pass'],
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    "const fs=require('node:fs');fs.writeFileSync('report.md',JSON.parse(fs.readFileSync('input.json','utf8')).text)",
+                  ],
+                },
+                completion: { type: 'file_exists', path: 'report.md' },
+              },
+            ],
+          },
+          {
+            id: 'gate',
+            name: 'Execution gate',
+            tasks: [
+              {
+                id: 'pass',
+                name: 'Check readiness',
+                depends_on: ['odd.alpha'],
+                command: { argv: [process.execPath, '-e', 'void 0'] },
+              },
+            ],
+          },
+        ],
+      }),
+    ),
+    workDir,
+  );
+  const input = plan();
+  input.cases[0]!.runs = 1;
+  input.cases[0]!.expectations.push({
+    type: 'task-status',
+    taskId: 'gate.pass',
+    status: 'success',
+  });
+  const core = input.evidenceReview!.coreWitness!;
+  if (core.status !== 'covered') throw new Error('Covered normal core required');
+  input.evidenceReview = {
+    ...input.evidenceReview!,
+    coreWitness: {
+      ...core,
+      taskRoles: [
+        ...core.taskRoles,
+        {
+          taskId: 'gate.pass',
+          role: 'execution',
+          expectationIndices: [],
+          rationale: 'Pure readiness gate with no promised artifact.',
+        },
+      ],
+    },
+  };
+  input.cases.push({ ...structuredClone(input.cases[0]!), id: 'repeat-probe', runs: 2 });
+  const coordinates = { relativeYamlPath: 'flow/flow.yaml', workDir };
+  const context = buildTrialPlanValidationContext(config, [], coordinates);
+  const inspect = (candidate = input) =>
+    inspectTrialEvidence([], candidate, config, coordinates, true);
+  return { workDir, config, input, context, inspect };
+}
+
+test('non-core source relations reject impossible owners in compiled Host preflight while normal messages stay stable', () => {
+  const h = auxiliaryRelationFixture();
+  expect(() => h.inspect()).not.toThrow();
+  for (const [field, taskId, failedConjunct] of [
+    ['consumerTaskId', 'gate.pass', 'consumer_artifact_ownership'],
+    ['producerTaskId', 'gate.pass', 'producer_artifact_ownership'],
+    ['consumerTaskId', 'unknown.missing', 'known_consumer'],
+  ] as const) {
+    const candidate = structuredClone(h.input);
+    candidate.cases[1]!.expectations[3] = { ...relation, [field]: taskId };
+    let rejected:
+      | (Error & { trialPlanDiagnostic?: { rejectionContext?: Record<string, unknown> } })
+      | undefined;
+    try {
+      h.inspect(candidate);
+    } catch (error) {
+      rejected = error as typeof rejected;
+    }
+    expect(rejected).toBeInstanceOf(Error);
+    expect(rejected!.message).toContain('Non-core source-text relation');
+    expect(rejected!.trialPlanDiagnostic?.rejectionContext).toMatchObject({
+      caseId: 'repeat-probe',
+      expectationIndex: 3,
+      failedConjunct,
+    });
+  }
+  const wrongNormal = structuredClone(h.input);
+  wrongNormal.cases[0]!.expectations[3] = { ...relation, consumerTaskId: 'gate.pass' };
+  expect(() => h.inspect(wrongNormal)).toThrow(
+    'Core source-text relation needs owned generated source, dependency, and independent concrete source content.',
+  );
+  const absentSpan = structuredClone(h.input);
+  absentSpan.cases[1]!.expectations[3] = { ...relation, present: false };
+  expect(() => h.inspect(absentSpan)).not.toThrow();
+});
+
+async function auxiliaryGeneratedHarness() {
+  const h = auxiliaryRelationFixture();
+  const stageRoot = join(h.workDir, '.tagma', '.chat-staging', 'auxiliary-owner-stage');
+  const directory = join(stageRoot, 'agent-workspace', '.tagma');
+  const yamlPath = join(directory, 'flow', 'flow.yaml');
+  mkdirSync(dirname(yamlPath), { recursive: true });
+  const yaml = serializePipeline(h.config);
+  writeFileSync(yamlPath, yaml);
+  h.input.yamlHash = createHash('sha1').update(yaml).digest('hex');
+  writeFileSync(
+    join(stageRoot, 'stage.json'),
+    JSON.stringify({
+      trialPlanMaxAttempts: 2,
+      trialPlanAttempt: {
+        attemptId: 'auxiliary-owner-attempt',
+        relativePath: 'flow/flow.yaml',
+        yamlHash: h.input.yamlHash,
+        validationContext: {
+          ...h.context,
+          version: 2,
+          intentDigest: h.input.evidenceReview!.intentDigest,
+        },
+      },
+    }),
+  );
+  const pluginDir = join(h.workDir, 'node_modules', '@opencode-ai', 'plugin');
+  mkdirSync(dirname(pluginDir), { recursive: true });
+  symlinkSync(
+    dirname(dirname(fileURLToPath(import.meta.resolve('@opencode-ai/plugin')))),
+    pluginDir,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+  const modulePath = join(h.workDir, 'auxiliary-owner-tool.mjs');
+  writeFileSync(modulePath, buildTagmaTrialPlanTool());
+  const generated = (await import(pathToFileURL(modulePath).href)).default as ToolDefinition;
+  const outer = pluginTool.schema.object(generated.args);
+  const context: ToolContext = {
+    sessionID: 'auxiliary-owner-session',
+    messageID: 'auxiliary-owner-input',
+    agent: 'tagma-trial-planner',
+    directory,
+    worktree: directory,
+    abort: new AbortController().signal,
+    metadata() {},
+    async ask() {
+      throw new Error('No permissions allowed');
+    },
+  };
+  const call = (operation: string, payload: Record<string, unknown> = {}) =>
+    generated.execute(
+      outer.parse({
+        operation,
+        pipeline_path: yamlPath,
+        attempt_id: 'auxiliary-owner-attempt',
+        ...payload,
+      }),
+      context,
+    );
+  await call('begin', { summary: h.input.summary, goals: h.input.goals });
+  await call('set-evidence-review', { evidence_review: h.input.evidenceReview });
+  await call('set-coverage', { coverage: h.input.coverage });
+  await call('set-findings', { findings: [] });
+  await call('upsert-case', { case: h.input.cases[0] });
+  const bad = structuredClone(h.input.cases[1]!);
+  bad.expectations[3] = { ...relation, consumerTaskId: 'gate.pass' };
+  await call('upsert-case', { case: bad });
+  return {
+    ...h,
+    call,
+    yaml,
+    yamlPath,
+    telemetry: () => readChatPipelineTrialPlanToolTelemetry(yamlPath, 2),
+  };
+}
+
+test('non-core source relation Plugin preflight exposes bound plan-only correction before one normal commit', async () => {
+  const h = await auxiliaryGeneratedHarness();
+  let rejected: Error | undefined;
+  try {
+    await h.call('validate');
+  } catch (error) {
+    rejected = error as Error;
+  }
+  expect(rejected).toBeInstanceOf(Error);
+  expect(rejected!.message).toContain('Non-core source-text relation');
+  const encoded = rejected!.message.split('\nrejectionContext: ')[1]!;
+  expect(Buffer.byteLength(encoded, 'utf8')).toBeLessThanOrEqual(2048);
+  expect(JSON.parse(encoded)).toMatchObject({
+    caseId: 'repeat-probe',
+    expectationIndex: 3,
+    failedConjunct: 'consumer_artifact_ownership',
+    ownerTaskIds: ['odd.beta'],
+    binding: { attemptId: 'auxiliary-owner-attempt', yamlHash: h.input.yamlHash },
+  });
+  expect(JSON.parse(encoded).repairHint).toContain('plan');
+  expect(h.telemetry()).toMatchObject({
+    toolAttemptCount: 0,
+    validationRejectionCount: 0,
+    successfulWriteCount: 0,
+  });
+  expect(existsSync(h.yamlPath.replace(/\.yaml$/, '.trial-plan.json'))).toBe(false);
+  await h.call('upsert-case', { case: h.input.cases[1] });
+  expect(JSON.parse(String(await h.call('validate'))).valid).toBe(true);
+  await h.call('commit');
+  expect(h.telemetry()).toMatchObject({
+    toolAttemptCount: 1,
+    validationRejectionCount: 0,
+    successfulWriteCount: 1,
+  });
+  expect(readFileSync(h.yamlPath, 'utf8')).toBe(h.yaml);
+});
+
+test('non-core source relation invalid Plugin commit still spends exactly one rejection and writes no plan', async () => {
+  const h = await auxiliaryGeneratedHarness();
+  await expect(h.call('commit')).rejects.toThrow('Non-core source-text relation');
+  expect(h.telemetry()).toMatchObject({
+    toolAttemptCount: 1,
+    validationRejectionCount: 1,
+    successfulWriteCount: 0,
+  });
+  expect(existsSync(h.yamlPath.replace(/\.yaml$/, '.trial-plan.json'))).toBe(false);
+  await expect(h.call('upsert-case', { case: h.input.cases[1] })).rejects.toThrow(
+    'trial plan draft commit was already attempted',
+  );
+  await expect(h.call('commit')).rejects.toThrow();
+  expect(h.telemetry()).toMatchObject({ toolAttemptCount: 1, successfulWriteCount: 0 });
+  expect(readFileSync(h.yamlPath, 'utf8')).toBe(h.yaml);
+});

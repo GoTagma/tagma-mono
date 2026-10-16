@@ -1,0 +1,164 @@
+{
+  "scope": "One actual native independent review for positive-core; repeat-run case has no semantic expectations and is not claimed to have extra reviews",
+  "requestBytesVerified": true,
+  "responseBytesVerified": true,
+  "responseContract": {
+    "maxReasonCodeUnits": 1600,
+    "maxEvidenceItems": 4,
+    "maxQuoteCodeUnits": 512,
+    "maxResponseBytes": 65536
+  },
+  "normalCoreWitness": {
+    "normalCaseId": "positive-core",
+    "contentTaskIds": [
+      "web_research.scrape_targets",
+      "local_analysis.extract_bold_claims",
+      "web_research.cross_check",
+      "local_analysis.alert_report"
+    ]
+  },
+  "rawEvidenceCounts": [
+    1,
+    1,
+    2,
+    2
+  ],
+  "parsedEvidenceCounts": [
+    1,
+    1,
+    2,
+    2
+  ],
+  "receipt": {
+    "version": 1,
+    "grading": "independent-model",
+    "outcome": "passed",
+    "identity": {
+      "stageId": "d2fb500e-375f-4dc1-a796-5525ab5b44bf",
+      "trialId": "trial-54fc4d792d7479e743c46174eefbd64f3be4a645",
+      "yamlHash": "9787d0190d6bae2276390a10b355a911cc7b9179",
+      "planHash": "f3fa12cbdbbbf23a40b46b74a8e461d3c2cb275b4945edb0e3ae25920187400b",
+      "intentDigest": "cdf6f56b6ae5bccc1e04195f3542565dafd5d80e75ae7b76aa59a10d1c94d65b",
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1
+    },
+    "model": {
+      "providerID": "deepseek",
+      "modelID": "deepseek-flash",
+      "variant": "low"
+    },
+    "configurationDigest": "11fd1d8e8349032690bd724311cdf0d75e7a21947ecfcd19c449e30274a29b97",
+    "requestSha256": "a170503a957eaf4bff984252a2837633796a269235a131d291e872fefd75408f",
+    "responseSha256": "f9da73a7ce8e5726772033cf75810a56ff976ebaf3836a648cf659fef9b4ccf8",
+    "reviewerSessionId": "ses_tagma_content_review_b3a8cb0ed85845e4bc75d92d1aaa9195",
+    "artifacts": [
+      {
+        "path": "site_monitor/artifacts/MONITOR_REPORT.md",
+        "role": "produced",
+        "sha256": "c45480b9f1fc78d8b69f969c14abda51574b18b79e52189b14f1d2cf9362c238",
+        "bytes": 2453
+      },
+      {
+        "path": "site_monitor/artifacts/cross_check.json",
+        "role": "produced",
+        "sha256": "23a8fa5645fa3d77da6e2f2f2c4f619f6aafbe0c1b74209b862188e4e2637b3c",
+        "bytes": 9733
+      },
+      {
+        "path": "site_monitor/artifacts/monitored_claims.json",
+        "role": "produced",
+        "sha256": "31d4d3a50b93b7ed05669f7bbf9d33085550bb5654a97c373a872a45e8a7c1fe",
+        "bytes": 6792
+      },
+      {
+        "path": "site_monitor/artifacts/scraped.json",
+        "role": "produced",
+        "sha256": "cb39f35ea97203a1ee2fed032b6e4c08bef358d50af943eb06ccd773d7dfee4b",
+        "bytes": 11223
+      },
+      {
+        "path": "site_monitor/config/sites.json",
+        "role": "input",
+        "sha256": "660169c18ef75851342f8692b8cbbb45d3ebd2f3badd13cb11ba496b06c31bc8",
+        "bytes": 180
+      }
+    ],
+    "verdicts": [
+      {
+        "taskId": "web_research.scrape_targets",
+        "path": "site_monitor/artifacts/scraped.json",
+        "verdict": "pass",
+        "reason": "scraped.json is valid JSON with a top-level sites array containing the two target URLs from config/sites.json, each with an ok status, integer http_status 200, substantive readable body content, and null error. Both deterministic URL pointer checks align with the supplied input.",
+        "evidence": [
+          {
+            "path": "site_monitor/artifacts/scraped.json",
+            "quote": "\"url\": \"https://en.wikipedia.org/wiki/World_population\",\n      \"status\": \"ok\",",
+            "quoteSha256": "cb09fa3ee13878edb5791ca37fa29aee956912df98b183653967aa030eb106bb",
+            "offset": 27,
+            "length": 78
+          }
+        ]
+      },
+      {
+        "taskId": "local_analysis.extract_bold_claims",
+        "path": "site_monitor/artifacts/monitored_claims.json",
+        "verdict": "pass",
+        "reason": "monitored_claims.json is valid JSON with 13 unique, sequential ids (c1-c13) across both scraped ok pages. Each claim carries url, concise paraphrase, a verbatim quote traceable to scraped.json content, and a kind (statistic/comparison) plus metric/value/unit/period where applicable. Quotes preserve the source's own wording (e.g. UN 8-billion date, HTTP version years), matching the extraction contract.",
+        "evidence": [
+          {
+            "path": "site_monitor/artifacts/monitored_claims.json",
+            "quote": "\"quote\": \"It was estimated by the United Nations to have exceeded 8 billion (8,000,000,000) on November 15, 2022.\",",
+            "quoteSha256": "cf65ae78b1e3c2b64e463858c8c6576bf3e02096abfe2a3991d3b17ee4636352",
+            "offset": 218,
+            "length": 115
+          }
+        ]
+      },
+      {
+        "taskId": "web_research.cross_check",
+        "path": "site_monitor/artifacts/cross_check.json",
+        "verdict": "pass",
+        "reason": "cross_check.json is valid JSON providing exactly one check per extracted claim id (c1-c13). Each check records a verdict and a sources list of {url, snippet} plus a note; independent external sources are cited (e.g. UN, MDN, W3C, peer-reviewed articles), and a discrepancy is flagged for c8 in line with the run's websearch evidence. The cross-check operation is genuinely exercised on the positive content rather than vacuously satisfied.",
+        "evidence": [
+          {
+            "path": "site_monitor/artifacts/cross_check.json",
+            "quote": "\"claim_id\": \"c8\",\n      \"verdict\": \"discrepancy\",",
+            "quoteSha256": "7d99f45877e46ac3967d8f57187feff907e402078e79b986211d7def6a693f0a",
+            "offset": 5320,
+            "length": 49
+          },
+          {
+            "path": "site_monitor/artifacts/cross_check.json",
+            "quote": "\"snippet\": \"In 2024, there were 132 million births...",
+            "quoteSha256": "4dcfa1f77b3fbbdf7bfb2278d896fd9b070a1f592afb637c182512a707f027b1",
+            "offset": 5545,
+            "length": 53
+          }
+        ]
+      },
+      {
+        "taskId": "local_analysis.alert_report",
+        "path": "site_monitor/artifacts/MONITOR_REPORT.md",
+        "verdict": "pass",
+        "reason": "MONITOR_REPORT.md is non-empty, well-formed Markdown with a title and generated-at timestamp, a summary whose counts are internally consistent (13 total = 1 discrepancy + 0 unverified + 12 consistent), a Flagged claims section listing the discrepancy claim c8 with id, source URL, claim text and verdict, a per-flagged-claim citation list of external URLs, a Consistent claims section, and a Fetch errors section ('None'). Stated and reference values are shown side by side without inventing numbers.",
+        "evidence": [
+          {
+            "path": "site_monitor/artifacts/MONITOR_REPORT.md",
+            "quote": "- Total claims: 13",
+            "quoteSha256": "6ebc44c956827ff6fea5f5ff3971f0b78d576239c89a68c7ce304f676364a796",
+            "offset": 71,
+            "length": 18
+          },
+          {
+            "path": "site_monitor/artifacts/MONITOR_REPORT.md",
+            "quote": "## Fetch errors\n\nNone. All scraped target URLs returned status `ok`.",
+            "quoteSha256": "a45265435ff26afbcda875e5d6a72065c1217df6f5c56053e4af8a2f6767bd74",
+            "offset": 2358,
+            "length": 68
+          }
+        ]
+      }
+    ]
+  }
+}

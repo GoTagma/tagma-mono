@@ -1,0 +1,45 @@
+{
+  "scope": "actual Host sealed result joined to production artifact-set projection and published file hashes; read-only",
+  "operationId": "operation-18a2e81f-5c6e-42df-878d-cc106cdbe53f",
+  "resultId": "result_dba9568b9c0f28417f032573ed3fed16c3c9028d295f7dec",
+  "resultHash": "79ded2dcd4a5cd43ba9e82ead834b20a6327dcdf156f58e690a967721de79a71",
+  "artifactSetHash": "a67c8ece0110df0e80ce53b59d3568a39e76770b1747eebe7a34f3d4c10ef34e",
+  "artifacts": [
+    {
+      "artifactId": "artifact_0af4359023284b7f778dccd71cc7e59f6c4e14c1d93ff78c",
+      "kind": "support",
+      "path": "site_monitor/schemas/cross_check.schema.json",
+      "sha256": "26fde75b5deeecb157152f194032963886c3cbb7344ee9c774c63caeeb3fcd64"
+    },
+    {
+      "artifactId": "artifact_17caefc9e315c809ba853e64970f00e71dde7c3c37165a00",
+      "kind": "requirements",
+      "path": "site_monitor/site_monitor.requirements.md",
+      "sha256": "2627e90ddb8f1f70954fc922fe0e14cab7abc6d0ecf510a06e687bbab80e522f"
+    },
+    {
+      "artifactId": "artifact_27c5d997b4254c8c96adb482ac56f0016809d6d87657d03f",
+      "kind": "support",
+      "path": "site_monitor/schemas/scraped.schema.json",
+      "sha256": "384bee1a9e443cc6a9460eb1e7ecd914fbd92e38a0445b99e899a48e9daf6874"
+    },
+    {
+      "artifactId": "artifact_3ff512ecdb35bb5f7154565b89c601360c8ac07b1a76b9cb",
+      "kind": "yaml",
+      "path": "site_monitor/site_monitor.yaml",
+      "sha256": "5631aa5b393f64b4665283152e6de0e606722c01fb585c24e5c21d68adc0c71d"
+    },
+    {
+      "artifactId": "artifact_70a7545fb3e4f543c1cfeef7d38b0bce6cb913d5af0062ac",
+      "kind": "layout",
+      "path": "site_monitor/site_monitor.layout.json",
+      "sha256": "2c46d3cc8c2ede135cf780bd19b96dd42d1978399dfb43662ff260cfcb813d6d"
+    },
+    {
+      "artifactId": "artifact_757badd22096fb27a7c309eedd8b39bb4635545fafa3a888",
+      "kind": "support",
+      "path": "site_monitor/schemas/monitored_claims.schema.json",
+      "sha256": "cdeddd736614d649181f9f74ba5ee13224fede7d4878fd410ecd9e38a76b6ca2"
+    }
+  ]
+}

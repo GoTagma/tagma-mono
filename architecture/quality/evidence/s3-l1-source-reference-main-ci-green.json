@@ -1,0 +1,76 @@
+{
+  "commit": "53002e063871f07cfac8068605bdfb025b8948d2",
+  "runId": 38955341367,
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "full-check",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "public-check-fork",
+      "conclusion": "skipped"
+    }
+  ],
+  "actualSupportedOsSteps": [
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Trial source dependency reference contracts",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Trial source dependency reference contracts",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Trial source dependency reference contracts",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    }
+  ],
+  "claimLimit": "Exact full/OS qualification, not fresh S3-L1 live acceptance. verify4 deterministic failure remains retained/unpublished with zero critic calls."
+}

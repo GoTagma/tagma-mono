@@ -1,0 +1,123 @@
+{
+  "case": "S3-L2",
+  "attempt": "s3-l2-verify3",
+  "accepted": false,
+  "sourceRevision": "53002e063871f07cfac8068605bdfb025b8948d2",
+  "operationId": "operation-af0f3bd5-b84a-412a-8b04-49c902b20547",
+  "stageId": "b7ae8bdf-4f89-4b7a-bc2e-b23402dd43fe",
+  "outcome": "trial_verification_paused/user_retry",
+  "published": false,
+  "cases": [
+    {
+      "id": "positive-multisite",
+      "success": true,
+      "runIds": [
+        "run_mvbeqquq_1a8f3257998e"
+      ]
+    },
+    {
+      "id": "negative-missing-config",
+      "success": true,
+      "runIds": [
+        "run_mvbeuh8j_d2872dc986fa"
+      ]
+    },
+    {
+      "id": "edge-empty-sites",
+      "success": true,
+      "runIds": [
+        "run_mvbeuhe4_ee4d8f8945fc"
+      ]
+    },
+    {
+      "id": "edge-special-multiline",
+      "success": true,
+      "runIds": [
+        "run_mvbeuvdb_0758e5069442"
+      ]
+    },
+    {
+      "id": "edge-duplicate-ids",
+      "success": true,
+      "runIds": [
+        "run_mvbevbsa_0a0a6bcdc1b7"
+      ]
+    },
+    {
+      "id": "repeat-run",
+      "success": false,
+      "runIds": [
+        "run_mvbevsxm_f967452b632b",
+        "run_mvbf51k6_f46824237e98"
+      ]
+    }
+  ],
+  "completeShaVerifiedActualStreams": 38,
+  "normalNativeReview": {
+    "outcome": "passed",
+    "requestBytesVerified": true,
+    "responseBytesVerified": true,
+    "requestSha256": "7d45c36fc5e6c42ea6d08108d6eaed3f2dd07ace00b7f90003aac64048b73540",
+    "responseSha256": "d24274b3b4df387ee0bea1ecaef1ea338be053ed055cfde1e50bb1968f5e2744"
+  },
+  "failedExpectations": [
+    {
+      "type": "file-source-text-occurrence",
+      "passed": false,
+      "detail": "Source-text relation requires this repeat's successful declared producer, dependent consumer and owned artifacts.",
+      "repairScope": "diagnostic-only",
+      "sourceTextEvidence": {
+        "runId": "run_mvbf51k6_f46824237e98",
+        "sourcePath": "site_monitor/work/sites.json",
+        "sourcePointer": "/sites/0/url",
+        "producerTaskId": "prepare.validate_sites",
+        "consumerTaskId": "monitor.scrape_sites",
+        "producerCompletionObserved": true,
+        "consumerStartObserved": true,
+        "producerStatus": "success",
+        "consumerStatus": "success",
+        "producerResultPresent": true,
+        "consumerResultPresent": true,
+        "capturedSourceSha256": "76b89f3fa90a029cd6e24a9010533d14ce3912ca513cf1981166e9ff192cb30b",
+        "capturedSourceBytes": 380,
+        "capturedTextSha256": "393bf2f42fbf925b45d2c2a31973d927b7eba0b9e5910eaa70c813cb5c72b79f",
+        "finalSourceSha256": null
+      },
+      "fileObservation": {
+        "path": ".tagma/site_monitor/reports/discrepancy-briefing.md",
+        "regularFile": true
+      }
+    }
+  ],
+  "normalVsRepeatSourceRelations": {
+    "positive-multisite": [
+      {
+        "consumerTaskId": "monitor.check_claims",
+        "path": "site_monitor/reports/discrepancy-briefing.md",
+        "present": true,
+        "producerTaskId": "prepare.validate_sites",
+        "sourcePath": "site_monitor/work/sites.json",
+        "sourcePointer": "/sites/0/url",
+        "type": "file-source-text-occurrence"
+      }
+    ],
+    "repeat-run": [
+      {
+        "consumerTaskId": "monitor.scrape_sites",
+        "path": "site_monitor/reports/discrepancy-briefing.md",
+        "present": true,
+        "producerTaskId": "prepare.validate_sites",
+        "sourcePath": "site_monitor/work/sites.json",
+        "sourcePointer": "/sites/0/url",
+        "type": "file-source-text-occurrence"
+      }
+    ]
+  },
+  "classification": "Generated repeat-plan consumer/path contradiction; runtime rejection is correct. Candidate fail-fast admission gap: compiled artifact owners were available before expensive Trial, but static ownership checks cover the normal core only. Confirm on independent Host/native tool fixtures before source repair.",
+  "limits": [
+    "No claim that CSR50 dependency resolution regressed: this plan names the wrong owning consumer, not an incorrectly resolved dependency.",
+    "Double-quoted shellquote source suspicion was disproved by successful validate_sites execution; do not repeat it as a product bug.",
+    "388.3s repeated scraper run succeeded; slow active model I/O is not a hang or timeout.",
+    "No budget refund, assertion omission, source relocation, extra critic call or promotion of failed results."
+  ]
+}

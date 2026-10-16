@@ -1,0 +1,51 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:
+974 |   ] as const) {
+975 |     const candidate = structuredClone(h.input);
+976 |     candidate.cases[1]!.expectations[3] = { ...relation, [field]: taskId };
+977 |     let rejected: (Error & { trialPlanDiagnostic?: { rejectionContext?: Record<string, unknown> } }) | undefined;
+978 |     try { h.inspect(candidate); } catch (error) { rejected = error as typeof rejected; }
+979 |     expect(rejected).toBeInstanceOf(Error);
+                           ^
+error: expect(received).toBeInstanceOf(expected)
+
+Expected constructor: [class Error]
+Received value: undefined
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:979:22)
+(fail) non-core source relations reject impossible owners in compiled Host preflight while normal messages stay stable [11.05ms]
+1031 | 
+1032 | test('non-core source relation Plugin preflight exposes bound plan-only correction before one normal commit', async () => {
+1033 |   const h = await auxiliaryGeneratedHarness();
+1034 |   let rejected: Error | undefined;
+1035 |   try { await h.call('validate'); } catch (error) { rejected = error as Error; }
+1036 |   expect(rejected).toBeInstanceOf(Error);
+                          ^
+error: expect(received).toBeInstanceOf(expected)
+
+Expected constructor: [class Error]
+Received value: undefined
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:1036:20)
+(fail) non-core source relation Plugin preflight exposes bound plan-only correction before one normal commit [37.20ms]
+1051 |   expect(readFileSync(h.yamlPath, 'utf8')).toBe(h.yaml);
+1052 | });
+1053 | 
+1054 | test('non-core source relation invalid Plugin commit still spends exactly one rejection and writes no plan', async () => {
+1055 |   const h = await auxiliaryGeneratedHarness();
+1056 |   await expect(h.call('commit')).rejects.toThrow('Non-core source-text relation');
+                                                ^
+error: 
+
+Expected promise that rejects
+Received promise that resolved: Promise { <resolved> }
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:1056:42)
+(fail) non-core source relation invalid Plugin commit still spends exactly one rejection and writes no plan [19.67ms]
+
+ 0 pass
+ 16 filtered out
+ 3 fail
+ 4 expect() calls
+Ran 3 tests across 1 file. [257.00ms]

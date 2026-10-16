@@ -942,6 +942,65 @@ export function createTrialResilienceRules() {
           },
         );
     }
+    // The normal core has stronger content/mapping checks above. Other cases must
+    // still name possible same-run owners before expensive execution can begin.
+    for (const testCase of plan.cases) {
+      if (testCase.id === normal.id) continue;
+      const caseExecuted = closure(testCase.targetTaskIds, tasks);
+      for (const [expectationIndex, expectation] of testCase.expectations.entries()) {
+        if (expectation.type !== 'file-source-text-occurrence') continue;
+        const failedConjunct =
+          expectation.producerTaskId === expectation.consumerTaskId
+            ? 'distinct_tasks'
+            : !known(expectation.producerTaskId)
+              ? 'known_producer'
+              : !known(expectation.consumerTaskId)
+                ? 'known_consumer'
+                : !caseExecuted.has(expectation.producerTaskId)
+                  ? 'executed_producer'
+                  : !caseExecuted.has(expectation.consumerTaskId)
+                    ? 'executed_consumer'
+                    : !closure(tasks[expectation.consumerTaskId]?.dependsOn ?? [], tasks).has(
+                          expectation.producerTaskId,
+                        )
+                      ? 'dependency_ancestor'
+                      : !(tasks[expectation.producerTaskId]?.artifactPaths ?? []).includes(
+                            expectation.sourcePath,
+                          )
+                        ? 'producer_artifact_ownership'
+                        : !(tasks[expectation.consumerTaskId]?.artifactPaths ?? []).includes(
+                              expectation.path,
+                            )
+                          ? 'consumer_artifact_ownership'
+                          : null;
+        if (!failedConjunct) continue;
+        const ownerPath = failedConjunct.includes('producer')
+          ? expectation.sourcePath
+          : expectation.path;
+        const owners = Object.keys(tasks).filter((id) =>
+          tasks[id]?.artifactPaths?.includes(ownerPath),
+        );
+        rejectCoreFeedback(
+          'Non-core source-text relation has inconsistent declared execution or artifact ownership.',
+          {
+            caseId: testCase.id,
+            expectationIndex,
+            expectationType: expectation.type,
+            producerTaskId: expectation.producerTaskId,
+            consumerTaskId: expectation.consumerTaskId,
+            path: expectation.path,
+            sourcePath: expectation.sourcePath,
+            sourcePointer: expectation.sourcePointer,
+            failedConjunct,
+            ownerTaskIds: owners.slice(0, 2),
+            ownerTaskCount: owners.length,
+            ...(owners.length > 2 ? { omittedOwnerTaskCount: owners.length - 2 } : {}),
+            repairHint:
+              'Correct this plan using declared owners and dependencies; do not relocate business outputs or edit YAML in this read-only step. If a required output genuinely lacks a declaration, use an evidenced blocking pipeline-artifact finding. Runtime source checks remain mandatory.',
+          },
+        );
+      }
+    }
   }
   function pointerValue(value: unknown, pointer: string): unknown {
     if (!pointer) return value;

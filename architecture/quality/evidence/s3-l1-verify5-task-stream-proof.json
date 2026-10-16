@@ -1,0 +1,480 @@
+{
+  "scope": "Actual executed-child stdout/stderr complete SHA256 proof; skipped tasks have no fabricated child streams",
+  "streams": [
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stdout",
+      "sha256": "eedadc7deac22db69e9a3279c32d1c52525283daaad6a687b728a49e3d37256d",
+      "complete": true,
+      "bytes": 139250,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "web_research.cross_check",
+      "stream": "stdout",
+      "sha256": "f5b93e09eca11b1297c713fe88267910d1e05bf7562ec211494f712c6a5b446c",
+      "complete": true,
+      "bytes": 229873,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "web_research.cross_check",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stdout",
+      "sha256": "0d4cea33a3a562ed0cf994d35707eb04535843e8e5835f912bf41f8bc91e72de",
+      "complete": true,
+      "bytes": 28757,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stdout",
+      "sha256": "1e1a9861f74d8a8407b46e8b7017ab73c4aa5e33f4d60bdde38793afb7f7cea8",
+      "complete": true,
+      "bytes": 59303,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbdp1hx_9a89f8f8e22f",
+      "runNumber": 1,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stdout",
+      "sha256": "c1cf500f311c1d1ac8d9e49f15cbfa00369024d9462eeeb133a44382fabfa922",
+      "complete": true,
+      "bytes": 132703,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "web_research.cross_check",
+      "stream": "stdout",
+      "sha256": "6f7a49d71490e5d294a979844a039011a4cb7c8dd5dd29de6aa5f2ec1294bf5d",
+      "complete": true,
+      "bytes": 174449,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "web_research.cross_check",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stdout",
+      "sha256": "0e7386acf05de06222e548738c0cbbc978e071c8bc38c1a4e7f5df99bb742206",
+      "complete": true,
+      "bytes": 51715,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stdout",
+      "sha256": "2f634af26621e43037f3ee1434f5ebc7a9052ace0b43179374cc5c0bc7eb759a",
+      "complete": true,
+      "bytes": 61198,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbds757_3a2d99915a83",
+      "runNumber": 1,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stdout",
+      "sha256": "74a602025a4698f97f11979feccadc7d06a3ad8e138b6d50159e6c165f5d3e9f",
+      "complete": true,
+      "bytes": 147850,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "web_research.cross_check",
+      "stream": "stdout",
+      "sha256": "1e3d1a0c7d9236713abeac78f5d63960f7b2bda6ac3362bd9f7adda0640f16bd",
+      "complete": true,
+      "bytes": 113368,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "web_research.cross_check",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stdout",
+      "sha256": "07cd510899d7e444e997dbdf182b0fc7e3fa920e26a45f0cbeb31ea2075b5e8f",
+      "complete": true,
+      "bytes": 26461,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stdout",
+      "sha256": "f066902b797a3cad10810045e080a0a8814bbf5e4a7f41990eb608678ba763f8",
+      "complete": true,
+      "bytes": 49889,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbdujvw_59eec223c860",
+      "runNumber": 2,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-config",
+      "runId": "run_mvbdwcyd_9fc8b18d16b4",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stdout",
+      "sha256": "d166f485360e4365236a6ba22923082cef7e281a7bb5926c2b51487ae9d417bb",
+      "complete": true,
+      "bytes": 17091,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-config",
+      "runId": "run_mvbdwcyd_9fc8b18d16b4",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "duplicate-urls",
+      "runId": "run_mvbdwo8d_43403c441bd0",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stdout",
+      "sha256": "a8555ab68e148589eb0f6db2a402850b03562e940a7842a4ff4b2e159be92036",
+      "complete": true,
+      "bytes": 16724,
+      "redacted": false
+    },
+    {
+      "caseId": "duplicate-urls",
+      "runId": "run_mvbdwo8d_43403c441bd0",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "special-characters",
+      "runId": "run_mvbdwxdv_1ba15637482c",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stdout",
+      "sha256": "0f4e8f327eb3978682cb711efe88d7b14f713fea9f6a1215b69e1ecd680a6b5f",
+      "complete": true,
+      "bytes": 15645,
+      "redacted": false
+    },
+    {
+      "caseId": "special-characters",
+      "runId": "run_mvbdwxdv_1ba15637482c",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stdout",
+      "sha256": "ec0587734d4c8428016cacd7490319435f126c1ac43c1f18717f541a7d8dc3bb",
+      "complete": true,
+      "bytes": 19895,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "web_research.scrape_targets",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "web_research.cross_check",
+      "stream": "stdout",
+      "sha256": "9542a910fdc6498abe6f6880a66c636e425d1892547f2747215c8b1a182eac4d",
+      "complete": true,
+      "bytes": 9278,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "web_research.cross_check",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stdout",
+      "sha256": "4ca2885ce0ba8160dc8c957e66d68ae66e2aabf6d1f671d37224b2611448ec79",
+      "complete": true,
+      "bytes": 10804,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "local_analysis.extract_bold_claims",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stdout",
+      "sha256": "53b7bb22a99da58e182f7f754086503299374cf3f4fb97b43d025560226092fa",
+      "complete": true,
+      "bytes": 9849,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-result",
+      "runId": "run_mvbdx64e_1a70252b4493",
+      "runNumber": 1,
+      "taskId": "local_analysis.alert_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    }
+  ],
+  "unavailable": [],
+  "cases": [
+    {
+      "id": "positive-core",
+      "success": true,
+      "runIds": [
+        "run_mvbdp1hx_9a89f8f8e22f"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "repeat-run",
+      "success": true,
+      "runIds": [
+        "run_mvbds757_3a2d99915a83",
+        "run_mvbdujvw_59eec223c860"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "empty-config",
+      "success": true,
+      "runIds": [
+        "run_mvbdwcyd_9fc8b18d16b4"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "duplicate-urls",
+      "success": true,
+      "runIds": [
+        "run_mvbdwo8d_43403c441bd0"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "special-characters",
+      "success": true,
+      "runIds": [
+        "run_mvbdwxdv_1ba15637482c"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "empty-result",
+      "success": true,
+      "runIds": [
+        "run_mvbdx64e_1a70252b4493"
+      ],
+      "executionSource": "current-trial"
+    }
+  ],
+  "taskStatusCounts": {
+    "success": 18,
+    "failedExpectedInvalidConfig": 1,
+    "skipped": 9
+  }
+}

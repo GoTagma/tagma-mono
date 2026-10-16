@@ -1,0 +1,108 @@
+{
+  "case": "S3-L1",
+  "attempt": "s3-l1-verify5",
+  "accepted": true,
+  "acceptedCases": 7,
+  "totalCases": 12,
+  "originalBusinessRequests": 1,
+  "hostActionClarifications": 0,
+  "automaticRepairsWithinSameRound": true,
+  "editorRestarted": true,
+  "freshWorkspace": true,
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-flash",
+    "variant": "low"
+  },
+  "sourceRevision": "53002e063871f07cfac8068605bdfb025b8948d2",
+  "sourceCiRun": 38955341367,
+  "sourceCiAllRequiredSuccess": true,
+  "currentSourceGuardedIssues": 50,
+  "actualSelectedRegressionExecutions": 278,
+  "fullLocalGatesPassed": 13,
+  "operationId": "operation-18a2e81f-5c6e-42df-878d-cc106cdbe53f",
+  "stageId": "d2fb500e-375f-4dc1-a796-5525ab5b44bf",
+  "trialId": "trial-54fc4d792d7479e743c46174eefbd64f3be4a645",
+  "yamlHash": "9787d0190d6bae2276390a10b355a911cc7b9179",
+  "planHash": "f3fa12cbdbbbf23a40b46b74a8e461d3c2cb275b4945edb0e3ae25920187400b",
+  "terminalOutcome": "completed_published",
+  "actualCases": 6,
+  "actualPipelineRuns": 7,
+  "taskStatusCounts": {
+    "success": 18,
+    "failedExpectedInvalidConfig": 1,
+    "skipped": 9
+  },
+  "completeActualChildStreams": 38,
+  "nativeIndependentReviewerCalls": 1,
+  "reviewedProducedTargets": 4,
+  "reviewSnapshotArtifactsIncludingInput": 5,
+  "rawEvidenceCounts": [
+    1,
+    1,
+    2,
+    2
+  ],
+  "normalClaimCounts": [
+    13,
+    14,
+    8
+  ],
+  "normalVerdicts": [
+    {
+      "consistent": 12,
+      "discrepancy": 1
+    },
+    {
+      "consistent": 12,
+      "discrepancy": 2
+    },
+    {
+      "consistent": 7,
+      "discrepancy": 1
+    }
+  ],
+  "nativeWebfetchCalls": 10,
+  "nativeWebsearchCalls": 36,
+  "actualWebsearch429Errors": 6,
+  "allCitedUrlsInRespectiveRunSuccessfulSearchOutputs": [
+    20,
+    17,
+    17
+  ],
+  "uniqueCitedUrls": 32,
+  "independentCitationHttpCounts": {
+    "200": 24,
+    "403": 8
+  },
+  "publishedFiles": 6,
+  "artifactSetHash": "a67c8ece0110df0e80ce53b59d3568a39e76770b1747eebe7a34f3d4c10ef34e",
+  "allPublishedBytesMatchSeal": true,
+  "actualTrialReportExportSha256": "c45480b9f1fc78d8b69f969c14abda51574b18b79e52189b14f1d2cf9362c238",
+  "architecture": {
+    "actor": "4 native OpenCode Prompt tasks; no model subprocess wrapper or shell tool usage observed",
+    "cron": "0 8 * * 1-5",
+    "scheduleTaskTimeout": "4d",
+    "pipelineTimeout": "7d",
+    "dependencies": "Explicit qualified cross-track chain; bare reference branch guarded by different real SDK cases/all3 OS, not claimed live replayed here",
+    "manualRunScope": "Native schedule is a run-scoped gate; manual Run starts a run that waits for the tick. No immediate bypass or recurring launcher claim; no real-workspace manual Run required by acceptance."
+  },
+  "failureBehavior": {
+    "mixedSuccessAndFailedUrlContinuesThroughFullChain": true,
+    "emptyCollectionsAndReadableReport": true,
+    "invalidConfigurationFailsAndSkipsDependents": true,
+    "duplicateAndEncodedUrlIdentityPreserved": true
+  },
+  "limits": [
+    "The mixed invalid target artifact says dns failure/http_status:null, while native tool returnedHTTP403. This is an imprecise generated error label; only unreachable-target/error continuation is proven, not a DNS-specific failure.",
+    "Six actual search429 errors were followed by successful queries with cited evidence; do not claim all queries succeeded or an injected total-search-outage recovery.",
+    "Eight independent citation GETs returned403; 4 reads bounded at512KiB. Actual search results still contain every cited URL.",
+    "JSON write input is compact and actual files are formatted; typed decoded data equal, original hashes retained separately. Only Markdown write bytes are identical.",
+    "Prior verify3 remains sealed-but-rejected, verify4 remains failed-before-critic. Historical archive import gaps remain RED."
+  ],
+  "issueFixesGuardedBeforeFreshRetest": [
+    "CSR-0049",
+    "CSR-0050"
+  ],
+  "newProductFaultConfirmed": false
+}

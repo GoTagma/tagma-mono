@@ -1,0 +1,353 @@
+{
+  "scope": "Independent bounded GETs of actual cited URLs; 403 is an access limitation, not fabricated HTTP200. Body files remain private; a 512KiB prefix hash is not a complete-body hash.",
+  "counts": {
+    "200": 24,
+    "403": 8
+  },
+  "sources": [
+    {
+      "url": "http://www.gabormelli.com/RKB/World_Population_Statistic",
+      "legacyHttpCitation": true,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "http://www.gabormelli.com/RKB/World_Population_Statistic",
+      "bytesRead": 23223,
+      "boundedAt512KiB": false,
+      "sha256": "30de59587ba0a6e8393e014cdb0e1b066cf1aad6548934185855a3da5d5fccf1",
+      "title": "World Population Statistic - GM-RKB"
+    },
+    {
+      "url": "https://apnews.com/article/world-population-8-billion-acc94296d8aeb06e64daff9e597e0214",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8",
+      "finalUrl": "https://apnews.com/article/world-population-8-billion-acc94296d8aeb06e64daff9e597e0214",
+      "bytesRead": 524288,
+      "boundedAt512KiB": true,
+      "sha256": "9e93f36737ab7fb4823698106b33a35cf79d5b96b7a691581ec8db692aeb97b6",
+      "title": "World Population hits 8 billion, creating many challenges | AP News"
+    },
+    {
+      "url": "https://courses.cs.vt.edu/cs3214/fall2025/lecturenotes/http.pdf",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "application/pdf",
+      "finalUrl": "https://courses.cs.vt.edu/cs3214/fall2025/lecturenotes/http.pdf",
+      "bytesRead": 524288,
+      "boundedAt512KiB": true,
+      "sha256": "38163aa5f14f490001208e23fcbe64516a7bf7ab220f0516896ab741dc15e29a",
+      "title": null
+    },
+    {
+      "url": "https://database.earth/population/deaths/2100",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://database.earth/population/median-age",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://database.earth/population/median-age/2026",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://database.earth/population/world/deaths",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html",
+      "finalUrl": "https://database.earth/population/world/deaths",
+      "bytesRead": 61747,
+      "boundedAt512KiB": false,
+      "sha256": "831265f935d902b0da55ecefe92f956510ce1519712d2517a5bf82d8071d85b3",
+      "title": "Deaths in World 1950-2026 & Future Projections | database.earth"
+    },
+    {
+      "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Evolution_of_HTTP",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html",
+      "finalUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Evolution_of_HTTP",
+      "bytesRead": 229901,
+      "boundedAt512KiB": false,
+      "sha256": "7431149b3e8dfcef3ed22c71c44ee6d965f45ca253fccd24d517c7babd95d826",
+      "title": "Evolution of HTTP - HTTP | MDN"
+    },
+    {
+      "url": "https://geofactbook.com/countries/world/median-age-of-population",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "finalUrl": "https://geofactbook.com/countries/world/median-age-of-population",
+      "bytesRead": 119401,
+      "boundedAt512KiB": false,
+      "sha256": "5dddafe49203621318039a63a53eb999d105cd65fdd996485c51dae032075040",
+      "title": "World Median age of population 2026: 31.13 years | Geo Factbook"
+    },
+    {
+      "url": "https://jeremyklammer.com/2024/10/24/global-population-an-exponential-surge/",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://jeremyklammer.com/2024/10/24/global-population-an-exponential-surge/",
+      "bytesRead": 154618,
+      "boundedAt512KiB": false,
+      "sha256": "e6c682e3e9d975a80ce96dda8734323c3d84ef703ffb6f2a07717d1f58bfdecd",
+      "title": "Global Population: An Exponential Surge &#8211; Klammer Lab"
+    },
+    {
+      "url": "https://mahb.stanford.edu/library-item/earth-now-has-8-billion-people-and-counting-where-do-we-go-from-here/",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://mahb.stanford.edu/library-item/earth-now-has-8-billion-people-and-counting-where-do-we-go-from-here/",
+      "bytesRead": 128865,
+      "boundedAt512KiB": false,
+      "sha256": "f6405cbec087cef1e51c9ed76c279b22855891b0a2086db29971e803122fc123",
+      "title": "Earth now has 8 billion people—and counting. Where do we go from here? - MAHB"
+    },
+    {
+      "url": "https://measuredworld.com/categories/population/median-age",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "finalUrl": "https://measuredworld.com/categories/population/median-age",
+      "bytesRead": 524288,
+      "boundedAt512KiB": true,
+      "sha256": "1d8ca3abbc6ddf0849feafe2c7ea000dbfe072e678b2bf7930080cc3485bb421",
+      "title": "Median age by Country (2026) | Measured World"
+    },
+    {
+      "url": "https://ourworldindata.org/births-and-deaths",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "finalUrl": "https://ourworldindata.org/births-and-deaths",
+      "bytesRead": 53163,
+      "boundedAt512KiB": false,
+      "sha256": "fece7d7bfd4ec73933a681924e3bfb2a67ffe9a50103736a2ce4ca4dbadd1a44",
+      "title": "How many people die and how many are born each year? | Our World in Data"
+    },
+    {
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8393076/",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "finalUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8393076/",
+      "bytesRead": 21309,
+      "boundedAt512KiB": false,
+      "sha256": "c0ddb0b79f3cec793fde4e2361837687fba9e95f2a573d27b2bb9c75153969bf",
+      "title": "Checking your browser - reCAPTCHA"
+    },
+    {
+      "url": "https://populartimelines.com/timeline/World-population/full",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://populartimelines.com/timeline/World-population/full",
+      "bytesRead": 368326,
+      "boundedAt512KiB": false,
+      "sha256": "f5507ba921804a22cfaf8ee94c5c26e357786ca7b53a1b513d4f16e8a96feffc",
+      "title": "Full History Of World population In Timeline From 1900 - Popular Timelines"
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/12286464/",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "finalUrl": "https://pubmed.ncbi.nlm.nih.gov/12286464/",
+      "bytesRead": 120288,
+      "boundedAt512KiB": false,
+      "sha256": "d1e17d29c0d2b0594bd8c9649e734a8c632dd87b40464ab0d516a2fff3e93089",
+      "title": "World population growth rate: why declines stalled in the 1980s - PubMed"
+    },
+    {
+      "url": "https://statisticstimes.com/demographics/world-death-and-birth-rate.php",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://statisticstimes.com/demographics/world-death-and-birth-rate.php",
+      "bytesRead": 59243,
+      "boundedAt512KiB": false,
+      "sha256": "6e810867a765aa22728a13ba09359fc9cc746d215701cf3dd564adea5c1845a0",
+      "title": "World death and birth rate 2026 - StatisticsTimes.com"
+    },
+    {
+      "url": "https://statisticstimes.com/demographics/world-population.php",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://statisticstimes.com/demographics/world-population.php",
+      "bytesRead": 44395,
+      "boundedAt512KiB": false,
+      "sha256": "1076df9e4680e0acfa70160778a252f586282e7816a76ad65d18832020fef0c6",
+      "title": "World population 2026 - StatisticsTimes.com"
+    },
+    {
+      "url": "https://www.jircas.go.jp/en/program/proc/blog/20260714",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://www.jircas.go.jp/en/program/proc/blog/20260714",
+      "bytesRead": 40692,
+      "boundedAt512KiB": false,
+      "sha256": "e524ba38261edccb2c5a950025d9f94a021312f5f39b54a4463e9c1d9b61d255",
+      "title": "1538. The Changing Global Population Landscape | Japan International Research Center for Agricultural Sciences | JIRCAS"
+    },
+    {
+      "url": "https://www.johnstonsarchive.net/other/worldpop.html",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html",
+      "finalUrl": "https://www.johnstonsarchive.net/other/worldpop.html",
+      "bytesRead": 79532,
+      "boundedAt512KiB": false,
+      "sha256": "3cde2ab13d1e12e48268fba673484dd4bbb8343254c6cad17cf17dc485bd5b57",
+      "title": "Historical world population data"
+    },
+    {
+      "url": "https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2022-11-1/NET-2022-11-1_11.pdf",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "application/pdf",
+      "finalUrl": "https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2022-11-1/NET-2022-11-1_11.pdf",
+      "bytesRead": 188852,
+      "boundedAt512KiB": false,
+      "sha256": "9ebcc3e1902c48ad1241892f7bcba8fae6e13245f3f2dfc5814d4f4d54998e79",
+      "title": null
+    },
+    {
+      "url": "https://www.studycountry.com/wiki/why-did-the-population-drop-in-1350",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://www.studycountry.com/wiki/why-did-the-population-drop-in-1350",
+      "bytesRead": 345595,
+      "boundedAt512KiB": false,
+      "sha256": "62882d3ba7bdc2d67a7d3fe1d9f8ddcdc9ce1650b51f47edc1eb68df673f9741",
+      "title": "Why did the population drop in 1350?"
+    },
+    {
+      "url": "https://www.theworldcounts.com/humanity/populations/world-population",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "finalUrl": "https://www.theworldcounts.com/humanity/populations/world-population",
+      "bytesRead": 64173,
+      "boundedAt512KiB": false,
+      "sha256": "0cff66fe1913b0c24fadf3d74f41b00f938b22c944d2f9e71105485368b7a858",
+      "title": "What Is the World Population Right Now?"
+    },
+    {
+      "url": "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2022_global_population_growth.pdf",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/undesa_pd_2025_wfr_2024_final.pdf",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/wpp2022_summary_of_results.pdf",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://www.un.org/en/dayof8billion",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://www.un.org/en/desa/world-population-reach-8-billion-15-november-2022",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 403,
+      "failureCategory": "HTTP-response"
+    },
+    {
+      "url": "https://www.unfpa.org/press/world-set-reach-8-billion-people-15-november-2022",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "finalUrl": "https://www.unfpa.org/press/world-set-reach-8-billion-people-15-november-2022",
+      "bytesRead": 141199,
+      "boundedAt512KiB": false,
+      "sha256": "41df58352f497a69382bcb32bbae28d7e023e5a6e71192b1125a7bcd3449f613",
+      "title": "World set to reach 8 billion people on 15 November 2022 | United Nations Population Fund"
+    },
+    {
+      "url": "https://www.w3.org/Protocols/History.html",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html; charset=iso-8859-1",
+      "finalUrl": "https://www.w3.org/Protocols/History.html",
+      "bytesRead": 19575,
+      "boundedAt512KiB": false,
+      "sha256": "85a92b86bca7cd4daa19a51c9f3fc9afa6a48346528d8ba90d27e250540dd205",
+      "title": "Change History for HTTP"
+    },
+    {
+      "url": "https://www.worldometers.info/demographics/world-demographics/",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html",
+      "finalUrl": "https://www.worldometers.info/demographics/world-demographics/",
+      "bytesRead": 117510,
+      "boundedAt512KiB": false,
+      "sha256": "0b8546c01242a4446ce2cc81697d5297c50fa9e04148ee4536fd224021f97fc3",
+      "title": "World Demographics 2026 (Population, Age, Sex, Trends) - Worldometer"
+    },
+    {
+      "url": "https://www.worldometers.info/world-population/",
+      "legacyHttpCitation": false,
+      "scope": "independent read-only public citation check, not a business request/model call",
+      "status": 200,
+      "contentType": "text/html",
+      "finalUrl": "https://www.worldometers.info/world-population/",
+      "bytesRead": 524288,
+      "boundedAt512KiB": true,
+      "sha256": "b8b9de40b8485da97c2c6fef817af9122c772f61f7953b063e3c3ff68ae65847",
+      "title": "World Population Clock: 8.3 Billion People (LIVE, 2026) - Worldometer"
+    }
+  ]
+}

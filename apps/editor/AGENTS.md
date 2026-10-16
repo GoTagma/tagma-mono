@@ -2399,3 +2399,9 @@
   Derive the index from actual result states; do not prefix every bare reference locally or
   assume trackConfig.tasks is populated in partial result adapters. Ambiguous/missing/cyclic
   references confer no relation; keep owner, observation timing, source hashes and text checks.
+
+- A valid frozen normal core does not authorize contradictory source relations in repeat or edge
+  cases. Preflight their selected closure, declared source/consumer artifact owners and dependency
+  before committing; return bound case/index/owner coordinates for plan-only corrections. Keep
+  old normal-core errors, independent-content requirements and actual same-run runtime checks.
+  Ordinary non-core present:false relations need no invented normal-core generated-input map.
