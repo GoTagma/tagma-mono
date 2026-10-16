@@ -2326,3 +2326,25 @@
   equivalent-case reuse. Only independently evidenced content failure grants existing bounded
   artifact repair; availability/unknown outcomes remain diagnostic. Never present model judgment
   or synthetic native tests as actual business acceptance or deterministic external truth.
+
+## Core Feedback Coordinates And Native Review Readiness
+
+- Missing declared artifact content, generated-input map/provenance and semantic ownership errors
+  must retain the original leading message and rejection fingerprint while identifying the bounded
+  task/path/index or exact failed conjunct. Native tool feedback binds current attempt, YAML, intent
+  and candidate plan hashes within2048 bytes; mark omitted fields explicitly. Mapping-only errors
+  correct the plan. A genuine observable-artifact/declaration gap uses blocked core plus a blocking
+  pipeline-artifact finding. Never guess bytes, seed outputs, relabel content, expand planner slots
+  or promote a blocked/stale plan after repair.
+- In native semantic smoke tests, a serve banner is not workspace/database/tool-registry readiness.
+  Complete bounded metadata GET readiness before the fixed90s evaluator deadline, with zero
+  provider calls during preparation. Keep exact2 provider calls for2 isolated evaluations, zero
+  tools/history and the frozen variant. On failure record content-free HTTP phase facts, not auth
+  or prompt bodies. Actual Windows/macOS/Linux CI remains required.
+- Finish build:types and full build qualification before starting a live acceptance editor. Those
+  commands clean dist files and can make Vite reload an empty page during the transient gap.
+
+- Run historical/current regression selectors after dist-clearing build/type qualification finishes,
+  never concurrently with verify:full, build:types or check:client. Their workspace imports can
+  otherwise fail during the transient missing-dist interval without executing a selected test.
+  Treat that receipt as failed environment qualification and rerun serially after builds finish.

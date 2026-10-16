@@ -327,6 +327,48 @@
       "path": "architecture/quality/evidence/verify10-s1-l1-acceptance.json",
       "sha256": "1dd1f81acb028d1c69748a99a10bcfd4c6a80f33dfa4206f907ba29e0e902908",
       "role": "live-original-round-S1-L1-passed-not-full-matrix"
+    },
+    {
+      "id": "s1-l2-live-core-feedback-first-observation",
+      "path": "architecture/quality/evidence/s1-l2-verify3-feedback-first-observation.json",
+      "sha256": "89767ea8d9a73c77904f088c7cf272ce6e946f8c9b008554fc3b28dc9d6f06fe",
+      "role": "immutable-first-live-blocking-failure"
+    },
+    {
+      "id": "s1-l2-shared-core-feedback-red",
+      "path": "architecture/quality/evidence/s1-l2-core-feedback-first-red.txt",
+      "sha256": "92ab5b3a8c2caf716a5750f7b11b58f6a6e2bf1334c533ca08fea0e7770ab2b1",
+      "role": "immutable-first-shared-diagnostic-red"
+    },
+    {
+      "id": "s1-l2-core-map-feedback-red",
+      "path": "architecture/quality/evidence/s1-l2-core-map-feedback-first-red.txt",
+      "sha256": "9a6bae7fee89a57a3b25c7914bfb8456f1937a92d291263a371cb8a905d08a98",
+      "role": "immutable-map-diagnostic-red"
+    },
+    {
+      "id": "s1-l2-actual-boundary-feedback-red",
+      "path": "architecture/quality/evidence/s1-l2-actual-boundary-feedback-first-red.txt",
+      "sha256": "7d0b68d6cc3ee5ed297e8b60225529b334e88fbb4915c5308e4ac361d58fbc24",
+      "role": "immutable-real-Plugin-Zod-bound-diagnostic-red"
+    },
+    {
+      "id": "s1-l2-related-core-feedback-green",
+      "path": "architecture/quality/evidence/s1-l2-feedback-related-green.txt",
+      "sha256": "ea324096591803e00cb3861d60074db56a3acd5fd84880717dcea90767e505dd",
+      "role": "related47-tests415-assertions-green-not-live-pass"
+    },
+    {
+      "id": "semantic-review-Windows-native-deadline-red",
+      "path": "architecture/quality/evidence/semantic-review-windows-native-deadline-first-observation.json",
+      "sha256": "a48c0b0493b0ce7acf4bc19fc6720437f17bd84bd44416e579bac9fd8f7580f3",
+      "role": "actual-Windows-CI-pre-provider-deadline-failure"
+    },
+    {
+      "id": "semantic-review-native-readiness-Linux-green",
+      "path": "architecture/quality/evidence/semantic-review-native-metadata-readiness-linux-green.txt",
+      "sha256": "87c823e4686ab40673888c4845cc8561665622b913139254308f80205f6bb3d6",
+      "role": "actual-Linux-native-metadata-preparation-green-not-Windows-proof"
     }
   ],
   "issues": [
@@ -6400,9 +6442,21 @@
           "evidencePath": "architecture/quality/evidence/verify10-s1-l1-acceptance.json",
           "evidenceSha256": "1dd1f81acb028d1c69748a99a10bcfd4c6a80f33dfa4206f907ba29e0e902908",
           "liveAcceptance": true
+        },
+        {
+          "kind": "actual-Windows-CI-pre-provider-deadline-failure",
+          "evidencePath": "architecture/quality/evidence/semantic-review-windows-native-deadline-first-observation.json",
+          "evidenceSha256": "a48c0b0493b0ce7acf4bc19fc6720437f17bd84bd44416e579bac9fd8f7580f3",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "actual-Linux-native-metadata-preparation-green-not-Windows-proof",
+          "evidencePath": "architecture/quality/evidence/semantic-review-native-metadata-readiness-linux-green.txt",
+          "evidenceSha256": "87c823e4686ab40673888c4845cc8561665622b913139254308f80205f6bb3d6",
+          "liveAcceptance": false
         }
       ],
-      "status": "native-all-OS-CI-and-live-S1-L1-guarded-other-cases-not-adjudicated",
+      "status": "live-S1-L1-passed-latest-Windows-native-readiness-CI-pending",
       "fixes": [
         {
           "path": "apps/editor/server/chat-trial-semantic-review.ts",
@@ -6413,6 +6467,12 @@
         {
           "path": "apps/editor/server/opencode-trial-semantic-review.ts",
           "kind": "fresh-tool-free-fixed-title-native-session-no-auxiliary-calls",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/tests/opencode-trial-semantic-review-native.test.ts",
+          "kind": "real-metadata-readiness-before-fixed-evaluator-clock-with-content-free-HTTP-facts",
           "localRegressionVerified": true,
           "liveAcceptance": false
         }
@@ -6636,7 +6696,19 @@
           "expectedTests": 1
         }
       ],
-      "realTestSelectors": [],
+      "realTestSelectors": [
+        {
+          "kind": "mandatory-native-CI",
+          "workflow": ".github/workflows/ci.yml",
+          "job": "managed-opencode-runtime matrix Windows/macOS/Linux",
+          "file": "apps/editor/tests/opencode-trial-semantic-review-native.test.ts",
+          "name": "native content reviewer has no tools or inherited history and preserves the frozen variant",
+          "environment": {
+            "TAGMA_OPENCODE_NATIVE_SMOKE": "1"
+          },
+          "claimLimit": "Not part of default credential-free current-source selector execution; inspect exact-main native jobs separately."
+        }
+      ],
       "lastExecution": {
         "kind": "live-original-round-S1-L1-with-actual-semantic-review-and-sealed-publication",
         "evidencePath": "architecture/quality/evidence/verify10-s1-l1-acceptance.json",
@@ -6644,7 +6716,134 @@
         "liveAcceptance": true
       },
       "contract": "New explicit artifact-semantic-review only for owning positive core content. Actual successful execution first, exact frozen model/intent, single tool-free separate call per repeat, bounded immutable artifacts and literal evidence; fail closed on uncertainty/unavailability/mutation. Every repeat must carry exact signed semantic receipts into publication; no equivalent-case reuse or hidden title calls. Preserve source relations, JSON checks, finite author repair and first-owner retained authority.",
-      "claimLimit": "One original S1-L1 round passed in verify10 with actual semantic review and sealed publication; prior failed attempts retained. Not full matrix or historical GREEN. Independent assessment remains fallible and public citation access limits are recorded."
+      "claimLimit": "Original S1-L1 passed with actual semantic review and sealed publication; no full matrix/historical GREEN. Latest69d8e27d Windows native fixture timed out before any fake provider request; metadata-readiness repair passes actualLinux, actualWindows qualification still required. Production90s budget and exact2calls/2reviews unchanged."
+    },
+    {
+      "id": "CSR-0042",
+      "lineage": [
+        "CSR-0013",
+        "CSR-0014",
+        "CSR-0025",
+        "CSR-0026",
+        "CSR-0029",
+        "CSR-0037",
+        "CSR-0038",
+        "CSR-0041"
+      ],
+      "title": "Core artifact and generated-input rejection feedback must identify the failed coordinate and conjunct",
+      "category": "product-guidance-delivery",
+      "mechanism": "bound-core-artifact-provenance-feedback-coordinates",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s1-l2-live-core-feedback-first-observation",
+        "path": "architecture/quality/evidence/s1-l2-verify3-feedback-first-observation.json",
+        "sha256": "89767ea8d9a73c77904f088c7cf272ce6e946f8c9b008554fc3b28dc9d6f06fe",
+        "sourceRevision": "69d8e27daac6f29158cf74699a03cd31dd3775df",
+        "role": "immutable-first-live-blocking-failure",
+        "round": "S1-L2-verify3-original-round-1",
+        "acceptancePolicy": "Missing feedback is the repaired mechanism. Stale blocked plan and exhausted original frozen planner slots remain valid rejection fences. Preserve acceptance predicates; new restarted workspace must pass original S1-L2 before unlocking further cases."
+      },
+      "history": [
+        {
+          "kind": "immutable-first-live-blocking-failure",
+          "evidencePath": "architecture/quality/evidence/s1-l2-verify3-feedback-first-observation.json",
+          "evidenceSha256": "89767ea8d9a73c77904f088c7cf272ce6e946f8c9b008554fc3b28dc9d6f06fe",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-first-shared-diagnostic-red",
+          "evidencePath": "architecture/quality/evidence/s1-l2-core-feedback-first-red.txt",
+          "evidenceSha256": "92ab5b3a8c2caf716a5750f7b11b58f6a6e2bf1334c533ca08fea0e7770ab2b1",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-map-diagnostic-red",
+          "evidencePath": "architecture/quality/evidence/s1-l2-core-map-feedback-first-red.txt",
+          "evidenceSha256": "9a6bae7fee89a57a3b25c7914bfb8456f1937a92d291263a371cb8a905d08a98",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-real-Plugin-Zod-bound-diagnostic-red",
+          "evidencePath": "architecture/quality/evidence/s1-l2-actual-boundary-feedback-first-red.txt",
+          "evidenceSha256": "7d0b68d6cc3ee5ed297e8b60225529b334e88fbb4915c5308e4ac361d58fbc24",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "related47-tests415-assertions-green-not-live-pass",
+          "evidencePath": "architecture/quality/evidence/s1-l2-feedback-related-green.txt",
+          "evidenceSha256": "ea324096591803e00cb3861d60074db56a3acd5fd84880717dcea90767e505dd",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "shared-and-generated-boundary-guarded-fresh-live-retest-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+          "kind": "missing-artifact-semantic-owner-and-generated-provenance-coordinates",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+          "kind": "bounded-current-input-context-with-explicit-new-field-omissions",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-feedback-coordinates.test.ts",
+          "fullName": "missing declared artifact feedback identifies its owner and missing path without changing the guard",
+          "namePattern": "^missing declared artifact feedback identifies its owner and missing path without changing the guard$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-feedback-coordinates.test.ts",
+          "fullName": "semantic ownership feedback binds the rejected target and actual declared owner",
+          "namePattern": "^semantic ownership feedback binds the rejected target and actual declared owner$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-feedback-coordinates.test.ts",
+          "fullName": "generated input feedback names the exact failed provenance conjunct while valid mappings still pass",
+          "namePattern": "^generated input feedback names the exact failed provenance conjunct while valid mappings still pass$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-core-feedback-coordinates.test.ts",
+          "fullName": "generated input map feedback names the unmatched path without requesting a YAML edit",
+          "namePattern": "^generated input map feedback names the unmatched path without requesting a YAML edit$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "generated core feedback binds missing artifact coordinates without changing counted rejection fingerprints",
+          "namePattern": "^generated core feedback binds missing artifact coordinates without changing counted rejection fingerprints$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "wide semantic ownership coordinates retain bound identities and explicit omissions within 2048 bytes",
+          "namePattern": "^wide semantic ownership coordinates retain bound identities and explicit omissions within 2048 bytes$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "related47-tests415-assertions-green-not-live-pass",
+        "evidencePath": "architecture/quality/evidence/s1-l2-feedback-related-green.txt",
+        "evidenceSha256": "ea324096591803e00cb3861d60074db56a3acd5fd84880717dcea90767e505dd",
+        "liveAcceptance": false
+      },
+      "contract": "Keep exact original error messages, rejection fingerprints, schema/ownership/generated-source predicates and frozen budgets. Bound normal case, missing artifact, role/index, actual owners or failed generated-input conjunct into native error feedback with exact attempt/YAML/intent/candidate binding and <=2048 bytes, explicitly marking omissions. Correct plan-only errors without artifact authority; genuine missing observable declarations require blocked core plus an evidenced pipeline-artifact finding.",
+      "claimLimit": "Diagnostics and unchanged guard tests pass; not a promise of model convergence or a passed S1-L2. No stale/blocked plan promotion, budget refund, invented fixed oracle or prior-issue weakening."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

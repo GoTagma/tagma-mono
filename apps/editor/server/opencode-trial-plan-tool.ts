@@ -1556,7 +1556,7 @@ function assertExecutableTrialPlan(input, plan, countedAttempt) {
           const contextLimitBytes = 2048;
           let encodedContext = JSON.stringify(boundContext);
           if (Buffer.byteLength(encodedContext, 'utf8') > contextLimitBytes) {
-            const omittedFields = ['path', 'sourcePath', 'sourcePointer', 'producerRoleExpectationIndices']
+            const omittedFields = ['path', 'sourcePath', 'sourcePointer', 'producerRoleExpectationIndices', 'roleExpectationIndices', 'ownerTaskIds', 'mappedRoleTaskIds']
               .filter((key) => Object.hasOwn(boundContext, key));
             boundContext = { ...boundContext, omittedFields };
             for (const key of omittedFields) delete boundContext[key];

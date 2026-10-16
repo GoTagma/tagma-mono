@@ -1,0 +1,38 @@
+##[group]Run bun test tests/opencode-trial-semantic-review-native.test.ts --timeout 360000
+2026-10-16T12:54:46.8059188Z [36;1mbun test tests/opencode-trial-semantic-review-native.test.ts --timeout 360000[0m
+2026-10-16T12:54:46.8119606Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-16T12:54:46.8120061Z env:
+2026-10-16T12:54:46.8120590Z   TAGMA_OPENCODE_NATIVE_SMOKE: 1
+2026-10-16T12:54:46.8120885Z ##[endgroup]
+2026-10-16T12:54:47.0461220Z bun test v1.3.14 (0d9b296a)
+2026-10-16T12:54:47.0723979Z 
+2026-10-16T12:54:47.0724928Z ##[group]tests\opencode-trial-semantic-review-native.test.ts:
+2026-10-16T12:56:20.7273490Z []
+2026-10-16T12:56:23.4046874Z 233 |                 two: JSON.stringify(body.messages).includes('Provisional observation TWO'),
+2026-10-16T12:56:23.4047665Z 234 |                 roles: body.messages?.map((message) => message.role),
+2026-10-16T12:56:23.4048501Z 235 |               })),
+2026-10-16T12:56:23.4049162Z 236 |             ),
+2026-10-16T12:56:23.4049551Z 237 |           );
+2026-10-16T12:56:23.4050100Z 238 |         expect(result.detail).toBe('Independent model content review passed.');
+2026-10-16T12:56:23.4050743Z                                     ^
+2026-10-16T12:56:23.4051213Z error: expect(received).toBe(expected)
+2026-10-16T12:56:23.4051532Z 
+2026-10-16T12:56:23.4051744Z Expected: "Independent model content review passed."
+2026-10-16T12:56:23.4052447Z Received: "Independent semantic review unavailable: reviewer_deadline."
+2026-10-16T12:56:23.4052898Z 
+2026-10-16T12:56:23.4053446Z       at <anonymous> (D:\a\tagma-mono\tagma-mono\apps\editor\tests\opencode-trial-semantic-review-native.test.ts:238:31)
+2026-10-16T12:56:23.4054157Z 
+2026-10-16T12:56:23.4078901Z ##[error]Expected: "Independent model content review passed."
+Received: "Independent semantic review unavailable: reviewer_deadline."
+
+      at <anonymous> (D:\a\tagma-mono\tagma-mono\apps\editor\tests\opencode-trial-semantic-review-native.test.ts:238:31)
+2026-10-16T12:56:23.4085992Z (fail) native content reviewer has no tools or inherited history and preserves the frozen variant [96276.49ms]
+2026-10-16T12:56:23.4086387Z 
+2026-10-16T12:56:23.4086694Z ##[endgroup]
+2026-10-16T12:56:23.4086863Z 
+2026-10-16T12:56:23.4086949Z  0 pass
+2026-10-16T12:56:23.4087168Z  1 fail
+2026-10-16T12:56:23.4087472Z  2 expect() calls
+2026-10-16T12:56:23.4087706Z Ran 1 test across 1 file. [96.36s]
+2026-10-16T12:56:23.4949191Z ##[error]Process completed with exit code 1.
+2026-10-16T12:56:23.5170352Z 

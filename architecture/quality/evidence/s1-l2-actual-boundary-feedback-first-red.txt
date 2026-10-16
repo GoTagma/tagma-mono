@@ -1,0 +1,22 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+196 |     try { await call('validate'); } catch(error) { failure=error as Error; }
+197 |     const message='Every declared core artifact must have a concrete content expectation.';
+198 |     expect(failure).toBeInstanceOf(Error);
+199 |     expect(failure!.message.split('\n')[0]).toBe(message);
+200 |     const serialized = failure!.message.split('\nrejectionContext: ')[1];
+201 |     expect(serialized).toBeString();
+                             ^
+error: expect(received).toBeString()
+
+Received: undefined
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:201:24)
+(fail) generated core feedback binds missing artifact coordinates without changing counted rejection fingerprints [40.10ms]
+
+ 0 pass
+ 17 filtered out
+ 1 fail
+ 3 expect() calls
+Ran 1 test across 1 file. [138.00ms]

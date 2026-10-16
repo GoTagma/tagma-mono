@@ -1,0 +1,207 @@
+{
+  "scope": "immutable first S1-L2 failed attempt observation; no server auth copied",
+  "case": "s1-l2",
+  "attempt": "verify3",
+  "businessAttempt": 1,
+  "round": 1,
+  "operationId": "operation-ed79f520-630c-459d-b008-7dea6ee4b60b",
+  "stageId": "e828d0a4-a773-4e7f-8afb-be3740828083",
+  "actualTrialExecuted": false,
+  "published": false,
+  "accepted": false,
+  "oldYamlHash": "a8c3d000624904acc35b11e458bab6ad66abdf35",
+  "newYamlHash": "ccc513c8461ae7be4d348382a313584091d07169",
+  "planYamlHash": "a8c3d000624904acc35b11e458bab6ad66abdf35",
+  "coreWitness": {
+    "status": "blocked",
+    "taskIds": [
+      "factcheck.stage_input"
+    ],
+    "code": "unattestable-digest-artifact",
+    "rationale": "artifacts/input_claim.sha256 is stage_input's declared completion artifact, but it holds only the SHA-256 of the frozen claim, which the planner cannot independently derive and no expectation type can express. The claim bytes (artifacts/input_claim.txt) and the model outputs (verdict.json, report.md) are fully witnessed. This is a repairable in-scope artifact gap: retarget stage_input's completion to artifacts/input_claim.txt so the produced claim bytes are independently assertable; see the blocking pipeline-artifact finding."
+  },
+  "findings": [
+    {
+      "severity": "blocking",
+      "repairScope": "pipeline-artifact",
+      "summary": "stage_input completion gates on a digest file whose exact bytes cannot be independently asserted by the Trial planner; retarget the completion to artifacts/input_claim.txt.",
+      "evidence": "quick_verify/quick_verify.yaml task factcheck.stage_input has completion {type: file_exists, path: artifacts/input_claim.sha256}. The Host derives the task's declared core artifact from that completion path and requires a concrete content expectation for it, but the file holds only the SHA-256 of the current claim (write_claim.py writes digest+'\\n'). The planner cannot independently derive that 64-hex digest, and no expectation type expresses it: file-equals/file-contains need literal bytes, json-pointer-equals/json-pointer-text-occurrence need a JSON field, and file-source-text-occurrence needs a JSON source. validate confirms: adding the digest file to generatedInputPaths yields 'requires file-equals or present:true file-source-text-occurrence sourcePath evidence', and removing it yields 'Every declared core artifact must have a concrete content expectation'. The claim bytes themselves (artifacts/input_claim.txt) ARE independently assertable, so pointing the completion at artifacts/input_claim.txt (leaving the digest as an internal scratch file consumed by validate_verdict.py) would let the core be witnessed and remove this blocker."
+    }
+  ],
+  "yamlDiff": [
+    "--- ",
+    "+++ ",
+    "@@ -10,7 +10,7 @@",
+    "           command: \"python3 write_claim.py {{inputs.input_claim | shellquote}}\"",
+    "           completion:",
+    "             type: \"file_exists\"",
+    "-            path: \"artifacts/input_claim.sha256\"",
+    "+            path: \"artifacts/input_claim.txt\"",
+    "           inputs:",
+    "             input_claim:",
+    "               type: \"string\""
+  ],
+  "telemetry": [
+    {
+      "version": 2,
+      "yamlHash": "a8c3d000624904acc35b11e458bab6ad66abdf35",
+      "relativeYamlPath": "quick_verify/quick_verify.yaml",
+      "attemptIds": [
+        "trial-f21475da4144daa9894d364fd824f58b91fdfa4b"
+      ],
+      "toolAttemptCount": 1,
+      "validationRejectionCount": 0,
+      "repeatedValidationRejectionCount": 0,
+      "successfulWriteCount": 1,
+      "committedPlanHash": "4599672a09d4f4a8a1eda8b89254ac1943648a06714b0e32b87e06185e2ec153",
+      "firstAttemptAt": 1792155193576,
+      "lastAttemptAt": 1792155193576,
+      "rejections": []
+    }
+  ],
+  "invocations": [
+    {
+      "id": "authoring-invocation-c6988e35-0e7e-4a89-b7dc-0794931de4b6",
+      "purpose": "authoring",
+      "repairAttempt": null,
+      "completed": {
+        "finishCode": "stop",
+        "disposition": "changed"
+      }
+    },
+    {
+      "id": "trial_plan-invocation-3f05a238-c786-4a1b-adc5-2427b9ad1e29",
+      "purpose": "trial_plan",
+      "repairAttempt": null,
+      "completed": {
+        "finishCode": "stop",
+        "disposition": "no_change"
+      }
+    },
+    {
+      "id": "trial_plan-invocation-a068726c-e9ab-4302-b81b-7d055ef875a5",
+      "purpose": "trial_plan",
+      "repairAttempt": null,
+      "completed": {
+        "finishCode": "stop",
+        "disposition": "changed"
+      }
+    },
+    {
+      "id": "repair-invocation-c04177e7-e71a-48d5-a75b-7e131a0a53cf",
+      "purpose": "repair",
+      "repairAttempt": null,
+      "completed": {
+        "finishCode": "stop",
+        "disposition": "changed"
+      }
+    }
+  ],
+  "planErrors": [
+    {
+      "partId": "prt_144c2d98a0013W2JNJYLwMwAPf",
+      "timeCreated": 1792154982795,
+      "tool": "tagma_trial_plan",
+      "operation": "upsert-case",
+      "error": "cases[0].generatedInputPaths requires file-equals or present:true file-source-text-occurrence sourcePath evidence for artifacts/input_claim.sha256.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c2f3bb001jR6aY8tkbjYm61",
+      "timeCreated": 1792154989499,
+      "tool": "tagma_trial_plan",
+      "operation": "upsert-case",
+      "error": "cases[0].generatedInputPaths requires file-equals or present:true file-source-text-occurrence sourcePath evidence for artifacts/report.md.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c345520017Fc3Zys4zIFldD",
+      "timeCreated": 1792155010386,
+      "tool": "tagma_trial_plan",
+      "operation": "set-coverage",
+      "error": "trial plan coverage marks repeat-run-output-collision covered without concrete linked-case evidence: needs runs >= 2 plus a non-fixture file assertion that the Host can probe after every run. Add that evidence, or mark the dimension blocked when the harness cannot observe it, or accepted-risk when it is an accepted unverified risk.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c379fe001QMWJHQrZ2cLkJE",
+      "timeCreated": 1792155023870,
+      "tool": "tagma_trial_plan",
+      "operation": "set-coverage",
+      "error": "trial plan coverage marks repeat-run-output-collision covered without concrete linked-case evidence: needs runs >= 2 plus a non-fixture file assertion that the Host can probe after every run. Add that evidence, or mark the dimension blocked when the harness cannot observe it, or accepted-risk when it is an accepted unverified risk.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c3be1b001dJCKEHnncBv7xC",
+      "timeCreated": 1792155041307,
+      "tool": "tagma_trial_plan",
+      "operation": "validate",
+      "error": "cases[0].fixtures[1].path (artifacts/input_claim.sha256) uses a task-local path from effective cwd .tagma/quick_verify, but Trial paths are relative to the isolated case root. Use quick_verify/artifacts/input_claim.sha256.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c3e0ab001AOvim41YSuuGMf",
+      "timeCreated": 1792155050155,
+      "tool": "tagma_trial_plan",
+      "operation": "validate",
+      "error": "Semantic review must map to its uniquely owning content task.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c4191f001tY0iJML8fcd0zZ",
+      "timeCreated": 1792155064607,
+      "tool": "tagma_trial_plan",
+      "operation": "validate",
+      "error": "Generated core input needs an unseeded exact removal, asserted produced bytes, and an upstream producer/consumer mapping.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c4440b001wcJHiPZMa4WATJ",
+      "timeCreated": 1792155075595,
+      "tool": "tagma_trial_plan",
+      "operation": "validate",
+      "error": "Core generated-input map must match the normal case declaration exactly.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c46431001FYvctPpJgJUeE8",
+      "timeCreated": 1792155083825,
+      "tool": "tagma_trial_plan",
+      "operation": "upsert-case",
+      "error": "cases[0].source-text relation requires an unseeded generated source and output.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c4cf5c001V4HkNDNiOb6N9y",
+      "timeCreated": 1792155111261,
+      "tool": "tagma_trial_plan",
+      "operation": "validate",
+      "error": "Generated core input needs an unseeded exact removal, asserted produced bytes, and an upstream producer/consumer mapping.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c50cd4001laWJerj127w41z",
+      "timeCreated": 1792155126997,
+      "tool": "tagma_trial_plan",
+      "operation": "validate",
+      "error": "Every declared core artifact must have a concrete content expectation.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c55ce8001JzZzTIcxhm5BTE",
+      "timeCreated": 1792155147496,
+      "tool": "tagma_trial_plan",
+      "operation": "validate",
+      "error": "Every declared core artifact must have a concrete content expectation.",
+      "status": "error"
+    },
+    {
+      "partId": "prt_144c59a41001xaTrf3dHt1SNMA",
+      "timeCreated": 1792155163201,
+      "tool": "tagma_trial_plan",
+      "operation": "upsert-case",
+      "error": "cases[0].generatedInputPaths requires file-equals or present:true file-source-text-occurrence sourcePath evidence for quick_verify/artifacts/input_claim.sha256.",
+      "status": "error"
+    }
+  ],
+  "qualifiedFeedbackGap": "Generic declared-artifact and generated-input checks omit failing artifact/task/conjunct coordinates. Same missing-artifact message repeated before model eventually named an artifact repair; two frozen planner reservations spent before the first YAML repair. Stale/blocked-plan rejection and fixed budget remain required, not a false-rejection defect."
+}

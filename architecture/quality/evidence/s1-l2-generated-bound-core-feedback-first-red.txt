@@ -1,0 +1,15 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+error: Trial Plan task execution context is incomplete.
+      at parseValidationContext (/tmp/tagma-real-plan-boundary-uXjJS2/tagma_trial_plan.mjs:308:20)
+      at <anonymous> (/tmp/tagma-real-plan-boundary-uXjJS2/tagma_trial_plan.mjs:2043:107)
+      at withTrialPlanDraftLock (/tmp/tagma-real-plan-boundary-uXjJS2/tagma_trial_plan.mjs:1398:20)
+      at execute (/tmp/tagma-real-plan-boundary-uXjJS2/tagma_trial_plan.mjs:2128:37)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:178:15)
+(fail) generated core feedback binds missing artifact coordinates without changing counted rejection fingerprints [34.09ms]
+
+ 0 pass
+ 17 filtered out
+ 1 fail
+Ran 1 test across 1 file. [166.00ms]

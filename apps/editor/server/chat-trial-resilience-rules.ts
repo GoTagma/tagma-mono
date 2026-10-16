@@ -594,6 +594,21 @@ export function createTrialResilienceRules() {
       throw new Error(
         'Core witness must explicitly map every executed task; a missing map cannot pass.',
       );
+    const rejectCoreFeedback = (message: string, context: Record<string, unknown>): never => {
+      const error = new Error(message) as Error & { trialPlanDiagnostic?: unknown };
+      error.trialPlanDiagnostic = {
+        message,
+        missingEvidence: [],
+        issues: [],
+        rejectionContext: {
+          version: 1,
+          availability: 'unknown',
+          normalCaseId: normal.id,
+          ...context,
+        },
+      };
+      throw error;
+    };
     const semanticTargets = new Set<string>();
     for (const testCase of plan.cases) {
       for (const [index, expectation] of testCase.expectations.entries()) {
@@ -611,7 +626,21 @@ export function createTrialResilienceRules() {
           owners.length !== 1 ||
           owners[0] !== expectation.taskId
         )
-          throw new Error('Semantic review must map to its uniquely owning content task.');
+          rejectCoreFeedback('Semantic review must map to its uniquely owning content task.', {
+            expectationIndex: index,
+            expectationType: expectation.type,
+            path: expectation.path,
+            requestedTaskId: expectation.taskId,
+            ownerTaskIds: owners.slice(0, 2),
+            ownerTaskCount: owners.length,
+            ...(owners.length > 2 ? { omittedOwnerTaskCount: owners.length - 2 } : {}),
+            mappedRoleTaskIds: mapped.slice(0, 2).map((role) => role.taskId),
+            mappedRoleTaskCount: mapped.length,
+            ...(mapped.length > 2 ? { omittedMappedRoleTaskCount: mapped.length - 2 } : {}),
+            failedConjunct: 'semantic_owner_role_mapping',
+            repairHint:
+              "Fix this plan mapping: the review target must name its single declared owner and appear once in that owner's content indices. Do not relabel content as execution-only. If YAML lacks a valid ownership declaration, keep core blocked and commit a blocking pipeline-artifact finding; do not edit YAML in this read-only phase.",
+          });
         const key = expectation.taskId + '\0' + expectation.path;
         if (semanticTargets.has(key)) throw new Error('Semantic review target is duplicated.');
         semanticTargets.add(key);
@@ -641,7 +670,24 @@ export function createTrialResilienceRules() {
       core.generatedInputs.length !== generated.size ||
       core.generatedInputs.some((item) => !generated.has(item.path.toLowerCase()))
     )
-      throw new Error('Core generated-input map must match the normal case declaration exactly.');
+      rejectCoreFeedback(
+        'Core generated-input map must match the normal case declaration exactly.',
+        {
+          path:
+            (normal.generatedInputPaths ?? []).find(
+              (path) =>
+                !core.generatedInputs.some(
+                  (input) => input.path.toLowerCase() === path.toLowerCase(),
+                ),
+            ) ??
+            core.generatedInputs.find((input) => !generated.has(input.path.toLowerCase()))?.path,
+          declaredGeneratedInputCount: generated.size,
+          mappedGeneratedInputCount: core.generatedInputs.length,
+          failedConjunct: 'generated_input_map',
+          repairHint:
+            'Fix this plan mapping so the core generated-input paths match the normal case exactly, with the real producer and dependent consumer. Do not edit YAML, seed generated answers, invent paths or request artifact repair for a map-only mismatch. Preserve explicit removal and independent content evidence.',
+        },
+      );
     const rejectCoreCoordinate = (
       message: string,
       expectationIndex: number,
@@ -767,27 +813,51 @@ export function createTrialResilienceRules() {
         );
     }
     for (const input of core.generatedInputs) {
-      if (
-        input.producerTaskId === input.consumerTaskId ||
-        !executed.has(input.producerTaskId) ||
-        !executed.has(input.consumerTaskId) ||
-        !closure(tasks[input.consumerTaskId]?.dependsOn ?? [], tasks).has(input.producerTaskId) ||
-        seeded(input.path) ||
-        !normal.fixtures.some(
-          (fixture) => fixture.path === input.path && fixture.content === null,
-        ) ||
-        !normal.expectations.some(
-          (e) =>
-            (e.type === 'file-equals' && e.path === input.path && e.text.length > 0) ||
-            (ownedSourceRelation(e) &&
-              e.type === 'file-source-text-occurrence' &&
-              e.sourcePath === input.path),
-        ) ||
-        ((tasks[input.producerTaskId]?.artifactPaths?.length ?? 0) > 0 &&
-          !tasks[input.producerTaskId]!.artifactPaths!.includes(input.path))
-      )
-        throw new Error(
+      const failedConjunct =
+        input.producerTaskId === input.consumerTaskId
+          ? 'producer_consumer_distinct'
+          : !executed.has(input.producerTaskId)
+            ? 'producer_executed'
+            : !executed.has(input.consumerTaskId)
+              ? 'consumer_executed'
+              : !closure(tasks[input.consumerTaskId]?.dependsOn ?? [], tasks).has(
+                    input.producerTaskId,
+                  )
+                ? 'upstream_dependency'
+                : seeded(input.path)
+                  ? 'unseeded_source'
+                  : !normal.fixtures.some(
+                        (fixture) => fixture.path === input.path && fixture.content === null,
+                      )
+                    ? 'exact_removal_fixture'
+                    : !normal.expectations.some(
+                          (e) =>
+                            (e.type === 'file-equals' &&
+                              e.path === input.path &&
+                              e.text.length > 0) ||
+                            (ownedSourceRelation(e) &&
+                              e.type === 'file-source-text-occurrence' &&
+                              e.sourcePath === input.path),
+                        )
+                      ? 'concrete_produced_bytes'
+                      : (tasks[input.producerTaskId]?.artifactPaths?.length ?? 0) > 0 &&
+                          !tasks[input.producerTaskId]!.artifactPaths!.includes(input.path)
+                        ? 'producer_artifact_ownership'
+                        : null;
+      if (failedConjunct)
+        rejectCoreFeedback(
           'Generated core input needs an unseeded exact removal, asserted produced bytes, and an upstream producer/consumer mapping.',
+          {
+            path: input.path,
+            producerTaskId: input.producerTaskId,
+            consumerTaskId: input.consumerTaskId,
+            failedConjunct,
+            repairHint:
+              failedConjunct === 'producer_artifact_ownership' ||
+              failedConjunct === 'upstream_dependency'
+                ? 'Match this plan pair to actual declared ownership and dependencies first. If the staged YAML itself needs a permitted change, keep core blocked and commit a blocking pipeline-artifact finding naming that change. Do not relabel tasks, conceal the gap with fixtures, or edit YAML as the read-only planner.'
+                : 'Correct this plan fixture, mapping or content witness. Keep an exact null removal, independently asserted producer bytes and the real upstream dependency. Do not guess values, seed answers, weaken provenance, or edit YAML in this read-only phase. A separate evidenced YAML defect needs blocked core and a blocking pipeline-artifact finding.',
+          },
         );
     }
     for (const role of core.taskRoles) {
@@ -858,8 +928,19 @@ export function createTrialResilienceRules() {
           );
         contentPaths.add(e.path);
       }
-      if (paths.some((path) => !contentPaths.has(path)))
-        throw new Error('Every declared core artifact must have a concrete content expectation.');
+      const missingArtifact = paths.find((path) => !contentPaths.has(path));
+      if (missingArtifact !== undefined)
+        rejectCoreFeedback(
+          'Every declared core artifact must have a concrete content expectation.',
+          {
+            roleTaskId: role.taskId,
+            path: missingArtifact,
+            roleExpectationIndices: [...role.expectationIndices],
+            failedConjunct: 'declared_artifact_content',
+            repairHint:
+              'Add concrete intent-bound content for this declared artifact to its owning content role. Do not invent fixed values, remove declared ownership, relabel content as execution-only, or seed outputs. If YAML needs a permitted change to expose observable content, keep core blocked and commit a blocking pipeline-artifact finding naming that change; the read-only planner must not edit YAML. Keep success, schema and provenance checks.',
+          },
+        );
     }
   }
   function pointerValue(value: unknown, pointer: string): unknown {

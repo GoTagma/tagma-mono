@@ -26,7 +26,10 @@ import {
   createTrialResilienceRules,
   TRIAL_EVIDENCE_KINDS,
 } from '../server/chat-trial-resilience-rules';
-import { semanticReviewPlanInput } from './helpers/trial-semantic-review-fixture';
+import {
+  semanticReviewIntent,
+  semanticReviewPlanInput,
+} from './helpers/trial-semantic-review-fixture';
 
 type JsonSchema = ReturnType<typeof pluginTool.schema.toJSONSchema>['schemas'][string];
 
@@ -37,11 +40,15 @@ function schemaObject(value: unknown): JsonSchema {
   return value as JsonSchema;
 }
 
-async function fixture(yamlOverride?: string) {
+async function fixture(
+  yamlOverride?: string,
+  validationContextOverride?: Record<string, unknown>,
+  relativeYamlPath = 'flow/flow.yaml',
+) {
   const root = mkdtempSync(join(tmpdir(), 'tagma-real-plan-boundary-'));
   const stageRoot = join(root, '.tagma', '.chat-staging', 'stage-boundary');
   const directory = join(stageRoot, 'agent-workspace', '.tagma');
-  const yamlPath = join(directory, 'flow', 'flow.yaml');
+  const yamlPath = join(directory, ...relativeYamlPath.split('/'));
   mkdirSync(dirname(yamlPath), { recursive: true });
   const yaml =
     yamlOverride ??
@@ -77,6 +84,7 @@ async function fixture(yamlOverride?: string) {
           attemptId,
           relativePath: relative(directory, yamlPath).replace(/\\/g, '/'),
           yamlHash,
+          ...(validationContextOverride ? { validationContext: validationContextOverride } : {}),
         },
       }),
       'utf8',
@@ -106,7 +114,7 @@ async function fixture(yamlOverride?: string) {
     expect(record).toMatchObject({
       stageId: 'stage-boundary',
       yamlHash,
-      relativeYamlPath: 'flow/flow.yaml',
+      relativeYamlPath,
       attemptId,
       submissionConsumed: true,
       successfulWriteCount: 0,
@@ -178,9 +186,208 @@ function validReview() {
   };
 }
 
+test('generated core feedback binds missing artifact coordinates without changing counted rejection fingerprints', async () => {
+  const h = await fixture(
+    'pipeline:\n  name: Boundary\n  tracks:\n    - id: main\n      cwd: .tagma/flow\n      tasks:\n        - id: run\n          command: echo dynamic\n          completion:\n            type: file_exists\n            path: report.md\n',
+    {
+      version: 2,
+      obligations: [],
+      tasks: {
+        'main.run': {
+          dependsOn: [],
+          kind: 'command',
+          onFailure: 'skip_downstream',
+          artifactPaths: ['flow/report.md'],
+        },
+      },
+      intentDigest: createHash('sha256').update(semanticReviewIntent).digest('hex'),
+    },
+  );
+  try {
+    const raw = JSON.parse(
+      JSON.stringify(semanticReviewPlanInput()).split('flow.inspect').join('main.run'),
+    );
+    raw.cases[0].expectations[1] = {
+      type: 'file-equals',
+      path: 'flow/unrelated.md',
+      text: 'A different produced value.',
+    };
+    const call = h.issue('missing-artifact-boundary');
+    await call('begin', { summary: raw.summary, goals: raw.goals });
+    await call('set-coverage', { coverage: raw.coverage });
+    await call('upsert-case', { case: raw.cases[0] });
+    await call('set-evidence-review', { evidence_review: raw.evidenceReview });
+    let failure: Error | null = null;
+    try {
+      await call('validate');
+    } catch (error) {
+      failure = error as Error;
+    }
+    const message = 'Every declared core artifact must have a concrete content expectation.';
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure!.message.split('\n')[0]).toBe(message);
+    const serialized = failure!.message.split('\nrejectionContext: ')[1];
+    expect(serialized).toBeString();
+    expect(Buffer.byteLength(serialized!, 'utf8')).toBeLessThanOrEqual(2048);
+    const context = JSON.parse(serialized!);
+    expect(context).toMatchObject({
+      version: 1,
+      normalCaseId: 'normal',
+      roleTaskId: 'main.run',
+      path: 'flow/report.md',
+      failedConjunct: 'declared_artifact_content',
+      binding: {
+        attemptId: 'missing-artifact-boundary',
+        relativeYamlPath: 'flow/flow.yaml',
+        yamlHash: h.yamlHash,
+      },
+    });
+    expect(context.binding.candidatePlanHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(context.repairHint).toContain('blocking pipeline-artifact');
+    expect(h.telemetry().toolAttemptCount).toBe(0);
+    await expect(call('commit')).rejects.toThrow(message);
+    const { record } = h.evidence('missing-artifact-boundary', message);
+    expect(JSON.parse(record.text).rejectionContext.binding.attemptId).toBe(
+      'missing-artifact-boundary',
+    );
+    expect(h.telemetry()).toMatchObject({
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
+      successfulWriteCount: 0,
+    });
+    expect(h.telemetry().rejections).toContainEqual({
+      message,
+      fingerprint: createHash('sha256').update(message).digest('hex'),
+      count: 1,
+    });
+    h.assertUnlocked();
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+test('wide semantic ownership coordinates retain bound identities and explicit omissions within 2048 bytes', async () => {
+  const namespace = 'n'.repeat(90),
+    a = 'x'.repeat(126),
+    b = 'y'.repeat(126);
+  const ownerA = 'a.' + a,
+    ownerB = 'b.' + b;
+  const taskPath = ['资'.repeat(30), '料'.repeat(30), '源'.repeat(30), 'report.txt'].join('/');
+  const artifactPath = namespace + '/' + taskPath;
+  const relativeYamlPath = namespace + '/' + namespace + '.yaml';
+  const yaml = `pipeline:\n  name: Wide\n  tracks:\n    - id: a\n      cwd: .tagma/${namespace}\n      tasks:\n        - id: ${a}\n          command: echo first\n          completion:\n            type: file_exists\n            path: ${taskPath}\n    - id: b\n      cwd: .tagma/${namespace}\n      tasks:\n        - id: ${b}\n          command: echo second\n          depends_on:\n            - ${ownerA}\n          completion:\n            type: file_exists\n            path: ${taskPath}\n`;
+  const h = await fixture(
+    yaml,
+    {
+      version: 2,
+      obligations: [],
+      tasks: {
+        [ownerA]: {
+          dependsOn: [],
+          kind: 'command',
+          onFailure: 'skip_downstream',
+          artifactPaths: [artifactPath],
+        },
+        [ownerB]: {
+          dependsOn: [ownerA],
+          kind: 'command',
+          onFailure: 'skip_downstream',
+          artifactPaths: [artifactPath],
+        },
+      },
+      intentDigest: createHash('sha256').update(semanticReviewIntent).digest('hex'),
+    },
+    relativeYamlPath,
+  );
+  try {
+    const raw = semanticReviewPlanInput(),
+      caseId = 'n' + 'c'.repeat(63);
+    const call = h.issue('wide-core-owner-boundary');
+    await call('begin', { summary: raw.summary, goals: raw.goals });
+    await call('set-coverage', { coverage: raw.coverage });
+    await call('upsert-case', {
+      case: {
+        ...raw.cases[0],
+        id: caseId,
+        targetTaskIds: [ownerB],
+        fixtures: [],
+        expectations: [
+          { type: 'task-status', taskId: ownerA, status: 'success' },
+          { type: 'task-status', taskId: ownerB, status: 'success' },
+          { type: 'artifact-semantic-review', taskId: ownerA, path: artifactPath },
+        ],
+      },
+    });
+    await call('set-evidence-review', {
+      evidence_review: {
+        ...raw.evidenceReview,
+        coreWitness: {
+          status: 'covered',
+          normalCaseId: caseId,
+          generatedInputs: [],
+          taskRoles: [
+            {
+              taskId: ownerA,
+              role: 'content',
+              rationale: 'The first declared content producer.',
+              expectationIndices: [2],
+            },
+            {
+              taskId: ownerB,
+              role: 'content',
+              rationale: 'The second declared content producer.',
+              expectationIndices: [2],
+            },
+          ],
+        },
+      },
+    });
+    let failure: Error | null = null;
+    try {
+      await call('validate');
+    } catch (error) {
+      failure = error as Error;
+    }
+    expect(failure!.message.split('\n')[0]).toBe(
+      'Semantic review must map to its uniquely owning content task.',
+    );
+    const serialized = failure!.message.split('\nrejectionContext: ')[1]!;
+    expect(serialized).toBeString();
+    expect(Buffer.byteLength(serialized, 'utf8')).toBeLessThanOrEqual(2048);
+    const context = JSON.parse(serialized);
+    expect(context).toMatchObject({
+      failedConjunct: 'semantic_owner_role_mapping',
+      requestedTaskId: ownerA,
+      ownerTaskCount: 2,
+      mappedRoleTaskCount: 2,
+      binding: { attemptId: 'wide-core-owner-boundary', yamlHash: h.yamlHash, relativeYamlPath },
+    });
+    expect(context.omittedFields).toEqual(
+      expect.arrayContaining(['path', 'ownerTaskIds', 'mappedRoleTaskIds']),
+    );
+    expect(h.telemetry().toolAttemptCount).toBe(0);
+    h.assertUnlocked();
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
 test('generated semantic review schema and handler preserve ownership and finite commit counting', async () => {
   const h = await fixture(
     'pipeline:\n  name: Boundary\n  tracks:\n    - id: main\n      cwd: .tagma/flow\n      tasks:\n        - id: run\n          command: echo dynamic\n          completion:\n            type: file_exists\n            path: report.md\n',
+    {
+      version: 2,
+      obligations: [],
+      tasks: {
+        'main.run': {
+          dependsOn: [],
+          kind: 'command',
+          onFailure: 'skip_downstream',
+          artifactPaths: ['flow/report.md'],
+        },
+      },
+      intentDigest: createHash('sha256').update(semanticReviewIntent).digest('hex'),
+    },
   );
   try {
     expect(JSON.stringify(pluginTool.schema.toJSONSchema(h.outer))).toContain(

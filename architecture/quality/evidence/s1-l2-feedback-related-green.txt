@@ -1,0 +1,118 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+(pass) generated core feedback binds missing artifact coordinates without changing counted rejection fingerprints [47.55ms]
+(pass) wide semantic ownership coordinates retain bound identities and explicit omissions within 2048 bytes [15.75ms]
+(pass) generated semantic review schema and handler preserve ownership and finite commit counting [14.32ms]
+(pass) generated tool commits blocked artifact feedback with the same Host core rules and finite counter [20.56ms]
+(pass) model schema distinguishes repairable core gaps from intrinsic observation limits [12.91ms]
+(pass) model role indices schema separates concrete consumer content from task success [8.61ms]
+(pass) model review task scope schema explains required and not-required dispositions [14.30ms]
+(pass) review scope corrections preserve draft and counted commit boundaries [17.21ms]
+(pass) pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas [10.08ms]
+(pass) malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection [12.56ms]
+(pass) semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt [11.78ms]
+(pass) known commit preserves unknown review keys for the existing strict semantic rejection [9.35ms]
+(pass) known commit preserves unknown decision keys for the existing strict semantic rejection [14.50ms]
+(pass) invalid identity, target, and YAML revision cannot consume a malformed commit [12.62ms]
+(pass) malformed draft preflight preserves draft bytes and never consumes a submission [15.16ms]
+(pass) explicit draft commit counts malformed supplied payload and records no duplicate rejection [14.66ms]
+(pass) two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call [20.32ms]
+(pass) semantic plan validation remains one counted rejection outside the construction catch [11.69ms]
+(pass) generated-input guidance names both supported witnesses without weakening case validation [10.32ms]
+
+apps/editor/tests/chat-trial-core-witness.test.ts:
+(pass) normal generated producer and consumer cover the terminal closure without task-name inference [2.55ms]
+(pass) null or empty normal content cannot replace the concrete positive contract [1.34ms]
+(pass) a legal empty edge remains valid beside a genuinely nonempty normal witness [0.66ms]
+(pass) missing or unrelated task mappings and missing intermediate success cannot pass [0.36ms]
+(pass) factory embedded into the managed tool preserves strict core fields and expectation indices [3.14ms]
+(pass) generated maps must match exact removals, genuine dependencies, and asserted produced bytes [0.55ms]
+(pass) positive source occurrence needs present:true and exact preserved or genuinely generated input [0.65ms]
+(pass) blocked core requires an existing blocking diagnostic and is never green coverage [0.20ms]
+(pass) blocked core admits typed artifact repair feedback while rejecting unknown or nonblocking findings [0.43ms]
+13:17:51.595 [pipeline] start "Observable result" run_id=run_mvazt5ye_55b1c6e80caa
+13:17:51.602 [task:main.run] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"result.json\",JSON.stringify({value:7}))"]
+13:17:51.634 [task:main.run] success (0.0s)
+13:17:51.634 [pipeline] completed "Observable result"
+13:17:51.634 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+13:17:51.634 [pipeline] Duration: 0.0s
+13:17:51.634 [pipeline] Log: /tmp/tagma-core-witness-5bqZ1A/.tagma/.chat-staging/de101496-6f50-43ea-b54e-61ebf7a683fc/.trial-cases/normal-q8eMHO/workspace/.tagma/logs/run_mvazt5ye_55b1c6e80caa/pipeline.log
+(pass) Host blocked artifact repair requires a fresh positive revision plan before actual Sandbox execution [432.63ms]
+(pass) no-intent compatibility does not silently supply a managed positive witness [0.20ms]
+(pass) normal core reuse keys cannot accept historical final-only proofs or changed review mappings [0.19ms]
+(pass) an explicitly reviewed pure execution contract passes but declared content cannot be exempted [0.31ms]
+(pass) nonempty diagnostic or qualified-unknown output cannot satisfy the promised concrete normal result [0.35ms]
+(pass) generated-input reset rejects pre-seeding, directories, and symlink parents without touching outside files [0.63ms]
+13:17:51.986 [pipeline] start "Fresh generation" run_id=run_mvazt69d_f053b2589f3b
+13:17:51.987 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+13:17:52.008 [task:odd.alpha] success (0.0s)
+13:17:52.008 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+13:17:52.028 [task:odd.beta] success (0.0s)
+13:17:52.029 [pipeline] completed "Fresh generation"
+13:17:52.029 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+13:17:52.029 [pipeline] Duration: 0.0s
+13:17:52.029 [pipeline] Log: /tmp/tagma-core-witness-uPAols/.tagma/.chat-staging/2644cc46-0099-4ebe-a104-cf2f058a58cf/.trial-cases/normal-yLtMmL/workspace/.tagma/logs/run_mvazt69d_f053b2589f3b/pipeline.log
+13:17:52.031 [pipeline] start "Fresh generation" run_id=run_mvazt6am_9d4bd256808e
+13:17:52.031 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+13:17:52.051 [task:odd.alpha] success (0.0s)
+13:17:52.051 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+13:17:52.070 [task:odd.beta] success (0.0s)
+13:17:52.071 [pipeline] completed "Fresh generation"
+13:17:52.071 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+13:17:52.071 [pipeline] Duration: 0.0s
+13:17:52.071 [pipeline] Log: /tmp/tagma-core-witness-uPAols/.tagma/.chat-staging/2644cc46-0099-4ebe-a104-cf2f058a58cf/.trial-cases/normal-yLtMmL/workspace/.tagma/logs/run_mvazt6am_9d4bd256808e/pipeline.log
+(pass) actual command producer executes fresh each repeat; earlier wrong content survives later correction=false [432.34ms]
+13:17:52.417 [pipeline] start "Fresh generation" run_id=run_mvazt6ld_9bc9c1b8eca4
+13:17:52.418 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+13:17:52.438 [task:odd.alpha] success (0.0s)
+13:17:52.438 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',n===0?JSON.stringify({text:'nonempty diagnostic',verdict:'UNVERIFIED',delta:null}):\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+13:17:52.457 [task:odd.beta] success (0.0s)
+13:17:52.457 [pipeline] completed "Fresh generation"
+13:17:52.457 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+13:17:52.457 [pipeline] Duration: 0.0s
+13:17:52.457 [pipeline] Log: /tmp/tagma-core-witness-8PyDye/.tagma/.chat-staging/f86f294d-6836-4c5a-84a8-59015183b513/.trial-cases/normal-OHWcFv/workspace/.tagma/logs/run_mvazt6ld_9bc9c1b8eca4/pipeline.log
+13:17:52.459 [pipeline] start "Fresh generation" run_id=run_mvazt6mi_77688f499089
+13:17:52.459 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+13:17:52.478 [task:odd.alpha] success (0.0s)
+13:17:52.479 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',n===0?JSON.stringify({text:'nonempty diagnostic',verdict:'UNVERIFIED',delta:null}):\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+13:17:52.500 [task:odd.beta] success (0.0s)
+13:17:52.500 [pipeline] completed "Fresh generation"
+13:17:52.500 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+13:17:52.500 [pipeline] Duration: 0.0s
+13:17:52.500 [pipeline] Log: /tmp/tagma-core-witness-8PyDye/.tagma/.chat-staging/f86f294d-6836-4c5a-84a8-59015183b513/.trial-cases/normal-OHWcFv/workspace/.tagma/logs/run_mvazt6mi_77688f499089/pipeline.log
+(pass) actual command producer executes fresh each repeat; earlier wrong content survives later correction=true [431.28ms]
+(pass) explicit promised finite numeric and boolean values remain legal core content types [1.01ms]
+(pass) exact nonempty plain text is a content witness while blanks and diagnostic substitutes do not pass [0.70ms]
+13:17:52.855 [pipeline] start "Legacy first creation and reuse" run_id=run_mvazt6xj_4cd68d74dc3c
+13:17:52.856 [task:legacy.generate] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const result=fs.existsSync(\"reuse.json\")?JSON.parse(fs.readFileSync(\"reuse.json\",\"utf8\")):{generated:0,reused:0};if(fs.existsSync(\"generated.txt\")){result.reused++;}else{fs.writeFileSync(\"generated.txt\",\"seed\");result.generated++;}fs.writeFileSync(\"reuse.json\",JSON.stringify(result));"]
+13:17:52.876 [task:legacy.generate] success (0.0s)
+13:17:52.876 [pipeline] completed "Legacy first creation and reuse"
+13:17:52.876 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+13:17:52.876 [pipeline] Duration: 0.0s
+13:17:52.876 [pipeline] Log: /tmp/tagma-core-witness-s2JFS0/.tagma/.chat-staging/fcde6cfe-be16-4ac9-a4bf-4f18ce862957/.trial-cases/legacy-reuse-4F3N70/workspace/.tagma/logs/run_mvazt6xj_4cd68d74dc3c/pipeline.log
+13:17:52.877 [pipeline] start "Legacy first creation and reuse" run_id=run_mvazt6y5_e9cf21a3efde
+13:17:52.878 [task:legacy.generate] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const result=fs.existsSync(\"reuse.json\")?JSON.parse(fs.readFileSync(\"reuse.json\",\"utf8\")):{generated:0,reused:0};if(fs.existsSync(\"generated.txt\")){result.reused++;}else{fs.writeFileSync(\"generated.txt\",\"seed\");result.generated++;}fs.writeFileSync(\"reuse.json\",JSON.stringify(result));"]
+13:17:52.898 [task:legacy.generate] success (0.0s)
+13:17:52.898 [pipeline] completed "Legacy first creation and reuse"
+13:17:52.898 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+13:17:52.898 [pipeline] Duration: 0.0s
+13:17:52.898 [pipeline] Log: /tmp/tagma-core-witness-s2JFS0/.tagma/.chat-staging/fcde6cfe-be16-4ac9-a4bf-4f18ce862957/.trial-cases/legacy-reuse-4F3N70/workspace/.tagma/logs/run_mvazt6y5_e9cf21a3efde/pipeline.log
+(pass) legacy no-core generated input remains available for reuse on the second actual repeat [395.36ms]
+
+apps/editor/tests/chat-trial-core-feedback-coordinates.test.ts:
+(pass) missing declared artifact feedback identifies its owner and missing path without changing the guard [2.08ms]
+(pass) semantic ownership feedback binds the rejected target and actual declared owner [0.83ms]
+(pass) generated input feedback names the exact failed provenance conjunct while valid mappings still pass [2.27ms]
+(pass) generated input map feedback names the unmatched path without requesting a YAML edit [0.52ms]
+
+apps/editor/tests/chat-trial-semantic-review-contract.test.ts:
+(pass) dynamic content can request independent Host review while retaining real core ownership [1.59ms]
+(pass) semantic review rejects seeded outputs and mismatched or omitted owning roles [1.53ms]
+(pass) semantic review cannot grade negative cases or accept model-authored pass flags [0.46ms]
+(pass) semantic JSON review keeps structural validation and cannot pass synchronously [0.82ms]
+
+ 47 pass
+ 0 fail
+ 415 expect() calls
+Ran 47 tests across 4 files. [2.22s]

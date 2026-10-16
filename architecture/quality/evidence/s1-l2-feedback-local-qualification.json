@@ -1,0 +1,71 @@
+{
+  "scope": "local-production-full-qualification-and-final-fixture-checks-not-Windows-CI-or-live-S1-L2-pass",
+  "baselineCommit": "69d8e27daac6f29158cf74699a03cd31dd3775df",
+  "fullQualificationLogSha256": "96d4662ba8afa39a6f0b7f33e3835c24ab42a26b8009c62bff37390fabb1a612",
+  "fullGates": [
+    {
+      "gate": "text",
+      "status": "pass"
+    },
+    {
+      "gate": "deps",
+      "status": "pass"
+    },
+    {
+      "gate": "focus",
+      "status": "pass"
+    },
+    {
+      "gate": "imports",
+      "status": "pass"
+    },
+    {
+      "gate": "cycles",
+      "status": "pass"
+    },
+    {
+      "gate": "secrets",
+      "status": "pass"
+    },
+    {
+      "gate": "format",
+      "status": "pass"
+    },
+    {
+      "gate": "types",
+      "status": "pass"
+    },
+    {
+      "gate": "lint",
+      "status": "pass"
+    },
+    {
+      "gate": "tests",
+      "status": "pass"
+    },
+    {
+      "gate": "scripts",
+      "status": "pass"
+    },
+    {
+      "gate": "build",
+      "status": "pass"
+    },
+    {
+      "gate": "publish",
+      "status": "pass"
+    }
+  ],
+  "finalTargetedChecks": [
+    "format",
+    "test-types",
+    "affected-lint",
+    "actual-Linux-native-readiness1-test22-assertions"
+  ],
+  "limits": [
+    "Full qualification scan preceded final fixture startup-clock alias and documentation ordering notes; final affected checks above follow those edits.",
+    "Initial parallel current249 run had one missing-dist import and is not GREEN. Final ledger must run after all builds and targeted checks finish.",
+    "Latest main69d8e27d Windows native deadline failure is not repaired/qualified until actual new Windows CI passes.",
+    "S1-L2 verify3 remains failed, no Trial/publication; fresh original-case verification still required."
+  ]
+}

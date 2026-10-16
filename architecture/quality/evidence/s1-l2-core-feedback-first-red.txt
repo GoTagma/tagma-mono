@@ -1,0 +1,48 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-core-feedback-coordinates.test.ts:
+21 |     const raw = JSON.parse(JSON.stringify(semanticReviewPlanInput()).split('flow.inspect').join(taskId).split('flow/report.md').join(output));
+22 |     const plan = parseChatPipelineTrialPlan(raw);
+23 |     const tasks = { [taskId]: {dependsOn: [], artifactPaths: [output, missing]} };
+24 |     const error = reject(plan, tasks);
+25 |     expect(error.message).toBe('Every declared core artifact must have a concrete content expectation.');
+26 |     expect(error.trialPlanDiagnostic?.message).toBe(error.message);
+                                                    ^
+error: expect(received).toBe(expected)
+
+Expected: "Every declared core artifact must have a concrete content expectation."
+Received: undefined
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-core-feedback-coordinates.test.ts:26:48)
+(fail) missing declared artifact feedback identifies its owner and missing path without changing the guard [12.30ms]
+39 |   const raw = semanticReviewPlanInput();
+40 |   const plan = parseChatPipelineTrialPlan({...raw, cases: raw.cases.map(item => ({...item, expectations: [item.expectations[0], {...item.expectations[1], taskId: 'foreign.writer'}]}))});
+41 |   const tasks = {'flow.inspect': {dependsOn: [], artifactPaths: ['flow/report.md']}};
+42 |   const error = reject(plan, tasks);
+43 |   expect(error.message).toBe('Semantic review must map to its uniquely owning content task.');
+44 |   expect(error.trialPlanDiagnostic?.rejectionContext).toMatchObject({
+                                                           ^
+error: expect(received).toMatchObject(expected)
+
+Matcher error: received value must be a non-null object
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-core-feedback-coordinates.test.ts:44:55)
+(fail) semantic ownership feedback binds the rejected target and actual declared owner [1.11ms]
+92 |     }
+93 |     if (failure === 'concrete_produced_bytes') f.plan.cases[0]!.expectations[2] = {type:'file-contains',path:'lane/source.txt',text:'Independent'};
+94 |     if (failure === 'producer_artifact_ownership') f.tasks['origin.make'].artifactPaths = ['lane/different.txt'];
+95 |     const error = reject(f.plan, f.tasks);
+96 |     expect(error.message).toBe('Generated core input needs an unseeded exact removal, asserted produced bytes, and an upstream producer/consumer mapping.');
+97 |     expect(error.trialPlanDiagnostic?.rejectionContext).toMatchObject({
+                                                             ^
+error: expect(received).toMatchObject(expected)
+
+Matcher error: received value must be a non-null object
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-core-feedback-coordinates.test.ts:97:57)
+(fail) generated input feedback names the exact failed provenance conjunct while valid mappings still pass [1.85ms]
+
+ 0 pass
+ 3 fail
+ 10 expect() calls
+Ran 3 tests across 1 file. [159.00ms]

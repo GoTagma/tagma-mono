@@ -1,0 +1,15 @@
+{
+  "commit": "69d8e27daac6f29158cf74699a03cd31dd3775df",
+  "runId": 38902602771,
+  "jobId": 116978249265,
+  "os": "Windows",
+  "conclusion": "failure",
+  "failedTest": "native content reviewer has no tools or inherited history and preserves the frozen variant",
+  "detail": "Independent semantic review unavailable: reviewer_deadline.",
+  "fakeProviderRequests": 0,
+  "elapsedMs": 96276.49,
+  "budgetMs": 90000,
+  "scope": "synthetic loopback provider in actual pinned native fixture, not a live acceptance result",
+  "sourceObservation": "Fixture begins the90s evaluator budget after only reading the serve banner, without native workspace/database/tool-registry readiness checks. Production live source runtime is already warm after authoring.",
+  "causeQualification": "Pre-evaluation readiness gap verified in fixture source; exact blocked native endpoint not yet observed. Add bounded real metadata readiness and content-free HTTP phase timing; preserve90s evaluation budget and exactly2 provider requests for2 reviews. Actual Windows CI required for final qualification."
+}

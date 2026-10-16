@@ -9,6 +9,10 @@ For live acceptance work against a supplied Tagma test set or scenario/level mat
 
 ## Known-Issue Regression Gate
 
+- Serialize historical/current regression gates with `verify:full`, `build:types`, and
+  `check:client`; these builds clear workspace `dist/` files that selected tests import.
+  An import failure in that transient gap has zero verified execution and is not GREEN.
+  Finish builds, then rerun the gates on the final source; do not disable the selector.
 - Keep `architecture/quality/known-issues.json` append-only for stable issue identities,
   first evidence, and prior observation/fix history. Keep resolved issues and their executable
   regressions. Unknown evidence and unresolved import gaps must remain explicit.

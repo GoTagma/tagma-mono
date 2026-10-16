@@ -1,0 +1,9 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-trial-semantic-review-native.test.ts:
+(pass) native content reviewer has no tools or inherited history and preserves the frozen variant [3492.75ms]
+
+ 1 pass
+ 0 fail
+ 22 expect() calls
+Ran 1 test across 1 file. [3.62s]

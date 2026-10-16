@@ -181,6 +181,60 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         await Bun.sleep(250);
       }
       if (!base) throw new Error('Synthetic native reviewer process did not become ready.');
+      const httpPhases: Array<{
+        path: string;
+        method: string;
+        elapsedMs: number | null;
+        status: number | null;
+        errorName?: string;
+      }> = [];
+      const nativeFetch = createStreamingLoopbackFetch(base);
+      const tracedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : String(input), base);
+        const phase = {
+          path: url.pathname.replace(/ses_[A-Za-z0-9_-]+/gu, ':session'),
+          method: init?.method ?? (input instanceof Request ? input.method : 'GET'),
+          elapsedMs: null as number | null,
+          status: null as number | null,
+          errorName: undefined as string | undefined,
+        };
+        const started = Date.now();
+        if (httpPhases.length < 64) httpPhases.push(phase);
+        try {
+          const response = await nativeFetch(input, init);
+          phase.status = response.status;
+          return response;
+        } catch (error) {
+          phase.errorName = error instanceof Error ? error.name : 'UnknownError';
+          throw error;
+        } finally {
+          phase.elapsedMs = Date.now() - started;
+        }
+      }) as typeof fetch;
+      tracedFetch.preconnect = nativeFetch.preconnect.bind(nativeFetch);
+      // A serve banner precedes lazy native workspace/plugin initialization. Prove
+      // actual metadata readiness before starting the unchanged90s evaluator clock.
+      // These GETs never create a session or make a provider call.
+      const readinessDeadline = deadline;
+      try {
+        for (const endpoint of [
+          '/global/health',
+          '/session?limit=1&directory=' + encodeURIComponent(source),
+          '/experimental/tool/ids?directory=' + encodeURIComponent(source),
+        ]) {
+          const response = await tracedFetch(base + endpoint, {
+            signal: AbortSignal.timeout(Math.max(1, readinessDeadline - Date.now())),
+          });
+          expect(response.status).toBe(200);
+          const payload: unknown = await response.json();
+          if (endpoint.startsWith('/experimental/tool/ids'))
+            expect(payload).toContain('tagma_trial_plan');
+        }
+        expect(requests).toHaveLength(0);
+      } catch (error) {
+        console.error(JSON.stringify({ nativeReadinessPhases: httpPhases }));
+        throw error;
+      }
       const runtime = createOpenCodeTrialSemanticReviewRuntime({
         sourceDirectory: source,
         model: { providerID: 'review-fixture', modelID: 'deepseek-v4-pro', variant: 'off' },
@@ -189,7 +243,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
             baseUrl: base,
             directory: source,
             throwOnError: false,
-            fetch: createStreamingLoopbackFetch(base),
+            fetch: tracedFetch,
           }) as unknown as OpenCodeAdapterSdkClient,
       });
       const intent = 'Produce a provisional explanation from the supplied observation.';
@@ -223,7 +277,8 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
           signal: AbortSignal.timeout(120000),
           secretValues: [],
         });
-        if (!result.success)
+        if (!result.success) {
+          console.error(JSON.stringify({ nativeHttpPhases: httpPhases }));
           console.error(
             JSON.stringify(
               requests.map((body) => ({
@@ -235,6 +290,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
               })),
             ),
           );
+        }
         expect(result.detail).toBe('Independent model content review passed.');
         expect(result.success).toBe(true);
         sessions.push(result.receipt!.reviewerSessionId!);
