@@ -2420,3 +2420,11 @@
   through an available managed web path or report the environment boundary. Local-only fixtures
   do not qualify website monitoring, and changed task graphs still require a complete current
   Trial plan within the original budgets.
+
+- Trial dynamic JSON collections use strict `json-pointer-collection` with explicit array/object
+  kind and boolean nonempty at the exact path/pointer. Empty-result Host fault contrast may use
+  a matching nonempty predicate without predicting random or web-derived members. This is
+  structural evidence only: never admit it as core content, source provenance or semantic
+  correctness. Preserve concrete/independent semantic core witnesses, controlled-fault ownership,
+  finite counters and bounded reads. Cache protocol 51 invalidates earlier verdict semantics;
+  plan version and generated-input semantics remain unchanged.

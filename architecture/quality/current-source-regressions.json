@@ -711,6 +711,11 @@
       "path": "architecture/quality/evidence/s3-l3-network-guidance-related122-green.txt",
       "sha256": "a27fd7b3e4800e3ea31291b266ba75c6a981cd72906403f050ce28fcddc7de99",
       "role": "six-related-files122-tests1434-assertions"
+    },
+    {
+      "id": "s3-l3-dynamic-collection-first-observation",
+      "path": "architecture/quality/evidence/s3-l3-verify4-collection-witness-first-observation.json",
+      "sha256": "ecf810617501fae6f7345093294cf73d9114a66fe7fa558b39d917eb3ccb7536"
     }
   ],
   "issues": [
@@ -8203,6 +8208,100 @@
       "realTestSelectors": [],
       "contract": "Expose actual execution environment boundaries to authors while preserving them. A local-only replacement does not qualify website monitoring; actual successful original-operation evidence, complete core scope, stale-plan checks and finite counters remain mandatory. Existing CSR7 broker/legacy inheritance/minimal-env/redaction regressions remain required by the whole current gate.",
       "claimLimit": "General authoring guidance plus existing runtime controls, not a runtime credential inheritance fix, a deterministic model-compliance guarantee, or permission to extend planning. Fresh original S3-L3 remains required."
+    },
+    {
+      "id": "CSR-0054",
+      "lineage": [
+        "CSR-0025",
+        "CSR-0026",
+        "CSR-0038",
+        "CSR-0041",
+        "CSR-0049",
+        "CSR-0051",
+        "CSR-0053"
+      ],
+      "title": "Observe dynamic JSON collection shape without predicting every member",
+      "category": "trial-evidence-contract",
+      "mechanism": "strict-collection-shape-predicate-with-independent-core-content",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l3-dynamic-collection-first-observation",
+        "path": "architecture/quality/evidence/s3-l3-verify4-collection-witness-first-observation.json",
+        "sha256": "ecf810617501fae6f7345093294cf73d9114a66fe7fa558b39d917eb3ccb7536",
+        "sourceRevision": "5b00014b4f51ac07da50ea1018aa8086f7fe09f2",
+        "round": "S3-L3-verify4-original-round-1",
+        "acceptancePolicy": "No committed plan, actual execution or publication. Independent Host probe isolates collection admission gap; not claimed sole cause of live planning pause."
+      },
+      "history": [
+        {
+          "kind": "five-selected-tests-first-red",
+          "evidencePath": "architecture/quality/evidence/s3-l3-json-collection-first-red.txt",
+          "evidenceSha256": "a3616745008726b30a284a9f00f992d0c74bf557f933f380219cb94b81425621",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "five-real-host-plugin-sdk-runtime-tests-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-json-collection-green.txt",
+          "evidenceSha256": "42f892d052deee28dcafd9e31e13fbc3bca4a139e3e1e72a4831a8da0682104f",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "nine-related-files60-tests646-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l3-json-collection-related-green.txt",
+          "evidenceSha256": "5c5d08f064c0f967a7022f0adfd383f5b8cbbda555c4663c0e5d2ac7534d1996",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Add strict json-pointer-collection with exact normalized path/pointer, explicit array/object kind and boolean nonempty. Actual bounded JSON reads verify shape and emptiness; Host and generated Plugin admit only matching normal nonempty predicates for controlled empty collection contrast."
+        },
+        {
+          "summary": "Keep structural predicates ineligible for core content. Preserve independent concrete/semantic content, source ownership, actual signed Host faults, all counters, budgets, reader fences and version12 generated-input semantics. Increment signed cache protocol50 to51 and publish planner guidance."
+        }
+      ],
+      "status": "local-qualified-live-S3-L3-verification-required",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "JSON collection Host admission supports unknown members without granting core content authority",
+          "namePattern": "^JSON collection Host admission supports unknown members without granting core content authority$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "JSON collection real Plugin preflight and commit preserve explicit kind state and finite counters",
+          "namePattern": "^JSON collection real Plugin preflight and commit preserve explicit kind state and finite counters$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "actual isolated Trial contrasts randomized array collection with Host-injected empty result",
+          "namePattern": "^actual isolated Trial contrasts randomized array collection with Host-injected empty result$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "actual isolated Trial contrasts randomized object collection with Host-injected empty result",
+          "namePattern": "^actual isolated Trial contrasts randomized object collection with Host-injected empty result$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "JSON collection runtime rejects wrong types missing pointers malformed JSON and oversized reads",
+          "namePattern": "^JSON collection runtime rejects wrong types missing pointers malformed JSON and oversized reads$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Structural collection observations cannot establish substantive content. Require real successful normal producer/consumer evidence, same typed empty fault, unchanged independent content qualification and fail-closed authority.",
+      "claimLimit": "No deterministic model-compliance or live acceptance claim. First RED includes obsolete cache guard, unsupported type and runtime evaluation; subsequent fixture corrections retain production source-relation restrictions. Fresh original S3-L3 remains blocked until passed."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

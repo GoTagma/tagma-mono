@@ -119,6 +119,7 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     'json-valid',
     'artifact-semantic-review',
     'json-pointer-equals',
+    'json-pointer-collection',
     'json-pointer-text-occurrence',
     'file-source-text-occurrence',
     'directory-entry-count',
@@ -215,6 +216,13 @@ export type ChatPipelineTrialExpectation =
       path: string;
       pointer: string;
       expectedJson: string;
+    }
+  | {
+      type: 'json-pointer-collection';
+      path: string;
+      pointer: string;
+      kind: 'array' | 'object';
+      nonempty: boolean;
     }
   | {
       type: 'directory-entry-count';
@@ -726,6 +734,22 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
       expectedJson: parseExpectedJson(raw.expectedJson, `${label}.expectedJson`),
     };
   }
+  if (type === 'json-pointer-collection') {
+    if (
+      Object.keys(raw).some((key) => !['type', 'path', 'pointer', 'kind', 'nonempty'].includes(key))
+    )
+      throw new Error(`${label} contains unsupported collection fields.`);
+    if (raw.kind !== 'array' && raw.kind !== 'object')
+      throw new Error(`${label}.kind must be array or object.`);
+    if (typeof raw.nonempty !== 'boolean') throw new Error(`${label}.nonempty must be a boolean.`);
+    return {
+      type,
+      path: normalizeRelativeCasePath(raw.path, `${label}.path`),
+      pointer: parseJsonPointer(raw.pointer, `${label}.pointer`),
+      kind: raw.kind,
+      nonempty: raw.nonempty,
+    };
+  }
   if (type === 'json-pointer-text-occurrence') {
     if (typeof raw.present !== 'boolean') throw new Error(`${label}.present must be a boolean.`);
     return {
@@ -1027,6 +1051,7 @@ export function findChatPipelineTrialRepeatedFileOutputPaths(
       expectation.type === 'json-valid' ||
       expectation.type === 'artifact-semantic-review' ||
       expectation.type === 'json-pointer-equals' ||
+      expectation.type === 'json-pointer-collection' ||
       expectation.type === 'file-source-text-occurrence'
     )) {
       continue;
@@ -1058,6 +1083,7 @@ function hasDistinctOutputExpectation(cases: ChatPipelineTrialPlanCase[]): boole
         expectation.type === 'json-valid' ||
         expectation.type === 'artifact-semantic-review' ||
         expectation.type === 'json-pointer-equals' ||
+        expectation.type === 'json-pointer-collection' ||
         expectation.type === 'file-source-text-occurrence'
       ) {
         positivePaths.add(expectation.path.toLowerCase());
@@ -1075,6 +1101,7 @@ function validateJsonArtifactExpectations(cases: ChatPipelineTrialPlanCase[]): v
           (expectation) =>
             expectation.type === 'json-valid' ||
             expectation.type === 'json-pointer-equals' ||
+            expectation.type === 'json-pointer-collection' ||
             expectation.type === 'json-pointer-text-occurrence',
         )
         .map((expectation) => expectation.path.toLowerCase()),

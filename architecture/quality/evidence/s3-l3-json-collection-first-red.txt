@@ -1,0 +1,83 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+108 |   const plan = collectionPlan(kind, createHash('sha1').update(yaml).digest('hex'));
+109 |   return { workDir, folder, yaml, config: resolved, coordinates, plan };
+110 | }
+111 | 
+112 | test('JSON collection Host admission supports unknown members without granting core content authority', () => {
+113 |   expect(CHAT_PIPELINE_TRIAL_CACHE_VERSION).toBeGreaterThan(50);
+                                                  ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 50
+Received: 50
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:113:45)
+(fail) JSON collection Host admission supports unknown members without granting core content authority [0.34ms]
+1036 | function validateExpectation(value, label) {
+1037 |   const raw = { ...asRecord(value, label) };
+1038 |   if (raw.path !== undefined) raw.path = normalizeRelativeCasePath(raw.path, label + '.path');
+1039 |   if (raw.sourcePath !== undefined) raw.sourcePath = normalizeRelativeCasePath(raw.sourcePath, label + '.sourcePath');
+1040 |   const type = asString(raw.type, label + ".type", 64);
+1041 |   if (!EXPECTATION_TYPES.includes(type)) throw new Error(label + ".type is unsupported.");
+                                                          ^
+error: cases[0].expectations[3].type is unsupported.
+      at validateExpectation (/tmp/tagma-coll-ho7fvw/collection-tool.mjs:1041:52)
+      at map (1:11)
+      at validateCase (/tmp/tagma-coll-ho7fvw/collection-tool.mjs:1219:5)
+      at map (1:11)
+      at validateCaseEntries (/tmp/tagma-coll-ho7fvw/collection-tool.mjs:1323:75)
+      at <anonymous> (/tmp/tagma-coll-ho7fvw/collection-tool.mjs:2680:30)
+      at withTrialPlanDraftLock (/tmp/tagma-coll-ho7fvw/collection-tool.mjs:1770:12)
+      at execute (/tmp/tagma-coll-ho7fvw/collection-tool.mjs:2822:12)
+      at call (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:160:94)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:169:42)
+(fail) JSON collection real Plugin preflight and commit preserve explicit kind state and finite counters [57.73ms]
+186 |   const entry = stage.entries.find(item => item.sourcePath === path)!;
+187 |   try {
+188 |     writeFileSync(entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'), JSON.stringify(h.plan));
+189 |     writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
+190 |     const result = await trialRunChatYamlStage(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId: 'collection-first', trustedOperationV2: true, intentText: intent });
+191 |     expect(result.ran).toBe(true);
+                             ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:191:24)
+(fail) actual isolated Trial contrasts randomized array collection with Host-injected empty result [30.42ms]
+186 |   const entry = stage.entries.find(item => item.sourcePath === path)!;
+187 |   try {
+188 |     writeFileSync(entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'), JSON.stringify(h.plan));
+189 |     writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
+190 |     const result = await trialRunChatYamlStage(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId: 'collection-first', trustedOperationV2: true, intentText: intent });
+191 |     expect(result.ran).toBe(true);
+                             ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:191:24)
+(fail) actual isolated Trial contrasts randomized object collection with Host-injected empty result [7.87ms]
+219 |   const check = (kind: Kind, nonempty: boolean, pointer = '/items') => evaluateTrialExpectation(workDir, 'lab/lab.yaml', { type: 'json-pointer-collection', path: 'lab/data.json', pointer, kind, nonempty }, null);
+220 |   for (const [value, kind, nonempty, pass] of [
+221 |     [[], 'array', true, false], [[1], 'array', true, true], [[], 'array', false, true], [[1], 'array', false, false],
+222 |     [{}, 'object', true, false], [{ k: 1 }, 'object', true, true], [{}, 'object', false, true], [[], 'object', false, false],
+223 |     [null, 'object', false, false], [1, 'array', false, false], ['x', 'object', true, false],
+224 |   ] as const) { writeFileSync(path, JSON.stringify({ items: value })); expect(check(kind, nonempty).passed).toBe(pass); }
+                                                                                                                  ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:224:109)
+(fail) JSON collection runtime rejects wrong types missing pointers malformed JSON and oversized reads [1.57ms]
+
+ 0 pass
+ 5 fail
+ 7 expect() calls
+Ran 5 tests across 1 file. [253.00ms]

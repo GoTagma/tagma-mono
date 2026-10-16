@@ -1,0 +1,94 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify4",
+  "accepted": false,
+  "sourceRevision": "5b00014b4f51ac07da50ea1018aa8086f7fe09f2",
+  "operationId": "operation-65351f20-0dee-4db1-ba18-ad7476cae799",
+  "stageId": "59a506f6-fd1a-42b7-b6a0-c9c11d2f82cf",
+  "outcome": "trial_verification_paused/user_retry",
+  "originalRequests": 1,
+  "published": false,
+  "actualPipelineRuns": 0,
+  "actualBusinessTaskExecutions": 0,
+  "nativeIndependentReviews": 0,
+  "hostPlanningOpportunitiesUsed": 2,
+  "validPlanCommits": 0,
+  "generatedDraft": "One local scratch-cleanup command plus4 native OpenCode tasks; managed web actor selected and new environment guidance actually consumed, but no execution/publication occurred.",
+  "independentHostCounterexample": {
+    "scope": "Independent Host resilience-rule counterexample, no model/network/business execution. Complete literal is an admission control, not a truthful prediction of dynamic nonce values.",
+    "modes": [
+      {
+        "mode": "complete-literal-control",
+        "result": {
+          "missing": [],
+          "issues": []
+        }
+      },
+      {
+        "mode": "indexed-known-content",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "normal-collection-missing",
+              "field": "normalCaseId",
+              "message": "The normal case must assert a nonempty collection of the same type at that pointer.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      },
+      {
+        "mode": "independent-semantic-normal-content",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "normal-collection-missing",
+              "field": "normalCaseId",
+              "message": "The normal case must assert a nonempty collection of the same type at that pointer.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      },
+      {
+        "mode": "proposed-structural-collection",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "normal-collection-missing",
+              "field": "normalCaseId",
+              "message": "The normal case must assert a nonempty collection of the same type at that pointer.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "scope": "Live draft also contains generated plan mistakes; the isolated counterexample establishes the collection-expression gap, not that it is the sole cause of the entire planning pause.",
+  "candidateFix": "Add a deterministic JSON Pointer collection-kind/empty-vs-nonempty assertion. It is structural evidence only and cannot authorize core content; retain independent concrete or semantic content evidence. Preserve controlled fault and source/status/hash/budget rules; bump signed cache protocol for changed required-evidence semantics.",
+  "firstEvidenceHashes": {
+    "first-skill-load-author-guidance.json": "808daf41c0b520b5a57dc70affd12630c5a3ea8eac00f07e99f4e663d757deeb",
+    "first-planning-length-timing.json": "07333c581d8b33ed99f82b9793a68d271f03dbfc380e4c723fbe5084749137de",
+    "independent-collection-witness-counterexample.json": "59ecc64ee7bc34dd14fdadeffee9943afa315c3d3323363dfb85a3fe7c5f9481",
+    "plan-error-facts.json": "83e493bfd698faad1a63273acd576596cdfc25604b0c2e6c895ad23b1c1017b2"
+  },
+  "initialProbeFixtureCorrection": "Initial independent control omitted mandatory path-exists for its readable outcome contrast. Added that fixture assertion without changing any product rule; final complete-literal control passes and all3 alternatives fail only normal-collection-missing. Initial diagnostic retained privately.",
+  "packagesSourceChanged": false,
+  "historicalCoverageComplete": false
+}

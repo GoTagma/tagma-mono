@@ -1935,6 +1935,7 @@ export function evaluateTrialExpectation(
     expectation.type === 'file-preserves-lines' ||
     expectation.type === 'json-valid' ||
     expectation.type === 'json-pointer-equals' ||
+    expectation.type === 'json-pointer-collection' ||
     expectation.type === 'json-pointer-text-occurrence' ||
     expectation.type === 'file-source-text-occurrence'
   ) {
@@ -2100,6 +2101,7 @@ export function evaluateTrialExpectation(
     if (
       expectation.type === 'json-valid' ||
       expectation.type === 'json-pointer-equals' ||
+      expectation.type === 'json-pointer-collection' ||
       expectation.type === 'json-pointer-text-occurrence'
     ) {
       let parsed: unknown;
@@ -2131,6 +2133,25 @@ export function evaluateTrialExpectation(
             : `${expectation.path} does not contain JSON Pointer ${expectation.pointer || '<root>'}.`,
           repairScope: actual.invalidArrayToken ? 'diagnostic-only' : 'pipeline-artifact',
           ...(actual.invalidArrayToken ? { planError: 'invalid-array-index' as const } : {}),
+        };
+      }
+      if (expectation.type === 'json-pointer-collection') {
+        const matchesKind =
+          expectation.kind === 'array'
+            ? Array.isArray(actual.value)
+            : actual.value !== null &&
+              typeof actual.value === 'object' &&
+              !Array.isArray(actual.value);
+        const size = matchesKind
+          ? Array.isArray(actual.value)
+            ? actual.value.length
+            : Object.keys(actual.value as object).length
+          : null;
+        return {
+          type: expectation.type,
+          passed: size !== null && size > 0 === expectation.nonempty,
+          detail: `${expectation.path} JSON Pointer ${expectation.pointer || '<root>'} ${matchesKind ? `contains ${expectation.kind} with ${size} entries; expected ${expectation.nonempty ? 'nonempty' : 'empty'}` : `does not contain ${expectation.kind}`}.`,
+          repairScope: 'pipeline-artifact',
         };
       }
       if (expectation.type === 'json-pointer-text-occurrence') {

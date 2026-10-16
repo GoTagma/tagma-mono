@@ -1,0 +1,52 @@
+
+::group::tests/chat-trial-json-collection.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+(pass) JSON collection Host admission supports unknown members without granting core content authority [15.92ms]
+(pass) JSON collection real Plugin preflight and commit preserve explicit kind state and finite counters [49.46ms]
+23:16:01.365 [pipeline] start "Randomized measurement collection" run_id=run_mvbl6eoh_5b834a56b45b
+23:16:01.373 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:16:01.403 [task:measure.sample] success (0.0s)
+23:16:01.404 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:16:01.423 [task:present.render] success (0.0s)
+23:16:01.423 [pipeline] completed "Randomized measurement collection"
+23:16:01.423 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:16:01.423 [pipeline] Duration: 0.1s
+23:16:01.424 [pipeline] Log: /tmp/tagma-coll-hK5LvG/.tagma/.chat-staging/e1632511-fd6f-409f-9ab1-61e670acd134/.trial-cases/normal-cg6Zx9/workspace/.tagma/logs/run_mvbl6eoh_5b834a56b45b/pipeline.log
+23:16:01.565 [pipeline] start "Randomized measurement collection" run_id=run_mvbl6eu4_19b291f36201
+23:16:01.566 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:16:01.589 [task:measure.sample] success (0.0s)
+23:16:01.590 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:16:01.606 [task:present.render] success (0.0s)
+23:16:01.607 [pipeline] completed "Randomized measurement collection"
+23:16:01.607 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:16:01.607 [pipeline] Duration: 0.0s
+23:16:01.607 [pipeline] Log: /tmp/tagma-coll-hK5LvG/.tagma/.chat-staging/e1632511-fd6f-409f-9ab1-61e670acd134/.trial-cases/empty-ZXrl6F/workspace/.tagma/logs/run_mvbl6eu4_19b291f36201/pipeline.log
+(pass) actual isolated Trial contrasts randomized array collection with Host-injected empty result [609.04ms]
+23:16:01.937 [pipeline] start "Randomized measurement collection" run_id=run_mvbl6f4g_db7b464d41be
+23:16:01.937 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:16:01.961 [task:measure.sample] success (0.0s)
+23:16:01.962 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:16:01.979 [task:present.render] success (0.0s)
+23:16:01.979 [pipeline] completed "Randomized measurement collection"
+23:16:01.979 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:16:01.979 [pipeline] Duration: 0.0s
+23:16:01.979 [pipeline] Log: /tmp/tagma-coll-BHWmmy/.tagma/.chat-staging/2acc52ce-168c-4dba-b5a3-fb595f8caab6/.trial-cases/normal-sFHkQj/workspace/.tagma/logs/run_mvbl6f4g_db7b464d41be/pipeline.log
+23:16:02.113 [pipeline] start "Randomized measurement collection" run_id=run_mvbl6f9c_6ce21d63bb6f
+23:16:02.114 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:16:02.138 [task:measure.sample] success (0.0s)
+23:16:02.138 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:16:02.155 [task:present.render] success (0.0s)
+23:16:02.156 [pipeline] completed "Randomized measurement collection"
+23:16:02.156 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:16:02.157 [pipeline] Duration: 0.0s
+23:16:02.157 [pipeline] Log: /tmp/tagma-coll-BHWmmy/.tagma/.chat-staging/2acc52ce-168c-4dba-b5a3-fb595f8caab6/.trial-cases/empty-ywArHA/workspace/.tagma/logs/run_mvbl6f9c_6ce21d63bb6f/pipeline.log
+(pass) actual isolated Trial contrasts randomized object collection with Host-injected empty result [548.07ms]
+(pass) JSON collection runtime rejects wrong types missing pointers malformed JSON and oversized reads [2.66ms]
+
+ 5 pass
+ 0 fail
+ 82 expect() calls
+Ran 5 tests across 1 file. [1371.00ms]
+::endgroup::

@@ -1298,11 +1298,20 @@ export function createTrialResilienceRules() {
                   );
                   const original =
                     peer?.type === 'json-pointer-equals' ? JSON.parse(peer.expectedJson) : null;
+                  const structural = normal?.expectations.some(
+                    (e) =>
+                      e.type === 'json-pointer-collection' &&
+                      e.path === observation.path &&
+                      e.pointer === observation.pointer &&
+                      e.nonempty &&
+                      e.kind === (Array.isArray(value) ? 'array' : 'object'),
+                  );
                   if (
-                    !original ||
-                    typeof original !== 'object' ||
-                    Object.keys(original).length === 0 ||
-                    Array.isArray(original) !== Array.isArray(value)
+                    !structural &&
+                    (!original ||
+                      typeof original !== 'object' ||
+                      Object.keys(original).length === 0 ||
+                      Array.isArray(original) !== Array.isArray(value))
                   )
                     fail(
                       'normal-collection-missing',

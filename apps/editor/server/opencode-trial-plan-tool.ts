@@ -153,7 +153,7 @@ function validateExpectation(value, label) {
     if (!QUALIFIED_TASK_ID_RE.test(taskId)) throw new Error(label + ".taskId must be a qualified task id.");
     return { type, path: normalizeRelativeCasePath(raw.path, label + ".path"), taskId };
   }
-  if (type === "json-pointer-equals" || type === "json-pointer-text-occurrence") {
+  if (type === "json-pointer-equals" || type === "json-pointer-text-occurrence" || type === "json-pointer-collection") {
     normalizeRelativeCasePath(raw.path, label + ".path");
     const pointer = asString(raw.pointer, label + ".pointer", 512, true);
     if (pointer !== "" && !pointer.startsWith("/")) {
@@ -161,6 +161,13 @@ function validateExpectation(value, label) {
     }
     if (/~(?:[^01]|$)/u.test(pointer)) {
       throw new Error(label + ".pointer contains an invalid JSON Pointer escape.");
+    }
+    if (type === "json-pointer-collection") {
+      if (Object.keys(raw).some((key) => !["type", "path", "pointer", "kind", "nonempty"].includes(key)))
+        throw new Error(label + " contains unsupported collection fields.");
+      if (raw.kind !== "array" && raw.kind !== "object") throw new Error(label + ".kind must be array or object.");
+      if (typeof raw.nonempty !== "boolean") throw new Error(label + ".nonempty must be a boolean.");
+      return raw;
     }
     if (type === "json-pointer-text-occurrence") {
       normalizeRelativeCasePath(raw.sourcePath, label + ".sourcePath");
@@ -335,7 +342,7 @@ function validateCase(value, index) {
     expectations
       .filter(
         (expectation) =>
-          expectation.type === "json-valid" || expectation.type === "json-pointer-equals" || expectation.type === "json-pointer-text-occurrence",
+          expectation.type === "json-valid" || expectation.type === "json-pointer-equals" || expectation.type === "json-pointer-collection" || expectation.type === "json-pointer-text-occurrence",
       )
       .map((expectation) => expectation.path.toLowerCase()),
   );
@@ -457,6 +464,7 @@ function repeatedFileOutputPaths(testCase) {
         expectation.type === "json-valid" ||
         expectation.type === "artifact-semantic-review" ||
         expectation.type === "json-pointer-equals" ||
+        expectation.type === "json-pointer-collection" ||
         expectation.type === "file-source-text-occurrence"
       )
     ) {
@@ -490,6 +498,7 @@ function hasDistinctOutputExpectation(cases) {
         expectation.type === "json-valid" ||
         expectation.type === "artifact-semantic-review" ||
         expectation.type === "json-pointer-equals" ||
+        expectation.type === "json-pointer-collection" ||
         expectation.type === "file-source-text-occurrence"
       ) {
         positivePaths.add(expectation.path.toLowerCase());
@@ -967,8 +976,12 @@ function trialPlanDraftCaseInventory(testCase) {
       }
       if (['file-preserves-lines', 'json-pointer-text-occurrence', 'file-source-text-occurrence'].includes(type))
         boundedString('sourcePath', 240);
-      if (['json-pointer-equals', 'json-pointer-text-occurrence'].includes(type))
+      if (['json-pointer-equals', 'json-pointer-text-occurrence', 'json-pointer-collection'].includes(type))
         boundedString('pointer', 512);
+      if (type === 'json-pointer-collection') {
+        boundedString('kind', 6);
+        if (typeof expectation.nonempty === 'boolean') metadata.nonempty = expectation.nonempty;
+      }
       if (type === 'file-source-text-occurrence') {
         boundedString('sourcePointer', 512);
         boundedString('producerTaskId', 160, true);
@@ -1413,6 +1426,13 @@ const expectationSchema = tool.schema.discriminatedUnion("type", [
     expectedJson: tool.schema.string(),
   }),
   tool.schema.object({
+    type: tool.schema.literal("json-pointer-collection"),
+    path: tool.schema.string(),
+    pointer: tool.schema.string(),
+    kind: tool.schema.enum(["array", "object"]),
+    nonempty: tool.schema.boolean(),
+  }).strict().describe("Deterministic collection type and emptiness only, without predicting dynamic members. For controlled empty-result evidence use nonempty:true at the same path/pointer and matching kind in the linked normal case; keep the controlled json-pointer-equals [] or {} observation. This structural assertion never supplies concrete core content: retain separate input-derived or independent semantic content witnesses."),
+  tool.schema.object({
     type: tool.schema.literal("json-pointer-text-occurrence"),
     path: tool.schema.string(),
     pointer: tool.schema.string(),
@@ -1463,7 +1483,7 @@ const faultSchema = tool.schema.union([
 ]);
 const evidenceSchema = tool.schema.union([
   tool.schema.object({ type: tool.schema.literal("source-preservation"), preservationExpectationIndex: tool.schema.number().int().min(0).max(31) }),
-  tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source"]), normalCaseId: tool.schema.string(), recoveredTaskId: tool.schema.string(), outcomeExpectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).min(1).max(32).describe("Zero-based controlled-case expectation indices for actual downstream file-contains or json-pointer-equals recovery outputs, not task status, existence or the injected input observation. Contrast these outputs in the linked normal case."), observationExpectationIndex: tool.schema.number().int().min(0).max(31).optional().describe("Index of the actual replaced input observation. Empty-result requires an empty collection at a JSON pointer and a same-path, same-pointer nonempty array/object of the same type in the linked normal case."), fault: faultSchema }),
+  tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source"]), normalCaseId: tool.schema.string(), recoveredTaskId: tool.schema.string(), outcomeExpectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).min(1).max(32).describe("Zero-based controlled-case expectation indices for actual downstream file-contains or json-pointer-equals recovery outputs, not task status, existence or the injected input observation. Contrast these outputs in the linked normal case."), observationExpectationIndex: tool.schema.number().int().min(0).max(31).optional().describe("Index of the actual replaced input observation. Empty-result requires an empty collection at a JSON pointer and a same-path, same-pointer nonempty array/object of the same type in the linked normal case. For unpredictable members use json-pointer-collection with matching kind and nonempty:true; this structural predicate cannot qualify core content."), fault: faultSchema }),
 ]);
 // Preserve unknown review keys for the existing semantic key validator; do not
 // let Zod silently remove evidence that parseReview must reject.

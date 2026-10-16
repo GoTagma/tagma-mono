@@ -1,0 +1,59 @@
+{
+  "scope": "CSR54 local qualification across complete13-gate run and corrected format-only rerun; not live acceptance",
+  "allDistinctRequiredGatesQualified": true,
+  "firstFullRun": {
+    "exitCode": 1,
+    "passed": 12,
+    "failed": 1,
+    "summary": [
+      "PASS text 103ms ok",
+      "PASS deps 267ms ok",
+      "PASS focus 198ms ok",
+      "PASS imports 55ms ok",
+      "PASS cycles 34ms ok",
+      "PASS secrets 303ms ok",
+      "FAIL format 19.5s exit 1",
+      "PASS types 43.4s ok",
+      "PASS lint 16.3s ok",
+      "PASS tests 205.8s ok",
+      "PASS scripts 2.4s ok",
+      "PASS build 17.1s ok",
+      "PASS publish 8.9s ok"
+    ],
+    "logSha256": "1c0351e3e7526d24c2f0960325b38f6b9409ca02fdd4872cfe9d7cc6530ff446"
+  },
+  "formatRerun": {
+    "command": "bun run verify:full --only=format",
+    "exitCode": 0,
+    "passed": 1,
+    "logSha256": "dd80d0796a22b9e495586e5c4dba2bc8b1c06fe3a3639a392a062a091f6155f4",
+    "summary": "PASS format 20.6s ok"
+  },
+  "focused": {
+    "tests": 5,
+    "assertions": 82,
+    "passed": true
+  },
+  "related": {
+    "files": 9,
+    "tests": 60,
+    "assertions": 646,
+    "passed": true
+  },
+  "historicalGate": {
+    "passed": false,
+    "failures": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    },
+    "logSha256": "2763ed5ea5b00903d566ab38818479ba23afe4e8c45d02b6333d040fe57d24a4"
+  },
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0,
+  "planVersion": 12,
+  "cacheVersion": 51,
+  "liveAcceptedCases": 8,
+  "totalCases": 12
+}
