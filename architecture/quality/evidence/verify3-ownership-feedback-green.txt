@@ -1,0 +1,312 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+(pass) generated tool commits blocked artifact feedback with the same Host core rules and finite counter [46.47ms]
+(pass) model schema distinguishes repairable core gaps from intrinsic observation limits [16.97ms]
+(pass) model review task scope schema explains required and not-required dispositions [9.75ms]
+(pass) review scope corrections preserve draft and counted commit boundaries [14.28ms]
+(pass) pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas [10.35ms]
+(pass) malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection [11.38ms]
+(pass) semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt [12.74ms]
+(pass) known commit preserves unknown review keys for the existing strict semantic rejection [9.55ms]
+(pass) known commit preserves unknown decision keys for the existing strict semantic rejection [11.10ms]
+(pass) invalid identity, target, and YAML revision cannot consume a malformed commit [7.99ms]
+(pass) malformed draft preflight preserves draft bytes and never consumes a submission [12.44ms]
+(pass) explicit draft commit counts malformed supplied payload and records no duplicate rejection [9.28ms]
+(pass) two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call [11.61ms]
+(pass) semantic plan validation remains one counted rejection outside the construction catch [8.24ms]
+(pass) generated-input guidance names both supported witnesses without weakening case validation [11.02ms]
+
+apps/editor/tests/chat-trial-core-witness.test.ts:
+(pass) normal generated producer and consumer cover the terminal closure without task-name inference [2.79ms]
+(pass) null or empty normal content cannot replace the concrete positive contract [1.29ms]
+(pass) a legal empty edge remains valid beside a genuinely nonempty normal witness [0.70ms]
+(pass) missing or unrelated task mappings and missing intermediate success cannot pass [0.45ms]
+(pass) factory embedded into the managed tool preserves strict core fields and expectation indices [2.18ms]
+(pass) generated maps must match exact removals, genuine dependencies, and asserted produced bytes [0.53ms]
+(pass) positive source occurrence needs present:true and exact preserved or genuinely generated input [0.79ms]
+(pass) blocked core requires an existing blocking diagnostic and is never green coverage [0.21ms]
+(pass) blocked core admits typed artifact repair feedback while rejecting unknown or nonblocking findings [0.25ms]
+07:59:57.441 [pipeline] start "Observable result" run_id=run_mvaogc8t_e77b86ee0871
+07:59:57.447 [task:main.run] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"result.json\",JSON.stringify({value:7}))"]
+07:59:57.469 [task:main.run] success (0.0s)
+07:59:57.470 [pipeline] completed "Observable result"
+07:59:57.470 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:57.470 [pipeline] Duration: 0.0s
+07:59:57.470 [pipeline] Log: /tmp/tagma-core-witness-uJJjPi/.tagma/.chat-staging/b03a1939-4270-42a7-9db6-9ec18d474fe2/.trial-cases/normal-lWh903/workspace/.tagma/logs/run_mvaogc8t_e77b86ee0871/pipeline.log
+(pass) Host blocked artifact repair requires a fresh positive revision plan before actual Sandbox execution [418.27ms]
+(pass) no-intent compatibility does not silently supply a managed positive witness [0.26ms]
+(pass) normal core reuse keys cannot accept historical final-only proofs or changed review mappings [0.22ms]
+(pass) an explicitly reviewed pure execution contract passes but declared content cannot be exempted [0.24ms]
+(pass) nonempty diagnostic or qualified-unknown output cannot satisfy the promised concrete normal result [0.33ms]
+(pass) generated-input reset rejects pre-seeding, directories, and symlink parents without touching outside files [0.67ms]
+07:59:57.809 [pipeline] start "Fresh generation" run_id=run_mvaogcj4_fb7ae48e20e0
+07:59:57.810 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+07:59:57.829 [task:odd.alpha] success (0.0s)
+07:59:57.829 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+07:59:57.847 [task:odd.beta] success (0.0s)
+07:59:57.848 [pipeline] completed "Fresh generation"
+07:59:57.848 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:57.848 [pipeline] Duration: 0.0s
+07:59:57.848 [pipeline] Log: /tmp/tagma-core-witness-jJM6Py/.tagma/.chat-staging/5ac27907-8888-430b-a94b-970160268391/.trial-cases/normal-p4gm4b/workspace/.tagma/logs/run_mvaogcj4_fb7ae48e20e0/pipeline.log
+07:59:57.849 [pipeline] start "Fresh generation" run_id=run_mvaogck9_569a83647486
+07:59:57.850 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+07:59:57.867 [task:odd.alpha] success (0.0s)
+07:59:57.868 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+07:59:57.886 [task:odd.beta] success (0.0s)
+07:59:57.887 [pipeline] completed "Fresh generation"
+07:59:57.887 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:57.887 [pipeline] Duration: 0.0s
+07:59:57.887 [pipeline] Log: /tmp/tagma-core-witness-jJM6Py/.tagma/.chat-staging/5ac27907-8888-430b-a94b-970160268391/.trial-cases/normal-p4gm4b/workspace/.tagma/logs/run_mvaogck9_569a83647486/pipeline.log
+(pass) actual command producer executes fresh each repeat; earlier wrong content survives later correction=false [414.00ms]
+07:59:58.237 [pipeline] start "Fresh generation" run_id=run_mvaogcv1_75806a80cf91
+07:59:58.238 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+07:59:58.256 [task:odd.alpha] success (0.0s)
+07:59:58.257 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',n===0?JSON.stringify({text:'nonempty diagnostic',verdict:'UNVERIFIED',delta:null}):\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+07:59:58.276 [task:odd.beta] success (0.0s)
+07:59:58.276 [pipeline] completed "Fresh generation"
+07:59:58.276 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:58.276 [pipeline] Duration: 0.0s
+07:59:58.276 [pipeline] Log: /tmp/tagma-core-witness-7jWEjh/.tagma/.chat-staging/84fec5aa-0f07-436f-9c2b-447dd1e32c87/.trial-cases/normal-X9Wh8q/workspace/.tagma/logs/run_mvaogcv1_75806a80cf91/pipeline.log
+07:59:58.278 [pipeline] start "Fresh generation" run_id=run_mvaogcw5_e5f86074aa8e
+07:59:58.278 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);fs.writeFileSync('input.json',\"{\\\"text\\\":\\\"Original span 中文\\\"}\");"]
+07:59:58.295 [task:odd.alpha] success (0.0s)
+07:59:58.296 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.readFileSync('input.json','utf8')!==\"{\\\"text\\\":\\\"Original span 中文\\\"}\")process.exit(3);const n=fs.existsSync('repeat-count.txt')?Number(fs.readFileSync('repeat-count.txt','utf8')):0;fs.writeFileSync('repeat-count.txt',String(n+1));fs.writeFileSync('result.json',n===0?JSON.stringify({text:'nonempty diagnostic',verdict:'UNVERIFIED',delta:null}):\"{\\\"text\\\":\\\"Original span 中文\\\",\\\"basis\\\":\\\"independent computation\\\",\\\"delta\\\":0}\");"]
+07:59:58.314 [task:odd.beta] success (0.0s)
+07:59:58.314 [pipeline] completed "Fresh generation"
+07:59:58.314 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:58.314 [pipeline] Duration: 0.0s
+07:59:58.314 [pipeline] Log: /tmp/tagma-core-witness-7jWEjh/.tagma/.chat-staging/84fec5aa-0f07-436f-9c2b-447dd1e32c87/.trial-cases/normal-X9Wh8q/workspace/.tagma/logs/run_mvaogcw5_e5f86074aa8e/pipeline.log
+(pass) actual command producer executes fresh each repeat; earlier wrong content survives later correction=true [428.31ms]
+(pass) explicit promised finite numeric and boolean values remain legal core content types [1.01ms]
+(pass) exact nonempty plain text is a content witness while blanks and diagnostic substitutes do not pass [0.68ms]
+07:59:58.653 [pipeline] start "Legacy first creation and reuse" run_id=run_mvaogd6k_1cd92f2cca20
+07:59:58.653 [task:legacy.generate] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const result=fs.existsSync(\"reuse.json\")?JSON.parse(fs.readFileSync(\"reuse.json\",\"utf8\")):{generated:0,reused:0};if(fs.existsSync(\"generated.txt\")){result.reused++;}else{fs.writeFileSync(\"generated.txt\",\"seed\");result.generated++;}fs.writeFileSync(\"reuse.json\",JSON.stringify(result));"]
+07:59:58.672 [task:legacy.generate] success (0.0s)
+07:59:58.673 [pipeline] completed "Legacy first creation and reuse"
+07:59:58.673 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:58.673 [pipeline] Duration: 0.0s
+07:59:58.673 [pipeline] Log: /tmp/tagma-core-witness-Yyln8z/.tagma/.chat-staging/6375f918-bb12-4ebc-b182-1c4583055529/.trial-cases/legacy-reuse-iYZpqf/workspace/.tagma/logs/run_mvaogd6k_1cd92f2cca20/pipeline.log
+07:59:58.674 [pipeline] start "Legacy first creation and reuse" run_id=run_mvaogd75_40260ff5207b
+07:59:58.675 [task:legacy.generate] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const result=fs.existsSync(\"reuse.json\")?JSON.parse(fs.readFileSync(\"reuse.json\",\"utf8\")):{generated:0,reused:0};if(fs.existsSync(\"generated.txt\")){result.reused++;}else{fs.writeFileSync(\"generated.txt\",\"seed\");result.generated++;}fs.writeFileSync(\"reuse.json\",JSON.stringify(result));"]
+07:59:58.695 [task:legacy.generate] success (0.0s)
+07:59:58.696 [pipeline] completed "Legacy first creation and reuse"
+07:59:58.696 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:58.696 [pipeline] Duration: 0.0s
+07:59:58.696 [pipeline] Log: /tmp/tagma-core-witness-Yyln8z/.tagma/.chat-staging/6375f918-bb12-4ebc-b182-1c4583055529/.trial-cases/legacy-reuse-iYZpqf/workspace/.tagma/logs/run_mvaogd75_40260ff5207b/pipeline.log
+(pass) legacy no-core generated input remains available for reuse on the second actual repeat [379.22ms]
+
+apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:
+(pass) same-repeat relation preserves the exact nonblank STRING including Unicode and JSON-pointer escapes [1.72ms]
+(pass) missing, malformed, empty or non-STRING source values never become a vacuous occurrence [1.48ms]
+(pass) successful status or copied source text without actual owner/dependency results is insufficient [0.51ms]
+(pass) source symlinks and oversized source files are rejected without supplying content [1.58ms]
+(pass) unavailable producer observations and missing actual results cannot use final consumer-authored bytes [0.60ms]
+(pass) normal core accepts dynamic text only with independent concrete source content and explicit mappings [1.53ms]
+(pass) normal relation rejects preseed, missing removal, wrong producer, dependency and artifact ownership [1.05ms]
+(pass) missing artifact ownership feedback identifies a blocked pipeline repair without weakening admission [0.41ms]
+(pass) reader evaluates each actual source value and cannot reuse the prior repeat literal [0.88ms]
+(pass) generated tool draft/full validators mirror the relation gate without consuming a validation slot [26.06ms]
+07:59:59.083 [pipeline] start "Actual dynamic relation" run_id=run_mvaogdii_22d7a1e242e3
+07:59:59.083 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+07:59:59.104 [task:odd.alpha] success (0.0s)
+07:59:59.104 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+07:59:59.123 [task:odd.beta] success (0.0s)
+07:59:59.123 [pipeline] completed "Actual dynamic relation"
+07:59:59.123 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:59.123 [pipeline] Duration: 0.0s
+07:59:59.124 [pipeline] Log: /tmp/tagma-source-relation-1HBlOu/.tagma/.chat-staging/5bc1ac56-bb40-4492-b015-40c468850e8d/.trial-cases/normal-8FdYPk/workspace/.tagma/logs/run_mvaogdii_22d7a1e242e3/pipeline.log
+07:59:59.125 [pipeline] start "Actual dynamic relation" run_id=run_mvaogdjp_29f8d0f152c1
+07:59:59.126 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+07:59:59.147 [task:odd.alpha] success (0.0s)
+07:59:59.148 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+07:59:59.166 [task:odd.beta] success (0.0s)
+07:59:59.166 [pipeline] completed "Actual dynamic relation"
+07:59:59.166 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:59.166 [pipeline] Duration: 0.0s
+07:59:59.166 [pipeline] Log: /tmp/tagma-source-relation-1HBlOu/.tagma/.chat-staging/5bc1ac56-bb40-4492-b015-40c468850e8d/.trial-cases/normal-8FdYPk/workspace/.tagma/logs/run_mvaogdjp_29f8d0f152c1/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=0, wrongSum=false, mutateSource=false [429.77ms]
+07:59:59.495 [pipeline] start "Actual dynamic relation" run_id=run_mvaogdtz_c11cbb7f30bc
+07:59:59.496 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+07:59:59.524 [task:odd.alpha] success (0.0s)
+07:59:59.524 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===1?'heading only':source.text)+'\\nTotal: '+source.total);"]
+07:59:59.543 [task:odd.beta] success (0.0s)
+07:59:59.543 [pipeline] completed "Actual dynamic relation"
+07:59:59.543 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:59.543 [pipeline] Duration: 0.0s
+07:59:59.543 [pipeline] Log: /tmp/tagma-source-relation-f8BEGi/.tagma/.chat-staging/72adb4f5-e133-46a2-bcef-3f8c23ce93f1/.trial-cases/normal-CYcxuW/workspace/.tagma/logs/run_mvaogdtz_c11cbb7f30bc/pipeline.log
+07:59:59.544 [pipeline] start "Actual dynamic relation" run_id=run_mvaogdvc_56611b5203ff
+07:59:59.545 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+07:59:59.560 [task:odd.alpha] success (0.0s)
+07:59:59.560 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===1?'heading only':source.text)+'\\nTotal: '+source.total);"]
+07:59:59.580 [task:odd.beta] success (0.0s)
+07:59:59.580 [pipeline] completed "Actual dynamic relation"
+07:59:59.580 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:59.580 [pipeline] Duration: 0.0s
+07:59:59.580 [pipeline] Log: /tmp/tagma-source-relation-f8BEGi/.tagma/.chat-staging/72adb4f5-e133-46a2-bcef-3f8c23ce93f1/.trial-cases/normal-CYcxuW/workspace/.tagma/logs/run_mvaogdvc_56611b5203ff/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=1, wrongSum=false, mutateSource=false [417.12ms]
+07:59:59.925 [pipeline] start "Actual dynamic relation" run_id=run_mvaoge5x_3f356bc99992
+07:59:59.926 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+07:59:59.942 [task:odd.alpha] success (0.0s)
+07:59:59.942 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===2?'heading only':source.text)+'\\nTotal: '+source.total);"]
+07:59:59.958 [task:odd.beta] success (0.0s)
+07:59:59.958 [pipeline] completed "Actual dynamic relation"
+07:59:59.958 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:59.958 [pipeline] Duration: 0.0s
+07:59:59.958 [pipeline] Log: /tmp/tagma-source-relation-fpI3qe/.tagma/.chat-staging/4d64c3bb-0ee4-4aaf-9d89-143a1d866c20/.trial-cases/normal-j1vel5/workspace/.tagma/logs/run_mvaoge5x_3f356bc99992/pipeline.log
+07:59:59.960 [pipeline] start "Actual dynamic relation" run_id=run_mvaoge6v_b89ef3cb5960
+07:59:59.960 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+07:59:59.980 [task:odd.alpha] success (0.0s)
+07:59:59.980 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===2?'heading only':source.text)+'\\nTotal: '+source.total);"]
+07:59:59.997 [task:odd.beta] success (0.0s)
+07:59:59.998 [pipeline] completed "Actual dynamic relation"
+07:59:59.998 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+07:59:59.998 [pipeline] Duration: 0.0s
+07:59:59.998 [pipeline] Log: /tmp/tagma-source-relation-fpI3qe/.tagma/.chat-staging/4d64c3bb-0ee4-4aaf-9d89-143a1d866c20/.trial-cases/normal-j1vel5/workspace/.tagma/logs/run_mvaoge6v_b89ef3cb5960/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=2, wrongSum=false, mutateSource=false [415.35ms]
+08:00:00.345 [pipeline] start "Actual dynamic relation" run_id=run_mvaogehk_8a69a0aa8e62
+08:00:00.345 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+1,run:n}));"]
+08:00:00.363 [task:odd.alpha] success (0.0s)
+08:00:00.367 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+08:00:00.384 [task:odd.beta] success (0.0s)
+08:00:00.384 [pipeline] completed "Actual dynamic relation"
+08:00:00.384 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+08:00:00.384 [pipeline] Duration: 0.0s
+08:00:00.384 [pipeline] Log: /tmp/tagma-source-relation-KS8PKD/.tagma/.chat-staging/a42dc8fe-b32e-4b5f-ad64-f773599f6499/.trial-cases/normal-ZBOeCl/workspace/.tagma/logs/run_mvaogehk_8a69a0aa8e62/pipeline.log
+08:00:00.385 [pipeline] start "Actual dynamic relation" run_id=run_mvaogeip_b0cbfabc59c7
+08:00:00.386 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+1,run:n}));"]
+08:00:00.405 [task:odd.alpha] success (0.0s)
+08:00:00.405 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+08:00:00.422 [task:odd.beta] success (0.0s)
+08:00:00.422 [pipeline] completed "Actual dynamic relation"
+08:00:00.422 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+08:00:00.422 [pipeline] Duration: 0.0s
+08:00:00.422 [pipeline] Log: /tmp/tagma-source-relation-KS8PKD/.tagma/.chat-staging/a42dc8fe-b32e-4b5f-ad64-f773599f6499/.trial-cases/normal-ZBOeCl/workspace/.tagma/logs/run_mvaogeip_b0cbfabc59c7/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=0, wrongSum=true, mutateSource=false [426.88ms]
+08:00:00.774 [pipeline] start "Actual dynamic relation" run_id=run_mvaogeth_22604d4ec17a
+08:00:00.774 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+08:00:00.798 [task:odd.alpha] success (0.0s)
+08:00:00.798 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));source.text='Consumer forged replacement';fs.writeFileSync('input.json',JSON.stringify(source));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+08:00:00.817 [task:odd.beta] success (0.0s)
+08:00:00.817 [pipeline] completed "Actual dynamic relation"
+08:00:00.817 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+08:00:00.817 [pipeline] Duration: 0.0s
+08:00:00.817 [pipeline] Log: /tmp/tagma-source-relation-U8fK8m/.tagma/.chat-staging/159a53df-c8e6-4787-b59a-843085f17ce5/.trial-cases/normal-qXMfDm/workspace/.tagma/logs/run_mvaogeth_22604d4ec17a/pipeline.log
+08:00:00.819 [pipeline] start "Actual dynamic relation" run_id=run_mvaogeuq_83fe24fb007d
+08:00:00.819 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+08:00:00.839 [task:odd.alpha] success (0.0s)
+08:00:00.839 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));source.text='Consumer forged replacement';fs.writeFileSync('input.json',JSON.stringify(source));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+08:00:00.864 [task:odd.beta] success (0.0s)
+08:00:00.865 [pipeline] completed "Actual dynamic relation"
+08:00:00.865 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+08:00:00.865 [pipeline] Duration: 0.0s
+08:00:00.865 [pipeline] Log: /tmp/tagma-source-relation-U8fK8m/.tagma/.chat-staging/159a53df-c8e6-4787-b59a-843085f17ce5/.trial-cases/normal-qXMfDm/workspace/.tagma/logs/run_mvaogeuq_83fe24fb007d/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=0, wrongSum=false, mutateSource=true [450.05ms]
+
+apps/editor/tests/opencode-seed-agent.test.ts:
+(pass) native command guidance enables Exa only for explicitly requested headless web search [1.38ms]
+(pass) headless OpenCode command guidance selects Tagma CLI and isolates its database [0.24ms]
+(pass) command guidance keeps PowerShell data literals distinct from native arguments [0.05ms]
+(pass) PowerShell path inputs stay variable without executing their quoted values [0.08ms]
+(pass) pipeline agent writes large YAML and support files in bounded chunks [0.05ms]
+(pass) authoring declares intermediate file ownership before read-only Trial planning [0.10ms]
+(pass) headless artifact guidance requires file contracts instead of stdout JSON guesses [0.03ms]
+(pass) Trial planner recommits a plan whenever the staged YAML revision changes [0.17ms]
+(pass) Trial planner uses bounded tool output and resumes a truncated draft without weakening checks [0.06ms]
+(pass) Trial planner checks requested architecture and launch semantics beyond passing output cases [0.08ms]
+(pass) Trial planner treats a schedule trigger as satisfied by the virtualized Sandbox clock [2.73ms]
+(pass) pipeline creation and repair receive schedule strategy guidance [0.07ms]
+(pass) tagma-router delegates history comparisons without read/edit powers [0.35ms]
+(pass) tagma-router separates concrete read-only diagnosis from authorized pipeline mutation [0.07ms]
+(pass) tagma-router keeps external workspace data writes out of pipeline authoring [0.03ms]
+(pass) tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts and compile logs [0.22ms]
+(pass) every staged file-reading specialist denies unscoped discovery [0.40ms]
+(pass) pipeline intent classifier is hidden, tool-free, and Host-validated text only [0.04ms]
+(pass) router prompt stays compact with the read-only diagnosis lane [0.03ms]
+(pass) router keeps one bounded implementation handoff before result synthesis [0.15ms]
+(pass) router recovery never instructs task_id reuse that the context-window plugin blocks [0.04ms]
+(pass) tagma-pipeline agent stays compact and keeps schema detail out of the base prompt [0.07ms]
+(pass) routine pipeline authoring stays in one worker model without nested task fanout [0.11ms]
+(pass) merged tagma-pipeline agent is a hidden subagent handling create + edit [0.10ms]
+(pass) tagma-pipeline requires explicit mutation authorization before any write [0.16ms]
+(pass) tagma-pipeline agent documents edit/create modes and mandatory compile loop [0.17ms]
+(pass) tagma-pipeline completes a design gate before generating a new pipeline [0.16ms]
+(pass) tagma-pipeline requires independently diagnosable task boundaries and track rationale [0.20ms]
+(pass) pipeline authoring uses native prompt outputs without inventing duplicate files [1.10ms]
+(pass) reusable human-facing analysis pipelines have one durable deliverable [0.08ms]
+(pass) all authoring routes distinguish file parsing, semantic comparisons, and representative core coverage [0.91ms]
+(pass) authoring guidance shares machine contracts while preserving optional and native dataflow [0.53ms]
+(pass) factual guidance admits scoped evidence and comparable quantities without fabricating certainty [1.78ms]
+(pass) document and Trial guidance preserve source lines and trace representative core evidence [0.37ms]
+(pass) pipeline guidance stays within budget after step frontmatter normalization [3.38ms]
+(pass) multi-step planning keeps new-pipeline companions Host-owned [0.06ms]
+(pass) tagma-yaml-contract distinguishes preflight availability from version guidance [0.26ms]
+(pass) schema-driven YAML generation emits least-authority prompt tasks and rejects ambiguous result contracts [66.30ms]
+(pass) schema-driven YAML generation rejects task ids outside the runtime grammar [2.14ms]
+(pass) schema-driven YAML generation rejects track ids outside the runtime grammar [1.74ms]
+(pass) schema-driven YAML generation rejects empty ids instead of manufacturing defaults [1.73ms]
+(pass) schema-driven YAML generation accepts canonical id boundary characters [1.68ms]
+(pass) schema-driven YAML generation round-trips a schedule trigger cron and rejects cron misuse [1.78ms]
+(pass) schema-driven YAML generation requires reviewable task and track rationale [2.04ms]
+(pass) schema-driven YAML generation fails closed instead of dropping sections or tasks [1.41ms]
+(pass) seed prompts require a scope-aware edge-case review after pipeline creation [0.16ms]
+(pass) Trial prompts prioritize a complete positive path and explicit prerequisite probes [0.13ms]
+(pass) Trial planner repairs invalid missing-file cases instead of returning no-change [0.06ms]
+(pass) tagma-pipeline agent cooperates with optional host trial-run repair before the logical turn ends [0.20ms]
+(pass) dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring [2.91ms]
+(pass) tagma-pipeline agent treats explicit creation as higher priority than existing name matches [0.11ms]
+(pass) tagma-pipeline applies Chat AI defaults only while creating a new pipeline [0.09ms]
+(pass) tagma-pipeline keeps generated companions Host-owned while enforcing edit isolation [0.12ms]
+(pass) tagma-pipeline agent honors protected current pipeline context [0.11ms]
+(pass) tagma-pipeline agent allows workspace reads while restricting writes to .tagma [0.04ms]
+(pass) tagma-pipeline agent treats chat staging as the only readable and writable pipeline root [0.09ms]
+(pass) tagma-pipeline agent allows external file and directory trigger watch paths [0.24ms]
+(pass) trigger strategy keeps exact trigger paths aligned with advertised input variants [0.02ms]
+(pass) tagma authoring contracts define one effective cwd coordinate for built-in paths [0.31ms]
+(pass) tagma-yaml-contract requires one direct producer for each unresolved binding [0.22ms]
+(pass) tagma-pipeline agent exposes direct tools and focused skills without advisor fanout [0.16ms]
+(pass) specialized Tagma advisor subagents are hidden, read-only, and task-focused [0.11ms]
+(pass) tagma-pipeline agent self-reviews once without another model turn [0.05ms]
+(pass) tagma-pipeline agent authors YAML sections without rewriting generated manifests [0.06ms]
+(pass) tagma-pipeline-section-builder is a write-capable bounded implementer, not a reviewer [0.04ms]
+(pass) write-capable delegated agents force host permission checks [0.03ms]
+(pass) tagma-pipeline agent delegates mechanical layout to the placement tool [0.05ms]
+(pass) placement tool is generated as an OpenCode custom tool module [0.02ms]
+(pass) trial-plan tool binds structured edge cases to the final YAML hash [4.61ms]
+(pass) trial-plan tool atomically commits a complete bounded plan in one authenticated call [33.82ms]
+(pass) bundled trial-plan tool validates and commits structurally different plans [37.41ms]
+(pass) source trial-plan fixture rules retain rejection evidence and copied-file removal [22.06ms]
+(pass) bundled trial-plan fixture rules retain rejection evidence and copied-file removal [18.92ms]
+(pass) trial-plan tool assembles a large plan in bounded draft calls before one commit [25.58ms]
+(pass) trial-plan tool preserves observable pipeline-generated inputs without pre-seeding fixtures [12.80ms]
+(pass) trial-plan draft feedback names the required operation field without consuming a submission [9.80ms]
+(pass) trial-plan upsert rejects undeclared environment controls before submission and preserves its draft [10.39ms]
+(pass) command file-contract feedback identifies completion.type and its supported spelling [1.86ms]
+(pass) skeleton preserves the JSON schema file barrier and requires its schema path [1.89ms]
+(pass) trial-plan begin resumes the same revision unless reset is explicit [9.42ms]
+(pass) trial-plan tool rejects host-invalid plans before writing any file [7.40ms]
+(pass) trial-plan tool rejects text-only checks for JSON artifacts [7.83ms]
+(pass) trial-plan tool rejects checks against staged YAML and companion files [7.73ms]
+(pass) trial-plan tool requires every case to include non-empty target task ids before writing [7.24ms]
+(pass) trial-plan tool rejects semantic coverage gaps and unsupported findings before writing [13.97ms]
+(pass) trial-plan coverage setter reports unsupported covered dimensions before commit [10.45ms]
+(pass) trial-plan tool writes plans that the authoritative host parser accepts [10.65ms]
+(pass) trial-plan tool uses an exact staged target and refuses live .tagma writes [9.57ms]
+(pass) trial-plan tool resolves paths from the host-provided workspace root [0.47ms]
+(pass) tagma-trial-planner instructs host trial-plan failure handling for live .tagma safety [1.70ms]
+(pass) tagma-pipeline agent scopes Python helper setup to authoring and separates math from glue [0.10ms]
+(pass) Windows pipeline authoring uses PowerShell unless CMD is explicit argv [0.18ms]
+(pass) Windows pipeline authoring explicitly decodes BOM-less UTF-8 text and JSON [0.05ms]
+(pass) tagma-pipeline agent grants python tools only when workspace settings enable them [0.09ms]
+(pass) tagma-python-tools refuses to run without configured Python handoff [0.03ms]
+(pass) tagma-pipeline agent codifies track design as agent identity vs layout lane [1.28ms]
+(pass) tagma-pipeline agent forbids inconsistent prompt personas and inert command-track AI fields [0.07ms]
+(pass) seedOpencodeArtifacts writes only the plural agents dir and focused skills [5.61ms]
+(pass) seedOpencodeArtifacts applies repeated global step-limit changes to every managed agent [3.81ms]
+(pass) seedOpencodeArtifacts rewrites the pipeline agent when Python tools are enabled [3.59ms]
+(pass) seedOpencodeArtifacts prunes stale agents left by an older editor [9.68ms]
+
+ 151 pass
+ 0 fail
+ 1714 expect() calls
+Ran 151 tests across 4 files. [4.64s]

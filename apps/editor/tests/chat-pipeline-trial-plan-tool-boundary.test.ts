@@ -260,6 +260,29 @@ test('model schema distinguishes repairable core gaps from intrinsic observation
   }
 });
 
+test('model role indices schema separates concrete consumer content from task success', async () => {
+  const h = await fixture();
+  try {
+    const review = schemaObject(
+      pluginTool.schema.toJSONSchema(h.outer).properties!.evidence_review,
+    );
+    const core = schemaObject(review.properties!.coreWitness);
+    const variants = core.anyOf ?? core.oneOf;
+    expect(Array.isArray(variants)).toBe(true);
+    const covered = variants!
+      .map(schemaObject)
+      .find((item) => schemaObject(item.properties!.status).const === 'covered')!;
+    const role = schemaObject(schemaObject(covered.properties!.taskRoles).items);
+    const indices = schemaObject(role.properties!.expectationIndices);
+    expect(indices).toMatchObject({ type: 'array', maxItems: 32 });
+    expect(schemaObject(indices.items)).toMatchObject({ type: 'integer', minimum: 0, maximum: 31 });
+    for (const word of ['content-only', 'consumer', 'producer', 'task-status'])
+      expect(indices.description).toContain(word);
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
 test('model review task scope schema explains required and not-required dispositions', async () => {
   const h = await fixture();
   try {

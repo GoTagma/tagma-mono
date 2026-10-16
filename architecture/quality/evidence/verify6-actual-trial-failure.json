@@ -1,0 +1,109 @@
+{
+  "case": "s1-l1",
+  "attempt": "verify6",
+  "operationId": "operation-9677ae5b-cb06-4fe0-8147-d3bbf6119e8c",
+  "originalBusinessRequests": 1,
+  "explicitRetry": false,
+  "testerStop": false,
+  "outcome": "natural trial_verification_paused after two automatic YAML repairs and stale final plan",
+  "actualTrialExecuted": true,
+  "actualTrialResults": [
+    {
+      "cacheFile": "177cc27ae40913597f40c0447a1d176065547fc930067da0a57d062dabffacf7.json",
+      "sha256": "f9b38cda5db1c63db708e401c5329c313a4221c8de4702be9ffae9251b6b4d84",
+      "ran": true,
+      "success": false,
+      "caseCount": 1,
+      "tasks": [
+        {
+          "taskId": "fact_check.gather_evidence",
+          "status": "failed",
+          "exitCode": 1,
+          "failureKind": "completion_failed"
+        },
+        {
+          "taskId": "fact_check.adjudicate",
+          "status": "skipped",
+          "exitCode": -1,
+          "failureKind": null
+        },
+        {
+          "taskId": "fact_check.render_summary",
+          "status": "skipped",
+          "exitCode": -1,
+          "failureKind": null
+        }
+      ],
+      "planTelemetry": {
+        "yamlHash": "5801b835606a4ff1c32093d87c44493d7f660cb8",
+        "toolAttemptCount": 1,
+        "validationRejectionCount": 0,
+        "successfulWriteCount": 1
+      }
+    },
+    {
+      "cacheFile": "cf502acf5b5ba7cebd9e1c3248602ec64bd4316d93a41179cf04d231ad8919c4.json",
+      "sha256": "10922b7fdcf4c30c1427ef1b17b7846898be93b923ec76e5c373aa9f6df687b3",
+      "ran": true,
+      "success": false,
+      "caseCount": 1,
+      "tasks": [
+        {
+          "taskId": "fact_check.gather_evidence",
+          "status": "failed",
+          "exitCode": 0,
+          "failureKind": "output_error"
+        },
+        {
+          "taskId": "fact_check.adjudicate",
+          "status": "skipped",
+          "exitCode": -1,
+          "failureKind": null
+        },
+        {
+          "taskId": "fact_check.render_summary",
+          "status": "skipped",
+          "exitCode": -1,
+          "failureKind": null
+        }
+      ],
+      "planTelemetry": {
+        "yamlHash": "0fd948f1899be05933b5f5b2bec0246c8e59c66f",
+        "toolAttemptCount": 0,
+        "validationRejectionCount": 0,
+        "successfulWriteCount": 0
+      }
+    }
+  ],
+  "published": false,
+  "accepted": false,
+  "findings": [
+    {
+      "kind": "generated-command",
+      "observation": "First command printed native CLI help and failed completion with no artifacts; authored --permission flags are absent from pinned run help."
+    },
+    {
+      "kind": "generated-binding",
+      "observation": "Second command exited zero but omitted final-line JSON required by its declared native output bindings; failureKind output_error is correct. This is not stream-capture failure."
+    },
+    {
+      "kind": "generated-identity",
+      "observation": "Produced claim did not match case expectation; authored shellquote nested in a double-quoted prompt and an unconsumed test fixture require semantic review."
+    },
+    {
+      "kind": "generated-model-selection",
+      "observation": "Automatic repair removed explicit --model/--variant arguments; native stdout displayed deepseek-v4-pro. Do not infer a free provider or financial scope from the display name."
+    },
+    {
+      "kind": "intended-retained-contract-guard",
+      "observation": "Retained state captured, owner repairAttempt=1. A different second repair owner cannot reuse that first-owner contract after planning exhaustion. CSR0014 first-owner-only fence preserved."
+    }
+  ],
+  "model": {
+    "provider": "xiaomi",
+    "id": "mimo-v2.6-flash",
+    "variant": "off"
+  },
+  "guardedMechanisms": "Positive plan committed once and actual Sandbox ran. CSR0037/0038 remain current-source guarded; no case acceptance or guaranteed model convergence claimed.",
+  "nextAction": "Investigate another configured model candidate; preserve all failures; restart and fresh workspace before original-case retry."
+}

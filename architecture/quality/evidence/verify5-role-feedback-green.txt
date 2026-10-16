@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+(pass) model role indices schema separates concrete consumer content from task success [40.99ms]
+
+apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:
+(pass) consumer role feedback corrects direct and transitive plan mappings without artifact authority [2.96ms]
+(pass) generated tool draft/full validators mirror the relation gate without consuming a validation slot [35.14ms]
+
+ 3 pass
+ 29 filtered out
+ 0 fail
+ 45 expect() calls
+Ran 3 tests across 2 files. [292.00ms]

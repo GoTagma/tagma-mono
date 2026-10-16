@@ -976,7 +976,7 @@ Bypass the manifest only when it is missing, unreadable, stale, contradicts the 
 
 ## Single-Worker Authoring
 
-Routine work stays in this worker. Author YAML and only user-owned companions/helpers inside the selected pipeline folder.
+Author YAML and only user-owned companions/helpers inside the selected pipeline folder.
 
 - Do not call the task tool for planning, command evidence, safety, or review. Those checks are short inline checklists, not separate model turns.
 - The only task exception is one \`tagma-python-tools\` call when \`<python-agent enabled="true">\` and genuinely required. In staging, pass the complete \`<chat-staging>\` block unchanged so it inherits the boundary. Otherwise use targeted read, web lookup, edit, skeleton, placement, and skill tools.
@@ -987,7 +987,7 @@ Routine work stays in this worker. Author YAML and only user-owned companions/he
 
 ## Implementation Ambiguity
 
-When unspecified, make the smallest safe, reversible implementation choice with native defaults and stated assumptions. Ask only about external, paid, credentialed, destructive, unavailable-plugin or materially different behavior; never harmless names, paths or languages. Otherwise report blockers.
+With native defaults, make the smallest safe, reversible implementation choice. Ask only about external, paid, credentialed, destructive, unavailable-plugin or materially different behavior; never harmless names, paths or languages. Report blockers.
 
 ## Operating Loop
 
@@ -1167,7 +1167,7 @@ For an existing-pipeline topology edit, preserve \`folders\`, \`trackHeights\`, 
 }
 
 const STRUCTURED_ARTIFACT_GUIDANCE =
-  "Structured files (typed path ports too): one spec drives producer+gate; no schema copies. Keep operative user/consumer rules, optional/examples, valid empty/unknown. Before use: full parse, required keys/types/nesting/enums/ranges/content/formats/URL syntax. Deterministic producer postcheck or consumer preflight checks declared key uniqueness and this run's required upstream IDs/text/coverage/order/relations; reject before use. Schema/prose, paths/file_exists, grep/regex/fragments/counts or post-Trial validity prove no relation gate. Native typed JSON: no duplicate file; gate extra declared rules.";
+  "Intermediate file handoffs: result_contract: file needs file_exists or json_schema completion at the producer cwd; never infer file ownership from command text. none: no promised file. Structured files (typed path ports too): one spec drives producer+gate; no schema copies. Keep operative user/consumer rules, optional/examples, valid empty/unknown. Before use: full parse, required keys/types/nesting/enums/ranges/content/formats/URL syntax. Deterministic producer postcheck or consumer preflight checks declared key uniqueness and this run's required upstream IDs/text/coverage/order/relations; reject before use. Schema/prose, paths/file_exists, grep/regex/fragments/counts or post-Trial validity prove no relation gate. Native typed JSON: no duplicate file; gate extra declared rules.";
 const FACTUAL_EVIDENCE_GUIDANCE =
   'Explicit offline/source scope wins. Preserve clauses/qualifiers/quote/scope via declared inputs/context; no new field mandate. Affirm only from independent passages substantiating each original clause; online needs actual completed native tool returns. Keep source quotes/identity and applicable URL/redirect. Target repetition/memory/related facts/no contradiction never suffice. Unresolved/truncated evidence stays unknown/partial under the verdict contract, not false. Quantities: typed metric/entity/unit/scale/period/baseline, denominator/basis, operator/range/approximation. Confirm meaning/scope before math; units/labels alone fail. Normalize compatible dimensions/scales (k/million/billion); distinguish percent, percentage points and absolute values. Keep one signed-difference order and denominator across computation/results/reports. Never turn bounds/approximations into exact points or derive unresolved rates.';
 const DOCUMENT_REVIEW_GUIDANCE =

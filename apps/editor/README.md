@@ -716,3 +716,20 @@ tool directory; user-authored tools are left untouched.
 - Task positions and editor-only track folders are persisted to a sibling `.layout.json` file next to the YAML file (e.g. `pipeline.yaml` ↔ `pipeline.layout.json`), saved on `Ctrl+S`. Track folders never appear in the pipeline YAML itself.
 - Command-type task cards automatically hide AI-specific fields.
 - Hot-update / in-app upgrade surfaces are best exercised via the packaged desktop app (where the env vars are wired up automatically). See [`apps/electron/README.md`](../electron/README.md) for the release-side of the same flow (channel pinning, manifest publishing, `editor-dist-<version>.tar.gz`).
+
+Generated intermediate file handoffs need a built-in `file_exists` or `json_schema` completion
+resolved from the owning task's effective cwd. Command text alone does not declare ownership.
+If Trial planning detects a missing ownership declaration, it retains the failed coordinate and
+asks for blocked core with a blocking `pipeline-artifact` finding. The read-only planner does not
+edit YAML; the Host can request a bounded author repair followed by a fresh revision-bound plan.
+This feedback does not weaken content assertions or make the blocked plan publishable.
+
+Trial core role indices refer to concrete content assertions; success assertions remain separate.
+A source-text relation belongs to the consumer's content role. Its producer needs an independent
+concrete source-content assertion. Incorrect role assignment is a Trial-plan correction, so its
+bounded feedback does not ask the read-only planner to edit YAML or request artifact repair.
+
+Chat intent classification distinguishes an explicitly requested new pipeline file from an
+unrelated visible or manual-new draft. Explicit edits and renames retain their existing target;
+material action/target ambiguity asks for clarification. Host-issued candidate identity remains
+the authority for edits, and a filename alone never grants a write.

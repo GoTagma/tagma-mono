@@ -653,6 +653,18 @@ export function createTrialResilienceRules() {
               }
             : {}),
           failedConjunct,
+          ...(failedConjunct === 'consumer_role_mapping'
+            ? {
+                repairHint:
+                  'Fix this plan mapping: assign the source-text occurrence index only to its consumer content role, not the producer or an intermediate task. The producer needs its own independent concrete source-content assertion. Keep the valid relation and YAML ownership; do not request artifact repair or weaken content checks for this role-index error.',
+              }
+            : failedConjunct === 'producer_artifact_ownership' ||
+                failedConjunct === 'consumer_artifact_ownership'
+              ? {
+                  repairHint:
+                    'Declare file_exists or json_schema completion at the owning task cwd; command text grants no ownership. If staged YAML omits or miscoordinates it, commit blocked core with a blocking pipeline-artifact finding naming the declaration repair; do not edit YAML in this read-only phase, relabel promised content as execution-only or weaken checks.',
+                }
+              : {}),
         },
       };
       throw error;

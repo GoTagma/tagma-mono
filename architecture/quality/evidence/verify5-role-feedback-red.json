@@ -1,0 +1,29 @@
+{
+  "scope": "Specific consumer-role feedback and model schema clarification; old rejection remains correct.",
+  "baseCommit": "12d0e617d36dd40cd8659b3d8d72524e24375a22",
+  "sourceState": "Working tree after CSR0037, before/after CSR0038 as described by RED/GREEN logs; no live acceptance claim.",
+  "actualResults": {
+    "selectedExecuted": 3,
+    "selectedPassed": 0,
+    "selectedFailed": 3,
+    "assertions": 25
+  },
+  "logs": [
+    {
+      "path": "architecture/quality/evidence/verify5-role-feedback-red.txt",
+      "sha256": "3b25215ff65110b9d0b18c625bb473f2d32a66523150819c1d412ce754811c37"
+    }
+  ],
+  "firstObservation": {
+    "path": "architecture/quality/evidence/verify5-role-feedback-first-observation.json",
+    "sha256": "40486f0f658757fbe029d1333761a0a2545675b9cca0384e1fc8b316ca960eb4"
+  },
+  "invariants": [
+    "Original error message/fingerprint and bounded coordinate context unchanged.",
+    "Direct producer and transitive intermediate wrong-role assignments reject, corrected controls pass.",
+    "Generated validate-only errors consume zero submission slots; correction commits once.",
+    "Existing file ownership repair guidance stays distinct from plan-only role correction."
+  ],
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

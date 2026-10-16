@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "case": "S1-L1",
+  "attempt": "verify8",
+  "originalBusinessRequests": 1,
+  "explicitRetry": false,
+  "testerStop": false,
+  "editorRestarted": true,
+  "freshWorkspace": true,
+  "operationId": "operation-1de28c71-e4f0-47f9-9ac5-0fb46ebe03ed",
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-v4-pro",
+    "variant": "off"
+  },
+  "outcome": "natural trial_verification_paused; blocked diagnostic-only plan",
+  "accepted": false,
+  "actualTrialExecuted": false,
+  "published": false,
+  "target": "quick_verify/quick_verify.yaml",
+  "classifierDecision": "create",
+  "formalCounters": {
+    "version": 2,
+    "yamlHash": "4db1e2bd73c9dbd4e0334cd6540b2a7501e01acb",
+    "relativeYamlPath": "quick_verify/quick_verify.yaml",
+    "attemptIds": [
+      "trial-cf40aa76828df7b0a880e4e8a94615fd5569b32e"
+    ],
+    "toolAttemptCount": 1,
+    "validationRejectionCount": 0,
+    "repeatedValidationRejectionCount": 0,
+    "successfulWriteCount": 1,
+    "committedPlanHash": "df1035e66be3d606d9ef5ea0526298f6785dcbc63efe5b00e40c0951fc3c6c98",
+    "firstAttemptAt": 1792146494434,
+    "lastAttemptAt": 1792146494434,
+    "elapsedMs": null
+  },
+  "verification": {
+    "details": "Trial plan found pipeline defects or blocked coverage before execution. Substantive AI-stage content (retrieved sources and adjudicated verdict/explanation) is not concretely observable in Trial, so the core witness is blocked.: The three-task closure is gather_evidence (headless OpenCode native websearch), adjudicate (headless OpenCode LLM reasoning), and render_summary (deterministic Python). The two AI stages emit live non-deterministic JSON; no concrete expected value (verdict/confidence/explanation/sources) can be pre-asserted, and the intent 'query OpenCode headlessly using its native websearch tool' forbids a repair that would hardcode or fake that content to make it deterministically observable. Only schema validity (json_schema completion) and deterministic report scaffolding (# Fact-Check Verdict, **Verdict:**, ## Sources) are asserted in case normal, which do not establish the requested fact-checking business result.  Trial plan found pipeline defects or blocked coverage before execution. Substantive AI-stage content (retrieved sources and adjudicated verdict/explanation) is not concretely observable in Trial, so the core witness is blocked.: The three-task closure is gather_evidence (headless OpenCode native websearch), adjudicate (headless OpenCode LLM reasoning), and render_summary (deterministic Python). The two AI stages emit live non-deterministic JSON; no concrete expected value (verdict/confidence/explanation/sources) can be pre-asserted, and the intent 'query OpenCode headlessly using its native websearch tool' forbids a repair that would hardcode or fake that content to make it deterministically observable. Only schema validity (json_schema completion) and deterministic report scaffolding (# Fact-Check Verdict, **Verdict:**, ## Sources) are asserted in case normal, which do not establish the requested fact-checking business result.",
+    "failedTaskIds": [],
+    "omittedFailedTaskCount": 0,
+    "schemaVersion": 1,
+    "stage": "trial_plan"
+  },
+  "sourceQualification": {
+    "issues": 39,
+    "selectedExecutions": 211,
+    "passed": true,
+    "historicalCoverageComplete": false
+  },
+  "observation": "Named-target guidance mechanism observed correct in this attempt. Dynamic fact-checking content remains unverified; schema/scaffolding cannot substitute for a substantive result. Unsupported CLI permission flag and omitted selected variant are present in generated YAML but were not executed; no runtime failure claimed.",
+  "evidenceFiles": {
+    "final-staged-target.json": "636d85315892af610c99db614bf75ec436f8973b7f29e3ffa4b6c9b1cf00f603",
+    "final-plan-counters.json": "c9b4cdf2dfdc5954f94cd89a5b04abe4399b5d4c56614cd34a1e4011505544ef",
+    "plan-error-history.jsonl": "5197d76ea0c629a46cf6603dd5459b394a686a20b8858786d6f30597129b3c0b"
+  }
+}

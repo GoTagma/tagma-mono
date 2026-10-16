@@ -1,0 +1,37 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-intent-classifier.test.ts:
+358 | test('classifier named target guidance does not infer ownership from an unrelated visible draft', () => {
+359 |   for (const manualNewDraft of [false, true]) {
+360 |     const inventory = candidates.map((item, index) => index === 0 ? { ...item, manualNewDraft } : item);
+361 |     const before = structuredClone(inventory);
+362 |     const prompt = buildChatPipelineIntentClassificationPrompt('Create a new archive-check.yaml workflow.', inventory);
+363 |     expect(prompt.system).toContain('Ground an explicitly named pipeline file');
+                                ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "Ground an explicitly named pipeline file"
+Received: "Classify one Tagma Chat request before any pipeline branch is allocated. Return exactly one JSON object and no markdown, prose, or code fence. The object must have exactly kind, targetCandidateId, clarification, and candidateIds. Valid exact shapes are: {\"kind\":\"discussion\",\"targetCandidateId\":null,\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"diagnosis\",\"targetCandidateId\":null,\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"create\",\"targetCandidateId\":null,\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"edit\",\"targetCandidateId\":\"pipeline-1\",\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"clarify\",\"targetCandidateId\":null,\"clarification\":\"Ask one concise question.\",\"candidateIds\":[]}. Do not use tools or inspect files. Use discussion for explicit conceptual requests that need no pipeline inspection or mutation. Use diagnosis for read-only inspection, explanation, debugging, review, or why/how questions. Use create only when the user wants a new pipeline rather than changing an inventoried one. Use edit only for an explicit pipeline-file mutation and select exactly one Host candidate id. If the user describes a desired outcome in the editor but leaves the action type unclear, clarify whether they want an explanation, a one-off action, or a pipeline change. Do not infer write authority from a stated desire alone. The session-owned pipeline is the conversation branch; the current-canvas pipeline is only the visible editor canvas. If create versus edit or the edit target is materially ambiguous, use clarify instead of guessing. Never return a path or pipeline name as targetCandidateId."
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-intent-classifier.test.ts:363:27)
+(fail) classifier named target guidance does not infer ownership from an unrelated visible draft [0.87ms]
+374 |   for (const [request, kind] of [
+375 |     ['Rename the existing Orders pipeline to shipments.yaml.', 'edit'],
+376 |     ['Explain why the Orders pipeline refers to shipments.yaml.', 'diagnosis'],
+377 |   ] as const) {
+378 |     const prompt = buildChatPipelineIntentClassificationPrompt(request,candidates);
+379 |     expect(prompt.system).toContain('An explicit edit or rename of an existing pipeline remains edit');
+                                ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "An explicit edit or rename of an existing pipeline remains edit"
+Received: "Classify one Tagma Chat request before any pipeline branch is allocated. Return exactly one JSON object and no markdown, prose, or code fence. The object must have exactly kind, targetCandidateId, clarification, and candidateIds. Valid exact shapes are: {\"kind\":\"discussion\",\"targetCandidateId\":null,\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"diagnosis\",\"targetCandidateId\":null,\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"create\",\"targetCandidateId\":null,\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"edit\",\"targetCandidateId\":\"pipeline-1\",\"clarification\":null,\"candidateIds\":[]}; {\"kind\":\"clarify\",\"targetCandidateId\":null,\"clarification\":\"Ask one concise question.\",\"candidateIds\":[]}. Do not use tools or inspect files. Use discussion for explicit conceptual requests that need no pipeline inspection or mutation. Use diagnosis for read-only inspection, explanation, debugging, review, or why/how questions. Use create only when the user wants a new pipeline rather than changing an inventoried one. Use edit only for an explicit pipeline-file mutation and select exactly one Host candidate id. If the user describes a desired outcome in the editor but leaves the action type unclear, clarify whether they want an explanation, a one-off action, or a pipeline change. Do not infer write authority from a stated desire alone. The session-owned pipeline is the conversation branch; the current-canvas pipeline is only the visible editor canvas. If create versus edit or the edit target is materially ambiguous, use clarify instead of guessing. Never return a path or pipeline name as targetCandidateId."
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-intent-classifier.test.ts:379:27)
+(fail) classifier target guidance preserves explicit rename and read-only target decisions [0.28ms]
+
+ 0 pass
+ 8 filtered out
+ 2 fail
+ 2 expect() calls
+Ran 2 tests across 1 file. [98.00ms]

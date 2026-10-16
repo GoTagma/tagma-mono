@@ -111,6 +111,15 @@ test('pipeline agent writes large YAML and support files in bounded chunks', () 
   expect(pipeline).toContain('model output limit');
 });
 
+test('authoring declares intermediate file ownership before read-only Trial planning', () => {
+  for (const guide of [buildTagmaPipelineAgent('Linux'), buildTagmaNativePrimitivesSkill()]) {
+    expect(guide).toContain('Intermediate file handoffs');
+    expect(guide).toContain('file_exists or json_schema completion');
+    expect(guide).toContain('result_contract: file');
+    expect(guide).toContain('never infer file ownership from command text');
+  }
+});
+
 test('headless artifact guidance requires file contracts instead of stdout JSON guesses', () => {
   const guidance = buildTagmaNativePrimitivesSkill();
   expect(guidance).toContain('For headless AI commands that promise structured files');

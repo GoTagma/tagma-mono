@@ -193,6 +193,8 @@ export function buildChatPipelineIntentClassificationPrompt(
       'Use diagnosis for read-only inspection, explanation, debugging, review, or why/how questions.',
       'Use create only when the user wants a new pipeline rather than changing an inventoried one.',
       'Use edit only for an explicit pipeline-file mutation and select exactly one Host candidate id.',
+      'Ground an explicitly named pipeline file in the request against the candidate paths and names. Do not select an unrelated current-canvas or manual-new draft just because it is visible; when the user requests a new named pipeline absent from inventory, use create.',
+      'An explicit edit or rename of an existing pipeline remains edit even when it supplies a new name; if the intended source or create-versus-edit action is unclear, clarify instead of guessing.',
       'If the user describes a desired outcome in the editor but leaves the action type unclear, clarify whether they want an explanation, a one-off action, or a pipeline change. Do not infer write authority from a stated desire alone.',
       'The session-owned pipeline is the conversation branch; the current-canvas pipeline is only the visible editor canvas.',
       'If create versus edit or the edit target is materially ambiguous, use clarify instead of guessing.',

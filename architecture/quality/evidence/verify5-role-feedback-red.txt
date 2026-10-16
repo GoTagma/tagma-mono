@@ -1,0 +1,45 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+270 |     const covered = variants!.map(schemaObject).find((item) => schemaObject(item.properties!.status).const === 'covered')!;
+271 |     const role = schemaObject(schemaObject(covered.properties!.taskRoles).items);
+272 |     const indices = schemaObject(role.properties!.expectationIndices);
+273 |     expect(indices).toMatchObject({ type: 'array', maxItems: 32 });
+274 |     expect(schemaObject(indices.items)).toMatchObject({ type: 'integer', minimum: 0, maximum: 31 });
+275 |     for (const word of ['content-only', 'consumer', 'producer', 'task-status']) expect(indices.description).toContain(word);
+                                                                                                                  ^
+error: Received value must be an array type, or both received and expected values must be strings.
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:275:109)
+(fail) model role indices schema separates concrete consumer content from task success [28.98ms]
+
+apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:
+543 |     expect(rejected).toBeDefined();
+544 |     expect(rejected!.message).toBe('Core source-text relation needs owned generated source, dependency, and independent concrete source content.');
+545 |     const context = rejected!.trialPlanDiagnostic?.rejectionContext;
+546 |     expect(context?.failedConjunct).toBe('consumer_role_mapping');
+547 |     expect(context?.roleTaskId).toBe(target.taskId);
+548 |     expect(context?.repairHint).toContain('consumer content role');
+                                      ^
+error: Received value must be an array type, or both received and expected values must be strings.
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:548:33)
+(fail) consumer role feedback corrects direct and transitive plan mappings without artifact authority [2.32ms]
+671 |   writeFileSync(stagePath, originalStage);
+672 |   const wrongRole = structuredClone(input.evidenceReview!);
+673 |   if (wrongRole.coreWitness?.status !== 'covered') throw new Error('Expected covered fixture.');
+674 |   wrongRole.coreWitness.taskRoles[0]!.expectationIndices.push(3);
+675 |   await call('set-evidence-review', { evidence_review: wrongRole });
+676 |   await expect(call('validate')).rejects.toThrow('consumer content role');
+                                               ^
+error: expect(received).toThrow(expected)
+
+Expected substring: "consumer content role"
+Received message: "Core source-text relation needs owned generated source, dependency, and independent concrete source content.\nrejectionContext: {\"version\":1,\"availability\":\"unknown\",\"normalCaseId\":\"normal\",\"roleTaskId\":\"odd.alpha\",\"expectationIndex\":3,\"expectationType\":\"file-source-text-occurrence\",\"path\":\"flow/report.md\",\"sourcePath\":\"flow/input.json\",\"sourcePointer\":\"/text\",\"producerTaskId\":\"odd.alpha\",\"consumerTaskId\":\"odd.beta\",\"producerRoleExpectationIndices\":[2,3],\"failedConjunct\":\"consumer_role_mapping\",\"binding\":{\"attemptId\":\"relation-attempt\",\"relativeYamlPath\":\"flow/flow.yaml\",\"yamlHash\":\"59ac4a025f3c69b7f7e8e8713c0e5da8e90bd662\",\"intentDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"candidatePlanHash\":\"668e75bc83b163e599854230be7ff56af688a454b89430cedea512f665ede956\",\"committedPlanHash\":null,\"candidateMatchesCommittedPlan\":false}}"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:676:42)
+(fail) generated tool draft/full validators mirror the relation gate without consuming a validation slot [31.75ms]
+
+ 0 pass
+ 29 filtered out
+ 3 fail
+ 25 expect() calls
+Ran 3 tests across 2 files. [290.00ms]

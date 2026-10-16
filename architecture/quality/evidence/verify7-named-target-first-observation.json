@@ -1,0 +1,69 @@
+{
+  "case": "s1-l1",
+  "attempt": "verify7",
+  "operationId": "operation-4a903bf7-23f4-45a3-bfc7-05a83602be80",
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-v4-pro",
+    "variant": "low",
+    "paid": true
+  },
+  "originalBusinessRequests": 1,
+  "explicitRetry": false,
+  "testerStop": false,
+  "outcome": "natural trial_verification_paused on a committed blocked diagnostic-only core",
+  "formalSubmissions": {
+    "toolAttemptCount": 1,
+    "successfulWriteCount": 1,
+    "validationRejectionCount": 0
+  },
+  "automaticOutputLengthContinuation": "First planner ended length with 32000 reasoning tokens/0 output; one Host continuation retained the same trial-a0c1 attempt id. Two timing invocations are not two formal submissions.",
+  "actualTrialExecuted": false,
+  "published": false,
+  "accepted": false,
+  "findings": [
+    {
+      "kind": "classifier-semantic-target-observation",
+      "actual": "edit selected unrelated current manualNew Untitled candidate; fixed branch target chat-e5deed085988b8d7ee1db1af/chat-e5deed085988b8d7ee1db1af.yaml",
+      "expected": "Resolve the explicitly requested new quick_verify.yaml independently of unrelated visible canvas, or clarify actual edit/rename ambiguity.",
+      "scope": "Semantic prompt guidance gap only. No wrong publication or unauthorized origin write occurred."
+    },
+    {
+      "kind": "blocked-dynamic-core",
+      "actual": "Committed diagnostic-only finding states verdict/report dynamic values are not independently derivable under frozen schema-only intent.",
+      "scope": "Preserve as blocking limitation; no false semantic rejection established and no Trial strength relaxation authorized."
+    }
+  ],
+  "evidence": [
+    {
+      "name": "classifier-name-facts.json",
+      "sha256": "54b1d00baf3680cec6badcca9bee08a4aba99a4513eea0eb9b9ffeb4276f01e1",
+      "bytes": 396
+    },
+    {
+      "name": "first-authored-draft.json",
+      "sha256": "f2f348d3c40fc5aafaa277ee2f2dd45a7d8d9ae666f70df8b4e91b0917e0b240",
+      "bytes": 8848
+    },
+    {
+      "name": "final-counter.json",
+      "sha256": "77ae155bd61705d52242c833fa08b4d87016b425956f9bbdbf742ae8933740d4",
+      "bytes": 808
+    },
+    {
+      "name": "finding-detail-facts.json",
+      "sha256": "b365ac6ad207f7f519168793a623f2c28fdfe1376cfc66e4db28ad8657d3a41d",
+      "bytes": 1082
+    },
+    {
+      "name": "plan-error-history.jsonl",
+      "sha256": "0583faf04c8a6d1cdd6f5526a4b4e616d71a57ea412346f169b070917f001d7d",
+      "bytes": 3117
+    },
+    {
+      "name": "final-staged-before-classifier-guidance.json",
+      "sha256": "01eef1d168576ffb2af6dd3300a61bd158ff445d0522bdec21ff61d5b80f4882",
+      "bytes": 8848
+    }
+  ]
+}

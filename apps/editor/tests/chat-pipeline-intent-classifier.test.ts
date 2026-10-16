@@ -354,3 +354,80 @@ describe('Chat pipeline semantic intent classification', () => {
     ).toThrow('requires a clarification question');
   });
 });
+
+test('classifier named target guidance does not infer ownership from an unrelated visible draft', () => {
+  for (const manualNewDraft of [false, true]) {
+    const inventory = candidates.map((item, index) =>
+      index === 0 ? { ...item, manualNewDraft } : item,
+    );
+    const before = structuredClone(inventory);
+    const prompt = buildChatPipelineIntentClassificationPrompt(
+      'Create a new archive-check.yaml workflow.',
+      inventory,
+    );
+    expect(prompt.system).toContain('Ground an explicitly named pipeline file');
+    expect(prompt.system).toContain(
+      'Do not select an unrelated current-canvas or manual-new draft',
+    );
+    expect(prompt.system).toContain(
+      'when the user requests a new named pipeline absent from inventory, use create',
+    );
+    expect(prompt.schema.required).toEqual([
+      'kind',
+      'targetCandidateId',
+      'clarification',
+      'candidateIds',
+    ]);
+    expect(
+      parseChatPipelineIntentClassificationText(
+        JSON.stringify({
+          kind: 'create',
+          targetCandidateId: null,
+          clarification: null,
+          candidateIds: [],
+        }),
+        inventory,
+      ),
+    ).toEqual({ kind: 'create' });
+    expect(() =>
+      parseChatPipelineIntentClassificationText(
+        JSON.stringify({
+          kind: 'edit',
+          targetCandidateId: 'archive-check.yaml',
+          clarification: null,
+          candidateIds: [],
+        }),
+        inventory,
+      ),
+    ).toThrow();
+    expect(inventory).toEqual(before);
+  }
+});
+
+test('classifier target guidance preserves explicit rename and read-only target decisions', () => {
+  for (const [request, kind] of [
+    ['Rename the existing Orders pipeline to shipments.yaml.', 'edit'],
+    ['Explain why the Orders pipeline refers to shipments.yaml.', 'diagnosis'],
+  ] as const) {
+    const prompt = buildChatPipelineIntentClassificationPrompt(request, candidates);
+    expect(prompt.system).toContain(
+      'An explicit edit or rename of an existing pipeline remains edit',
+    );
+    expect(prompt.system).toContain(
+      'if the intended source or create-versus-edit action is unclear, clarify',
+    );
+    expect(prompt.system).toContain('Use diagnosis for read-only inspection');
+    expect(
+      parseChatPipelineIntentClassificationText(
+        JSON.stringify({
+          kind,
+          targetCandidateId: 'pipeline-2',
+          clarification: null,
+          candidateIds: [],
+        }),
+        candidates,
+      ),
+    ).toMatchObject({ kind, target: { id: 'pipeline-2' } });
+    expect(TAGMA_PIPELINE_INTENT_CLASSIFIER_TOOLS).toEqual({ '*': false });
+  }
+});

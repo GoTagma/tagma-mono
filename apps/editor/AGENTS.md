@@ -2285,3 +2285,29 @@
   content-free diagnostics/outbox records. Arbitrary billing prose is insufficient.
 - Native schema-smoke metadata requests use the five-minute cold-start readiness deadline;
   never overlap shorter retries or change application execution budgets to satisfy this fixture.
+
+- Intermediate generated-file ownership must be declared at its producer/consumer task cwd with
+  built-in file completion; shell text is not an ownership grant. Preserve the source-relation
+  rejection on missing ownership and its exact coordinate. Explain the existing blocked-core +
+  blocking `pipeline-artifact` route so the read-only planner can request a staged declaration
+  repair without editing YAML or reclassifying promised content as execution-only. Preserve the
+  original guard message/fingerprint; place the hint in the existing bounded rejection context. That finding
+  permits bounded Host repair, never execution/publication or bypass of independent content checks.
+
+- Core `expectationIndices` select concrete content only; task success is checked separately. A
+  source-text relation index belongs only to its consumer content role, never its producer or
+  an intermediate task. Keep the producer's independent concrete source assertion. For
+  `consumer_role_mapping`, explain this plan-only correction in bounded diagnostic metadata;
+  do not suggest artifact repair or alter an otherwise valid relation, YAML ownership or guard.
+  Cover direct and transitive graphs and actual generated validation with zero counted slots.
+
+- Classifier guidance must ground an explicitly named new pipeline against frozen candidate paths
+  and names. A visible or manual-new draft alone does not make it the requested edit target.
+  Preserve explicit existing edits/renames and read-only modes; clarify material ambiguity.
+  Keep this semantic guidance separate from routing code: no phrase-list dispatch, extra decision
+  fields, filename-as-id authority or changes to Host binding/branch isolation.
+
+- Finish `check:client` (which rebuilds and cleans `@tagma/types/dist`) before running server/test
+  TypeScript checks against that package. Parallel cleanup can transiently remove declarations
+  and cause missing-module/implicit-any cascades; rerun against the completed build before
+  diagnosing application types. The normal sequential repository check avoids this race.

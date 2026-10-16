@@ -1,0 +1,40 @@
+{
+  "scope": "Preserve original guard message/fingerprint; add actionable ownership repairHint to existing bounded rejectionContext only.",
+  "compatibilityRed": {
+    "tests": 1,
+    "failed": 1,
+    "reason": "Appending guidance to the original message broke the existing native coordinate prefix invariant."
+  },
+  "boundHintRed": {
+    "tests": 1,
+    "failed": 1
+  },
+  "qualifiedGreen": {
+    "tests": 158,
+    "passed": 158,
+    "failed": 0,
+    "assertions": 1825
+  },
+  "invariants": [
+    "Original error message and rejection fingerprints unchanged.",
+    "Native context remains within original 2048-byte bound; long-field omission unchanged.",
+    "Generated validate-only errors spend no formal submission and write no plan.",
+    "Producer and consumer ownership, concrete content and dependency guards remain."
+  ],
+  "evidence": [
+    {
+      "path": "architecture/quality/evidence/verify3-ownership-coordinate-compatibility-red.txt",
+      "sha256": "4bf5575b07763111f95a05c541bc85db085158615eb7626ea63905882192b798"
+    },
+    {
+      "path": "architecture/quality/evidence/verify3-ownership-bound-hint-red.txt",
+      "sha256": "007c7045251705ba378ae1199dcdecb7f0668f29bde72227d7045829fc52fed4"
+    },
+    {
+      "path": "architecture/quality/evidence/verify3-ownership-bound-hint-green.txt",
+      "sha256": "2300dd928430829f5495ef47e1b94453a59231b5827fc2fc01ee8264184d2913"
+    }
+  ],
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

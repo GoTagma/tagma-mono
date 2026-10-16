@@ -1,0 +1,36 @@
+{
+  "scope": "Semantic classifier prompt guidance only; four-field parse and Host candidate authority unchanged.",
+  "sourceBase": "12d0e617d36dd40cd8659b3d8d72524e24375a22",
+  "sourceState": "Working tree after CSR0037/0038. Live same-case verification pending.",
+  "actualResults": {
+    "classifierExecuted": 10,
+    "classifierPassed": 10,
+    "classifierAssertions": 79,
+    "relatedExecuted": 203,
+    "relatedPassed": 203,
+    "relatedFailed": 0,
+    "relatedAssertions": 1394
+  },
+  "logs": [
+    {
+      "path": "architecture/quality/evidence/verify7-classifier-target-green.txt",
+      "sha256": "14c34509fe50a696bd02e3db8b41af6f1f24b72b0441bd553a4126e38a953b3c"
+    },
+    {
+      "path": "architecture/quality/evidence/verify7-classifier-target-related-green.txt",
+      "sha256": "3494cb3f459378b4df6fe51e239604afb2513aeed1c852e70af77a44838073fa"
+    }
+  ],
+  "observation": {
+    "path": "architecture/quality/evidence/verify7-named-target-first-observation.json",
+    "sha256": "c2a113140b72b107c066b8a5e9fbaafa82ed97b0278e9b13fa37ce2c065a35c3"
+  },
+  "invariants": [
+    "No phrase-list or filename-based write dispatch.",
+    "Unrelated current/manualNew candidate is not implicitly the explicit new target.",
+    "Existing edit/rename and read-only target decisions preserved.",
+    "Four fixed fields, tool denial, Host ids and bounded ambiguity clarification unchanged."
+  ],
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

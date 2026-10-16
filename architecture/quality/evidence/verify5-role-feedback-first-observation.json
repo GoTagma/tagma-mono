@@ -1,0 +1,51 @@
+{
+  "case": "s1-l1",
+  "attempt": "verify5",
+  "operationId": "operation-6769d7eb-d199-4609-93f7-e3130803f56b",
+  "outcome": "tester Stop to repair a confirmed feedback-specific gap; not natural timeout or publication",
+  "originalBusinessRequests": 1,
+  "retry": false,
+  "actualTrialExecuted": false,
+  "published": false,
+  "accepted": false,
+  "model": {
+    "provider": "xiaomi",
+    "id": "mimo-v2.6-flash",
+    "variant": "low"
+  },
+  "observation": "Actual submitted core role indices equal saved draft. Producer role repeatedly includes downstream source-relation assertion; relation ownership and dependency conditions can all hold while consumer_role_mapping rejects. Generic error names other conditions; field expectationIndices has no content/consumer semantics description.",
+  "scope": "Bounded role-specific feedback and schema guidance only, never admit invalid role mapping or infer artifact repair. Live convergence remains unproved.",
+  "priorRecordsReviewed": [
+    "CSR-0013",
+    "CSR-0026",
+    "CSR-0029",
+    "CSR-0037"
+  ],
+  "evidence": [
+    {
+      "name": "plan-error-history.jsonl",
+      "sha256": "2afe69607b105a5a93c2b4040b64af5ce7b457a18d6511f317281ee7ad625841",
+      "bytes": 7519
+    },
+    {
+      "name": "before-role-feedback-repair-maps.json",
+      "sha256": "f811fcf3ed417033ea18337d6064f751aef86ab93b25335820781f24b30530f5",
+      "bytes": 8367
+    },
+    {
+      "name": "role-feedback-owner-facts.json",
+      "sha256": "9b9d4a642d00da71d49a910cffe4076cd5ef8d73f77de9cded2db185138e34d2",
+      "bytes": 1003
+    },
+    {
+      "name": "first-authored-draft.json",
+      "sha256": "ee10778e30a6f1dec901ba769bd4da8fdd31de6bc3a3f7c7caa013636ccd19be",
+      "bytes": 15971
+    },
+    {
+      "name": "before-role-feedback-repair.json",
+      "sha256": "063c30a6abbb878bdb3b08d57111c68745ff22feb4c5fa28a42700ea417aa92e",
+      "bytes": 15971
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-rejection-coordinates.test.ts:
+392 |     } catch (error) {
+393 |       thrown = error;
+394 |     }
+395 |     expect(thrown).toBeInstanceOf(Error);
+396 |     const marker = '\nrejectionContext: ';
+397 |     expect((thrown as Error).message.startsWith(relationMessage + marker)).toBe(true);
+                                                                                 ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-rejection-coordinates.test.ts:397:76)
+(fail) native coordinate suffix is byte bounded and reports omitted long coordinates [51.41ms]
+
+ 0 pass
+ 6 filtered out
+ 1 fail
+ 6 expect() calls
+Ran 1 test across 1 file. [165.00ms]

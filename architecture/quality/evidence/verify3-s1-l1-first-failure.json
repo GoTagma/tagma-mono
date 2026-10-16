@@ -1,0 +1,56 @@
+{
+  "case": "s1-l1",
+  "attempt": "verify3",
+  "sourceCommit": "12d0e617d36dd40cd8659b3d8d72524e24375a22",
+  "operationId": "operation-a34cd233-b70c-4d76-83b0-c4aa57885c78",
+  "originalBusinessRequests": 1,
+  "explicitRetry": false,
+  "testerStop": false,
+  "outcome": "natural trial_verification_paused",
+  "actualTrialExecuted": false,
+  "published": false,
+  "accepted": false,
+  "model": {
+    "provider": "xiaomi",
+    "id": "mimo-v2.6-flash",
+    "variant": "off"
+  },
+  "observation": "Two Host planning attempts ended without a committed plan. Author omitted file completions, and actual source-text relation failed producer_artifact_ownership. Other malformed case, source mapping and non-concrete content errors remain model-generated. No false validator rejection or runtime ownership defect established.",
+  "repairScope": "Improve owning feedback and authoring contract hints for missing artifact ownership only. Preserve rejection/authority; do not infer write grants from prose or pretend all model convergence is fixed.",
+  "priorRecordsReviewed": [
+    "CSR-0013 coordinate evidence",
+    "CSR-0014 retained complete contract",
+    "CSR-0026 generated input witness",
+    "CSR-0029 typed blocked artifact feedback and Host repair",
+    "CSR-0033 bounded staged removal"
+  ],
+  "evidence": [
+    {
+      "name": "first-authored-draft.json",
+      "sha256": "51a1a489c1aef8fcf386e154544f53d87e6de635f17cc6138a8b8b7b61241c6a",
+      "bytes": 10579
+    },
+    {
+      "name": "plan-error-history.jsonl",
+      "sha256": "3f0a02f816887436d55e9aa2243796d3aa1d2ad5860ec1c3c8cd8db37b0e3e1b",
+      "bytes": 11058
+    },
+    {
+      "name": "final-state.json",
+      "sha256": "8fcd2119411628934cca0b46f3ecd2c6d732a26c75b65fe9be172368c9a1751f",
+      "bytes": 23944
+    },
+    {
+      "name": "round-result.json",
+      "sha256": "b3a94cfd6f19dd700f1c2578c28650875f401c7a7f592dd6dcdeaa6af37c505e",
+      "bytes": 6067
+    },
+    {
+      "name": "finding-detail-facts.json",
+      "sha256": "8ade0da28e4923dbc4de1b526dee2a5da5f40b9741566ad8f487d8c5e8073b85",
+      "bytes": 532
+    }
+  ],
+  "rawEvidenceLocation": "/workspace/tagma-cloud/reports/s1-l1-verify3",
+  "liveAcceptance": false
+}

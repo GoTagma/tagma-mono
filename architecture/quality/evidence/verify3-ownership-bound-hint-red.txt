@@ -1,0 +1,19 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:
+494 |       if (!(error instanceof Error)) throw error;
+495 |       rejection = error;
+496 |     }
+497 |     expect(rejection).toBeDefined();
+498 |     expect(rejection!.trialPlanDiagnostic?.rejectionContext?.failedConjunct).toBe(failedConjunct);
+499 |     expect(rejection!.trialPlanDiagnostic?.rejectionContext?.repairHint).toContain('file_exists or json_schema completion');
+                                                                               ^
+error: Received value must be an array type, or both received and expected values must be strings.
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-file-source-text-occurrence.test.ts:499:74)
+(fail) missing artifact ownership feedback identifies a blocked pipeline repair without weakening admission [2.39ms]
+
+ 0 pass
+ 14 filtered out
+ 1 fail
+ 3 expect() calls
+Ran 1 test across 1 file. [193.00ms]

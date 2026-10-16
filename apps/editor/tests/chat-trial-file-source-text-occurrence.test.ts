@@ -479,6 +479,127 @@ test('normal relation rejects preseed, missing removal, wrong producer, dependen
   expect(() => parseChatPipelineTrialPlan(same)).toThrow('differ');
 });
 
+test('missing artifact ownership feedback identifies a blocked pipeline repair without weakening admission', () => {
+  for (const [taskId, failedConjunct] of [
+    ['odd.alpha', 'producer_artifact_ownership'],
+    ['odd.beta', 'consumer_artifact_ownership'],
+  ] as const) {
+    const missing = { ...taskEvidence, [taskId]: { ...taskEvidence[taskId]!, artifactPaths: [] } };
+    let rejection:
+      | (Error & {
+          trialPlanDiagnostic?: {
+            rejectionContext?: { failedConjunct?: string; repairHint?: string };
+          };
+        })
+      | undefined;
+    try {
+      rules.validateCoreWitness(plan(), missing, true);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      rejection = error;
+    }
+    expect(rejection).toBeDefined();
+    expect(rejection!.trialPlanDiagnostic?.rejectionContext?.failedConjunct).toBe(failedConjunct);
+    expect(rejection!.trialPlanDiagnostic?.rejectionContext?.repairHint).toContain(
+      'file_exists or json_schema completion',
+    );
+    expect(rejection!.trialPlanDiagnostic?.rejectionContext?.repairHint).toContain(
+      'blocking pipeline-artifact finding',
+    );
+    expect(rejection!.trialPlanDiagnostic?.rejectionContext?.repairHint).toContain('blocked core');
+    expect(rejection!.trialPlanDiagnostic?.rejectionContext?.repairHint).toContain(
+      'do not edit YAML',
+    );
+  }
+  expect(() => rules.validateCoreWitness(plan(), taskEvidence, true)).not.toThrow();
+  const unrelated = {
+    ...taskEvidence,
+    'odd.beta': { ...taskEvidence['odd.beta']!, dependsOn: [] },
+  };
+  expect(() => rules.validateCoreWitness(plan(), unrelated, true)).toThrow();
+});
+
+test('consumer role feedback corrects direct and transitive plan mappings without artifact authority', () => {
+  for (const transitive of [false, true]) {
+    const input = plan();
+    const tasks: TrialResilienceTaskEvidence = transitive
+      ? {
+          ...taskEvidence,
+          'odd.bridge': { dependsOn: ['odd.alpha'], artifactPaths: [] },
+          'odd.beta': { ...taskEvidence['odd.beta']!, dependsOn: ['odd.bridge'] },
+        }
+      : taskEvidence;
+    const core = input.evidenceReview!.coreWitness!;
+    if (core.status !== 'covered') throw new Error('Expected covered fixture.');
+    if (transitive) {
+      input.cases[0]!.expectations.push({
+        type: 'task-status',
+        taskId: 'odd.bridge',
+        status: 'success',
+      });
+      input.evidenceReview = {
+        ...input.evidenceReview!,
+        coreWitness: {
+          ...core,
+          taskRoles: [
+            ...core.taskRoles,
+            {
+              taskId: 'odd.bridge',
+              role: 'execution',
+              expectationIndices: [],
+              rationale: 'This no-output bridge only orders the two tasks.',
+            },
+          ],
+        },
+      };
+    }
+    expect(() => rules.validateCoreWitness(input, tasks, true)).not.toThrow();
+    const wrong = structuredClone(input);
+    const role = wrong.evidenceReview!.coreWitness!;
+    if (role.status !== 'covered') throw new Error('Expected covered fixture.');
+    const targetId = transitive ? 'odd.bridge' : 'odd.alpha';
+    wrong.evidenceReview = {
+      ...wrong.evidenceReview!,
+      coreWitness: {
+        ...role,
+        taskRoles: role.taskRoles.map((item) =>
+          item.taskId === targetId
+            ? { ...item, role: 'content', expectationIndices: [...item.expectationIndices, 3] }
+            : item,
+        ),
+      },
+    };
+    let rejected:
+      | (Error & {
+          trialPlanDiagnostic?: {
+            rejectionContext?: {
+              failedConjunct?: string;
+              repairHint?: string;
+              roleTaskId?: string;
+            };
+          };
+        })
+      | undefined;
+    try {
+      rules.validateCoreWitness(wrong, tasks, true);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      rejected = error;
+    }
+    expect(rejected).toBeDefined();
+    expect(rejected!.message).toBe(
+      'Core source-text relation needs owned generated source, dependency, and independent concrete source content.',
+    );
+    const context = rejected!.trialPlanDiagnostic?.rejectionContext;
+    expect(context?.failedConjunct).toBe('consumer_role_mapping');
+    expect(context?.roleTaskId).toBe(targetId);
+    expect(context?.repairHint).toContain('consumer content role');
+    expect(context?.repairHint).toContain('producer');
+    expect(context?.repairHint).toContain('plan mapping');
+    expect(context?.repairHint).toContain('do not request artifact repair');
+  }
+});
+
 test('reader evaluates each actual source value and cannot reuse the prior repeat literal', () => {
   const h = folder();
   writeFileSync(join(h.path, 'input.json'), JSON.stringify({ text: 'First observed span' }));
@@ -585,6 +706,34 @@ test('generated tool draft/full validators mirror the relation gate without cons
     throw new Error('The generated validator must return JSON text.');
   expect(JSON.parse(validation).valid).toBe(true);
   expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2).toolAttemptCount).toBe(0);
+  const stagePath = join(stageRoot, 'stage.json');
+  const originalStage = readFileSync(stagePath, 'utf8');
+  for (const taskId of ['odd.alpha', 'odd.beta'] as const) {
+    const missing = JSON.parse(originalStage);
+    missing.trialPlanAttempt.validationContext.tasks[taskId].artifactPaths = [];
+    writeFileSync(stagePath, JSON.stringify(missing));
+    await expect(call('validate')).rejects.toThrow('blocking pipeline-artifact finding');
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2).toolAttemptCount).toBe(0);
+    expect(existsSync(yamlPath.replace(/\.yaml$/, '.trial-plan.json'))).toBe(false);
+  }
+  writeFileSync(stagePath, originalStage);
+  const review = input.evidenceReview!;
+  if (review.coreWitness?.status !== 'covered') throw new Error('Expected covered fixture.');
+  const wrongRole = {
+    ...review,
+    coreWitness: {
+      ...review.coreWitness,
+      taskRoles: review.coreWitness.taskRoles.map((item, index) =>
+        index === 0 ? { ...item, expectationIndices: [...item.expectationIndices, 3] } : item,
+      ),
+    },
+  };
+  await call('set-evidence-review', { evidence_review: wrongRole });
+  await expect(call('validate')).rejects.toThrow('consumer content role');
+  expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2).toolAttemptCount).toBe(0);
+  expect(existsSync(yamlPath.replace(/\.yaml$/, '.trial-plan.json'))).toBe(false);
+  await call('set-evidence-review', { evidence_review: input.evidenceReview });
+  expect(JSON.parse(String(await call('validate'))).valid).toBe(true);
   await call('commit');
   expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
     toolAttemptCount: 1,

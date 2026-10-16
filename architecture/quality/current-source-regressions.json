@@ -261,6 +261,24 @@
       "path": "architecture/quality/evidence/node-proof-runtime-red.json",
       "sha256": "de839beb8baa34aad0d493bcf0b8c1fc64a3c304dcdde439fbdc4f6cd9b806a3",
       "role": "current-source-real-runtime-red"
+    },
+    {
+      "id": "verify3-ownership-feedback-red",
+      "path": "architecture/quality/evidence/verify3-ownership-feedback-red.json",
+      "sha256": "a223c68b06c67c99462dd732402ea983ef3f956cba15f76f12beee39b23cccfe",
+      "role": "current-source-real-boundary-red"
+    },
+    {
+      "id": "verify5-role-feedback-red",
+      "path": "architecture/quality/evidence/verify5-role-feedback-red.json",
+      "sha256": "2c4003be00176892fe18fb34e61341eeb480808136feb815b66d4f796841a9d8",
+      "role": "current-source-real-boundary-red"
+    },
+    {
+      "id": "verify7-classifier-target-red",
+      "path": "architecture/quality/evidence/verify7-classifier-target-red.json",
+      "sha256": "10fcb92a46243987a0e315107045a7dee9f3cc53d006ffe8f7cd152c9867f5f5",
+      "role": "current-source-semantic-prompt-contract-red"
     }
   ],
   "issues": [
@@ -5956,6 +5974,251 @@
       },
       "contract": "Full CI must select Node24 and prove actual --test-isolation support before requiring immutable named Node test execution. Never manufacture GREEN from unsupported invocations.",
       "claimLimit": "CI prerequisites and local contracts only. Actual next final-SHA CI required; historical archives and live acceptance remain separate."
+    },
+    {
+      "id": "CSR-0037",
+      "lineage": [
+        "CSR-0013",
+        "CSR-0026",
+        "CSR-0029"
+      ],
+      "title": "Missing file ownership feedback must expose the existing blocked artifact repair route",
+      "category": "product-guidance",
+      "mechanism": "actionable-ownership-rejection-with-unchanged-admission",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Feedback/hint omission proven locally and observed in real failed planning. No false validator rejection or guaranteed model convergence established.",
+      "firstEvidence": {
+        "sourceId": "verify3-ownership-feedback-red",
+        "path": "architecture/quality/evidence/verify3-ownership-feedback-red.json",
+        "sha256": "a223c68b06c67c99462dd732402ea983ef3f956cba15f76f12beee39b23cccfe",
+        "sourceRevision": "12d0e617d36dd40cd8659b3d8d72524e24375a22",
+        "round": "s1-l1-verify3",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Bounded guidance and admission regression; never substitute for actual live Trial/publication."
+      },
+      "history": [
+        {
+          "kind": "observed-actionable-feedback-and-authoring-hint-red",
+          "evidencePath": "architecture/quality/evidence/verify3-ownership-feedback-red.json",
+          "evidenceSha256": "a223c68b06c67c99462dd732402ea983ef3f956cba15f76f12beee39b23cccfe",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "local-related151-green",
+          "evidencePath": "architecture/quality/evidence/verify3-ownership-feedback-green.json",
+          "evidenceSha256": "a5bbb33fc5c36277f823c7fe12ab05ad3a8763646f9199387fa84ac7e304a0ab",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "original-error-and-bounded-context-compatibility-corrected-green158",
+          "evidencePath": "architecture/quality/evidence/verify3-ownership-bound-hint-qualified.json",
+          "evidenceSha256": "e3a819c436221738604a877f904c584282d470a9c85c676c08e3c27f47ad6cb1",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-guidance-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+          "kind": "actionable-missing-file-ownership-guidance",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-seed.ts",
+          "kind": "actionable-missing-file-ownership-guidance",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "missing artifact ownership feedback identifies a blocked pipeline repair without weakening admission",
+          "namePattern": "^missing artifact ownership feedback identifies a blocked pipeline repair without weakening admission$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "generated tool draft/full validators mirror the relation gate without consuming a validation slot",
+          "namePattern": "^generated tool draft/full validators mirror the relation gate without consuming a validation slot$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-seed-agent.test.ts",
+          "fullName": "authoring declares intermediate file ownership before read-only Trial planning",
+          "namePattern": "^authoring declares intermediate file ownership before read-only Trial planning$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "original-error-and-bounded-context-compatibility-corrected-green158",
+        "evidencePath": "architecture/quality/evidence/verify3-ownership-bound-hint-qualified.json",
+        "evidenceSha256": "e3a819c436221738604a877f904c584282d470a9c85c676c08e3c27f47ad6cb1",
+        "liveAcceptance": false
+      },
+      "contract": "Missing producer/consumer file ownership retains its exact rejection coordinate. Explain completion coordinates and blocked-core/blocking-artifact feedback; do not edit YAML as planner, weaken content or reinterpret task role. Valid ownership remains accepted and invalid dependency rejected. Original guard message and fingerprint stay unchanged; deliver the hint only in the existing bounded coordinate context.",
+      "claimLimit": "Guidance regression only. Original verify3 failed. Fresh editor/new workspace same-case live verification still required. Historical coverage incomplete."
+    },
+    {
+      "id": "CSR-0038",
+      "lineage": [
+        "CSR-0013",
+        "CSR-0026",
+        "CSR-0029",
+        "CSR-0037"
+      ],
+      "title": "Source relation role feedback must name the plan-only consumer index correction",
+      "category": "product-guidance",
+      "mechanism": "specific-consumer-role-mapping-feedback-and-content-only-schema-hints",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Generic rejection listed relation ownership conditions that can all hold while a wrong role index fails. Feedback and field-hint omission proven with direct/transitive and actual generated-tool counterexamples; no false rejection or model convergence claim.",
+      "firstEvidence": {
+        "sourceId": "verify5-role-feedback-red",
+        "path": "architecture/quality/evidence/verify5-role-feedback-red.json",
+        "sha256": "2c4003be00176892fe18fb34e61341eeb480808136feb815b66d4f796841a9d8",
+        "sourceRevision": "12d0e617d36dd40cd8659b3d8d72524e24375a22",
+        "round": "s1-l1-verify5",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Working-tree bounded feedback/schema counterexamples. Actual live attempt interrupted to repair; no Trial or publication."
+      },
+      "history": [
+        {
+          "kind": "observed-role-feedback-and-model-field-hint-red",
+          "evidencePath": "architecture/quality/evidence/verify5-role-feedback-red.json",
+          "evidenceSha256": "2c4003be00176892fe18fb34e61341eeb480808136feb815b66d4f796841a9d8",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "local-role-feedback-related160-green",
+          "evidencePath": "architecture/quality/evidence/verify5-role-feedback-green.json",
+          "evidenceSha256": "7bfad04e2823d6e954d44fa9d1159708bd89f888f28e545ed89b509f2ce8c92f",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-guidance-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/chat-trial-resilience-rules.ts",
+          "kind": "bounded-plan-only-consumer-role-guidance",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-trial-plan-tool.ts",
+          "kind": "bounded-plan-only-consumer-role-guidance",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "consumer role feedback corrects direct and transitive plan mappings without artifact authority",
+          "namePattern": "^consumer role feedback corrects direct and transitive plan mappings without artifact authority$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-file-source-text-occurrence.test.ts",
+          "fullName": "generated tool draft/full validators mirror the relation gate without consuming a validation slot",
+          "namePattern": "^generated tool draft/full validators mirror the relation gate without consuming a validation slot$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "model role indices schema separates concrete consumer content from task success",
+          "namePattern": "^model role indices schema separates concrete consumer content from task success$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "local-role-feedback-related160-green",
+        "evidencePath": "architecture/quality/evidence/verify5-role-feedback-green.json",
+        "evidenceSha256": "7bfad04e2823d6e954d44fa9d1159708bd89f888f28e545ed89b509f2ce8c92f",
+        "liveAcceptance": false
+      },
+      "contract": "Role indices select concrete content only. A source-text relation belongs only to its consumer content role; producer keeps independent concrete source content. Preserve original error fingerprint and finite counters; explain plan-only correction without requesting artifact repair.",
+      "claimLimit": "Local deterministic/generated schema and feedback GREEN only; fresh editor/new workspace original-case live acceptance still required. Historical archive gaps remain."
+    },
+    {
+      "id": "CSR-0039",
+      "lineage": [
+        "CSR-0009",
+        "CSR-0012"
+      ],
+      "title": "Explicit new target guidance must distinguish unrelated visible and manual drafts",
+      "category": "product-guidance",
+      "mechanism": "named-new-target-grounding-in-tool-free-classifier-prompt",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Missing semantic guidance for named new target vs unrelated visible draft. Actual model chose edit; no wrong sealed publication or deterministic parser/authority defect is established.",
+      "firstEvidence": {
+        "sourceId": "verify7-classifier-target-red",
+        "path": "architecture/quality/evidence/verify7-classifier-target-red.json",
+        "sha256": "10fcb92a46243987a0e315107045a7dee9f3cc53d006ffe8f7cd152c9867f5f5",
+        "sourceRevision": "12d0e617d36dd40cd8659b3d8d72524e24375a22",
+        "round": "s1-l1-verify7",
+        "role": "immutable-first-red-capsule",
+        "acceptancePolicy": "Prompt/parse contract evidence only. Live case naturally paused on a separate blocked content finding, no Trial/publication."
+      },
+      "history": [
+        {
+          "kind": "observed-missing-named-target-and-rename-guidance-red",
+          "evidencePath": "architecture/quality/evidence/verify7-classifier-target-red.json",
+          "evidenceSha256": "10fcb92a46243987a0e315107045a7dee9f3cc53d006ffe8f7cd152c9867f5f5",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "classifier-and-adapter-service203-green",
+          "evidencePath": "architecture/quality/evidence/verify7-classifier-target-green.json",
+          "evidenceSha256": "6ea79d338ce9fbbcf1d325fdfe726740cb2e334aabe194dea3d673f528bc2465",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-guidance-fixed-live-acceptance-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/shared/chat-pipeline-intent-classifier.ts",
+          "kind": "explicit-new-target-vs-unrelated-canvas-semantic-guidance",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-intent-classifier.test.ts",
+          "fullName": "classifier named target guidance does not infer ownership from an unrelated visible draft",
+          "namePattern": "^classifier named target guidance does not infer ownership from an unrelated visible draft$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-intent-classifier.test.ts",
+          "fullName": "classifier target guidance preserves explicit rename and read-only target decisions",
+          "namePattern": "^classifier target guidance preserves explicit rename and read-only target decisions$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "classifier-and-adapter-service203-green",
+        "evidencePath": "architecture/quality/evidence/verify7-classifier-target-green.json",
+        "evidenceSha256": "6ea79d338ce9fbbcf1d325fdfe726740cb2e334aabe194dea3d673f528bc2465",
+        "liveAcceptance": false
+      },
+      "contract": "Ground explicitly named new target against frozen candidate coordinates; do not infer edit ownership from visibility/manualNew metadata. Preserve explicit existing edit/rename and read-only modes, clarify material ambiguity; keep JSON shape and Host id authority.",
+      "claimLimit": "Prompt/strict parse and 203 related tests GREEN only; no guarantee of model semantic convergence. Separate dynamic-core limitation remains blocking; fresh editor/new-workspace original-case verification required."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

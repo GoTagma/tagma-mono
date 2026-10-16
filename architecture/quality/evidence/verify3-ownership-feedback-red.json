@@ -1,0 +1,19 @@
+{
+  "scope": "Actionable guidance only. Ownership rejection/Trial strength unchanged; no live acceptance claim.",
+  "sourceBase": "12d0e617d36dd40cd8659b3d8d72524e24375a22",
+  "counts": {
+    "executed": 3,
+    "passed": 0,
+    "failed": 3,
+    "assertions": 13
+  },
+  "log": {
+    "path": "architecture/quality/evidence/verify3-ownership-feedback-red.txt",
+    "sha256": "1c7fb481eff7b4f0508228ed0d694e24984a654d6157c419d2c2990c50dddbf9"
+  },
+  "discovery": "architecture/quality/evidence/verify3-s1-l1-first-failure.json",
+  "priorReview": "CSR-0013/0014/0026/0029/0033",
+  "intermediateFailuresPreserved": "Initial prompt-budget failure and two full-test iterations found wording assertions; existing assertions kept and prompt shortened below unchanged 22000 bound. Work logs retained.",
+  "liveAcceptance": false,
+  "historicalCoverageComplete": false
+}

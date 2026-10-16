@@ -1,0 +1,18 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-intent-classifier.test.ts:
+(pass) Chat pipeline semantic intent classification > shares one sidecar-safe implementation through the renderer compatibility facade [0.75ms]
+(pass) Chat pipeline semantic intent classification > marks canvas and session targets independently without using paths as model ids [0.85ms]
+(pass) Chat pipeline semantic intent classification > deduplicates Windows aliases without folding POSIX path casing [0.19ms]
+(pass) Chat pipeline semantic intent classification > keeps an empty inventory schema valid without inventing an editable target [0.38ms]
+(pass) Chat pipeline semantic intent classification > uses a tool-free text contract and parses only one exact bounded JSON result [1.28ms]
+(pass) Chat pipeline semantic intent classification > asks which action is wanted when an editor goal could be discussion or pipeline work [0.22ms]
+(pass) Chat pipeline semantic intent classification > binds an edit only through a Host-issued candidate id [0.17ms]
+(pass) Chat pipeline semantic intent classification > resolves every intent kind with the existing strict target semantics [0.13ms]
+(pass) classifier named target guidance does not infer ownership from an unrelated visible draft [0.34ms]
+(pass) classifier target guidance preserves explicit rename and read-only target decisions [0.20ms]
+
+ 10 pass
+ 0 fail
+ 79 expect() calls
+Ran 10 tests across 1 file. [92.00ms]
