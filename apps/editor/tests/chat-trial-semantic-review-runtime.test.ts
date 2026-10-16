@@ -375,3 +375,84 @@ test('finalize accepts current semantic execution receipts without changing the 
     f.cleanup();
   }
 });
+
+test('deterministic input identity blocks a passing critic until actual producer bytes are repaired', async () => {
+  const f = fixture();
+  try {
+    const planPath = f.entry.stagedPath.replace(/\.ya?ml$/iu, '.trial-plan.json');
+    const raw = JSON.parse(readFileSync(planPath, 'utf8'));
+    const normal = raw.cases[0];
+    normal.runs = 1;
+    normal.expectations.push({
+      type: 'file-equals',
+      path: normal.expectations[1].path,
+      text: normal.fixtures[0].content,
+    });
+    writeFileSync(planPath, JSON.stringify(raw));
+    writeAuthenticatedTrialPlanTelemetry(f.entry.stagedPath);
+    const failed = await f.run('identity_mutated');
+    expect(failed.success).toBe(false);
+    expect(failed.tasks.every((task) => task.status === 'success')).toBe(true);
+    expect(f.reviewed).toHaveLength(0);
+    expect(failed.kind).toBe('plan-required');
+    const before = await finalizeChatYamlStage(f.ws, {
+      stageId: f.stage.id,
+      relativePath: f.entry.relativePath,
+      trialId: 'identity_mutated',
+      retainStage: true,
+    });
+    expect(before.trialVerification).toBe('not-verified');
+    const good = fixture();
+    try {
+      const config = parseYaml(readFileSync(good.entry.stagedPath, 'utf8'));
+      const correctedTask = {
+        ...config.tracks[0]!.tasks[0]!,
+        command: {
+          argv: [
+            process.execPath,
+            '-e',
+            "const fs=require('node:fs');fs.writeFileSync('report.md',fs.readFileSync('input.md'))",
+          ],
+        },
+      };
+      const correctedConfig = {
+        ...config,
+        tracks: [
+          { ...config.tracks[0]!, tasks: [correctedTask, ...config.tracks[0]!.tasks.slice(1)] },
+          ...config.tracks.slice(1),
+        ],
+      };
+      writeFileSync(good.entry.stagedPath, serializePipeline(correctedConfig));
+      expect(compileChatYamlStage(good.ws, good.stage.id, good.entry.relativePath).success).toBe(
+        true,
+      );
+      const goodPlanPath = good.entry.stagedPath.replace(/\.ya?ml$/iu, '.trial-plan.json');
+      const goodPlan = JSON.parse(readFileSync(goodPlanPath, 'utf8'));
+      goodPlan.cases[0].runs = 1;
+      goodPlan.cases[0].expectations.push({
+        type: 'file-equals',
+        path: goodPlan.cases[0].expectations[1].path,
+        text: goodPlan.cases[0].fixtures[0].content,
+      });
+      goodPlan.yamlHash = createHash('sha1')
+        .update(readFileSync(good.entry.stagedPath))
+        .digest('hex');
+      writeFileSync(goodPlanPath, JSON.stringify(goodPlan));
+      writeAuthenticatedTrialPlanTelemetry(good.entry.stagedPath);
+      const repaired = await good.run('identity_preserved');
+      expect(repaired.success).toBe(true);
+      expect(good.reviewed).toHaveLength(1);
+      const after = await finalizeChatYamlStage(good.ws, {
+        stageId: good.stage.id,
+        relativePath: good.entry.relativePath,
+        trialId: 'identity_preserved',
+        retainStage: true,
+      });
+      expect(after.trialVerification).toBe('verified');
+    } finally {
+      good.cleanup();
+    }
+  } finally {
+    f.cleanup();
+  }
+});

@@ -1,0 +1,81 @@
+{
+  "case": "s1-l1",
+  "attempt": "verify10",
+  "round": 1,
+  "outcome": "one-round-pass-after-repairs-in-prior-failed-attempts",
+  "accepted": true,
+  "nextCaseUnlocked": false,
+  "nextCaseGate": "Document first, install generic regression and pass existing issue gates before S1-L2.",
+  "sourceCommit": "0f79da9723faa65854a7b6f9a4ad3f36a3c06266",
+  "evidenceRecordsCommit": "5f5a21bc8bf4725cfcca1f1def38e6cd5c304545",
+  "operationId": "operation-a43d4a00-9da6-417e-92f9-43d1fb4276f8",
+  "resultId": "result_67abd3d45a729f9b569877c5b95de0fc91e6a84099d18b1b",
+  "resultHash": "2af6cc1991dd52ac905d14b74e7e78051545c563db3723a18a8851918c361535",
+  "artifactSetHash": "95b45d11b971add139a126b3376366ebec35463dd8fdfdca2137d90dad81c993",
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-flash",
+    "variant": "off"
+  },
+  "businessRounds": 1,
+  "hostPlanningReservations": 2,
+  "formalPlanCommits": 1,
+  "formalPlanRejections": 0,
+  "actualPipelineExecutions": 3,
+  "actualSuccessfulTaskExecutions": 9,
+  "independentReviewerCalls": 1,
+  "reviewedArtifacts": 3,
+  "publishedFilesVerified": 5,
+  "taskDurationsSeconds": {
+    "gather": [
+      12.7,
+      13.2,
+      14.2
+    ],
+    "adjudicate": [
+      10.4,
+      9.1,
+      8.1
+    ],
+    "render": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "substantiveChecks": {
+    "yamlValidAndAllStepsExecute": true,
+    "manualDefaultTriggerAndSpecifiedStringDefault": true,
+    "nativeHeadlessWebsearchEveryRun": true,
+    "bothOpenCodeTasksHave45SecondTimeout": true,
+    "directCLIAndMinimalPythonRendering": true,
+    "exactClaimPreserved": true,
+    "actualStructuredVerdictAndMarkdownWithExplanationAndSourceLinks": true,
+    "producerConsumerSameRunSourceRelationPassed": true,
+    "dynamicContentIndependentlyReviewed": true,
+    "sealedActualPublishedHashesMatch": true,
+    "confirmedTagmaProductDefectInRound": false
+  },
+  "limits": [
+    "Seven captured draft preflight errors were corrected within the same request; two internal planning reservations, one counted valid commit, zero counted rejections. Full individual errors retained in attempt report.",
+    "Four public source pages returned200; Snopes402 and LonelyPlanet403 remain access limitations, not verified public response bodies. IndiaToday body read capped512KiB. Native websearch/credible sources and passages retained; no all-URLs-fully-verified claim.",
+    "Trial warnings: multiline/empty/special-character variations not exercised because input is a fixed authored default; Host external filesystem/network access is not OS-enforced.",
+    "Independent semantic assessment is fallible. No extra manual Run was used or required."
+  ],
+  "notice": {
+    "schemaVersion": 2,
+    "sandbox": {
+      "status": "passed",
+      "plannedCaseCount": 2,
+      "resultCaseCount": 2,
+      "passedCaseCount": 2,
+      "failedCaseCount": 0,
+      "notRunCaseCount": 0,
+      "taskStatusCounts": {
+        "success": 9
+      }
+    },
+    "reasonCode": "trial_passed_with_warnings",
+    "details": "Trial run passed with warnings (success=9).  Targeted cases: 2/2 passed; 2 result(s) returned; 0 not run. Case normal-e2e: passed — Run the full terminal closure (gather_evidence -> adjudicate -> render_summary) and confirm evidence, verdict and the markdown rendering are produced with the claim preserved verbatim. Case repeat-e2e: passed — Run the terminal closure twice and confirm each run regenerates the claim anchor, verdict and markdown output rather than reusing stale bytes.  Verification warnings: 4. Coverage not verifiable (multiline-content): input_claim is an authored literal default on the task binding, and the Sandbox harness offers no selector to vary a task input default, so multiline claim content cannot be exercised without changing the pipeline binding itself. Coverage not verifiable (empty-content): The claim is an authored literal default; the harness cannot set input_claim to an empty string without editing the pipeline binding, so empty input content cannot be generated. Coverage not verifiable (special-characters): input_claim is fixed by the authored default and the harness has no input selector to inject special characters or Unicode, so that surface cannot be varied. Host commands and hooks use a temporary workspace copy, closed stdin, and no TTY, but external filesystem, network, and child-process access are not OS-enforced."
+  }
+}

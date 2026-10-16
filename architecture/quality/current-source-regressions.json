@@ -321,6 +321,12 @@
       "path": "architecture/quality/evidence/semantic-review-main-ci-green.json",
       "sha256": "2e0231cbcceefe10971360fff4f4ac5b1556bc16d8ef67b9a9b7d5b461b87464",
       "role": "exact-main-all-required-jobs-green-not-live-acceptance"
+    },
+    {
+      "id": "s1-l1-verify10-original-round-passed",
+      "path": "architecture/quality/evidence/verify10-s1-l1-acceptance.json",
+      "sha256": "1dd1f81acb028d1c69748a99a10bcfd4c6a80f33dfa4206f907ba29e0e902908",
+      "role": "live-original-round-S1-L1-passed-not-full-matrix"
     }
   ],
   "issues": [
@@ -6388,9 +6394,15 @@
           "evidencePath": "architecture/quality/evidence/semantic-review-main-ci-green.json",
           "evidenceSha256": "2e0231cbcceefe10971360fff4f4ac5b1556bc16d8ef67b9a9b7d5b461b87464",
           "liveAcceptance": false
+        },
+        {
+          "kind": "live-original-round-S1-L1-with-actual-semantic-review-and-sealed-publication",
+          "evidencePath": "architecture/quality/evidence/verify10-s1-l1-acceptance.json",
+          "evidenceSha256": "1dd1f81acb028d1c69748a99a10bcfd4c6a80f33dfa4206f907ba29e0e902908",
+          "liveAcceptance": true
         }
       ],
-      "status": "all-supported-OS-native-and-full-CI-guarded-live-retest-running",
+      "status": "native-all-OS-CI-and-live-S1-L1-guarded-other-cases-not-adjudicated",
       "fixes": [
         {
           "path": "apps/editor/server/chat-trial-semantic-review.ts",
@@ -6615,17 +6627,24 @@
           "fullName": "Host semantic review keeps the sealed model and intent through automatic repair",
           "namePattern": "^Host semantic review keeps the sealed model and intent through automatic repair$",
           "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "deterministic input identity blocks a passing critic until actual producer bytes are repaired",
+          "namePattern": "^deterministic input identity blocks a passing critic until actual producer bytes are repaired$",
+          "expectedTests": 1
         }
       ],
       "realTestSelectors": [],
       "lastExecution": {
-        "kind": "exact-main-all-required-jobs-green-not-live-acceptance",
-        "evidencePath": "architecture/quality/evidence/semantic-review-main-ci-green.json",
-        "evidenceSha256": "2e0231cbcceefe10971360fff4f4ac5b1556bc16d8ef67b9a9b7d5b461b87464",
-        "liveAcceptance": false
+        "kind": "live-original-round-S1-L1-with-actual-semantic-review-and-sealed-publication",
+        "evidencePath": "architecture/quality/evidence/verify10-s1-l1-acceptance.json",
+        "evidenceSha256": "1dd1f81acb028d1c69748a99a10bcfd4c6a80f33dfa4206f907ba29e0e902908",
+        "liveAcceptance": true
       },
       "contract": "New explicit artifact-semantic-review only for owning positive core content. Actual successful execution first, exact frozen model/intent, single tool-free separate call per repeat, bounded immutable artifacts and literal evidence; fail closed on uncertainty/unavailability/mutation. Every repeat must carry exact signed semantic receipts into publication; no equivalent-case reuse or hidden title calls. Preserve source relations, JSON checks, finite author repair and first-owner retained authority.",
-      "claimLimit": "Model judgment can be wrong. Synthetic native and actual Sandbox tests do not establish external truth or a passed live case. S1-L1 remains blocked until fresh-workspace actual Trial and sealed publication meet substantive criteria."
+      "claimLimit": "One original S1-L1 round passed in verify10 with actual semantic review and sealed publication; prior failed attempts retained. Not full matrix or historical GREEN. Independent assessment remains fallible and public citation access limits are recorded."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

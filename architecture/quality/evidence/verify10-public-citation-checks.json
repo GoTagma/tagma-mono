@@ -1,0 +1,50 @@
+[
+  {
+    "url": "https://www.toureiffel.paris/en/news/history-and-culture/why-does-eiffel-tower-change-size",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 56357,
+    "boundedAt512KiB": false,
+    "sha256": "c2fc5838df04c2f04b331292637664a73d78c55f898f012bcaeb47c07de78176",
+    "title": "Why does the Eiffel Tower change size? - The Eiffel Tower"
+  },
+  {
+    "url": "https://theconversation.com/the-eiffel-tower-gets-bigger-every-summer-heres-why-261904",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 178666,
+    "boundedAt512KiB": false,
+    "sha256": "e9248dd1e736260c514fcc00665b676bc64e62c56dc35417f08b8a5a6d970524",
+    "title": "The Eiffel Tower gets bigger every summer – here’s why"
+  },
+  {
+    "url": "https://www.snopes.com/fact-check/eiffel-tower-grows-summer-shrinks-winter/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 402,
+    "failureCategory": "HTTP-response"
+  },
+  {
+    "url": "https://engineering.purdue.edu/MSE/aboutus/gotmaterials/Buildings/patel.html",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 53306,
+    "boundedAt512KiB": false,
+    "sha256": "4d5f04ad29daab36c47494d36b240bcfb9bba636478c71cc54b30b951e4a604d",
+    "title": "Eiffel Tower - Materials Engineering - Purdue University"
+  },
+  {
+    "url": "https://www.lonelyplanet.com/stories/10-things-you-might-not-know-about-the-eiffel-tower/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 403,
+    "failureCategory": "HTTP-response"
+  },
+  {
+    "url": "https://www.indiatoday.in/information/story/eiffel-tower-height-changes-thermal-expansion-iron-structure-seasonal-growth-2769543-2025-08-11",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 524288,
+    "boundedAt512KiB": true,
+    "sha256": "e470c5b1e5ff3c3541c4b8e7dc74807bfb11de20a364f573bc8beb184d9dd718",
+    "title": "Why the Eiffel Tower appears taller in summer and what causes it - India Today"
+  }
+]

@@ -1,0 +1,39 @@
+{
+  "scope": "actual Host sealed result joined to production artifact-set projection and published file hashes; read-only",
+  "operationId": "operation-a43d4a00-9da6-417e-92f9-43d1fb4276f8",
+  "resultId": "result_67abd3d45a729f9b569877c5b95de0fc91e6a84099d18b1b",
+  "resultHash": "2af6cc1991dd52ac905d14b74e7e78051545c563db3723a18a8851918c361535",
+  "artifactSetHash": "95b45d11b971add139a126b3376366ebec35463dd8fdfdca2137d90dad81c993",
+  "artifacts": [
+    {
+      "artifactId": "artifact_17caefc9e315c809ba853e64970f00e71dde7c3c37165a00",
+      "kind": "requirements",
+      "path": "quick_verify/quick_verify.requirements.md",
+      "sha256": "230291e1b000b796ad41598bfe13ad6c721a4c141bfd5ac4165bae14e7ce30e8"
+    },
+    {
+      "artifactId": "artifact_2cf6dd026575ee0208a4544ca9a40230fd253bd7221b7ba2",
+      "kind": "support",
+      "path": "quick_verify/schemas/verdict.schema.json",
+      "sha256": "07e3c2d4d9ae056d3ec63f7fc91ffa91afcb28a14f212a9fe1afe0db2467e35a"
+    },
+    {
+      "artifactId": "artifact_345294b8331fda92eb18dd8fbfa08dc628af24e05daa33a2",
+      "kind": "support",
+      "path": "quick_verify/schemas/evidence.schema.json",
+      "sha256": "58517d24bf060247358f4874f1c39ac5b90748280b4cef5497cfc990ce1ceebd"
+    },
+    {
+      "artifactId": "artifact_3ff512ecdb35bb5f7154565b89c601360c8ac07b1a76b9cb",
+      "kind": "yaml",
+      "path": "quick_verify/quick_verify.yaml",
+      "sha256": "3b034ecd963021f6d95a1108cc848886593871737fd622c9c41456df327beaac"
+    },
+    {
+      "artifactId": "artifact_70a7545fb3e4f543c1cfeef7d38b0bce6cb913d5af0062ac",
+      "kind": "layout",
+      "path": "quick_verify/quick_verify.layout.json",
+      "sha256": "9fe70502eda95ecb9870b3fc8c3ce03912af1eb037daa34b3a01b19db9a3c252"
+    }
+  ]
+}
