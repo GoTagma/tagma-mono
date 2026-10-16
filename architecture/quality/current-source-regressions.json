@@ -465,6 +465,36 @@
       "path": "architecture/quality/evidence/s1-l2-acceptance-guard-main-ci-green.json",
       "sha256": "49ebe85701e7dba689e64649ae2ee9b58ab1ca5a0296dfe9f6e59a2b9b311c29",
       "role": "actual-all-platform-unit-guard-and-full-CI-green"
+    },
+    {
+      "id": "s2-l3-readonly-route-first-live-failure",
+      "path": "architecture/quality/evidence/s2-l3-verify3-routing-first-failure.json",
+      "sha256": "116bd61deedd7c7a1c84d418625d54ed6a5452c4b5f9f09301ce625c01594833",
+      "role": "immutable-live-first-readonly-route-refusal"
+    },
+    {
+      "id": "s2-l3-readonly-route-contract-red",
+      "path": "architecture/quality/evidence/s2-l3-route-refusal-contract-first-red.txt",
+      "sha256": "ee7121968a9881936842ad8baa06d0f3e06c5e02b237e9b632204fb03e9e2941",
+      "role": "immutable-real-store-contract-red"
+    },
+    {
+      "id": "s2-l3-readonly-route-contract-green",
+      "path": "architecture/quality/evidence/s2-l3-route-refusal-related-green.txt",
+      "sha256": "b67e2ee16d75ccc45514d9ca28bb3ec4f0b472d48b6f00b1aa69eef44262e296",
+      "role": "real-store-related59-tests426-assertions-green"
+    },
+    {
+      "id": "s2-l3-readonly-route-prefix-red",
+      "path": "architecture/quality/evidence/s2-l3-route-refusal-same-line-first-red.txt",
+      "sha256": "9149c99a6737478cca3b90e623812df078ce1176c9a00b382c51af7708ad687a",
+      "role": "immutable-same-line-protocol-boundary-red"
+    },
+    {
+      "id": "s2-l3-readonly-route-final-green",
+      "path": "architecture/quality/evidence/s2-l3-route-refusal-final62-green.txt",
+      "sha256": "a1e959dba0f9a14b40eb4fa85d8eeedd078d0d0abec4551039b6b82ba5e814f8",
+      "role": "real-store-final62-tests447-assertions-green"
     }
   ],
   "issues": [
@@ -7200,6 +7230,158 @@
       "realTestSelectors": [],
       "contract": "Never silently coerce JSON types or run downstream work after failed completion. Type flexibility must be explicitly declared at the intended field; keep required fields and original scalar input types.",
       "claimLimit": "The regression protects an existing deterministic contract, not model generation quality. The actual2 reviews grade3 targets each; keep pipeline output, captured artifact and graded-target counts separate."
+    },
+    {
+      "id": "CSR-0046",
+      "lineage": [
+        "CSR-0009",
+        "CSR-0012",
+        "CSR-0015",
+        "CSR-0034",
+        "CSR-0039",
+        "CSR-0041"
+      ],
+      "title": "Read-only route refusals must request bounded clarification instead of sealing a successful answer",
+      "category": "product-host-routing-completion",
+      "mechanism": "readonly-route-refusal-never-confers-completion-or-write-authority",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s2-l3-readonly-route-first-live-failure",
+        "path": "architecture/quality/evidence/s2-l3-verify3-routing-first-failure.json",
+        "sha256": "116bd61deedd7c7a1c84d418625d54ed6a5452c4b5f9f09301ce625c01594833",
+        "sourceRevision": "37cae479e6edaca94186bc5b08b545951eeb62e3",
+        "round": "S2-L3-verify3-original-round-1",
+        "acceptancePolicy": "Failed immutable attempt. Fresh restarted editor/new workspace original prompt must pass actual Trial and sealed publication before later cases."
+      },
+      "history": [
+        {
+          "kind": "real-store4-fail4-pass-initial-contract-red",
+          "evidencePath": "architecture/quality/evidence/s2-l3-route-refusal-contract-first-red.txt",
+          "evidenceSha256": "ee7121968a9881936842ad8baa06d0f3e06c5e02b237e9b632204fb03e9e2941",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "real-store59-tests426-assertions-related-green",
+          "evidencePath": "architecture/quality/evidence/s2-l3-route-refusal-related-green.txt",
+          "evidenceSha256": "b67e2ee16d75ccc45514d9ca28bb3ec4f0b472d48b6f00b1aa69eef44262e296",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-same-line-protocol-boundary-red",
+          "evidencePath": "architecture/quality/evidence/s2-l3-route-refusal-same-line-first-red.txt",
+          "evidenceSha256": "9149c99a6737478cca3b90e623812df078ce1176c9a00b382c51af7708ad687a",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "real-store-final62-tests447-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s2-l3-route-refusal-final62-green.txt",
+          "evidenceSha256": "a1e959dba0f9a14b40eb4fa85d8eeedd078d0d0abec4551039b6b82ba5e814f8",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Exact leading recognized read-only route refusal requests existing bounded Host clarification; never infer mutation or target. Explicit reply and fresh classifier required. Preserve original request, CAS, thread/inventory authority, Stop and no provider retry. Recover settled prior mains only from authenticated finite refusal thread plus exact canonical request and settled usage; no duplicate invocation per round."
+        }
+      ],
+      "status": "local-contract-guarded-awaiting-fresh-live-verification",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority discussion refusal to pipeline_work asks without granting writes",
+          "namePattern": "^read-only route refusal authority discussion refusal to pipeline_work asks without granting writes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority diagnosis refusal to general_discussion asks without granting writes",
+          "namePattern": "^read-only route refusal authority diagnosis refusal to general_discussion asks without granting writes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority discussion refusal to pipeline_diagnosis asks without granting writes",
+          "namePattern": "^read-only route refusal authority discussion refusal to pipeline_diagnosis asks without granting writes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority discussion refusal to pipeline_work-with-explanation asks without granting writes",
+          "namePattern": "^read-only route refusal authority discussion refusal to pipeline_work-with-explanation asks without granting writes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority diagnosis refusal to general_discussion-with-explanation asks without granting writes",
+          "namePattern": "^read-only route refusal authority diagnosis refusal to general_discussion-with-explanation asks without granting writes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: embedded",
+          "namePattern": "^read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: embedded$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: quoted",
+          "namePattern": "^read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: quoted$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: code example",
+          "namePattern": "^read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: code example$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: unknown",
+          "namePattern": "^read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: unknown$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: lookalike",
+          "namePattern": "^read-only route refusal authority embedded or unknown marker remains an ordinary read-only answer: lookalike$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only route refusal authority refusal clarification survives restart and requires an explicit reply plus fresh classification",
+          "namePattern": "^read-only route refusal authority refusal clarification survives restart and requires an explicit reply plus fresh classification$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only refusal repeated across restarts exhausts the original finite clarification budget",
+          "namePattern": "^read-only refusal repeated across restarts exhausts the original finite clarification budget$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-orchestrator.test.ts",
+          "fullName": "read-only refusal clarification remains cancellable and does not replay its settled main",
+          "namePattern": "^read-only refusal clarification remains cancellable and does not replay its settled main$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "A route refusal is not a normal completed answer or write authorization. Embedded/quoted/code examples remain ordinary text. Clarification consumes the original finite3-round budget; exhaustion fails without publication. Restart at pending clarification/authoring handoff must not replay a settled refused main. A recognized leading marker may include its explanation on the same line; lookalike route identifiers do not match.",
+      "claimLimit": "Local controlled invocation results exercise real store/orchestrator, not a model accuracy guarantee. S2-L3 fresh original-round actual Trial/publication remains required; matrix5/12."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

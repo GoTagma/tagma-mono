@@ -1,0 +1,124 @@
+[
+  {
+    "receipt": {
+      "version": 1,
+      "grading": "independent-model",
+      "outcome": "passed",
+      "identity": {
+        "stageId": "9748a559-5776-4569-af3b-3ca69bfec29f",
+        "trialId": "trial-822b3230cd49baa45e7c1217aaeda74a488b1607",
+        "yamlHash": "bf699686c0379e96bd8495cf6a1ad277cc3a6ea9",
+        "planHash": "16e866b7b0c8aa5cdd42f1b61aaca3fab538f4669341dda5b95ab181643d7f9c",
+        "intentDigest": "61074da0a88f6f7db03563481bc85ed41187c872de225ee51e7c279329c2cabc",
+        "caseId": "happy-path",
+        "runId": "run_mvb5t500_62c2359630ef",
+        "runNumber": 1
+      },
+      "model": {
+        "providerID": "deepseek",
+        "modelID": "deepseek-flash",
+        "variant": "low"
+      },
+      "configurationDigest": "a36eb3f63b5fee4dba3d92f0cda9c3ef96ebd4d8bdcea0cf6ad6a45ac87e27c1",
+      "requestSha256": "d7d54bde6491bd34d42552cd84ad8b7aded21382a88f2896e1ce1fc88bf93be6",
+      "responseSha256": "a748bc70787953819849762dfe499df7a9386beac835e59b7d434c3e1be5f90b",
+      "reviewerSessionId": "ses_tagma_content_review_e85eabd8ae7248c38b67e97010e0a283",
+      "artifacts": [
+        {
+          "path": "document_audit/artifacts/AUDITED_DRAFT.md",
+          "role": "produced",
+          "sha256": "170b17a0439b22d5f22dc8d1175ba8dd508dd33176e09e77859176f6b1918ed4",
+          "bytes": 1870
+        },
+        {
+          "path": "document_audit/artifacts/audit_results.json",
+          "role": "produced",
+          "sha256": "7caf67ff387912d6e7f0d2a58c50f526db662750b64ac6d4aaeddf289f6dc505",
+          "bytes": 1831
+        },
+        {
+          "path": "document_audit/artifacts/claims.json",
+          "role": "produced",
+          "sha256": "4b3a00fc20eb50f6daa98da877a7d6e6066e923fed18f627bd02499e523692d2",
+          "bytes": 409
+        },
+        {
+          "path": "document_audit/inputs/draft.md",
+          "role": "input",
+          "sha256": "aa38d19d1165793fb932671ade97c05be19e18ed344a5e531a3e38cd6068c566",
+          "bytes": 143
+        }
+      ],
+      "verdicts": [
+        {
+          "taskId": "audit.extract_claims",
+          "path": "document_audit/artifacts/claims.json",
+          "verdict": "pass",
+          "reason": "claims.json is valid JSON containing document_path \"inputs/draft.md\" and a claims array of three objects, each with id/text/location. The claim texts match the source draft verbatim in order, satisfying the extract_claims obligation; deterministic json-valid and source-occurrence checks passed.",
+          "evidence": [
+            {
+              "path": "document_audit/artifacts/claims.json",
+              "quote": "\"text\": \"The café recorded a low of -89.2 °C in 1983.\",",
+              "quoteSha256": "0e80b30f6e4f0038127ef8025fc92a3135a88833d4f16d7187dafe4c95deaaba",
+              "offset": 84,
+              "length": 55
+            },
+            {
+              "path": "document_audit/artifacts/claims.json",
+              "quote": "\"location\": \"line 7\"",
+              "quoteSha256": "a5efab1b7a4ef497966be3d36dda3023d548fca11e7a153193e57094d15cc6a2",
+              "offset": 374,
+              "length": 20
+            }
+          ]
+        },
+        {
+          "taskId": "audit.verify_claims",
+          "path": "document_audit/artifacts/audit_results.json",
+          "verdict": "pass",
+          "reason": "audit_results.json is valid JSON with document_path and a results array of exactly one entry per claim id (C1, C2, C3) in the same order, each carrying id, claim, verdict (supported/refuted/unverifiable), explanation and sources array. Task stderr shows Exa web searches performed, consistent with the promised online cross-referencing, and the coverage script reported OK.",
+          "evidence": [
+            {
+              "path": "document_audit/artifacts/audit_results.json",
+              "quote": "\"verdict\": \"refuted\",",
+              "quoteSha256": "741c091d7aee2fd918341f41ee204b64d0014728894081d34619a746b827f77d",
+              "offset": 148,
+              "length": 21
+            },
+            {
+              "path": "document_audit/artifacts/audit_results.json",
+              "quote": "\"url\": \"https://www.nobelprize.org/prizes/physics/1903/summary/\"",
+              "quoteSha256": "67e6d064c2a8002e3cc7454a14bb831019798acc3eed213760a1f4666d34eff7",
+              "offset": 1256,
+              "length": 64
+            }
+          ]
+        },
+        {
+          "taskId": "audit.generate_annotated_doc",
+          "path": "document_audit/artifacts/AUDITED_DRAFT.md",
+          "verdict": "pass",
+          "reason": "AUDITED_DRAFT.md preserves the original draft text and adds an inline status callout plus footnote marker at each claim line in order, followed by a Footnotes section with verdicts/explanations/sources and a Sources appendix listing every source. The deterministic file-preserves-lines and file-contains checks passed, meeting the annotated-document obligation.",
+          "evidence": [
+            {
+              "path": "document_audit/artifacts/AUDITED_DRAFT.md",
+              "quote": "The café recorded a low of -89.2 °C in 1983. [C1: refuted][^C1]",
+              "quoteSha256": "76739c9fa01096f0794b4775bd0a37e50cf4445c8c803ac3215184d81a2c432e",
+              "offset": 16,
+              "length": 63
+            },
+            {
+              "path": "document_audit/artifacts/AUDITED_DRAFT.md",
+              "quote": "## Sources",
+              "quoteSha256": "ad2af7425caf26f8e901cad40a4f6e6a983dbbdd707725cdd2439ecaa1779f28",
+              "offset": 1363,
+              "length": 10
+            }
+          ]
+        }
+      ]
+    },
+    "requestBytesVerified": true,
+    "responseBytesVerified": true
+  }
+]

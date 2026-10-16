@@ -1,0 +1,39 @@
+{
+  "case": "S2-L2",
+  "attempt": "s2-l2-verify3",
+  "operationId": "operation-02c978a6-3341-4d54-866f-0b8232363143",
+  "sourceRevision": "37cae479e6edaca94186bc5b08b545951eeb62e3",
+  "round": 1,
+  "originalSubmissions": 1,
+  "freshWorkspace": true,
+  "editorRestarted": true,
+  "terminal": "completed_published",
+  "accepted": true,
+  "actualPipelineRuns": 4,
+  "cases": 3,
+  "successfulTasks": 6,
+  "expectedFailedTasks": 2,
+  "expectedSkippedTasks": 4,
+  "completeSHAChildStreams": 16,
+  "independentReviews": 2,
+  "targetsPerReview": [
+    2,
+    2
+  ],
+  "artifactsPerReview": [
+    3,
+    3
+  ],
+  "requestResponseBytesVerified": true,
+  "publishedSourceFiles": 5,
+  "allPublishedBytesMatch": true,
+  "content": "Both normal runs retain original heading/paragraphs/blank lines/Unicode after removing inline status; Eiffel and boiling-point verified, Great Wall disputed; per-article SHA binding. Every cited URL occurs in that actual run websearch responses (7/7 and6/6).",
+  "architecture": "Python read/fingerprint -> native OpenCode prompt task with web/read/write -> Python deterministic annotation; shellquoted path; no subprocess/model wrapper.",
+  "failureBehavior": "Empty/missing source fails in deterministic reader before model; dependent tasks skipped as explicitly expected. No article supplied in original prompt; fixtures authored by planner, not tester.",
+  "constructionErrors": "Missing write permission, missing source-preservation evidence, empty coverage and forbidden .tagma public path spelling caught before commit and corrected inside original round. One committed plan, zero counted validation rejections.",
+  "citations": "8 unique URLs independently HTTP200; Wikipedia512KiB bounded; NASA PDF hash verifies response bytes, no HTML title/content assertion.",
+  "newProductDefectConfirmed": false,
+  "newSourceRepairRequired": false,
+  "regressionGuards": "Existing CSR41 semantic/input/receipt and CSR44 path/cwd guards, qualified45/253 unchanged product source.",
+  "limits": "Actual isolated Trial output exported as evidence; no manual workspace Run/output promotion claimed. Historical import gaps remain RED."
+}

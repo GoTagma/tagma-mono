@@ -1,0 +1,88 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-operation-v2-orchestrator.test.ts:
+(pass) Host derives one explicit safe YAML filename as a create target hint [28.58ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > freezes the Host-supplied workspace repair budget in operation state [90.15ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > discussion runs one classifier and one read-only main invocation before one terminal event [58.45ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > diagnosis without a canvas snapshot runs with explicit request-only authority [54.67ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > a terminal CAS winner cannot leave a read-only result message orphaned [56.50ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > dirty diagnosis reads the exact persisted sealed snapshot and never gives it to classifier [56.28ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > clarification atomically appends one pending thread and waits without writable resources [59.92ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Stop on a pending clarification reaches a readable terminal operation [56.59ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Discard on a pending clarification terminalizes its durable thread [52.77ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > a clarification reply stays in the operation, reruns a fresh classifier, and seals all reply context [67.24ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > concurrent clarification windows are first-wins before the winning classifier settles [62.99ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > multi-round clarification appends to one durable thread and carries every accepted reply forward [77.86ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > clarification inventory drift atomically records the reply and supersedes before rerun [52.31ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > clarification supersedes if the trusted classifier candidate projection no longer matches its frozen first prompt [55.08ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > an expired clarification records one terminal disposition without invoking another classifier [53.64ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > create and edit stay inside V2 as explicit authoring_deferred waits with no renderer handoff [58.72ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Stop during classifier terminalizes cancelled_precommit before any main invocation [51.32ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > a provider completion arriving after Stop cannot correct cancelled usage or outbox evidence [52.32ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > provider unavailability waits for explicit retry and allocates a new classifier identity [67.23ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > malformed classifier text gets one Host-owned repair invocation before routing [70.48ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > two malformed classifier results fail closed without an unbounded retry loop [62.01ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > an explicit retry gets a fresh bounded classifier repair cycle [67.24ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > read-only main provider retry allocates a new session/input without reclassifying [57.69ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > persists a bounded transport code when a provider runner throws [51.76ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > does not persist an arbitrary provider exception code even when it matches the wire format [51.30ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > dispatch continues from Host-owned evidence after the renderer input disappears [53.75ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > generation/version CAS makes concurrent Stop first-wins and writes terminal exactly once [56.48ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > terminal usage gate is satisfied by explicit unavailable dispositions when metrics are absent [52.10ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > concurrent exact create retries coalesce by client request before allocating another invocation [54.66ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > reopened exact create retry returns the existing operation while conflicting bytes fail closed [63.48ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > reopened nonterminal create retry recovers the existing operation instead of creating or prompting [63.09ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > reopened exact retry dispatches a persisted created operation that has no outbox [66.41ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > the same client request id remains independent across workspace scopes [68.88ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart recovers classifier text and continues without a new classifier identity [69.30ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart reconciles the durable classifier repair attempt without repeating either prompt [78.57ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart preserves an exhausted classifier protocol failure for an explicit fresh retry [73.49ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > explicit retry after unrecoverable classifier text allocates a new Host invocation [67.52ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart restores pending clarification without invoking or reconciling OpenCode [65.03ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart reconstructs a post-reply classifier from the durable clarification thread [79.55ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart safely starts the fresh classifier if a crash followed the atomic reply transition before outbox prepare [80.26ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart returns an immutable completed terminal without duplicate invocation or terminal event [98.99ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart reconciles dirty diagnosis against the exact persisted sealed snapshot [69.45ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart supersedes nonterminal work when current Host inventory no longer matches admission [58.37ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart preserves authoring_deferred until an explicit retry allocates a new classifier invocation [68.85ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart projects reconciled in-progress classifier with its existing durable invocation id [56.44ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart rejects duplicate durable classifier authority instead of guessing an invocation [59.34ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart supersedes when candidate ids do not exactly match the sealed Host inventory [56.95ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart terminalizes a durably reconciled read-only main without another provider prompt [60.63ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Stop wins over an in-flight restart reconciliation and interrupts its unresolved outbox [57.58ms]
+(pass) read-only route refusal authority > discussion refusal to pipeline_work asks without granting writes [62.96ms]
+(pass) read-only route refusal authority > diagnosis refusal to general_discussion asks without granting writes [60.56ms]
+(pass) read-only route refusal authority > discussion refusal to pipeline_diagnosis asks without granting writes [59.93ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: The example says ROUTE_MISMATCH: pipeline_work, but here is the answer. [57.64ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: > ROUTE_MISMATCH: pipeline_work
+A quoted diagnostic. [56.93ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: ```text
+ROUTE_MISMATCH: pipeline_work
+```
+This is a code example. [58.37ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: ROUTE_MISMATCH: unknown_route
+Not a recognized protocol refusal. [52.01ms]
+(pass) read-only route refusal authority > refusal clarification survives restart and requires an explicit reply plus fresh classification [69.21ms]
+(pass) read-only refusal repeated across restarts exhausts the original finite clarification budget [117.83ms]
+3973 |   expect(runner.calls).toHaveLength(2);
+3974 |   expect(store.getResultProjection(result.operation.operationId)).toBeNull();
+3975 |   expect(
+3976 |     store.getOperationClarificationThread(result.operation.operationId)?.entries[0]?.disposition
+3977 |       ?.code,
+3978 |   ).toBe('cancelled');
+           ^
+error: expect(received).toBe(expected)
+
+Expected: "cancelled"
+Received: "cancelled_precommit"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-orchestrator.test.ts:3978:5)
+(fail) read-only refusal clarification remains cancellable and does not replay its settled main [56.10ms]
+
+1 tests failed:
+(fail) read-only refusal clarification remains cancellable and does not replay its settled main [56.10ms]
+
+ 58 pass
+ 1 fail
+ 426 expect() calls
+Ran 59 tests across 1 file. [3.82s]

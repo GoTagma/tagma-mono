@@ -1,0 +1,56 @@
+{
+  "case": "S2-L1",
+  "attempt": "s2-l1-verify3",
+  "operationId": "operation-a7172f7e-672f-420c-a302-2926b57bed52",
+  "sourceRevision": "37cae479e6edaca94186bc5b08b545951eeb62e3",
+  "round": 1,
+  "originalSubmissions": 1,
+  "hostClarifications": 0,
+  "editorRestarted": true,
+  "freshWorkspace": true,
+  "model": "deepseek/deepseek-flash/low",
+  "terminal": "completed_published",
+  "accepted": true,
+  "trial": {
+    "success": true,
+    "kind": "passed-with-warnings",
+    "cases": 4,
+    "actualPipelineRuns": 5,
+    "successfulTasks": 12,
+    "expectedFailedTasks": 1,
+    "expectedSkippedTasks": 2,
+    "verifiedChildStreams": 26,
+    "nativeSearchRuns": 3
+  },
+  "semantic": {
+    "calls": 1,
+    "targets": [
+      3
+    ],
+    "capturedArtifacts": [
+      4
+    ],
+    "requestResponseBytesVerified": true
+  },
+  "publishedFiles": 7,
+  "allPublishedBytesMatch": true,
+  "content": {
+    "originalExactAfterRemovingInlineAnnotations": true,
+    "curie": "supported",
+    "cafe": "refuted with explicit Vostok correction, never presented as a substantiated cafe record",
+    "unnamedMission": "unverifiable; no guessed mission",
+    "emptyDocument": "claims[]/results[] and annotated output; all tasks successful",
+    "missingDocument": "explicit null fixture; first command rejects before model, dependents skipped, no outputs"
+  },
+  "architecture": "Three direct native OpenCode CLI commands; Python coverage/document preservation checks; existing file checks; 10m/30m/10m SDK task timeouts; fresh temporary CLI DB per task. No Python subprocess/model wrapper.",
+  "limitations": [
+    "No actual search timeout occurred or was injected in this round. Unresolvable claims use unverifiable; authored task deadlines bound headless execution. This is not a live search-timeout recovery proof.",
+    "DOI independent citation fetch returned403; NWS and both Nobel primary pages returned200.",
+    "Native human CLI stream records tool names/queries, not retrieved web response bodies; do not claim search-result-body URL provenance.",
+    "Repeat-run deterministic preservation/freshness passed; only normal run had independent semantic review.",
+    "Historical import gaps remain RED; current-source45 issues/253 executions was qualified on unchanged product source."
+  ],
+  "newProductDefectConfirmed": false,
+  "sourceRepairRequired": false,
+  "existingRegressionGuards": "CSR41 semantic frozen input/receipt fences; CSR44 cwd/input boundaries; CSR45 JSON value contract; current-source45/253 PASS on same source."
+}

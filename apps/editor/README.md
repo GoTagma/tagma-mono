@@ -253,6 +253,11 @@ needed only after a create/edit decision reaches the isolated authoring branch. 
 the exact configured provider/model pair without consulting advisory model capability or status
 metadata, so catalog refreshes cannot change request identity or recovery.
 
+A read-only agent's leading recognized route refusal asks the standard action clarification
+in the same operation. It cannot authorize a pipeline edit or become a completed answer.
+The original finite clarification budget, inventory checks, explicit reply and fresh
+classification remain required; exhaustion fails without publishing.
+
 Chat diagnosis receives a frozen snapshot of the selected visible pipeline, including saved
 pipelines and unsaved canvas changes. The Host seals that evidence for the operation; later canvas
 changes do not retarget an in-flight answer. Classification and discussion never receive the

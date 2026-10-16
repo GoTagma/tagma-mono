@@ -62,6 +62,17 @@ import { isValidPipelineStem } from '../pipeline-paths.js';
 const encoder = new TextEncoder();
 const MAX_CLASSIFIER_PROTOCOL_ATTEMPTS = 2 as const;
 
+// A refusal can remove completion authority, never confer mutation authority.
+const READONLY_ROUTE_CLARIFICATION =
+  'Would you like an explanation, a one-off action, or a reusable pipeline change in the editor?';
+
+function isReadonlyRouteRefusal(text: string | null): boolean {
+  const firstLine = text?.trimStart().split(/\r?\n/, 1)[0]?.trim() ?? '';
+  return /^(?:ROUTE_MISMATCH: (?:pipeline_work|pipeline_diagnosis|general_discussion)|`ROUTE_MISMATCH: (?:pipeline_work|pipeline_diagnosis|general_discussion)`)(?:$|[\t :;.—–-])/u.test(
+    firstLine,
+  );
+}
+
 export type ChatOperationV2ReadonlyInvocationPurpose = 'classifier' | 'discussion' | 'diagnosis';
 
 export interface ChatOperationV2InvocationUsage {
@@ -845,8 +856,63 @@ export class ChatOperationV2ReadonlyOrchestrator {
     const historicalClassifiers = classifiers.filter(
       ({ invocationId }) => invocationId !== durableClassifierOutbox?.invocationId,
     );
+    // The authenticated Host thread, sealed request and settled usage retire a
+    // refused main. Its text/question alone cannot authorize replay or mutation.
+    const retiredRounds = new Set<number>();
+    const retiredMains = operationOutboxes.filter((outbox) => {
+      if (
+        !['discussion', 'diagnosis'].includes(outbox.purpose) ||
+        outbox.status !== 'settled' ||
+        outbox.settledAt === null
+      )
+        return false;
+      const entry = clarificationThread?.entries.find(
+        ({ pending }) =>
+          pending.question === READONLY_ROUTE_CLARIFICATION &&
+          outbox.settledAt! <= pending.requestedAt &&
+          outbox.preparedAt >=
+            (clarificationThread.entries[pending.round - 2]?.disposition?.resolvedAt ??
+              operation.createdAt),
+      );
+      if (!entry) return false;
+      const usage = usageByInvocation.get(outbox.invocationId);
+      const expected = buildReadonlyTextCanonicalRequestBytes({
+        history: this.getConversationHistory(input.operationId),
+        request: admission.request,
+        purpose: outbox.purpose as 'discussion' | 'diagnosis',
+        readSnapshot:
+          outbox.purpose === 'diagnosis'
+            ? this.persistence.getOperationReadSnapshot(input.operationId)
+            : null,
+      });
+      if (
+        outbox.requestDigest !== sha256(expected) ||
+        !usage ||
+        usage.purpose !== outbox.purpose ||
+        usage.providerId !== admission.provider ||
+        usage.modelId !== admission.model ||
+        usage.variantId !== admission.variant ||
+        !['settled', 'unavailable', 'corrected'].includes(usage.status) ||
+        usage.settledAt === null ||
+        usage.settledAt > entry.pending.requestedAt
+      ) {
+        throw new Error('Retired read-only refusal lost its sealed request or usage authority.');
+      }
+      if (retiredRounds.has(entry.pending.round)) {
+        throw new Error('Recovered clarification has conflicting refused invocations.');
+      }
+      retiredRounds.add(entry.pending.round);
+      return true;
+    });
+    if (retiredMains.length > (clarificationThread?.entries.length ?? 0)) {
+      throw new Error('Recovered refusal history exceeds the finite clarification thread.');
+    }
+    const retiredIds = new Set(retiredMains.map(({ invocationId }) => invocationId));
     const mains = operationOutboxes
-      .filter(({ purpose }) => purpose === 'discussion' || purpose === 'diagnosis')
+      .filter(
+        ({ purpose, invocationId }) =>
+          (purpose === 'discussion' || purpose === 'diagnosis') && !retiredIds.has(invocationId),
+      )
       .sort(
         (left, right) =>
           left.preparedAt - right.preparedAt || left.invocationId.localeCompare(right.invocationId),
@@ -875,7 +941,10 @@ export class ChatOperationV2ReadonlyOrchestrator {
           outbox.purpose !== mainOutbox?.purpose ||
           outbox.requestDigest !== mainOutbox.requestDigest,
       ) ||
-      classifiers.length + mains.length + (retainedAuthoring ? mutations.length : 0) !==
+      classifiers.length +
+        mains.length +
+        retiredMains.length +
+        (retainedAuthoring ? mutations.length : 0) !==
         operationOutboxes.length ||
       (retainedAuthoring &&
         (mains.length !== 0 || durableClassifierOutbox?.status !== 'settled')) ||
@@ -1912,76 +1981,7 @@ export class ChatOperationV2ReadonlyOrchestrator {
         : this.resultFor(waiting.operation);
     }
     context.intent = intent;
-    if (intent.kind === 'clarify') {
-      const current = this.requireOperation(context.operationId);
-      const requestedAt = this.now();
-      const clarificationId = this.nextHostId('clarification');
-      const round = current.clarificationRounds + 1;
-      const pending = sealChatOperationV2PendingClarification({
-        schemaVersion: 1,
-        clarificationId,
-        operationId: current.operationId,
-        generation: current.generation,
-        version: current.version + 1,
-        round,
-        maxRounds: current.clarificationMaxRounds,
-        question: intent.question,
-        candidateIds: intent.candidates.map(({ id }) => id),
-        requestedAt,
-        inventoryRevision: admission.inventoryRevision,
-        inventoryDigest: admission.inventoryDigest,
-        rendererInstanceId: admission.rendererInstanceId,
-        precondition: {
-          phase: 'classifying',
-          reservationBoundaryCrossed: false,
-          bindingId: null,
-          stageId: null,
-          pendingPermissionRequestId: null,
-          activeInvocationId: null,
-        },
-      });
-      const existingThread = this.persistence.getOperationClarificationThread(current.operationId);
-      const baseThread =
-        existingThread ??
-        sealChatOperationV2ClarificationThread({
-          schemaVersion: 1,
-          operationId: current.operationId,
-          generation: current.generation,
-          maxRounds: current.clarificationMaxRounds,
-          threadVersion: 0,
-          entries: [],
-        });
-      const thread = appendChatOperationV2ClarificationPending({
-        thread: baseThread,
-        pending,
-        expectedThreadVersion: baseThread.threadVersion,
-      });
-      const waiting = this.transition(
-        current,
-        {
-          ...stateOf(current),
-          phase: 'awaiting_input',
-          waitReason: 'clarification',
-          activeInvocationId: null,
-          clarificationRounds: round,
-        },
-        'clarification_requested',
-        {
-          requestId: clarificationId,
-          round,
-          inventoryRevision: admission.inventoryRevision,
-          inventoryHash: admission.inventoryDigest,
-          snapshotRequired: admission.readSnapshotHash !== null,
-        },
-        {
-          expectedThreadVersion: existingThread?.threadVersion ?? null,
-          thread,
-        },
-      );
-      return waiting.applied
-        ? { kind: 'clarification_pending', operation: waiting.operation, clarificationId }
-        : this.resultFor(waiting.operation);
-    }
+    if (intent.kind === 'clarify') return this.requestClarification(context, intent);
     if (intent.kind === 'create' || intent.kind === 'edit') {
       const current = this.requireOperation(context.operationId);
       const waiting = this.transition(current, {
@@ -2000,6 +2000,101 @@ export class ChatOperationV2ReadonlyOrchestrator {
         : this.resultFor(waiting.operation);
     }
     return this.runReadonlyMain(context, intent);
+  }
+
+  private requestClarification(
+    context: OperationContext,
+    intent: Extract<ResolvedChatPipelineIntent, { kind: 'clarify' }>,
+  ): ChatOperationV2ReadonlyDispatchResult {
+    const admission = this.requireAdmission(context.operationId);
+    const current = this.requireOperation(context.operationId);
+    if (current.clarificationRounds >= current.clarificationMaxRounds) {
+      const terminal = this.transition(
+        current,
+        {
+          ...stateOf(current),
+          phase: 'terminal',
+          waitReason: null,
+          terminalOutcome: 'failed_terminal',
+          activeInvocationId: null,
+        },
+        'operation_terminal',
+        {
+          outcome: 'failed_terminal',
+          resultId: null,
+          bindingId: null,
+          artifactSetHash: null,
+        },
+      );
+      return this.resultFor(terminal.operation);
+    }
+    const requestedAt = this.now();
+    const clarificationId = this.nextHostId('clarification');
+    const round = current.clarificationRounds + 1;
+    const pending = sealChatOperationV2PendingClarification({
+      schemaVersion: 1,
+      clarificationId,
+      operationId: current.operationId,
+      generation: current.generation,
+      version: current.version + 1,
+      round,
+      maxRounds: current.clarificationMaxRounds,
+      question: intent.question,
+      candidateIds: intent.candidates.map(({ id }) => id),
+      requestedAt,
+      inventoryRevision: admission.inventoryRevision,
+      inventoryDigest: admission.inventoryDigest,
+      rendererInstanceId: admission.rendererInstanceId,
+      precondition: {
+        phase: 'classifying',
+        reservationBoundaryCrossed: false,
+        bindingId: null,
+        stageId: null,
+        pendingPermissionRequestId: null,
+        activeInvocationId: null,
+      },
+    });
+    const existingThread = this.persistence.getOperationClarificationThread(current.operationId);
+    const baseThread =
+      existingThread ??
+      sealChatOperationV2ClarificationThread({
+        schemaVersion: 1,
+        operationId: current.operationId,
+        generation: current.generation,
+        maxRounds: current.clarificationMaxRounds,
+        threadVersion: 0,
+        entries: [],
+      });
+    const thread = appendChatOperationV2ClarificationPending({
+      thread: baseThread,
+      pending,
+      expectedThreadVersion: baseThread.threadVersion,
+    });
+    const waiting = this.transition(
+      current,
+      {
+        ...stateOf(current),
+        phase: 'awaiting_input',
+        waitReason: 'clarification',
+        activeInvocationId: null,
+        clarificationRounds: round,
+      },
+      'clarification_requested',
+      {
+        requestId: clarificationId,
+        round,
+        inventoryRevision: admission.inventoryRevision,
+        inventoryHash: admission.inventoryDigest,
+        snapshotRequired: admission.readSnapshotHash !== null,
+      },
+      {
+        expectedThreadVersion: existingThread?.threadVersion ?? null,
+        thread,
+      },
+    );
+    return waiting.applied
+      ? { kind: 'clarification_pending', operation: waiting.operation, clarificationId }
+      : this.resultFor(waiting.operation);
   }
 
   private classifierRequestBytes(
@@ -2159,6 +2254,24 @@ export class ChatOperationV2ReadonlyOrchestrator {
     result: Extract<ChatOperationV2DurableInvocationResult, { kind: 'completed' }>,
   ): ChatOperationV2ReadonlyDispatchResult {
     const current = this.requireOperation(context.operationId);
+    if (current.phase === 'terminal') return this.resultFor(current);
+    if (isReadonlyRouteRefusal(result.text)) {
+      const classifying = this.transition(current, {
+        ...stateOf(current),
+        phase: 'classifying',
+        waitReason: null,
+        activeInvocationId: null,
+      });
+      if (!classifying.applied) return this.resultFor(classifying.operation);
+      const intent = {
+        kind: 'clarify' as const,
+        question: READONLY_ROUTE_CLARIFICATION,
+        candidates: [],
+      };
+      context.intent = intent;
+      context.main = null;
+      return this.requestClarification(context, intent);
+    }
     const authority = this.prepareReadonlyResultMessage(
       context,
       identity,

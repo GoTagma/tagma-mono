@@ -1,0 +1,37 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-operation-v2-orchestrator.test.ts:
+3736 |       ),
+3737 |       completedInvocation(text, 502),
+3738 |     ]);
+3739 |     const input = baseCreateInput(`operation-refusal-${purpose}-${_route}`);
+3740 |     const result = await orchestrator.createAndDispatch(input);
+3741 |     expect(result.kind).toBe('clarification_pending');
+                               ^
+error: expect(received).toBe(expected)
+
+Expected: "clarification_pending"
+Received: "completed_readonly"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-orchestrator.test.ts:3741:25)
+(fail) read-only route refusal authority > discussion refusal to pipeline_work-with-explanation asks without granting writes [85.93ms]
+3736 |       ),
+3737 |       completedInvocation(text, 502),
+3738 |     ]);
+3739 |     const input = baseCreateInput(`operation-refusal-${purpose}-${_route}`);
+3740 |     const result = await orchestrator.createAndDispatch(input);
+3741 |     expect(result.kind).toBe('clarification_pending');
+                               ^
+error: expect(received).toBe(expected)
+
+Expected: "clarification_pending"
+Received: "completed_readonly"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-orchestrator.test.ts:3741:25)
+(fail) read-only route refusal authority > diagnosis refusal to general_discussion-with-explanation asks without granting writes [54.36ms]
+
+ 0 pass
+ 60 filtered out
+ 2 fail
+ 2 expect() calls
+Ran 2 tests across 1 file. [242.00ms]

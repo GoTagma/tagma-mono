@@ -1,0 +1,35 @@
+[
+  {
+    "url": "https://doi.org/10.1029/2009jd012104",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 403,
+    "failureCategory": "HTTP-response"
+  },
+  {
+    "url": "https://www.nobelprize.org/prizes/physics/1903/marie-curie/facts/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 169224,
+    "boundedAt512KiB": false,
+    "sha256": "556bf39345b7f538eeaa6f191376af428700d4ef8839f84151832ad79ae36103",
+    "title": "Marie Curie &#8211; Facts - NobelPrize.org"
+  },
+  {
+    "url": "https://www.nobelprize.org/prizes/physics/1903/summary/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 166528,
+    "boundedAt512KiB": false,
+    "sha256": "b2392b18eabdf462948ba6ba5346a6167c0e9ce1ea481a033b99504a15bcb068",
+    "title": "The Nobel Prize in Physics 1903 - NobelPrize.org"
+  },
+  {
+    "url": "https://www.weather.gov/abr/This_Day_in_Weather_History_Jul_21",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 49625,
+    "boundedAt512KiB": false,
+    "sha256": "4e1876f2467642c49171e3b9c705dd4d8f6021593279dc06bee84c2b1d3feb96",
+    "title": "This Day in Weather History: July 21st"
+  }
+]

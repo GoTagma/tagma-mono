@@ -1,0 +1,74 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-operation-v2-orchestrator.test.ts:
+3723 |       completedInvocation({ kind: purpose, targetCandidateId: null, clarification: null, candidateIds: [] }, 501),
+3724 |       completedInvocation(text, 502),
+3725 |     ]);
+3726 |     const input = baseCreateInput(`operation-refusal-${purpose}-${_route}`);
+3727 |     const result = await orchestrator.createAndDispatch(input);
+3728 |     expect(result.kind).toBe('clarification_pending');
+                               ^
+error: expect(received).toBe(expected)
+
+Expected: "clarification_pending"
+Received: "completed_readonly"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-orchestrator.test.ts:3728:25)
+(fail) read-only route refusal authority > discussion refusal to pipeline_work asks without granting writes [104.58ms]
+3723 |       completedInvocation({ kind: purpose, targetCandidateId: null, clarification: null, candidateIds: [] }, 501),
+3724 |       completedInvocation(text, 502),
+3725 |     ]);
+3726 |     const input = baseCreateInput(`operation-refusal-${purpose}-${_route}`);
+3727 |     const result = await orchestrator.createAndDispatch(input);
+3728 |     expect(result.kind).toBe('clarification_pending');
+                               ^
+error: expect(received).toBe(expected)
+
+Expected: "clarification_pending"
+Received: "completed_readonly"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-orchestrator.test.ts:3728:25)
+(fail) read-only route refusal authority > diagnosis refusal to general_discussion asks without granting writes [58.08ms]
+3723 |       completedInvocation({ kind: purpose, targetCandidateId: null, clarification: null, candidateIds: [] }, 501),
+3724 |       completedInvocation(text, 502),
+3725 |     ]);
+3726 |     const input = baseCreateInput(`operation-refusal-${purpose}-${_route}`);
+3727 |     const result = await orchestrator.createAndDispatch(input);
+3728 |     expect(result.kind).toBe('clarification_pending');
+                               ^
+error: expect(received).toBe(expected)
+
+Expected: "clarification_pending"
+Received: "completed_readonly"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-orchestrator.test.ts:3728:25)
+(fail) read-only route refusal authority > discussion refusal to pipeline_diagnosis asks without granting writes [58.22ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: The example says ROUTE_MISMATCH: pipeline_work, but here is the answer. [60.94ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: > ROUTE_MISMATCH: pipeline_work
+A quoted diagnostic. [55.91ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: ```text
+ROUTE_MISMATCH: pipeline_work
+```
+This is a code example. [55.47ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: ROUTE_MISMATCH: unknown_route
+Not a recognized protocol refusal. [56.38ms]
+3758 |       completedInvocation({ kind: 'diagnosis', targetCandidateId: null, clarification: null, candidateIds: [] }, 521),
+3759 |       completedInvocation('`ROUTE_MISMATCH: general_discussion`\nNot an artifact question.', 522),
+3760 |     ]);
+3761 |     const input = baseCreateInput('operation-refusal-restart');
+3762 |     const pending = await orchestrator.createAndDispatch(input);
+3763 |     expect(pending.kind).toBe('clarification_pending');
+                                ^
+error: expect(received).toBe(expected)
+
+Expected: "clarification_pending"
+Received: "completed_readonly"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-orchestrator.test.ts:3763:26)
+(fail) read-only route refusal authority > refusal clarification survives restart and requires an explicit reply plus fresh classification [56.78ms]
+
+ 4 pass
+ 49 filtered out
+ 4 fail
+ 16 expect() calls
+Ran 8 tests across 1 file. [629.00ms]

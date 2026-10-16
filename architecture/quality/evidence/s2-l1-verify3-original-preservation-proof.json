@@ -1,0 +1,7 @@
+{
+  "sourceSha256": "aa38d19d1165793fb932671ade97c05be19e18ed344a5e531a3e38cd6068c566",
+  "annotatedSha256": "170b17a0439b22d5f22dc8d1175ba8dd508dd33176e09e77859176f6b1918ed4",
+  "removeOnlyInlineStatusThenOriginalBytesEqual": true,
+  "headingParagraphsBlankLinesUnicodeOrderPreserved": true,
+  "scope": "Actual normal-case snapshot, not every possible document or repeated run."
+}

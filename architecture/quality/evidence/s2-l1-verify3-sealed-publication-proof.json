@@ -1,0 +1,51 @@
+{
+  "scope": "actual Host sealed result joined to production artifact-set projection and published file hashes; read-only",
+  "operationId": "operation-a7172f7e-672f-420c-a302-2926b57bed52",
+  "resultId": "result_e80d61a04e104be04e7c6d710ff9cb94add940e291b42849",
+  "resultHash": "e689aebe8260e2658e1b2efb7b08417851b0b93be062c590d81c7456454c5ca7",
+  "artifactSetHash": "174074ecaf9634309bdc6ee215d4cf11b833e0281d1b332277022dd1c54c3f3a",
+  "artifacts": [
+    {
+      "artifactId": "artifact_17caefc9e315c809ba853e64970f00e71dde7c3c37165a00",
+      "kind": "requirements",
+      "path": "document_audit/document_audit.requirements.md",
+      "sha256": "7f41805e65eb28478680f4ffc27c4c436370591792778bdf488a71b76ae021a6"
+    },
+    {
+      "artifactId": "artifact_1b55067948d51aaae98cc7f0bbaefbfdcd3a66586c5a8e24",
+      "kind": "support",
+      "path": "document_audit/scripts/check_coverage.py",
+      "sha256": "d30859d2a8e39953b7c8a8c1caae6ce1b5054b7aeb3d6bccaae1e22ad668dd4f"
+    },
+    {
+      "artifactId": "artifact_3ff512ecdb35bb5f7154565b89c601360c8ac07b1a76b9cb",
+      "kind": "yaml",
+      "path": "document_audit/document_audit.yaml",
+      "sha256": "56828db369ababc1cbd0c49a9a1aec0576f940bebf905d5b5597e5fd50abba53"
+    },
+    {
+      "artifactId": "artifact_543091013028db3e69e74b564491d13c6ab06149f91edf1f",
+      "kind": "support",
+      "path": "document_audit/schemas/claims.schema.json",
+      "sha256": "0fdd36c4acd5f410edfa115d363bb015e786d4b5209510da4d3044426e225600"
+    },
+    {
+      "artifactId": "artifact_70a7545fb3e4f543c1cfeef7d38b0bce6cb913d5af0062ac",
+      "kind": "layout",
+      "path": "document_audit/document_audit.layout.json",
+      "sha256": "3a0838f1cf9b62f191bdac4235f62c0882acf63575f8d3c1e2b867fc33786773"
+    },
+    {
+      "artifactId": "artifact_8c4846800c6c472b0c635f2aff75d004a43305930e19c595",
+      "kind": "support",
+      "path": "document_audit/schemas/audit_results.schema.json",
+      "sha256": "2ee542d713812083209816cc64be6b63ed6075534ab29e2307700f4ad2f1c76c"
+    },
+    {
+      "artifactId": "artifact_c7efc855adbd040af6bf75a36d51695bef5e4168df430b84",
+      "kind": "support",
+      "path": "document_audit/scripts/check_annotated.py",
+      "sha256": "85c9debdf94d698adb7128ec8cb4c4b51b9a1a631643ee5c9f5b264d71182f8d"
+    }
+  ]
+}

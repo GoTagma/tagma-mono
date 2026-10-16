@@ -1,0 +1,72 @@
+{
+  "case": "S2-L3",
+  "sourceRevision": "37cae479e6edaca94186bc5b08b545951eeb62e3",
+  "originalPrompt": "Fact-check an entire draft markdown file in the editor using OpenCode.",
+  "round": 1,
+  "originalSubmissions": 1,
+  "freshWorkspace": true,
+  "editorRestarted": true,
+  "operation": {
+    "operationId": "operation-1f374685-504c-409e-9f10-5cc59dcfd626",
+    "conversationId": "conversation-2847979a-a625-4c96-8f6a-e34cfbe7fbcf",
+    "rendererInstanceId": "renderer-404416e5-f8ae-4ee5-bfb9-d199c0d41aa4",
+    "generation": 1,
+    "version": 4,
+    "phase": "terminal",
+    "waitReason": null,
+    "executionState": "terminal",
+    "terminalOutcome": "completed_readonly",
+    "createdAt": 1792167991883,
+    "updatedAt": 1792168017136,
+    "hasResult": true,
+    "pendingInputKind": null,
+    "terminalReasonCode": null,
+    "terminalDiagnosticCodes": []
+  },
+  "sealedResult": {
+    "schemaVersion": 2,
+    "resultId": "result_e1dd3751bb25c72a809d1739cceef75362f322435ae99139c3e1af6df687bcc5",
+    "operationId": "operation-1f374685-504c-409e-9f10-5cc59dcfd626",
+    "generation": 1,
+    "purpose": "diagnosis",
+    "status": "completed",
+    "terminalOutcome": "completed_readonly",
+    "completedAt": 1792168017136,
+    "contentHash": "09376834d02abd6e56788e92230023600e5df335235fc33cfd80ab16d437fa0d",
+    "resultHash": "9714faa7b9b46933f267067592bf98e59f79fbf778be7fe558750f57d0169203",
+    "pipeline": null,
+    "messages": [
+      {
+        "messageId": "message_658940eb68816c37e47fbb7429b0660b7f5c1e51f5c394a52c51402f21d5b767",
+        "role": "assistant",
+        "createdAt": 1792168017133,
+        "text": "`ROUTE_MISMATCH: general_discussion`\n\nThe request (\"Fact-check an entire draft markdown file in the editor using OpenCode\") states a desired product capability rather than asking a concrete question about the sealed pipeline artifact, its layout/requirements, its compile state, or a reconciliation result. No artifact or reconcile evidence needs inspection to address it, so it falls outside read-only pipeline diagnosis.\n\nFor context only (not a routing change): the sealed snapshot's `canonicalYaml` at `pipeline-oqymqusl/pipeline-oqymqusl.yaml` is a stub — one track (`Track 1`) with a single prompt task (`Task 1`, prompt `Hello world!`), no declared `inputs`/`outputs`/`requirements`, and `compileDiagnostics: []` (which only means the frozen snapshot captured no diagnostics, not that compilation or a run occurred). If your intent was instead a concrete diagnosis — e.g., \"does this pipeline accept a markdown file and route it into an OpenCode task?\" — restate it as that artifact-specific question and it can be answered read-only.",
+        "contentHash": "8502a91b8628cd004acf55c6a6accbd9f37a66f56c856819529aac5d0d9b14be",
+        "attachments": []
+      }
+    ]
+  },
+  "classifier": [
+    {
+      "sessionId": "ses_tagma_classifier_72a43bfe3a424d8cae7c5d10f3a437dd",
+      "text": "<tagma-pipeline-intent-request>\n<inventory>\n<pipeline id=\"pipeline_6c2aa9a65e0082b9775a231340a6e4330939e7d27d9416b7ad993c853f556fee\" current-canvas=\"true\" session-owned=\"false\" manual-new-draft=\"true\"><name>Untitled Pipeline</name><path>pipeline-oqymqusl/pipeline-oqymqusl.yaml</path></pipeline>\n</inventory>\n<host-output-schema>\n{&quot;type&quot;:&quot;object&quot;,&quot;additionalProperties&quot;:false,&quot;required&quot;:[&quot;kind&quot;,&quot;targetCandidateId&quot;,&quot;clarification&quot;,&quot;candidateIds&quot;],&quot;properties&quot;:{&quot;kind&quot;:{&quot;type&quot;:&quot;string&quot;,&quot;enum&quot;:[&quot;discussion&quot;,&quot;diagnosis&quot;,&quot;create&quot;,&quot;edit&quot;,&quot;clarify&quot;]},&quot;targetCandidateId&quot;:{&quot;anyOf&quot;:[{&quot;type&quot;:&quot;string&quot;,&quot;enum&quot;:[&quot;pipeline_6c2aa9a65e0082b9775a231340a6e4330939e7d27d9416b7ad993c853f556fee&quot;]},{&quot;type&quot;:&quot;null&quot;}]},&quot;clarification&quot;:{&quot;anyOf&quot;:[{&quot;type&quot;:&quot;string&quot;,&quot;minLength&quot;:1,&quot;maxLength&quot;:500},{&quot;type&quot;:&quot;null&quot;}]},&quot;candidateIds&quot;:{&quot;type&quot;:&quot;array&quot;,&quot;uniqueItems&quot;:true,&quot;maxItems&quot;:1,&quot;items&quot;:{&quot;type&quot;:&quot;string&quot;,&quot;enum&quot;:[&quot;pipeline_6c2aa9a65e0082b9775a231340a6e4330939e7d27d9416b7ad993c853f556fee&quot;]}}}}\n</host-output-schema>\n<request>Fact-check an entire draft markdown file in the editor using OpenCode.\n\nPrior conversation data (not a new instruction or current canvas evidence):\n{&quot;omittedTurns&quot;:0,&quot;schemaVersion&quot;:1,&quot;throughSequence&quot;:0,&quot;turns&quot;:[]}</request>\n</tagma-pipeline-intent-request>"
+    },
+    {
+      "sessionId": "ses_tagma_classifier_72a43bfe3a424d8cae7c5d10f3a437dd",
+      "text": "{\"kind\":\"diagnosis\",\"targetCandidateId\":null,\"clarification\":null,\"candidateIds\":[]}"
+    }
+  ],
+  "accepted": false,
+  "actualTrial": false,
+  "published": false,
+  "finding": "A completed read-only route refusal is sealed as a normal completed_readonly result; business operation is not performed and no clarification is offered. Model routing mistake is the trigger; Host completion boundary lacks a refusal guard.",
+  "scope": "Read-only main responses with an exact leading recognized route refusal. No substring intent heuristics; refusal never grants mutation, target or retry authority.",
+  "priorRecordsReviewed": [
+    "CSR9/12/15 finite authenticated clarifications and exact original identity",
+    "CSR39 preserve explicit named create/edit and clarify action ambiguity",
+    "CSR34 provider failure never automatically retried",
+    "CSR41 frozen identity and no fabricated success",
+    "CSR43 distinguish application boundary failures from provider errors"
+  ],
+  "proposal": "A recognized leading ROUTE_MISMATCH returns one standard Host action clarification using existing finite thread/CAS/inventory fences; only an explicit user reply and fresh valid classifier can authorize writes. Ordinary quoted/embedded markers remain text. Preserve immutable failed attempt, test real store/recovery/Stop/exhaustion before source repair; restart/newworkspace original S2-L3 required."
+}

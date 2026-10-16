@@ -1,0 +1,431 @@
+{
+  "trials": [
+    {
+      "success": true,
+      "kind": "passed-with-warnings",
+      "cases": [
+        {
+          "id": "main",
+          "success": true,
+          "runIds": [
+            "run_mvb6fzsv_96760d6dbb93",
+            "run_mvb6gidi_c8d399a52676"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: The claims file binds to the correct article (article_path \"article.md\", article_sha256 matching the read_article digest a6c14269...) and covers all three externally verifiable statements in the draft (Eiffel Tower line 3, water boiling point line 5, Great Wall line 7). Each claim has a verbatim quote matching the source article, a valid verdict enum, an explanation and non-empty http(s) sources for the verified/disputed claims, satisfying the online-verification and output obligations.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "verify.verify_facts",
+                "path": "document_audit/work/claims.json",
+                "runNumber": 1,
+                "requestSha256": "1dd5709ed46888b83d3f8981f5378a4b2826f9eb6e822613d453de3861603ac2"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: The annotated article preserves the original draft lines and adds the requested verified/disputed highlights inline plus a fact-check report with claim ids and sources. All three audited claims are reflected (2 VERIFIED, 1 DISPUTED), matching the claims.json results and the annotate task output counts, so the promised annotated version highlighting verified and disputed facts is delivered.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "audit.annotate",
+                "path": "document_audit/output/annotated_article.md",
+                "runNumber": 1,
+                "requestSha256": "1dd5709ed46888b83d3f8981f5378a4b2826f9eb6e822613d453de3861603ac2"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: The claims file is valid JSON bound to the input article (article_path \"article.md\", article_sha256 a6c142... matching the input artifact hash) and contains three claims whose quotes are verbatim substrings of the corresponding article lines (3, 5, 7). Each claim carries a single enum verdict, a required explanation, and at least one http(s) source for verified/disputed claims, including the Great Wall claim marked disputed with NASA and Scientific American sources. Deterministic json-valid, json-pointer, and task-status checks corroborate this.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "verify.verify_facts",
+                "path": "document_audit/work/claims.json",
+                "runNumber": 2,
+                "requestSha256": "64acb504934133dd36848f199116c0005e50ba6f5116802ffe21cdc30af61808"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: The annotated article preserves the original draft text while appending inline fact-check markers and a report distinguishing verified and disputed claims, satisfying the intent to output an annotated version highlighting verified and disputed facts. Deterministic file-preserves-lines, file-contains, and file-source-text-occurrence checks confirm the original lines and claim ids are preserved, and the embedded counts (2 verified, 1 disputed) agree with the claims file.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "audit.annotate",
+                "path": "document_audit/output/annotated_article.md",
+                "runNumber": 2,
+                "requestSha256": "64acb504934133dd36848f199116c0005e50ba6f5116802ffe21cdc30af61808"
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.read_article expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "verify.verify_facts expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.annotate expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "document_audit/work/claims.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/work/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "document_audit/work/claims.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/work/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-equals",
+              "passed": true,
+              "detail": "document_audit/work/claims.json JSON Pointer /article_path matches the expected JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/work/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "document_audit/output/annotated_article.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/output/annotated_article.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-contains",
+              "passed": true,
+              "detail": "document_audit/output/annotated_article.md contains the expected marker.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/output/annotated_article.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-preserves-lines",
+              "passed": true,
+              "detail": "document_audit/output/annotated_article.md preserves all 5 nonempty source lines in order.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/output/annotated_article.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-source-text-occurrence",
+              "passed": true,
+              "detail": "The exact produced source text occurs in this repeat's consumer artifact.",
+              "repairScope": "pipeline-artifact",
+              "sourceTextEvidence": {
+                "runId": "run_mvb6gidi_c8d399a52676",
+                "sourcePath": "document_audit/work/claims.json",
+                "sourcePointer": "/claims/0/claim_id",
+                "producerTaskId": "verify.verify_facts",
+                "consumerTaskId": "audit.annotate",
+                "producerCompletionObserved": true,
+                "consumerStartObserved": true,
+                "producerStatus": "success",
+                "consumerStatus": "success",
+                "producerResultPresent": true,
+                "consumerResultPresent": true,
+                "capturedSourceSha256": "2a58b937cd4450aa62b4e47f625125049a1059ff6e8f18b076065aa9153d8729",
+                "capturedSourceBytes": 2390,
+                "capturedTextSha256": "ac2b814373a27411e03998b08725cee5465f23480298a89920b6937d8ee7df34",
+                "finalSourceSha256": "2a58b937cd4450aa62b4e47f625125049a1059ff6e8f18b076065aa9153d8729"
+              },
+              "fileObservation": {
+                "path": ".tagma/document_audit/output/annotated_article.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-equals",
+              "passed": true,
+              "detail": "article.md exactly matches the expected text.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "article.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "run-artifact-freshness",
+              "passed": true,
+              "detail": "document_audit/output/annotated_article.md was created or rewritten by every one of 2 runs.",
+              "repairScope": "pipeline-artifact"
+            }
+          ]
+        },
+        {
+          "id": "empty_article",
+          "success": true,
+          "runIds": [
+            "run_mvb6h04g_5f733c68a8ec"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "file-equals",
+              "passed": true,
+              "detail": "article.md exactly matches the expected text.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "article.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-not-exists",
+              "passed": true,
+              "detail": "document_audit/output/annotated_article.md does not exist.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/output/annotated_article.md",
+                "regularFile": false
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.read_article expected failed, received failed.",
+              "repairScope": "pipeline-artifact"
+            }
+          ]
+        },
+        {
+          "id": "missing_article",
+          "success": true,
+          "runIds": [
+            "run_mvb6h09j_51639070abac"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "path-not-exists",
+              "passed": true,
+              "detail": "article.md does not exist.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "article.md",
+                "regularFile": false
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.read_article expected failed, received failed.",
+              "repairScope": "pipeline-artifact"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "streams": [
+    {
+      "caseId": "main",
+      "runId": "run_mvb6fzsv_96760d6dbb93",
+      "runNumber": 1,
+      "taskId": "audit.read_article",
+      "stream": "stdout",
+      "sha256": "379c3828dd9640c264f5e32aa20ff3d0b76b940fb498e7b51cd70316e472268b",
+      "complete": true,
+      "bytes": 128,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6fzsv_96760d6dbb93",
+      "runNumber": 1,
+      "taskId": "audit.read_article",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6fzsv_96760d6dbb93",
+      "runNumber": 1,
+      "taskId": "audit.annotate",
+      "stream": "stdout",
+      "sha256": "6a7223c0e0417c83ebc0a747ed9e510e7353f4cadd3126be1128069a90f2773f",
+      "complete": true,
+      "bytes": 129,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6fzsv_96760d6dbb93",
+      "runNumber": 1,
+      "taskId": "audit.annotate",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6fzsv_96760d6dbb93",
+      "runNumber": 1,
+      "taskId": "verify.verify_facts",
+      "stream": "stdout",
+      "sha256": "67716e56291a40d6db30228913a3ca17cf6165e285c39d5923f37779e21e362d",
+      "complete": true,
+      "bytes": 47613,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6fzsv_96760d6dbb93",
+      "runNumber": 1,
+      "taskId": "verify.verify_facts",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6gidi_c8d399a52676",
+      "runNumber": 2,
+      "taskId": "audit.read_article",
+      "stream": "stdout",
+      "sha256": "379c3828dd9640c264f5e32aa20ff3d0b76b940fb498e7b51cd70316e472268b",
+      "complete": true,
+      "bytes": 128,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6gidi_c8d399a52676",
+      "runNumber": 2,
+      "taskId": "audit.read_article",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6gidi_c8d399a52676",
+      "runNumber": 2,
+      "taskId": "audit.annotate",
+      "stream": "stdout",
+      "sha256": "6a7223c0e0417c83ebc0a747ed9e510e7353f4cadd3126be1128069a90f2773f",
+      "complete": true,
+      "bytes": 129,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6gidi_c8d399a52676",
+      "runNumber": 2,
+      "taskId": "audit.annotate",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6gidi_c8d399a52676",
+      "runNumber": 2,
+      "taskId": "verify.verify_facts",
+      "stream": "stdout",
+      "sha256": "f933aa1d4feec171a1a7629e2bbabacc244fa2341fe96def9120b4f3d562c764",
+      "complete": true,
+      "bytes": 41770,
+      "redacted": false
+    },
+    {
+      "caseId": "main",
+      "runId": "run_mvb6gidi_c8d399a52676",
+      "runNumber": 2,
+      "taskId": "verify.verify_facts",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty_article",
+      "runId": "run_mvb6h04g_5f733c68a8ec",
+      "runNumber": 1,
+      "taskId": "audit.read_article",
+      "stream": "stdout",
+      "sha256": "4ce2d7e27499d911592b686b1b09c648b459ede41c5f101883828c2669def0f4",
+      "complete": true,
+      "bytes": 40,
+      "redacted": false
+    },
+    {
+      "caseId": "empty_article",
+      "runId": "run_mvb6h04g_5f733c68a8ec",
+      "runNumber": 1,
+      "taskId": "audit.read_article",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "missing_article",
+      "runId": "run_mvb6h09j_51639070abac",
+      "runNumber": 1,
+      "taskId": "audit.read_article",
+      "stream": "stdout",
+      "sha256": "806517818271e2a621e4a8163264950b25de19445ef6a4b3d571860e9e5a79cc",
+      "complete": true,
+      "bytes": 41,
+      "redacted": false
+    },
+    {
+      "caseId": "missing_article",
+      "runId": "run_mvb6h09j_51639070abac",
+      "runNumber": 1,
+      "taskId": "audit.read_article",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    }
+  ],
+  "unavailable": []
+}

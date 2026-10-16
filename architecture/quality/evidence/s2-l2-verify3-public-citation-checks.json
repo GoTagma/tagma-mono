@@ -1,0 +1,74 @@
+[
+  {
+    "url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 524288,
+    "boundedAt512KiB": true,
+    "sha256": "4d6edc6e3ed7216c12faef76044447bc48473025ed1397103e00fed1b63f3929",
+    "title": "Eiffel Tower - Wikipedia"
+  },
+  {
+    "url": "https://openstax.org/books/university-physics-volume-2/pages/1-5-phase-changes",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 363525,
+    "boundedAt512KiB": false,
+    "sha256": "0d67de5fe3150911d05c0c975e5433125867eb48f3905d2167efb683b8223ee6",
+    "title": "1.5 Phase Changes - University Physics Volume 2 | OpenStax"
+  },
+  {
+    "url": "https://www.britannica.com/question/Can-you-see-the-Great-Wall-of-China-from-space",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 45669,
+    "boundedAt512KiB": false,
+    "sha256": "947d869805a1a0f0bffee268af279be676d834b8bd0124ebe6f4e4a3060f5b2a",
+    "title": "Can you see the Great Wall of China from space? | Britannica"
+  },
+  {
+    "url": "https://www.britannica.com/question/When-does-water-boil",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 45795,
+    "boundedAt512KiB": false,
+    "sha256": "4c3f3c14933e5dade431e746c46a5a4ed78b664f59219ea91225cfa102639049",
+    "title": "When does water boil? | Britannica"
+  },
+  {
+    "url": "https://www.nasa.gov/image-article/great-wall/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 270442,
+    "boundedAt512KiB": false,
+    "sha256": "63cbb56e14e90a4315c7a0909f3ca766283fa80b3787b8c4644df625ee4a250b",
+    "title": "Great Wall - NASA"
+  },
+  {
+    "url": "https://www.nasa.gov/wp-content/uploads/static/history/PDFs/great_wall_less_great_from_space.pdf",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 263353,
+    "boundedAt512KiB": false,
+    "sha256": "d66d9ed9d2e524564c4f278a15bd678cda5ffa293bfcb6512aefaabd77d2ebe7",
+    "title": null
+  },
+  {
+    "url": "https://www.scientificamerican.com/article/no-you-cant-see-the-great-wall-of-china-from-space/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 148799,
+    "boundedAt512KiB": false,
+    "sha256": "3e5bb52619e5ae0145e8efb2f31400e042c9c31749bb8215c3e1d8a90ae2baf1",
+    "title": "No, You Can’t See the Great Wall of China from Space | Scientific American"
+  },
+  {
+    "url": "https://www.toureiffel.paris/en/the-monument/history",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 76885,
+    "boundedAt512KiB": false,
+    "sha256": "4176bb771f2de62b726be580be9419e44862121f16a0f7180408c217de4c0895",
+    "title": "Eiffel Tower history, architecture, design &amp; construction"
+  }
+]

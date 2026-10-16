@@ -3712,3 +3712,282 @@ describe('ChatTurn Operation V2 internal read-only orchestrator', () => {
     expect(events.events.filter(({ type }) => type === 'operation_terminal')).toHaveLength(1);
   });
 });
+
+describe('read-only route refusal authority', () => {
+  test.each([
+    [
+      'discussion',
+      'pipeline_work',
+      'ROUTE_MISMATCH: pipeline_work\nCreate the requested workflow.',
+    ],
+    [
+      'diagnosis',
+      'general_discussion',
+      '`ROUTE_MISMATCH: general_discussion`\nThis is a desired outcome.',
+    ],
+    ['discussion', 'pipeline_diagnosis', 'ROUTE_MISMATCH: pipeline_diagnosis'],
+    [
+      'discussion',
+      'pipeline_work-with-explanation',
+      'ROUTE_MISMATCH: pipeline_work — The requested action changes files.',
+    ],
+    [
+      'diagnosis',
+      'general_discussion-with-explanation',
+      '`ROUTE_MISMATCH: general_discussion` This request does not inspect an artifact.',
+    ],
+  ] as const)('%s refusal to %s asks without granting writes', async (purpose, _route, text) => {
+    const { orchestrator, runner, store } = createHarness([
+      completedInvocation(
+        { kind: purpose, targetCandidateId: null, clarification: null, candidateIds: [] },
+        501,
+      ),
+      completedInvocation(text, 502),
+    ]);
+    const input = baseCreateInput(`operation-refusal-${purpose}-${_route}`);
+    const result = await orchestrator.createAndDispatch(input);
+    expect(result.kind).toBe('clarification_pending');
+    expect(result.operation).toMatchObject({
+      phase: 'awaiting_input',
+      waitReason: 'clarification',
+      stageId: null,
+      bindingId: null,
+      activeInvocationId: null,
+      terminalOutcome: null,
+      clarificationRounds: 1,
+    });
+    expect(store.getResultProjection(input.operationId)).toBeNull();
+    expect(store.getOperationAdmission(input.operationId)?.request.text).toBe(input.request.text);
+    const thread = store.getOperationClarificationThread(input.operationId);
+    expect(thread?.entries).toHaveLength(1);
+    expect(thread?.entries[0]?.pending.candidateIds).toEqual([]);
+    expect(thread?.entries[0]?.pending.question).not.toContain(text);
+    expect(runner.calls.map((x) => x.purpose)).toEqual(['classifier', purpose]);
+    expect(store.listUsageLedger(input.operationId).map((x) => x.status)).toEqual([
+      'settled',
+      'settled',
+    ]);
+  });
+
+  test.each([
+    ['embedded', 'The example says ROUTE_MISMATCH: pipeline_work, but here is the answer.'],
+    ['quoted', '> ROUTE_MISMATCH: pipeline_work\nA quoted diagnostic.'],
+    ['code example', '```text\nROUTE_MISMATCH: pipeline_work\n```\nThis is a code example.'],
+    ['unknown', 'ROUTE_MISMATCH: unknown_route\nNot a recognized protocol refusal.'],
+    ['lookalike', 'ROUTE_MISMATCH: pipeline_work_extra is an example identifier.'],
+  ])(
+    'embedded or unknown marker remains an ordinary read-only answer: %s',
+    async (_label, text) => {
+      const { orchestrator, store } = createHarness([
+        completedInvocation(
+          { kind: 'discussion', targetCandidateId: null, clarification: null, candidateIds: [] },
+          511,
+        ),
+        completedInvocation(text, 512),
+      ]);
+      const result = await orchestrator.createAndDispatch(
+        baseCreateInput('operation-marker-example'),
+      );
+      expect(result.kind).toBe('completed_readonly');
+      expect(store.getResultProjection(result.operation.operationId)?.messages[0]?.text).toBe(text);
+      expect(store.getOperationClarificationThread(result.operation.operationId)).toBeNull();
+    },
+  );
+
+  test('refusal clarification survives restart and requires an explicit reply plus fresh classification', async () => {
+    const { orchestrator, store, now } = createHarness([
+      completedInvocation(
+        { kind: 'diagnosis', targetCandidateId: null, clarification: null, candidateIds: [] },
+        521,
+      ),
+      completedInvocation('`ROUTE_MISMATCH: general_discussion`\nNot an artifact question.', 522),
+    ]);
+    const input = baseCreateInput('operation-refusal-restart');
+    const pending = await orchestrator.createAndDispatch(input);
+    expect(pending.kind).toBe('clarification_pending');
+    if (pending.kind !== 'clarification_pending') throw new Error('Expected refusal clarification');
+    const runner = new FakeDurableInvocationRunner([
+      completedInvocation(
+        { kind: 'create', targetCandidateId: null, clarification: null, candidateIds: [] },
+        523,
+      ),
+    ]);
+    let sequence = 800;
+    const restarted = new ChatOperationV2ReadonlyOrchestrator({
+      persistence: store,
+      runner,
+      now,
+      nextHostId: (kind) => `${kind}-${++sequence}`,
+    });
+    expect(
+      restarted.recoverOperationContext({
+        operationId: input.operationId,
+        workspaceScopeId: input.workspaceScopeId,
+        inventory: input.inventory,
+        candidates: input.candidates,
+      }).kind,
+    ).toBe('recovered');
+    expect(
+      (
+        await restarted.resumeRecoveredOperation({
+          operationId: input.operationId,
+          expectedGeneration: pending.operation.generation,
+          expectedVersion: pending.operation.version,
+        })
+      ).kind,
+    ).toBe('clarification_pending');
+    expect(runner.calls).toHaveLength(0);
+    expect(
+      (
+        await restarted.replyToClarification({
+          operationId: input.operationId,
+          clarificationId: pending.clarificationId,
+          expectedGeneration: pending.operation.generation,
+          expectedVersion: pending.operation.version + 1,
+          clientRequestId: 'stale-refusal-reply',
+          rendererInstanceId: input.rendererInstanceId,
+          text: 'Create a reusable pipeline.',
+          candidateIds: [],
+          attachments: [],
+          inventory: input.inventory,
+          candidates: input.candidates,
+        })
+      ).kind,
+    ).toBe('stale');
+    const result = await restarted.replyToClarification({
+      operationId: input.operationId,
+      clarificationId: pending.clarificationId,
+      expectedGeneration: pending.operation.generation,
+      expectedVersion: pending.operation.version,
+      clientRequestId: 'valid-refusal-reply',
+      rendererInstanceId: input.rendererInstanceId,
+      text: 'Create a reusable pipeline.',
+      candidateIds: [],
+      attachments: [],
+      inventory: input.inventory,
+      candidates: input.candidates,
+    });
+    expect(result.kind).toBe('authoring_deferred');
+    expect(runner.calls.map((x) => x.purpose)).toEqual(['classifier']);
+    expect(new TextDecoder().decode(runner.calls[0]!.canonicalRequestBytes)).toContain(
+      'Create a reusable pipeline.',
+    );
+    expect(store.getResultProjection(input.operationId)).toBeNull();
+    expect(
+      store.getOperationClarificationThread(input.operationId)?.entries[0]?.disposition?.code,
+    ).toBe('continue_same_operation');
+    const again = new ChatOperationV2ReadonlyOrchestrator({
+      persistence: store,
+      runner: new FakeDurableInvocationRunner([]),
+      now,
+      nextHostId: (kind) => `${kind}-${++sequence}`,
+    });
+    expect(
+      again.recoverOperationContext({
+        operationId: input.operationId,
+        workspaceScopeId: input.workspaceScopeId,
+        inventory: input.inventory,
+        candidates: input.candidates,
+      }).kind,
+    ).toBe('recovered');
+    expect(
+      (
+        await again.resumeRecoveredOperation({
+          operationId: input.operationId,
+          expectedGeneration: result.operation.generation,
+          expectedVersion: result.operation.version,
+        })
+      ).kind,
+    ).toBe('authoring_recovery_required');
+  });
+});
+
+test('read-only refusal repeated across restarts exhausts the original finite clarification budget', async () => {
+  const results = Array.from({ length: 4 }, (_, index) => [
+    completedInvocation(
+      {
+        kind: index % 2 ? 'discussion' : 'diagnosis',
+        targetCandidateId: null,
+        clarification: null,
+        candidateIds: [],
+      },
+      600 + index * 2,
+    ),
+    completedInvocation(
+      'ROUTE_MISMATCH: pipeline_work\nChoose the intended action.',
+      601 + index * 2,
+    ),
+  ]).flat();
+  const h = createHarness(results);
+  const input = baseCreateInput('operation-refusal-finite');
+  let result = await h.orchestrator.createAndDispatch(input);
+  let sequence = 900;
+  for (let round = 1; round <= 3; round++) {
+    expect(result.kind).toBe('clarification_pending');
+    if (result.kind !== 'clarification_pending')
+      throw new Error('Expected finite pending clarification');
+    expect(result.operation.clarificationRounds).toBe(round);
+    const restarted = new ChatOperationV2ReadonlyOrchestrator({
+      persistence: h.store,
+      runner: h.runner,
+      now: h.now,
+      nextHostId: (kind) => `${kind}-${++sequence}`,
+    });
+    expect(
+      restarted.recoverOperationContext({
+        operationId: input.operationId,
+        workspaceScopeId: input.workspaceScopeId,
+        inventory: input.inventory,
+        candidates: input.candidates,
+      }).kind,
+    ).toBe('recovered');
+    result = await restarted.replyToClarification({
+      operationId: input.operationId,
+      clarificationId: result.clarificationId,
+      expectedGeneration: result.operation.generation,
+      expectedVersion: result.operation.version,
+      clientRequestId: `finite-reply-${round}`,
+      rendererInstanceId: input.rendererInstanceId,
+      text: 'Explain the available actions.',
+      candidateIds: [],
+      attachments: [],
+      inventory: input.inventory,
+      candidates: input.candidates,
+    });
+  }
+  expect(result.operation).toMatchObject({
+    phase: 'terminal',
+    terminalOutcome: 'failed_terminal',
+    clarificationRounds: 3,
+    stageId: null,
+    bindingId: null,
+  });
+  expect(h.runner.calls).toHaveLength(8);
+  expect(h.store.getOperationClarificationThread(input.operationId)?.entries).toHaveLength(3);
+  expect(h.store.getResultProjection(input.operationId)).toBeNull();
+});
+
+test('read-only refusal clarification remains cancellable and does not replay its settled main', async () => {
+  const { orchestrator, runner, store } = createHarness([
+    completedInvocation(
+      { kind: 'discussion', targetCandidateId: null, clarification: null, candidateIds: [] },
+      701,
+    ),
+    completedInvocation('ROUTE_MISMATCH: pipeline_work', 702),
+  ]);
+  const result = await orchestrator.createAndDispatch(baseCreateInput('operation-refusal-stop'));
+  expect(result.kind).toBe('clarification_pending');
+  const stopped = await orchestrator.stopOperation({
+    operationId: result.operation.operationId,
+    expectedGeneration: result.operation.generation,
+    expectedVersion: result.operation.version,
+    requestId: 'stop-refusal',
+  });
+  expect(stopped.kind).toBe('cancelled_precommit');
+  expect(runner.calls).toHaveLength(2);
+  expect(store.getResultProjection(result.operation.operationId)).toBeNull();
+  expect(
+    store.getOperationClarificationThread(result.operation.operationId)?.entries[0]?.disposition
+      ?.code,
+  ).toBe('cancelled_precommit');
+});

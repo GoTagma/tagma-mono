@@ -1,0 +1,53 @@
+[
+  {
+    "identity": {
+      "stageId": "bc1ace11-09a1-4419-8804-154b8a4d7d24",
+      "trialId": "trial-5141d59f763ac28c4e93372a43c804670a37a95a",
+      "yamlHash": "8dadd2d5c0580259cb77fb85ac10a21ace9da1dc",
+      "planHash": "be6f72b49557bc826047799110123326f4cf55985f9a2fe70f757062b557fce2",
+      "intentDigest": "2278b8dd9d9c8d0091c65f674bbdffdf78e19beb3f0f7f9e447a875d32fc5c58",
+      "caseId": "main",
+      "runId": "run_mvb6fzsv_96760d6dbb93",
+      "runNumber": 1
+    },
+    "originalBytesPreservedAfterRemovingInlineStatus": true,
+    "inputSha256": "a6c14269ad8e4f025ca8601f3d1dc6ea08533ff5c3a289df0131c9c8e849bd1e",
+    "annotatedSha256": "65bf5917dd9791aa94a43c6ce936842e0d6fb9802ad4bdaeb8c459f364b4f61f",
+    "searchCalls": 3,
+    "taskStdoutSha256": "67716e56291a40d6db30228913a3ca17cf6165e285c39d5923f37779e21e362d",
+    "citationURLsPresentInActualWebToolResponses": {
+      "https://www.scientificamerican.com/article/no-you-cant-see-the-great-wall-of-china-from-space/": true,
+      "https://www.nasa.gov/image-article/great-wall/": true,
+      "https://openstax.org/books/university-physics-volume-2/pages/1-5-phase-changes": true,
+      "https://www.britannica.com/question/Can-you-see-the-Great-Wall-of-China-from-space": true,
+      "https://www.toureiffel.paris/en/the-monument/history": true,
+      "https://en.wikipedia.org/wiki/Eiffel_Tower": true,
+      "https://www.britannica.com/question/When-does-water-boil": true
+    }
+  },
+  {
+    "identity": {
+      "stageId": "bc1ace11-09a1-4419-8804-154b8a4d7d24",
+      "trialId": "trial-5141d59f763ac28c4e93372a43c804670a37a95a",
+      "yamlHash": "8dadd2d5c0580259cb77fb85ac10a21ace9da1dc",
+      "planHash": "be6f72b49557bc826047799110123326f4cf55985f9a2fe70f757062b557fce2",
+      "intentDigest": "2278b8dd9d9c8d0091c65f674bbdffdf78e19beb3f0f7f9e447a875d32fc5c58",
+      "caseId": "main",
+      "runId": "run_mvb6gidi_c8d399a52676",
+      "runNumber": 2
+    },
+    "originalBytesPreservedAfterRemovingInlineStatus": true,
+    "inputSha256": "a6c14269ad8e4f025ca8601f3d1dc6ea08533ff5c3a289df0131c9c8e849bd1e",
+    "annotatedSha256": "6441351c5856c6b7dd741766988c9e3402dd645bedda2e169904cf7cb6f6ed59",
+    "searchCalls": 3,
+    "taskStdoutSha256": "f933aa1d4feec171a1a7629e2bbabacc244fa2341fe96def9120b4f3d562c764",
+    "citationURLsPresentInActualWebToolResponses": {
+      "https://www.scientificamerican.com/article/no-you-cant-see-the-great-wall-of-china-from-space/": true,
+      "https://openstax.org/books/university-physics-volume-2/pages/1-5-phase-changes": true,
+      "https://www.toureiffel.paris/en/the-monument/history": true,
+      "https://www.nasa.gov/wp-content/uploads/static/history/PDFs/great_wall_less_great_from_space.pdf": true,
+      "https://en.wikipedia.org/wiki/Eiffel_Tower": true,
+      "https://www.britannica.com/question/When-does-water-boil": true
+    }
+  }
+]

@@ -2,6 +2,13 @@
 
 ## Shared Chat Product Actions
 
+- A leading recognized read-only `ROUTE_MISMATCH` is a refusal, not a completed answer or
+  mutation grant. Ask the normal finite Host action clarification; explicit reply and fresh
+  classification must precede authoring. Preserve original request, inventory/CAS and Stop.
+  Recovery may retire a settled refusal only against its authenticated Host clarification
+  round, exact canonical request and settled usage; never replay it or infer authority from
+  an embedded/quoted marker. Clarification exhaustion fails closed without a result.
+
 - Operation-detail inventory projects `sessionOwned` from that operation's authenticated
   conversation owner, including published targets without an active successor lease. Workspace
   inventory has no conversation owner. These are current inventories, not frozen classifier

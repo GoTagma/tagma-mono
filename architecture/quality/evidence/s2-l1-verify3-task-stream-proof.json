@@ -1,0 +1,657 @@
+{
+  "trials": [
+    {
+      "success": true,
+      "kind": "passed-with-warnings",
+      "cases": [
+        {
+          "id": "happy-path",
+          "success": true,
+          "runIds": [
+            "run_mvb5t500_62c2359630ef"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: claims.json is valid JSON containing document_path \"inputs/draft.md\" and a claims array of three objects, each with id/text/location. The claim texts match the source draft verbatim in order, satisfying the extract_claims obligation; deterministic json-valid and source-occurrence checks passed.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "audit.extract_claims",
+                "path": "document_audit/artifacts/claims.json",
+                "runNumber": 1,
+                "requestSha256": "d7d54bde6491bd34d42552cd84ad8b7aded21382a88f2896e1ce1fc88bf93be6"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: audit_results.json is valid JSON with document_path and a results array of exactly one entry per claim id (C1, C2, C3) in the same order, each carrying id, claim, verdict (supported/refuted/unverifiable), explanation and sources array. Task stderr shows Exa web searches performed, consistent with the promised online cross-referencing, and the coverage script reported OK.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "audit.verify_claims",
+                "path": "document_audit/artifacts/audit_results.json",
+                "runNumber": 1,
+                "requestSha256": "d7d54bde6491bd34d42552cd84ad8b7aded21382a88f2896e1ce1fc88bf93be6"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: AUDITED_DRAFT.md preserves the original draft text and adds an inline status callout plus footnote marker at each claim line in order, followed by a Footnotes section with verdicts/explanations/sources and a Sources appendix listing every source. The deterministic file-preserves-lines and file-contains checks passed, meeting the annotated-document obligation.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "audit.generate_annotated_doc",
+                "path": "document_audit/artifacts/AUDITED_DRAFT.md",
+                "runNumber": 1,
+                "requestSha256": "d7d54bde6491bd34d42552cd84ad8b7aded21382a88f2896e1ce1fc88bf93be6"
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.extract_claims expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.verify_claims expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.generate_annotated_doc expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "document_audit/artifacts/claims.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-text-occurrence",
+              "passed": true,
+              "detail": "The produced text span occurs in the source fixture.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "document_audit/artifacts/audit_results.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/audit_results.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-preserves-lines",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md preserves all 4 nonempty source lines in order.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/AUDITED_DRAFT.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-contains",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md contains the expected marker.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/AUDITED_DRAFT.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/AUDITED_DRAFT.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-equals",
+              "passed": true,
+              "detail": "document_audit/inputs/draft.md exactly matches the expected text.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/inputs/draft.md",
+                "regularFile": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "repeat-run",
+          "success": true,
+          "runIds": [
+            "run_mvb5u9xi_2c196d0f64a9",
+            "run_mvb5vclu_48bc68512be2"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.extract_claims expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.verify_claims expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.generate_annotated_doc expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "document_audit/artifacts/claims.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "document_audit/artifacts/audit_results.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/audit_results.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-preserves-lines",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md preserves all 4 nonempty source lines in order.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/AUDITED_DRAFT.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/AUDITED_DRAFT.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "run-artifact-freshness",
+              "passed": true,
+              "detail": "document_audit/artifacts/claims.json was created or rewritten by every one of 2 runs.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "run-artifact-freshness",
+              "passed": true,
+              "detail": "document_audit/artifacts/audit_results.json was created or rewritten by every one of 2 runs.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "run-artifact-freshness",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md was created or rewritten by every one of 2 runs.",
+              "repairScope": "pipeline-artifact"
+            }
+          ]
+        },
+        {
+          "id": "empty-content",
+          "success": true,
+          "runIds": [
+            "run_mvb5wgjp_fe4c0adeb834"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "file-equals",
+              "passed": true,
+              "detail": "document_audit/inputs/draft.md exactly matches the expected text.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/inputs/draft.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.extract_claims expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.verify_claims expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.generate_annotated_doc expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "document_audit/artifacts/claims.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-equals",
+              "passed": true,
+              "detail": "document_audit/artifacts/claims.json JSON Pointer /claims matches the expected JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "document_audit/artifacts/audit_results.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/audit_results.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-equals",
+              "passed": true,
+              "detail": "document_audit/artifacts/audit_results.json JSON Pointer /results matches the expected JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/audit_results.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/AUDITED_DRAFT.md",
+                "regularFile": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "unlocated-source",
+          "success": true,
+          "runIds": [
+            "run_mvb5x6cn_fd1ab7bc9105"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.extract_claims expected failed, received failed.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.verify_claims expected skipped, received skipped.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "audit.generate_annotated_doc expected skipped, received skipped.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-not-exists",
+              "passed": true,
+              "detail": "document_audit/artifacts/claims.json does not exist.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/claims.json",
+                "regularFile": false
+              }
+            },
+            {
+              "type": "path-not-exists",
+              "passed": true,
+              "detail": "document_audit/artifacts/AUDITED_DRAFT.md does not exist.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/document_audit/artifacts/AUDITED_DRAFT.md",
+                "regularFile": false
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "streams": [
+    {
+      "caseId": "happy-path",
+      "runId": "run_mvb5t500_62c2359630ef",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stdout",
+      "sha256": "a47635c8fc30b3c713483d3ec4188c48c75327a97ebf8277555de262c2eda7bc",
+      "complete": true,
+      "bytes": 43,
+      "redacted": false
+    },
+    {
+      "caseId": "happy-path",
+      "runId": "run_mvb5t500_62c2359630ef",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stderr",
+      "sha256": "95f0ea2a9028141d4529d249333efdc532b4f9856d23bf9e8decc5779ae8391e",
+      "complete": true,
+      "bytes": 144,
+      "redacted": false
+    },
+    {
+      "caseId": "happy-path",
+      "runId": "run_mvb5t500_62c2359630ef",
+      "runNumber": 1,
+      "taskId": "audit.verify_claims",
+      "stream": "stdout",
+      "sha256": "e882f74e64ea0604e091d539e22a8a77de814f17e6f5a8241c2f1dc79bef2334",
+      "complete": true,
+      "bytes": 351,
+      "redacted": false
+    },
+    {
+      "caseId": "happy-path",
+      "runId": "run_mvb5t500_62c2359630ef",
+      "runNumber": 1,
+      "taskId": "audit.verify_claims",
+      "stream": "stderr",
+      "sha256": "4cd0d23710ea7b4ae70bd051eebf00ef97c0122eaa22a74b0311bee81b16df6e",
+      "complete": true,
+      "bytes": 658,
+      "redacted": false
+    },
+    {
+      "caseId": "happy-path",
+      "runId": "run_mvb5t500_62c2359630ef",
+      "runNumber": 1,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stdout",
+      "sha256": "aa20d98421bafd81b1ad03829c3ee395b669908fa2cac66e11eefb09279d0256",
+      "complete": true,
+      "bytes": 254,
+      "redacted": false
+    },
+    {
+      "caseId": "happy-path",
+      "runId": "run_mvb5t500_62c2359630ef",
+      "runNumber": 1,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stderr",
+      "sha256": "ef06cdcaa3a7c7a2bb33b156f78f215902d22fdf996e532bd49d1f49567b1c86",
+      "complete": true,
+      "bytes": 239,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5u9xi_2c196d0f64a9",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stdout",
+      "sha256": "72f9754617f3d22e85e81482bc47b701d07227a10be19a941ca41c415051edd9",
+      "complete": true,
+      "bytes": 97,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5u9xi_2c196d0f64a9",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stderr",
+      "sha256": "8f596500ac1873c1519a5883aea4c8d3d216b892307568af30eea9d30973379b",
+      "complete": true,
+      "bytes": 976,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5u9xi_2c196d0f64a9",
+      "runNumber": 1,
+      "taskId": "audit.verify_claims",
+      "stream": "stdout",
+      "sha256": "3448597902542e2f4109be67e8a50531acd57fc8eb2ec29153d58ef9739c085b",
+      "complete": true,
+      "bytes": 444,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5u9xi_2c196d0f64a9",
+      "runNumber": 1,
+      "taskId": "audit.verify_claims",
+      "stream": "stderr",
+      "sha256": "b839e12aa30c371b161f3e400c96f8428c4b85594810ebd035da2da693887158",
+      "complete": true,
+      "bytes": 1675,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5u9xi_2c196d0f64a9",
+      "runNumber": 1,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stdout",
+      "sha256": "f175794dc44050eb03a669755c987a20e10abbf1ea48477b2dd0b943afa175eb",
+      "complete": true,
+      "bytes": 223,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5u9xi_2c196d0f64a9",
+      "runNumber": 1,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stderr",
+      "sha256": "57828147699599440ef50d510dfb3d9119c65379d6cd45ff7049588d36cd4698",
+      "complete": true,
+      "bytes": 195,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5vclu_48bc68512be2",
+      "runNumber": 2,
+      "taskId": "audit.extract_claims",
+      "stream": "stdout",
+      "sha256": "38ca9214cb071c9604d9ef87f08b3bc6e6fd05b324f4b1e31b0af2079b46579e",
+      "complete": true,
+      "bytes": 94,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5vclu_48bc68512be2",
+      "runNumber": 2,
+      "taskId": "audit.extract_claims",
+      "stream": "stderr",
+      "sha256": "cc65d086cb8ce59f6d467287b6617270544bc1d580054de91ecc0d12a659551a",
+      "complete": true,
+      "bytes": 1881,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5vclu_48bc68512be2",
+      "runNumber": 2,
+      "taskId": "audit.verify_claims",
+      "stream": "stdout",
+      "sha256": "fdb217bc3d5920a372f2dc2854f80a4ba8e2e3b0fc248e0b1242e43074cb1c3c",
+      "complete": true,
+      "bytes": 264,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5vclu_48bc68512be2",
+      "runNumber": 2,
+      "taskId": "audit.verify_claims",
+      "stream": "stderr",
+      "sha256": "eca644798f33a76f4cc3ace8200098ff6a3fe68f95e35a43f17faeef0b4470da",
+      "complete": true,
+      "bytes": 679,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5vclu_48bc68512be2",
+      "runNumber": 2,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stdout",
+      "sha256": "374b79dfb4eb77a578482ac10b27249e4e2269f83c30a035cfeaf5920d558e7d",
+      "complete": true,
+      "bytes": 237,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvb5vclu_48bc68512be2",
+      "runNumber": 2,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stderr",
+      "sha256": "57828147699599440ef50d510dfb3d9119c65379d6cd45ff7049588d36cd4698",
+      "complete": true,
+      "bytes": 195,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-content",
+      "runId": "run_mvb5wgjp_fe4c0adeb834",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stdout",
+      "sha256": "390776ce606caded5abf14b6d5c2b62536939edefd349391466d3001aea6258c",
+      "complete": true,
+      "bytes": 230,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-content",
+      "runId": "run_mvb5wgjp_fe4c0adeb834",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stderr",
+      "sha256": "95f0ea2a9028141d4529d249333efdc532b4f9856d23bf9e8decc5779ae8391e",
+      "complete": true,
+      "bytes": 144,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-content",
+      "runId": "run_mvb5wgjp_fe4c0adeb834",
+      "runNumber": 1,
+      "taskId": "audit.verify_claims",
+      "stream": "stdout",
+      "sha256": "d78a78c5471b7784ac6adb3baeeaa2ee3763dea0bd5bc4e5cc6dbd73cd021564",
+      "complete": true,
+      "bytes": 270,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-content",
+      "runId": "run_mvb5wgjp_fe4c0adeb834",
+      "runNumber": 1,
+      "taskId": "audit.verify_claims",
+      "stream": "stderr",
+      "sha256": "4c537a044bd400f4b06d0a4c2092a383b1a8a09ec13a32aca2d24d11046f8784",
+      "complete": true,
+      "bytes": 157,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-content",
+      "runId": "run_mvb5wgjp_fe4c0adeb834",
+      "runNumber": 1,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stdout",
+      "sha256": "f0d6914c58a1a916bdfdaeea552a7cde6c89ba002e5aa4fb68321832d7d9cc4c",
+      "complete": true,
+      "bytes": 346,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-content",
+      "runId": "run_mvb5wgjp_fe4c0adeb834",
+      "runNumber": 1,
+      "taskId": "audit.generate_annotated_doc",
+      "stream": "stderr",
+      "sha256": "79a340cb32c973a6b9e6bdf1bc60a89c4bfcbe080209cc637676bbc97bda43df",
+      "complete": true,
+      "bytes": 2060,
+      "redacted": false
+    },
+    {
+      "caseId": "unlocated-source",
+      "runId": "run_mvb5x6cn_fd1ab7bc9105",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "unlocated-source",
+      "runId": "run_mvb5x6cn_fd1ab7bc9105",
+      "runNumber": 1,
+      "taskId": "audit.extract_claims",
+      "stream": "stderr",
+      "sha256": "9e6cd75b3ca3be7c3d970bfc23ea3d240aecd705efe9ad99338f566d9119bf9c",
+      "complete": true,
+      "bytes": 43,
+      "redacted": false
+    }
+  ],
+  "unavailable": [],
+  "scope": "26 SHA-verified complete stdout/stderr streams from 13 actual executed tasks; two expected skipped tasks have no child streams."
+}
