@@ -1,0 +1,91 @@
+{
+  "commit": "a3cac2e13aca810b35413f59a97def0dbbdf8fbf",
+  "runId": 38965294436,
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "full-check",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "public-check-fork",
+      "conclusion": "skipped"
+    }
+  ],
+  "actualSupportedOsSteps": [
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Non-core Trial source relation admission",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Trial source dependency reference contracts",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Non-core Trial source relation admission",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Trial source dependency reference contracts",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Non-core Trial source relation admission",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Trial source dependency reference contracts",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    }
+  ],
+  "claimLimit": "Full and all supported OS admission/native contracts pass. This is not fresh live S3-L2 acceptance; original verify3 remains failed/unpublished."
+}

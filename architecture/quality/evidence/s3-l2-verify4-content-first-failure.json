@@ -1,0 +1,110 @@
+{
+  "case": "S3-L2",
+  "attempt": "s3-l2-verify4",
+  "accepted": false,
+  "sourceRevision": "a3cac2e13aca810b35413f59a97def0dbbdf8fbf",
+  "operationId": "operation-420b3f46-34cf-4779-a3b4-3f92adefafc0",
+  "stageId": "989fef6e-d60d-4bd1-a336-73f7b5f83514",
+  "trialId": "trial-7b8641e482098d360b4317067987c2f9d2d23c48",
+  "outcome": "trial_verification_paused/user_retry",
+  "published": false,
+  "originalRequests": 1,
+  "cases": [
+    {
+      "id": "core-normal",
+      "passed": false,
+      "actualRuns": 2
+    },
+    {
+      "id": "duplicate-url",
+      "passed": true,
+      "actualRuns": 1
+    },
+    {
+      "id": "empty-config",
+      "passed": true,
+      "actualRuns": 1
+    },
+    {
+      "id": "unreachable-site",
+      "passed": true,
+      "actualRuns": 1
+    }
+  ],
+  "actualExecutedChildStreams": 46,
+  "allStreamsComplete": true,
+  "unavailableChildStreams": 0,
+  "taskStatusCounts": {
+    "success": 21,
+    "failed": 2,
+    "skipped": 12
+  },
+  "omittedTaskStatusCounts": {
+    "success": 3
+  },
+  "reviews": [
+    {
+      "outcome": "uncertain",
+      "requestSha256": "0b4ac096d991394c565541b40d47aca4886126e33d63bbae9de491e7b6ef4e11",
+      "responseSha256": "40e20183667e18fa2ab8e45e39db2db3ec982ec303b2ab2d4fb0aa6fa8b344be",
+      "exactRequestResponseVerified": true,
+      "targets": [
+        {
+          "taskId": "monitor.scrape_sites",
+          "verdict": "pass"
+        },
+        {
+          "taskId": "monitor.check_claims",
+          "verdict": "uncertain"
+        },
+        {
+          "taskId": "report.render_briefing",
+          "verdict": "pass"
+        }
+      ]
+    },
+    {
+      "outcome": "uncertain",
+      "requestSha256": "ec0e45faadf0549de21fa2f0cb07d8bf41b378c21046a67fd46294e741053b10",
+      "responseSha256": "c9999a4dcf1121b0421c63b77e0bb7314abce94a964318dda1b50d9e93dc5929",
+      "exactRequestResponseVerified": true,
+      "targets": [
+        {
+          "taskId": "monitor.scrape_sites",
+          "verdict": "pass"
+        },
+        {
+          "taskId": "monitor.check_claims",
+          "verdict": "uncertain"
+        },
+        {
+          "taskId": "report.render_briefing",
+          "verdict": "pass"
+        }
+      ]
+    }
+  ],
+  "actualNativeToolCounts": {
+    "read": 94,
+    "webfetch": 55,
+    "glob": 10,
+    "skill": 6,
+    "write": 17,
+    "grep": 11,
+    "bash": 2,
+    "websearch": 2
+  },
+  "observedFault": "Collector saves only14/99 byte fragments instead of full fetched pages; downstream normal claim arrays empty. Deterministic digest checks pass over those fragments; positive semantic qualification correctly remains uncertain.",
+  "classification": "Generated workflow/actor-capability mistake; no recurrence of CSR49/50/51 confirmed. Hash operations belong in deterministic commands or explicitly authorized execution, not an execution-disabled model or external hashing websites.",
+  "limits": [
+    "Native reviewer did not receive companion page bytes; no claim of complete scraping authenticity review.",
+    "Proposed author guidance/regression protection is not a deterministic guarantee that every future model follows instructions.",
+    "No later case unlocked; still7/12."
+  ],
+  "privateEvidenceHashes": {
+    "verified-task-streams.json": "e943d8e566710753c433cb5c0388e7f01281a0e36fa15b2d206aca4e6a822e4b",
+    "final-native-semantic.json": "64bdba702121d94901359d38e71d7e9053e1502f1e686b455eb001c73b2f573f",
+    "early-collector-content-observation.json": "9fa82907c72627dca4c02b7d324dad13c2b5ca806b982509ddea9e23f46c3a5b",
+    "native-write-requests.json": "7cab9e32da34949b6ddc3ae64cb53067a80b914fbc41540dd35839d461503906"
+  }
+}

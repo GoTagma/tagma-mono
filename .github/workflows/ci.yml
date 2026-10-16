@@ -53,6 +53,10 @@ jobs:
         working-directory: apps/editor
         run: bun test tests/chat-trial-file-source-text-occurrence.test.ts --test-name-pattern "non-core source relation"
 
+      - name: Deterministic content preservation contracts
+        working-directory: apps/editor
+        run: bun test tests/opencode-deterministic-content-contract.test.ts
+
       - name: Trial source dependency reference contracts
         working-directory: apps/editor
         run: bun test tests/chat-trial-source-dependency-resolution.test.ts

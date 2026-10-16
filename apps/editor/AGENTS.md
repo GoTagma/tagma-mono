@@ -2405,3 +2405,10 @@
   before committing; return bound case/index/owner coordinates for plan-only corrections. Keep
   old normal-core errors, independent-content requirements and actual same-run runtime checks.
   Ordinary non-core present:false relations need no invented normal-core generated-input map.
+
+- Author exact file hashing and byte-preserving transformations as deterministic command work;
+  web permission does not expose a shell to a Prompt task. A correct digest over an excerpt
+  does not prove complete capture. Preserve original bytes for independent comparison when
+  promised, and never send content to external hash services as a substitute for local work.
+  The actual-SDK regression includes valid multiline Unicode bytes and a correctly hashed
+  truncated counterexample; these controls do not guarantee that a model follows guidance.

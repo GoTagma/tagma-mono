@@ -1,0 +1,41 @@
+{
+  "scope": "Final local CSR52 author guidance and actual-command pattern qualification, not live acceptance",
+  "command": "bun run verify:full",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "430a6f7d70a0766d08a7d405c051bde7c3d781f3e56192da33f8e1edde1029f5",
+  "summary": [
+    "PASS text 92ms ok",
+    "PASS deps 238ms ok",
+    "PASS focus 217ms ok",
+    "PASS imports 59ms ok",
+    "PASS cycles 41ms ok",
+    "PASS secrets 288ms ok",
+    "PASS format 20.0s ok",
+    "PASS types 44.5s ok",
+    "PASS lint 17.7s ok",
+    "PASS tests 205.1s ok",
+    "PASS scripts 2.5s ok",
+    "PASS build 18.1s ok",
+    "PASS publish 9.4s ok"
+  ],
+  "related": {
+    "files": 5,
+    "tests": 127,
+    "assertions": 1549,
+    "pass": true
+  },
+  "historicalGate": {
+    "passed": false,
+    "failures": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    },
+    "originalLogSha256": "3c7f30a46373f805ee266facd39dab563b065dddb4f2d21f4c768dd0baef56f8",
+    "historicalCoverageComplete": false
+  },
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0
+}
