@@ -1,3 +1,4 @@
+import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from '../server/chat-pipeline-trial-cache';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, delimiter, dirname, join } from 'node:path';
@@ -4720,13 +4721,13 @@ describe('chat YAML staging routes', () => {
   // Prepared-only insertion before the completed-response drift test near line 4707
   // in apps/editor/tests/chat-yaml-staging-route.test.ts. Uses existing imports/helpers.
   // These are two independent fixtures; the finalized fixture is never resumed.
-  for (const { action, legacyVersion } of [45, 46].flatMap((legacyVersion) =>
+  for (const { action, legacyVersion } of [45, 46, 49].flatMap((legacyVersion) =>
     (['finalize', 'rerun'] as const).map((action) => ({ action, legacyVersion })),
   )) {
     test(
       action === 'finalize'
         ? `does not grant finalize authority to a correctly signed v${legacyVersion} Trial cache`
-        : `reexecutes a same-input signed v${legacyVersion} Trial cache under v49 and replays only the new result`,
+        : `reexecutes a same-input signed v${legacyVersion} Trial cache under v${legacyVersion === 49 ? CHAT_PIPELINE_TRIAL_CACHE_VERSION : 49} and replays only the new result`,
       async () => {
         const { ws, sourcePath } = makeWorkspace();
         const getRoute = createHarness();
@@ -4840,7 +4841,7 @@ describe('chat YAML staging routes', () => {
           } else {
             const rerun = await runTrial();
             expect(rerun.body).toMatchObject({
-              version: 49,
+              version: CHAT_PIPELINE_TRIAL_CACHE_VERSION,
               success: true,
               ran: true,
               cases: [expect.objectContaining({ executionSource: 'current-trial' })],
@@ -4848,9 +4849,9 @@ describe('chat YAML staging routes', () => {
             expect(readFileSync(counterPath, 'utf-8')).toBe('2');
             const refreshed = readAuthenticatedServerRecordSync<CacheFixture>(cachePath, context);
             expect(refreshed).toMatchObject({
-              version: 49,
+              version: CHAT_PIPELINE_TRIAL_CACHE_VERSION,
               inputHash: current.inputHash,
-              result: { version: 49 },
+              result: { version: CHAT_PIPELINE_TRIAL_CACHE_VERSION },
             });
             const replay = await runTrial();
             expect(replay.body).toEqual(rerun.body);

@@ -98,6 +98,11 @@ import {
 } from '../chat-yaml-staging.js';
 import { createStreamingLoopbackFetch } from '../loopback-fetch.js';
 import { ensureOpencode, ensureRealTagmaDirectory } from '../opencode-lifecycle.js';
+import { createOpenCodeTrialSemanticReviewRuntime } from '../opencode-trial-semantic-review.js';
+import type {
+  TrialSemanticReviewModel,
+  TrialSemanticReviewRuntime,
+} from '../chat-trial-semantic-review.js';
 import { describeChatPermissionTargets } from './permission-targets';
 import { authorizeChatYamlStageRootPaths } from '../chat-yaml-write-policy.js';
 import { TAGMA_PIPELINE_AGENT, TAGMA_TRIAL_PLANNER_AGENT } from '../opencode-seed.js';
@@ -817,6 +822,7 @@ export interface ManagedChatOperationV2AuthoringStagingAdapter {
     readonly streamEvidenceOwner?: ChatRepairEvidenceOwner;
     readonly affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     readonly intentText?: string;
+    readonly semanticReviewModel?: TrialSemanticReviewModel;
     readonly retainedRepair?: {
       readonly owner: ChatYamlStageRetainedTrialOwner;
       readonly completedSnapshotHash: string;
@@ -1761,6 +1767,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     streamEvidenceOwner?: ChatRepairEvidenceOwner;
     affectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     intentText?: string;
+    semanticReviewModel?: TrialSemanticReviewModel;
     retainedRepair?: {
       readonly owner: ChatYamlStageRetainedTrialOwner;
       readonly completedSnapshotHash: string;
@@ -1799,6 +1806,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
     try {
       if (input.signal.aborted) throw new Error('Trial verification was cancelled.');
       let taskStreamEvidenceSink: TrialTaskStreamEvidenceSink | undefined;
+      let semanticReview: TrialSemanticReviewRuntime | undefined;
       if (input.streamEvidenceOwner) {
         const authority = await this.readAuthority(input.stageId);
         if (
@@ -1817,6 +1825,11 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
           this.authorityPath(input.stageId).context,
           evidenceOwner(authority),
         );
+        if (input.semanticReviewModel)
+          semanticReview = createOpenCodeTrialSemanticReviewRuntime({
+            sourceDirectory: authority.sourceDirectory,
+            model: input.semanticReviewModel,
+          });
       }
       if (input.signal.aborted) throw new Error('Trial verification was cancelled.');
       return await trialRunChatYamlStage(this.workspace, {
@@ -1827,6 +1840,7 @@ class ProductionStagingAdapter implements ManagedChatOperationV2AuthoringStaging
         ...(taskStreamEvidenceSink ? { taskStreamEvidenceSink } : {}),
         ...(input.affectedCases ? { affectedCases: input.affectedCases } : {}),
         ...(input.intentText ? { intentText: input.intentText } : {}),
+        ...(semanticReview ? { semanticReview } : {}),
         ...(input.retainedRepair ? { retainedRepair: input.retainedRepair } : {}),
       });
     } finally {
@@ -2721,6 +2735,7 @@ export function buildManagedChatOperationV2ExecutionPrompt(
       system: [
         'Operate only inside the authenticated staged Tagma workspace. Read only the exact staged target and relevant companions; mutate only through the dedicated Trial Plan tool for the Host-issued attempt. Prefer immediate, bounded tool calls over explanatory text; preserve substantive case assertions and coverage. Call tagma_trial_plan with operation validate on the complete draft; fix reported errors in the same open draft and revalidate without spending a submission. Once valid:true, or hostReviewRequired:true for a blocking finding, call operation commit exactly once across this Host attempt, then stop tool calls and report its actual result. Prefer bounded draft operations then explicit commit; a complete authenticated commit-plan is a supported alternative only when its payload fits frozen limits. Successful submission is required; draft, validate and narrative do not deliver a plan. Never submit both or resubmit within the same Host attempt. Audit the frozen user intent for requested execution mechanism and launch behavior as well as outputs. If intent evidence is omitted for size, use the same-session history; if it cannot be recovered, record a blocking diagnostic-only finding instead of claiming coverage.',
         'Plan substantive positive-core assertions within original requirements plus applicable legal empty/unknown and rejection paths. Derive expected arithmetic independently from frozen inputs and the defined formula, including meaningful scale/sign/boundary cases; task success and echoed source/verdict labels are insufficient. Exercise user-required conditional web branches through existing permitted controls. Valid empty/unknown outcomes remain valid; disclose unavailable coverage without fabricated calls or selectors. Empty-only outcomes cannot replace an identified core. Preserve required execution mechanisms; add no quota, blacklist, extra probes, model calls or schema fields.',
+        'For nondeterministic produced content without a valid fixed oracle, the supported artifact-semantic-review assertion requests a separate bounded tool-free Host model assessment after actual successful execution. It is not a workflow or planner model call. Map it to the uniquely owning content task in the positive normal core, retain deterministic, JSON/schema and source-provenance checks, and require a complete evidenced verdict on every actual repeat. Do not block only because future wording is unknown, guess answers or add business fields solely for Trial; genuine unsupported evidence remains blocked.',
       ].join(' '),
       text: [
         '<tagma-internal>',
@@ -2830,7 +2845,7 @@ export function buildManagedChatOperationV2ExecutionPrompt(
       'For JSON file handoffs with a declared machine contract, prefer built-in json_schema completion with path and schema_path (local Draft-7 schema, relative to task cwd). Use the same schema to specify producer output and validate it. Preserve equivalent complete gates and explicit completion; enforce current-input identity/order and semantic relations separately before use.',
       ...(input.purpose === 'authoring'
         ? [
-            'For dynamic model-written JSON and reports, design an independently checkable input-bound producer anchor before authoring. Where the requested contract permits, preserve an original input identifier, text or derived hash in each participating produced JSON alongside its intact dynamic result fields, using one declared producer/consumer spec. Derive expected provenance from frozen inputs and check it deterministically; json-pointer-equals or exact file-equals can witness that producer anchor, while file-source-text-occurrence checks actual same-run producer text in its dependent report under declared artifact ownership, transitive dependencies and fresh generated-source mappings. Keep all substantive intent-bound checks: copied identity alone proves neither factual nor mathematical correctness. Do not alter a required shape or add fields solely for Trial; when no permitted anchor exists, retain the precise limit rather than inventing content.',
+            'For dynamic model-written JSON and reports, design an independently checkable input-bound producer anchor before authoring. Where the requested contract permits, preserve an original input identifier, text or derived hash in each participating produced JSON alongside its intact dynamic result fields, using one declared producer/consumer spec. Derive expected provenance from frozen inputs and check it deterministically; json-pointer-equals or exact file-equals can witness that producer anchor, while file-source-text-occurrence checks actual same-run producer text in its dependent report under declared artifact ownership, transitive dependencies and fresh generated-source mappings. Keep all substantive intent-bound checks: copied identity alone proves neither factual nor mathematical correctness. Do not alter a required shape or add fields solely for Trial. For otherwise uncheckable dynamic content, the Host supports a separate bounded artifact-semantic-review after actual successful execution, preserving deterministic and provenance checks without a workflow reviewer task. Keep genuine observation limits explicit rather than inventing content.',
           ]
         : []),
       'Within original review/evidence scope, extract every externally verifiable clause once; leave nonfactual text unchanged. Encode in extraction/verifier/report prompts and comparator/Python inputs before math: compare each original clause unchanged with independent passages, matching relevant quantifiers/frequency/members/conditions and metric/unit/period/baseline/basis/denominator/operator/bounds/approximation/precision. Class relevance does not prove named members; ranges do not prove frequency; rounded evidence does not prove finer exact equality. Never reshape claims or strengthen evidence. Unresolved/conflicting entailment follows the existing verdict rule; matching independent evidence may support. Numeric-only review stays numeric-only. Normalize compatible dimensions and scales, including k/million/billion; distinguish percent, percentage-point changes and absolute quantities. Calculate only comparable resolved operands for the declared operation. Declare one signed-difference order and denominator; preserve them across computation, results and reports.',
@@ -4779,6 +4794,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
         streamEvidenceOwner: evidenceOwner(authority),
         ...(planReviewAffectedCases ? { affectedCases: planReviewAffectedCases } : {}),
         ...(input.intentText ? { intentText: input.intentText } : {}),
+        ...(input.semanticReviewModel ? { semanticReviewModel: input.semanticReviewModel } : {}),
         ...(retainedRepair ? { retainedRepair } : {}),
         onProgress: (progress) =>
           input.onTrialProgress?.({

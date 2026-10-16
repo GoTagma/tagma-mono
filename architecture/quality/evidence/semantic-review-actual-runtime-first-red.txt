@@ -1,0 +1,36 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:
+11:26:56.327 [pipeline] start "Actual dynamic report" run_id=run_mvavuipu_06728655f021
+11:26:56.334 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+11:26:56.362 [task:flow.inspect] success (0.0s)
+11:26:56.363 [pipeline] completed "Actual dynamic report"
+11:26:56.363 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+11:26:56.363 [pipeline] Duration: 0.0s
+11:26:56.363 [pipeline] Log: /tmp/tagma-actual-semantic-trial-rl8CNG/.tagma/.chat-staging/487546f9-8e68-47b0-8b3f-13e7c2860748/.trial-cases/normal-gHAc2G/workspace/.tagma/logs/run_mvavuipu_06728655f021/pipeline.log
+11:26:56.367 [pipeline] start "Actual dynamic report" run_id=run_mvavuir2_7c6b48dba4a1
+11:26:56.368 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+11:26:56.393 [task:flow.inspect] success (0.0s)
+11:26:56.393 [pipeline] completed "Actual dynamic report"
+11:26:56.393 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+11:26:56.393 [pipeline] Duration: 0.0s
+11:26:56.393 [pipeline] Log: /tmp/tagma-actual-semantic-trial-rl8CNG/.tagma/.chat-staging/487546f9-8e68-47b0-8b3f-13e7c2860748/.trial-cases/normal-gHAc2G/workspace/.tagma/logs/run_mvavuir2_7c6b48dba4a1/pipeline.log
+70 | test('actual Sandbox semantic review runs after task execution for every repeat', async () => {
+71 |   const f = fixture();
+72 |   try {
+73 |     const result = await f.run('semantic_actual_repeats');
+74 |     expect(result.ran).toBe(true);
+75 |     expect(result.success).toBe(true);
+                                ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:75:28)
+(fail) actual Sandbox semantic review runs after task execution for every repeat [485.26ms]
+
+ 0 pass
+ 1 fail
+ 3 expect() calls
+Ran 1 test across 1 file. [682.00ms]

@@ -1,3 +1,4 @@
+import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from '../server/chat-pipeline-trial-cache';
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -44,7 +45,7 @@ function readOwnCaches(value: Awaited<ReturnType<typeof realEngineFixture>>) {
         stageId: descriptor.id,
         kind: 'trial-cache',
       });
-      expect(record.version).toBe(49);
+      expect(record.version).toBe(CHAT_PIPELINE_TRIAL_CACHE_VERSION);
       return { name, record };
     });
 }

@@ -1006,7 +1006,7 @@ test('document and Trial guidance preserve source lines and trace representative
     'Task success, headings, URLs and target self-statements alone do not prove factual corroboration',
   );
   expect(planner).toContain(
-    'Use supported assertions without extra probes, model calls, tool requirements or source-count thresholds',
+    'Use deterministic assertions without extra probes, model calls, tool requirements or source-count thresholds',
   );
 });
 

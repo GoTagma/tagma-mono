@@ -1,4 +1,12 @@
 import { createHash } from 'node:crypto';
+import {
+  evaluateTrialSemanticReview,
+  trialSemanticReviewConfigurationDigest,
+  validateTrialSemanticReviewReceipts,
+  type TrialSemanticReviewIdentity,
+  type TrialSemanticReviewReceipt,
+  type TrialSemanticReviewRuntime,
+} from './chat-trial-semantic-review';
 import { redactChatRepairErrorOutput } from './chat-operations/repair-error-evidence';
 import {
   readCompleteRepairOutput,
@@ -215,6 +223,12 @@ export interface ChatPipelineTrialStreamTruncation {
 }
 
 export interface ChatPipelineTrialExpectationResult {
+  semanticReview?: {
+    taskId: string;
+    path: string;
+    runNumber: number;
+    requestSha256: string | null;
+  };
   fileObservation?: { path: string; regularFile: boolean | null };
   /** SDK callback/file snapshot evidence; neither writer identity nor external truth. */
   sourceTextEvidence?: {
@@ -274,6 +288,7 @@ export interface ChatPipelineTrialCaseResult {
   success: boolean;
   executionSource?: 'current-trial' | 'equivalent-closure-cache';
   runIds: string[];
+  semanticReviews?: TrialSemanticReviewReceipt[];
   /** Preserves original run identities when a verified command-only case is reused. */
   taskStreamEvidence?: TrialTaskStreamArchiveResult[];
   tasks: ChatPipelineTrialTaskResult[];
@@ -401,6 +416,8 @@ export interface ChatPipelineTrialRunInput {
   affectedCases?: ChatPipelineTrialPlanRequest['affectedCases'];
   /** Frozen, Host-authenticated user intent for independent coverage review. */
   intentText?: string;
+  /** Host-only frozen model and tool-free invoker; renderer Trial routes never forward it. */
+  semanticReview?: TrialSemanticReviewRuntime;
   /** Internal completed-repair identity; renderer Trial routes never forward this field. */
   retainedRepair?: {
     owner: ChatYamlStageRetainedTrialOwner;
@@ -447,6 +464,7 @@ interface CachedTrialResult {
   inputHash: string;
   trialabilityReportHash: string;
   verificationHash: string;
+  semanticReviewConfigurationDigest?: string;
   hostWitness: TrialHostWitness;
   caseReuse: CachedTrialCaseReuse[];
   result: ChatPipelineTrialRunResult;
@@ -671,6 +689,7 @@ function readCompletedTrialResponse(
   path: string,
   inputHash: string,
   trialabilityReportHash: string,
+  semanticConfigurationDigest?: string,
 ): ChatPipelineTrialRunResult | null {
   if (!existsSync(path)) return null;
   try {
@@ -682,6 +701,8 @@ function readCompletedTrialResponse(
       parsed.version !== TRIAL_CACHE_VERSION ||
       parsed.inputHash !== inputHash ||
       parsed.trialabilityReportHash !== trialabilityReportHash ||
+      (parsed.semanticReviewConfigurationDigest ?? null) !==
+        (semanticConfigurationDigest ?? null) ||
       typeof parsed.verificationHash !== 'string' ||
       typeof parsed.hostWitness?.digest !== 'string' ||
       !Array.isArray(parsed.caseReuse) ||
@@ -709,6 +730,7 @@ function writeCachedTrial(
   hostWitness: TrialHostWitness,
   caseReuse: CachedTrialCaseReuse[],
   result: ChatPipelineTrialRunResult,
+  semanticConfigurationDigest?: string,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
   writeAuthenticatedServerRecordSync(path, trialCacheRecordContext(ws, stageId, path), {
@@ -716,6 +738,9 @@ function writeCachedTrial(
     inputHash,
     trialabilityReportHash,
     verificationHash,
+    ...(semanticConfigurationDigest
+      ? { semanticReviewConfigurationDigest: semanticConfigurationDigest }
+      : {}),
     hostWitness,
     caseReuse,
     result,
@@ -809,6 +834,12 @@ export function bindTrialCoreCaseReuseFingerprint(
   plan: ChatPipelineTrialPlan,
   caseId: string,
 ): string | null {
+  if (
+    plan.cases
+      .find((item) => item.id === caseId)
+      ?.expectations.some((item) => item.type === 'artifact-semantic-review')
+  )
+    return null;
   const core = plan.evidenceReview?.coreWitness;
   if (!fingerprint || core?.status !== 'covered' || core.normalCaseId !== caseId)
     return fingerprint;
@@ -1851,6 +1882,14 @@ export function evaluateTrialExpectation(
   lastResult: EngineResult | null,
   sourceTextObservations?: ReadonlyMap<string, TrialSourceTextObservation>,
 ): ChatPipelineTrialExpectationResult {
+  if (expectation.type === 'artifact-semantic-review') {
+    return {
+      type: expectation.type,
+      passed: false,
+      detail: 'Independent Host semantic review has not supplied a complete actual-run verdict.',
+      repairScope: 'diagnostic-only',
+    };
+  }
   if (expectation.type === 'task-status') {
     const state = lastResult?.states.get(expectation.taskId);
     const actual = state?.status ?? 'missing';
@@ -2413,14 +2452,77 @@ export function hasChatPipelineTrialArtifactFailure(
   );
 }
 
-/** Assertions alone cannot distinguish a bad test setup from a business defect. */
+function hasEvidencedSemanticContentFailure(
+  testCase: {
+    readonly id?: string;
+    readonly runIds?: readonly string[];
+    readonly semanticReviews?: readonly TrialSemanticReviewReceipt[];
+  },
+  expectation: Pick<
+    ChatPipelineTrialExpectationResult,
+    'type' | 'passed' | 'repairScope' | 'semanticReview'
+  >,
+): boolean {
+  const binding = expectation.semanticReview;
+  if (
+    expectation.type !== 'artifact-semantic-review' ||
+    expectation.passed ||
+    expectation.repairScope !== 'pipeline-artifact' ||
+    !binding ||
+    !testCase.id ||
+    !testCase.runIds
+  )
+    return false;
+  const receipts =
+    testCase.semanticReviews?.filter(
+      (receipt) => receipt.requestSha256 === binding.requestSha256,
+    ) ?? [];
+  if (receipts.length !== 1) return false;
+  const receipt = receipts[0]!;
+  try {
+    if (
+      receipt.grading !== 'independent-model' ||
+      !['failed', 'uncertain'].includes(receipt.outcome) ||
+      !/^[a-f0-9]{64}$/u.test(receipt.requestSha256) ||
+      !receipt.responseSha256 ||
+      !/^[a-f0-9]{64}$/u.test(receipt.responseSha256) ||
+      !receipt.reviewerSessionId ||
+      receipt.configurationDigest !== trialSemanticReviewConfigurationDigest(receipt.model) ||
+      receipt.identity.caseId !== testCase.id ||
+      receipt.identity.runNumber !== binding.runNumber ||
+      receipt.identity.runId !== testCase.runIds[binding.runNumber - 1]
+    )
+      return false;
+    return receipt.verdicts.some(
+      (row) =>
+        row.taskId === binding.taskId &&
+        row.path === binding.path &&
+        row.verdict === 'fail' &&
+        row.reason.trim().length > 0 &&
+        row.evidence.some(
+          (item) =>
+            item.path === binding.path &&
+            typeof item.quote === 'string' &&
+            item.quote.trim().length > 0 &&
+            createHash('sha256').update(item.quote).digest('hex') === item.quoteSha256,
+        ),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Ordinary assertions need plan review; a separate evidenced Host critic is a distinct proof. */
 export function trialNeedsPlanReview(
   cases: readonly {
+    readonly id?: string;
+    readonly runIds?: readonly string[];
+    readonly semanticReviews?: readonly TrialSemanticReviewReceipt[];
     success: boolean;
     tasks: readonly Pick<ChatPipelineTrialTaskResult, 'status' | 'repairScope'>[];
     expectations: readonly Pick<
       ChatPipelineTrialExpectationResult,
-      'passed' | 'type' | 'repairScope' | 'planError'
+      'passed' | 'type' | 'repairScope' | 'planError' | 'semanticReview'
     >[];
   }[],
 ): boolean {
@@ -2438,7 +2540,8 @@ export function trialNeedsPlanReview(
           (expectation.planError === 'invalid-array-index' ||
             (expectation.repairScope === 'pipeline-artifact' &&
               expectation.type !== 'case-execution' &&
-              expectation.type !== 'run-artifact-freshness')),
+              expectation.type !== 'run-artifact-freshness' &&
+              !hasEvidencedSemanticContentFailure(testCase, expectation))),
       ),
   );
 }
@@ -2847,6 +2950,15 @@ interface RunTrialPipelineInput {
   targetTaskIds?: string[];
   testCase?: ChatPipelineTrialPlanCase;
   onEvent?: (event: RunEventPayload) => void;
+}
+
+interface TrialSemanticExecutionContext {
+  readonly runtime: TrialSemanticReviewRuntime;
+  readonly intentText: string;
+  readonly identity: Pick<
+    TrialSemanticReviewIdentity,
+    'stageId' | 'trialId' | 'yamlHash' | 'planHash' | 'intentDigest'
+  >;
 }
 
 interface TrialExecutionBudgets {
@@ -3450,6 +3562,7 @@ async function executeTargetedTrialCase(
     targetTaskIds?: string[];
     coreContentExpectationIndices: readonly number[];
     coreGeneratedInputPaths: readonly string[];
+    semanticReview?: TrialSemanticExecutionContext;
     verifyRepeatedFileOutputs: boolean;
     caseIndex: number;
     caseCount: number;
@@ -3474,6 +3587,11 @@ async function executeTargetedTrialCase(
   const taskStatusCounts: Record<string, number> = {};
   const runResults: EngineResult[] = [];
   const earlierTaskExpectations: ChatPipelineTrialExpectationResult[] = [];
+  const semanticExpectations: ChatPipelineTrialExpectationResult[] = [];
+  const semanticReviews: TrialSemanticReviewReceipt[] = [];
+  const semanticTargets = input.testCase.expectations
+    .filter((item) => item.type === 'artifact-semantic-review')
+    .map((item) => ({ taskId: item.taskId, path: item.path }));
   const repeatedOutputPaths = input.verifyRepeatedFileOutputs
     ? findChatPipelineTrialRepeatedFileOutputPaths(input.testCase)
     : [];
@@ -3520,6 +3638,14 @@ async function executeTargetedTrialCase(
         resetGeneratedTrialInputs(caseWorkspace.workDir, input.relativeYamlPath, {
           ...input.testCase,
           generatedInputPaths: [...input.coreGeneratedInputPaths],
+        });
+      }
+      if (semanticTargets.length) {
+        // Semantic content must be produced in this actual run, never copied
+        // from an authored staged answer or inherited from a previous repeat.
+        resetGeneratedTrialInputs(caseWorkspace.workDir, input.relativeYamlPath, {
+          generatedInputPaths: semanticTargets.map((item) => item.path),
+          fixtures: semanticTargets.map((item) => ({ path: item.path, content: null })),
         });
       }
       const outputPaths = new Map<string, TrialTaskOutputPaths>();
@@ -3592,6 +3718,121 @@ async function executeTargetedTrialCase(
         freshnessObservations.push(...freshnessProbes.map(observeRepeatedArtifactFreshness));
       }
       runResults.push(lastResult);
+      if (semanticTargets.length) {
+        const deterministicPassed = input.testCase.expectations
+          .filter((item) => item.type !== 'artifact-semantic-review')
+          .every((expectation) => {
+            try {
+              return evaluateTrialExpectation(
+                caseWorkspace!.workDir,
+                input.relativeYamlPath,
+                expectation,
+                lastResult,
+                sourceTextObservations,
+              ).passed;
+            } catch {
+              return false;
+            }
+          });
+        input.progress.update({
+          phase: 'running-case',
+          detail: `Independently reviewing generated content for run ${runNumber}/${input.testCase.runs}.`,
+          caseId: input.testCase.id,
+          caseTitle: input.testCase.title,
+          caseIndex: input.caseIndex,
+          caseCount: input.caseCount,
+          runNumber,
+          runCount: input.testCase.runs,
+          taskId: null,
+          taskStatus: 'semantic-review',
+        });
+        const trace = (text: string, producedBytes: number | undefined) => ({
+          text: text.slice(-4096),
+          complete: text.length <= 4096 && producedBytes === Buffer.byteLength(text, 'utf8'),
+        });
+        const semantic = await evaluateTrialSemanticReview({
+          identity: {
+            ...(input.semanticReview?.identity ?? {
+              stageId: '',
+              trialId: input.trialId,
+              yamlHash: '',
+              planHash: '',
+              intentDigest: '',
+            }),
+            caseId: input.testCase.id,
+            runId,
+            runNumber,
+          },
+          intentText: input.semanticReview?.intentText ?? '',
+          yamlText: stagedYaml,
+          targets: semanticTargets,
+          referencePaths: [
+            ...input.testCase.fixtures
+              .filter((item) => item.content !== null)
+              .map((item) => item.path),
+            ...(input.testCase.generatedInputPaths ?? []),
+            ...input.testCase.expectations.flatMap((item) =>
+              'sourcePath' in item ? [item.sourcePath] : [],
+            ),
+          ],
+          runSucceeded: lastResult.success && lastResult.runId === runId && deterministicPassed,
+          taskStatuses: Object.fromEntries(
+            [...lastResult.states].map(([taskId, state]) => [taskId, state.status]),
+          ),
+          deterministicChecks: input.testCase.expectations.filter(
+            (item) => item.type !== 'artifact-semantic-review',
+          ),
+          caseEnvironment: input.testCase.environment ?? [],
+          taskEvidence: [...lastResult.states].flatMap(([taskId, state]) =>
+            state.result
+              ? [
+                  {
+                    taskId,
+                    exitCode: state.result.exitCode,
+                    stdout: trace(state.result.stdout, state.result.stdoutBytes),
+                    stderr: trace(state.result.stderr, state.result.stderrBytes),
+                  },
+                ]
+              : [],
+          ),
+          workDir: caseWorkspace.workDir,
+          relativeYamlPath: input.relativeYamlPath,
+          runtime: input.semanticReview?.runtime,
+          signal: input.controller.signal,
+          secretValues: input.secretValues,
+        });
+        if (semantic.receipt) semanticReviews.push(semantic.receipt);
+        if (semantic.repairEvidence)
+          repairPipelineDiagnostics.push({
+            caseId: input.testCase.id,
+            runNumber,
+            runId,
+            taskId: null,
+            level: 'error',
+            text: redactChatRepairErrorOutput(
+              JSON.stringify({
+                kind: 'independent-semantic-review',
+                grading: 'fallible-model-assessment',
+                receipt: semantic.receipt,
+                ...semantic.repairEvidence,
+              }),
+            ),
+          });
+        semanticExpectations.push(
+          ...semantic.expectations.map((item) => ({
+            type: item.type,
+            passed: item.passed,
+            detail: `Run ${runNumber}: ${item.detail}`,
+            repairScope: item.repairScope,
+            semanticReview: {
+              taskId: item.taskId,
+              path: item.path,
+              runNumber,
+              requestSha256: semantic.receipt?.requestSha256 ?? null,
+            },
+          })),
+        );
+      }
       // The final run's filesystem assertions do not explain an earlier task-status mismatch.
       if (runNumber < input.testCase.runs)
         earlierTaskExpectations.push(
@@ -3602,7 +3843,9 @@ async function executeTargetedTrialCase(
             caseWorkspace.workDir,
             input.relativeYamlPath,
             input.testCase,
-            input.coreContentExpectationIndices,
+            input.coreContentExpectationIndices.filter(
+              (index) => input.testCase.expectations[index]?.type !== 'artifact-semantic-review',
+            ),
             lastResult,
             runNumber,
             sourceTextObservations,
@@ -3645,11 +3888,15 @@ async function executeTargetedTrialCase(
     executionError = `Case execution crashed: ${errorMessage(err)}`;
   }
 
-  const expectations: ChatPipelineTrialExpectationResult[] = [...earlierTaskExpectations];
+  const expectations: ChatPipelineTrialExpectationResult[] = [
+    ...earlierTaskExpectations,
+    ...semanticExpectations,
+  ];
   if (executionError) {
     expectations.push(diagnosticCaseExecutionExpectation(executionError));
   } else if (caseWorkspace) {
     for (const expectation of input.testCase.expectations) {
+      if (expectation.type === 'artifact-semantic-review') continue;
       try {
         const fileObservation = trialCaseFileObservation(
           caseWorkspace.workDir,
@@ -3745,6 +3992,7 @@ async function executeTargetedTrialCase(
       ...trialPrerequisiteProbe(input.testCase),
       success,
       runIds,
+      ...(semanticTargets.length ? { semanticReviews } : {}),
       ...(input.taskStreamEvidenceSink ? { taskStreamEvidence } : {}),
       tasks: selectedTasks,
       totalTaskCount,
@@ -4139,6 +4387,7 @@ async function executeTrial(
   runtimeMode: WorkspaceRuntimeMode,
   reusableCases: ReadonlyMap<string, ChatPipelineTrialCaseResult>,
   taskStreamEvidenceSink?: TrialTaskStreamEvidenceSink,
+  semanticReview?: TrialSemanticExecutionContext,
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
   progress.update({
@@ -4466,6 +4715,7 @@ async function executeTrial(
         manualApprovalTaskIds: manualTaskIdsByCase.get(testCase.id) ?? new Set<string>(),
         stageRoot: stage.rootDir,
         trialId,
+        ...(semanticReview ? { semanticReview } : {}),
         ...(taskStreamEvidenceSink ? { taskStreamEvidenceSink } : {}),
         stagedYamlPath: snapshot.yamlPath,
         relativeYamlPath: entry.relativePath,
@@ -5186,6 +5436,54 @@ export async function trialRunChatYamlStage(
       };
     }
     const plan = planRead.plan;
+    const needsSemanticReview = plan.cases.some((testCase) =>
+      testCase.expectations.some((item) => item.type === 'artifact-semantic-review'),
+    );
+    let semanticReview: TrialSemanticExecutionContext | undefined;
+    let semanticConfigurationDigest: string | undefined;
+    if (needsSemanticReview) {
+      if (
+        input.trustedOperationV2 !== true ||
+        !input.semanticReview ||
+        !input.intentText ||
+        !plan.evidenceReview?.intentDigest
+      )
+        return {
+          ...resultForSetupFailure(
+            'blocked',
+            'Independent semantic review requires a trusted Host model and frozen intent; no task was executed.',
+            startedAt,
+            preflightMetadata,
+          ),
+          planTelemetry,
+        };
+      try {
+        semanticConfigurationDigest = trialSemanticReviewConfigurationDigest(
+          input.semanticReview.model,
+        );
+        semanticReview = {
+          runtime: input.semanticReview,
+          intentText: input.intentText,
+          identity: {
+            stageId: stage.id,
+            trialId,
+            yamlHash: snapshot.contentHash,
+            planHash: planRead.planHash,
+            intentDigest: plan.evidenceReview.intentDigest,
+          },
+        };
+      } catch {
+        return {
+          ...resultForSetupFailure(
+            'blocked',
+            'The frozen semantic-review model is unavailable; draft retained without execution.',
+            startedAt,
+            preflightMetadata,
+          ),
+          planTelemetry,
+        };
+      }
+    }
     const trialabilityReportHash = hashChatPipelineTrialabilityReport(trialabilityReport);
     const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
@@ -5198,9 +5496,28 @@ export async function trialRunChatYamlStage(
     // the host witness and recomputes the full live readiness projection.
     const cached = retainedTrialCandidate
       ? null
-      : readCompletedTrialResponse(ws, stage.id, cachePath, inputHash, trialabilityReportHash);
-    if (cached) return resultWithTrialPlan(cached, plan);
-    const inFlightKey = cachePath;
+      : readCompletedTrialResponse(
+          ws,
+          stage.id,
+          cachePath,
+          inputHash,
+          trialabilityReportHash,
+          semanticConfigurationDigest,
+        );
+    if (
+      cached &&
+      (!cached.success ||
+        !semanticReview ||
+        validateTrialSemanticReviewReceipts({
+          plan,
+          cases: cached.cases,
+          configurationDigest: semanticConfigurationDigest,
+          identity: semanticReview.identity,
+        }))
+    )
+      return resultWithTrialPlan(cached, plan);
+    const inFlightKey =
+      cachePath + (semanticConfigurationDigest ? '#semantic-' + semanticConfigurationDigest : '');
     const existing = inFlightByCacheKey.get(inFlightKey);
     if (existing) return existing;
     const preparation = await prepareTrialExecution(
@@ -5396,7 +5713,7 @@ export async function trialRunChatYamlStage(
               trialabilityReportHash,
               prerequisiteDigest: preWitness.prerequisiteDigest,
             });
-        const result = await executeTrial(
+        const executedResult = await executeTrial(
           ws,
           stage,
           entry,
@@ -5412,7 +5729,22 @@ export async function trialRunChatYamlStage(
           runtimeMode,
           reusableCases,
           input.trustedOperationV2 === true ? input.taskStreamEvidenceSink : undefined,
+          semanticReview,
         );
+        const result =
+          semanticReview &&
+          executedResult.success &&
+          !validateTrialSemanticReviewReceipts({
+            plan,
+            cases: executedResult.cases,
+            configurationDigest: semanticConfigurationDigest,
+            identity: semanticReview.identity,
+          })
+            ? resultForHostWitnessFailure(
+                executedResult,
+                'Independent semantic review lacks complete exact current-run receipts.',
+              )
+            : executedResult;
         if (controller.signal.aborted) {
           return resultForStopped(result, abortState, startedAt, budgets.lifecycleTimeoutMs);
         }
@@ -5490,6 +5822,7 @@ export async function trialRunChatYamlStage(
               preWitness.prerequisiteDigest === postWitness.witness.prerequisiteDigest,
             ),
             { ...resultWithTrialPlan(result, plan), planTelemetry },
+            semanticConfigurationDigest,
           );
           if (retainedTrialCandidate && result.success) {
             try {

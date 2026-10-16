@@ -49,6 +49,7 @@ import {
   type ChatPipelineBinding,
 } from './chat-pipeline-binding.js';
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
+import { validateTrialSemanticReviewReceipts } from './chat-trial-semantic-review.js';
 import {
   buildChatPipelineTrialabilityReport,
   ChatPipelineTrialabilityReport,
@@ -1654,6 +1655,24 @@ function validateRetainedCachedTrial(
   )
     throw new Error('Retained Trial success lacks exact authenticated current execution evidence.');
   const original = parseChatPipelineTrialPlan(JSON.parse(baseline.originalPlanRaw));
+  if (
+    !validateTrialSemanticReviewReceipts({
+      plan: original,
+      cases: cached.result.cases,
+      configurationDigest: cached.semanticReviewConfigurationDigest,
+      identity: {
+        stageId: paths.id,
+        trialId: proof.trialId,
+        yamlHash: sha1(
+          assertRegularTextFile(resolveStagedYamlPath(paths, baseline.relativePath), 'staged YAML'),
+        ),
+        planHash: proof.candidatePlanHash,
+      },
+    })
+  )
+    throw new Error(
+      'Retained Trial lacks complete current-run independent semantic review receipts.',
+    );
   const cases = cached.result.cases;
   if (
     !Array.isArray(cases) ||
@@ -4508,6 +4527,7 @@ interface CachedTrialFinalizeRecord {
   inputHash: string;
   trialabilityReportHash: string;
   verificationHash: string;
+  semanticReviewConfigurationDigest?: string;
   hostWitness: TrialHostWitness;
   result: {
     version: typeof TRIAL_CACHE_VERSION;
@@ -4517,6 +4537,7 @@ interface CachedTrialFinalizeRecord {
     trialabilityReport?: ChatPipelineTrialabilityReport;
     repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
     prerequisiteState?: unknown;
+    cases?: unknown;
   };
 }
 
@@ -4669,7 +4690,23 @@ async function verifiedTrialDisposition(
       hashChatPipelineTrialabilityReport(cached.result.trialabilityReport) ===
         trialabilityReportHash;
     if (!authenticated) return 'not-verified';
-    if (cached.result!.success === true) return 'verified';
+    if (cached.result!.success === true) {
+      if (
+        !validateTrialSemanticReviewReceipts({
+          plan: planRead.plan,
+          cases: cached.result!.cases,
+          configurationDigest: cached.semanticReviewConfigurationDigest,
+          identity: {
+            stageId: paths.id,
+            trialId: normalizedTrialId,
+            yamlHash: contentHash,
+            planHash: planRead.planHash,
+          },
+        })
+      )
+        return 'not-verified';
+      return 'verified';
+    }
     if (
       cached.result!.success === false &&
       cached.result!.kind === 'blocked' &&

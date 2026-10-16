@@ -733,3 +733,14 @@ Chat intent classification distinguishes an explicitly requested new pipeline fi
 unrelated visible or manual-new draft. Explicit edits and renames retain their existing target;
 material action/target ambiguity asks for clarification. Host-issued candidate identity remains
 the authority for edits, and a filename alone never grants a write.
+
+An explicit `artifact-semantic-review` assertion (`path`, `taskId`) lets the Host independently
+review nondeterministic produced content against the frozen original request. Actual successful
+Sandbox execution, JSON checks, artifact ownership, source provenance and publication checks
+remain mandatory. The Host uses the admitted model and variant in a fresh tool-free session,
+one evaluation per actual positive repeat, with a fixed title to avoid auxiliary model requests.
+All requested targets need supported pass votes and literal artifact evidence; uncertain, unavailable,
+malformed, cancelled or changed evidence blocks publication. This is fallible model judgment with
+additional provider cost. Exact signed per-repeat receipts accompany the result; independently
+reviewed cases cannot reuse another case's outcome. A supported content failure may enter the
+existing finite artifact repair loop; evaluator availability alone grants no artifact repair.

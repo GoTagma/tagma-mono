@@ -2313,3 +2313,16 @@
   diagnosing application types. The normal sequential repository check avoids this race.
 
 - Agent prompt budgets apply to final seeded bytes. Use `renderManagedOpencodeAgentDocument` (managed tool/permission policies plus step normalization), not builder or step-only length checks. Cover supported host labels, Python tools on/off and default/max steps; retain the `<22,000` delivery bound and permissions.
+
+## Independent Trial Content Review
+
+- The explicitly authorized `artifact-semantic-review` exception uses a Host-only evaluator after
+  actual successful positive-core execution. Freeze the admitted model/variant and original intent;
+  no renderer/planner model choice, tool access, history, auxiliary title call or evaluator retry.
+- Keep JSON validation, owning task, unseeded output, all source provenance and deterministic
+  checks mandatory. Capture bounded regular single-link UTF-8 evidence, reject secrets and
+  mutation, require complete literal-quote-supported votes, and fail closed on uncertainty.
+- Preserve per-repeat model-graded receipts through signed cache v50 and finalization. No
+  equivalent-case reuse. Only independently evidenced content failure grants existing bounded
+  artifact repair; availability/unknown outcomes remain diagnostic. Never present model judgment
+  or synthetic native tests as actual business acceptance or deterministic external truth.

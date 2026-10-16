@@ -26,6 +26,7 @@ import {
   createTrialResilienceRules,
   TRIAL_EVIDENCE_KINDS,
 } from '../server/chat-trial-resilience-rules';
+import { semanticReviewPlanInput } from './helpers/trial-semantic-review-fixture';
 
 type JsonSchema = ReturnType<typeof pluginTool.schema.toJSONSchema>['schemas'][string];
 
@@ -36,13 +37,14 @@ function schemaObject(value: unknown): JsonSchema {
   return value as JsonSchema;
 }
 
-async function fixture() {
+async function fixture(yamlOverride?: string) {
   const root = mkdtempSync(join(tmpdir(), 'tagma-real-plan-boundary-'));
   const stageRoot = join(root, '.tagma', '.chat-staging', 'stage-boundary');
   const directory = join(stageRoot, 'agent-workspace', '.tagma');
   const yamlPath = join(directory, 'flow', 'flow.yaml');
   mkdirSync(dirname(yamlPath), { recursive: true });
   const yaml =
+    yamlOverride ??
     'pipeline:\n  name: Boundary\n  tracks:\n    - id: main\n      tasks:\n        - id: run\n          command: echo source\n';
   writeFileSync(yamlPath, yaml, 'utf8');
   const yamlHash = createHash('sha1').update(yaml, 'utf8').digest('hex');
@@ -175,6 +177,48 @@ function validReview() {
     })),
   };
 }
+
+test('generated semantic review schema and handler preserve ownership and finite commit counting', async () => {
+  const h = await fixture(
+    'pipeline:\n  name: Boundary\n  tracks:\n    - id: main\n      cwd: .tagma/flow\n      tasks:\n        - id: run\n          command: echo dynamic\n          completion:\n            type: file_exists\n            path: report.md\n',
+  );
+  try {
+    expect(JSON.stringify(pluginTool.schema.toJSONSchema(h.outer))).toContain(
+      'artifact-semantic-review',
+    );
+    const raw = JSON.parse(
+      JSON.stringify(semanticReviewPlanInput()).split('flow.inspect').join('main.run'),
+    );
+    const call = h.issue('semantic-review-boundary');
+    await call('begin', { summary: raw.summary, goals: raw.goals });
+    await call('set-coverage', { coverage: raw.coverage });
+    await expect(
+      call('upsert-case', {
+        case: {
+          ...raw.cases[0],
+          expectations: [
+            raw.cases[0].expectations[0],
+            { ...raw.cases[0].expectations[1], passed: true },
+          ],
+        },
+      }),
+    ).rejects.toThrow();
+    expect(h.telemetry().toolAttemptCount).toBe(0);
+    await call('upsert-case', { case: raw.cases[0] });
+    await call('set-evidence-review', { evidence_review: raw.evidenceReview });
+    await call('validate');
+    expect(h.telemetry().toolAttemptCount).toBe(0);
+    await call('commit');
+    expect(h.telemetry()).toMatchObject({
+      toolAttemptCount: 1,
+      successfulWriteCount: 1,
+      validationRejectionCount: 0,
+    });
+    h.assertUnlocked();
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
 
 test('generated tool commits blocked artifact feedback with the same Host core rules and finite counter', async () => {
   const h = await fixture();

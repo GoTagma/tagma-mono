@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "sourceRevision": "ffbd5c8f5427f4edb175c7589708de4e33158343",
+  "run": "https://github.com/GoTagma/tagma-mono/actions/runs/38890268283",
+  "conclusion": "success",
+  "requiredJobs": {
+    "managed-opencode-runtime (windows-latest)": "success",
+    "managed-opencode-runtime (macos-latest)": "success",
+    "managed-opencode-runtime (ubuntu-latest)": "success",
+    "full-check": "success"
+  },
+  "public-check-fork": "skipped-by-design-for-non-fork-push",
+  "liveAcceptance": false
+}

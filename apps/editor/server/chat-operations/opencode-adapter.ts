@@ -18,6 +18,7 @@ import {
   TAGMA_PIPELINE_DIAGNOSIS_EVIDENCE_CONTRACT,
   TAGMA_READONLY_PIPELINE_REFERENCE,
   TAGMA_PIPELINE_INTENT_CLASSIFIER_AGENT,
+  TAGMA_TRIAL_CONTENT_REVIEWER_AGENT,
 } from '../opencode-seed.js';
 import {
   OpenCodeInvocationController,
@@ -97,7 +98,10 @@ export interface OpenCodeAdapterClassifierTextPromptInput {
 export interface OpenCodeAdapterTextPromptInput {
   readonly sessionID: string;
   readonly messageID: string;
-  readonly agent: typeof TAGMA_GENERAL_DISCUSSION_AGENT | typeof TAGMA_PIPELINE_DIAGNOSIS_AGENT;
+  readonly agent:
+    | typeof TAGMA_GENERAL_DISCUSSION_AGENT
+    | typeof TAGMA_PIPELINE_DIAGNOSIS_AGENT
+    | typeof TAGMA_TRIAL_CONTENT_REVIEWER_AGENT;
   readonly model: { readonly providerID: string; readonly modelID: string };
   readonly variant?: string;
   readonly tools: typeof TAGMA_READONLY_TEXT_TOOLS;
@@ -117,6 +121,11 @@ export interface OpenCodeAdapterSdkClient {
     };
   };
   readonly session: {
+    update?(input: {
+      readonly sessionID: string;
+      readonly directory: string;
+      readonly title: string;
+    }): Promise<OpenCodeAdapterSdkResult>;
     abort(input: {
       readonly sessionID: string;
       readonly directory: string;
@@ -202,7 +211,7 @@ function requireSuccessfulSdkData(result: OpenCodeAdapterSdkResult): unknown {
   return result.data;
 }
 
-class OpenCodeDefinitivePromptError extends Error {
+export class OpenCodeDefinitivePromptError extends Error {
   constructor(readonly code: OpenCodePromptProviderFailureCode) {
     super('OpenCode returned a definitive bounded prompt failure.');
     this.name = 'OpenCodeDefinitivePromptError';
@@ -655,6 +664,21 @@ export class OpenCodeSdkAdapter
     return { kind: 'created', sessionId: input.sessionId };
   }
 
+  /** Assign Host metadata before prompting to avoid auxiliary model title generation. */
+  async setSessionTitle(sessionId: string, title: string): Promise<void> {
+    const client = await this.resolveClient();
+    if (!client.session.update) throw new Error('OpenCode session title update unavailable.');
+    const result = await client.session.update({
+      sessionID: sessionId,
+      directory: this.workspaceDirectory,
+      title,
+    });
+    const session = record(requireSuccessfulSdkData(result));
+    if (session?.id !== sessionId || session?.title !== title) {
+      throw new Error('OpenCode session title identity did not match Host metadata.');
+    }
+  }
+
   async prompt(input: {
     readonly sessionId: string;
     readonly inputId: string;
@@ -790,15 +814,30 @@ export class OpenCodeSdkAdapter
     readonly user: string;
     readonly signal: AbortSignal;
   }): Promise<OpenCodeReadonlyTextResponse> {
+    return this.promptToolFreeText(
+      input,
+      input.purpose === 'diagnosis'
+        ? TAGMA_PIPELINE_DIAGNOSIS_AGENT
+        : TAGMA_GENERAL_DISCUSSION_AGENT,
+    );
+  }
+
+  async promptTrialSemanticReviewText(
+    input: Omit<Parameters<OpenCodeTextPromptClient['promptReadonlyText']>[0], 'purpose'>,
+  ): Promise<OpenCodeReadonlyTextResponse> {
+    return this.promptToolFreeText(input, TAGMA_TRIAL_CONTENT_REVIEWER_AGENT);
+  }
+
+  private async promptToolFreeText(
+    input: Omit<Parameters<OpenCodeTextPromptClient['promptReadonlyText']>[0], 'purpose'>,
+    agent: OpenCodeAdapterTextPromptInput['agent'],
+  ): Promise<OpenCodeReadonlyTextResponse> {
     const client = await this.resolveClient();
     const result = await client.session.prompt(
       {
         sessionID: input.sessionId,
         messageID: input.executionMessageId,
-        agent:
-          input.purpose === 'diagnosis'
-            ? TAGMA_PIPELINE_DIAGNOSIS_AGENT
-            : TAGMA_GENERAL_DISCUSSION_AGENT,
+        agent,
         model: input.model,
         ...(input.variant ? { variant: input.variant } : {}),
         tools: TAGMA_READONLY_TEXT_TOOLS,

@@ -285,6 +285,36 @@
       "path": "architecture/quality/evidence/verify8-windows-seeded-budget-red.json",
       "sha256": "7460932f3271491b12374b19899fb111d35b9bd25dc4a055c6567bce45f03e66",
       "role": "actual-windows-CI-final-emission-red"
+    },
+    {
+      "id": "semantic-review-contract-first-red",
+      "path": "architecture/quality/evidence/semantic-review-contract-first-red.txt",
+      "sha256": "4ed4f2426015053560fca3fcadc2f4d67fcfd02e39309f9172f52397db292fe7",
+      "role": "immutable-new-contract-red"
+    },
+    {
+      "id": "semantic-review-generated-boundary-first-red",
+      "path": "architecture/quality/evidence/semantic-review-generated-boundary-first-red.txt",
+      "sha256": "edfdf854aacffb1b85391cece9814663e9b2b7d49d0d9cf9204fcaa284fc40f8",
+      "role": "immutable-native-schema-red"
+    },
+    {
+      "id": "semantic-review-actual-runtime-first-red",
+      "path": "architecture/quality/evidence/semantic-review-actual-runtime-first-red.txt",
+      "sha256": "91cebcd89d7b903742d73a385cb12d12cdfeb694b5efc310259f2c9de9e8e6e6",
+      "role": "immutable-actual-Sandbox-red"
+    },
+    {
+      "id": "semantic-review-native-extra-call-first-red",
+      "path": "architecture/quality/evidence/semantic-review-native-extra-call-first-red.txt",
+      "sha256": "fceabccd5b9f3f84b07c325956642b1db776f34d5af070b7bd738a8399e76938",
+      "role": "immutable-native-call-count-red"
+    },
+    {
+      "id": "semantic-review-native-green",
+      "path": "architecture/quality/evidence/semantic-review-native-green.txt",
+      "sha256": "dbbb9885b1fbbdb72a2c853b8df03416af1a8057521b57a5623519e870d42f1b",
+      "role": "pinned-native-synthetic-transport-green"
     }
   ],
   "issues": [
@@ -6258,9 +6288,15 @@
           "evidencePath": "architecture/quality/evidence/verify8-windows-seeded-budget-green.txt",
           "evidenceSha256": "ec11aca7469237ce01cec9cdacb523280f1aed4d6cf8c171e5ac6756c5f7d3e4",
           "liveAcceptance": false
+        },
+        {
+          "kind": "actual-native-Windows-macOS-Linux-and-full-CI-green",
+          "evidencePath": "architecture/quality/evidence/verify8-windows-seeded-budget-ci-green.json",
+          "evidenceSha256": "167792712ea3c89f6e8d90d85a6c94baaba12ab6b02c81a113b43b948a019556",
+          "liveAcceptance": false
         }
       ],
-      "status": "local-regression-guarded-native-Windows-CI-pending",
+      "status": "native-all-supported-OS-CI-guarded-live-case-separately-blocked",
       "fixes": [
         {
           "path": "apps/editor/server/opencode-seed.ts",
@@ -6287,6 +6323,297 @@
       },
       "contract": "Budget the actual seeded document after stage-removal policy and finite steps for Windows/macOS/Linux, Python tools on/off, default/max steps; compare actual seed bytes with shared renderer. Preserve 22000 bound and all authority, permission and step policies.",
       "claimLimit": "Local RED reproduced native Windows 22046; final renderer regression and 102 related tests pass. Actual native Windows CI and fresh live acceptance remain separate."
+    },
+    {
+      "id": "CSR-0041",
+      "lineage": [
+        "CSR-0026",
+        "CSR-0029",
+        "CSR-0034",
+        "CSR-0040"
+      ],
+      "title": "Dynamic produced content needs explicit independent Host review with actual execution proof",
+      "category": "product-trial-evidence",
+      "mechanism": "bounded-independent-semantic-content-review",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "semantic-review-contract-first-red",
+        "path": "architecture/quality/evidence/semantic-review-contract-first-red.txt",
+        "sha256": "4ed4f2426015053560fca3fcadc2f4d67fcfd02e39309f9172f52397db292fe7",
+        "sourceRevision": "ffbd5c8f5427f4edb175c7589708de4e33158343",
+        "role": "immutable-new-contract-red",
+        "round": "S1-L1-verify8-user-approved-capability-extension",
+        "acceptancePolicy": "Explicit user-authorized fallible independent evaluator; preserve actual Trial, provenance, deterministic structure and sealed publication. No live acceptance claim."
+      },
+      "history": [
+        {
+          "kind": "immutable-new-contract-red",
+          "evidencePath": "architecture/quality/evidence/semantic-review-contract-first-red.txt",
+          "evidenceSha256": "4ed4f2426015053560fca3fcadc2f4d67fcfd02e39309f9172f52397db292fe7",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-native-schema-red",
+          "evidencePath": "architecture/quality/evidence/semantic-review-generated-boundary-first-red.txt",
+          "evidenceSha256": "edfdf854aacffb1b85391cece9814663e9b2b7d49d0d9cf9204fcaa284fc40f8",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-actual-Sandbox-red",
+          "evidencePath": "architecture/quality/evidence/semantic-review-actual-runtime-first-red.txt",
+          "evidenceSha256": "91cebcd89d7b903742d73a385cb12d12cdfeb694b5efc310259f2c9de9e8e6e6",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-native-call-count-red",
+          "evidencePath": "architecture/quality/evidence/semantic-review-native-extra-call-first-red.txt",
+          "evidenceSha256": "fceabccd5b9f3f84b07c325956642b1db776f34d5af070b7bd738a8399e76938",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "pinned-native-synthetic-transport-green",
+          "evidencePath": "architecture/quality/evidence/semantic-review-native-green.txt",
+          "evidenceSha256": "dbbb9885b1fbbdb72a2c853b8df03416af1a8057521b57a5623519e870d42f1b",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "implemented-native-and-runtime-guarded-live-retest-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/chat-trial-semantic-review.ts",
+          "kind": "strict-bounded-Host-evidence-and-independent-model-review",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        },
+        {
+          "path": "apps/editor/server/opencode-trial-semantic-review.ts",
+          "kind": "fresh-tool-free-fixed-title-native-session-no-auxiliary-calls",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-contract.test.ts",
+          "fullName": "dynamic content can request independent Host review while retaining real core ownership",
+          "namePattern": "^dynamic content can request independent Host review while retaining real core ownership$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-contract.test.ts",
+          "fullName": "semantic review rejects seeded outputs and mismatched or omitted owning roles",
+          "namePattern": "^semantic review rejects seeded outputs and mismatched or omitted owning roles$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-contract.test.ts",
+          "fullName": "semantic review cannot grade negative cases or accept model-authored pass flags",
+          "namePattern": "^semantic review cannot grade negative cases or accept model-authored pass flags$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-contract.test.ts",
+          "fullName": "semantic JSON review keeps structural validation and cannot pass synchronously",
+          "namePattern": "^semantic JSON review keeps structural validation and cannot pass synchronously$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "independent semantic review binds actual artifact bytes and frozen execution identities",
+          "namePattern": "^independent semantic review binds actual artifact bytes and frozen execution identities$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic votes distinguish an evidenced artifact defect from an uncertain observation",
+          "namePattern": "^semantic votes distinguish an evidenced artifact defect from an uncertain observation$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic review never calls a model without actual success and a Host runtime",
+          "namePattern": "^semantic review never calls a model without actual success and a Host runtime$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic evidence rejects escaped paths, ancestor links and hardlinks before model access",
+          "namePattern": "^semantic evidence rejects escaped paths, ancestor links and hardlinks before model access$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic evidence never transmits partial binary oversized or secret-bearing artifacts",
+          "namePattern": "^semantic evidence never transmits partial binary oversized or secret-bearing artifacts$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic review fails closed on incomplete invented or extra model verdicts",
+          "namePattern": "^semantic review fails closed on incomplete invented or extra model verdicts$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic review requires complete provider output and preserves unknown billing outcomes",
+          "namePattern": "^semantic review requires complete provider output and preserves unknown billing outcomes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic review rechecks produced and input evidence after the model returns",
+          "namePattern": "^semantic review rechecks produced and input evidence after the model returns$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic reviewer deadline aborts the one invocation even when it never settles",
+          "namePattern": "^semantic reviewer deadline aborts the one invocation even when it never settles$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "semantic reviewer cancellation and caller mutation cannot turn an in-flight review green",
+          "namePattern": "^semantic reviewer cancellation and caller mutation cannot turn an in-flight review green$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "actual Sandbox semantic review runs after task execution for every repeat",
+          "namePattern": "^actual Sandbox semantic review runs after task execution for every repeat$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "a failed earlier semantic repeat cannot be hidden and retains complete private repair evidence",
+          "namePattern": "^a failed earlier semantic repeat cannot be hidden and retains complete private repair evidence$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic outputs must be freshly produced rather than staged or inherited from a previous repeat",
+          "namePattern": "^semantic outputs must be freshly produced rather than staged or inherited from a previous repeat$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic invocation is unavailable to legacy callers and missing Host model contexts",
+          "namePattern": "^semantic invocation is unavailable to legacy callers and missing Host model contexts$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic same-attempt replay is exact but new trials and model configs require fresh execution",
+          "namePattern": "^semantic same-attempt replay is exact but new trials and model configs require fresh execution$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic receipt validation rejects missing shifted or tampered current-run proofs",
+          "namePattern": "^semantic receipt validation rejects missing shifted or tampered current-run proofs$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "finalize requires the complete semantic receipts even in an otherwise correctly signed cache",
+          "namePattern": "^finalize requires the complete semantic receipts even in an otherwise correctly signed cache$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "finalize accepts current semantic execution receipts without changing the input-hash contract",
+          "namePattern": "^finalize accepts current semantic execution receipts without changing the input-hash contract$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-trial-semantic-review.test.ts",
+          "fullName": "semantic transport uses distinct fresh tool-free sessions and the exact frozen model variant",
+          "namePattern": "^semantic transport uses distinct fresh tool-free sessions and the exact frozen model variant$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-trial-semantic-review.test.ts",
+          "fullName": "semantic transport preserves definitive billing rejection without a second model call",
+          "namePattern": "^semantic transport preserves definitive billing rejection without a second model call$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-trial-semantic-review.test.ts",
+          "fullName": "semantic transport cancels only its reviewer session through both native drains",
+          "namePattern": "^semantic transport cancels only its reviewer session through both native drains$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-trial-semantic-review.test.ts",
+          "fullName": "semantic transport rejects session conflicts and mismatched response identities",
+          "namePattern": "^semantic transport rejects session conflicts and mismatched response identities$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-trial-semantic-review.test.ts",
+          "fullName": "semantic transport does not create an aborted session or expose raw transport errors",
+          "namePattern": "^semantic transport does not create an aborted session or expose raw transport errors$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-trial-semantic-review.test.ts",
+          "fullName": "semantic transport fails closed before a model call when fixed session metadata cannot be established",
+          "namePattern": "^semantic transport fails closed before a model call when fixed session metadata cannot be established$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "generated semantic review schema and handler preserve ownership and finite commit counting",
+          "namePattern": "^generated semantic review schema and handler preserve ownership and finite commit counting$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring.test.ts",
+          "fullName": "Host semantic review keeps the sealed model and intent through automatic repair",
+          "namePattern": "^Host semantic review keeps the sealed model and intent through automatic repair$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "pinned-native-synthetic-transport-green",
+        "evidencePath": "architecture/quality/evidence/semantic-review-native-green.txt",
+        "evidenceSha256": "dbbb9885b1fbbdb72a2c853b8df03416af1a8057521b57a5623519e870d42f1b",
+        "liveAcceptance": false
+      },
+      "contract": "New explicit artifact-semantic-review only for owning positive core content. Actual successful execution first, exact frozen model/intent, single tool-free separate call per repeat, bounded immutable artifacts and literal evidence; fail closed on uncertainty/unavailability/mutation. Every repeat must carry exact signed semantic receipts into publication; no equivalent-case reuse or hidden title calls. Preserve source relations, JSON checks, finite author repair and first-owner retained authority.",
+      "claimLimit": "Model judgment can be wrong. Synthetic native and actual Sandbox tests do not establish external truth or a passed live case. S1-L1 remains blocked until fresh-workspace actual Trial and sealed publication meet substantive criteria."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

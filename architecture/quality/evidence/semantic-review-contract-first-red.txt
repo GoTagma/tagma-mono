@@ -1,0 +1,22 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-semantic-review-contract.test.ts:
+789 |       type,
+790 |       taskId,
+791 |       status: status as 'success' | 'failed' | 'skipped' | 'timeout' | 'blocked',
+792 |     };
+793 |   }
+794 |   throw new Error(`${label}.type is unsupported.`);
+                                                       ^
+error: cases[0].expectations[1].type is unsupported.
+      at parseExpectation (/workspace/tagma-mono/apps/editor/server/chat-pipeline-trial-plan.ts:794:50)
+      at map (1:11)
+      at parseCase (/workspace/tagma-mono/apps/editor/server/chat-pipeline-trial-plan.ts:871:5)
+      at map (1:11)
+      at parseChatPipelineTrialPlan (/workspace/tagma-mono/apps/editor/server/chat-pipeline-trial-plan.ts:1187:55)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-contract.test.ts:12:18)
+(fail) dynamic content can request independent Host review while retaining real core ownership [2.30ms]
+
+ 0 pass
+ 1 fail
+Ran 1 test across 1 file. [116.00ms]

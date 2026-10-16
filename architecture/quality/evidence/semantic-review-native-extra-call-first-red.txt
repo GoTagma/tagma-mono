@@ -1,0 +1,22 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-trial-semantic-review-native.test.ts:
+89 |           one: JSON.stringify(body.messages).includes('Provisional observation ONE'), two: JSON.stringify(body.messages).includes('Provisional observation TWO'),
+90 |           roles: body.messages?.map((message) => message.role) }))));
+91 |         expect(result.detail).toBe('Independent model content review passed.'); expect(result.success).toBe(true);
+92 |         sessions.push(result.receipt!.reviewerSessionId!);
+93 |       }
+94 |       expect(new Set(sessions).size).toBe(2); expect(requests).toHaveLength(2);
+                                                                    ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 2
+Received length: 4
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/opencode-trial-semantic-review-native.test.ts:94:64)
+(fail) native content reviewer has no tools or inherited history and preserves the frozen variant [3663.58ms]
+
+ 0 pass
+ 1 fail
+ 7 expect() calls
+Ran 1 test across 1 file. [3.78s]

@@ -594,6 +594,29 @@ export function createTrialResilienceRules() {
       throw new Error(
         'Core witness must explicitly map every executed task; a missing map cannot pass.',
       );
+    const semanticTargets = new Set<string>();
+    for (const testCase of plan.cases) {
+      for (const [index, expectation] of testCase.expectations.entries()) {
+        if (expectation.type !== 'artifact-semantic-review') continue;
+        if (testCase.id !== normal.id)
+          throw new Error('Semantic review is limited to the positive normal core case.');
+        const mapped = core.taskRoles.filter((role) => role.expectationIndices.includes(index));
+        const owners = Object.keys(tasks).filter((id) =>
+          tasks[id]?.artifactPaths?.includes(expectation.path),
+        );
+        if (
+          mapped.length !== 1 ||
+          mapped[0]?.role !== 'content' ||
+          mapped[0].taskId !== expectation.taskId ||
+          owners.length !== 1 ||
+          owners[0] !== expectation.taskId
+        )
+          throw new Error('Semantic review must map to its uniquely owning content task.');
+        const key = expectation.taskId + '\0' + expectation.path;
+        if (semanticTargets.has(key)) throw new Error('Semantic review target is duplicated.');
+        semanticTargets.add(key);
+      }
+    }
     const overlaps = (a: string, b: string) => {
       const x = a.toLowerCase(),
         y = b.toLowerCase();
@@ -679,6 +702,9 @@ export function createTrialResilienceRules() {
             (check?.type === 'json-pointer-equals' &&
               check.path === path &&
               concrete(JSON.parse(check.expectedJson))) ||
+            (check?.type === 'artifact-semantic-review' &&
+              check.path === path &&
+              check.taskId === producerTaskId) ||
             (check?.type === 'file-equals' && check.path === path && check.text.trim().length > 0)
           );
         })
@@ -787,6 +813,9 @@ export function createTrialResilienceRules() {
             );
         } else if (e.type === 'file-equals' && e.text.trim().length > 0) {
           // Exact produced text still needs the explicit intent-bound semantic rationale.
+        } else if (e.type === 'artifact-semantic-review') {
+          // Normal-case mapping and unique ownership were checked above. Actual
+          // execution and a separate Host model review remain mandatory at runtime.
         } else if (e.type === 'file-source-text-occurrence') {
           if (e.consumerTaskId !== role.taskId || !ownedSourceRelation(e))
             rejectCoreCoordinate(

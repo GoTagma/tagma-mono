@@ -4,6 +4,7 @@ import {
 } from './execution-input-witness.js';
 
 import { createHash } from 'node:crypto';
+import type { TrialSemanticReviewModel } from '../chat-trial-semantic-review.js';
 import {
   observeCompileError,
   readCompileErrorObservation,
@@ -819,6 +820,7 @@ export interface ChatOperationV2AuthoringRuntime {
     readonly planReviewAffectedCases?: ChatOperationV2TrialPlanRequest['affectedCases'];
     readonly trialPlanNoProgress?: ChatOperationV2TrialPlannerNoProgressContext;
     readonly intentText?: string;
+    readonly semanticReviewModel?: TrialSemanticReviewModel;
     readonly signal: AbortSignal;
     readonly onTrialProgress?: (progress: ChatOperationV2TrialProgressUpdate) => void;
   }): Promise<ChatOperationV2AuthoringVerificationResult>;
@@ -3248,6 +3250,11 @@ export class ChatOperationV2AuthoringEngine {
           targetId: context.targetId,
           stage: context.stage,
           repairAttempts: operation.repairAttempts,
+          semanticReviewModel: {
+            providerID: admission.provider,
+            modelID: admission.model,
+            variant: admission.variant,
+          },
           ...(noProgress ? { trialPlanNoProgress: noProgress } : {}),
           ...(verificationAttemptVersion === undefined ? {} : { verificationAttemptVersion }),
           ...(context.pendingTrialPlanRequest?.affectedCases
@@ -4818,6 +4825,15 @@ export class ChatOperationV2AuthoringEngine {
         'Trial Plan recovery stage is missing.',
       );
     }
+    const admission = this.persistence.getOperationAdmission(context.operationId);
+    if (!admission)
+      throw new ChatOperationV2AuthoringProtocolError(
+        'authority_mismatch',
+        'Frozen review model and intent are unavailable.',
+      );
+    const clarificationThread = this.persistence.getOperationClarificationThread(
+      context.operationId,
+    );
     const verification = validateVerification(
       await this.runtime.verifyStage({
         operationId: context.operationId,
@@ -4827,6 +4843,21 @@ export class ChatOperationV2AuthoringEngine {
         targetId: context.targetId,
         stage: context.stage,
         repairAttempts: operation.repairAttempts,
+        semanticReviewModel: {
+          providerID: admission.provider,
+          modelID: admission.model,
+          variant: admission.variant,
+        },
+        intentText:
+          buildChatOperationV2ClarifiedRequestText(admission.request.text, clarificationThread) +
+          admission.request.attachments
+            .filter((item) =>
+              /requirements?|spec(?:ification)?|acceptance|instructions?|brief|需求|规格|验收|说明/iu.test(
+                item.label,
+              ),
+            )
+            .map((item) => `\n${item.content}`)
+            .join(''),
         signal: new AbortController().signal,
       }),
     );

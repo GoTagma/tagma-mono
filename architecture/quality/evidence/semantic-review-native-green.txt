@@ -1,0 +1,17 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-trial-semantic-review.test.ts:
+(pass) semantic transport uses distinct fresh tool-free sessions and the exact frozen model variant [5.26ms]
+(pass) semantic transport preserves definitive billing rejection without a second model call [2.21ms]
+(pass) semantic transport cancels only its reviewer session through both native drains [0.75ms]
+(pass) semantic transport rejects session conflicts and mismatched response identities [0.25ms]
+(pass) semantic transport does not create an aborted session or expose raw transport errors [0.27ms]
+(pass) semantic transport fails closed before a model call when fixed session metadata cannot be established [0.28ms]
+
+apps/editor/tests/opencode-trial-semantic-review-native.test.ts:
+(pass) native content reviewer has no tools or inherited history and preserves the frozen variant [3620.89ms]
+
+ 7 pass
+ 0 fail
+ 53 expect() calls
+Ran 7 tests across 2 files. [3.78s]

@@ -147,6 +147,12 @@ function validateExpectation(value, label) {
     normalizeRelativeCasePath(raw.path, label + ".path");
     return raw;
   }
+  if (type === "artifact-semantic-review") {
+    if (Object.keys(raw).some((key) => !["type", "path", "taskId"].includes(key))) throw new Error(label + " contains unsupported semantic-review fields.");
+    const taskId = asString(raw.taskId, label + ".taskId", 160);
+    if (!QUALIFIED_TASK_ID_RE.test(taskId)) throw new Error(label + ".taskId must be a qualified task id.");
+    return { type, path: normalizeRelativeCasePath(raw.path, label + ".path"), taskId };
+  }
   if (type === "json-pointer-equals" || type === "json-pointer-text-occurrence") {
     normalizeRelativeCasePath(raw.path, label + ".path");
     const pointer = asString(raw.pointer, label + ".pointer", 512, true);
@@ -340,7 +346,8 @@ function validateCase(value, index) {
         expectation.type === "file-contains" ||
         expectation.type === "file-not-contains" ||
         expectation.type === "file-equals" ||
-        expectation.type === "file-preserves-lines"
+        expectation.type === "file-preserves-lines" ||
+        expectation.type === "artifact-semantic-review"
       ) ||
       !expectation.path.toLowerCase().endsWith(".json") ||
       jsonAwarePaths.has(expectation.path.toLowerCase())
@@ -448,6 +455,7 @@ function repeatedFileOutputPaths(testCase) {
         expectation.type === "file-equals" ||
         expectation.type === "file-preserves-lines" ||
         expectation.type === "json-valid" ||
+        expectation.type === "artifact-semantic-review" ||
         expectation.type === "json-pointer-equals" ||
         expectation.type === "file-source-text-occurrence"
       )
@@ -480,6 +488,7 @@ function hasDistinctOutputExpectation(cases) {
         expectation.type === "file-equals" ||
         expectation.type === "file-preserves-lines" ||
         expectation.type === "json-valid" ||
+        expectation.type === "artifact-semantic-review" ||
         expectation.type === "json-pointer-equals" ||
         expectation.type === "file-source-text-occurrence"
       ) {
@@ -1349,6 +1358,11 @@ const expectationSchema = tool.schema.discriminatedUnion("type", [
     path: tool.schema.string(),
   }),
   tool.schema.object({
+    type: tool.schema.literal("artifact-semantic-review"),
+    path: tool.schema.string().min(1).max(240),
+    taskId: tool.schema.string().regex(QUALIFIED_TASK_ID_RE).max(160),
+  }).strict().describe("Host-only independent model assessment of actual nondeterministic produced content, not deterministic truth proof. Use only for the positive normal core case, mapped to the uniquely owning content task. Keep success, JSON/schema, source-provenance and any deterministic assertions; no fixture answer or planner-authored pass flag. Actual task execution and a complete bounded reviewer verdict are mandatory."),
+  tool.schema.object({
     type: tool.schema.literal("json-pointer-equals"),
     path: tool.schema.string(),
     pointer: tool.schema.string(),
@@ -1410,9 +1424,9 @@ const evidenceSchema = tool.schema.union([
 // Preserve unknown review keys for the existing semantic key validator; do not
 // let Zod silently remove evidence that parseReview must reject.
 const coreWitnessSchema = tool.schema.union([
-  tool.schema.object({ status: tool.schema.literal("covered"), normalCaseId: tool.schema.string().min(1).max(64), taskRoles: tool.schema.array(tool.schema.object({ taskId: tool.schema.string(), role: tool.schema.enum(["content", "execution"]), rationale: tool.schema.string().min(1).max(1000), expectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).max(32).describe("For content roles use content-only zero-based indices from the normal case: concrete JSON values, exact nonempty file bytes or supported source occurrence. Exclude task-status, existence, JSON/schema validity and substring-only checks; success is asserted separately. A source-text occurrence index belongs only to its consumer role, never its producer, which needs independent concrete source content. Execution roles use an empty array.") }).passthrough()).min(1).max(32), generatedInputs: tool.schema.array(tool.schema.object({ path: tool.schema.string().min(1).max(240), producerTaskId: tool.schema.string(), consumerTaskId: tool.schema.string() }).passthrough()).max(32) }).passthrough(),
+  tool.schema.object({ status: tool.schema.literal("covered"), normalCaseId: tool.schema.string().min(1).max(64), taskRoles: tool.schema.array(tool.schema.object({ taskId: tool.schema.string(), role: tool.schema.enum(["content", "execution"]), rationale: tool.schema.string().min(1).max(1000), expectationIndices: tool.schema.array(tool.schema.number().int().min(0).max(31)).max(32).describe("For content roles use content-only zero-based indices from the normal case: concrete JSON values, exact nonempty file bytes or supported source occurrence; artifact-semantic-review instead requests independent Host assessment of actual dynamic content. Exclude task-status, existence, JSON/schema validity and substring-only checks; success is asserted separately. A source-text occurrence index belongs only to its consumer role, never its producer, which needs independent concrete source content. Execution roles use an empty array.") }).passthrough()).min(1).max(32), generatedInputs: tool.schema.array(tool.schema.object({ path: tool.schema.string().min(1).max(240), producerTaskId: tool.schema.string(), consumerTaskId: tool.schema.string() }).passthrough()).max(32) }).passthrough(),
   tool.schema.object({ status: tool.schema.literal("blocked"), taskIds: tool.schema.array(tool.schema.string()).min(1).max(32), code: tool.schema.string().min(1).max(96), rationale: tool.schema.string().min(1).max(1000) }).passthrough(),
-]).describe("Covered core maps every terminal-closure task to success and every declared output artifact to concrete intent-bound content: stable JSON pointer values, meaningful finite numeric/boolean values, exact nonempty text, or supported source occurrence. If the current YAML lacks an observable result that a permitted workflow repair can expose, keep the core blocked and commit a blocking pipeline-artifact finding naming that repair. Use diagnostic-only only for a genuine observation limit that no permitted workflow repair can expose; being a read-only planner does not make a YAML repair diagnostic-only. A blocked core cannot pass.");
+]).describe("Covered core maps every terminal-closure task to success and every declared output artifact to concrete intent-bound content: stable JSON pointer values, meaningful finite numeric/boolean values, exact nonempty text, or supported source occurrence, with artifact-semantic-review for independently model-graded dynamic content after actual execution. If the current YAML lacks an observable result that a permitted workflow repair can expose, keep the core blocked and commit a blocking pipeline-artifact finding naming that repair. Use diagnostic-only only for a genuine observation limit that no permitted workflow repair can expose; being a read-only planner does not make a YAML repair diagnostic-only. A blocked core cannot pass.");
 const evidenceReviewSchema = tool.schema.object({ version: tool.schema.literal(1), intentDigest: tool.schema.string().min(64).max(64), decisions: tool.schema.array(tool.schema.object({ type: tool.schema.enum(["timeout-recovery","failure-recovery","empty-result","unlocated-source","source-preservation"]), required: tool.schema.boolean(), taskIds: tool.schema.array(tool.schema.string()).max(32).describe("Unique qualified track.task identifiers for the responsible task scope. When required: true, name at least one task. When required: false, this array must be empty."), rationale: tool.schema.string().min(1).max(1000) }).passthrough()).min(5).max(5), coreWitness: coreWitnessSchema.optional() }).passthrough();
 
 const caseSchema = tool.schema.object({

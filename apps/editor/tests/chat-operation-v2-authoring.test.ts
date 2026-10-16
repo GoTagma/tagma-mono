@@ -1023,6 +1023,33 @@ function dispatchInput(operation: StoredChatOperationV2) {
   };
 }
 
+test('Host semantic review keeps the sealed model and intent through automatic repair', async () => {
+  const { engine, store, runtime } = createHarness({ verification: ['repair', 'passed'] });
+  const sealed = store.getOperationAdmission('operation-1')!;
+  const captured: Array<{
+    model: Parameters<ChatOperationV2AuthoringRuntime['verifyStage']>[0]['semanticReviewModel'];
+    intent: string | undefined;
+  }> = [];
+  const verify = runtime.verifyStage.bind(runtime);
+  runtime.verifyStage = async (input) => {
+    captured.push({
+      model: input.semanticReviewModel ? { ...input.semanticReviewModel } : undefined,
+      intent: input.intentText,
+    });
+    return verify(input);
+  };
+  await engine.dispatch(dispatchInput(store.getOperation('operation-1')!));
+  expect(captured).toHaveLength(2);
+  for (const item of captured) {
+    expect(item.model).toEqual({
+      providerID: sealed.provider,
+      modelID: sealed.model,
+      variant: sealed.variant,
+    });
+    expect(item.intent).toBe(sealed.request.text);
+  }
+});
+
 describe('ChatTurn Operation V2 authoring lifecycle', () => {
   test('initial publication seals instructions from its verified authoring snapshot', async () => {
     const text = 'Populate inputs/records.txt and read reports/current.md.';

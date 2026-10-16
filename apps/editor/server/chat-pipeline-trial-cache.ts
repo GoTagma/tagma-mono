@@ -24,4 +24,7 @@
 // v49: owned repaired YAML may revalidate an unchanged authenticated full contract;
 // every original case/repeat runs afresh before a current-source Host receipt grants authority.
 // Native plan bytes/counters remain unchanged; older cache records grant no such authority.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 49 as const;
+// v50: dynamic artifact content may use a separate bounded tool-free Host model
+// review after actual execution. Every repeat needs fresh model-graded receipts;
+// semantic cases cannot reuse equivalent executions and finalize verifies receipts.
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 50 as const;

@@ -117,6 +117,7 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     'file-equals',
     'file-preserves-lines',
     'json-valid',
+    'artifact-semantic-review',
     'json-pointer-equals',
     'json-pointer-text-occurrence',
     'file-source-text-occurrence',
@@ -192,6 +193,7 @@ export type ChatPipelineTrialExpectation =
   | { type: 'file-equals'; path: string; text: string }
   | { type: 'file-preserves-lines'; path: string; sourcePath: string; text: string }
   | { type: 'json-valid'; path: string }
+  | { type: 'artifact-semantic-review'; path: string; taskId: string }
   | {
       type: 'file-source-text-occurrence';
       path: string;
@@ -708,6 +710,14 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
   if (type === 'json-valid') {
     return { type, path: normalizeRelativeCasePath(raw.path, `${label}.path`) };
   }
+  if (type === 'artifact-semantic-review') {
+    if (Object.keys(raw).some((key) => !['type', 'path', 'taskId'].includes(key)))
+      throw new Error(`${label} contains unsupported semantic-review fields.`);
+    const taskId = asString(raw.taskId, `${label}.taskId`, 160);
+    if (!QUALIFIED_TASK_ID_RE.test(taskId))
+      throw new Error(`${label}.taskId must be a qualified task id.`);
+    return { type, path: normalizeRelativeCasePath(raw.path, `${label}.path`), taskId };
+  }
   if (type === 'json-pointer-equals') {
     return {
       type,
@@ -1015,6 +1025,7 @@ export function findChatPipelineTrialRepeatedFileOutputPaths(
       expectation.type === 'file-equals' ||
       expectation.type === 'file-preserves-lines' ||
       expectation.type === 'json-valid' ||
+      expectation.type === 'artifact-semantic-review' ||
       expectation.type === 'json-pointer-equals' ||
       expectation.type === 'file-source-text-occurrence'
     )) {
@@ -1045,6 +1056,7 @@ function hasDistinctOutputExpectation(cases: ChatPipelineTrialPlanCase[]): boole
         expectation.type === 'file-equals' ||
         expectation.type === 'file-preserves-lines' ||
         expectation.type === 'json-valid' ||
+        expectation.type === 'artifact-semantic-review' ||
         expectation.type === 'json-pointer-equals' ||
         expectation.type === 'file-source-text-occurrence'
       ) {
@@ -1074,7 +1086,8 @@ function validateJsonArtifactExpectations(cases: ChatPipelineTrialPlanCase[]): v
           expectation.type === 'file-contains' ||
           expectation.type === 'file-not-contains' ||
           expectation.type === 'file-equals' ||
-          expectation.type === 'file-preserves-lines'
+          expectation.type === 'file-preserves-lines' ||
+          expectation.type === 'artifact-semantic-review'
         ) ||
         !expectation.path.toLowerCase().endsWith('.json') ||
         jsonAwarePaths.has(expectation.path.toLowerCase())
