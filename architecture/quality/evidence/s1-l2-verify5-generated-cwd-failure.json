@@ -1,0 +1,106 @@
+{
+  "scope": "Failure evidence only; cached projection is not a signed replay/publication proof. No original raw authority or bearer credentials exported.",
+  "sourceRevision": "3398e9c0b4f7041e10b4145309c325108501998a",
+  "operationId": "operation-1c9ec92f-6d7b-4228-9718-0c7b947f4252",
+  "case": "S1-L2",
+  "round": 1,
+  "businessSubmissions": 1,
+  "accepted": false,
+  "published": false,
+  "trialActuallyExecuted": true,
+  "trials": [
+    {
+      "cacheSha256": "21addc3914823fd02d7177e6bcaf3e4db181317dab5229c9e2f3dbba0dbdaaf1",
+      "success": false,
+      "kind": "failed",
+      "cases": [
+        {
+          "id": "normal-web-verification",
+          "success": false,
+          "runIds": [
+            "run_mvb2182n_0c412fc53cd8"
+          ],
+          "semanticReviewCount": 0,
+          "tasks": [
+            {
+              "taskId": "verify.check",
+              "status": "failed",
+              "failureKind": "spawn_error",
+              "stderr": "Spawn working directory is unavailable: /workspace/tagma-cloud/workspaces/s1-l2-verify5/.tagma/.chat-staging/eb6331c6-03ec-48ba-96d7-e590440fb07a/.trial-cases/normal-web-verification-WYFHbV/workspace/quick_verify/artifacts (ENOENT: no such file or directory, statx '/workspace/tagma-cloud/workspaces/s1-l2-verify5/.tagma/.chat-staging/eb6331c6-03ec-48ba-96d7-e590440fb07a/.trial-cases/normal-web-verification-WYFHbV/workspace/quick_verify/artifacts')"
+            },
+            {
+              "taskId": "verify.verdict",
+              "status": "skipped",
+              "failureKind": null,
+              "stderr": "[engine] skipped because upstream \"verify.check\" status=failed"
+            },
+            {
+              "taskId": "verify.validate",
+              "status": "skipped",
+              "failureKind": null,
+              "stderr": "[engine] skipped because upstream \"verify.verdict\" status=skipped"
+            }
+          ]
+        },
+        {
+          "id": "repeat-run-freshness",
+          "success": false,
+          "runIds": [
+            "run_mvb21872_b3653f7c37b8",
+            "run_mvb21877_b53313ba3f57"
+          ],
+          "semanticReviewCount": 0,
+          "tasks": [
+            {
+              "taskId": "verify.check",
+              "status": "failed",
+              "failureKind": "spawn_error",
+              "stderr": "Spawn working directory is unavailable: /workspace/tagma-cloud/workspaces/s1-l2-verify5/.tagma/.chat-staging/eb6331c6-03ec-48ba-96d7-e590440fb07a/.trial-cases/repeat-run-freshness-yh5hrO/workspace/quick_verify/artifacts (ENOENT: no such file or directory, statx '/workspace/tagma-cloud/workspaces/s1-l2-verify5/.tagma/.chat-staging/eb6331c6-03ec-48ba-96d7-e590440fb07a/.trial-cases/repeat-run-freshness-yh5hrO/workspace/quick_verify/artifacts')"
+            },
+            {
+              "taskId": "verify.verdict",
+              "status": "skipped",
+              "failureKind": null,
+              "stderr": "[engine] skipped because upstream \"verify.check\" status=failed"
+            },
+            {
+              "taskId": "verify.validate",
+              "status": "skipped",
+              "failureKind": null,
+              "stderr": "[engine] skipped because upstream \"verify.verdict\" status=skipped"
+            },
+            {
+              "taskId": "verify.check",
+              "status": "failed",
+              "failureKind": "spawn_error",
+              "stderr": "Spawn working directory is unavailable: /workspace/tagma-cloud/workspaces/s1-l2-verify5/.tagma/.chat-staging/eb6331c6-03ec-48ba-96d7-e590440fb07a/.trial-cases/repeat-run-freshness-yh5hrO/workspace/quick_verify/artifacts (ENOENT: no such file or directory, statx '/workspace/tagma-cloud/workspaces/s1-l2-verify5/.tagma/.chat-staging/eb6331c6-03ec-48ba-96d7-e590440fb07a/.trial-cases/repeat-run-freshness-yh5hrO/workspace/quick_verify/artifacts')"
+            },
+            {
+              "taskId": "verify.verdict",
+              "status": "skipped",
+              "failureKind": null,
+              "stderr": "[engine] skipped because upstream \"verify.check\" status=failed"
+            },
+            {
+              "taskId": "verify.validate",
+              "status": "skipped",
+              "failureKind": null,
+              "stderr": "[engine] skipped because upstream \"verify.verdict\" status=skipped"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "finalFailure": {
+    "stage": "verification",
+    "code": "trial_verification_paused",
+    "invocationId": null,
+    "outboxStatus": null,
+    "recordedAt": 1792160494291
+  },
+  "classification": "Generated YAML working directory omitted .tagma; actual spawn path workspace/quick_verify/artifacts versus production copier workspace/.tagma/quick_verify/artifacts. Existing explicit author/path rules were ignored. No new product defect confirmed; old-YAML and frozen two-plan rejection preserved.",
+  "childStreamClaim": "Spawn failed before a child process; unavailable stream evidence is retained as unavailable. Cached task stderr is Host spawn error, not verified child stderr.",
+  "repairedMechanismObservation": "No provider_unavailable misclassification observed in this attempt. This is not acceptance of S1-L2.",
+  "next": "Actual editor/browser restart, new workspace6, same original S1L2 prompt once; Flash/off -> supported Flash/low as an explicit model configuration attempt. No application source edits."
+}

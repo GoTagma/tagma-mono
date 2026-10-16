@@ -1,0 +1,41 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-workspace-input-boundary.test.ts:
+14:45:08.005 [pipeline] start "Workspace input boundary" run_id=run_mvb2xeeb_bc337339c96c
+14:45:08.012 [task:input.capture] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/input-proof/capture.js {{inputs.payload | shellquote}}
+14:45:08.014 [task:input.capture] ERROR: failed exit=-1 duration=0.0s
+14:45:08.014 [task:input.capture] ERROR: stderr tail:
+Spawn working directory is unavailable: /tmp/tagma-trial-input-boundary-hFT63E/.trial-cases/input-copy-LZlyMI/workspace/input-proof (ENOENT: no such file or directory, statx '/tmp/tagma-trial-input-boundary-hFT63E/.trial-cases/input-copy-LZlyMI/workspace/input-proof')
+14:45:08.015 [pipeline] failed "Workspace input boundary"
+14:45:08.015 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+14:45:08.015 [pipeline] Duration: 0.0s
+14:45:08.015 [pipeline] Log: /tmp/tagma-trial-input-boundary-hFT63E/.trial-cases/input-copy-LZlyMI/workspace/.tagma/logs/run_mvb2xeeb_bc337339c96c/pipeline.log
+14:45:08.022 [pipeline] start "Workspace input boundary" run_id=run_mvb2xeet_d9789c29f698
+14:45:08.022 [task:input.capture] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/input-proof/capture.js {{inputs.payload | shellquote}}
+14:45:08.039 [task:input.capture] success (0.0s)
+14:45:08.039 [pipeline] completed "Workspace input boundary"
+14:45:08.039 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+14:45:08.039 [pipeline] Duration: 0.0s
+14:45:08.039 [pipeline] Log: /tmp/tagma-trial-input-boundary-hFT63E/.trial-cases/input-copy-VJsRTu/workspace/.tagma/logs/run_mvb2xeet_d9789c29f698/pipeline.log
+14:45:08.041 [pipeline] start "Workspace input boundary" run_id=run_mvb2xefd_121702d26d07
+14:45:08.042 [task:input.capture] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/input-proof/capture.js {{inputs.payload | shellquote}}
+14:45:08.056 [task:input.capture] success (0.0s)
+14:45:08.056 [pipeline] completed "Workspace input boundary"
+14:45:08.056 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+14:45:08.056 [pipeline] Duration: 0.0s
+14:45:08.056 [pipeline] Log: /tmp/tagma-trial-input-boundary-hFT63E/.trial-cases/input-copy-4mBJJL/workspace/.tagma/logs/run_mvb2xefd_121702d26d07/pipeline.log
+14:45:08.058 [pipeline] start "Workspace input boundary" run_id=run_mvb2xefu_4ad7457404cb
+14:45:08.058 [task:input.capture] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/input-proof/capture.js {{inputs.payload | shellquote}}
+14:45:08.072 [task:input.capture] ERROR: failed exit=2 duration=0.0s
+14:45:08.072 [task:input.capture] ERROR: stderr tail:
+empty-string input rejected
+14:45:08.072 [pipeline] failed "Workspace input boundary"
+14:45:08.072 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+14:45:08.072 [pipeline] Duration: 0.0s
+14:45:08.072 [pipeline] Log: /tmp/tagma-trial-input-boundary-hFT63E/.trial-cases/input-copy-8ykaG6/workspace/.tagma/logs/run_mvb2xefu_4ad7457404cb/pipeline.log
+(pass) real Trial workspace coordinates preserve exact shell arguments and reject a missing cwd [79.27ms]
+
+ 1 pass
+ 0 fail
+ 30 expect() calls
+Ran 1 test across 1 file. [242.00ms]

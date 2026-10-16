@@ -1,0 +1,20 @@
+{
+  "scope": "Actual published ingestion helper and unchanged command through production SDK shell interpolation, isolated local-only runs; no OpenCode/provider invocation or additional business prompt",
+  "publishedHelperSha256": "8a4fa83bacbdfdc189bb210e63c9ca4136b74187100424b3475b68761025cc1e",
+  "results": [
+    {
+      "kind": "quotes-metacharacters-newline-unicode-preserved",
+      "success": true,
+      "status": "success",
+      "exactStringPreserved": true,
+      "shellSideEffect": false
+    },
+    {
+      "kind": "whitespace-rejected",
+      "success": false,
+      "status": "failed",
+      "exactStringPreserved": null,
+      "shellSideEffect": false
+    }
+  ]
+}

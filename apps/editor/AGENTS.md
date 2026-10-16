@@ -2354,3 +2354,10 @@
   which retains scope evidence and existing repair/discard decisions. Never classify that owned
   compile failure as provider unavailability or bypass Trial/publication guards. Preserve foreign
   identity, untyped failures, CAS conflicts and interrupted compile recovery as failures.
+
+- Preserve Trial helper placement under the isolated workspace `.tagma/<pipeline>` and
+  workspace-root cwd semantics. A generated cwd missing that prefix must fail before child
+  launch. Keep the real SDK/copy regression for exact shellquoted scalar arguments, padded
+  strings, newline/Unicode, no injected shell side effect and empty-input rejection. Generated
+  workflow mistakes and local helper probes are distinct from product defects and actual
+  model-backed Trial/publication evidence; never relabel native-default input coverage.

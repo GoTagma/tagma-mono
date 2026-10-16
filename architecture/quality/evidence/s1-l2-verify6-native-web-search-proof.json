@@ -1,0 +1,76 @@
+{
+  "scope": "Actual tool-use events parsed from complete SHA-verified child NDJSON; no model invocation, no query or retrieved page body copied",
+  "runs": [
+    {
+      "caseId": "positive-e2e",
+      "runNumber": 1,
+      "taskId": "verify.verify_claim",
+      "rawCompleteStreamSha256": "35fb1ce9763625d73e424a97ff5ad835045cd9aced14d5a0f4a43ed83f6b0c20",
+      "actualSearches": [
+        {
+          "status": "completed",
+          "outputBytes": 18120,
+          "outputSha256": "7e8f84c32327319299131ce001e2bb9a5c88edcc8ef3c93cec7202111366ef7a",
+          "normalCitationUrlsObserved": [
+            {
+              "url": "https://www.nasa.gov/image-article/great-wall/",
+              "inSearchResponse": true
+            },
+            {
+              "url": "https://www.nasa.gov/wp-content/uploads/static/history/PDFs/great_wall_less_great_from_space.pdf",
+              "inSearchResponse": true
+            },
+            {
+              "url": "https://www.scientificamerican.com/article/no-you-cant-see-the-great-wall-of-china-from-space/",
+              "inSearchResponse": true
+            },
+            {
+              "url": "https://www.esa.int/ESA_Multimedia/Images/2018/06/Great_Wall_of_China",
+              "inSearchResponse": true
+            },
+            {
+              "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3972694/",
+              "inSearchResponse": true
+            },
+            {
+              "url": "https://www.skyatnightmagazine.com/space-science/can-you-see-great-wall-china-from-space",
+              "inSearchResponse": true
+            },
+            {
+              "url": "https://www.britannica.com/question/Can-you-see-the-Great-Wall-of-China-from-space",
+              "inSearchResponse": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "repeat-run-refresh",
+      "runNumber": 1,
+      "taskId": "verify.verify_claim",
+      "rawCompleteStreamSha256": "23790cdee6c367f6cdad61dce321defc6f63c9fa556334766f0ad5ec0b06cf19",
+      "actualSearches": [
+        {
+          "status": "completed",
+          "outputBytes": 15088,
+          "outputSha256": "33e7e392cbf5b21b488290029360f368be91ee17c65e3bf1f378f9a5261b9f11",
+          "normalCitationUrlsObserved": null
+        }
+      ]
+    },
+    {
+      "caseId": "repeat-run-refresh",
+      "runNumber": 2,
+      "taskId": "verify.verify_claim",
+      "rawCompleteStreamSha256": "76a4b18c5a846b245c3cac69caf285a7c4aa7cba57d8a5a80a6465ad527a703f",
+      "actualSearches": [
+        {
+          "status": "completed",
+          "outputBytes": 18524,
+          "outputSha256": "bf42c3d7143e88119c6c85845d5facc8660afd5206430e4908845ec93fe7ee3c",
+          "normalCitationUrlsObserved": null
+        }
+      ]
+    }
+  ]
+}

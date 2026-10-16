@@ -1,0 +1,54 @@
+{
+  "scope": "Exact main commit CI; no live business acceptance implied",
+  "sourceRevision": "3398e9c0b4f7041e10b4145309c325108501998a",
+  "runId": 38913044198,
+  "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38913044198",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "full-check",
+      "databaseId": 117013402094,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38913044198/job/117013402094",
+      "startedAt": "2026-10-16T14:06:06Z",
+      "completedAt": "2026-10-16T14:11:32Z"
+    },
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "databaseId": 117013402546,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38913044198/job/117013402546",
+      "startedAt": "2026-10-16T14:06:06Z",
+      "completedAt": "2026-10-16T14:07:44Z"
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "databaseId": 117013402560,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38913044198/job/117013402560",
+      "startedAt": "2026-10-16T14:06:07Z",
+      "completedAt": "2026-10-16T14:13:47Z"
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "databaseId": 117013402823,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38913044198/job/117013402823",
+      "startedAt": "2026-10-16T14:06:12Z",
+      "completedAt": "2026-10-16T14:08:26Z"
+    },
+    {
+      "name": "public-check-fork",
+      "databaseId": 117013404274,
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38913044198/job/117013404274",
+      "startedAt": "2026-10-16T14:06:04Z",
+      "completedAt": "2026-10-16T14:06:04Z"
+    }
+  ]
+}

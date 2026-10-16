@@ -1,0 +1,20 @@
+apps/editor/tests/chat-trial-workspace-input-boundary.test.ts(26,30): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+apps/editor/tests/chat-trial-workspace-input-boundary.test.ts(27,30): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+apps/editor/tests/chat-trial-workspace-input-boundary.test.ts(74,19): error TS7006: Parameter 'event' implicitly has an 'any' type.
+
+
+  PASS text 93ms ok
+  PASS deps 251ms ok
+  PASS focus 212ms ok
+  PASS imports 67ms ok
+  PASS cycles 37ms ok
+  PASS secrets 292ms ok
+  PASS format 21.9s ok
+  FAIL types 47.8s exit 2
+  PASS lint 18.4s ok
+  PASS tests 215.5s ok
+  PASS scripts 2.8s ok
+  PASS build 19.4s ok
+  PASS publish 10.2s ok
+[verify] failed 1 of 13 selected gate(s)
+error: script "verify:full" exited with code 1

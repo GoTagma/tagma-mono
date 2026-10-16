@@ -1,0 +1,37 @@
+{
+  "scope": "Read-only bounded telemetry projection; no private authority or credentials exported",
+  "revisions": [
+    {
+      "version": 2,
+      "yamlHash": "5863f6a78faeb5e574727a0e51602c00a776ed5d",
+      "relativeYamlPath": "quick_verify/quick_verify.yaml",
+      "attemptIds": [
+        "trial-57c038ce4cf50c3c11c0bcffbbf970e7ea24816a"
+      ],
+      "toolAttemptCount": 1,
+      "validationRejectionCount": 0,
+      "repeatedValidationRejectionCount": 0,
+      "successfulWriteCount": 1,
+      "committedPlanHash": "471c93bb5a411c99160e7044b118eca7fbfe507f2b1309632e0805965a5f3aaf",
+      "firstAttemptAt": 1792160323640,
+      "lastAttemptAt": 1792160323640,
+      "elapsedMs": null
+    },
+    {
+      "version": 2,
+      "yamlHash": "2c94121b81dfb209ea4b12ae8a8ec0554f3c1570",
+      "relativeYamlPath": "quick_verify/quick_verify.yaml",
+      "attemptIds": [
+        "trial-c4c9a64eb57cd60abdf1c65fb2506bb810293116"
+      ],
+      "toolAttemptCount": 1,
+      "validationRejectionCount": 0,
+      "repeatedValidationRejectionCount": 0,
+      "successfulWriteCount": 1,
+      "committedPlanHash": "181c12e72e2a5ab632e11032212555bba1cfd46814276703dc08886752f44f0b",
+      "firstAttemptAt": 1792160402419,
+      "lastAttemptAt": 1792160402419,
+      "elapsedMs": null
+    }
+  ]
+}

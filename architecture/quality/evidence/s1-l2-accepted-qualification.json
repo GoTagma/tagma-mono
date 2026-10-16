@@ -1,0 +1,32 @@
+{
+  "scope": "Final test/docs acceptance qualification; no new product runtime behavior. Final source regression gate runs after materializing this record.",
+  "initialFullRun": {
+    "exitCode": 1,
+    "passedGateCount": 12,
+    "failedGate": "types (new fixture ES library/event annotation)",
+    "unitEditorSuitesCompleted": 363,
+    "unitFailureCount": 0,
+    "logSha256": "b7ec85598f4c71adcd96e469e3bf12e0b6e39142afbc8f32fcd2cb984cdcf088",
+    "summary": "PASS text 93ms ok\n  PASS deps 251ms ok\n  PASS focus 212ms ok\n  PASS imports 67ms ok\n  PASS cycles 37ms ok\n  PASS secrets 292ms ok\n  PASS format 21.9s ok\n  FAIL types 47.8s exit 2\n  PASS lint 18.4s ok\n  PASS tests 215.5s ok\n  PASS scripts 2.8s ok\n  PASS build 19.4s ok\n  PASS publish 10.2s ok\n[verify] failed 1 of 13 selected gate(s)\nerror: script \"verify:full\" exited with code 1"
+  },
+  "correctedFixtureChecks": {
+    "exitCode": 0,
+    "gates": [
+      "format",
+      "types",
+      "lint"
+    ],
+    "logSha256": "b637784e46ea1f8f175320ba7b03f1ff400db88b576a16dc7bbd981f6eb94fec",
+    "summary": "PASS format 21.1s ok\n  PASS types 53.0s ok\n  PASS lint 18.6s ok\n[verify] passed 3 selected gate(s)"
+  },
+  "finalRealBoundaryRegression": {
+    "passed": true,
+    "tests": 1,
+    "assertions": 30,
+    "evidence": "s1-l2-workspace-input-boundary-final-green.txt",
+    "sourceSha256": "67f09bc8dd90c58dc0d4ff0366022e2517f224dbb636d556b888978f0494cb90"
+  },
+  "qualificationInterpretation": "12 full-run gates passed; corrected fixture then passed format/types/lint and the actual boundary test again. Do not present the first full invocation as all13 GREEN. Exact new main CI and final serial44/252 source regression gate remain required.",
+  "packagesModified": false,
+  "versionCommandRequired": false
+}

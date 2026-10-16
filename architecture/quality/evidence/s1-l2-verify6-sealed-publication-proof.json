@@ -1,0 +1,51 @@
+{
+  "scope": "actual Host sealed result joined to production artifact-set projection and published file hashes; read-only",
+  "operationId": "operation-45062cd9-9a70-43ec-af3b-2b587119d53b",
+  "resultId": "result_083c984b8a1a9784f4e6f6e23bef512d4c97ff4b1f1ced41",
+  "resultHash": "456a8e511fd4826f9950657450a1282994f56f18433ccd226cb4e79de9ba8ef5",
+  "artifactSetHash": "a5400f4a4e1f67ca4715a364347d8b5c03fededce20098596990be357dc9388a",
+  "artifacts": [
+    {
+      "artifactId": "artifact_17caefc9e315c809ba853e64970f00e71dde7c3c37165a00",
+      "kind": "requirements",
+      "path": "quick_verify/quick_verify.requirements.md",
+      "sha256": "0ba23a593a7fae02ebf3cb356b304276a383aea2c2ce25cfacd5f184e2171ff7"
+    },
+    {
+      "artifactId": "artifact_3ff512ecdb35bb5f7154565b89c601360c8ac07b1a76b9cb",
+      "kind": "yaml",
+      "path": "quick_verify/quick_verify.yaml",
+      "sha256": "4f4ec2d7274ff2d5e5f862671e2ee1646a89640c20767bbf17a8a332c31f30a9"
+    },
+    {
+      "artifactId": "artifact_70a7545fb3e4f543c1cfeef7d38b0bce6cb913d5af0062ac",
+      "kind": "layout",
+      "path": "quick_verify/quick_verify.layout.json",
+      "sha256": "176590c91064642904137116d5940f494af8da7c34d85dd89e698a74a8f357bd"
+    },
+    {
+      "artifactId": "artifact_a734a23af075b85201ac504fda869384378397f271c2a762",
+      "kind": "support",
+      "path": "quick_verify/render_report.py",
+      "sha256": "a3f9c510903f4f689213d926b49c2fa038c28658f941d6b06897bbe0614e120a"
+    },
+    {
+      "artifactId": "artifact_ac731f619b2459e9b9deff8da785298dc5f331f5c4e353c5",
+      "kind": "support",
+      "path": "quick_verify/verdict.schema.json",
+      "sha256": "0793c03418399805d2d41869017926c1f1217618fcb4c287086a2f4986d790a5"
+    },
+    {
+      "artifactId": "artifact_d453296b493e499652718267cb1065c9ed50a729b01a676b",
+      "kind": "support",
+      "path": "quick_verify/validate_outputs.py",
+      "sha256": "1fa53eced00a135ab25cd9c2ab0b729ae5fdcaa29f3b739d652ee10c9b5eb010"
+    },
+    {
+      "artifactId": "artifact_f16e037f7750d87a153826f03e399fad96490ed0a912f472",
+      "kind": "support",
+      "path": "quick_verify/ingest_claim.py",
+      "sha256": "8a4fa83bacbdfdc189bb210e63c9ca4136b74187100424b3475b68761025cc1e"
+    }
+  ]
+}

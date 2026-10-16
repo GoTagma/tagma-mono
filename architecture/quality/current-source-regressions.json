@@ -399,6 +399,48 @@
       "path": "architecture/quality/evidence/s1-l2-verify4-native-stop-proof.json",
       "sha256": "6c989842ba82b98282c40eaf4ab1cd133acfe09e99b6a316791f71917284196a",
       "role": "read-only-content-free-native-completion-proof-not-host-settlement"
+    },
+    {
+      "id": "s1-l2-generated-cwd-first-live-failure",
+      "path": "architecture/quality/evidence/s1-l2-verify5-generated-cwd-failure.json",
+      "sha256": "b811beb77741910de71242d8614a06b4b8eefdd615b35b8d926225b1f9311cbd",
+      "role": "immutable-live-generated-workflow-failure-not-product-fault"
+    },
+    {
+      "id": "s1-l2-fresh-original-round-acceptance",
+      "path": "architecture/quality/evidence/s1-l2-verify6-acceptance.json",
+      "sha256": "7a86d215c1b554dd08da2a86130f1c967f9ec19707757a59000984b7a898aa3b",
+      "role": "live-normal-Trial-and-sealed-publication-acceptance"
+    },
+    {
+      "id": "s1-l2-workspace-input-boundary-regression",
+      "path": "architecture/quality/evidence/s1-l2-workspace-input-boundary-regression-green.txt",
+      "sha256": "ec77117f413d60669fe0596a1dd217846579e7e853236b7dba0fe3629e74ff51",
+      "role": "real-guard-contract-regression-not-new-product-fix"
+    },
+    {
+      "id": "s1-l2-post-model-scope-exact-CI-green",
+      "path": "architecture/quality/evidence/s1-l2-post-model-scope-main-ci-green.json",
+      "sha256": "97a206df2f1d8f66f583be80ff8373078a9c0c735fcf84028344b34098d7bf42",
+      "role": "all-required-platforms-and-full-CI-green"
+    },
+    {
+      "id": "s1-l2-fixture-type-first-red",
+      "path": "architecture/quality/evidence/s1-l2-input-boundary-test-types-first-red.txt",
+      "sha256": "153e78a70e78082df41c5ea03b8fa3f9386a9cf6e74251e56518f75a3a93ef61",
+      "role": "test-fixture-qualification-failure-not-product-fault"
+    },
+    {
+      "id": "s1-l2-corrected-fixture-checks",
+      "path": "architecture/quality/evidence/s1-l2-input-boundary-corrected-format-types-lint-green.txt",
+      "sha256": "b637784e46ea1f8f175320ba7b03f1ff400db88b576a16dc7bbd981f6eb94fec",
+      "role": "format-types-lint-corrected-fixture-green"
+    },
+    {
+      "id": "s1-l2-final-real-workspace-input-guard",
+      "path": "architecture/quality/evidence/s1-l2-workspace-input-boundary-final-green.txt",
+      "sha256": "6a1d83ae631e18457b3d3b3c4eb2bf4cf0c1bf4d76b83e24507158741c080e08",
+      "role": "actual-guard-contract-regression-final-green"
     }
   ],
   "issues": [
@@ -6816,6 +6858,12 @@
           "evidencePath": "architecture/quality/evidence/s1-l2-feedback-main-ci-green.json",
           "evidenceSha256": "8e5d4dd4c6180c06eae372e97f7cf32a1a1e96fab08da7b177fc8368eec58fd5",
           "liveAcceptance": false
+        },
+        {
+          "kind": "fresh-S1-L2-original-round-normal-Trial-publication-pass-not-specific-failure-replay",
+          "evidencePath": "architecture/quality/evidence/s1-l2-verify6-acceptance.json",
+          "evidenceSha256": "7a86d215c1b554dd08da2a86130f1c967f9ec19707757a59000984b7a898aa3b",
+          "liveAcceptance": true
         }
       ],
       "status": "shared-and-generated-boundary-guarded-fresh-live-retest-pending",
@@ -6926,6 +6974,18 @@
           "evidencePath": "architecture/quality/evidence/s1-l2-verify4-native-stop-proof.json",
           "evidenceSha256": "6c989842ba82b98282c40eaf4ab1cd133acfe09e99b6a316791f71917284196a",
           "liveAcceptance": false
+        },
+        {
+          "kind": "fresh-S1-L2-original-round-normal-Trial-publication-pass-not-specific-failure-replay",
+          "evidencePath": "architecture/quality/evidence/s1-l2-verify6-acceptance.json",
+          "evidenceSha256": "7a86d215c1b554dd08da2a86130f1c967f9ec19707757a59000984b7a898aa3b",
+          "liveAcceptance": true
+        },
+        {
+          "kind": "exact-main-all-required-platform-CI-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-post-model-scope-main-ci-green.json",
+          "evidenceSha256": "97a206df2f1d8f66f583be80ff8373078a9c0c735fcf84028344b34098d7bf42",
+          "liveAcceptance": false
         }
       ],
       "fixes": [
@@ -6933,7 +6993,7 @@
           "summary": "Defer only typed scope exceptions matching authenticated stage and target during effort compilation to unchanged verification repair/discard. Preserve unrelated failures and CAS recovery."
         }
       ],
-      "status": "local-contract-green-live-retest-required",
+      "status": "all-platform-contract-guarded-fresh-S1-L2-case-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -6953,6 +7013,95 @@
       "realTestSelectors": [],
       "contract": "Completed authoring is not passed verification. Preserve every scope fence and repair budget, capture typed bounded evidence before any Trial/publication; reject foreign stage/target exceptions and unrelated errors.",
       "claimLimit": "Contract GREEN is not actual S1-L2 acceptance. Later cases remain locked."
+    },
+    {
+      "id": "CSR-0044",
+      "lineage": [
+        "CSR-0033",
+        "CSR-0041",
+        "CSR-0042",
+        "CSR-0043"
+      ],
+      "title": "Generated helper paths and scalar command inputs must retain workspace-root and native argument semantics",
+      "category": "acceptance-contract-model-output-not-product-fault",
+      "mechanism": "real-Trial-copy-and-SDK-command-input-boundaries",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Confirmed invalid generated cwd on verify5. No new product runtime/copier fault or source repair is claimed; existing runtime correctly failed the missing directory and existing guidance already explained the coordinate.",
+      "firstEvidence": {
+        "sourceId": "s1-l2-generated-cwd-first-live-failure",
+        "path": "architecture/quality/evidence/s1-l2-verify5-generated-cwd-failure.json",
+        "sha256": "b811beb77741910de71242d8614a06b4b8eefdd615b35b8d926225b1f9311cbd",
+        "sourceRevision": "3398e9c0b4f7041e10b4145309c325108501998a",
+        "round": "S1-L2-verify5-original-round-1",
+        "acceptancePolicy": "Preserve real generated workflow failure. Wrong cwd must continue to fail; a different restarted workspace/model-variant attempt must pass actual Trial and publication."
+      },
+      "history": [
+        {
+          "kind": "immutable-generated-workflow-cwd-failure",
+          "evidencePath": "architecture/quality/evidence/s1-l2-verify5-generated-cwd-failure.json",
+          "evidenceSha256": "b811beb77741910de71242d8614a06b4b8eefdd615b35b8d926225b1f9311cbd",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "fresh-Flash-low-original-round-normal-publication-pass",
+          "evidencePath": "architecture/quality/evidence/s1-l2-verify6-acceptance.json",
+          "evidenceSha256": "7a86d215c1b554dd08da2a86130f1c967f9ec19707757a59000984b7a898aa3b",
+          "liveAcceptance": true
+        },
+        {
+          "kind": "real-existing-guard-contract-regression-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-workspace-input-boundary-regression-green.txt",
+          "evidenceSha256": "ec77117f413d60669fe0596a1dd217846579e7e853236b7dba0fe3629e74ff51",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "test-fixture-qualification-failure-not-product-fault",
+          "evidencePath": "architecture/quality/evidence/s1-l2-input-boundary-test-types-first-red.txt",
+          "evidenceSha256": "153e78a70e78082df41c5ea03b8fa3f9386a9cf6e74251e56518f75a3a93ef61",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "format-types-lint-corrected-fixture-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-input-boundary-corrected-format-types-lint-green.txt",
+          "evidenceSha256": "b637784e46ea1f8f175320ba7b03f1ff400db88b576a16dc7bbd981f6eb94fec",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "actual-guard-contract-regression-final-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-workspace-input-boundary-final-green.txt",
+          "evidenceSha256": "6a1d83ae631e18457b3d3b3c4eb2bf4cf0c1bf4d76b83e24507158741c080e08",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "kind": "generated-workflow-repair-and-existing-contract-protection",
+          "summary": "Fresh admitted Flash/low authored workspace-root helper paths. Same-round Host repair introduced a declared report renderer. Add real SDK/copy regression for bad cwd, exact special/padded scalar arguments, no shell effect and whitespace rejection. Application runtime unchanged."
+        },
+        {
+          "kind": "cross-platform-CI-guard",
+          "path": ".github/workflows/ci.yml",
+          "summary": "Include the real workspace/argument boundary regression in managed runtime unit contracts on actual Windows, macOS and Linux; no model invocation."
+        },
+        {
+          "kind": "test-fixture-type-target-compatibility",
+          "summary": "Equivalent global replace for executable-path fixture quoting and explicit public SDK event type; existing runtime unchanged. Corrected actual guard and format/types/lint passed."
+        }
+      ],
+      "status": "live-case-accepted-existing-contract-regression-protected",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-workspace-input-boundary.test.ts",
+          "fullName": "real Trial workspace coordinates preserve exact shell arguments and reject a missing cwd",
+          "namePattern": "^real Trial workspace coordinates preserve exact shell arguments and reject a missing cwd$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Keep .tagma/<pipeline> helper copies and workspace-root task cwd semantics. Reject missing cwd before child launch. Production shellquote/native argv must preserve quotes, shell syntax, Unicode, newlines and padded nonempty strings without side effects. Whitespace-only helper input fails.",
+      "claimLimit": "The regression protects a verified existing contract; it cannot guarantee every model authors valid YAML. Local-only supplementary scalar probes do not rewrite not-verifiable native-default coverage in the actual Trial receipt."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

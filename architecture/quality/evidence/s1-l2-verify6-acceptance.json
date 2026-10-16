@@ -1,0 +1,58 @@
+{
+  "sourceRevision": "3398e9c0b4f7041e10b4145309c325108501998a",
+  "case": "S1-L2",
+  "attempt": "verify6",
+  "businessSubmissions": 1,
+  "automaticRepairsAreSameRound": true,
+  "model": {
+    "provider": "deepseek",
+    "model": "deepseek-flash",
+    "variant": "low"
+  },
+  "operationId": "operation-45062cd9-9a70-43ec-af3b-2b587119d53b",
+  "terminalOutcome": "completed_published",
+  "accepted": true,
+  "cases": [
+    {
+      "id": "positive-e2e",
+      "passed": true,
+      "actualRuns": 1,
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "repeat-run-refresh",
+      "passed": true,
+      "actualRuns": 2,
+      "executionSource": "current-trial"
+    }
+  ],
+  "actualPipelineRuns": 3,
+  "actualSuccessfulTasks": 12,
+  "actualWebSearchRuns": 3,
+  "completeShaVerifiedStreams": 24,
+  "independentSemanticReview": {
+    "calls": 1,
+    "targets": 2,
+    "outcome": "passed",
+    "requestBytesVerified": true,
+    "responseBytesVerified": true
+  },
+  "sealedArtifactSetHash": "a5400f4a4e1f67ca4715a364347d8b5c03fededce20098596990be357dc9388a",
+  "publishedFiles": 7,
+  "allPublishedBytesMatch": true,
+  "publicCitations": {
+    "HTTP200": 7,
+    "total": 7,
+    "boundedAt512KiB": 1
+  },
+  "architecture": "Direct headless OpenCode via the native SDK CLI driver, plus small Python input validation, deterministic JSON-to-Markdown rendering and consistency postcheck. No generated Python subprocess wrapper. Workspace-root tasks; support helpers explicitly under .tagma/quick_verify.",
+  "inputBoundarySupplement": "Actual sealed ingestion helper and unchanged command through production SDK; quotes/metacharacters/newline/Unicode preserved, no shell side effect, whitespace rejected. Local-only supplemental runs, not added business turns or Trial cases.",
+  "repairs": "First plan correctly blocked missing report artifact ownership; same-round repair split deterministic report rendering into its own declared output task. Second frozen plan passed actual execution; no refunds or stale/blocked promotion.",
+  "limits": [
+    "Independent review is explicitly authorized fallible model judgment, not deterministic external truth.",
+    "Trial cannot override native task-input defaults: multiline, empty and special-character coverage remained not-verifiable there; separate local ingestion verification supplements without rewriting that Trial receipt.",
+    "One citation response bounded to512KiB; HTTP200 does not prove every cited factual statement.",
+    "Host commands and OpenCode drivers retain normal host authority; OS sandbox enforcement not claimed.",
+    "Complete historical regression inventory remains blocked by original missing evidence/mappings."
+  ]
+}

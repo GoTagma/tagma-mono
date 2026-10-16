@@ -1,0 +1,65 @@
+[
+  {
+    "url": "https://www.nasa.gov/image-article/great-wall/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 272219,
+    "boundedAt512KiB": false,
+    "sha256": "ce311cc2dd2f7ed615ac24100862d9b861fc02e3e742e211aedca1a563c1995a",
+    "title": "Great Wall - NASA"
+  },
+  {
+    "url": "https://www.nasa.gov/wp-content/uploads/static/history/PDFs/great_wall_less_great_from_space.pdf",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 263353,
+    "boundedAt512KiB": false,
+    "sha256": "d66d9ed9d2e524564c4f278a15bd678cda5ffa293bfcb6512aefaabd77d2ebe7",
+    "title": null
+  },
+  {
+    "url": "https://www.scientificamerican.com/article/no-you-cant-see-the-great-wall-of-china-from-space/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 148799,
+    "boundedAt512KiB": false,
+    "sha256": "210e5f0fe11e39023384b7dce23f6e1d9ea2fc8ead6f0f7a65744b61cc7ded12",
+    "title": "No, You Can’t See the Great Wall of China from Space | Scientific American"
+  },
+  {
+    "url": "https://www.esa.int/ESA_Multimedia/Images/2018/06/Great_Wall_of_China",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 13376,
+    "boundedAt512KiB": false,
+    "sha256": "1eca02b56f4e004507635ae48088d72faaae1d32973cd01fd6d8a6b9f615123f",
+    "title": "ESA - Great Wall of China"
+  },
+  {
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3972694/",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 103449,
+    "boundedAt512KiB": false,
+    "sha256": "7cf63fc4a2e7b94978570847a0e9544cca1fee4bec5888c97a0f77bfe28ddbc1",
+    "title": "\n            Is it Really Possible to See the Great Wall of China from Space with a Naked Eye? - PMC\n        "
+  },
+  {
+    "url": "https://www.skyatnightmagazine.com/space-science/can-you-see-great-wall-china-from-space",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 524288,
+    "boundedAt512KiB": true,
+    "sha256": "af3a6c7201d5227c3ea0de996163c1921d25717272658ad39f22cf0c8d5559fb",
+    "title": "Can you see the Great Wall of China from space? | BBC Sky at Night Magazine"
+  },
+  {
+    "url": "https://www.britannica.com/question/Can-you-see-the-Great-Wall-of-China-from-space",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 45669,
+    "boundedAt512KiB": false,
+    "sha256": "13ecf4ed1460969ca1b79404c5826831277ea40de1e278efd2284924eccd8d64",
+    "title": "Can you see the Great Wall of China from space? | Britannica"
+  }
+]
