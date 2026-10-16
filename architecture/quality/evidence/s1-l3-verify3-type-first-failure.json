@@ -1,0 +1,36 @@
+{
+  "scope": "Read-only failed cache projection plus actual SHA-verified child NDJSON write facts; no private auth copied; not a publication proof",
+  "trials": [
+    {
+      "cacheSha256": "3529e415a2b617de828e9212d347f05f02716290a3c30671e8589cc68055dc40",
+      "success": false,
+      "kind": "failed",
+      "failedTasks": [
+        {
+          "taskId": "analyze.extract_clauses",
+          "status": "failed",
+          "failureKind": "completion_failed",
+          "diagnostic": "[completion] json_schema completion: validation failed\n[\n  {\n    \"instancePath\": \"/clauses/0/value\",\n    \"schemaPath\": \"#/properties/clauses/items/properties/value/type\",\n    \"keyword\": \"type\",\n    \"params\": {\n      \"type\": \"string\"\n    },\n    \"message\": \"must be string\"\n  }\n]"
+        },
+        {
+          "taskId": "analyze.extract_clauses",
+          "status": "failed",
+          "failureKind": "completion_failed",
+          "diagnostic": "[completion] json_schema completion: validation failed\n[\n  {\n    \"instancePath\": \"/clauses/0/value\",\n    \"schemaPath\": \"#/properties/clauses/items/properties/value/type\",\n    \"keyword\": \"type\",\n    \"params\": {\n      \"type\": \"string\"\n    },\n    \"message\": \"must be string\"\n  }\n]"
+        }
+      ],
+      "actualWriteFacts": [
+        {
+          "caseId": "positive_e2e",
+          "runNumber": 1,
+          "taskId": "analyze.extract_clauses",
+          "rawStreamSha256": "081daec9697057f24f4f7484954784e27de69da40d33070593474047cc667372",
+          "toolStatus": "completed",
+          "artifactPathSuffix": "work/clauses.json",
+          "valueType": "int",
+          "value": 330
+        }
+      ]
+    }
+  ]
+}

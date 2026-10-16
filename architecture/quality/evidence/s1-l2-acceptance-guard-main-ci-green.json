@@ -1,0 +1,43 @@
+{
+  "scope": "Exact318ac80b main CI including the actual new boundary test onall3OS",
+  "sourceRevision": "318ac80b87654b428e9aa9d82056a71483af9020",
+  "runId": 38920261257,
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "full-check",
+      "databaseId": 117038080069,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38920261257/job/117038080069"
+    },
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "databaseId": 117038080345,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38920261257/job/117038080345"
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "databaseId": 117038080461,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38920261257/job/117038080461"
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "databaseId": 117038080482,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38920261257/job/117038080482"
+    },
+    {
+      "name": "public-check-fork",
+      "databaseId": 117038082491,
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38920261257/job/117038082491"
+    }
+  ]
+}

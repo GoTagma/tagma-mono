@@ -1,0 +1,661 @@
+{
+  "scope": "Derived content-minimized proof from complete SHA-verified final Trial child streams; complete raw records retained in the task report directory",
+  "completeRawCaptureSha256": "92f81d7e18d1200d8c5d51556f80253632641d3e44e0cd6acbbb616a6a9ae695",
+  "trials": [
+    {
+      "success": true,
+      "kind": "passed-with-warnings",
+      "cases": [
+        {
+          "id": "positive_e2e",
+          "success": true,
+          "runIds": [
+            "run_mvb499uy_06b908e47842",
+            "run_mvb4ahpp_0f8b775657ed"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: The artifact satisfies the research task: it contains one clause_evidence entry for the sole verifiable clause c1 (found: true) with five independent passages, each pairing an exact quote with a source URL, and includes no verdict decisions. Quantities/units (330 metres/meters) and entity (Eiffel Tower) are preserved.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "research.gather_evidence",
+                "path": "chat-a3338efb371b8d19844057db/work/evidence.json",
+                "runNumber": 1,
+                "requestSha256": "c173975496538a8911ebac0a1340c092355d15281b3f05e0811f47f00bdaa5a2"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: The verdict faithfully copies the clause text verbatim from clauses.json, assigns 'supported' consistent with the independent passages in evidence.json (official site 330 metres, Wikipedia 330 metres, AP growth to 330 m), and applies the overall_verdict rule correctly: the single verifiable clause is supported so overall is 'supported'. Citations are drawn from the recorded evidence.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "analyze.judge_claim",
+                "path": "chat-a3338efb371b8d19844057db/work/verdict.json",
+                "runNumber": 1,
+                "requestSha256": "c173975496538a8911ebac0a1340c092355d15281b3f05e0811f47f00bdaa5a2"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: The Markdown report fulfills all specified elements: a title, the original claim quoted verbatim, an overall verdict line, clause c1 with its verdict, exact supporting quotes with source URLs, and an explicit note that no unknown/partial clauses apply. Quotes and URLs match evidence.json and the claim wording is preserved verbatim.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "analyze.write_report",
+                "path": "chat-a3338efb371b8d19844057db/fact-check-report.md",
+                "runNumber": 1,
+                "requestSha256": "c173975496538a8911ebac0a1340c092355d15281b3f05e0811f47f00bdaa5a2"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: Evidence snapshot is valid JSON with the original claim and one clause_evidence entry for verifiable clause c1. It records found=true with five independent passages, each having a source_url and an exact quote (official Eiffel Tower pages, Wikipedia, AP News), consistent with the task's requirement to gather authoritative support/contradiction passages without deciding a verdict.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "research.gather_evidence",
+                "path": "chat-a3338efb371b8d19844057db/work/evidence.json",
+                "runNumber": 2,
+                "requestSha256": "b3fb23a633b2ba72a7194fc454b3c54c5bab256fc28a6682b92117de20fa1ce2"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: Verdict snapshot is valid JSON preserving the original claim verbatim and copying clause c1 text verbatim from clauses.json. It assigns per-clause verdict 'supported' with reasoning and a citations list whose URLs all appear in evidence.json, and the overall_verdict 'supported' correctly follows the stated rule (all verifiable clauses supported). No invented citations or strengthened wording.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "analyze.judge_claim",
+                "path": "chat-a3338efb371b8d19844057db/work/verdict.json",
+                "runNumber": 2,
+                "requestSha256": "b3fb23a633b2ba72a7194fc454b3c54c5bab256fc28a6682b92117de20fa1ce2"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: Markdown report contains a title, the original claim quoted verbatim, an overall verdict line, the clause with its verdict and exact supporting quotes plus source URLs drawn from evidence.json, and an explicit note about unknown/partial clauses (none present). Wording of claim and clause is preserved.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "analyze.write_report",
+                "path": "chat-a3338efb371b8d19844057db/fact-check-report.md",
+                "runNumber": 2,
+                "requestSha256": "b3fb23a633b2ba72a7194fc454b3c54c5bab256fc28a6682b92117de20fa1ce2"
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "analyze.extract_clauses expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "research.gather_evidence expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "analyze.judge_claim expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "analyze.write_report expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/clauses.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/clauses.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/clauses.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/clauses.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-equals",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/clauses.json JSON Pointer /claim matches the expected JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/clauses.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/evidence.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/evidence.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/evidence.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/evidence.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/verdict.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/verdict.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/verdict.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/verdict.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-equals",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/work/verdict.json JSON Pointer /claim matches the expected JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/work/verdict.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/fact-check-report.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/fact-check-report.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-contains",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/fact-check-report.md contains the expected marker.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/fact-check-report.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-source-text-occurrence",
+              "passed": true,
+              "detail": "The exact produced source text occurs in this repeat's consumer artifact.",
+              "repairScope": "pipeline-artifact",
+              "sourceTextEvidence": {
+                "runId": "run_mvb4ahpp_0f8b775657ed",
+                "sourcePath": "chat-a3338efb371b8d19844057db/work/verdict.json",
+                "sourcePointer": "/claim",
+                "producerTaskId": "analyze.judge_claim",
+                "consumerTaskId": "analyze.write_report",
+                "producerCompletionObserved": true,
+                "consumerStartObserved": true,
+                "producerStatus": "success",
+                "consumerStatus": "success",
+                "producerResultPresent": true,
+                "consumerResultPresent": true,
+                "capturedSourceSha256": "233ecdd72d831c825fdd538c4be20f6ced06368ab10e19c83cf4eb5649cb022c",
+                "capturedSourceBytes": 1024,
+                "capturedTextSha256": "039f18cde5de74ca8750666ecb11b76a880c3af26426183fee07ccf0780f68e5",
+                "finalSourceSha256": "233ecdd72d831c825fdd538c4be20f6ced06368ab10e19c83cf4eb5649cb022c"
+              },
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/fact-check-report.md",
+                "regularFile": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "repeat_run",
+          "success": true,
+          "runIds": [
+            "run_mvb4bj8n_a45788aa40e5",
+            "run_mvb4ce4p_18822cab9271"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "analyze.extract_clauses expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "research.gather_evidence expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "analyze.judge_claim expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "analyze.write_report expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/fact-check-report.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/fact-check-report.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-contains",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/fact-check-report.md contains the expected marker.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": ".tagma/chat-a3338efb371b8d19844057db/fact-check-report.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "run-artifact-freshness",
+              "passed": true,
+              "detail": "chat-a3338efb371b8d19844057db/fact-check-report.md was created or rewritten by every one of 2 runs.",
+              "repairScope": "pipeline-artifact"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stdout",
+      "sha256": "e41d71d5edc1c1f32e6da7d3b6c0dd2f51a308a73cfe85ca82e9ca9a9e17edba",
+      "complete": true,
+      "bytes": 3008,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "analyze.judge_claim",
+      "stream": "stdout",
+      "sha256": "a29d92ec465aa4f461f4661feaa266077de6bee5a33bf681c1546d8204da2607",
+      "complete": true,
+      "bytes": 12428,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "analyze.judge_claim",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "analyze.write_report",
+      "stream": "stdout",
+      "sha256": "4142b64cd1099f6ebfe8024ea828b18d938ee80a0eadfefdc24a35d0e49a808a",
+      "complete": true,
+      "bytes": 14462,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "analyze.write_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "research.gather_evidence",
+      "stream": "stdout",
+      "sha256": "c4f4d703023705e7f0492c3109be24ea3223ef3f904a13100432333cd23b29da",
+      "complete": true,
+      "bytes": 81223,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb499uy_06b908e47842",
+      "runNumber": 1,
+      "taskId": "research.gather_evidence",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stdout",
+      "sha256": "b07d47c5ed9aa617f3f10cc5230408d2eae54d264ed296d5798ced2173501be6",
+      "complete": true,
+      "bytes": 3026,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "analyze.judge_claim",
+      "stream": "stdout",
+      "sha256": "2e2c8f20bf22f290019e1d09dd4771f3d0ed13a5eae9b583022db60b72b327b9",
+      "complete": true,
+      "bytes": 12422,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "analyze.judge_claim",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "analyze.write_report",
+      "stream": "stdout",
+      "sha256": "a3efc5613fd095a841677a298acfff0305a22163808b9de029060ecc58cb5b50",
+      "complete": true,
+      "bytes": 15042,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "analyze.write_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "research.gather_evidence",
+      "stream": "stdout",
+      "sha256": "eef7081e8daf270ea21191788242d6815ea07ebfccdfbeb6f7494730b5b87db5",
+      "complete": true,
+      "bytes": 42771,
+      "redacted": false
+    },
+    {
+      "caseId": "positive_e2e",
+      "runId": "run_mvb4ahpp_0f8b775657ed",
+      "runNumber": 2,
+      "taskId": "research.gather_evidence",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stdout",
+      "sha256": "bfaa08da4c919e9ae6821efb46fcee1270f016e5367865c39d549f6f1fd57890",
+      "complete": true,
+      "bytes": 3005,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "analyze.judge_claim",
+      "stream": "stdout",
+      "sha256": "7309109da9ce4a6193c22cb9f626110d288f44df0aef87f212450e7bc2083f1f",
+      "complete": true,
+      "bytes": 13458,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "analyze.judge_claim",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "analyze.write_report",
+      "stream": "stdout",
+      "sha256": "959ce364a1b9205c1697a102cd4fa4dd09c6a9f63785d77b349e5e462fc92bd8",
+      "complete": true,
+      "bytes": 16786,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "analyze.write_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "research.gather_evidence",
+      "stream": "stdout",
+      "sha256": "65e3bf32509660c304a889e9b58fc3675ba3c8de6b49d38e5fe5a22fc270b5ba",
+      "complete": true,
+      "bytes": 32546,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4bj8n_a45788aa40e5",
+      "runNumber": 1,
+      "taskId": "research.gather_evidence",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stdout",
+      "sha256": "e4d8d039f4da45da18958e6bbaab8283d28a800eefb6d7b93f7db93d4a37b620",
+      "complete": true,
+      "bytes": 3018,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "analyze.extract_clauses",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "analyze.judge_claim",
+      "stream": "stdout",
+      "sha256": "020f9e67ae270786635c8634eeaf66bc24c309090f1db0aad0ade3a15fa34727",
+      "complete": true,
+      "bytes": 12571,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "analyze.judge_claim",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "analyze.write_report",
+      "stream": "stdout",
+      "sha256": "cfd73e990c2e4faef97703ef403e6bd94d63f909df7837eb85d5f54e0abb1fa0",
+      "complete": true,
+      "bytes": 18930,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "analyze.write_report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "research.gather_evidence",
+      "stream": "stdout",
+      "sha256": "5276241fc0c9715845457a3ec5ae7f09e9ad4cd6c3b5287ddbe190bbe587f09a",
+      "complete": true,
+      "bytes": 21926,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat_run",
+      "runId": "run_mvb4ce4p_18822cab9271",
+      "runNumber": 2,
+      "taskId": "research.gather_evidence",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    }
+  ]
+}

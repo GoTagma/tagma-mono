@@ -1,0 +1,108 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-json-value-contract.test.ts:
+15:41:06.630 [pipeline] start "Declared scalar contract" run_id=run_mvb4xdxf_74c4d722534c
+15:41:06.638 [task:measure.write] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","write.js","{\"claim\":\"A measured height is 330 cm.\",\"observations\":[{\"amount\":330}]}"]
+15:41:06.728 [task:measure.write] ERROR: failed exit=0 duration=0.0s
+15:41:06.729 [task:measure.write] ERROR: stderr tail:
+  {
+    "instancePath": "/observations/0/amount",
+    "schemaPath": "#/properties/observations/items/properties/amount/type",
+    "keyword": "type",
+    "params": {
+      "type": "string"
+    },
+    "message": "must be string"
+  }
+]
+15:41:06.730 [pipeline] failed "Declared scalar contract"
+15:41:06.730 [pipeline] Total: 2 | Success: 0 | Failed: 1 | Skipped: 1 | Timeout: 0 | Blocked: 0
+15:41:06.730 [pipeline] Duration: 0.1s
+15:41:06.730 [pipeline] Log: /tmp/tagma-json-value-contract-RTx4pW/.tagma/logs/run_mvb4xdxf_74c4d722534c/pipeline.log
+15:41:06.734 [pipeline] start "Declared scalar contract" run_id=run_mvb4xe0e_2ca5a0870bf6
+15:41:06.734 [task:measure.write] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","write.js","{\"claim\":\"A measured height is 330 cm.\",\"observations\":[{\"amount\":\"330\"}]}"]
+15:41:06.779 [task:measure.write] success (0.0s)
+15:41:06.780 [task:measure.consume] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require('node:fs').writeFileSync('work/downstream.txt', 'validated')"]
+15:41:06.801 [task:measure.consume] success (0.0s)
+15:41:06.801 [pipeline] completed "Declared scalar contract"
+15:41:06.801 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:41:06.801 [pipeline] Duration: 0.1s
+15:41:06.801 [pipeline] Log: /tmp/tagma-json-value-contract-wEI7Uv/.tagma/logs/run_mvb4xe0e_2ca5a0870bf6/pipeline.log
+15:41:06.804 [pipeline] start "Declared scalar contract" run_id=run_mvb4xe2c_bb79a544dd87
+15:41:06.805 [task:measure.write] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","write.js","{\"claim\":\"A measured height is 330 cm.\",\"observations\":[{\"amount\":330}]}"]
+15:41:06.846 [task:measure.write] success (0.0s)
+15:41:06.846 [task:measure.consume] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require('node:fs').writeFileSync('work/downstream.txt', 'validated')"]
+15:41:06.869 [task:measure.consume] success (0.0s)
+15:41:06.869 [pipeline] completed "Declared scalar contract"
+15:41:06.869 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:41:06.869 [pipeline] Duration: 0.1s
+15:41:06.869 [pipeline] Log: /tmp/tagma-json-value-contract-RDewXo/.tagma/logs/run_mvb4xe2c_bb79a544dd87/pipeline.log
+15:41:06.872 [pipeline] start "Declared scalar contract" run_id=run_mvb4xe48_facb046ec198
+15:41:06.872 [task:measure.write] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","write.js","{\"claim\":\"A measured height is 330 cm.\",\"observations\":[{\"amount\":\"330\"}]}"]
+15:41:06.905 [task:measure.write] success (0.0s)
+15:41:06.905 [task:measure.consume] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require('node:fs').writeFileSync('work/downstream.txt', 'validated')"]
+15:41:06.924 [task:measure.consume] success (0.0s)
+15:41:06.925 [pipeline] completed "Declared scalar contract"
+15:41:06.925 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+15:41:06.925 [pipeline] Duration: 0.1s
+15:41:06.925 [pipeline] Log: /tmp/tagma-json-value-contract-HRyMfR/.tagma/logs/run_mvb4xe48_facb046ec198/pipeline.log
+15:41:06.927 [pipeline] start "Declared scalar contract" run_id=run_mvb4xe5r_453783cbd4c7
+15:41:06.927 [task:measure.write] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","write.js","{\"claim\":\"A measured height is 330 cm.\",\"observations\":[{\"amount\":true}]}"]
+15:41:06.964 [task:measure.write] ERROR: failed exit=0 duration=0.0s
+15:41:06.965 [task:measure.write] ERROR: stderr tail:
+    "keyword": "type",
+    "params": {
+      "type": [
+        "string",
+        "number"
+      ]
+    },
+    "message": "must be string,number"
+  }
+]
+15:41:06.965 [pipeline] failed "Declared scalar contract"
+15:41:06.965 [pipeline] Total: 2 | Success: 0 | Failed: 1 | Skipped: 1 | Timeout: 0 | Blocked: 0
+15:41:06.965 [pipeline] Duration: 0.0s
+15:41:06.965 [pipeline] Log: /tmp/tagma-json-value-contract-ddwitU/.tagma/logs/run_mvb4xe5r_453783cbd4c7/pipeline.log
+15:41:06.967 [pipeline] start "Declared scalar contract" run_id=run_mvb4xe6v_d4759699687f
+15:41:06.968 [task:measure.write] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","write.js","{\"claim\":330,\"observations\":[{\"amount\":330}]}"]
+15:41:06.998 [task:measure.write] ERROR: failed exit=0 duration=0.0s
+15:41:06.998 [task:measure.write] ERROR: stderr tail:
+  {
+    "instancePath": "/claim",
+    "schemaPath": "#/properties/claim/type",
+    "keyword": "type",
+    "params": {
+      "type": "string"
+    },
+    "message": "must be string"
+  }
+]
+15:41:06.999 [pipeline] failed "Declared scalar contract"
+15:41:06.999 [pipeline] Total: 2 | Success: 0 | Failed: 1 | Skipped: 1 | Timeout: 0 | Blocked: 0
+15:41:06.999 [pipeline] Duration: 0.0s
+15:41:06.999 [pipeline] Log: /tmp/tagma-json-value-contract-ZXrXc4/.tagma/logs/run_mvb4xe6v_d4759699687f/pipeline.log
+15:41:07.002 [pipeline] start "Declared scalar contract" run_id=run_mvb4xe7t_d9848def998a
+15:41:07.002 [task:measure.write] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","write.js","{\"claim\":\"A measured height is 330 cm.\",\"observations\":[{}]}"]
+15:41:07.039 [task:measure.write] ERROR: failed exit=0 duration=0.0s
+15:41:07.039 [task:measure.write] ERROR: stderr tail:
+  {
+    "instancePath": "/observations/0",
+    "schemaPath": "#/properties/observations/items/required",
+    "keyword": "required",
+    "params": {
+      "missingProperty": "amount"
+    },
+    "message": "must have required property 'amount'"
+  }
+]
+15:41:07.041 [pipeline] failed "Declared scalar contract"
+15:41:07.041 [pipeline] Total: 2 | Success: 0 | Failed: 1 | Skipped: 1 | Timeout: 0 | Blocked: 0
+15:41:07.041 [pipeline] Duration: 0.0s
+15:41:07.041 [pipeline] Log: /tmp/tagma-json-value-contract-jB21tt/.tagma/logs/run_mvb4xe7t_d9848def998a/pipeline.log
+(pass) real JSON completion preserves declared scalar types and blocks downstream work until the contract passes [431.68ms]
+
+ 1 pass
+ 0 fail
+ 50 expect() calls
+Ran 1 test across 1 file. [573.00ms]

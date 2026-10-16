@@ -1,0 +1,27 @@
+{
+  "scope": "Test/docs/CI/evidence-only changes; runtime product source unchanged from318ac80b. Final serial source gate runs after this record.",
+  "localChecks": {
+    "passed": true,
+    "gates": [
+      "text",
+      "secrets",
+      "format",
+      "types",
+      "lint"
+    ],
+    "logSha256": "27f18fa519da333ebd365048f6be0f760e67891e651f09c42130d81826804fc2"
+  },
+  "realSdkRegression": {
+    "passed": true,
+    "tests": 1,
+    "assertions": 50,
+    "sourceSha256": "513e18486a956010c1b8e259bbcc8d0e91359d8da1139aabe6470455d7ffae8a"
+  },
+  "requiredNext": {
+    "currentSourceIssues": 45,
+    "executions": 253,
+    "crossPlatformCI": "Actual new selector on Windows/macOS/Linux plus full-check"
+  },
+  "packagesModified": false,
+  "versionCommandRequired": false
+}

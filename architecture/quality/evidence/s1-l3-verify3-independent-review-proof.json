@@ -1,0 +1,128 @@
+{
+  "scope": "Content-minimized native request/response and signed-receipt projection; full captured native evidence retained locally",
+  "completeNativeCaptureSha256": "8ab32f74d5d251233102b55324a86e45f641050bd314f0e93c1e30dbe2308340",
+  "reviews": [
+    {
+      "identity": {
+        "stageId": "2c704034-cc31-48cd-8b58-e0c4b10da44b",
+        "trialId": "trial-b7a202dbb4263ac79c187c9bc680932609eb2d45",
+        "yamlHash": "5114065804d24b420befd5492bfe72996971a771",
+        "planHash": "a7d972ac059e6fad2a97c8ac3d2520a9db4a4cb241918bfbfb5b9b130ac9fe54",
+        "intentDigest": "62c63e51bdd855d13d9b61467aada9d6110afcba0ad65298d250a188e537a415",
+        "caseId": "positive_e2e",
+        "runId": "run_mvb499uy_06b908e47842",
+        "runNumber": 1
+      },
+      "model": {
+        "providerID": "deepseek",
+        "modelID": "deepseek-flash",
+        "variant": "low"
+      },
+      "outcome": "passed",
+      "configurationDigest": "a36eb3f63b5fee4dba3d92f0cda9c3ef96ebd4d8bdcea0cf6ad6a45ac87e27c1",
+      "requestSha256": "c173975496538a8911ebac0a1340c092355d15281b3f05e0811f47f00bdaa5a2",
+      "responseSha256": "9a551b94742934fc00a9f74dae1c2a29e0691e01210b7bb3485d4fd0a481b1b2",
+      "reviewerSessionId": "ses_tagma_content_review_3850476885734bd6a2ecceab2c388c2b",
+      "artifacts": [
+        {
+          "path": "chat-a3338efb371b8d19844057db/fact-check-report.md",
+          "role": "produced",
+          "sha256": "553d191a54a86cb143549193ee5727147439b90943a1205a623e29253f754565",
+          "bytes": 1638
+        },
+        {
+          "path": "chat-a3338efb371b8d19844057db/work/evidence.json",
+          "role": "produced",
+          "sha256": "41aaaa0ebb4e47065af1961f36eadc3dcf385e043bfb46bb9bfc1f31cf7ba04e",
+          "bytes": 1534
+        },
+        {
+          "path": "chat-a3338efb371b8d19844057db/work/verdict.json",
+          "role": "produced",
+          "sha256": "091a1eece71be7aacadbfd29a72112f8e5ba2aceb6e6b16e800ceec998b2ed5f",
+          "bytes": 955
+        }
+      ],
+      "targetVerdicts": [
+        {
+          "taskId": "research.gather_evidence",
+          "path": "chat-a3338efb371b8d19844057db/work/evidence.json",
+          "verdict": "pass"
+        },
+        {
+          "taskId": "analyze.judge_claim",
+          "path": "chat-a3338efb371b8d19844057db/work/verdict.json",
+          "verdict": "pass"
+        },
+        {
+          "taskId": "analyze.write_report",
+          "path": "chat-a3338efb371b8d19844057db/fact-check-report.md",
+          "verdict": "pass"
+        }
+      ],
+      "requestBytesVerified": true,
+      "responseBytesVerified": true
+    },
+    {
+      "identity": {
+        "stageId": "2c704034-cc31-48cd-8b58-e0c4b10da44b",
+        "trialId": "trial-b7a202dbb4263ac79c187c9bc680932609eb2d45",
+        "yamlHash": "5114065804d24b420befd5492bfe72996971a771",
+        "planHash": "a7d972ac059e6fad2a97c8ac3d2520a9db4a4cb241918bfbfb5b9b130ac9fe54",
+        "intentDigest": "62c63e51bdd855d13d9b61467aada9d6110afcba0ad65298d250a188e537a415",
+        "caseId": "positive_e2e",
+        "runId": "run_mvb4ahpp_0f8b775657ed",
+        "runNumber": 2
+      },
+      "model": {
+        "providerID": "deepseek",
+        "modelID": "deepseek-flash",
+        "variant": "low"
+      },
+      "outcome": "passed",
+      "configurationDigest": "a36eb3f63b5fee4dba3d92f0cda9c3ef96ebd4d8bdcea0cf6ad6a45ac87e27c1",
+      "requestSha256": "b3fb23a633b2ba72a7194fc454b3c54c5bab256fc28a6682b92117de20fa1ce2",
+      "responseSha256": "cd588d7f8ee0bbfba6a5a5b58085eaccc37631225141e94d7033a452733b55d5",
+      "reviewerSessionId": "ses_tagma_content_review_605b94e3880d4bc196b1fe1917ad6c4b",
+      "artifacts": [
+        {
+          "path": "chat-a3338efb371b8d19844057db/fact-check-report.md",
+          "role": "produced",
+          "sha256": "e894496785a3ce9a369f0875a7523edb9811459eebc3c8bed960a71ac5bbea09",
+          "bytes": 1637
+        },
+        {
+          "path": "chat-a3338efb371b8d19844057db/work/evidence.json",
+          "role": "produced",
+          "sha256": "3af7c12357712f370231e9e00e21f3834e164234c47356cedb3d610ee544917c",
+          "bytes": 1489
+        },
+        {
+          "path": "chat-a3338efb371b8d19844057db/work/verdict.json",
+          "role": "produced",
+          "sha256": "233ecdd72d831c825fdd538c4be20f6ced06368ab10e19c83cf4eb5649cb022c",
+          "bytes": 1024
+        }
+      ],
+      "targetVerdicts": [
+        {
+          "taskId": "research.gather_evidence",
+          "path": "chat-a3338efb371b8d19844057db/work/evidence.json",
+          "verdict": "pass"
+        },
+        {
+          "taskId": "analyze.judge_claim",
+          "path": "chat-a3338efb371b8d19844057db/work/verdict.json",
+          "verdict": "pass"
+        },
+        {
+          "taskId": "analyze.write_report",
+          "path": "chat-a3338efb371b8d19844057db/fact-check-report.md",
+          "verdict": "pass"
+        }
+      ],
+      "requestBytesVerified": true,
+      "responseBytesVerified": true
+    }
+  ]
+}

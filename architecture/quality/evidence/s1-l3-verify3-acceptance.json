@@ -1,0 +1,113 @@
+{
+  "sourceRevision": "318ac80b87654b428e9aa9d82056a71483af9020",
+  "case": "S1-L3",
+  "attempt": "verify3",
+  "originalComposerSubmissions": 1,
+  "hostSafetyActionClarifications": 1,
+  "clarificationReply": "Create a reusable pipeline in the editor.",
+  "roundScope": "Same Host operation; original composer message plus Host safety clarification and automatic in-operation repair, per repository test-set round definition. No implementation hints or supplied claim facts.",
+  "operationId": "operation-4f40fe11-9195-4af8-9a42-3817d76cd307",
+  "terminalOutcome": "completed_published",
+  "accepted": true,
+  "finalActualPipelineRuns": 4,
+  "finalSuccessfulTasks": 16,
+  "completeShaVerifiedFinalTaskStreams": 32,
+  "actualResearchRunsWithWebSearch": 4,
+  "independentReviews": {
+    "actualCalls": 2,
+    "gradedTargetsPerCall": [
+      3,
+      3
+    ],
+    "capturedArtifactSnapshotsPerCall": [
+      3,
+      3
+    ],
+    "outcomes": [
+      "passed",
+      "passed"
+    ],
+    "requestAndResponseBytesVerified": true
+  },
+  "publishedFiles": 6,
+  "sealedArtifactSetHash": "d77e4b6b7c3c06ceb57f178ddef50f86d752506aaaa6e033511257d8e86852c0",
+  "allPublishedBytesMatch": true,
+  "initialAutomaticTrialFailure": {
+    "runs": 2,
+    "task": "analyze.extract_clauses",
+    "failureKind": "completion_failed",
+    "instancePath": "/clauses/0/value",
+    "observedValue": 330,
+    "observedType": "number",
+    "declaredType": "string",
+    "semanticReviewCalls": 0
+  },
+  "generatedWorkflowRepair": {
+    "kind": "explicit schema and prompt alignment; no application source change",
+    "schemaTypeChanges": [
+      {
+        "path": "$.properties.clauses.items.properties.baseline.type",
+        "before": "string",
+        "after": [
+          "string",
+          "number"
+        ]
+      },
+      {
+        "path": "$.properties.clauses.items.properties.scale.type",
+        "before": "string",
+        "after": [
+          "string",
+          "number"
+        ]
+      },
+      {
+        "path": "$.properties.clauses.items.properties.period.type",
+        "before": "string",
+        "after": [
+          "string",
+          "number"
+        ]
+      },
+      {
+        "path": "$.properties.clauses.items.properties.value.type",
+        "before": "string",
+        "after": [
+          "string",
+          "number"
+        ]
+      },
+      {
+        "path": "$.properties.clauses.items.properties.bounds.type",
+        "before": "string",
+        "after": [
+          "string",
+          "number"
+        ]
+      }
+    ],
+    "inputClaimStillString": true,
+    "otherSchemaConstraintsRetained": true,
+    "freshSecondPlanRequiredAndUsed": true,
+    "plannerBudgetExpanded": false
+  },
+  "businessArtifacts": "Actual isolated Trial outputs: clauses/evidence/verdict JSON plus readable fact-check report, with verbatim original claim and linked sources. QA exports preserve source hashes; no manual real-workspace Run performed.",
+  "architecture": "Four native headless OpenCode CLI tasks for semantic clause extraction, research, judgment and report writing; no generated Python or CLI wrapper. Proper .tagma/<pipeline> task cwd and declared artifact ownership.",
+  "citations": {
+    "HTTP200": 6,
+    "totalUniqueNormalReportUrls": 6,
+    "responsesBoundedAt512KiB": 2,
+    "allNormalReportUrlsOccurredInActualSearchResponses": true
+  },
+  "limits": [
+    "Independent reviews are explicitly authorized fallible model judgments, not deterministic external truth.",
+    "Initial failed Trial is retained separately and is not included in the final successful stream count.",
+    "Native task-input default variations remain limited by the Trial schema; no unsupported task-input override or test weakening.",
+    "Host/network/child execution is not an OS-enforced sandbox.",
+    "Historical inventory remains incomplete as previously recorded."
+  ],
+  "metadataCorrection": {
+    "initialDraftSha256": "9e4ad46d6057eb290dda8e67d64df6e12d8f753e7f9e76136ff32363d79cbb49",
+    "correction": "The initial derived summary used4 pipeline outputs as the review target count. Actual native receipts contain3 graded targets and3 captured artifacts each. Authoritative receipt bytes and hashes were unchanged; subsequent summaries derive these counts separately from actual records."
+  }
+}

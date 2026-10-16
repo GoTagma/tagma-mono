@@ -441,6 +441,30 @@
       "path": "architecture/quality/evidence/s1-l2-workspace-input-boundary-final-green.txt",
       "sha256": "6a1d83ae631e18457b3d3b3c4eb2bf4cf0c1bf4d76b83e24507158741c080e08",
       "role": "actual-guard-contract-regression-final-green"
+    },
+    {
+      "id": "s1-l3-generated-json-type-first-failure",
+      "path": "architecture/quality/evidence/s1-l3-verify3-type-first-failure.json",
+      "sha256": "6469ee34b2d0babbfd1c7c552ee5486fa37557f03777bb80e65b290402890b9c",
+      "role": "actual-automatic-Trial-type-failure-not-product-fault"
+    },
+    {
+      "id": "s1-l3-original-operation-accepted",
+      "path": "architecture/quality/evidence/s1-l3-verify3-acceptance.json",
+      "sha256": "33e0ef894c06fd342e87661cb249604010ebee70071356fd6f2f98250c1f492e",
+      "role": "actual-repaired-Trial-and-sealed-publication-pass"
+    },
+    {
+      "id": "s1-l3-json-scalar-contract-guard",
+      "path": "architecture/quality/evidence/s1-l3-json-value-contract-green.txt",
+      "sha256": "edcb555b101fff41d7b1201d56f4e3f41b93362968d7502ffc10858e750c375c",
+      "role": "real-SDK-completion-and-downstream-guard-green"
+    },
+    {
+      "id": "s1-l2-acceptance-guard-exact-main-CI-green",
+      "path": "architecture/quality/evidence/s1-l2-acceptance-guard-main-ci-green.json",
+      "sha256": "49ebe85701e7dba689e64649ae2ee9b58ab1ca5a0296dfe9f6e59a2b9b311c29",
+      "role": "actual-all-platform-unit-guard-and-full-CI-green"
     }
   ],
   "issues": [
@@ -7072,6 +7096,12 @@
           "evidencePath": "architecture/quality/evidence/s1-l2-workspace-input-boundary-final-green.txt",
           "evidenceSha256": "6a1d83ae631e18457b3d3b3c4eb2bf4cf0c1bf4d76b83e24507158741c080e08",
           "liveAcceptance": false
+        },
+        {
+          "kind": "exact-main-cross-platform-real-boundary-and-full-CI-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-acceptance-guard-main-ci-green.json",
+          "evidenceSha256": "49ebe85701e7dba689e64649ae2ee9b58ab1ca5a0296dfe9f6e59a2b9b311c29",
+          "liveAcceptance": false
         }
       ],
       "fixes": [
@@ -7102,6 +7132,74 @@
       "realTestSelectors": [],
       "contract": "Keep .tagma/<pipeline> helper copies and workspace-root task cwd semantics. Reject missing cwd before child launch. Production shellquote/native argv must preserve quotes, shell syntax, Unicode, newlines and padded nonempty strings without side effects. Whitespace-only helper input fails.",
       "claimLimit": "The regression protects a verified existing contract; it cannot guarantee every model authors valid YAML. Local-only supplementary scalar probes do not rewrite not-verifiable native-default coverage in the actual Trial receipt."
+    },
+    {
+      "id": "CSR-0045",
+      "lineage": [
+        "CSR-0014",
+        "CSR-0026",
+        "CSR-0041",
+        "CSR-0042",
+        "CSR-0044"
+      ],
+      "title": "Generated normalized values require explicit JSON type contracts before downstream work",
+      "category": "acceptance-contract-generated-schema-alignment-not-product-fault",
+      "mechanism": "real-JSON-completion-without-implicit-coercion-and-dependency-gating",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Generated value330 was numeric but generated schema required string. Existing product validation correctly rejected2 actual repeats; no new application runtime fault or runtime repair claimed.",
+      "firstEvidence": {
+        "sourceId": "s1-l3-generated-json-type-first-failure",
+        "path": "architecture/quality/evidence/s1-l3-verify3-type-first-failure.json",
+        "sha256": "6469ee34b2d0babbfd1c7c552ee5486fa37557f03777bb80e65b290402890b9c",
+        "sourceRevision": "318ac80b87654b428e9aa9d82056a71483af9020",
+        "round": "S1-L3-verify3-original-operation-with-Host-safety-clarification",
+        "acceptancePolicy": "Automatic pipeline artifact repair remains in the same operation. Preserve strict JSON checks and the failure; only a fresh current plan and actual successful Trial plus sealed publication pass."
+      },
+      "history": [
+        {
+          "kind": "actual-schema-type-rejection-before-downstream",
+          "evidencePath": "architecture/quality/evidence/s1-l3-verify3-type-first-failure.json",
+          "evidenceSha256": "6469ee34b2d0babbfd1c7c552ee5486fa37557f03777bb80e65b290402890b9c",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "actual-same-operation-repair-and-publication-pass",
+          "evidencePath": "architecture/quality/evidence/s1-l3-verify3-acceptance.json",
+          "evidenceSha256": "33e0ef894c06fd342e87661cb249604010ebee70071356fd6f2f98250c1f492e",
+          "liveAcceptance": true
+        },
+        {
+          "kind": "real-SDK-declared-type-and-downstream-contract-green",
+          "evidencePath": "architecture/quality/evidence/s1-l3-json-value-contract-green.txt",
+          "evidenceSha256": "edcb555b101fff41d7b1201d56f4e3f41b93362968d7502ffc10858e750c375c",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "kind": "generated-schema-and-prompt-alignment",
+          "summary": "Explicit string-or-number unions on5 normalized numeric metadata fields; original claim remains string and other constraints unchanged. Fresh second plan and real repeated execution passed. No source runtime change."
+        },
+        {
+          "kind": "real-SDK-existing-contract-regression",
+          "path": "apps/editor/tests/chat-trial-json-value-contract.test.ts",
+          "summary": "Strict string rejects numeric data; explicit unions admit string/number, reject boolean, preserve string claim and required fields; completion failure skips downstream."
+        }
+      ],
+      "status": "live-case-accepted-existing-JSON-contract-guard-protected",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-value-contract.test.ts",
+          "fullName": "real JSON completion preserves declared scalar types and blocks downstream work until the contract passes",
+          "namePattern": "^real JSON completion preserves declared scalar types and blocks downstream work until the contract passes$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Never silently coerce JSON types or run downstream work after failed completion. Type flexibility must be explicitly declared at the intended field; keep required fields and original scalar input types.",
+      "claimLimit": "The regression protects an existing deterministic contract, not model generation quality. The actual2 reviews grade3 targets each; keep pipeline output, captured artifact and graded-target counts separate."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

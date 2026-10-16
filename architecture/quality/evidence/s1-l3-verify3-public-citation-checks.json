@@ -1,0 +1,56 @@
+[
+  {
+    "url": "https://apnews.com/article/technology-europe-arts-and-entertainment-france-5beecec5e44a64a957eb68b98fa1eb43",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 524288,
+    "boundedAt512KiB": true,
+    "sha256": "6696dbe80c0e32afe07d7283ee61dc72572f78dbec0196babf5adccd7bfbea11",
+    "title": "The Eiffel Tower grows even higher, thanks to new antenna | AP News"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 524288,
+    "boundedAt512KiB": true,
+    "sha256": "853af4cb6b5ec653516789d98c8363c1e5eda9e99621bd19a65c450d4bafe2bc",
+    "title": "Eiffel Tower - Wikipedia"
+  },
+  {
+    "url": "https://www.toureiffel.paris/en/news/events/eiffel-tower-grows-330-meters-tall",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 68209,
+    "boundedAt512KiB": false,
+    "sha256": "65da646cec66ddd28bc01682e8f89559edc3aa210ed27d026c282a3e0f3e66e8",
+    "title": "The Eiffel Tower grows again : 330 meters high - The Eiffel Tower"
+  },
+  {
+    "url": "https://www.toureiffel.paris/en/news/history-and-culture/300-330-meters-story-towers-height",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 63466,
+    "boundedAt512KiB": false,
+    "sha256": "55caf6427b6b9a8c284cfd6c4975fc7339cb9d3d29d6a836b54399bd24cf9e41",
+    "title": "From 300 to 330 meters : the story of the Tower’s height - The Eiffel Tower"
+  },
+  {
+    "url": "https://www.toureiffel.paris/en/news/history-and-culture/why-does-eiffel-tower-change-size",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 56357,
+    "boundedAt512KiB": false,
+    "sha256": "bfc93809fbbefbe4aa329a84331e9ad04060d65614d5bf5b85de92ef53b28ab2",
+    "title": "Why does the Eiffel Tower change size? - The Eiffel Tower"
+  },
+  {
+    "url": "https://www.toureiffel.paris/fr/le-monument/chiffres-cle",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 56281,
+    "boundedAt512KiB": false,
+    "sha256": "57f9d68024cfe90450154794318c8b1b0a31b405b23d87e422fed6901b875ebb",
+    "title": "Hauteur, poids, construction - La Tour Eiffel OFFICIEL"
+  }
+]

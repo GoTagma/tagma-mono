@@ -1,0 +1,45 @@
+{
+  "scope": "actual Host sealed result joined to production artifact-set projection and published file hashes; read-only",
+  "operationId": "operation-4f40fe11-9195-4af8-9a42-3817d76cd307",
+  "resultId": "result_24aa14c374d016da06249864aa50a1ff47833c0ac6b05d62",
+  "resultHash": "40b32be900228df3fe8c32ea9b6cbe0ffaaa4dce3327515d6fd69d7ede1cb43a",
+  "artifactSetHash": "d77e4b6b7c3c06ceb57f178ddef50f86d752506aaaa6e033511257d8e86852c0",
+  "artifacts": [
+    {
+      "artifactId": "artifact_17caefc9e315c809ba853e64970f00e71dde7c3c37165a00",
+      "kind": "requirements",
+      "path": "chat-a3338efb371b8d19844057db/chat-a3338efb371b8d19844057db.requirements.md",
+      "sha256": "da29690b9bb808b52264f0ead4393289eb3367d21ca645c7232d76e4d15e8f21"
+    },
+    {
+      "artifactId": "artifact_3ff512ecdb35bb5f7154565b89c601360c8ac07b1a76b9cb",
+      "kind": "yaml",
+      "path": "chat-a3338efb371b8d19844057db/chat-a3338efb371b8d19844057db.yaml",
+      "sha256": "954314b2e718bc016be18c66049ea7fdbf418f00d16a28306dd2d98db54ff345"
+    },
+    {
+      "artifactId": "artifact_57ee007448da5c49b53258bceb6197e72a3852dd20d22674",
+      "kind": "support",
+      "path": "chat-a3338efb371b8d19844057db/evidence.schema.json",
+      "sha256": "f72ec94599cb0d59f3db6a8df135d549c30b21f2f7c7cb117321c6a87a8ae4ea"
+    },
+    {
+      "artifactId": "artifact_70a7545fb3e4f543c1cfeef7d38b0bce6cb913d5af0062ac",
+      "kind": "layout",
+      "path": "chat-a3338efb371b8d19844057db/chat-a3338efb371b8d19844057db.layout.json",
+      "sha256": "e9f9473630ebf87d5cb7054829f49034b5cf2c71337f96217d3383cb844f1e1a"
+    },
+    {
+      "artifactId": "artifact_813107830456e836c154310c3ba6db78cf84ab9c7c846a2a",
+      "kind": "support",
+      "path": "chat-a3338efb371b8d19844057db/clauses.schema.json",
+      "sha256": "d3eb2292212e473fa7ed7aff174c8b3036cd341bed3f7ad50f49e2befec7a18e"
+    },
+    {
+      "artifactId": "artifact_ac731f619b2459e9b9deff8da785298dc5f331f5c4e353c5",
+      "kind": "support",
+      "path": "chat-a3338efb371b8d19844057db/verdict.schema.json",
+      "sha256": "24c764b7aa9c8cc400f51492f39a2e466c6c8d55f7981818995d414fd31b6f40"
+    }
+  ]
+}

@@ -2361,3 +2361,9 @@
   strings, newline/Unicode, no injected shell side effect and empty-input rejection. Generated
   workflow mistakes and local helper probes are distinct from product defects and actual
   model-backed Trial/publication evidence; never relabel native-default input coverage.
+
+- Keep JSON completion types explicit: a string schema rejects numeric values; a deliberately
+  declared string-or-number union can accept both. Never enable implicit coercion or drop
+  unrelated required/string input constraints to hide generated-data errors. The real SDK
+  scalar-contract regression must also prove failed completion blocks downstream execution,
+  and runs in the Windows/macOS/Linux managed-runtime unit CI step.

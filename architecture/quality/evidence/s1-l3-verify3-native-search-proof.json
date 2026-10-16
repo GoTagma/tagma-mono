@@ -1,0 +1,59 @@
+{
+  "scope": "Tool-use metadata from complete SHA-verified child NDJSON; retrieved bodies retained in local raw evidence",
+  "normalRuns": [
+    {
+      "caseId": "positive_e2e",
+      "runNumber": 1,
+      "actualWebSearchCalls": 2,
+      "citationUrlsObservedInSearch": [
+        {
+          "url": "https://apnews.com/article/technology-europe-arts-and-entertainment-france-5beecec5e44a64a957eb68b98fa1eb43",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://www.toureiffel.paris/en/news/events/eiffel-tower-grows-330-meters-tall",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://www.toureiffel.paris/en/news/history-and-culture/why-does-eiffel-tower-change-size",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://www.toureiffel.paris/fr/le-monument/chiffres-cle",
+          "inSearchResponse": true
+        }
+      ]
+    },
+    {
+      "caseId": "positive_e2e",
+      "runNumber": 2,
+      "actualWebSearchCalls": 1,
+      "citationUrlsObservedInSearch": [
+        {
+          "url": "https://apnews.com/article/technology-europe-arts-and-entertainment-france-5beecec5e44a64a957eb68b98fa1eb43",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://www.toureiffel.paris/en/news/events/eiffel-tower-grows-330-meters-tall",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://www.toureiffel.paris/en/news/history-and-culture/300-330-meters-story-towers-height",
+          "inSearchResponse": true
+        },
+        {
+          "url": "https://www.toureiffel.paris/fr/le-monument/chiffres-cle",
+          "inSearchResponse": true
+        }
+      ]
+    }
+  ]
+}

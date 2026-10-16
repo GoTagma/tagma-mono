@@ -1,0 +1,44 @@
+{
+  "changes": [
+    {
+      "path": "$.properties.clauses.items.properties.baseline.type",
+      "before": "string",
+      "after": [
+        "string",
+        "number"
+      ]
+    },
+    {
+      "path": "$.properties.clauses.items.properties.scale.type",
+      "before": "string",
+      "after": [
+        "string",
+        "number"
+      ]
+    },
+    {
+      "path": "$.properties.clauses.items.properties.period.type",
+      "before": "string",
+      "after": [
+        "string",
+        "number"
+      ]
+    },
+    {
+      "path": "$.properties.clauses.items.properties.value.type",
+      "before": "string",
+      "after": [
+        "string",
+        "number"
+      ]
+    },
+    {
+      "path": "$.properties.clauses.items.properties.bounds.type",
+      "before": "string",
+      "after": [
+        "string",
+        "number"
+      ]
+    }
+  ]
+}
