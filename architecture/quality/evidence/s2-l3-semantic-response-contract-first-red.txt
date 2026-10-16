@@ -1,0 +1,24 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-semantic-review.test.ts:
+349 |       const response = JSON.parse(f.response().text);
+350 |       response.reviews[0].evidence = Array.from({length: contract.maxEvidenceItems}, () => ({ path: 'flow/report.md', quote: 'The observation is provisional' }));
+351 |       return {...f.response(), text: JSON.stringify(response)};
+352 |     } },
+353 |   });
+354 |   expect(result.success).toBe(true);
+                               ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review.test.ts:354:26)
+(fail) reviewer receives the unchanged response limits before one bounded invocation [3.54ms]
+(pass) reviewer response limits keep complete literal evidence strict without truncation coercion or retries [4.61ms]
+
+ 1 pass
+ 10 filtered out
+ 1 fail
+ 57 expect() calls
+Ran 2 tests across 1 file. [93.00ms]

@@ -335,3 +335,119 @@ test('semantic reviewer cancellation and caller mutation cannot turn an in-fligh
   mutable.invoke = async () => ({ ...f.response(), failureCode: 'provider_billing_required' });
   expect((await second).success).toBe(true);
 });
+
+test('reviewer receives the unchanged response limits before one bounded invocation', async () => {
+  const f = fixture();
+  let calls = 0;
+  const result = await evaluateTrialSemanticReview({
+    ...f.input,
+    runtime: {
+      ...f.runtime,
+      invoke: async (request) => {
+        calls += 1;
+        const contract = JSON.parse(request.user).responseContract;
+        expect(contract).toEqual({
+          maxReasonCodeUnits: 1600,
+          maxEvidenceItems: 4,
+          maxQuoteCodeUnits: 512,
+          maxResponseBytes: 65536,
+        });
+        expect(request.system).toContain(JSON.stringify(contract));
+        const response = JSON.parse(f.response().text);
+        response.reviews[0].evidence = Array.from({ length: contract.maxEvidenceItems }, () => ({
+          path: 'flow/report.md',
+          quote: 'The observation is provisional',
+        }));
+        return { ...f.response(), text: JSON.stringify(response) };
+      },
+    },
+  });
+  expect(result.success).toBe(true);
+  expect(calls).toBe(1);
+  expect(result.receipt?.verdicts[0]?.evidence).toHaveLength(4);
+});
+
+test('reviewer response limits keep complete literal evidence strict without truncation coercion or retries', async () => {
+  const vectors = [
+    {
+      label: 'four valid quotes',
+      count: 4,
+      reason: 1600,
+      quote: 'The observation is provisional',
+      pass: true,
+    },
+    {
+      label: 'fifth valid quote',
+      count: 5,
+      reason: 20,
+      quote: 'The observation is provisional',
+      pass: false,
+    },
+    {
+      label: 'reason one beyond bound',
+      count: 1,
+      reason: 1601,
+      quote: 'The observation is provisional',
+      pass: false,
+    },
+    { label: 'quote at bound', count: 1, reason: 20, quote: 'Q'.repeat(512), pass: true },
+    { label: 'quote one beyond bound', count: 1, reason: 20, quote: 'Q'.repeat(513), pass: false },
+    { label: 'Unicode at UTF16 bound', count: 1, reason: 20, quote: '🧭'.repeat(256), pass: true },
+    {
+      label: 'Unicode beyond UTF16 bound',
+      count: 1,
+      reason: 20,
+      quote: '🧭'.repeat(257),
+      pass: false,
+    },
+    {
+      label: 'literal JSON characters',
+      count: 1,
+      reason: 20,
+      quote: '"mode": "observed"',
+      pass: true,
+    },
+    {
+      label: 'invented escape characters',
+      count: 1,
+      reason: 20,
+      quote: '\\"mode\\": \\"observed\\"',
+      pass: false,
+    },
+  ];
+  for (const vector of vectors) {
+    const f = fixture();
+    const actual =
+      report + '\n' + 'Q'.repeat(513) + '\n' + '🧭'.repeat(257) + '\n' + '"mode": "observed"';
+    writeFileSync(join(f.directory, 'report.md'), actual);
+    let calls = 0;
+    const response = JSON.parse(f.response().text);
+    response.reviews[0].reason = 'R'.repeat(vector.reason);
+    response.reviews[0].evidence = Array.from({ length: vector.count }, () => ({
+      path: 'flow/report.md',
+      quote: vector.quote,
+    }));
+    const result = await evaluateTrialSemanticReview({
+      ...f.input,
+      runtime: {
+        ...f.runtime,
+        invoke: async () => {
+          calls += 1;
+          return { ...f.response(), text: JSON.stringify(response) };
+        },
+      },
+    });
+    expect(result.success, vector.label).toBe(vector.pass);
+    expect(calls, vector.label).toBe(1);
+    expect(result.receipt?.responseSha256).toBe(sha(JSON.stringify(response)));
+    expect(result.receipt?.artifacts.find((a) => a.path === 'flow/report.md')?.sha256).toBe(
+      sha(actual),
+    );
+    if (vector.pass) expect(result.receipt?.verdicts[0]?.evidence).toHaveLength(vector.count);
+    else {
+      expect(result.receipt?.outcome).toBe('unavailable');
+      expect(result.expectations[0]?.repairScope).toBe('diagnostic-only');
+      expect(result.receipt?.verdicts).toEqual([]);
+    }
+  }
+});

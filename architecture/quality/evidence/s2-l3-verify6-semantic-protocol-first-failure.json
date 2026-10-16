@@ -1,0 +1,263 @@
+{
+  "case": "S2-L3",
+  "attempt": "s2-l3-verify6",
+  "sourceRevision": "444b16ddfc9dd87a36b53c58011e5afe0c267f36",
+  "round": 1,
+  "originalSubmissions": 1,
+  "hostActionClarifications": 1,
+  "freshWorkspace": true,
+  "editorRestarted": true,
+  "accepted": false,
+  "published": false,
+  "operation": {
+    "operationId": "operation-c5e1e6a4-d3bb-497f-9484-ebc785339642",
+    "conversationId": "conversation-09c8e748-786e-4106-b226-96b490010135",
+    "rendererInstanceId": "renderer-398a2d8b-92cb-4fe9-ab14-57976607948f",
+    "generation": 1,
+    "version": 15,
+    "phase": "trial-running",
+    "waitReason": "user_retry",
+    "executionState": "retryable_failure",
+    "terminalOutcome": null,
+    "createdAt": 1792171555068,
+    "updatedAt": 1792171994761,
+    "hasResult": false,
+    "pendingInputKind": null,
+    "terminalReasonCode": null,
+    "terminalDiagnosticCodes": []
+  },
+  "failure": {
+    "projection": {
+      "stage": "verification",
+      "code": "trial_verification_paused",
+      "invocationId": null,
+      "outboxStatus": null,
+      "recordedAt": 1792171994761
+    },
+    "verificationFeedback": {
+      "details": "Trial result: failed. Observed cases: 5. Task evidence omitted: 10.",
+      "failedTaskIds": [],
+      "omittedFailedTaskCount": 0,
+      "schemaVersion": 1,
+      "stage": "trial"
+    }
+  },
+  "trial": {
+    "cases": [
+      {
+        "id": "core",
+        "success": false,
+        "runIds": [
+          "run_mvb8uhyz_ece3c68f5f59"
+        ],
+        "failed": [
+          {
+            "type": "artifact-semantic-review",
+            "passed": false,
+            "detail": "Run 1: Independent semantic review unavailable: invalid_reviewer_response.",
+            "repairScope": "diagnostic-only",
+            "semanticReview": {
+              "taskId": "analysis.report",
+              "path": "chat-9f18c21073b8f752cac035b2/fact-check-report.md",
+              "runNumber": 1,
+              "requestSha256": "7da5bffa20d001c9f023f2e71aea7f8dac1ccfd89850525bd8a4abc1ff670f7a"
+            }
+          }
+        ]
+      },
+      {
+        "id": "empty",
+        "success": true,
+        "runIds": [
+          "run_mvb8vgnl_6ed7f8f8c1a1"
+        ],
+        "failed": []
+      },
+      {
+        "id": "missing-draft",
+        "success": true,
+        "runIds": [
+          "run_mvb8vz54_eb83d3ba926d"
+        ],
+        "failed": []
+      },
+      {
+        "id": "repeat-unicode",
+        "success": true,
+        "runIds": [
+          "run_mvb8vz9t_068deac32251",
+          "run_mvb8wuz4_84875a2928b3"
+        ],
+        "failed": []
+      },
+      {
+        "id": "empty-file",
+        "success": true,
+        "runIds": [
+          "run_mvb8xkzs_6da662b0c2db"
+        ],
+        "failed": []
+      }
+    ],
+    "taskStatusCounts": {
+      "success": 28,
+      "failed": 2,
+      "skipped": 12
+    },
+    "totalTaskCount": 42,
+    "omittedTaskCount": 10,
+    "repairAuthorization": "diagnostic-only"
+  },
+  "reviewReceipt": {
+    "version": 1,
+    "grading": "independent-model",
+    "outcome": "unavailable",
+    "identity": {
+      "stageId": "4552d3cd-5f34-413e-93a7-d727eeee5b35",
+      "trialId": "trial-ac26546e8170555c694a81b832319d59f3b00b05",
+      "yamlHash": "9e6ec24d621357315c2fc9bccdb886e1f1b63141",
+      "planHash": "36688b4b39c2b366aa3670b79e0b09c16fefd2173bf228f4acee42ddbede7143",
+      "intentDigest": "27ab14fcc486f16c8b254023e509dac5f94175d58a4d3781640d6e5f919035f8",
+      "caseId": "core",
+      "runId": "run_mvb8uhyz_ece3c68f5f59",
+      "runNumber": 1
+    },
+    "model": {
+      "providerID": "deepseek",
+      "modelID": "deepseek-flash",
+      "variant": "off"
+    },
+    "configurationDigest": "c12248dcb6399fae80aeb7130fa6b07ea7218f6fc0a6529499519bce45616006",
+    "requestSha256": "7da5bffa20d001c9f023f2e71aea7f8dac1ccfd89850525bd8a4abc1ff670f7a",
+    "responseSha256": "20e5c12ecb885a37f5313500d3d8f1bfc9f69fd60bb22f433b2d5e89dcc6bda3",
+    "reviewerSessionId": "ses_tagma_content_review_5d76fda836b54bb6ab91e7ca35dca3c4",
+    "artifacts": [
+      {
+        "path": "chat-9f18c21073b8f752cac035b2/claims.json",
+        "role": "input",
+        "sha256": "cbc4865fb1876bd0fee934eb94f584c19f8862c5db9aaf590b4f0adaa12f455e",
+        "bytes": 1861
+      },
+      {
+        "path": "chat-9f18c21073b8f752cac035b2/fact-check-report.md",
+        "role": "produced",
+        "sha256": "060caab798a88afb7b5b4a66c79de7ce4ba0afc86928b554e28759b601cce88e",
+        "bytes": 4520
+      },
+      {
+        "path": "chat-9f18c21073b8f752cac035b2/input/draft.md",
+        "role": "input",
+        "sha256": "b59424bb41c2381243e5bd28dc915e7700fd69b52f50cb041b2f7e1697599d26",
+        "bytes": 371
+      },
+      {
+        "path": "chat-9f18c21073b8f752cac035b2/run.json",
+        "role": "input",
+        "sha256": "07b0c19026699c8942a174c91e2671856a591f04d76ebf200081b3853ebe2b72",
+        "bytes": 123
+      },
+      {
+        "path": "chat-9f18c21073b8f752cac035b2/verdicts.json",
+        "role": "input",
+        "sha256": "f9ecd9e5cc0d90a79eb129e5ee43522b2ca5982352951d4c9005192a7afdfb1f",
+        "bytes": 5063
+      }
+    ],
+    "verdicts": []
+  },
+  "nativeRequestBytesVerified": true,
+  "nativeResponseBytesVerified": true,
+  "responseEvidenceItems": 5,
+  "actualParserMaxEvidenceItems": 4,
+  "limitAbsentFromSuppliedSystem": true,
+  "literalQuoteMembership": [
+    {
+      "path": "chat-9f18c21073b8f752cac035b2/fact-check-report.md",
+      "quoteSha256": "813e898df2bd0156f9cce5f657062c0c734289593cafbe384ca8da9740f635b7",
+      "literalSubstringPresent": true,
+      "quoteCodeUnits": 79
+    },
+    {
+      "path": "chat-9f18c21073b8f752cac035b2/fact-check-report.md",
+      "quoteSha256": "4013af745825f47b0108818e8f6e5e1973a9968b0878382fa278c4d599fe2041",
+      "literalSubstringPresent": true,
+      "quoteCodeUnits": 73
+    },
+    {
+      "path": "chat-9f18c21073b8f752cac035b2/fact-check-report.md",
+      "quoteSha256": "045881b509d52d60dbc973ed18136937c57333222507c959cb3ebea3fce46489",
+      "literalSubstringPresent": true,
+      "quoteCodeUnits": 113
+    },
+    {
+      "path": "chat-9f18c21073b8f752cac035b2/run.json",
+      "quoteSha256": "1678ca38a9a33ab9c4d189eb991f1dce92078113192a1790f675193a5af19511",
+      "literalSubstringPresent": true,
+      "quoteCodeUnits": 82
+    },
+    {
+      "path": "chat-9f18c21073b8f752cac035b2/claims.json",
+      "quoteSha256": "fdc8bb8d58b628d7a4e239bf007768f479453f0872fed486882d8dbbf01794b6",
+      "literalSubstringPresent": true,
+      "quoteCodeUnits": 81
+    }
+  ],
+  "completeSHAChildStreams": 60,
+  "nativeBeginCoordinates": {
+    "scope": "Actual native begin output metadata only; no tool auth, YAML contents or private model text copied.",
+    "result": [
+      {
+        "sessionId": "ses_tagma_authoring_2c2b85263c574b80a470ce7d102d6f02",
+        "outputSha256": "c3bda891ef3c6118fa3289e50a4f804ec521c2c9e1de0fc223360d81e71037a3",
+        "yamlHash": "9e6ec24d621357315c2fc9bccdb886e1f1b63141",
+        "pipelineEvidenceKind": "included",
+        "casePathCoordinates": {
+          "version": 1,
+          "yamlHash": "9e6ec24d621357315c2fc9bccdb886e1f1b63141",
+          "attemptId": "trial-ac26546e8170555c694a81b832319d59f3b00b05",
+          "relativeYamlPath": "chat-9f18c21073b8f752cac035b2/chat-9f18c21073b8f752cac035b2.yaml",
+          "namespace": "chat-9f18c21073b8f752cac035b2",
+          "scope": "Declared namespace coordinates, not observed artifact content or execution proof.",
+          "guidance": "Use casePath in Trial assertions. A workspace-root task writing explicit .tagma/<namespace>/... and a task in cwd .tagma/<namespace> writing a relative file use the same public namespace alias. Literal .tagma paths and Host-private files remain forbidden. Correct plan spelling, not business output locations. Unlisted artifacts may still be observable.",
+          "entries": [
+            {
+              "taskId": "analysis.extract",
+              "casePath": "chat-9f18c21073b8f752cac035b2/claims.json",
+              "runtimeWorkspacePath": ".tagma/chat-9f18c21073b8f752cac035b2/claims.json"
+            },
+            {
+              "taskId": "analysis.report",
+              "casePath": "chat-9f18c21073b8f752cac035b2/fact-check-report.md",
+              "runtimeWorkspacePath": ".tagma/chat-9f18c21073b8f752cac035b2/fact-check-report.md"
+            },
+            {
+              "taskId": "checks.prepare",
+              "casePath": "chat-9f18c21073b8f752cac035b2/run.json",
+              "runtimeWorkspacePath": ".tagma/chat-9f18c21073b8f752cac035b2/run.json"
+            },
+            {
+              "taskId": "verification.verify",
+              "casePath": "chat-9f18c21073b8f752cac035b2/verdicts.json",
+              "runtimeWorkspacePath": ".tagma/chat-9f18c21073b8f752cac035b2/verdicts.json"
+            }
+          ],
+          "unlistedArtifactCount": 0,
+          "availability": "included"
+        }
+      }
+    ]
+  },
+  "firstCause": "Reviewer returned5 valid literal evidence entries but parser accepts at most4; the numeric bound was not supplied in the review contract. All five original quotes have verified literal substring membership and all snapshot bytes match their SHA256. First rejection invalid_reviewer_response is correct.",
+  "priorFixesReviewed": [
+    "CSR41 strict quotes/frozen identity/one call/no retry/90s cap",
+    "CSR34 no provider failure retry",
+    "CSR45 explicit type contracts without silent coercion",
+    "CSR46 no false normal completion",
+    "CSR47 actual revision-bound4 coordinate entries; plan committedonce and no unobservable-artifact finding"
+  ],
+  "proposal": "Advertise all unchanged reviewer response bounds in frozen request/system and share constants with parsing/receipt validation. Preserve strict rejection of over-limit/nonliteral evidence, no discarded optional quotes or normalization, no added calls/retries/budget increases. Add protocol-boundary regressions then fresh editor/workspace originalS2L3.",
+  "analysisCorrection": {
+    "initialDraftSha256": "cf78121b81ab7a56c02f03300f8e24b1d59749a691c19031906a6ea96e483a74",
+    "claim": "Initial analyst escaping hypothesis disproved before source changes; native request/response/receipt unchanged. Canonical cause is only unadvertised numeric response bounds."
+  }
+}

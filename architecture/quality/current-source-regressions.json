@@ -525,6 +525,30 @@
       "path": "architecture/quality/evidence/s2-l3-verify5-path-coordinate-first-observation.json",
       "sha256": "506b3200566e6f2027e55741eacc596631da51165dcf9b367a0af5e5843e6ff5",
       "role": "immutable-live-false-observability-claim-and-retained-stale-plan"
+    },
+    {
+      "id": "s2-l3-semantic-response-contract-red",
+      "path": "architecture/quality/evidence/s2-l3-semantic-response-contract-first-red.txt",
+      "sha256": "3b78dc8cb4d1298b0df5467d2dea0fe34f43f69720fa150a06bf0f2ffa4eef8b",
+      "role": "missing-advertised-response-limits-real-evaluator-red"
+    },
+    {
+      "id": "s2-l3-semantic-response-related-green",
+      "path": "architecture/quality/evidence/s2-l3-semantic-response-related31-green.txt",
+      "sha256": "d0ec8192552e91d2cd756f7c77e311b6247c0d9daac688701d8fc07cb0818f93",
+      "role": "related31-tests276-assertions-green"
+    },
+    {
+      "id": "s2-l3-semantic-response-native-green",
+      "path": "architecture/quality/evidence/s2-l3-semantic-response-native-green.txt",
+      "sha256": "7e9c1855075a420041882ca00b4365cdbdc1fcff8f12a85fa6feeba7552fd1be",
+      "role": "real-pinned-native-one-test22-assertions-green"
+    },
+    {
+      "id": "s2-l3-semantic-response-live-first-failure",
+      "path": "architecture/quality/evidence/s2-l3-verify6-semantic-protocol-first-failure.json",
+      "sha256": "bc3dfcf8ee924aaae8e886b64c5d64719e4ca045512592ecc6ad51b37c7a1b18",
+      "role": "immutable-native-five-valid-quotes-hidden-four-item-limit"
     }
   ],
   "issues": [
@@ -7528,6 +7552,83 @@
       "realTestSelectors": [],
       "contract": "Physical workspace/.tagma/<pipeline>/... artifacts can be observed through public <pipeline>/... Trial paths. Metadata describes coordinates, never execution/content truth or write authority; do not relocate outputs solely for assertion spelling. Preserve literal .tagma/private-path rejection, stale plan fences, schema/ownership and frozen planning budget.",
       "claimLimit": "Real local path interoperability and available guidance are verified; no native model accuracy or latency guarantee. S2-L3 actual fresh normal Trial/publication and final source CI remain required; historical archive gaps remain RED."
+    },
+    {
+      "id": "CSR-0048",
+      "lineage": [
+        "CSR-0034",
+        "CSR-0041",
+        "CSR-0045",
+        "CSR-0046",
+        "CSR-0047"
+      ],
+      "title": "Semantic reviewer must receive the same strict response bounds enforced by the Host",
+      "category": "product-reviewer-protocol-contract",
+      "mechanism": "shared-visible-reviewer-response-bounds-without-validation-or-budget-relaxation",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s2-l3-semantic-response-live-first-failure",
+        "path": "architecture/quality/evidence/s2-l3-verify6-semantic-protocol-first-failure.json",
+        "sha256": "bc3dfcf8ee924aaae8e886b64c5d64719e4ca045512592ecc6ad51b37c7a1b18",
+        "sourceRevision": "444b16ddfc9dd87a36b53c58011e5afe0c267f36",
+        "round": "S2-L3-verify6-original-round-1",
+        "acceptancePolicy": "Preserve unavailable original receipt; allfive quotes valid, response exceeds unadvertised4 cap. No old-result regrading or extra model call. Fresh restarted original case required."
+      },
+      "history": [
+        {
+          "kind": "missing-advertised-response-limits-real-evaluator-red",
+          "evidencePath": "architecture/quality/evidence/s2-l3-semantic-response-contract-first-red.txt",
+          "evidenceSha256": "3b78dc8cb4d1298b0df5467d2dea0fe34f43f69720fa150a06bf0f2ffa4eef8b",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "related31-tests276-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s2-l3-semantic-response-related31-green.txt",
+          "evidenceSha256": "d0ec8192552e91d2cd756f7c77e311b6247c0d9daac688701d8fc07cb0818f93",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "real-pinned-native-one-test22-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s2-l3-semantic-response-native-green.txt",
+          "evidenceSha256": "7e9c1855075a420041882ca00b4365cdbdc1fcff8f12a85fa6feeba7552fd1be",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-native-five-valid-quotes-hidden-four-item-limit",
+          "evidencePath": "architecture/quality/evidence/s2-l3-verify6-semantic-protocol-first-failure.json",
+          "evidenceSha256": "bc3dfcf8ee924aaae8e886b64c5d64719e4ca045512592ecc6ad51b37c7a1b18",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Share existing1600 reason UTF16 units/4 evidence items/512 quote UTF16 units/65536 response bytes between parser, model-visible system/request contract and receipt quote checks. All numeric limits unchanged; optional evidence counts toward same cap. Configuration/request hashes include the new visible contract."
+        },
+        {
+          "summary": "One protocol-aware reviewer invocation consumes advertised limits; nine strict boundary/counterexample vectors preserve rejection, full response/artifact hashes and no truncation/coercion/retry. Existing managed-runtime unit selection runs new tests on all OS; pinned native transport still one call per review."
+        }
+      ],
+      "status": "local-contract-and-native-guarded-awaiting-fresh-S2-L3-retest",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "reviewer receives the unchanged response limits before one bounded invocation",
+          "namePattern": "^reviewer receives the unchanged response limits before one bounded invocation$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "reviewer response limits keep complete literal evidence strict without truncation coercion or retries",
+          "namePattern": "^reviewer response limits keep complete literal evidence strict without truncation coercion or retries$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Do not leave response bounds hidden from the tool-free reviewer. Keep literal quote membership, exact target coverage, response limits, one call/no retry, frozen model/inputs,90s deadline and fail-closed diagnostic-only unavailable outcomes. Never silently discard an optional fifth quote or normalize a response into passing.",
+      "claimLimit": "The original live Trial remains failed/unpublished. Initial escaping suspicion was disproved before source changes; all original literal quote memberships and snapshot hashes verify. Local protocol/native checks are not live case acceptance or a model accuracy guarantee."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

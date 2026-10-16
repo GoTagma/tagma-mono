@@ -2,6 +2,12 @@
 
 ## Shared Chat Product Actions
 
+- Independent review response bounds are a frozen model-visible contract shared with
+  parsing:1600 reason UTF16 units,4 total evidence items,512 quote UTF16 units and64KiB
+  response bytes. Optional input quotes count too. Keep literal membership and full
+  response hashes; never truncate evidence, normalize a response into passing, add
+  model retries or enlarge existing limits to accept malformed output.
+
 - Trial public paths alias only the current pipeline namespace: physical workspace
   `.tagma/<pipeline>/out.json` uses `<pipeline>/out.json`, for both workspace-root
   tasks with explicit paths and pipeline-cwd tasks with relative paths. Native begin's
