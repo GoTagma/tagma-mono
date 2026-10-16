@@ -2348,3 +2348,9 @@
   never concurrently with verify:full, build:types or check:client. Their workspace imports can
   otherwise fail during the transient missing-dist interval without executing a selected test.
   Treat that receipt as failed environment qualification and rerun serially after builds finish.
+
+- After a model settles, effort-default compilation may encounter remaining staged scope changes.
+  Defer only typed scope errors bound to the current stage and target to normal verification,
+  which retains scope evidence and existing repair/discard decisions. Never classify that owned
+  compile failure as provider unavailability or bypass Trial/publication guards. Preserve foreign
+  identity, untyped failures, CAS conflicts and interrupted compile recovery as failures.

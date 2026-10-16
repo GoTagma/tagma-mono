@@ -1,0 +1,29 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-operation-v2-authoring-runtime.test.ts:
+3246 |     (entry) =>
+3247 |       !samePipelineRelativePath(entry.relativePath, targetRelativePath) &&
+3248 |       baseEntryFor(metadata, entry.relativePath) === null,
+3249 |   );
+3250 |   if (freshSibling) {
+3251 |     throw new ChatYamlStageScopeViolationError(
+                 ^
+ChatYamlStageScopeViolationError: The Host-owned pipeline stage cannot also mutate unexpected/unexpected.yaml.
+    stageId: "11111111-1111-4111-8111-111111111111",
+ targetRelativePath: "alpha/alpha.yaml",
+       kind: "fresh_sibling",
+ offendingRelativePath: "unexpected/unexpected.yaml",
+   baseline: undefined,
+
+      at assertSessionPipelineBindingSemantics (/workspace/tagma-mono/apps/editor/server/chat-yaml-staging.ts:3251:11)
+      at compileChatYamlStage (/workspace/tagma-mono/apps/editor/server/chat-yaml-staging.ts:3278:3)
+      at compileStage (/workspace/tagma-mono/apps/editor/server/chat-operations/authoring-runtime.ts:1752:12)
+      at defaultNewPromptEffort (/workspace/tagma-mono/apps/editor/server/chat-operations/authoring-runtime.ts:4391:24)
+      at runInvocation (/workspace/tagma-mono/apps/editor/server/chat-operations/authoring-runtime.ts:3958:39)
+      at async <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-operation-v2-authoring-runtime.test.ts:664:34)
+(fail) authenticated new-pipeline effort defaults > post-model effort compilation defers typed sibling scope errors to bounded verification repair [53.84ms]
+
+ 0 pass
+ 152 filtered out
+ 1 fail
+Ran 1 test across 1 file. [304.00ms]

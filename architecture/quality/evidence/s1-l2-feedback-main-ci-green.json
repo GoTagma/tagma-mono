@@ -1,0 +1,24 @@
+{
+  "scope": "exact-main-CI-not-live-S1-L2-acceptance",
+  "commit": "57ef60effa396e8f00abd35a2484839440f64211",
+  "runId": 38908801158,
+  "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38908801158",
+  "conclusion": "success",
+  "requiredJobs": {
+    "managed-opencode-runtime (windows-latest)": "success",
+    "managed-opencode-runtime (macos-latest)": "success",
+    "managed-opencode-runtime (ubuntu-latest)": "success",
+    "full-check": "success"
+  },
+  "windowsNativeReviewStep": {
+    "jobId": 116999085138,
+    "startedAt": "2026-10-16T13:38:47Z",
+    "completedAt": "2026-10-16T13:39:25Z",
+    "conclusion": "success"
+  },
+  "limits": [
+    "S1-L2 fresh verify4 still running; no case pass claimed.",
+    "Original Windows90s pre-provider failure retained. Preparation readiness now proven before fixed evaluator deadline; no provider request during metadata initialization and exact2calls/2reviews asserted.",
+    "No full historical or full matrix GREEN."
+  ]
+}

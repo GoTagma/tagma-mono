@@ -648,6 +648,97 @@ const missingEffortYaml = `pipeline:
 `;
 
 describe('authenticated new-pipeline effort defaults', () => {
+  test('post-model effort compilation defers typed sibling scope errors to bounded verification repair', async () => {
+    for (const explicit of [false, true]) {
+      const text = explicit
+        ? missingEffortYaml.replace(
+            '          prompt:',
+            '          reasoning_effort: low\n          prompt:',
+          )
+        : missingEffortYaml;
+      const value = await productionEffortHarness(text);
+      const author = value.openCode.onExecute!;
+      value.openCode.onExecute = () => {
+        author();
+        const sibling = join(value.descriptor.agentTagmaDir, 'unexpected');
+        mkdirSync(sibling);
+        writeFileSync(join(sibling, 'unexpected.yaml'), missingEffortYaml);
+      };
+      expect(await value.runtime.runInvocation(value.request)).toMatchObject({ kind: 'completed' });
+      expect(
+        parseYaml(readFileSync(value.targetPath, 'utf8')).tracks[0].tasks[0].reasoning_effort,
+      ).toBe('low');
+      const result = await value.runtime.verifyStage({
+        operationId: 'operation-1',
+        workspaceScopeId: 'scope-1',
+        operationGeneration: 1,
+        bindingId: 'binding-1',
+        targetId: 'pipeline-1',
+        stage: value.request.stage,
+        repairAttempts: 0,
+        signal: new AbortController().signal,
+      });
+      expect(result).toMatchObject({ kind: 'repair_required' });
+      expect(result.repairErrorEvidenceHash).toBeString();
+      expect(result.feedback).toMatchObject({ stage: 'compile' });
+      const evidence = await value.runtime.readRepairErrorEvidence!({
+        operationId: 'operation-1',
+        operationGeneration: 1,
+        stageId: STAGE_ID,
+        hash: result.repairErrorEvidenceHash!,
+      });
+      expect(JSON.stringify(evidence)).toContain('fresh_sibling');
+      expect(JSON.stringify(evidence)).toContain('unexpected/unexpected.yaml');
+      expect(value.openCode.providerExecutionCount).toBe(1);
+    }
+  });
+
+  test('post-model effort compilation preserves foreign scope and unrelated failures', async () => {
+    for (const failure of [
+      new ChatYamlStageScopeViolationError(
+        'foreign-stage',
+        'alpha/alpha.yaml',
+        'fresh_sibling',
+        'extra/extra.yaml',
+        'foreign stage',
+      ),
+      new ChatYamlStageScopeViolationError(
+        STAGE_ID,
+        'foreign/foreign.yaml',
+        'fresh_sibling',
+        'extra/extra.yaml',
+        'foreign target',
+      ),
+      new Error('cannot also mutate is only untyped prose'),
+    ]) {
+      const value = await readyRuntime();
+      const relocation = await value.runtime.relocateSession({
+        operationId: 'operation-1',
+        operationGeneration: 1,
+        bindingId: 'binding-1',
+        sessionId: 'session-root',
+        relocationId: 'relocation-failed-effort',
+        stage: value.stage,
+      });
+      const path = join(value.stageDirectory, 'alpha', 'alpha.yaml');
+      mkdirSync(join(value.stageDirectory, 'alpha'));
+      value.openCode.onExecute = () => writeFileSync(path, missingEffortYaml);
+      value.staging.onCompile = () => {
+        throw failure;
+      };
+      await expect(
+        value.runtime.runInvocation({
+          ...invocationRequest(value.stage, relocation),
+          admission: admission('low'),
+        }),
+      ).rejects.toThrow(failure.message);
+      expect(
+        value.staging.authorities.get(STAGE_ID)!.invocations['authoring-invocation-1'].completed,
+      ).toBeNull();
+      expect(value.staging.trialInputs).toHaveLength(0);
+    }
+  });
+
   test('reports unavailable bounded draft access instead of silently dropping the default', async () => {
     const value = await readyRuntime();
     const relocation = await value.runtime.relocateSession({

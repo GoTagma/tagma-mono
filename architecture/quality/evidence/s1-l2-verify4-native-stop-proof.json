@@ -1,0 +1,26 @@
+{
+  "scope": "read-only native SQLite, content-free assistant metadata",
+  "session": "ses_tagma_authoring_b147709415254a509681a9e89aa0e99a",
+  "assistantMessages": 26,
+  "assistantErrorCount": 0,
+  "last": {
+    "finish": "stop",
+    "time": {
+      "created": 1792158228840,
+      "completed": 1792158232942
+    },
+    "model": "deepseek-flash",
+    "provider": "deepseek",
+    "tokens": {
+      "total": 70140,
+      "input": 348,
+      "output": 672,
+      "reasoning": 0,
+      "cache": {
+        "write": 0,
+        "read": 69120
+      }
+    }
+  },
+  "claimLimit": "Native persisted stop alone is not a Host settlement receipt or publication proof. Production post-model compilation separately reproduced a typed scope failure."
+}

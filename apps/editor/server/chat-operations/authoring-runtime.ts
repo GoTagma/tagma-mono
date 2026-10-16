@@ -4367,8 +4367,7 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     if (!changed) {
       // A prior CAS can survive interruption before compile or settlement. On
       // recovery, also compile a matching authored effort without rewriting it.
-      if (matchingPrompt)
-        await this.staging.compileStage(authority.stage.stageId, authority.workingRelativePath);
+      if (matchingPrompt) await this.compileDefaultedPromptEffort(authority);
       return null;
     }
     // Portable medium means provider-default, so this native id cannot be encoded
@@ -4388,8 +4387,26 @@ class ManagedAuthoringRuntime implements ChatOperationV2AuthoringRuntime {
     });
     // Companions and the completion snapshot must describe the normalized YAML.
     // Validation failures remain on the normal compile/repair path.
-    await this.staging.compileStage(authority.stage.stageId, authority.workingRelativePath);
+    await this.compileDefaultedPromptEffort(authority);
     return null;
+  }
+
+  private async compileDefaultedPromptEffort(
+    authority: ManagedChatOperationV2AuthoringAuthorityRecord,
+  ): Promise<void> {
+    try {
+      await this.staging.compileStage(authority.stage.stageId, authority.workingRelativePath);
+    } catch (error) {
+      // The model has settled. Let verification preserve typed scope evidence and
+      // apply its existing repair/discard rules; this is not a provider failure.
+      if (
+        error instanceof ChatYamlStageScopeViolationError &&
+        error.stageId === authority.stage.stageId &&
+        error.targetRelativePath === authority.workingRelativePath
+      )
+        return;
+      throw error;
+    }
   }
 
   private assertInvocationAuthority(

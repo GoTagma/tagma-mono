@@ -1,0 +1,32 @@
+{
+  "scope": "Post-fix code qualification before materializing these evidence documents; final source gate rerun afterward. Not live S1-L2 acceptance.",
+  "codeSha256": {
+    "apps/editor/server/chat-operations/authoring-runtime.ts": "37c50df0bae385c0497f4efee2de2c78e48c6a2f0d0d8f8c52749f92b3ed5909",
+    "apps/editor/tests/chat-operation-v2-authoring-runtime.test.ts": "5142019a0072ddb1ab5dc547311532b179de634db51ddc5c9e93df98bff671ec"
+  },
+  "fullQualification": {
+    "exitCode": 0,
+    "gates": 13,
+    "logSha256": "d05cc26ebb7e2733bc761d6417fd9ee88109f6ee9b93543dbcac2eea82d3f158",
+    "summary": "PASS text 109ms ok\n  PASS deps 303ms ok\n  PASS focus 243ms ok\n  PASS imports 61ms ok\n  PASS cycles 37ms ok\n  PASS secrets 353ms ok\n  PASS format 21.6s ok\n  PASS types 51.0s ok\n  PASS lint 19.0s ok\n  PASS tests 218.6s ok\n  PASS scripts 3.2s ok\n  PASS build 19.9s ok\n  PASS publish 10.3s ok\n[verify] passed 13 selected gate(s)"
+  },
+  "currentSourceRegressions": {
+    "passed": true,
+    "issues": 43,
+    "executions": 251,
+    "receiptPath": "architecture/quality/evidence/s1-l2-post-model-scope-pre-materialization-current-green.json",
+    "receiptSha256": "fd0dc04eabb89c810348b466c3a1b644fb6992fa7b5d464a20ab29703fd7056d"
+  },
+  "historicalGate": {
+    "passed": false,
+    "failureCategories": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    }
+  },
+  "packagesModified": false,
+  "versionPatchRequired": false,
+  "liveAccepted": false
+}

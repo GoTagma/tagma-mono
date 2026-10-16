@@ -1,0 +1,38 @@
+{
+  "sourceRevision": "57ef60effa396e8f00abd35a2484839440f64211",
+  "case": "S1-L2",
+  "attempt": "verify4-original-round-1",
+  "operationId": "operation-eec66adb-9ed6-4901-a4a2-7fed48a88c65",
+  "accepted": false,
+  "trialExecuted": false,
+  "published": false,
+  "nativeRepairFinish": "stop",
+  "hostFailure": "provider_invocation_failed",
+  "readonlyEffortProbe": {
+    "scope": "read-only effort probe; compile replaced with no-op and draft writes forbidden",
+    "code": null,
+    "compileReached": true
+  },
+  "compileDiagnostic": {
+    "errorName": "ChatYamlStageScopeViolationError",
+    "message": "The Host-owned pipeline stage cannot also mutate pipeline-nydfogx5/pipeline-nydfogx5.yaml.",
+    "stack": "ChatYamlStageScopeViolationError: The Host-owned pipeline stage cannot also mutate pipeline-nydfogx5/pipeline-nydfogx5.yaml.\n    at assertSessionPipelineBindingSemantics (/workspace/tagma-mono/apps/editor/server/chat-yaml-staging.ts:3236:15)\n    at compileChatYamlStage (/workspace/tagma-mono/apps/editor/server/chat-yaml-staging.ts:3278:3)\n    at compileStage (/workspace/tagma-mono/apps/editor/server/chat-operations/authoring-runtime.ts:1752:12)\n    at /workspace/tagma-mono/work/probe-retained-compile.ts:7:55\n    at processTicksAndRejections (native:7:39)",
+    "scopeViolation": null
+  },
+  "preservation": "Full private stage copied to ignored work/verify4-pre-diagnostic-stage before compile probe. Scope guard threw before compilation writes. No retry or additional provider call.",
+  "priorIssuesReviewed": [
+    "CSR-0013",
+    "CSR-0014",
+    "CSR-0026",
+    "CSR-0033",
+    "CSR-0034",
+    "CSR-0041",
+    "CSR-0042"
+  ],
+  "fixBoundary": "Defer authenticated typed post-model scope compilation failures to existing verification/repair; never grant execution/publication or swallow unrelated errors.",
+  "compileProbeStageComparison": {
+    "filesBefore": 16,
+    "filesAfter": 16,
+    "changed": []
+  }
+}

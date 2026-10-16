@@ -369,6 +369,36 @@
       "path": "architecture/quality/evidence/semantic-review-native-metadata-readiness-linux-green.txt",
       "sha256": "87c823e4686ab40673888c4845cc8561665622b913139254308f80205f6bb3d6",
       "role": "actual-Linux-native-metadata-preparation-green-not-Windows-proof"
+    },
+    {
+      "id": "core-feedback-and-native-readiness-exact-main-CI-green",
+      "path": "architecture/quality/evidence/s1-l2-feedback-main-ci-green.json",
+      "sha256": "8e5d4dd4c6180c06eae372e97f7cf32a1a1e96fab08da7b177fc8368eec58fd5",
+      "role": "all-required-native-platform-and-full-CI-green-not-live-S1-L2-pass"
+    },
+    {
+      "id": "s1-l2-post-model-scope-live-first-red",
+      "path": "architecture/quality/evidence/s1-l2-verify4-post-model-scope-first-red.json",
+      "sha256": "0f9efde722665f863c41926d86d40859ff177fb7f3d7282e4763d9781665f811",
+      "role": "immutable-live-blocking-failure-with-production-compile-reproduction"
+    },
+    {
+      "id": "s1-l2-post-model-scope-contract-red",
+      "path": "architecture/quality/evidence/s1-l2-post-model-scope-contract-first-red.txt",
+      "sha256": "9cd28d35919298f4f8fa5d8427ac31234f5cf539fc4346f6d03141a03d873b06",
+      "role": "qualified-contract-red-not-live-acceptance"
+    },
+    {
+      "id": "s1-l2-post-model-scope-contract-green",
+      "path": "architecture/quality/evidence/s1-l2-post-model-scope-contract-green.txt",
+      "sha256": "54c75b5ee6944bc7c3326b469a95a550aca89e7b45cb482a49816b96073bebc9",
+      "role": "qualified-contract-green-not-live-acceptance"
+    },
+    {
+      "id": "s1-l2-verify4-native-stop-metadata",
+      "path": "architecture/quality/evidence/s1-l2-verify4-native-stop-proof.json",
+      "sha256": "6c989842ba82b98282c40eaf4ab1cd133acfe09e99b6a316791f71917284196a",
+      "role": "read-only-content-free-native-completion-proof-not-host-settlement"
     }
   ],
   "issues": [
@@ -6454,9 +6484,15 @@
           "evidencePath": "architecture/quality/evidence/semantic-review-native-metadata-readiness-linux-green.txt",
           "evidenceSha256": "87c823e4686ab40673888c4845cc8561665622b913139254308f80205f6bb3d6",
           "liveAcceptance": false
+        },
+        {
+          "kind": "all-required-native-platform-and-full-CI-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-feedback-main-ci-green.json",
+          "evidenceSha256": "8e5d4dd4c6180c06eae372e97f7cf32a1a1e96fab08da7b177fc8368eec58fd5",
+          "liveAcceptance": false
         }
       ],
-      "status": "live-S1-L1-passed-latest-Windows-native-readiness-CI-pending",
+      "status": "live-S1-L1-and-final-native-all-platform-CI-guarded",
       "fixes": [
         {
           "path": "apps/editor/server/chat-trial-semantic-review.ts",
@@ -6716,7 +6752,7 @@
         "liveAcceptance": true
       },
       "contract": "New explicit artifact-semantic-review only for owning positive core content. Actual successful execution first, exact frozen model/intent, single tool-free separate call per repeat, bounded immutable artifacts and literal evidence; fail closed on uncertainty/unavailability/mutation. Every repeat must carry exact signed semantic receipts into publication; no equivalent-case reuse or hidden title calls. Preserve source relations, JSON checks, finite author repair and first-owner retained authority.",
-      "claimLimit": "Original S1-L1 passed with actual semantic review and sealed publication; no full matrix/historical GREEN. Latest69d8e27d Windows native fixture timed out before any fake provider request; metadata-readiness repair passes actualLinux, actualWindows qualification still required. Production90s budget and exact2calls/2reviews unchanged."
+      "claimLimit": "Original S1-L1 passed with actual semantic review and sealed publication. Latest57ef60ef Windows/macOS/Linux native and full CI passed after fixture metadata-readiness repair, with unchanged90s evaluator and300s startup budgets, zero preparation model calls and exact2calls/2reviews. Not full matrix or historical GREEN; model assessment remains fallible."
     },
     {
       "id": "CSR-0042",
@@ -6773,6 +6809,12 @@
           "kind": "related47-tests415-assertions-green-not-live-pass",
           "evidencePath": "architecture/quality/evidence/s1-l2-feedback-related-green.txt",
           "evidenceSha256": "ea324096591803e00cb3861d60074db56a3acd5fd84880717dcea90767e505dd",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "all-required-native-platform-and-full-CI-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-feedback-main-ci-green.json",
+          "evidenceSha256": "8e5d4dd4c6180c06eae372e97f7cf32a1a1e96fab08da7b177fc8368eec58fd5",
           "liveAcceptance": false
         }
       ],
@@ -6844,6 +6886,73 @@
       },
       "contract": "Keep exact original error messages, rejection fingerprints, schema/ownership/generated-source predicates and frozen budgets. Bound normal case, missing artifact, role/index, actual owners or failed generated-input conjunct into native error feedback with exact attempt/YAML/intent/candidate binding and <=2048 bytes, explicitly marking omissions. Correct plan-only errors without artifact authority; genuine missing observable declarations require blocked core plus an evidenced pipeline-artifact finding.",
       "claimLimit": "Diagnostics and unchanged guard tests pass; not a promise of model convergence or a passed S1-L2. No stale/blocked plan promotion, budget refund, invented fixed oracle or prior-issue weakening."
+    },
+    {
+      "id": "CSR-0043",
+      "lineage": [
+        "CSR-0033",
+        "CSR-0034",
+        "CSR-0041",
+        "CSR-0042"
+      ],
+      "title": "Post-model effort compilation must preserve staged scope repair instead of reporting provider failure",
+      "category": "product-host-repair",
+      "mechanism": "defer-authenticated-typed-scope-errors-to-verification",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s1-l2-post-model-scope-live-first-red",
+        "path": "architecture/quality/evidence/s1-l2-verify4-post-model-scope-first-red.json",
+        "sha256": "0f9efde722665f863c41926d86d40859ff177fb7f3d7282e4763d9781665f811",
+        "sourceRevision": "57ef60effa396e8f00abd35a2484839440f64211",
+        "round": "S1-L2-verify4-original-round-1",
+        "acceptancePolicy": "No Trial/publication. Native stop plus actual typed compile failure; repair requires fresh original-case acceptance."
+      },
+      "history": [
+        {
+          "kind": "qualified-real-stage-contract-red",
+          "evidencePath": "architecture/quality/evidence/s1-l2-post-model-scope-contract-first-red.txt",
+          "evidenceSha256": "9cd28d35919298f4f8fa5d8427ac31234f5cf539fc4346f6d03141a03d873b06",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "qualified-contract-green",
+          "evidencePath": "architecture/quality/evidence/s1-l2-post-model-scope-contract-green.txt",
+          "evidenceSha256": "54c75b5ee6944bc7c3326b469a95a550aca89e7b45cb482a49816b96073bebc9",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "native-stop-with-zero-assistant-errors",
+          "evidencePath": "architecture/quality/evidence/s1-l2-verify4-native-stop-proof.json",
+          "evidenceSha256": "6c989842ba82b98282c40eaf4ab1cd133acfe09e99b6a316791f71917284196a",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Defer only typed scope exceptions matching authenticated stage and target during effort compilation to unchanged verification repair/discard. Preserve unrelated failures and CAS recovery."
+        }
+      ],
+      "status": "local-contract-green-live-retest-required",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring-runtime.test.ts",
+          "fullName": "authenticated new-pipeline effort defaults post-model effort compilation defers typed sibling scope errors to bounded verification repair",
+          "namePattern": "^authenticated new-pipeline effort defaults post-model effort compilation defers typed sibling scope errors to bounded verification repair$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring-runtime.test.ts",
+          "fullName": "authenticated new-pipeline effort defaults post-model effort compilation preserves foreign scope and unrelated failures",
+          "namePattern": "^authenticated new-pipeline effort defaults post-model effort compilation preserves foreign scope and unrelated failures$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Completed authoring is not passed verification. Preserve every scope fence and repair budget, capture typed bounded evidence before any Trial/publication; reject foreign stage/target exceptions and unrelated errors.",
+      "claimLimit": "Contract GREEN is not actual S1-L2 acceptance. Later cases remain locked."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

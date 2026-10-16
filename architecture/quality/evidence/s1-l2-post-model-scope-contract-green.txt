@@ -1,0 +1,11 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-operation-v2-authoring-runtime.test.ts:
+(pass) authenticated new-pipeline effort defaults > post-model effort compilation defers typed sibling scope errors to bounded verification repair [89.08ms]
+(pass) authenticated new-pipeline effort defaults > post-model effort compilation preserves foreign scope and unrelated failures [11.23ms]
+
+ 2 pass
+ 152 filtered out
+ 0 fail
+ 25 expect() calls
+Ran 2 tests across 1 file. [357.00ms]
