@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "issue": "CSR-0040",
+  "sourceRevision": "7bccd806b7caece861ef47cc09a447d5b126e4ef",
+  "ciRun": "https://github.com/GoTagma/tagma-mono/actions/runs/38888547041",
+  "jobId": 116932156391,
+  "platform": "windows-latest",
+  "step": "Native staged repair and counted Trial transport",
+  "test": "native author removes fresh staged files and empty directories through scoped edit grants",
+  "location": "apps/editor/tests/opencode-stage-scope-native.test.ts:39",
+  "expected": "length < 22000",
+  "received": 22046,
+  "cause": "Prior unit checks covered step frontmatter but omitted the final managed stage-removal tool/permission policy. Actual seeded Windows document exceeds the unchanged delivery budget.",
+  "reviewedPriorIssues": [
+    "CSR-0013",
+    "CSR-0033",
+    "CSR-0037",
+    "CSR-0038"
+  ],
+  "invariant": "Budget the final emitted document including every Host policy. Keep 22000 bound, stage-removal authority/permission rules and finite steps unchanged. Compact prose, not safety semantics.",
+  "liveAcceptance": false
+}

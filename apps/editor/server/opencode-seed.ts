@@ -888,7 +888,7 @@ The editor host OS is \`${hostOs}\`.
 ${hostCommandAuthoringContract(hostOs)}
 Prefer Python for pipeline math; native commands for glue.
 
-Every turn may include \`<editor-context>\`; re-read it.
+Re-read each turn's \`<editor-context>\`.
 
 - \`<workspace>\`: non-staged read root.
 - \`<chat-staging>\`: its \`<agent-root>\` is the sole filesystem read/write boundary for this turn and all descendants.
@@ -906,7 +906,7 @@ Every turn may include \`<editor-context>\`; re-read it.
 
 ## Protected Current Pipeline
 
-If \`<pipeline-availability protected="true">\` is present, do not edit running \`<current-file>\` or its layout/requirements. Answer read-only, create separately or edit another pipeline. Without that marker on this target, normal rules apply.
+If \`<pipeline-availability protected="true">\` is present, never edit running \`<current-file>\` or its layout/requirements. Answer read-only, create separately or edit another pipeline. Otherwise normal rules apply.
 
 ## Modes
 
@@ -949,7 +949,7 @@ ${BOUNDED_WEB_GUIDANCE}
 
 Design the finest meaningful independently diagnosable stages at distinct failure, data-contract, permission/driver/side-effect or retry/verification boundaries. Avoid cosmetic pass-throughs and collapsed useful stages; one task is for atomic work with no useful internal boundary.
 
-Retain/report one task-boundary rationale per task and track-identity rationale per track. Shared driver/model/profile/permissions/middleware/cwd/failure policy may share a track; tracks are not stages/counts.
+Keep task-boundary rationale per task and track-identity rationale per track. Shared driver/model/profile/permissions/middleware/cwd/failure policy may share a track; tracks are not stages/counts.
 
 ## Host-Managed New-Pipeline Companions
 
@@ -2182,6 +2182,17 @@ function applyStageRemovePolicy(content: string, enabled: boolean): string {
   return head + content.slice(end);
 }
 
+export function renderManagedOpencodeAgentDocument(
+  content: string,
+  stageRemoveEnabled: boolean,
+  agentMaxSteps: number,
+): string {
+  return applyOpencodeAgentMaxSteps(
+    applyStageRemovePolicy(content, stageRemoveEnabled),
+    agentMaxSteps,
+  );
+}
+
 function seedAgentFile(
   tagmaCwd: string,
   filename: string,
@@ -2191,8 +2202,9 @@ function seedAgentFile(
   return seedFile(
     join(tagmaCwd, '.opencode', 'agents'),
     filename,
-    applyOpencodeAgentMaxSteps(
-      applyStageRemovePolicy(content, filename === `${TAGMA_PIPELINE_AGENT}.md`),
+    renderManagedOpencodeAgentDocument(
+      content,
+      filename === `${TAGMA_PIPELINE_AGENT}.md`,
       agentMaxSteps,
     ),
   );

@@ -1,0 +1,22 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-seed-document-budget.test.ts:
+36 |             steps,
+37 |           );
+38 |           expect(emitted).toContain('tools:\n  tagma_stage_remove: true');
+39 |           expect(emitted).toContain('permission:\n  tagma_stage_remove: allow');
+40 |           expect(emitted).toContain(`steps: ${steps}`);
+41 |           expect(emitted.length).toBeLessThan(22_000);
+                                      ^
+error: expect(received).toBeLessThan(expected)
+
+Expected: < 22000
+Received: 22046
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/opencode-seed-document-budget.test.ts:41:34)
+(fail) final seeded pipeline guidance includes all managed policies in every host budget [5.24ms]
+
+ 0 pass
+ 1 fail
+ 5 expect() calls
+Ran 1 test across 1 file. [103.00ms]

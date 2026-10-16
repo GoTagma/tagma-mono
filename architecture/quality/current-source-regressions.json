@@ -279,6 +279,12 @@
       "path": "architecture/quality/evidence/verify7-classifier-target-red.json",
       "sha256": "10fcb92a46243987a0e315107045a7dee9f3cc53d006ffe8f7cd152c9867f5f5",
       "role": "current-source-semantic-prompt-contract-red"
+    },
+    {
+      "id": "verify8-windows-seeded-budget-red",
+      "path": "architecture/quality/evidence/verify8-windows-seeded-budget-red.json",
+      "sha256": "7460932f3271491b12374b19899fb111d35b9bd25dc4a055c6567bce45f03e66",
+      "role": "actual-windows-CI-final-emission-red"
     }
   ],
   "issues": [
@@ -6219,6 +6225,68 @@
       },
       "contract": "Ground explicitly named new target against frozen candidate coordinates; do not infer edit ownership from visibility/manualNew metadata. Preserve explicit existing edit/rename and read-only modes, clarify material ambiguity; keep JSON shape and Host id authority.",
       "claimLimit": "Prompt/strict parse and 203 related tests GREEN only; no guarantee of model semantic convergence. Separate dynamic-core limitation remains blocking; fresh editor/new-workspace original-case verification required."
+    },
+    {
+      "id": "CSR-0040",
+      "lineage": [
+        "CSR-0033",
+        "CSR-0037"
+      ],
+      "title": "Agent delivery budget must cover final seeded frontmatter policies on every supported OS",
+      "category": "product-guidance-delivery",
+      "mechanism": "final-managed-agent-document-rendering-budget",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "verify8-windows-seeded-budget-red",
+        "path": "architecture/quality/evidence/verify8-windows-seeded-budget-red.json",
+        "sha256": "7460932f3271491b12374b19899fb111d35b9bd25dc4a055c6567bce45f03e66",
+        "sourceRevision": "7bccd806b7caece861ef47cc09a447d5b126e4ef",
+        "role": "immutable-first-windows-CI-red",
+        "round": "main-CI-native-Windows-7bccd806",
+        "acceptancePolicy": "Actual native Windows job failed at final seeded length, before removal execution. Local regression must reproduce 22046 and preserve the unchanged delivery bound; no live acceptance claim."
+      },
+      "history": [
+        {
+          "kind": "native-windows-final-emission-over-budget",
+          "evidencePath": "architecture/quality/evidence/verify8-windows-seeded-budget-red.json",
+          "evidenceSha256": "7460932f3271491b12374b19899fb111d35b9bd25dc4a055c6567bce45f03e66",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "cross-host-final-emission-and-seed-suite102-green",
+          "evidencePath": "architecture/quality/evidence/verify8-windows-seeded-budget-green.txt",
+          "evidenceSha256": "ec11aca7469237ce01cec9cdacb523280f1aed4d6cf8c171e5ac6756c5f7d3e4",
+          "liveAcceptance": false
+        }
+      ],
+      "status": "local-regression-guarded-native-Windows-CI-pending",
+      "fixes": [
+        {
+          "path": "apps/editor/server/opencode-seed.ts",
+          "kind": "factor-real-final-renderer-and-compact-redundant-prose",
+          "localRegressionVerified": true,
+          "liveAcceptance": false
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-seed-document-budget.test.ts",
+          "fullName": "final seeded pipeline guidance includes all managed policies in every host budget",
+          "namePattern": "^final seeded pipeline guidance includes all managed policies in every host budget$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "lastExecution": {
+        "kind": "cross-host-final-emission-and-seed-suite102-green",
+        "evidencePath": "architecture/quality/evidence/verify8-windows-seeded-budget-green.txt",
+        "evidenceSha256": "ec11aca7469237ce01cec9cdacb523280f1aed4d6cf8c171e5ac6756c5f7d3e4",
+        "liveAcceptance": false
+      },
+      "contract": "Budget the actual seeded document after stage-removal policy and finite steps for Windows/macOS/Linux, Python tools on/off, default/max steps; compare actual seed bytes with shared renderer. Preserve 22000 bound and all authority, permission and step policies.",
+      "claimLimit": "Local RED reproduced native Windows 22046; final renderer regression and 102 related tests pass. Actual native Windows CI and fresh live acceptance remain separate."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

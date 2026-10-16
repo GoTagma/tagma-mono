@@ -2311,3 +2311,5 @@
   TypeScript checks against that package. Parallel cleanup can transiently remove declarations
   and cause missing-module/implicit-any cascades; rerun against the completed build before
   diagnosing application types. The normal sequential repository check avoids this race.
+
+- Agent prompt budgets apply to final seeded bytes. Use `renderManagedOpencodeAgentDocument` (managed tool/permission policies plus step normalization), not builder or step-only length checks. Cover supported host labels, Python tools on/off and default/max steps; retain the `<22,000` delivery bound and permissions.
