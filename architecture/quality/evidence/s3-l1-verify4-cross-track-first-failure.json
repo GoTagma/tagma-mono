@@ -1,0 +1,75 @@
+{
+  "case": "S3-L1",
+  "attempt": "s3-l1-verify4",
+  "accepted": false,
+  "sourceRevision": "5fc316a3c09e2f590a392fd6e11ed870e5c124e3",
+  "stageId": "896b8b3f-9405-4478-9bd7-6c996dad192f",
+  "operationId": "operation-b143ab11-d35c-4a77-b768-54c1bfb2d665",
+  "outcome": "trial_verification_paused/user_retry",
+  "published": false,
+  "actualCases": 5,
+  "actualNormalRuns": 2,
+  "actualNormalSuccessfulTasksPerRun": 5,
+  "completeShaVerifiedChildStreams": 28,
+  "nativeSearchRuns": 2,
+  "nativeCriticCalls": 0,
+  "nativeCriticSkipReason": "actual_successful_execution_required due to mandatory deterministic relation failures",
+  "normalSourceEvidence": {
+    "fetchedSuccessesFirstRun": 2,
+    "extractedStatisticClaimsFirstRun": 34
+  },
+  "failedRelations": [
+    {
+      "type": "file-source-text-occurrence",
+      "passed": false,
+      "detail": "Run 1: Source-text relation requires this repeat's successful declared producer, dependent consumer and owned artifacts.",
+      "repairScope": "diagnostic-only",
+      "sourceTextEvidence": {
+        "runId": "run_mvbcaf5j_f154dcdf55f8",
+        "sourcePath": "artifacts/cross_check.json",
+        "sourcePointer": "/checks/0/sources/0/url",
+        "producerTaskId": "fetch_check.cross_check",
+        "consumerTaskId": "synthesize.alert_report",
+        "producerCompletionObserved": true,
+        "consumerStartObserved": true,
+        "producerStatus": "success",
+        "consumerStatus": "success",
+        "producerResultPresent": true,
+        "consumerResultPresent": true,
+        "capturedSourceSha256": "9d3123498c8164720e34069b56aaf53f888e923b0c23b7147eed52bdcbedb84b",
+        "capturedSourceBytes": 19199,
+        "capturedTextSha256": "17a928f5f3b006040f512a3fd2da18590293243f621ba08d98673c2c36bfb585",
+        "finalSourceSha256": null
+      }
+    },
+    {
+      "type": "file-source-text-occurrence",
+      "passed": false,
+      "detail": "Source-text relation requires this repeat's successful declared producer, dependent consumer and owned artifacts.",
+      "repairScope": "diagnostic-only",
+      "sourceTextEvidence": {
+        "runId": "run_mvbcf6hm_fa11aca23dfd",
+        "sourcePath": "artifacts/cross_check.json",
+        "sourcePointer": "/checks/0/sources/0/url",
+        "producerTaskId": "fetch_check.cross_check",
+        "consumerTaskId": "synthesize.alert_report",
+        "producerCompletionObserved": true,
+        "consumerStartObserved": true,
+        "producerStatus": "success",
+        "consumerStatus": "success",
+        "producerResultPresent": true,
+        "consumerResultPresent": true,
+        "capturedSourceSha256": "03e662a96653e67be0e44c9b3d6112a8ff05c11262f8c03d43b05172a3521255",
+        "capturedSourceBytes": 8609,
+        "capturedTextSha256": "17a928f5f3b006040f512a3fd2da18590293243f621ba08d98673c2c36bfb585",
+        "finalSourceSha256": null
+      },
+      "fileObservation": {
+        "path": "artifacts/MONITOR_REPORT.md",
+        "regularFile": true
+      }
+    }
+  ],
+  "candidateCause": "Trial source relation prefixes bare dependencies with the consumer track, while the SDK resolves same-track first then unique global bare references. Source/consumer statuses, real results and source-observation digests are present; relation rejected before reading final source. Confirm using different actual local SDK layouts before changing source.",
+  "limits": "No budget refunds, old-result regrading, source/reference coercion, omitted assertions or critic calls. First planner reached32000 reasoning/length; originalsecondreservation corrected plan-only JSON/coverage/source mapping errors and committed once withzero countedvalidationrejections."
+}

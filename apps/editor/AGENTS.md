@@ -2393,3 +2393,9 @@
   leaving a normal positive operation unexercised; treat that evidence gap as uncertain, never
   invent data or tighten a valid empty contract to manufacture a witness. Keep deterministic
   empty probes separate; the parser still limits semantic review to the normal core case.
+
+- Trial same-run source relations resolve dependencies through the public SDK TaskIndex and
+  resolveTaskRef contract, including same-track precedence and unique global bare references.
+  Derive the index from actual result states; do not prefix every bare reference locally or
+  assume trackConfig.tasks is populated in partial result adapters. Ambiguous/missing/cyclic
+  references confer no relation; keep owner, observation timing, source hashes and text checks.

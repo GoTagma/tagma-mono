@@ -1,0 +1,66 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-source-dependency-resolution.test.ts:
+19:18:21.573 [pipeline] start "Computed source through SDK dependency references" run_id=run_source_reference_direct
+19:18:21.579 [task:derive.emit] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');fs.writeFileSync('source.json',JSON.stringify({text:'Derived quantity '+(3+4)}));"]
+19:18:21.602 [task:derive.emit] success (0.0s)
+19:18:21.603 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const s=JSON.parse(fs.readFileSync('source.json','utf8'));fs.writeFileSync('report.md','# Computed result\\n'+s.text);"]
+19:18:21.624 [task:present.render] success (0.0s)
+19:18:21.624 [pipeline] completed "Computed source through SDK dependency references"
+19:18:21.624 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+19:18:21.624 [pipeline] Duration: 0.1s
+19:18:21.624 [pipeline] Log: /tmp/tagma-source-dependencies-RuIgW9/.tagma/logs/run_source_reference_direct/pipeline.log
+75 | 
+76 | for (const layout of ['direct', 'transitive'] as const) {
+77 |   test('actual source relation accepts SDK unique global bare dependency: ' + layout, async () => {
+78 |     const h = await execute(layout);
+79 |     const assessment = h.assess();
+80 |     expect(assessment.passed).toBe(true);
+                                   ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-source-dependency-resolution.test.ts:80:31)
+(fail) actual source relation accepts SDK unique global bare dependency: direct [68.36ms]
+19:18:21.629 [pipeline] start "Computed source through SDK dependency references" run_id=run_source_reference_transitive
+19:18:21.629 [task:derive.emit] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');fs.writeFileSync('source.json',JSON.stringify({text:'Derived quantity '+(3+4)}));"]
+19:18:21.649 [task:derive.emit] success (0.0s)
+19:18:21.650 [task:middle.gate] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","void 0"]
+19:18:21.665 [task:middle.gate] success (0.0s)
+19:18:21.665 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const s=JSON.parse(fs.readFileSync('source.json','utf8'));fs.writeFileSync('report.md','# Computed result\\n'+s.text);"]
+19:18:21.684 [task:present.render] success (0.0s)
+19:18:21.685 [pipeline] completed "Computed source through SDK dependency references"
+19:18:21.685 [pipeline] Total: 3 | Success: 3 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+19:18:21.685 [pipeline] Duration: 0.1s
+19:18:21.685 [pipeline] Log: /tmp/tagma-source-dependencies-nyzhFg/.tagma/logs/run_source_reference_transitive/pipeline.log
+75 | 
+76 | for (const layout of ['direct', 'transitive'] as const) {
+77 |   test('actual source relation accepts SDK unique global bare dependency: ' + layout, async () => {
+78 |     const h = await execute(layout);
+79 |     const assessment = h.assess();
+80 |     expect(assessment.passed).toBe(true);
+                                   ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-source-dependency-resolution.test.ts:80:31)
+(fail) actual source relation accepts SDK unique global bare dependency: transitive [58.89ms]
+19:18:21.687 [pipeline] start "Computed source through SDK dependency references" run_id=run_source_reference_qualified
+19:18:21.688 [task:derive.emit] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');fs.writeFileSync('source.json',JSON.stringify({text:'Derived quantity '+(3+4)}));"]
+19:18:21.707 [task:derive.emit] success (0.0s)
+19:18:21.707 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const s=JSON.parse(fs.readFileSync('source.json','utf8'));fs.writeFileSync('report.md','# Computed result\\n'+s.text);"]
+19:18:21.727 [task:present.render] success (0.0s)
+19:18:21.728 [pipeline] completed "Computed source through SDK dependency references"
+19:18:21.728 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+19:18:21.728 [pipeline] Duration: 0.0s
+19:18:21.728 [pipeline] Log: /tmp/tagma-source-dependencies-zeo5RW/.tagma/logs/run_source_reference_qualified/pipeline.log
+(pass) source dependency resolution preserves qualified identity local precedence ambiguity and missing-edge fences [43.72ms]
+
+ 1 pass
+ 2 fail
+ 19 expect() calls
+Ran 3 tests across 1 file. [378.00ms]

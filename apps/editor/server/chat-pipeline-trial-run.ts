@@ -41,7 +41,7 @@ import {
   type ChatRepairExecutionContext,
 } from '../shared/chat-repair-diagnosis';
 import { isDeepStrictEqual } from 'node:util';
-import type { TaskResult } from '@tagma/types';
+import type { TaskConfig, TaskResult } from '@tagma/types';
 
 import {
   createTagma,
@@ -51,7 +51,7 @@ import {
   type RunEventPayload,
 } from '@tagma/sdk';
 import { InMemoryApprovalGateway, type ApprovalEvent } from '@tagma/sdk/approval';
-import { buildDag, type Dag } from '@tagma/sdk/config';
+import { buildDag, buildTaskIndex, resolveTaskRef, type Dag } from '@tagma/sdk/config';
 import { loadPipeline, validateConfig } from '@tagma/sdk/yaml';
 import { generateRunId } from '@tagma/sdk/utils';
 
@@ -2023,15 +2023,30 @@ export function evaluateTrialExpectation(
             artifact
         );
       };
+      // Resolve exactly as the SDK does, using this run's task identities.
+      const tracks = new Map<string, { id: string; name: string; tasks: TaskConfig[] }>();
+      for (const state of lastResult?.states.values() ?? []) {
+        let track = tracks.get(state.trackConfig.id);
+        if (!track) {
+          track = { id: state.trackConfig.id, name: state.trackConfig.name, tasks: [] };
+          tracks.set(track.id, track);
+        }
+        track.tasks.push(state.config);
+      }
+      const taskIndex = buildTaskIndex({
+        name: 'Trial source dependency index',
+        tracks: [...tracks.values()],
+      });
       const upstream = (id: string, seen = new Set<string>()): boolean => {
         if (seen.has(id)) return false;
         seen.add(id);
         const state = lastResult?.states.get(id);
         return (state?.config.depends_on ?? []).some((reference) => {
-          const dependency = reference.includes('.')
-            ? reference
-            : `${state!.trackConfig.id}.${reference}`;
-          return dependency === expectation.producerTaskId || upstream(dependency, seen);
+          const dependency = resolveTaskRef(reference, state!.trackConfig.id, taskIndex);
+          return (
+            dependency.kind === 'resolved' &&
+            (dependency.qid === expectation.producerTaskId || upstream(dependency.qid, seen))
+          );
         });
       };
       if (

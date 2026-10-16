@@ -1,0 +1,61 @@
+{
+  "commit": "5fc316a3c09e2f590a392fd6e11ed870e5c124e3",
+  "runId": 38950315471,
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "full-check",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "public-check-fork",
+      "conclusion": "skipped"
+    }
+  ],
+  "actualQualificationAndNativeSteps": [
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (ubuntu-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (macos-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Trial positive core qualification",
+      "conclusion": "success"
+    },
+    {
+      "job": "managed-opencode-runtime (windows-latest)",
+      "step": "Native independent Trial content review",
+      "conclusion": "success"
+    }
+  ],
+  "claimLimit": "All supported OS fixture and native reviewer transport contracts passed. This is not fresh live S3-L1 acceptance; original verify3 remains rejected for substantive evidence gap."
+}

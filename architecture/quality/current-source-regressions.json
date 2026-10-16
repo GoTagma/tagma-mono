@@ -603,6 +603,30 @@
       "path": "architecture/quality/evidence/s3-l1-core-context-first-main-ci.json",
       "sha256": "796391227956c699f20cde877c3b54b8139bd6c55a06d9ed0ca32959e0fd4d1b",
       "role": "first-native-matrix-fixture-portability-red"
+    },
+    {
+      "id": "s3-l1-source-reference-first-red",
+      "path": "architecture/quality/evidence/s3-l1-source-reference-first-red.txt",
+      "sha256": "6b77e7738abc2f12803e5eb498a5b27cd89ba189aff6c202fac4717132ace759",
+      "role": "actual-sdk-two-false-rejections-one-qualified-baseline-pass"
+    },
+    {
+      "id": "s3-l1-source-reference-green",
+      "path": "architecture/quality/evidence/s3-l1-source-reference-green.txt",
+      "sha256": "a297423b6c4c322d7338b78c6c83fddd69107a9bf762912001540b0b878347fe",
+      "role": "final-three-tests23-assertions"
+    },
+    {
+      "id": "s3-l1-source-reference-related60-green",
+      "path": "architecture/quality/evidence/s3-l1-source-reference-related60-green.txt",
+      "sha256": "2529b24d1eb6334734b94e03c413723096bcca80b3f18c50ab0c8e8a8210d683",
+      "role": "six-files60-tests538-assertions"
+    },
+    {
+      "id": "s3-l1-source-reference-live-first-failure",
+      "path": "architecture/quality/evidence/s3-l1-verify4-cross-track-first-failure.json",
+      "sha256": "d877421041f889847f83a282dfd4227950d18326767c1c9f61b5c9ed8516caaf",
+      "role": "same-run-successful-cross-track-owner-rejected-before-critic"
     }
   ],
   "issues": [
@@ -7779,6 +7803,84 @@
       "realTestSelectors": [],
       "contract": "A normal core witness must exercise the promised positive content operations. Valid empty behavior can pass its own contract without proving an unexercised operation. Keep one independent fallible reviewer, actual execution/strict literal evidence/current hashes/sealed publication, fixed budgets and no case-specific dispatch.",
       "claimLimit": "Transport and synthetic reviewer guards do not guarantee live model accuracy; prior sealed S3-L1 attempt remains not accepted."
+    },
+    {
+      "id": "CSR-0050",
+      "lineage": [
+        "CSR-0026",
+        "CSR-0038",
+        "CSR-0041",
+        "CSR-0042",
+        "CSR-0049"
+      ],
+      "title": "Trial source relation must resolve task dependencies by the same SDK rules as actual execution",
+      "category": "product-runtime-evidence-contract",
+      "mechanism": "same-run-task-index-and-public-sdk-reference-resolver",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l1-source-reference-live-first-failure",
+        "path": "architecture/quality/evidence/s3-l1-verify4-cross-track-first-failure.json",
+        "sha256": "d877421041f889847f83a282dfd4227950d18326767c1c9f61b5c9ed8516caaf",
+        "sourceRevision": "5fc316a3c09e2f590a392fd6e11ed870e5c124e3",
+        "round": "S3-L1-verify4-original-round-1",
+        "acceptancePolicy": "Failed original remains paused/unpublished. Preserve mandatory deterministic checks and no critic when they fail; fresh restarted original case required."
+      },
+      "history": [
+        {
+          "kind": "actual-sdk-two-false-rejections-one-qualified-baseline-pass",
+          "evidencePath": "architecture/quality/evidence/s3-l1-source-reference-first-red.txt",
+          "evidenceSha256": "6b77e7738abc2f12803e5eb498a5b27cd89ba189aff6c202fac4717132ace759",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "final-three-tests23-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l1-source-reference-green.txt",
+          "evidenceSha256": "a297423b6c4c322d7338b78c6c83fddd69107a9bf762912001540b0b878347fe",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "six-files60-tests538-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l1-source-reference-related60-green.txt",
+          "evidenceSha256": "2529b24d1eb6334734b94e03c413723096bcca80b3f18c50ab0c8e8a8210d683",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Build a linear TaskIndex from actual same-run states and resolve references through existing public SDK buildTaskIndex/resolveTaskRef. Preserve same-track preference, unique-global fallback and qualified IDs; ambiguous/missing references cannot confer provenance. No package changes, schema/budget changes or YAML relocation."
+        },
+        {
+          "summary": "Two different real SDK direct/transitive command pipelines reproduce false rejection before fix. Qualified control and shadow/ambiguity/missing/cycle counterexamples retain rejection. Final3tests23assertions and related60tests538assertions pass; OS CI explicitly selects new actual-SDK tests."
+        }
+      ],
+      "status": "locally-guarded-awaiting-full-current-gate-and-fresh-S3-L1",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-source-dependency-resolution.test.ts",
+          "fullName": "actual source relation accepts SDK unique global bare dependency: direct",
+          "namePattern": "^actual source relation accepts SDK unique global bare dependency: direct$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-source-dependency-resolution.test.ts",
+          "fullName": "actual source relation accepts SDK unique global bare dependency: transitive",
+          "namePattern": "^actual source relation accepts SDK unique global bare dependency: transitive$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-source-dependency-resolution.test.ts",
+          "fullName": "source dependency resolution preserves qualified identity local precedence ambiguity and missing-edge fences",
+          "namePattern": "^source dependency resolution preserves qualified identity local precedence ambiguity and missing-edge fences$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "The Trial and SDK must agree about declared dependency resolution. Retain same-run successful owner/result proof, producer observation before consumer start, distinct regular owned files, final source hash identity, exact source text occurrence, strict path/read bounds and finite planning counters. Do not require qualified YAML spelling or guess an ambiguous producer.",
+      "claimLimit": "Actual SDK regressions prove dependency resolution, not the semantic content or live acceptance of the previous failed Trial. No independent critic ran in verify4 because mandatory deterministic checks failed."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

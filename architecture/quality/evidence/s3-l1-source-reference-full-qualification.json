@@ -1,0 +1,24 @@
+{
+  "command": "bun run verify:full",
+  "scope": "Final CSR50 local full qualification; no live acceptance claim",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "ad06b0ca0f2ef20196f19fecd3b9fd1fe6c8edd1015ce0fe430ea9a632d2a31f",
+  "summary": [
+    "PASS text 114ms ok",
+    "PASS deps 340ms ok",
+    "PASS focus 225ms ok",
+    "PASS imports 59ms ok",
+    "PASS cycles 40ms ok",
+    "PASS secrets 309ms ok",
+    "PASS format 22.0s ok",
+    "PASS types 46.2s ok",
+    "PASS lint 18.5s ok",
+    "PASS tests 210.1s ok",
+    "PASS scripts 2.6s ok",
+    "PASS build 18.7s ok",
+    "PASS publish 9.7s ok"
+  ],
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0
+}
