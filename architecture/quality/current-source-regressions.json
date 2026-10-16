@@ -315,6 +315,12 @@
       "path": "architecture/quality/evidence/semantic-review-native-green.txt",
       "sha256": "dbbb9885b1fbbdb72a2c853b8df03416af1a8057521b57a5623519e870d42f1b",
       "role": "pinned-native-synthetic-transport-green"
+    },
+    {
+      "id": "semantic-review-main-all-supported-OS-CI-green",
+      "path": "architecture/quality/evidence/semantic-review-main-ci-green.json",
+      "sha256": "2e0231cbcceefe10971360fff4f4ac5b1556bc16d8ef67b9a9b7d5b461b87464",
+      "role": "exact-main-all-required-jobs-green-not-live-acceptance"
     }
   ],
   "issues": [
@@ -6376,9 +6382,15 @@
           "evidencePath": "architecture/quality/evidence/semantic-review-native-green.txt",
           "evidenceSha256": "dbbb9885b1fbbdb72a2c853b8df03416af1a8057521b57a5623519e870d42f1b",
           "liveAcceptance": false
+        },
+        {
+          "kind": "exact-main-all-required-jobs-green-not-live-acceptance",
+          "evidencePath": "architecture/quality/evidence/semantic-review-main-ci-green.json",
+          "evidenceSha256": "2e0231cbcceefe10971360fff4f4ac5b1556bc16d8ef67b9a9b7d5b461b87464",
+          "liveAcceptance": false
         }
       ],
-      "status": "implemented-native-and-runtime-guarded-live-retest-pending",
+      "status": "all-supported-OS-native-and-full-CI-guarded-live-retest-running",
       "fixes": [
         {
           "path": "apps/editor/server/chat-trial-semantic-review.ts",
@@ -6607,9 +6619,9 @@
       ],
       "realTestSelectors": [],
       "lastExecution": {
-        "kind": "pinned-native-synthetic-transport-green",
-        "evidencePath": "architecture/quality/evidence/semantic-review-native-green.txt",
-        "evidenceSha256": "dbbb9885b1fbbdb72a2c853b8df03416af1a8057521b57a5623519e870d42f1b",
+        "kind": "exact-main-all-required-jobs-green-not-live-acceptance",
+        "evidencePath": "architecture/quality/evidence/semantic-review-main-ci-green.json",
+        "evidenceSha256": "2e0231cbcceefe10971360fff4f4ac5b1556bc16d8ef67b9a9b7d5b461b87464",
         "liveAcceptance": false
       },
       "contract": "New explicit artifact-semantic-review only for owning positive core content. Actual successful execution first, exact frozen model/intent, single tool-free separate call per repeat, bounded immutable artifacts and literal evidence; fail closed on uncertainty/unavailability/mutation. Every repeat must carry exact signed semantic receipts into publication; no equivalent-case reuse or hidden title calls. Preserve source relations, JSON checks, finite author repair and first-owner retained authority.",

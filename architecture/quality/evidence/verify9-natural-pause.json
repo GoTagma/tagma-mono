@@ -1,0 +1,60 @@
+{
+  "case": "s1-l1-verify9",
+  "operationId": "operation-bd703ef1-17c2-4dc6-8518-405d14888e29",
+  "round": 1,
+  "outcome": "natural-retryable-pause-no-publication",
+  "accepted": false,
+  "actualTrialExecutions": 3,
+  "semanticModelCalls": 0,
+  "formalPlanCommits": 1,
+  "formalPlanRejections": 0,
+  "failureClass": [
+    "generated-claim-identity-difference",
+    "model-output-length-after-second-frozen-planner-slot"
+  ],
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-v4-pro",
+    "variant": "off"
+  },
+  "lastModelCall": {
+    "finish": "length",
+    "outputTokens": 32000,
+    "durationMs": 471447
+  },
+  "invocations": [
+    {
+      "invocationId": "authoring-invocation-d7c967b3-6aef-4f3d-bdfb-599e8b8a38e9",
+      "purpose": "authoring",
+      "executionSubmitted": true,
+      "completed": {
+        "disposition": "changed",
+        "finishCode": "stop"
+      },
+      "continuationOf": null
+    },
+    {
+      "invocationId": "trial_plan-invocation-c2a307bb-f555-40ec-819b-b65ee8bbd365",
+      "purpose": "trial_plan",
+      "executionSubmitted": true,
+      "completed": {
+        "disposition": "changed",
+        "finishCode": "stop"
+      },
+      "continuationOf": null
+    },
+    {
+      "invocationId": "trial_plan-invocation-0a1dce58-b7b2-4b5f-80ff-bc3b6d860f37",
+      "purpose": "trial_plan",
+      "executionSubmitted": true,
+      "completed": null,
+      "continuationOf": null
+    }
+  ],
+  "causeQualification": "Two existing internal planner slots reserved (initial planning and executed-assertion review). Existing immutable budget correctly blocks a third continuation. No new Tagma defect established; do not refund/expand budget or loosen exact assertions.",
+  "evidence": [
+    "verify9-first-trial-plan-review.json",
+    "verify9-generated-claim-identity-first-observation.json"
+  ],
+  "next": "Different configured provider/model candidate in a restarted editor/new workspace; same original prompt and guards."
+}

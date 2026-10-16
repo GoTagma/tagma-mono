@@ -1,0 +1,339 @@
+{
+  "scope": "projection of completed signed-cache fields; auth excluded; not publication proof",
+  "stageId": "191d3e5c-b4d6-4a63-afb2-d98410a57f8d",
+  "kind": "plan-required",
+  "success": false,
+  "caseResultCount": 2,
+  "cases": [
+    {
+      "id": "normal",
+      "title": "End-to-end fact-check: claim -> evidence -> verdict -> markdown report",
+      "success": false,
+      "runIds": [
+        "run_mvaxf961_1a88efdbf3d1"
+      ],
+      "semanticReviews": [],
+      "expectations": [
+        {
+          "type": "artifact-semantic-review",
+          "passed": false,
+          "detail": "Run 1: Independent semantic review unavailable: actual_successful_execution_required.",
+          "repairScope": "diagnostic-only",
+          "semanticReview": {
+            "taskId": "verify.gather_evidence",
+            "path": "quick_verify/artifacts/evidence.json",
+            "runNumber": 1,
+            "requestSha256": null
+          }
+        },
+        {
+          "type": "artifact-semantic-review",
+          "passed": false,
+          "detail": "Run 1: Independent semantic review unavailable: actual_successful_execution_required.",
+          "repairScope": "diagnostic-only",
+          "semanticReview": {
+            "taskId": "verify.adjudicate",
+            "path": "quick_verify/artifacts/verdict.json",
+            "runNumber": 1,
+            "requestSha256": null
+          }
+        },
+        {
+          "type": "task-status",
+          "passed": true,
+          "detail": "verify.gather_evidence expected success, received success.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "task-status",
+          "passed": true,
+          "detail": "verify.adjudicate expected success, received success.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "task-status",
+          "passed": true,
+          "detail": "verify.render_summary expected success, received success.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "path-exists",
+          "passed": true,
+          "detail": "quick_verify/artifacts/evidence.json exists.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/evidence.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "json-valid",
+          "passed": true,
+          "detail": "quick_verify/artifacts/evidence.json contains one valid JSON value.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/evidence.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "json-pointer-equals",
+          "passed": false,
+          "detail": "quick_verify/artifacts/evidence.json JSON Pointer /claim does not match the expected JSON value.",
+          "repairScope": "diagnostic-only",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/evidence.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "path-exists",
+          "passed": true,
+          "detail": "quick_verify/artifacts/verdict.json exists.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/verdict.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "json-valid",
+          "passed": true,
+          "detail": "quick_verify/artifacts/verdict.json contains one valid JSON value.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/verdict.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "path-exists",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md exists.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-source-text-occurrence",
+          "passed": true,
+          "detail": "The exact produced source text occurs in this repeat's consumer artifact.",
+          "repairScope": "pipeline-artifact",
+          "sourceTextEvidence": {
+            "runId": "run_mvaxf961_1a88efdbf3d1",
+            "sourcePath": "quick_verify/artifacts/verdict.json",
+            "sourcePointer": "/verdict",
+            "producerTaskId": "verify.adjudicate",
+            "consumerTaskId": "verify.render_summary",
+            "producerCompletionObserved": true,
+            "consumerStartObserved": true,
+            "producerStatus": "success",
+            "consumerStatus": "success",
+            "producerResultPresent": true,
+            "consumerResultPresent": true,
+            "capturedSourceSha256": "0ad927e355aa95de836ec649dccd78c3ab76d6e7ba4f6bef51d4eaf7efa80f14",
+            "capturedSourceBytes": 990,
+            "capturedTextSha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "finalSourceSha256": "0ad927e355aa95de836ec649dccd78c3ab76d6e7ba4f6bef51d4eaf7efa80f14"
+          },
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        }
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "repeat",
+      "title": "Repeat-run: full closure x2 regenerates outputs",
+      "success": false,
+      "runIds": [
+        "run_mvaxg1aw_c56e113e80b2",
+        "run_mvaxgqem_3251a89691ce"
+      ],
+      "expectations": [
+        {
+          "type": "task-status",
+          "passed": true,
+          "detail": "verify.gather_evidence expected success, received success.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "task-status",
+          "passed": true,
+          "detail": "verify.adjudicate expected success, received success.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "task-status",
+          "passed": true,
+          "detail": "verify.render_summary expected success, received success.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "path-exists",
+          "passed": true,
+          "detail": "quick_verify/artifacts/evidence.json exists.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/evidence.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "json-valid",
+          "passed": true,
+          "detail": "quick_verify/artifacts/evidence.json contains one valid JSON value.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/evidence.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "json-pointer-equals",
+          "passed": false,
+          "detail": "quick_verify/artifacts/evidence.json JSON Pointer /claim does not match the expected JSON value.",
+          "repairScope": "diagnostic-only",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/evidence.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "path-exists",
+          "passed": true,
+          "detail": "quick_verify/artifacts/verdict.json exists.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/verdict.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "json-valid",
+          "passed": true,
+          "detail": "quick_verify/artifacts/verdict.json contains one valid JSON value.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/verdict.json",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "path-exists",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md exists.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "file-contains",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md contains the expected marker.",
+          "repairScope": "pipeline-artifact",
+          "fileObservation": {
+            "path": ".tagma/quick_verify/artifacts/VERDICT.md",
+            "regularFile": true
+          }
+        },
+        {
+          "type": "run-artifact-freshness",
+          "passed": true,
+          "detail": "quick_verify/artifacts/evidence.json was created or rewritten by every one of 2 runs.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "run-artifact-freshness",
+          "passed": true,
+          "detail": "quick_verify/artifacts/verdict.json was created or rewritten by every one of 2 runs.",
+          "repairScope": "pipeline-artifact"
+        },
+        {
+          "type": "run-artifact-freshness",
+          "passed": true,
+          "detail": "quick_verify/artifacts/VERDICT.md was created or rewritten by every one of 2 runs.",
+          "repairScope": "pipeline-artifact"
+        }
+      ],
+      "executionSource": "current-trial"
+    }
+  ],
+  "summary": "Trial assertions failed without an unexpected business task failure. Review fixture inputs, effective task cwd, case-root assertion coordinates, JSON Pointer semantics, and freshness checks before changing the pipeline. Keep business artifacts unchanged. Correct the plan; only an independently evidenced business-contract defect may become a blocking pipeline-artifact finding.\nTrial run failed (success=9).\n\nTargeted cases: 0/2 passed; 2 result(s) returned; 0 not run.\nCase normal: failed — Run the full closure (gather_evidence websearch -> adjudicate schema-valid verdict -> render_summary markdown) on the default claim and verify evidence.json carries the claim, verdict.json is schema-valid JSON, and VERDICT.md renders the verdict faithfully from verdict.json.\n  artifact-semantic-review: Run 1: Independent semantic review unavailable: actual_successful_execution_required.\n  artifact-semantic-review: Run 1: Independent semantic review unavailable: actual_successful_execution_required.\n  json-pointer-equals: quick_verify/artifacts/evidence.json JSON Pointer /claim does not match the expected JSON value.\nCase repeat: failed — Run the same full closure twice to prove the pipeline is repeatable and that each repeat regenerates the non-fixture output artifacts (evidence.json, verdict.json, VERDICT.md) rather than leaving stale files.\n  json-pointer-equals: quick_verify/artifacts/evidence.json JSON Pointer /claim does not match the expected JSON value.\n\nVerification warnings: 1.\nHost commands and hooks use a temporary workspace copy, closed stdin, and no TTY, but external filesystem, network, and child-process access are not OS-enforced."
+}

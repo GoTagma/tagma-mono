@@ -1,0 +1,15 @@
+{
+  "scope": "exact-main-commit-CI-not-live-business-acceptance",
+  "commit": "0f79da9723faa65854a7b6f9a4ad3f36a3c06266",
+  "runId": 38897834081,
+  "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38897834081",
+  "conclusion": "success",
+  "requiredJobs": {
+    "full-check": "success",
+    "managed-opencode-runtime (windows-latest)": "success",
+    "managed-opencode-runtime (ubuntu-latest)": "success",
+    "managed-opencode-runtime (macos-latest)": "success"
+  },
+  "public-check-fork": "intentionally-skipped",
+  "nativeReviewerEvidence": "Each native job includes two isolated reviews/two provider calls, zero tools/history and frozen model variant. Synthetic provider, not business acceptance."
+}
