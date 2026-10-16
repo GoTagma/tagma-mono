@@ -1,0 +1,117 @@
+[
+  {
+    "url": "https://cnil.fr/fr/la-reutilisation-des-donnees-publiquement-accessibles-en-ligne-des-fins-de-demarchage-commercial",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "failureCategory": "TimeoutError"
+  },
+  {
+    "url": "https://dl.acm.org/doi/pdf/10.1145/3136014.3136031",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 403,
+    "failureCategory": "HTTP-response"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/JumpStation",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html; charset=UTF-8",
+    "finalUrl": "https://en.wikipedia.org/wiki/JumpStation",
+    "bytesRead": 97778,
+    "boundedAt512KiB": false,
+    "sha256": "97e14b95c94b21d3c41771d8eee9e4bbd9884d9778152bb58beca1946079064d",
+    "title": "JumpStation - Wikipedia"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html; charset=UTF-8",
+    "finalUrl": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+    "bytesRead": 524288,
+    "boundedAt512KiB": true,
+    "sha256": "1b466ae45a5303181ced62f8db8fec14e0b5df2321688561d221e8310a737cc0",
+    "title": "Python (programming language) - Wikipedia"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Web_scraping",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html; charset=UTF-8",
+    "finalUrl": "https://en.wikipedia.org/wiki/Web_scraping",
+    "bytesRead": 236286,
+    "boundedAt512KiB": false,
+    "sha256": "0af183f94b9aac96dbc675fdd995ade2d757547a34988b36c249aa9644648888",
+    "title": "Web scraping - Wikipedia"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/World_Wide_Web_Wanderer",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html; charset=UTF-8",
+    "finalUrl": "https://en.wikipedia.org/wiki/World_Wide_Web_Wanderer",
+    "bytesRead": 68645,
+    "boundedAt512KiB": false,
+    "sha256": "331d88674bb5bd91a92e2a5fafe001ab65b6f03e11cec4000828102f1034f5c8",
+    "title": "World Wide Web Wanderer - Wikipedia"
+  },
+  {
+    "url": "https://history.apievangelist.com/",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "failureCategory": "URLError"
+  },
+  {
+    "url": "https://web.mit.edu/people/mkgray/net/background.html",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html",
+    "finalUrl": "https://web.mit.edu/people/mkgray/net/background.html",
+    "bytesRead": 2227,
+    "boundedAt512KiB": false,
+    "sha256": "a0f4c0c2934a475ed47e438694415feb5438dc4d84e4a7cf78ac50934588d1cf",
+    "title": "Internet Growth and Statistics: Credits and Background"
+  },
+  {
+    "url": "https://www.green-coding.io/case-studies/energy-efficiency-python/",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "finalUrl": "https://www.green-coding.io/case-studies/energy-efficiency-python/",
+    "bytesRead": 41051,
+    "boundedAt512KiB": false,
+    "sha256": "cdfd5a6579ea4782bb37470fa49e84ca1e439bb7cf92dbdf7b00c65c0d82953e",
+    "title": "Energy Efficiency of programming languages - Revisiting Python in 2024 | green-coding.io"
+  },
+  {
+    "url": "https://www.python.org/downloads/",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "finalUrl": "https://www.python.org/downloads/",
+    "bytesRead": 19332,
+    "boundedAt512KiB": false,
+    "sha256": "fca96335ed076740bae406b3269b937d0d51d4721af77e8266fbed44a8d4bac2",
+    "title": null
+  },
+  {
+    "url": "https://www.python.org/downloads/release/python-3150/",
+    "legacyHttpCitation": false,
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "finalUrl": "https://www.python.org/downloads/release/python-3150/",
+    "bytesRead": 11501,
+    "boundedAt512KiB": false,
+    "sha256": "87faad477191d13df323b78c0c74cffe6a452ceefce4661a102194a536c4092d",
+    "title": null
+  }
+]

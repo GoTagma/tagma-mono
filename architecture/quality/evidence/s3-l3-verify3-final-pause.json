@@ -1,0 +1,39 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify3",
+  "accepted": false,
+  "sourceRevision": "1250a0abb6137e21053f40ac9c82b77a3213a167",
+  "originalRequests": 1,
+  "outcome": "trial_verification_paused/user_retry",
+  "published": false,
+  "actualTrials": 2,
+  "actualCasesPerTrial": 3,
+  "actualRunsPerTrial": 4,
+  "executedChildStreams": 16,
+  "allExecutedStreamsCompleteShaVerified": true,
+  "unavailableStreams": 0,
+  "businessOpenCodeTasksExecuted": 0,
+  "nativeCriticCalls": 0,
+  "finalFailure": {
+    "details": "The trial plan targets an older YAML revision.  The trial plan targets an older YAML revision.  Targeted trial plan required: The trial plan targets an older YAML revision.",
+    "failedTaskIds": [],
+    "omittedFailedTaskCount": 0,
+    "schemaVersion": 1,
+    "stage": "trial_plan"
+  },
+  "diagnosis": "Ordinary curl egress needs Host proxy in this environment; managed proxy/provider/trust inheritance intentionally excludes unrelated commands. First repair adds local input support without fixing HTTP. Second repair finally adds native OpenCode web collection, changes the task graph, and invalidates the complete old Trial plan after the original two planning opportunities.",
+  "policyKept": [
+    "No inheritance expansion or credential copy into YAML.",
+    "No extra planning/repair budget or manual Retry.",
+    "No stale/partial core contract publication.",
+    "No local-only replacement for website monitoring accepted."
+  ],
+  "guidanceGap": "The author receives native web and deterministic command guidance but not the existing managed-vs-ordinary environment contract; explain it before network implementation/repair choices, without changing execution authority.",
+  "finalManagedWebDraftActuallyExecuted": false,
+  "evidenceHashes": {
+    "verified-task-streams.json": "f9c813c13c62bf51a7ab4353a4fca6698af0cd52d1d3a646a9b16e668e7bf4da",
+    "ordinary-curl-network-diagnostic.json": "64b25eb517f3c24d738d3d6ec6f0dc524725081bc8d729b724fdafd193969551",
+    "first-planning-length-timing.json": "030bde68c6646ee83bdb8d32a3796c4e9a8b1b570ae9fb535fb999390ab6245a",
+    "second-auto-repair-draft.json": "a5d3f9bb0dee52616b37e8a1a5833dedee96af3d64d38caa4d6d59d510259628"
+  }
+}

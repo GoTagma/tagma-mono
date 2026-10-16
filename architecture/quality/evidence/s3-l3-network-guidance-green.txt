@@ -1,0 +1,36 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/opencode-deterministic-content-contract.test.ts:
+(pass) seeded author contract assigns exact bytes and digests to deterministic commands without expanding prompt authority [6.39ms]
+(pass) seeded author contract distinguishes managed web routing from ordinary command environments [1.62ms]
+22:26:50.627 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_preserved
+22:26:50.633 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=source;fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+22:26:50.660 [task:files.materialize] success (0.0s)
+22:26:50.660 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-pKEiDc/verify.cjs"]
+22:26:50.682 [task:files.verify] success (0.0s)
+22:26:50.683 [pipeline] completed "Exact source bytes with deterministic digest"
+22:26:50.683 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:26:50.683 [pipeline] Duration: 0.1s
+22:26:50.683 [pipeline] Log: /tmp/tagma-content-contract-pKEiDc/.tagma/logs/run_content_contract_preserved/pipeline.log
+(pass) actual SDK deterministic commands preserve multiline Unicode source bytes before hashing [72.23ms]
+22:26:50.688 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_truncated
+22:26:50.688 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=Buffer.from('# Independent sample');fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+22:26:50.714 [task:files.materialize] success (0.0s)
+22:26:50.714 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-RhmVaQ/verify.cjs"]
+22:26:50.736 [task:files.verify] ERROR: failed exit=1 duration=0.0s
+22:26:50.736 [task:files.verify] ERROR: stderr tail:
+1 | const fs=require('node:fs'),c=require('node:crypto');const a=fs.readFileSync('captured.txt'),b=fs.readFileSync('saved.txt');const validDigest=c.createHash('sha256').update(b).digest('hex')===fs.readFileSync('digest.txt','utf8');if(!validDigest)throw Error('Digest mismatch');if(!a.equals(b))throw Error('Complete source bytes not preserved');console.log('Complete bytes and digest verified');
+                                                                                                                                                                                                                                                                                                             ^
+error: Complete source bytes not preserved
+      at <anonymous> (/tmp/tagma-content-contract-RhmVaQ/verify.cjs:1:298)
+Bun v1.3.14 (Linux x64)
+22:26:50.736 [pipeline] failed "Exact source bytes with deterministic digest"
+22:26:50.736 [pipeline] Total: 2 | Success: 1 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:26:50.736 [pipeline] Duration: 0.0s
+22:26:50.736 [pipeline] Log: /tmp/tagma-content-contract-RhmVaQ/.tagma/logs/run_content_contract_truncated/pipeline.log
+(pass) actual SDK source-byte check rejects truncated content even with a correct digest [51.40ms]
+
+ 4 pass
+ 0 fail
+ 27 expect() calls
+Ran 4 tests across 1 file. [258.00ms]

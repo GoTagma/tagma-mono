@@ -1,0 +1,244 @@
+
+::group::tests/chat-retained-trial-contract-reader.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-retained-trial-contract-reader.test.ts:
+22:27:31.537 [pipeline] start "Concrete local report" run_id=run_mvbjg1fx_9a267d2dc3b9
+22:27:31.542 [task:main.observe] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' -e 'process.stderr.write("local incorrect command exit\n");process.exit(1);'
+22:27:31.571 [task:main.observe] ERROR: failed exit=1 duration=0.0s
+22:27:31.571 [task:main.observe] ERROR: stderr tail:
+local incorrect command exit
+22:27:31.572 [pipeline] failed "Concrete local report"
+22:27:31.572 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:27:31.572 [pipeline] Duration: 0.0s
+22:27:31.572 [pipeline] Log: /tmp/tagma-retained-plan-engine-FZRfM1/workspace/.tagma/.chat-staging/0b8ec134-17e2-4533-9bd5-fae5bfe706e4/.trial-cases/normal-42lNDP/workspace/.tagma/logs/run_mvbjg1fx_9a267d2dc3b9/pipeline.log
+22:27:31.578 [pipeline] start "Concrete local report" run_id=run_mvbjg1h6_5017f1ae28ec
+22:27:31.579 [task:main.observe] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' -e 'process.stderr.write("local incorrect command exit\n");process.exit(1);'
+22:27:31.600 [task:main.observe] ERROR: failed exit=1 duration=0.0s
+22:27:31.600 [task:main.observe] ERROR: stderr tail:
+local incorrect command exit
+22:27:31.601 [pipeline] failed "Concrete local report"
+22:27:31.601 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:27:31.601 [pipeline] Duration: 0.0s
+22:27:31.601 [pipeline] Log: /tmp/tagma-retained-plan-engine-FZRfM1/workspace/.tagma/.chat-staging/0b8ec134-17e2-4533-9bd5-fae5bfe706e4/.trial-cases/normal-42lNDP/workspace/.tagma/logs/run_mvbjg1h6_5017f1ae28ec/pipeline.log
+22:27:31.930 [pipeline] start "Concrete local report" run_id=run_mvbjg1qx_8ce39c6c1a92
+22:27:31.930 [task:main.observe] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' -e 'require('"'"'node:fs'"'"').writeFileSync('"'"'report.txt'"'"', "local verified report\n");'
+22:27:31.950 [task:main.observe] success (0.0s)
+22:27:31.950 [pipeline] completed "Concrete local report"
+22:27:31.950 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:27:31.950 [pipeline] Duration: 0.0s
+22:27:31.950 [pipeline] Log: /tmp/tagma-retained-plan-engine-FZRfM1/workspace/.tagma/.chat-staging/0b8ec134-17e2-4533-9bd5-fae5bfe706e4/.trial-cases/normal-fRq6xq/workspace/.tagma/logs/run_mvbjg1qx_8ce39c6c1a92/pipeline.log
+22:27:31.952 [pipeline] start "Concrete local report" run_id=run_mvbjg1rk_d3044f114c0c
+22:27:31.953 [task:main.observe] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' -e 'require('"'"'node:fs'"'"').writeFileSync('"'"'report.txt'"'"', "local verified report\n");'
+22:27:31.971 [task:main.observe] success (0.0s)
+22:27:31.972 [pipeline] completed "Concrete local report"
+22:27:31.972 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:27:31.972 [pipeline] Duration: 0.0s
+22:27:31.972 [pipeline] Log: /tmp/tagma-retained-plan-engine-FZRfM1/workspace/.tagma/.chat-staging/0b8ec134-17e2-4533-9bd5-fae5bfe706e4/.trial-cases/normal-fRq6xq/workspace/.tagma/logs/run_mvbjg1rk_d3044f114c0c/pipeline.log
+(pass) ordinary reader strictly rejects original committed raw plan for repaired shell YAML [1227.55ms]
+
+ 1 pass
+ 0 fail
+ 19 expect() calls
+Ran 1 test across 1 file. [1375.00ms]
+::endgroup::
+
+::group::tests/opencode-command-env.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-command-env.test.ts:
+(pass) broker managed CLI commands > inherits provider authentication, proxy routing and configured CA trust [3.96ms]
+(pass) broker managed CLI commands > keeps authored overrides authoritative and ordinary command environments minimal [0.99ms]
+(pass) broker managed CLI commands > supports Core secret-command spawns with task secret precedence and sealed isolation [0.57ms]
+(pass) broker managed CLI commands > redacts inherited and task credentials across stdout/stderr chunk boundaries [2.26ms]
+(pass) broker managed CLI commands > redacts malformed authenticated proxy values and separately reported credentials [1.09ms]
+(pass) legacy managed CLI commands > inherits provider authentication, proxy routing and configured CA trust [0.49ms]
+(pass) legacy managed CLI commands > keeps authored overrides authoritative and ordinary command environments minimal [0.45ms]
+(pass) legacy managed CLI commands > supports Core secret-command spawns with task secret precedence and sealed isolation [0.39ms]
+(pass) legacy managed CLI commands > redacts inherited and task credentials across stdout/stderr chunk boundaries [0.97ms]
+(pass) legacy managed CLI commands > redacts malformed authenticated proxy values and separately reported credentials [0.54ms]
+(pass) managed CLI credentials stay redacted in live chunks, result tails and persisted files [50.61ms]
+
+ 11 pass
+ 0 fail
+ 91 expect() calls
+Ran 11 tests across 1 file. [165.00ms]
+::endgroup::
+
+::group::tests/opencode-deterministic-content-contract.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-deterministic-content-contract.test.ts:
+(pass) seeded author contract assigns exact bytes and digests to deterministic commands without expanding prompt authority [6.06ms]
+(pass) seeded author contract distinguishes managed web routing from ordinary command environments [1.38ms]
+22:27:32.589 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_preserved
+22:27:32.594 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=source;fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+22:27:32.618 [task:files.materialize] success (0.0s)
+22:27:32.618 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-WXFWqy/verify.cjs"]
+22:27:32.638 [task:files.verify] success (0.0s)
+22:27:32.638 [pipeline] completed "Exact source bytes with deterministic digest"
+22:27:32.638 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:27:32.638 [pipeline] Duration: 0.0s
+22:27:32.638 [pipeline] Log: /tmp/tagma-content-contract-WXFWqy/.tagma/logs/run_content_contract_preserved/pipeline.log
+(pass) actual SDK deterministic commands preserve multiline Unicode source bytes before hashing [64.05ms]
+22:27:32.642 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_truncated
+22:27:32.643 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=Buffer.from('# Independent sample');fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+22:27:32.663 [task:files.materialize] success (0.0s)
+22:27:32.664 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-rKIJOW/verify.cjs"]
+22:27:32.683 [task:files.verify] ERROR: failed exit=1 duration=0.0s
+22:27:32.683 [task:files.verify] ERROR: stderr tail:
+1 | const fs=require('node:fs'),c=require('node:crypto');const a=fs.readFileSync('captured.txt'),b=fs.readFileSync('saved.txt');const validDigest=c.createHash('sha256').update(b).digest('hex')===fs.readFileSync('digest.txt','utf8');if(!validDigest)throw Error('Digest mismatch');if(!a.equals(b))throw Error('Complete source bytes not preserved');console.log('Complete bytes and digest verified');
+                                                                                                                                                                                                                                                                                                             ^
+error: Complete source bytes not preserved
+      at <anonymous> (/tmp/tagma-content-contract-rKIJOW/verify.cjs:1:298)
+Bun v1.3.14 (Linux x64)
+22:27:32.683 [pipeline] failed "Exact source bytes with deterministic digest"
+22:27:32.683 [pipeline] Total: 2 | Success: 1 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+22:27:32.683 [pipeline] Duration: 0.0s
+22:27:32.683 [pipeline] Log: /tmp/tagma-content-contract-rKIJOW/.tagma/logs/run_content_contract_truncated/pipeline.log
+(pass) actual SDK source-byte check rejects truncated content even with a correct digest [44.35ms]
+
+ 4 pass
+ 0 fail
+ 27 expect() calls
+Ran 4 tests across 1 file. [204.00ms]
+::endgroup::
+
+::group::tests/opencode-host-env.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-host-env.test.ts:
+(pass) managed OpenCode inherits configured provider authentication and network trust [0.64ms]
+(pass) managed OpenCode does not inherit unrelated process authority or weaken TLS [0.25ms]
+(pass) managed OpenCode inherits non-enumerable fixed host network keys [0.23ms]
+(pass) managed OpenCode keeps non-enumerable private authority and inherited settings outside its host boundary [0.09ms]
+
+ 4 pass
+ 0 fail
+ 8 expect() calls
+Ran 4 tests across 1 file. [13.00ms]
+::endgroup::
+
+::group::tests/opencode-seed-agent.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-seed-agent.test.ts:
+(pass) native command guidance enables Exa only for explicitly requested headless web search [1.31ms]
+(pass) headless OpenCode command guidance selects Tagma CLI and isolates its database [0.30ms]
+(pass) command guidance keeps PowerShell data literals distinct from native arguments [0.06ms]
+(pass) PowerShell path inputs stay variable without executing their quoted values [0.05ms]
+(pass) pipeline agent writes large YAML and support files in bounded chunks [0.04ms]
+(pass) authoring declares intermediate file ownership before read-only Trial planning [0.09ms]
+(pass) headless artifact guidance requires file contracts instead of stdout JSON guesses [0.02ms]
+(pass) Trial planner recommits a plan whenever the staged YAML revision changes [0.18ms]
+(pass) Trial planner uses bounded tool output and resumes a truncated draft without weakening checks [0.06ms]
+(pass) Trial planner checks requested architecture and launch semantics beyond passing output cases [0.09ms]
+(pass) Trial planner treats a schedule trigger as satisfied by the virtualized Sandbox clock [0.06ms]
+(pass) pipeline creation and repair receive schedule strategy guidance [0.03ms]
+(pass) tagma-router delegates history comparisons without read/edit powers [0.18ms]
+(pass) tagma-router separates concrete read-only diagnosis from authorized pipeline mutation [0.02ms]
+(pass) tagma-router keeps external workspace data writes out of pipeline authoring [0.02ms]
+(pass) tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts and compile logs [0.10ms]
+(pass) every staged file-reading specialist denies unscoped discovery [0.26ms]
+(pass) pipeline intent classifier is hidden, tool-free, and Host-validated text only [0.03ms]
+(pass) router prompt stays compact with the read-only diagnosis lane [0.02ms]
+(pass) router keeps one bounded implementation handoff before result synthesis [0.06ms]
+(pass) router recovery never instructs task_id reuse that the context-window plugin blocks [0.02ms]
+(pass) tagma-pipeline agent stays compact and keeps schema detail out of the base prompt [0.05ms]
+(pass) routine pipeline authoring stays in one worker model without nested task fanout [0.08ms]
+(pass) merged tagma-pipeline agent is a hidden subagent handling create + edit [0.09ms]
+(pass) tagma-pipeline requires explicit mutation authorization before any write [0.05ms]
+(pass) tagma-pipeline agent documents edit/create modes and mandatory compile loop [0.27ms]
+(pass) tagma-pipeline completes a design gate before generating a new pipeline [0.28ms]
+(pass) tagma-pipeline requires independently diagnosable task boundaries and track rationale [0.11ms]
+(pass) pipeline authoring uses native prompt outputs without inventing duplicate files [0.76ms]
+(pass) reusable human-facing analysis pipelines have one durable deliverable [0.07ms]
+(pass) all authoring routes distinguish file parsing, semantic comparisons, and representative core coverage [0.69ms]
+(pass) authoring guidance shares machine contracts while preserving optional and native dataflow [0.43ms]
+(pass) factual guidance admits scoped evidence and comparable quantities without fabricating certainty [0.84ms]
+(pass) document and Trial guidance preserve source lines and trace representative core evidence [0.76ms]
+(pass) pipeline guidance stays within budget after step frontmatter normalization [0.28ms]
+(pass) multi-step planning keeps new-pipeline companions Host-owned [0.04ms]
+(pass) tagma-yaml-contract distinguishes preflight availability from version guidance [0.25ms]
+(pass) schema-driven YAML generation emits least-authority prompt tasks and rejects ambiguous result contracts [49.05ms]
+(pass) schema-driven YAML generation rejects task ids outside the runtime grammar [2.62ms]
+(pass) schema-driven YAML generation rejects track ids outside the runtime grammar [2.04ms]
+(pass) schema-driven YAML generation rejects empty ids instead of manufacturing defaults [2.28ms]
+(pass) schema-driven YAML generation accepts canonical id boundary characters [9.87ms]
+(pass) schema-driven YAML generation round-trips a schedule trigger cron and rejects cron misuse [2.10ms]
+(pass) schema-driven YAML generation requires reviewable task and track rationale [2.07ms]
+(pass) schema-driven YAML generation fails closed instead of dropping sections or tasks [1.76ms]
+(pass) seed prompts require a scope-aware edge-case review after pipeline creation [0.17ms]
+(pass) Trial prompts prioritize a complete positive path and explicit prerequisite probes [0.20ms]
+(pass) Trial planner repairs invalid missing-file cases instead of returning no-change [0.08ms]
+(pass) tagma-pipeline agent cooperates with optional host trial-run repair before the logical turn ends [0.20ms]
+(pass) dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring [3.62ms]
+(pass) tagma-pipeline agent treats explicit creation as higher priority than existing name matches [0.15ms]
+(pass) tagma-pipeline applies Chat AI defaults only while creating a new pipeline [0.10ms]
+(pass) tagma-pipeline keeps generated companions Host-owned while enforcing edit isolation [0.11ms]
+(pass) tagma-pipeline agent honors protected current pipeline context [0.11ms]
+(pass) tagma-pipeline agent allows workspace reads while restricting writes to .tagma [0.04ms]
+(pass) tagma-pipeline agent treats chat staging as the only readable and writable pipeline root [0.09ms]
+(pass) tagma-pipeline agent allows external file and directory trigger watch paths [0.30ms]
+(pass) trigger strategy keeps exact trigger paths aligned with advertised input variants [0.02ms]
+(pass) tagma authoring contracts define one effective cwd coordinate for built-in paths [0.36ms]
+(pass) tagma-yaml-contract requires one direct producer for each unresolved binding [0.25ms]
+(pass) tagma-pipeline agent exposes direct tools and focused skills without advisor fanout [0.16ms]
+(pass) specialized Tagma advisor subagents are hidden, read-only, and task-focused [0.11ms]
+(pass) tagma-pipeline agent self-reviews once without another model turn [0.05ms]
+(pass) tagma-pipeline agent authors YAML sections without rewriting generated manifests [0.06ms]
+(pass) tagma-pipeline-section-builder is a write-capable bounded implementer, not a reviewer [0.04ms]
+(pass) write-capable delegated agents force host permission checks [0.03ms]
+(pass) tagma-pipeline agent delegates mechanical layout to the placement tool [0.10ms]
+(pass) placement tool is generated as an OpenCode custom tool module [0.02ms]
+(pass) trial-plan tool binds structured edge cases to the final YAML hash [5.11ms]
+(pass) trial-plan tool atomically commits a complete bounded plan in one authenticated call [34.08ms]
+(pass) bundled trial-plan tool validates and commits structurally different plans [31.09ms]
+(pass) source trial-plan fixture rules retain rejection evidence and copied-file removal [20.42ms]
+(pass) bundled trial-plan fixture rules retain rejection evidence and copied-file removal [18.00ms]
+(pass) trial-plan tool assembles a large plan in bounded draft calls before one commit [17.82ms]
+(pass) trial-plan tool preserves observable pipeline-generated inputs without pre-seeding fixtures [10.79ms]
+(pass) trial-plan draft feedback names the required operation field without consuming a submission [11.75ms]
+(pass) trial-plan upsert rejects undeclared environment controls before submission and preserves its draft [10.48ms]
+(pass) command file-contract feedback identifies completion.type and its supported spelling [6.81ms]
+(pass) skeleton preserves the JSON schema file barrier and requires its schema path [1.86ms]
+(pass) trial-plan begin resumes the same revision unless reset is explicit [9.44ms]
+(pass) trial-plan tool rejects host-invalid plans before writing any file [10.55ms]
+(pass) trial-plan tool rejects text-only checks for JSON artifacts [7.10ms]
+(pass) trial-plan tool rejects checks against staged YAML and companion files [6.97ms]
+(pass) trial-plan tool requires every case to include non-empty target task ids before writing [7.13ms]
+(pass) trial-plan tool rejects semantic coverage gaps and unsupported findings before writing [10.00ms]
+(pass) trial-plan coverage setter reports unsupported covered dimensions before commit [7.30ms]
+(pass) trial-plan tool writes plans that the authoritative host parser accepts [8.81ms]
+(pass) trial-plan tool uses an exact staged target and refuses live .tagma writes [9.08ms]
+(pass) trial-plan tool resolves paths from the host-provided workspace root [0.49ms]
+(pass) tagma-trial-planner instructs host trial-plan failure handling for live .tagma safety [1.74ms]
+(pass) tagma-pipeline agent scopes Python helper setup to authoring and separates math from glue [0.09ms]
+(pass) Windows pipeline authoring uses PowerShell unless CMD is explicit argv [0.12ms]
+(pass) Windows pipeline authoring explicitly decodes BOM-less UTF-8 text and JSON [0.05ms]
+(pass) tagma-pipeline agent grants python tools only when workspace settings enable them [0.14ms]
+(pass) tagma-python-tools refuses to run without configured Python handoff [0.05ms]
+(pass) tagma-pipeline agent codifies track design as agent identity vs layout lane [0.11ms]
+(pass) tagma-pipeline agent forbids inconsistent prompt personas and inert command-track AI fields [0.07ms]
+(pass) seedOpencodeArtifacts writes only the plural agents dir and focused skills [5.84ms]
+(pass) seedOpencodeArtifacts applies repeated global step-limit changes to every managed agent [8.23ms]
+(pass) seedOpencodeArtifacts rewrites the pipeline agent when Python tools are enabled [3.32ms]
+(pass) seedOpencodeArtifacts prunes stale agents left by an older editor [1.39ms]
+
+ 101 pass
+ 0 fail
+ 1240 expect() calls
+Ran 101 tests across 1 file. [423.00ms]
+::endgroup::
+
+::group::tests/opencode-seed-document-budget.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-seed-document-budget.test.ts:
+(pass) final seeded pipeline guidance includes all managed policies in every host budget [4.88ms]
+
+ 1 pass
+ 0 fail
+ 49 expect() calls
+Ran 1 test across 1 file. [56.00ms]
+::endgroup::

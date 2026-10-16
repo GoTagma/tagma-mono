@@ -57,6 +57,10 @@ jobs:
         working-directory: apps/editor
         run: bun test tests/opencode-deterministic-content-contract.test.ts
 
+      - name: Managed and ordinary command environment boundaries
+        working-directory: apps/editor
+        run: bun scripts/test-serial.mjs --file tests/opencode-host-env.test.ts --file tests/opencode-command-env.test.ts
+
       - name: Trial source dependency reference contracts
         working-directory: apps/editor
         run: bun test tests/chat-trial-source-dependency-resolution.test.ts

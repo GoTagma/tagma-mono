@@ -1,0 +1,47 @@
+{
+  "scope": "Final local CSR53 emitted environment contract qualification, not live S3-L3 acceptance",
+  "command": "bun run verify:full",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "6f0a9df8359c8e5b16ec0521852aad9ba1f94b1595b8d9cf205e13c4cf15d69c",
+  "summary": [
+    "PASS text 80ms ok",
+    "PASS deps 236ms ok",
+    "PASS focus 204ms ok",
+    "PASS imports 56ms ok",
+    "PASS cycles 34ms ok",
+    "PASS secrets 286ms ok",
+    "PASS format 19.6s ok",
+    "PASS types 43.4s ok",
+    "PASS lint 16.6s ok",
+    "PASS tests 203.6s ok",
+    "PASS scripts 2.4s ok",
+    "PASS build 18.2s ok",
+    "PASS publish 9.4s ok"
+  ],
+  "focused": {
+    "tests": 4,
+    "assertions": 27,
+    "pass": true
+  },
+  "related": {
+    "files": 6,
+    "tests": 122,
+    "assertions": 1434,
+    "pass": true
+  },
+  "historicalGate": {
+    "passed": false,
+    "failures": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    },
+    "originalLogSha256": "69ad690673be8aee87e1ae0d075c2e755e4d1719b069e96a15fee2d10812f1f3",
+    "historicalCoverageComplete": false
+  },
+  "runtimeEnvironmentPolicyChanged": false,
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0
+}

@@ -1,0 +1,60 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify3",
+  "status": "active-automatic-repair-not-accepted",
+  "originalRequests": 1,
+  "sourceRevision": "1250a0abb6137e21053f40ac9c82b77a3213a167",
+  "operationId": "operation-1d311c0e-237f-4587-a655-23ccf23fcde4",
+  "stageId": "bde9e170-690a-419f-8ff1-2c67a7b9ab47",
+  "firstTrialId": "trial-5317a3d3d7898d95d4c104602c4743d67fb43472",
+  "firstTaskStatusCounts": {
+    "failed": 4,
+    "skipped": 8
+  },
+  "firstExecutedStreams": 8,
+  "allFirstExecutedStreamsCompleteShaVerified": true,
+  "nativeBusinessTasksExecuted": 0,
+  "nativeIndependentReviewerInvoked": false,
+  "failure": "Ordinary curl cannot connect directly; both positive normal runs and format case fail collector; empty case passes expected failure.",
+  "connectivityDiagnostic": {
+    "scope": "Read-only independent public connectivity diagnostic outside Tagma; not a business Run/model call. No proxy/provider/auth values copied.",
+    "facts": [
+      {
+        "mode": "host-proxy-routing",
+        "proxyKeyNames": [
+          "HTTP_PROXY",
+          "HTTPS_PROXY",
+          "NO_PROXY",
+          "http_proxy",
+          "https_proxy",
+          "no_proxy"
+        ],
+        "exitCode": 0,
+        "errorCode": null,
+        "httpStatusOutput": "200",
+        "stderrBytes": 0
+      },
+      {
+        "mode": "no-host-proxy-routing",
+        "proxyKeyNames": [],
+        "exitCode": 7,
+        "errorCode": null,
+        "httpStatusOutput": "000",
+        "stderrBytes": 95
+      }
+    ]
+  },
+  "environmentContract": "opencode-host-env.ts explicitly limits Host proxy/provider/trust inheritance to managed OpenCode entry points; ordinary command tasks do not inherit that allowlist by design. Do not weaken this boundary or copy proxy/provider values into YAML.",
+  "firstRepair": "Adds generic local-file collection support but leaves external HTTP curl route unchanged; same external-URL Trial fails again. No local-only substitute qualifies requested website monitoring.",
+  "firstEvidenceHashes": {
+    "first-trial-failure-projection.json": "6c0500e0b52bb7ee7836033e07c4a3dadb593612b406c93fedb5c6b0753d1d01",
+    "first-trial-verified-task-streams.json": "4a87edd432554b37f5cf97ddc8d14d3b230d26256794875d1478e0a525fc0c62",
+    "ordinary-curl-network-diagnostic.json": "64b25eb517f3c24d738d3d6ec6f0dc524725081bc8d729b724fdafd193969551",
+    "first-planning-length-timing.json": "030bde68c6646ee83bdb8d32a3796c4e9a8b1b570ae9fb535fb999390ab6245a"
+  },
+  "limits": [
+    "Original operation still active; no final outcome/publication inferred.",
+    "No confirmed Tagma runtime defect from this intentional environment boundary.",
+    "Later S4 cases locked; accepted remains8/12."
+  ]
+}

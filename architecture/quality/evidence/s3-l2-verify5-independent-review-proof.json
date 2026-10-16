@@ -1,0 +1,176 @@
+{
+  "scope": "One actual native independent normal review; not a deterministic truth oracle or review of every repeat",
+  "receipt": {
+    "version": 1,
+    "grading": "independent-model",
+    "outcome": "passed",
+    "identity": {
+      "stageId": "d1d8a7e4-cb2c-4f0e-b18b-dbaf3b2e9043",
+      "trialId": "trial-c1d8c22bb91708537dae775ed07c5ef59c0f850b",
+      "yamlHash": "899d9efc136fe5e77e920d74ed69b6f6275b2416",
+      "planHash": "1fe28ddbf01a9dce88a26be13e4ded8d578379a368787cb2ee86b6442977a0f6",
+      "intentDigest": "d8bf53e2cedf73c1fe1a545c433ec89ece372118d75366c25d087579620adf37",
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1
+    },
+    "model": {
+      "providerID": "deepseek",
+      "modelID": "deepseek-flash",
+      "variant": "low"
+    },
+    "configurationDigest": "11fd1d8e8349032690bd724311cdf0d75e7a21947ecfcd19c449e30274a29b97",
+    "requestSha256": "905c3e6ae1fc5b4b2b702111f419c20f504711080935110fec480aff214fc44f",
+    "responseSha256": "0f4a79ef7262ddd569ea689e113222a31cef879efc801eaf93aad7d46cb37190",
+    "reviewerSessionId": "ses_tagma_content_review_50a47d7448a94b70907e6adc9504969b",
+    "artifacts": [
+      {
+        "path": "config/sites.json",
+        "role": "input",
+        "sha256": "62af4877ea581a14ab3697c442e48763cce61abcd5000a089f662703e4c3c2db",
+        "bytes": 220
+      },
+      {
+        "path": "report/site-monitor-briefing.md",
+        "role": "produced",
+        "sha256": "3dbaa2c9aa43cb8c2697d5ee59da8ee890581a95e49b18581ab0feaf8d5775c7",
+        "bytes": 3540
+      },
+      {
+        "path": "work/findings.json",
+        "role": "produced",
+        "sha256": "e8d5861abf0db933eebaa2203d95808e8bb07680c5ccdc9221c0e0e8b07739fe",
+        "bytes": 11415
+      },
+      {
+        "path": "work/sites.json",
+        "role": "input",
+        "sha256": "c6f1f513c80debdb93d189139f3dc3374eec3293d12f22c4972b12b239e15f7a",
+        "bytes": 302
+      }
+    ],
+    "verdicts": [
+      {
+        "taskId": "checking.scrape_and_check",
+        "path": "work/findings.json",
+        "verdict": "pass",
+        "reason": "Positive content operations are actually exercised. The config lists two sites (Python and Web scraping); findings.json contains exactly two site entries in the same order with matching id/url/name, both status 'fetched' and page_file set. Claims of both promised kinds were extracted and checked: bold (site-01-c1, site-02-c1) and quantitative claims, with mixed verdicts (12 supported, 3 unresolved) and evidence entries for supported claims. The independent validator run returned {\"validated\": true, \"sites\": 2, \"claims\": 15}, confirming the schema contract. No site was added/dropped and no fabricated content is apparent from the supplied evidence.",
+        "evidence": [
+          {
+            "path": "work/findings.json",
+            "quote": "\"claim_id\": \"site-01-c1\",\n          \"claim_type\": \"bold\",",
+            "quoteSha256": "075b9545052585734af8fb9d8b6166bb9a2516bf7031a3514ec4d60302444bda",
+            "offset": 277,
+            "length": 57
+          },
+          {
+            "path": "work/findings.json",
+            "quote": "\"status\": \"fetched\",",
+            "quoteSha256": "8e75a42a8e6219c33d8346ba6bd4f702271cc01f8e6186ab789a5e5cb505c2a2",
+            "offset": 173,
+            "length": 20
+          },
+          {
+            "path": "work/findings.json",
+            "quote": "\"claim_id\": \"site-02-c5\",\n          \"claim_type\": \"quantitative\",",
+            "quoteSha256": "67b07fc457708790bd868738838c7b5ef5c9dad8e8b5a27dbca6e8d1d20f7410",
+            "offset": 10449,
+            "length": 65
+          }
+        ]
+      },
+      {
+        "taskId": "reporting.write_briefing",
+        "path": "report/site-monitor-briefing.md",
+        "verdict": "pass",
+        "reason": "The briefing satisfies the requested content obligations against the validated findings. It has a title and run date; the overview states the site and claim counts (two monitored/fetched, none failed; 12 supported, 0 contradicted, 3 unresolved), matching findings.json and the validator's site/claim counts. It contains a 'Discrepancies' section explicitly stating none were found, an 'Unresolved claims' section listing all three unresolved claims grouped by site with verbatim claim text and explanations, and a 'Fetch failures' section explicitly stating none failed. Claim text matches the source (e.g., the PyPI 905,649 figure and the QVC allegation). Empty sections are explicitly stated rather than silently omitted, which is valid since no contradicted claims existed.",
+        "evidence": [
+          {
+            "path": "report/site-monitor-briefing.md",
+            "quote": "# Site Monitor Briefing",
+            "quoteSha256": "9362343f8f1c383c61183306dd1a1c86a127201073663104bee56743329fa6e7",
+            "offset": 0,
+            "length": 23
+          },
+          {
+            "path": "report/site-monitor-briefing.md",
+            "quote": "No contradicted claims were found in this run.",
+            "quoteSha256": "991725926963d76dc221c814eb667619bde8dd79051a9f435cb9703c005ab7dd",
+            "offset": 313,
+            "length": 46
+          },
+          {
+            "path": "report/site-monitor-briefing.md",
+            "quote": "No sites failed to fetch.",
+            "quoteSha256": "761f061e4e9d5bc4ea21b924d3c9cf7c3ac3364fd3a6fb02bd00f32f6fa67b31",
+            "offset": 1551,
+            "length": 25
+          },
+          {
+            "path": "report/site-monitor-briefing.md",
+            "quote": "contains over 905,649 projects.",
+            "quoteSha256": "7de60c381f7704a46f2ac4fb6151a6d0412e03bdd0547aab7308cad08e289f48",
+            "offset": 603,
+            "length": 31
+          }
+        ]
+      }
+    ]
+  },
+  "requestBytesVerified": true,
+  "responseBytesVerified": true,
+  "producedTargets": [
+    {
+      "taskId": "checking.scrape_and_check",
+      "path": "work/findings.json"
+    },
+    {
+      "taskId": "reporting.write_briefing",
+      "path": "report/site-monitor-briefing.md"
+    }
+  ],
+  "snapshotIdentities": [
+    {
+      "path": "config/sites.json",
+      "role": "input",
+      "sha256": "62af4877ea581a14ab3697c442e48763cce61abcd5000a089f662703e4c3c2db",
+      "bytes": 220
+    },
+    {
+      "path": "report/site-monitor-briefing.md",
+      "role": "produced",
+      "sha256": "3dbaa2c9aa43cb8c2697d5ee59da8ee890581a95e49b18581ab0feaf8d5775c7",
+      "bytes": 3540
+    },
+    {
+      "path": "work/findings.json",
+      "role": "produced",
+      "sha256": "e8d5861abf0db933eebaa2203d95808e8bb07680c5ccdc9221c0e0e8b07739fe",
+      "bytes": 11415
+    },
+    {
+      "path": "work/sites.json",
+      "role": "input",
+      "sha256": "c6f1f513c80debdb93d189139f3dc3374eec3293d12f22c4972b12b239e15f7a",
+      "bytes": 302
+    }
+  ],
+  "normalCoreWitness": {
+    "normalCaseId": "positive-core",
+    "contentTaskIds": [
+      "config.load_sites",
+      "checking.scrape_and_check",
+      "reporting.write_briefing"
+    ]
+  },
+  "responseContract": {
+    "maxReasonCodeUnits": 1600,
+    "maxEvidenceItems": 4,
+    "maxQuoteCodeUnits": 512,
+    "maxResponseBytes": 65536
+  },
+  "rawEvidenceCounts": [
+    3,
+    4
+  ]
+}

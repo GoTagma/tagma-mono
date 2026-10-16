@@ -2412,3 +2412,11 @@
   promised, and never send content to external hash services as a substitute for local work.
   The actual-SDK regression includes valid multiline Unicode bytes and a correctly hashed
   truncated counterexample; these controls do not guarantee that a model follows guidance.
+
+- Managed OpenCode and ordinary commands have distinct environment contracts. Author/repair
+  guidance must explain that managed provider/proxy/CA routing is not inherited by unrelated
+  curl/Python HTTP commands. Keep the existing minimal-command, override, TLS and redaction
+  boundaries; never copy Host values into YAML. Preserve the requested website/actor operation
+  through an available managed web path or report the environment boundary. Local-only fixtures
+  do not qualify website monitoring, and changed task graphs still require a complete current
+  Trial plan within the original budgets.

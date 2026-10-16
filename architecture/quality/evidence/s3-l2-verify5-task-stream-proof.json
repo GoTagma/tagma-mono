@@ -1,0 +1,385 @@
+{
+  "scope": "Actual archived executed-child stream SHA verification; no skipped-child stream invented",
+  "cases": [
+    {
+      "id": "positive-core",
+      "success": true,
+      "runIds": [
+        "run_mvbicl93_07f16c07f40b"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "repeat-run",
+      "success": true,
+      "runIds": [
+        "run_mvbiemii_bc70d99a7ab7",
+        "run_mvbihkgm_0cf4694bc00e"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "names-edge",
+      "success": true,
+      "runIds": [
+        "run_mvbiit3k_5ea5823d9f36"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "empty-config",
+      "success": true,
+      "runIds": [
+        "run_mvbiit8d_ea490ef65e41"
+      ],
+      "executionSource": "current-trial"
+    },
+    {
+      "id": "missing-config",
+      "success": true,
+      "runIds": [
+        "run_mvbiitcy_7569f9caeba4"
+      ],
+      "executionSource": "current-trial"
+    }
+  ],
+  "taskStatusCounts": {
+    "success": 13,
+    "skipped": 9,
+    "failed": 2
+  },
+  "omittedTaskCount": 0,
+  "records": [
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stdout",
+      "sha256": "312c89620a8740ac9c1ec6930e8e65fe1ec53f5384013fef1f07f8df036b79b4",
+      "complete": true,
+      "bytes": 235,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "checking.scrape_and_check",
+      "stream": "stdout",
+      "sha256": "5625340ab1fa2b13933442584fef88942b64c872dc1ead389ae6a0ca813cae9e",
+      "complete": true,
+      "bytes": 341528,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "checking.scrape_and_check",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "verification.validate_findings",
+      "stream": "stdout",
+      "sha256": "8398481a131dcd6163d080f020ac7d9d16f0a2bd9fa35c189e140fddcf186e06",
+      "complete": true,
+      "bytes": 40,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "verification.validate_findings",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "reporting.write_briefing",
+      "stream": "stdout",
+      "sha256": "fd2601e2adee3ef5eb267f08b214b7d70d18f06989a194ba7d9aa724025d55e3",
+      "complete": true,
+      "bytes": 34527,
+      "redacted": false
+    },
+    {
+      "caseId": "positive-core",
+      "runId": "run_mvbicl93_07f16c07f40b",
+      "runNumber": 1,
+      "taskId": "reporting.write_briefing",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stdout",
+      "sha256": "312c89620a8740ac9c1ec6930e8e65fe1ec53f5384013fef1f07f8df036b79b4",
+      "complete": true,
+      "bytes": 235,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "checking.scrape_and_check",
+      "stream": "stdout",
+      "sha256": "45ea405db1f86adf2f7a345423cf69e91c22b613b7d71d516a1718b576e6d0e2",
+      "complete": true,
+      "bytes": 765403,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "checking.scrape_and_check",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "verification.validate_findings",
+      "stream": "stdout",
+      "sha256": "e427d21119554c13561e4e0b1ee03a53ca74ec7988168452686b73330e199461",
+      "complete": true,
+      "bytes": 40,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "verification.validate_findings",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "reporting.write_briefing",
+      "stream": "stdout",
+      "sha256": "0407d05068eb1df5bb8759ae1da091f4e5e0b9feb78481fea9462d29f90b7b3f",
+      "complete": true,
+      "bytes": 42877,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbiemii_bc70d99a7ab7",
+      "runNumber": 1,
+      "taskId": "reporting.write_briefing",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "config.load_sites",
+      "stream": "stdout",
+      "sha256": "312c89620a8740ac9c1ec6930e8e65fe1ec53f5384013fef1f07f8df036b79b4",
+      "complete": true,
+      "bytes": 235,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "config.load_sites",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "checking.scrape_and_check",
+      "stream": "stdout",
+      "sha256": "841df0f30c6166d3c9a1301d818ca1fdfaf429d0867a36144a9586bfe61b86e8",
+      "complete": true,
+      "bytes": 433821,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "checking.scrape_and_check",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "verification.validate_findings",
+      "stream": "stdout",
+      "sha256": "e427d21119554c13561e4e0b1ee03a53ca74ec7988168452686b73330e199461",
+      "complete": true,
+      "bytes": 40,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "verification.validate_findings",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "reporting.write_briefing",
+      "stream": "stdout",
+      "sha256": "0fd0e830b7c971ed8375b26ae79706856ce3cb281b3a4bf4f43126439ef16dfa",
+      "complete": true,
+      "bytes": 41474,
+      "redacted": false
+    },
+    {
+      "caseId": "repeat-run",
+      "runId": "run_mvbihkgm_0cf4694bc00e",
+      "runNumber": 2,
+      "taskId": "reporting.write_briefing",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "names-edge",
+      "runId": "run_mvbiit3k_5ea5823d9f36",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stdout",
+      "sha256": "fff0131c77036b10e653728cf7ebb28911bbe4f824917927c0e1383d91224aae",
+      "complete": true,
+      "bytes": 263,
+      "redacted": false
+    },
+    {
+      "caseId": "names-edge",
+      "runId": "run_mvbiit3k_5ea5823d9f36",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-config",
+      "runId": "run_mvbiit8d_ea490ef65e41",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-config",
+      "runId": "run_mvbiit8d_ea490ef65e41",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stderr",
+      "sha256": "1c5de3490fb24c107c45934c956ff0850c84efed6e917195a268cb105bf86123",
+      "complete": true,
+      "bytes": 54,
+      "redacted": false
+    },
+    {
+      "caseId": "missing-config",
+      "runId": "run_mvbiitcy_7569f9caeba4",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "missing-config",
+      "runId": "run_mvbiitcy_7569f9caeba4",
+      "runNumber": 1,
+      "taskId": "config.load_sites",
+      "stream": "stderr",
+      "sha256": "0db12d4f5974997f2f0304d0ba3662f81b5421695e2408861b3a903ee78df574",
+      "complete": true,
+      "bytes": 52,
+      "redacted": false
+    }
+  ],
+  "unavailable": []
+}

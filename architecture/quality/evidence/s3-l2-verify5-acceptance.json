@@ -1,0 +1,98 @@
+{
+  "case": "S3-L2",
+  "attempt": "s3-l2-verify5",
+  "accepted": true,
+  "acceptedOrdinal": 8,
+  "totalCases": 12,
+  "sourceRevision": "1250a0abb6137e21053f40ac9c82b77a3213a167",
+  "sourceCI": 38970928000,
+  "sourceCIStatus": "all-required-success",
+  "operationId": "operation-1f644e58-d7a9-4bff-9720-38b5d36ae9b6",
+  "stageId": "d1d8a7e4-cb2c-4f0e-b18b-dbaf3b2e9043",
+  "trialId": "trial-c1d8c22bb91708537dae775ed07c5ef59c0f850b",
+  "yamlHash": "899d9efc136fe5e77e920d74ed69b6f6275b2416",
+  "planHash": "1fe28ddbf01a9dce88a26be13e4ded8d578379a368787cb2ee86b6442977a0f6",
+  "originalRequests": 1,
+  "hostActionClarifications": 0,
+  "freshWorkspace": true,
+  "ownedEditorRestarted": true,
+  "model": "deepseek/deepseek-flash/low",
+  "outcome": "completed_published",
+  "actualCases": 5,
+  "actualRuns": 6,
+  "taskStatusCounts": {
+    "success": 13,
+    "skipped": 9,
+    "failed": 2
+  },
+  "executedChildStreams": 30,
+  "completeShaVerified": true,
+  "nativeIndependentReviews": 1,
+  "producedReviewTargets": 2,
+  "totalReviewSnapshots": 4,
+  "publishedSourceFiles": 6,
+  "contentClaimCounts": [
+    15,
+    19,
+    19
+  ],
+  "nativeWebfetchCalls": 6,
+  "nativeWebsearchCalls": [
+    2,
+    6,
+    0
+  ],
+  "sourceChecks": {
+    "urlsChecked": 11,
+    "results": {
+      "TimeoutError": 1,
+      "403": 1,
+      "200": 8,
+      "URLError": 1
+    },
+    "boundedAt512KiB": 1
+  },
+  "architecture": "Two native scoped OpenCode Prompt tasks plus two deterministic Python command tasks. Scrape/save/extract/judge phases ordered per site within one native task; a separate deterministic findings gate precedes executive briefing. No model subprocess wrapper.",
+  "scheduleScope": "Weekday08:00 native run-scoped schedule gate; manual Run starts the run and waits for the tick. No immediate bypass or daemon launcher claimed.",
+  "negativeCases": "Exact duplicate-name/Unicode/multiline normalization passes; empty-sites array and missing config fail loader as expected. No zero-byte JSON or actual unreachable-site probe claimed for this fresh pipeline.",
+  "limits": [
+    "Raw quote equality is not claimed: repeat QVC apostrophe/double-quote escapes differ while displayed wording remains equal; native bytes/receipt quote checks remain unchanged.",
+    "Native page saves are not exact copies of complete webfetch tool output; no complete-page byte-preservation or exhaustive-claim claim.",
+    "In-page support is distinct from independently searched verification. Second repeat reuses prior source information; no same-run external search is claimed there.",
+    "Only the normal positive case has native independent review. Repeats have actual deterministic/content/trace audit.",
+    "Updated native-primitives skill was seeded but author loaded trigger/yaml skills only; no claim that the new prose was live-consumed.",
+    "Direct citation checks have8HTTP200,1HTTP403,1TimeoutError,1URLError and1bounded body; no full independent verification of every claim/source.",
+    "Earlier failed attempts remain unchanged; CSR50/51 branches are guarded by independent deterministic/all-OS regressions, not claimed exact-branch live replay."
+  ],
+  "regressionProtection": "CSR49 positive qualification, CSR51 early relation admission, CSR52 seeded actor-capability guidance and actual-SDK complete-byte/correct-digest counterexamples; full13/current52-284/exactallOS CI pass before this fresh original case.",
+  "evidence": {
+    "streams": {
+      "path": "architecture/quality/evidence/s3-l2-verify5-task-stream-proof.json",
+      "sha256": "c5a00ce21afe346c116fab8421be8c0fd5912f2754312cdf24085de0864ddff9"
+    },
+    "review": {
+      "path": "architecture/quality/evidence/s3-l2-verify5-independent-review-proof.json",
+      "sha256": "b4360b68eac09e48e91f06d9c6fc61dfda69374856007572f7907bcfe218542e"
+    },
+    "content": {
+      "path": "architecture/quality/evidence/s3-l2-verify5-content-and-source-proof.json",
+      "sha256": "b0a8dbd4bec9df59679b9495fab888b189f413d6beeac798b72d5655a35107ce"
+    },
+    "citations": {
+      "path": "architecture/quality/evidence/s3-l2-verify5-public-citation-checks.json",
+      "sha256": "5d3b87f720b93f850acd4ed7de98010446520c8d92b51b2c13f3f5d76fd2ed87"
+    },
+    "publication": {
+      "path": "architecture/quality/evidence/s3-l2-verify5-sealed-publication-proof.json",
+      "sha256": "43bde0fd550f342550a8f0c1e3c8e06f8bbb6cf4db32595509c6ec132e154ba8"
+    },
+    "actualTrialBriefing": {
+      "path": "architecture/quality/evidence/s3-l2-verify5-actual-trial-briefing.md",
+      "sha256": "3dbaa2c9aa43cb8c2697d5ee59da8ee890581a95e49b18581ab0feaf8d5775c7",
+      "scope": "Actual normal Trial export, not a manual real-workspace Run or promoted runtime output"
+    }
+  },
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0,
+  "historicalCoverageComplete": false
+}

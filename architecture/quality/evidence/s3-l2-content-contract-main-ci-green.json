@@ -1,0 +1,89 @@
+{
+  "scope": "Exact pushed CSR52 source qualification, not by itself live acceptance",
+  "run": 38970928000,
+  "headSha": "1250a0abb6137e21053f40ac9c82b77a3213a167",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "full-check",
+      "conclusion": "success",
+      "criticalSteps": []
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "conclusion": "success",
+      "criticalSteps": [
+        {
+          "name": "Non-core Trial source relation admission",
+          "conclusion": "success"
+        },
+        {
+          "name": "Deterministic content preservation contracts",
+          "conclusion": "success"
+        },
+        {
+          "name": "Trial positive core qualification",
+          "conclusion": "success"
+        },
+        {
+          "name": "Native independent Trial content review",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "conclusion": "success",
+      "criticalSteps": [
+        {
+          "name": "Non-core Trial source relation admission",
+          "conclusion": "success"
+        },
+        {
+          "name": "Deterministic content preservation contracts",
+          "conclusion": "success"
+        },
+        {
+          "name": "Trial positive core qualification",
+          "conclusion": "success"
+        },
+        {
+          "name": "Native independent Trial content review",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "conclusion": "success",
+      "criticalSteps": [
+        {
+          "name": "Non-core Trial source relation admission",
+          "conclusion": "success"
+        },
+        {
+          "name": "Deterministic content preservation contracts",
+          "conclusion": "success"
+        },
+        {
+          "name": "Trial positive core qualification",
+          "conclusion": "success"
+        },
+        {
+          "name": "Native independent Trial content review",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "public-check-fork",
+      "conclusion": "skipped",
+      "criticalSteps": []
+    }
+  ],
+  "localFullPassed": 13,
+  "currentIssues": 52,
+  "actualSelectedTestExecutions": 284,
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0
+}

@@ -1,0 +1,208 @@
+{
+  "scope": "Read-only substantive audit of complete actual consumer reads, complete SHA-verified native streams and exact native critic snapshots; no extra model/business call",
+  "runs": [
+    {
+      "caseId": "positive-core",
+      "runNumber": 1,
+      "actualConsumedFindingsReadComplete": true,
+      "actualConsumedFindingsReadOutputSha256": "ab27edea0e5926207fd2a4f2ab808deaff2aff593592ad12a0a1bf6d2083d1a7",
+      "sites": 2,
+      "claimCount": 15,
+      "uniqueClaimIds": true,
+      "verdicts": {
+        "supported": 12,
+        "unresolved": 3
+      },
+      "reportCountsMatch": true,
+      "allUnresolvedWordingInBriefingAfterPunctuationEscapeRendering": true,
+      "literalClaimTextNotRawSubstringIds": [],
+      "nativeWebfetchCalls": 2,
+      "nativeWebsearchCalls": 2,
+      "priorFindingsReadObserved": null,
+      "citations": [
+        {
+          "url": "https://dl.acm.org/doi/pdf/10.1145/3136014.3136031",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+          "observedProvenance": "same-run-monitored-page"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Web_scraping",
+          "observedProvenance": "same-run-monitored-page"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web_Wanderer",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://web.mit.edu/people/mkgray/net/background.html",
+          "observedProvenance": "same-run-independent-search-output"
+        }
+      ],
+      "reportNativeWriteRequestSha256": "3dbaa2c9aa43cb8c2697d5ee59da8ee890581a95e49b18581ab0feaf8d5775c7"
+    },
+    {
+      "caseId": "repeat-run",
+      "runNumber": 1,
+      "actualConsumedFindingsReadComplete": true,
+      "actualConsumedFindingsReadOutputSha256": "d9e03d1c875e2943aebdcb67fe0c8d3b39cf938eb62dddc1015e86db3192cbb6",
+      "sites": 2,
+      "claimCount": 19,
+      "uniqueClaimIds": true,
+      "verdicts": {
+        "supported": 14,
+        "unresolved": 5
+      },
+      "reportCountsMatch": true,
+      "allUnresolvedWordingInBriefingAfterPunctuationEscapeRendering": true,
+      "literalClaimTextNotRawSubstringIds": [
+        "site-02-c6"
+      ],
+      "nativeWebfetchCalls": 2,
+      "nativeWebsearchCalls": 6,
+      "priorFindingsReadObserved": null,
+      "citations": [
+        {
+          "url": "https://cnil.fr/fr/la-reutilisation-des-donnees-publiquement-accessibles-en-ligne-des-fins-de-demarchage-commercial",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/JumpStation",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+          "observedProvenance": "same-run-monitored-page"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Web_scraping",
+          "observedProvenance": "same-run-monitored-page"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web_Wanderer",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://history.apievangelist.com/",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://www.green-coding.io/case-studies/energy-efficiency-python/",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://www.python.org/downloads/",
+          "observedProvenance": "same-run-independent-search-output"
+        },
+        {
+          "url": "https://www.python.org/downloads/release/python-3150/",
+          "observedProvenance": "same-run-independent-search-output"
+        }
+      ],
+      "reportNativeWriteRequestSha256": "33e8521843efe262325c03bbd9054029910cf0aa687d25b1d0839cd1c518136b"
+    },
+    {
+      "caseId": "repeat-run",
+      "runNumber": 2,
+      "actualConsumedFindingsReadComplete": true,
+      "actualConsumedFindingsReadOutputSha256": "26f9e6414a3903b68814082b21184bcab913f2fc686869473bfd69d818b031b3",
+      "sites": 2,
+      "claimCount": 19,
+      "uniqueClaimIds": true,
+      "verdicts": {
+        "supported": 14,
+        "unresolved": 5
+      },
+      "reportCountsMatch": true,
+      "allUnresolvedWordingInBriefingAfterPunctuationEscapeRendering": true,
+      "literalClaimTextNotRawSubstringIds": [
+        "site-02-c6"
+      ],
+      "nativeWebfetchCalls": 2,
+      "nativeWebsearchCalls": 0,
+      "priorFindingsReadObserved": true,
+      "citations": [
+        {
+          "url": "https://cnil.fr/fr/la-reutilisation-des-donnees-publiquement-accessibles-en-ligne-des-fins-de-demarchage-commercial",
+          "observedProvenance": "earlier-repeat-independent-search-output"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/JumpStation",
+          "observedProvenance": "earlier-repeat-independent-search-output"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+          "observedProvenance": "same-run-monitored-page"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Web_scraping",
+          "observedProvenance": "same-run-monitored-page"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/World_Wide_Web_Wanderer",
+          "observedProvenance": "earlier-repeat-independent-search-output"
+        },
+        {
+          "url": "https://history.apievangelist.com/",
+          "observedProvenance": "earlier-repeat-independent-search-output"
+        },
+        {
+          "url": "https://www.green-coding.io/case-studies/energy-efficiency-python/",
+          "observedProvenance": "earlier-repeat-independent-search-output"
+        },
+        {
+          "url": "https://www.python.org/downloads/",
+          "observedProvenance": "earlier-repeat-independent-search-output"
+        },
+        {
+          "url": "https://www.python.org/downloads/release/python-3150/",
+          "observedProvenance": "earlier-repeat-independent-search-output"
+        }
+      ],
+      "reportNativeWriteRequestSha256": "03c9e655adef8e901346726352afd4fcfecd01bb29bb09e4b14930a6885f8691"
+    }
+  ],
+  "normalFindingsTypedDataEqualsExactReviewerSnapshot": true,
+  "normalBriefingBytesEqualExactReviewerSnapshot": true,
+  "normalPageActualByteBindings": [
+    {
+      "path": "work/pages/site-02.txt",
+      "actualFileSha256": "c8f7e0393a5be8c7ef4dc7a69dfaf9a57925b88dd80a2e1ac34b5aad44e98225",
+      "nativeRequestBytesEqualActualLiveFile": true,
+      "bytes": 15924
+    },
+    {
+      "path": "work/pages/site-01.txt",
+      "actualFileSha256": "3e6071b1b1df8723989dcb7b927a0a1ff6efbfbbc5585d72c52440a7f5fb449a",
+      "nativeRequestBytesEqualActualLiveFile": true,
+      "bytes": 30200
+    }
+  ],
+  "normalCoreWitness": {
+    "normalCaseId": "positive-core",
+    "contentTaskIds": [
+      "config.load_sites",
+      "checking.scrape_and_check",
+      "reporting.write_briefing"
+    ]
+  },
+  "responseContract": {
+    "maxReasonCodeUnits": 1600,
+    "maxEvidenceItems": 4,
+    "maxQuoteCodeUnits": 512,
+    "maxResponseBytes": 65536
+  },
+  "rawEvidenceCounts": [
+    3,
+    4
+  ],
+  "limits": [
+    "Raw quote equality is not claimed: repeat QVC apostrophe/double-quote escapes differ while displayed wording remains equal; native bytes/receipt quote checks remain unchanged.",
+    "Native page saves are not exact copies of complete webfetch tool output; no complete-page byte-preservation or exhaustive-claim claim.",
+    "In-page support is distinct from independently searched verification. Second repeat reuses prior source information; no same-run external search is claimed there.",
+    "Only the normal positive case has native independent review. Repeats have actual deterministic/content/trace audit.",
+    "Updated native-primitives skill was seeded but author loaded trigger/yaml skills only; no claim that the new prose was live-consumed."
+  ]
+}

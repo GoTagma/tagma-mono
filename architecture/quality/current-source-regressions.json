@@ -675,6 +675,42 @@
       "path": "architecture/quality/evidence/s3-l2-content-contract-related127-green.txt",
       "sha256": "c4224b32403aa9bc43efa5326546c27b0b8e61b8f0053a4e2e7e9de97d5370fe",
       "role": "related-seed-budget-and-positive-qualification-127-tests"
+    },
+    {
+      "id": "s3-l2-fresh-original-round-accepted",
+      "path": "architecture/quality/evidence/s3-l2-verify5-acceptance.json",
+      "sha256": "d7fce17eaef0995e2396b886e65c30a51863d2c38d91219169988f0acdab4afb",
+      "role": "actual-positive-content-Trial-and-sealed-publication-8-of-12"
+    },
+    {
+      "id": "s3-l3-curl-connectivity-live-first-observation",
+      "path": "architecture/quality/evidence/s3-l3-verify3-curl-connectivity-first-observation.json",
+      "sha256": "25eef1dcd2684b3748ba5b8e139d467d024fd6ded2e148d966e2b7afd1f3fa1a",
+      "role": "first-failed-ordinary-command-HTTP-path"
+    },
+    {
+      "id": "s3-l3-curl-connectivity-final-pause",
+      "path": "architecture/quality/evidence/s3-l3-verify3-final-pause.json",
+      "sha256": "b2599956ebc25438bdc4975601a2ecfb0626608f6d542d0cb1fe19617daee3cd",
+      "role": "two-failed-Trials-then-new-graph-stale-plan"
+    },
+    {
+      "id": "s3-l3-network-guidance-red",
+      "path": "architecture/quality/evidence/s3-l3-network-guidance-first-red.txt",
+      "sha256": "f81b716f87c7f70fe76ee115a4ddefe69f49e5873153a84a35754cfeb88d8679",
+      "role": "missing-emitted-managed-versus-ordinary-environment-contract"
+    },
+    {
+      "id": "s3-l3-network-guidance-green",
+      "path": "architecture/quality/evidence/s3-l3-network-guidance-green.txt",
+      "sha256": "23afab9310b60d2a52e0d3e3023bd728da47746c4cabcc61ed7c8f5656e9fe84",
+      "role": "emitted-environment-contract-and-prior-deterministic-byte-controls"
+    },
+    {
+      "id": "s3-l3-network-guidance-related122-green",
+      "path": "architecture/quality/evidence/s3-l3-network-guidance-related122-green.txt",
+      "sha256": "a27fd7b3e4800e3ea31291b266ba75c6a981cd72906403f050ce28fcddc7de99",
+      "role": "six-related-files122-tests1434-assertions"
     }
   ],
   "issues": [
@@ -7972,6 +8008,12 @@
           "evidencePath": "architecture/quality/evidence/s3-l2-noncore-source-related63-green.txt",
           "evidenceSha256": "b9ce049efb3d2cdea8e324e5ca38b5d9c278a7dbe625ad48b0c2f6d3814eec9c",
           "liveAcceptance": false
+        },
+        {
+          "kind": "fresh-original-S3-L2-passed-with-explicit-branch-and-content-limits",
+          "evidencePath": "architecture/quality/evidence/s3-l2-verify5-acceptance.json",
+          "evidenceSha256": "d7fce17eaef0995e2396b886e65c30a51863d2c38d91219169988f0acdab4afb",
+          "liveAcceptance": true
         }
       ],
       "fixes": [
@@ -7982,7 +8024,7 @@
           "summary": "Return existing bounded native attempt/YAML/candidate-bound rejection coordinates with actual case/index/conjunct/owners and plan-only guidance. Validated correction commits once with0 counted rejections; deliberate invalid commit spends1 rejection, writesno plan, and still cannot edit or reuse its closed draft. No runtime guard, schema, scope, budget or package change."
         }
       ],
-      "status": "full-and-all-supported-OS-guarded-awaiting-fresh-S3-L2",
+      "status": "full-and-all-supported-OS-guarded-fresh-S3-L2-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -8048,6 +8090,12 @@
           "evidencePath": "architecture/quality/evidence/s3-l2-content-contract-related127-green.txt",
           "evidenceSha256": "c4224b32403aa9bc43efa5326546c27b0b8e61b8f0053a4e2e7e9de97d5370fe",
           "liveAcceptance": false
+        },
+        {
+          "kind": "fresh-original-S3-L2-passed-with-explicit-branch-and-content-limits",
+          "evidencePath": "architecture/quality/evidence/s3-l2-verify5-acceptance.json",
+          "evidenceSha256": "d7fce17eaef0995e2396b886e65c30a51863d2c38d91219169988f0acdab4afb",
+          "liveAcceptance": true
         }
       ],
       "fixes": [
@@ -8058,7 +8106,7 @@
           "summary": "Actual SDK command controls preserve multiline Unicode/CRLF bytes and reject a truncated source carrying a correct digest. Fixed script files avoid an independently reproduced Bun1.3.14 inline-e conditional anomaly; no runtime guard was weakened."
         }
       ],
-      "status": "full-local-qualified-awaiting-current-gate-exact-CI-and-fresh-S3-L2",
+      "status": "full-and-all-supported-OS-guarded-fresh-S3-L2-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -8085,6 +8133,76 @@
       "realTestSelectors": [],
       "contract": "Deterministic hash and exact-byte operations must be authored within actual executable capabilities; digest equality does not establish complete input preservation. Keep valid empty behavior and uncertain fail-closed positive qualification.",
       "claimLimit": "Guidance and deterministic pattern controls, not proof that future models always comply. No confirmed Host/runtime defect or recurrence of CSR49/50/51 in this attempt. Original fresh live S3-L2 still required."
+    },
+    {
+      "id": "CSR-0053",
+      "lineage": [
+        "CSR-0007",
+        "CSR-0014",
+        "CSR-0041",
+        "CSR-0049",
+        "CSR-0052"
+      ],
+      "title": "Expose managed versus ordinary network environment contracts before authoring and repair",
+      "category": "generated-workflow-authoring-guidance",
+      "mechanism": "seeded-environment-capability-contract-with-unchanged-runtime-authority",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l3-curl-connectivity-live-first-observation",
+        "path": "architecture/quality/evidence/s3-l3-verify3-curl-connectivity-first-observation.json",
+        "sha256": "25eef1dcd2684b3748ba5b8e139d467d024fd6ded2e148d966e2b7afd1f3fa1a",
+        "sourceRevision": "1250a0abb6137e21053f40ac9c82b77a3213a167",
+        "round": "S3-L3-verify3-original-round-1",
+        "acceptancePolicy": "Original remains failed/unpublished. Intentional ordinary-command environment isolation is preserved; final native-web repair graph was never executed under a complete current plan."
+      },
+      "history": [
+        {
+          "kind": "two-failed-Trials-then-new-graph-stale-plan",
+          "evidencePath": "architecture/quality/evidence/s3-l3-verify3-final-pause.json",
+          "evidenceSha256": "b2599956ebc25438bdc4975601a2ecfb0626608f6d542d0cb1fe19617daee3cd",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "missing-emitted-managed-versus-ordinary-environment-contract",
+          "evidencePath": "architecture/quality/evidence/s3-l3-network-guidance-first-red.txt",
+          "evidenceSha256": "f81b716f87c7f70fe76ee115a4ddefe69f49e5873153a84a35754cfeb88d8679",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "emitted-environment-contract-and-prior-deterministic-byte-controls",
+          "evidencePath": "architecture/quality/evidence/s3-l3-network-guidance-green.txt",
+          "evidenceSha256": "23afab9310b60d2a52e0d3e3023bd728da47746c4cabcc61ed7c8f5656e9fe84",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "six-related-files122-tests1434-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l3-network-guidance-related122-green.txt",
+          "evidenceSha256": "a27fd7b3e4800e3ea31291b266ba75c6a981cd72906403f050ce28fcddc7de99",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Emit the existing managed provider/proxy/CA versus ordinary-command environment boundary in native-primitives guidance. Distinguish healthy managed web from curl/Python HTTP connectivity; preserve original website/actor requirements, use available managed web or report environment boundary, never seed local-only substitutes as website witness."
+        },
+        {
+          "summary": "Keep operator requirements/configuration explicit without embedding Host credentials/routing values. Preserve deterministic local file/hash commands, explicit CLI requests, least privilege, TLS/redaction, complete current Trial plan and original finite budgets. No SDK/runtime/env policy change."
+        }
+      ],
+      "status": "full-local-qualified-awaiting-current-gate-exact-CI-and-fresh-S3-L3",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/opencode-deterministic-content-contract.test.ts",
+          "fullName": "seeded author contract distinguishes managed web routing from ordinary command environments",
+          "namePattern": "^seeded author contract distinguishes managed web routing from ordinary command environments$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Expose actual execution environment boundaries to authors while preserving them. A local-only replacement does not qualify website monitoring; actual successful original-operation evidence, complete core scope, stale-plan checks and finite counters remain mandatory. Existing CSR7 broker/legacy inheritance/minimal-env/redaction regressions remain required by the whole current gate.",
+      "claimLimit": "General authoring guidance plus existing runtime controls, not a runtime credential inheritance fix, a deterministic model-compliance guarantee, or permission to extend planning. Fresh original S3-L3 remains required."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

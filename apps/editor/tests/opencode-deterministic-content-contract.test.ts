@@ -36,6 +36,27 @@ test('seeded author contract assigns exact bytes and digests to deterministic co
   expect(emitted).toContain('Never add execute permission merely for web access');
 });
 
+test('seeded author contract distinguishes managed web routing from ordinary command environments', () => {
+  const root = workspace();
+  seedOpencodeArtifacts(root);
+  const emitted = readFileSync(
+    join(root, '.opencode/skills/tagma-native-primitives/SKILL.md'),
+    'utf8',
+  );
+  expect(emitted).toBe(buildTagmaNativePrimitivesSkill());
+  expect(emitted).toContain(
+    'Ordinary commands do not inherit the managed OpenCode Host provider, proxy or CA-trust environment',
+  );
+  expect(emitted).toContain(
+    'A healthy managed web tool does not prove curl or Python HTTP connectivity',
+  );
+  expect(emitted).toContain('preserve the requested website/actor operation');
+  expect(emitted).toContain(
+    'Do not substitute local-only fixtures for a promised website-monitoring witness',
+  );
+  expect(emitted).toContain('Never add execute permission merely for web access');
+});
+
 async function execute(preserve: boolean) {
   const root = workspace();
   const source =
