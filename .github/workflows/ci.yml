@@ -57,6 +57,10 @@ jobs:
         working-directory: apps/editor
         run: bun test tests/opencode-deterministic-content-contract.test.ts
 
+      - name: Mandatory authoring and repair capability contracts
+        working-directory: apps/editor
+        run: bun test tests/chat-operation-v2-authoring.test.ts --test-name-pattern "mandatory .*capability contract"
+
       - name: Trial dynamic JSON collection contracts
         working-directory: apps/editor
         run: bun test tests/chat-trial-json-collection.test.ts

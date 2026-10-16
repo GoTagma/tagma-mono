@@ -1,0 +1,52 @@
+{
+  "scope": "CSR55 final local mandatory authoring/repair capability contract; not live S3-L3 acceptance",
+  "command": "bun run verify:full",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "6e83f4ef3e3cbcef5bbd72144471d8e612a94c433e58b1e0fab68eff8b73b1bb",
+  "summary": [
+    "PASS text 87ms ok",
+    "PASS deps 233ms ok",
+    "PASS focus 231ms ok",
+    "PASS imports 52ms ok",
+    "PASS cycles 35ms ok",
+    "PASS secrets 307ms ok",
+    "PASS format 18.9s ok",
+    "PASS types 42.5s ok",
+    "PASS lint 16.1s ok",
+    "PASS tests 203.5s ok",
+    "PASS scripts 2.4s ok",
+    "PASS build 17.9s ok",
+    "PASS publish 8.8s ok"
+  ],
+  "focused": {
+    "tests": 2,
+    "assertions": 58,
+    "passed": true
+  },
+  "relatedBeforeFourAddedDefaultRoutingAssertions": {
+    "files": 9,
+    "tests": 406,
+    "assertions": 2651,
+    "passed": true
+  },
+  "finalSourceFullSuiteIncludesAddedAssertions": true,
+  "historicalGate": {
+    "passed": false,
+    "failures": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    },
+    "logSha256": "1fcce7e71791de5594948908555833ca486f2f14775e97d9ecc2ea16f7700fc5"
+  },
+  "runtimeEnvironmentPolicyChanged": false,
+  "evidenceVerdictSemanticsChanged": false,
+  "cacheVersion": 51,
+  "planVersion": 12,
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0,
+  "liveAcceptedCases": 8,
+  "totalCases": 12
+}

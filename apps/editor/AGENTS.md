@@ -2428,3 +2428,9 @@
   correctness. Preserve concrete/independent semantic core witnesses, controlled-fault ownership,
   finite counters and bounded reads. Cache protocol 51 invalidates earlier verdict semantics;
   plan version and generated-input semantics remain unchanged.
+
+- Material execution capability boundaries belong in the mandatory V2 authoring/repair system
+  contract as well as optional native-primitives guidance. Omitted optional skill reads must not
+  hide managed-web versus ordinary-command environment isolation, explicit CLI preservation, or
+  deterministic complete-byte/hash responsibilities. Never copy Host credentials/routing into
+  commands or qualify local-only substitutes as website retrieval; keep runtime fences and budgets.

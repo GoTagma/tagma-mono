@@ -1,0 +1,53 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify5",
+  "accepted": false,
+  "sourceRevision": "3622e441387e720341fd74e905eb7caed5e5e5ca",
+  "exactCi": {
+    "run": 38981178877,
+    "all4RequiredJobs": "success",
+    "new5CollectionTestsAll3Os": "success"
+  },
+  "operationId": "operation-fd07a6db-d1fd-4dd8-927f-83172ddc0bff",
+  "stageId": "ed48669d-82c0-46f5-8010-e81ac7d1de28",
+  "yamlSha1": "b50f0eded913422e94e02cdb2ef4c2e36a1b0c4e",
+  "trialId": "trial-e46242811eee6f69b93f7c374ad00cf6ae4ba568",
+  "planSha256": "c260b78689868147f00323a8dd5bba0afce32729659d672d0a70cb4af395c825",
+  "originalRequests": 1,
+  "actionClarifications": 1,
+  "explicitRetry": false,
+  "published": false,
+  "actualTrials": 1,
+  "cases": 6,
+  "runs": 7,
+  "taskStatuses": {
+    "success": 15,
+    "outsideSelectedClosureSkipped": 6
+  },
+  "completeShaVerifiedStreams": 30,
+  "streamOmissions": 0,
+  "nativeToolCounts": {
+    "read": 11,
+    "glob": 10,
+    "write": 6
+  },
+  "independentReviews": 0,
+  "nativeWebCalls": 0,
+  "outcome": "trial_verification_paused/user_retry",
+  "planCommits": 1,
+  "commitRejections": 0,
+  "observations": [
+    "Ordinary curl fails direct example.com connectivity with code7 (~5seconds) in3 normal/repeat executions. Collector catches failure, writes FAIL and exits0. Exact OK assertions correctly fail.",
+    "Independent reviews unavailable: actual_successful_execution_required. No positive website operation established.",
+    "Repeat run2 extraction/report make no actual write call. Claims freshness rejection is correct; no runtime false positive.",
+    "Actual author loads trigger-strategy/yaml-contract, never native-primitives. Existing optional environment/digest guidance did not reach this path."
+  ],
+  "nextRepair": "Candidate CSR55: existing environment/deterministic-byte boundary in mandatory Host authoring/repair system; real engine-prompt RED/GREEN before source edits. Runtime authority, explicit CLI, checks, counters and budgets unchanged.",
+  "claimLimit": "CSR54 predicate not used here; no direct live replay claim. No SDK/network defect or semantic false verdict established. Still8/12; S4locked.",
+  "privateEvidenceSha256": {
+    "verified-task-streams.json": "04f6e3ce967fccd11c7505d3dfc2c9863baaa9298a12df2f436d5f1e192d2e33",
+    "native-tool-metadata.json": "cd24d5983ad9e365c378342d6bb9c6aa181cb51e361138aba04f9869cbfd3965",
+    "first-committed-plan.json": "c260b78689868147f00323a8dd5bba0afce32729659d672d0a70cb4af395c825",
+    "first-author-guidance-author-guidance.json": "661829ef61f8f8684f100096d5d4d5444b028e6cd5967b8601c95aab3e81fb78"
+  }
+}

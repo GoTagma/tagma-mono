@@ -716,6 +716,11 @@
       "id": "s3-l3-dynamic-collection-first-observation",
       "path": "architecture/quality/evidence/s3-l3-verify4-collection-witness-first-observation.json",
       "sha256": "ecf810617501fae6f7345093294cf73d9114a66fe7fa558b39d917eb3ccb7536"
+    },
+    {
+      "id": "s3-l3-optional-author-capability-guide-not-consumed",
+      "path": "architecture/quality/evidence/s3-l3-verify5-author-contract-first-observation.json",
+      "sha256": "2dca17f5a3bbe7c9857b027e29364d950e1af07ce7c14e4f8c1dea52ebfaa325"
     }
   ],
   "issues": [
@@ -8302,6 +8307,79 @@
       "realTestSelectors": [],
       "contract": "Structural collection observations cannot establish substantive content. Require real successful normal producer/consumer evidence, same typed empty fault, unchanged independent content qualification and fail-closed authority.",
       "claimLimit": "No deterministic model-compliance or live acceptance claim. First RED includes obsolete cache guard, unsupported type and runtime evaluation; subsequent fixture corrections retain production source-relation restrictions. Fresh original S3-L3 remains blocked until passed."
+    },
+    {
+      "id": "CSR-0055",
+      "lineage": [
+        "CSR-0007",
+        "CSR-0014",
+        "CSR-0041",
+        "CSR-0049",
+        "CSR-0052",
+        "CSR-0053",
+        "CSR-0054"
+      ],
+      "title": "Keep execution capability boundaries in mandatory Host authoring and repair prompts",
+      "category": "generated-workflow-authoring-guidance",
+      "mechanism": "mandatory-execution-contract-independent-of-optional-skill-consumption",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l3-optional-author-capability-guide-not-consumed",
+        "path": "architecture/quality/evidence/s3-l3-verify5-author-contract-first-observation.json",
+        "sha256": "2dca17f5a3bbe7c9857b027e29364d950e1af07ce7c14e4f8c1dea52ebfaa325",
+        "sourceRevision": "3622e441387e720341fd74e905eb7caed5e5e5ca",
+        "round": "S3-L3-verify5-original-round-1",
+        "acceptancePolicy": "Actual Trial failed; unpublished. Optional native-primitives boundary not loaded. Existing runtime/network, positive-core, finite counters and freshness rejections remain correct."
+      },
+      "history": [
+        {
+          "kind": "two-real-engine-request-contract-tests-red",
+          "evidencePath": "architecture/quality/evidence/s3-l3-mandatory-contract-first-red.txt",
+          "evidenceSha256": "a71352df59b804c9a76ec61c7040e58acaed9ccd60c470d27e261c99759623ca",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "two-contract-tests58-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-mandatory-contract-green.txt",
+          "evidenceSha256": "3bd5fd7d578fb184bf65ea7ef60abaee1842d5c68f2b1183b2eb21fd4ac6596d",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "nine-related-files406-tests2651-assertions-before-four-added-default-routing-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l3-mandatory-contract-related-green.txt",
+          "evidenceSha256": "96caa6f1011defd8712598f1ad0efbcb5802ff13e926031ced9f04edb6a46a94",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Propagate CSR53 managed/ordinary network isolation and CSR52 deterministic complete-byte/hash responsibility in the common mandatory V2 authoring/repair system. Optional skill omissions cannot remove these constraints; prefer available managed web when requested mechanics permit."
+        },
+        {
+          "summary": "Preserve explicit CLI and website/actor, operator configuration by name, no Host credential/routing embedding, unchanged TLS/permissions/environment fences, full source bytes, no external hash service, all prior core/source/Trial counters and budgets. Plan12/cache51 unchanged; no runtime evidence/verdict semantics changed."
+        }
+      ],
+      "status": "full-local-qualified-live-S3-L3-verification-required",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring.test.ts",
+          "fullName": "mandatory authoring capability contract survives omitted optional skills and explicit edit mechanics",
+          "namePattern": "^mandatory authoring capability contract survives omitted optional skills and explicit edit mechanics$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-operation-v2-authoring.test.ts",
+          "fullName": "mandatory repair capability contract preserves boundary without changing frozen repair authority",
+          "namePattern": "^mandatory repair capability contract preserves boundary without changing frozen repair authority$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Material execution boundaries must be present on actual Host authoring and repair requests for create/edit paths even when no optional capability skill is consumed. Preserve canonical requests, target authority and finite repair dispatch.",
+      "claimLimit": "Instruction delivery is deterministic, model compliance is not. No SDK/network runtime defect, false semantic verdict, freshness false positive or live pass is claimed. Same original S3-L3 must pass after restart/newworkspace."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

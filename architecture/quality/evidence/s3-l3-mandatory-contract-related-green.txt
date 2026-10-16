@@ -1,0 +1,923 @@
+
+::group::tests/chat-operation-v2-authoring-runtime.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-operation-v2-authoring-runtime.test.ts:
+(pass) authenticated new-pipeline effort defaults > post-model effort compilation defers typed sibling scope errors to bounded verification repair [82.09ms]
+(pass) authenticated new-pipeline effort defaults > post-model effort compilation preserves foreign scope and unrelated failures [9.90ms]
+(pass) authenticated new-pipeline effort defaults > reports unavailable bounded draft access instead of silently dropping the default [2.46ms]
+(pass) authenticated new-pipeline effort defaults > persists the Flash low snapshot through the real staged compile path [22.45ms]
+(pass) authenticated new-pipeline effort defaults > rejects a concurrent authenticated draft change instead of overwriting it [3.78ms]
+(pass) authenticated new-pipeline effort defaults > a recovered atomic default write recompiles before recording the completed snapshot [2.84ms]
+(pass) authenticated new-pipeline effort defaults > persists the snapped missing effort before real compilation and the completion snapshot [19.32ms]
+(pass) authenticated new-pipeline effort defaults > preserves explicit and inherited efforts, other models/drivers, and command tasks [19.61ms]
+(pass) authenticated new-pipeline effort defaults > preserves exact authored bytes when pipeline effort already applies or the marker is absent [49.72ms]
+(pass) authenticated new-pipeline effort defaults > repair-create and restarted settlement use the same idempotent authenticated default [22.62ms]
+(pass) authenticated new-pipeline effort defaults > does not mutate existing-pipeline edits or Trial Plan invocations [28.24ms]
+(pass) authenticated new-pipeline effort defaults > reports an unrepresentable native medium default without rewriting or compiling it [8.97ms]
+(pass) authenticated new-pipeline effort defaults > defaults aliased task records independently and preserves nonportable native strings [18.67ms]
+(pass) managed Chat Operation V2 authoring runtime > final instructions survive runtime restart only for their authenticated completed snapshot [2.16ms]
+(pass) managed Chat Operation V2 authoring runtime > auto-approves only authenticated staged filesystem requests [1.05ms]
+(pass) managed Chat Operation V2 authoring runtime > retains authoring work when OpenCode stops at the model output limit [0.94ms]
+(pass) managed Chat Operation V2 authoring runtime > recovery does not turn an output-limited authoring response into a completed no-op [0.74ms]
+(pass) managed Chat Operation V2 authoring runtime > an authoring retry cannot discard cumulative stage changes as a last-invocation no-op [1.29ms]
+(pass) managed Chat Operation V2 authoring runtime > an output-truncated repair preserves staged bytes and the complete persisted errors in its second prompt [50.19ms]
+(pass) managed Chat Operation V2 authoring runtime > inspects only the completed current rejected plan and carries its full diagnostic into the next private blob [8.52ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses local retry authority before touching rejection evidence (unsettled) [1.48ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses local retry authority before touching rejection evidence (changed) [1.24ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses local retry authority before touching rejection evidence (stale-snapshot) [0.95ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses local retry authority before touching rejection evidence (wrong-input) [1.09ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses local retry authority before touching rejection evidence (wrong-digest) [0.94ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses local retry authority before touching rejection evidence (superseded) [1.16ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (validate-only) [1.06ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (zero-count) [1.23ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (committed) [1.26ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (exhausted) [1.19ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (wrong-revision) [1.08ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (wrong-attempt) [1.34ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (missing) [1.11ms]
+(pass) managed Chat Operation V2 authoring runtime > refuses a fresh planner for incomplete or ineligible rejection evidence (read-failed) [1.04ms]
+(pass) managed Chat Operation V2 authoring runtime > a Trial Plan continuation keeps the draft baseline and same attempt [1.42ms]
+(pass) managed Chat Operation V2 authoring runtime > a Trial Plan continuation cannot switch the Host planning attempt [0.94ms]
+(pass) managed Chat Operation V2 authoring runtime > recovered Trial Plan output truncation waits for explicit Retry [1.95ms]
+(pass) managed Chat Operation V2 authoring runtime > recovered Trial verification keeps the affected-case review fence [1.43ms]
+(pass) managed Chat Operation V2 authoring runtime > an owned missing staged target offers bounded repair with complete filesystem evidence [1.40ms]
+(pass) managed Chat Operation V2 authoring runtime > untyped or foreign missing-artifact errors do not authorize repair [1.54ms]
+(pass) managed Chat Operation V2 authoring runtime > cancellation during missing-target compilation does not request repair [0.47ms]
+(pass) managed Chat Operation V2 authoring runtime > compile setup exceptions retain finite feedback without invoking Trial or a provider [1.09ms]
+(pass) managed Chat Operation V2 authoring runtime > preserves complete task errors for the repair model separately from compact feedback [2.51ms]
+(pass) managed Chat Operation V2 authoring runtime > unexpected task provider errors enter the existing bounded repair loop [1.65ms]
+(pass) managed Chat Operation V2 authoring runtime > missing complete task bytes preserve diagnostic evidence without authorizing repair [0.95ms]
+(pass) managed Chat Operation V2 authoring runtime > mixed external failures do not hide actionable failed expectations from repair feedback [0.65ms]
+(pass) managed Chat Operation V2 authoring runtime > does not blame expected task failures in successful negative cases [1.16ms]
+(pass) managed Chat Operation V2 authoring runtime > excludes passed negative cases and skipped noise from raw Trial summaries (completion_failed) [1.12ms]
+(pass) managed Chat Operation V2 authoring runtime > excludes passed negative cases and skipped noise from raw Trial summaries (output_error) [0.52ms]
+(pass) managed Chat Operation V2 authoring runtime > bounded feedback remains valid when clipping crosses a redaction boundary [132.89ms]
+(pass) managed Chat Operation V2 authoring runtime > labels bounded verification details for ASCII summaries [2.11ms]
+(pass) managed Chat Operation V2 authoring runtime > labels bounded verification details for Unicode summaries [3.94ms]
+(pass) managed Chat Operation V2 authoring runtime > keeps short verification details complete and redacted [0.56ms]
+(pass) managed Chat Operation V2 authoring runtime > returns bounded Host validation and task-startup feedback before cleanup [0.96ms]
+(pass) managed Chat Operation V2 authoring runtime > does not retain raw provider failure text in terminal feedback [0.56ms]
+(pass) managed Chat Operation V2 authoring runtime > a completed diagnostic-only Trial failure is not described as incomplete execution [0.56ms]
+(pass) managed Chat Operation V2 authoring runtime > explains a model connection failure without exposing provider text: AI_APICallError: The socket connection was closed unexpectedly [0.99ms]
+(pass) managed Chat Operation V2 authoring runtime > explains a model connection failure without exposing provider text: APIError: fetch failed: ECONNRESET [0.64ms]
+(pass) managed Chat Operation V2 authoring runtime > preserves a definitive native admission failure without starting provider execution [0.75ms]
+(pass) managed Chat Operation V2 authoring runtime > treats a missing OpenCode status-map entry as idle while failing closed on explicit activity [0.08ms]
+(pass) managed Chat Operation V2 authoring runtime > reconciles delayed exact admission source history without resubmitting provider work [0.52ms]
+(pass) managed Chat Operation V2 authoring runtime > distinguishes missing, unreadable, and incomplete admission source history [0.28ms]
+(pass) managed Chat Operation V2 authoring runtime > the repair model receives concrete failed assertions, not only an evidence digest [0.29ms]
+(pass) managed Chat Operation V2 authoring runtime > builds a bounded resume prompt for an output-truncated authoring continuation [0.16ms]
+(pass) managed Chat Operation V2 authoring runtime > selects the dedicated Trial Plan agent with exact Host-issued planning authority [0.52ms]
+(pass) managed Chat Operation V2 authoring runtime > Trial planning receives the frozen user intent and attachment requirements [0.17ms]
+(pass) managed Chat Operation V2 authoring runtime > Trial planning marks oversized intent as missing evidence instead of silently truncating it [0.23ms]
+(pass) managed Chat Operation V2 authoring runtime > builds a bounded resume prompt for a truncated Trial Plan without resetting its draft [0.15ms]
+(pass) managed Chat Operation V2 authoring runtime > keeps staged paths and compile logs out of model-authored publication claims [0.13ms]
+(pass) managed Chat Operation V2 authoring runtime > new-pipeline context retains the admitted native variant without translating it [0.29ms]
+(pass) managed Chat Operation V2 authoring runtime > carries accepted clarification replies into the authoring request [0.27ms]
+(pass) managed Chat Operation V2 authoring runtime > keeps the snapped Chat model out of existing-pipeline edits [0.15ms]
+(pass) managed Chat Operation V2 authoring runtime > pins provider-free durable admission before the sole authoring provider execution [0.50ms]
+(pass) managed Chat Operation V2 authoring runtime > concrete factory creates the exact UUID stage and trusted create coordinate with Host-owned binding [17.03ms]
+(pass) managed Chat Operation V2 authoring runtime > concrete edit staging authenticates origin bytes while reserving a separate publish branch [4.92ms]
+(pass) managed Chat Operation V2 authoring runtime > creates the exact durable stage and reuses only its authenticated authority record [0.48ms]
+(pass) managed Chat Operation V2 authoring runtime > keeps a Host-resolved edit origin separate from its session-owned publish target [0.31ms]
+(pass) managed Chat Operation V2 authoring runtime > recovers a partial children-first relocation and restores the same tree home [1.33ms]
+(pass) managed Chat Operation V2 authoring runtime > retries the same authenticated restoration after an earlier busy drain [0.73ms]
+(pass) managed Chat Operation V2 authoring runtime > rejects a third-directory session tree without moving or rewriting authority [0.26ms]
+(pass) managed Chat Operation V2 authoring runtime > uses a distinct Host session and relocation after explicit restart recovery [0.86ms]
+(pass) managed Chat Operation V2 authoring runtime > reconciles response loss from the exact durable IDs and never auto-reprompts [1.04ms]
+(pass) managed Chat Operation V2 authoring runtime > never treats staged-byte drift alone as proof of a lost execution settlement [0.85ms]
+(pass) managed Chat Operation V2 authoring runtime > forwards one live permission through the exact invocation and process generation [2.85ms]
+(pass) managed Chat Operation V2 authoring runtime > explicit verification retries use a fresh Trial identity while exact attempt replay is stable [0.93ms]
+(pass) managed Chat Operation V2 authoring runtime > maps compile and Trial evidence into bounded repair or passed results [1.27ms]
+(pass) managed Chat Operation V2 authoring runtime > keeps a Host Trial Plan request separate from pipeline repair authority [6.95ms]
+(pass) managed Chat Operation V2 authoring runtime > routes Host-confirmed missing fault seam to artifact repair with plan feedback [0.74ms]
+(pass) managed Chat Operation V2 authoring runtime > publishes compile-valid diagnostic-only Trial failures as unverified without granting repair authority [0.91ms]
+23:45:40.716 [pipeline] start "Bounded scope correction" run_id=run_mvbm8jmw_ba8103d38fd7
+23:45:40.722 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"created\")"]
+23:45:40.749 [task:main.observe] success (0.0s)
+23:45:40.750 [pipeline] completed "Bounded scope correction"
+23:45:40.750 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:45:40.750 [pipeline] Duration: 0.0s
+23:45:40.750 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-fS0yAM/workspace/.tagma/.chat-staging/c4940e7f-0fc3-4315-ad57-1a7d8b4e1b61/.trial-cases/owned_timeout-eXwSkM/workspace/.tagma/logs/run_mvbm8jmw_ba8103d38fd7/pipeline.log
+(pass) authenticated create no-change delivery > repairs a real fresh-sibling scope refusal before Trial without changing the classified target [573.78ms]
+(pass) authenticated create no-change delivery > an uncorrected authenticated scope refusal stays within the frozen repair maximum 0 [41.99ms]
+(pass) authenticated create no-change delivery > an uncorrected authenticated scope refusal stays within the frozen repair maximum 2 [89.83ms]
+(pass) authenticated create no-change delivery > wrong scope identity, target mismatch and untyped messages never grant automatic artifact repair [1.74ms]
+23:45:41.367 [pipeline] start "Created by bounded artifact repair" run_id=run_mvbm8k53_a2728b84aec4
+23:45:41.368 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"created\")"]
+23:45:41.389 [task:main.observe] success (0.0s)
+23:45:41.390 [pipeline] completed "Created by bounded artifact repair"
+23:45:41.390 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:45:41.390 [pipeline] Duration: 0.0s
+23:45:41.390 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-CsPJ5z/workspace/.tagma/.chat-staging/edc8621e-67c0-418d-92bb-9cc2f558a4f6/.trial-cases/owned_timeout-sGPWn5/workspace/.tagma/logs/run_mvbm8k53_a2728b84aec4/pipeline.log
+(pass) authenticated create no-change delivery > repairs a real missing target with complete evidence before Trial and publication [480.60ms]
+23:45:41.834 [pipeline] start "Local owned timeout" run_id=run_mvbm8ki2_74435f7d9874
+23:45:41.835 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:42.838 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:42.839 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:42.840 [pipeline] failed "Local owned timeout"
+23:45:42.840 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:42.840 [pipeline] Duration: 1.0s
+23:45:42.840 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-DSVYqB/workspace/.tagma/.chat-staging/f181edba-3914-4505-b7ba-380bd98e40b3/.trial-cases/owned_timeout-RPsbjv/workspace/.tagma/logs/run_mvbm8ki2_74435f7d9874/pipeline.log
+23:45:43.193 [pipeline] start "Local owned timeout" run_id=run_mvbm8ljt_aed7e3f9cd2e
+23:45:43.194 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:44.197 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:44.197 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:44.198 [pipeline] failed "Local owned timeout"
+23:45:44.198 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:44.198 [pipeline] Duration: 1.0s
+23:45:44.198 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-DSVYqB/workspace/.tagma/.chat-staging/f181edba-3914-4505-b7ba-380bd98e40b3/.trial-cases/owned_timeout-wLh3SN/workspace/.tagma/logs/run_mvbm8ljt_aed7e3f9cd2e/pipeline.log
+23:45:44.517 [pipeline] start "Local owned timeout" run_id=run_mvbm8mkl_c62d903288f9
+23:45:44.518 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:45.522 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:45.523 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:45.523 [pipeline] failed "Local owned timeout"
+23:45:45.523 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:45.523 [pipeline] Duration: 1.0s
+23:45:45.523 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-DSVYqB/workspace/.tagma/.chat-staging/f181edba-3914-4505-b7ba-380bd98e40b3/.trial-cases/owned_timeout-y96CiR/workspace/.tagma/logs/run_mvbm8mkl_c62d903288f9/pipeline.log
+(pass) first owned task timeout through the persisted Host repair boundary > carries actual complete Unicode diagnostics into the second incoming request and stops after count1, including restart [4104.79ms]
+23:45:45.924 [pipeline] start "Local owned timeout" run_id=run_mvbm8nno_8025590cc962
+23:45:45.925 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:46.928 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:46.929 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:46.930 [pipeline] failed "Local owned timeout"
+23:45:46.930 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:46.930 [pipeline] Duration: 1.0s
+23:45:46.930 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-4jth3c/workspace/.tagma/.chat-staging/82db9bc9-c255-419c-a6b9-1abb5028ac1e/.trial-cases/owned_timeout-964qFS/workspace/.tagma/logs/run_mvbm8nno_8025590cc962/pipeline.log
+(pass) first owned task timeout through the persisted Host repair boundary > a frozen maxAttempts0 admits no timeout repair even with complete private capture [1416.16ms]
+23:45:47.378 [pipeline] start "Local owned timeout" run_id=run_mvbm8os1_ea9ef2d6093a
+23:45:47.379 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:48.383 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:48.384 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:48.384 [pipeline] failed "Local owned timeout"
+23:45:48.384 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:48.384 [pipeline] Duration: 1.0s
+23:45:48.384 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-ILBrp8/workspace/.tagma/.chat-staging/8b55b085-16c8-4e49-9064-082102e44160/.trial-cases/owned_timeout-EIRRw3/workspace/.tagma/logs/run_mvbm8os1_ea9ef2d6093a/pipeline.log
+(pass) first owned task timeout through the persisted Host repair boundary > retains a real timeout when full evidence is unavailable (read-errors) [1457.29ms]
+23:45:48.837 [pipeline] start "Local owned timeout" run_id=run_mvbm8pwl_486776a64493
+23:45:48.838 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:49.843 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:49.843 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:49.844 [pipeline] failed "Local owned timeout"
+23:45:49.844 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:49.844 [pipeline] Duration: 1.0s
+23:45:49.844 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-rfY6GH/workspace/.tagma/.chat-staging/fb729166-464a-4e7b-8cee-3f3bedf4ab6a/.trial-cases/owned_timeout-6nRvtF/workspace/.tagma/logs/run_mvbm8pwl_486776a64493/pipeline.log
+(pass) first owned task timeout through the persisted Host repair boundary > retains a real timeout when full evidence is unavailable (missing-blob) [1447.20ms]
+23:45:50.262 [pipeline] start "Local owned timeout" run_id=run_mvbm8r05_f0955b8f3666
+23:45:50.262 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:51.264 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:51.265 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:51.265 [pipeline] failed "Local owned timeout"
+23:45:51.265 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:51.266 [pipeline] Duration: 1.0s
+23:45:51.266 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-5lmo4V/workspace/.tagma/.chat-staging/74b54b63-d234-4abe-a15e-26e6b0e65b3d/.trial-cases/owned_timeout-9l3eI0/workspace/.tagma/logs/run_mvbm8r05_f0955b8f3666/pipeline.log
+(pass) first owned task timeout through the persisted Host repair boundary > retains a real timeout when full evidence is unavailable (changed-blob) [1432.06ms]
+23:45:51.690 [pipeline] start "Local owned timeout" run_id=run_mvbm8s3t_9baa2bd3b052
+23:45:51.690 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:52.696 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:52.696 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:52.697 [pipeline] failed "Local owned timeout"
+23:45:52.697 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:52.697 [pipeline] Duration: 1.0s
+23:45:52.697 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-euGyzu/workspace/.tagma/.chat-staging/4a58a972-f49b-4110-a86b-31be54e2cdb1/.trial-cases/owned_timeout-SYY5RK/workspace/.tagma/logs/run_mvbm8s3t_9baa2bd3b052/pipeline.log
+23:45:53.006 [pipeline] start "Local owned timeout" run_id=run_mvbm8t4e_dcca4f33f610
+23:45:53.006 [task:main.observe] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs = require('node:fs');const emit = (fd, text) => { const bytes = Buffer.from(text); for (let offset = 0; offset < bytes.length;) { offset += fs.writeSync(fd, bytes, offset, Math.min(4096, bytes.length - offset)); } };emit(1, JSON.stringify({event:'diagnostic', first:\"FIRST_STDOUT_检查🧭\", context:\"本地诊断🌍\".repeat(4096), middle:\"MIDDLE_STDOUT_λ\", last:\"LAST_STDOUT_<probe>&\\\"'\"}));emit(2, \"FIRST_STDERR_检查🧭\\n\" + \"完整错误诊断🌍\\n\".repeat(2048) + \"MIDDLE_STDERR_λ\\n\" + \"后半段证据🧭\\n\".repeat(2048) + \"LAST_STDERR_</repair-error-evidence>&\\\"'\\n\");setInterval(() => {}, 1000);"]
+23:45:54.013 [task:main.observe] ERROR: timeout exit=-1 duration=1.0s
+23:45:54.014 [task:main.observe] ERROR: stderr tail:
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+后半段证据🧭
+LAST_STDERR_</repair-error-evidence>&"'
+23:45:54.014 [pipeline] failed "Local owned timeout"
+23:45:54.014 [pipeline] Total: 1 | Success: 0 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+23:45:54.014 [pipeline] Duration: 1.0s
+23:45:54.014 [pipeline] Log: /tmp/tagma-chat-v2-owned-timeout-euGyzu/workspace/.tagma/.chat-staging/4a58a972-f49b-4110-a86b-31be54e2cdb1/.trial-cases/owned_timeout-Qe4bLQ/workspace/.tagma/logs/run_mvbm8t4e_dcca4f33f610/pipeline.log
+(pass) first owned task timeout through the persisted Host repair boundary > the actual Managed Trial classifies a standalone typed expected task timeout as passing evidence [2711.45ms]
+(pass) stage creation failure observations > keeps native errno safe, unknown errors unknown, and complete storage explicit [1.90ms]
+(pass) finite planner feedback admission > validation-only no-change has full rejection authority without consuming a commit [1.44ms]
+(pass) finite planner feedback admission > output continuation uses the second slot and a third planner never reaches admission [1.89ms]
+(pass) finite planner feedback admission > legacy missing max preserves settled result and refuses another paid planner [2.10ms]
+(pass) finite planner feedback admission > reservation storage failure keeps the owned stage and does not call admission [1.06ms]
+(pass) finite planner feedback admission > private production lock never reclaims unknown stale-file or calls admission [6.46ms]
+(pass) finite planner feedback admission > private production lock never reclaims unknown symlink or calls admission [7.03ms]
+(pass) finite planner feedback admission > frozen stage maximum mismatch prevents the first paid admission [0.97ms]
+(pass) definitive billing failure explicit planner Retry > restart restores exact original admission request for only the second slot [2.62ms]
+(pass) definitive billing failure explicit planner Retry > restart restores exact original execution request for only the second slot [1.83ms]
+(pass) definitive billing failure explicit planner Retry > does not admit new planning for no-marker [1.54ms]
+(pass) definitive billing failure explicit planner Retry > does not admit new planning for wrong-owner [1.03ms]
+(pass) definitive billing failure explicit planner Retry > does not admit new planning for wrong-digest [0.98ms]
+(pass) definitive billing failure explicit planner Retry > does not admit new planning for wrong-carrier [1.45ms]
+(pass) definitive billing failure explicit planner Retry > does not admit new planning for changed-yaml [0.92ms]
+(pass) definitive billing failure explicit planner Retry > does not admit new planning for missing-carrier [0.90ms]
+(pass) definitive billing failure explicit planner Retry > submitted-unknown has no definitive carrier and cannot use an explicit marker [1.03ms]
+(pass) consumed planner ancestors retain slots without blocking legitimate cap-three progress > definitive failure then exact successful Retry admits fresh full feedback only in slot three [8.11ms]
+(pass) consumed planner ancestors retain slots without blocking legitimate cap-three progress > definitive failure then truncated Retry admits its exact continuation in slot three [2.92ms]
+(pass) consumed planner ancestors retain slots without blocking legitimate cap-three progress > completed exact continuation consumes the original truncated ancestor for current full feedback [5.88ms]
+(pass) consumed planner ancestors retain slots without blocking legitimate cap-three progress > unknown Retry successor still blocks fresh feedback even after a definitive ancestor was consumed [3.36ms]
+(pass) completed planner no-progress has a separate bounded channel > absent plan and unknown telemetry permit exactly slot2 with the unchanged full original error [6.40ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses owner without any new SDK admission [1.37ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses generation without any new SDK admission [1.21ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses session without any new SDK admission [3.67ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses input without any new SDK admission [1.21ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses digest without any new SDK admission [1.14ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses request without any new SDK admission [1.21ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses snapshot without any new SDK admission [5.69ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses live without any new SDK admission [1.37ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses unknown without any new SDK admission [6.15ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses nonmissing without any new SDK admission [1.40ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses plan-exists without any new SDK admission [1.80ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses parent-missing without any new SDK admission [1.78ms]
+(pass) completed planner no-progress has a separate bounded channel > refuses read-error without any new SDK admission [1.54ms]
+(pass) completed planner no-progress has a separate bounded channel > rechecks bad-owner before slot2 admission [2.33ms]
+(pass) completed planner no-progress has a separate bounded channel > rechecks bad-canonical-context before slot2 admission [2.69ms]
+(pass) completed planner no-progress has a separate bounded channel > rechecks changed-original-error before slot2 admission [2.80ms]
+(pass) completed planner no-progress has a separate bounded channel > rechecks same-attempt before slot2 admission [3.07ms]
+(pass) completed planner no-progress has a separate bounded channel > rechecks existing-plan before slot2 admission [2.40ms]
+(pass) completed planner no-progress has a separate bounded channel > local invalid verification never produces no-progress authority [3.19ms]
+(pass) completed planner no-progress has a separate bounded channel > local blocked-core verification never produces no-progress authority [2.15ms]
+(pass) completed planner no-progress has a separate bounded channel > local backend-failure verification never produces no-progress authority [2.84ms]
+(pass) completed planner no-progress has a separate bounded channel > local read-error verification never produces no-progress authority [2.50ms]
+(pass) completed planner no-progress has a separate bounded channel > absence is leaf-only, rejects symlink parents and an existing invalid plan [0.24ms]
+(pass) sequential relocation writes retain their exact authenticated before-record > prepared/staged/restoring/restored each follows the preceding successful write [1.27ms]
+(pass) sequential relocation writes retain their exact authenticated before-record > partial move and busy restore restart use the persisted phase with the same strict merge [1.45ms]
+(pass) sequential relocation writes retain their exact authenticated before-record > a competing phase cannot be silently adopted by the sequential writer [0.92ms]
+(pass) sequential relocation writes retain their exact authenticated before-record > a failed prepared write cannot advance local authority or move the tree [0.43ms]
+(pass) sequential relocation writes retain their exact authenticated before-record > a failed restoring write cannot advance local authority or move the tree [0.69ms]
+(pass) real Engine planner identity across the second frozen slot > no-tool completed planner receives one fresh second-slot attempt with identical full feedback [182.30ms]
+(pass) real Engine planner identity across the second frozen slot > uncounted native validation rejection receives a fresh second-slot attempt and complete rejection [122.95ms]
+(pass) real Engine planner identity across the second frozen slot > counted invalid commits keep ordinal identity and stop at two original submissions [99.30ms]
+(pass) real Engine planner identity across the second frozen slot > output-length continuation retains the same counted attempt and cannot commit again [81.19ms]
+
+ 154 pass
+ 0 fail
+ 1112 expect() calls
+Ran 154 tests across 1 file. [15.15s]
+::endgroup::
+
+::group::tests/chat-operation-v2-authoring.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-operation-v2-authoring.test.ts:
+(pass) Host semantic review keeps the sealed model and intent through automatic repair [183.16ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > initial publication seals instructions from its verified authoring snapshot [131.91ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > final instructions retain publication within receipt bounds (escaped receipt) [134.51ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > final instructions retain publication within receipt bounds (invalid Unicode) [133.07ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > matching authoring snapshots preserve the original bounded response (long text) [146.84ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > matching authoring snapshots preserve the original bounded response (escaped text) [172.49ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > manual retained-draft edits suppress obsolete instructions without automatic repair (restart=%s) [141.71ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > manual retained-draft edits suppress obsolete instructions without automatic repair (restart=%s) [135.66ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > final verified instructions follow repaired artifacts, including retained-draft restart (%s) [138.28ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > final verified instructions follow repaired artifacts, including retained-draft restart (%s) [136.13ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > a repair without revision-matching instructions cannot publish stale authoring paths [136.01ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > durably records content-minimized Trial heartbeat evidence [131.98ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > enters the dedicated Trial phase before awaiting Host verification [133.03ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > runs reserve, stage, relocation, authoring, verification, usage settlement, and commit handoff [130.94ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > preserves generated work after automatic failure: repair_no_change [129.95ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > preserves generated work after automatic failure: trial_plan_no_change [148.49ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > preserves generated work after automatic failure: repair_attempts_exhausted [144.71ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > preserves generated work after automatic failure: trial_unavailable [143.61ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains the authored draft when verification cannot complete, without publishing [131.18ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > explicit verification retry seals its outcome without another model invocation (restart=%s) [138.10ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > explicit verification retry seals its outcome without another model invocation (restart=%s) [131.21ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > repeated verification failure retains work until explicit discard [132.34ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > background verification retry releases the request and still drains before Stop cleanup [139.43ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > bounds repair attempts and re-verifies after each controlled repair invocation [137.41ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > full error evidence is sealed into each repair and replaced after the next Trial [141.07ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retaining at the frozen repair maximum keeps the latest complete error and parsed diagnosis [138.42ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains the draft rather than repairing without complete authenticated errors (missing) [130.06ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains the draft rather than repairing without complete authenticated errors (changed) [127.45ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > each repair receives the latest failure and stops after the repaired verification passes [144.53ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > carries repeated complete failure evidence across planning without a new retry limit (%s) [146.71ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > carries repeated complete failure evidence across planning without a new retry limit (%s) [146.45ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > missing repair feedback preserves the draft instead of invoking an uninformed repair [132.40ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retained draft editing is fenced by operation CAS and survives Host reconstruction (%s) [133.14ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retained draft editing is fenced by operation CAS and survives Host reconstruction (%s) [135.00ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > saving a draft remains durably paused and blocks concurrent verification [143.77ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > keeps edit origin authority on the isolated writable branch [135.48ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains generated work when verification still needs repair at the frozen maximum [279.16ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > ends a repair chain after a no-change response without rerunning identical verification [161.08ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > routes a Host Trial Plan request through its dedicated internal invocation without spending repair budget [134.81ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > explicitly retries an unavailable Trial Plan invocation with the same Host plan authority [139.25ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > ends a Trial Plan chain when the dedicated planner produces no staged artifact change [130.75ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > uses the remaining counted plan submission with fresh Host identities and complete current errors [139.57ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > a second completed rejected plan cannot exceed the existing maximum of two submissions [140.72ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not start a fresh planner without current counted rejection authority (missing) [132.55ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not start a fresh planner without current counted rejection authority (read-failed) [131.45ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not start a fresh planner without current counted rejection authority (zero-count) [131.15ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not start a fresh planner without current counted rejection authority (exhausted) [129.58ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not start a fresh planner without current counted rejection authority (wrong-attempt) [132.46ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not start a fresh planner without current counted rejection authority (wrong-maximum) [130.00ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains rather than dispatching when the serial planner reread loses its fence (same-attempt) [131.43ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains rather than dispatching when the serial planner reread loses its fence (changed-revision) [134.82ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains rather than dispatching when the serial planner reread loses its fence (changed-rejection) [130.24ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains rather than dispatching when the serial planner reread loses its fence (changed-counter) [130.38ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains rather than dispatching when the serial planner reread loses its fence (missing-full-blob) [129.05ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > retains rather than dispatching when the serial planner reread loses its fence (artifact-repair) [134.94ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not inspect a counted plan rejection after provider failure (provider_billing_required) [128.63ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not inspect a counted plan rejection after provider failure (provider_authentication_failed) [134.27ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not inspect a counted plan rejection after provider failure (submitted_unknown) [128.78ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > records trial_plan_no_change as the retention reason when the planner leaves the snapshot unchanged [131.37ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > records repair_no_change as the retention reason when a repair leaves the snapshot unchanged [131.72ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > records repair_attempts_exhausted with the verification diagnostics at the frozen maximum [135.71ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > records the verification discard code as the retention reason [126.93ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > records stage_creation_failed as the discard reason after a stage failure [124.52ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > keeps the completed no-op stage discard free of any failure reason [134.77ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > uses the no-op terminal path without preparing a commit WAL [132.63ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Stop wins a settled no-change create before publication [132.76ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Stop wins a settled no-change edit before publication [130.25ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > create no-change verification preserves the frozen repair budget [138.06ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > no-change respects the resolved permission decision deny for create [137.22ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > no-change respects the resolved question decision reject for create [136.04ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > no-change respects the resolved permission decision allow_once for create [135.39ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > no-change respects the resolved question decision reply for create [130.28ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > no-change respects the resolved permission decision deny for edit [130.47ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > create no-change does not turn an unchanged repair into an uncounted invocation [131.74ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > an accepted later response does not erase a decline from the same no-change invocation [134.44ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > create validation does not retry a provider failure (model_output_length, unknown=%s) [126.59ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > create validation does not retry a provider failure (submitted_unknown, unknown=%s) [127.98ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > create validation does not retry a provider failure (provider_billing_required, unknown=%s) [125.45ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > fails closed after settlement when completed text cannot enter durable result authority [128.12ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not auto-reprompt an unavailable authoring invocation [134.98ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > continues an output-truncated authoring invocation once on the same session [138.62ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > parks for explicit Retry when the output-truncation continuation also truncates [134.87ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > continues an output-truncated repair once without consuming another repair attempt [132.64ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > continues an output-truncated Trial Plan once within the same attempt [133.33ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > parks after a second output-truncated Trial Plan invocation [129.94ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not continue a Trial Plan for model_output_length with submissionUnknown=true [127.46ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > does not continue a Trial Plan for provider_rate_limited with submissionUnknown=false [128.06ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > emits one Host failure event when native admission already terminalized the outbox [125.91ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > billing recovery retains authoring stage authority across Host restart [130.47ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > billing recovery retains repair stage authority across Host restart [132.49ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > billing recovery retains trial_plan stage authority across Host restart [133.90ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > persists the exact submission-unknown reason and purpose for Trial Plan diagnostics [138.20ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host reconstruction does not turn an unknown provider submission into a fresh invocation [124.27ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > seals a relocation outage as retryable staging and resumes the same durable relocation [129.88ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > maps an unknown authoring runtime failure code before durable persistence [124.33ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > cancels a live pre-commit invocation, settles usage, restores the session, and releases the lease [128.33ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over provider_failure returned while aborting authoring [126.26ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over completed returned while aborting authoring [125.59ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over throw returned while aborting authoring [126.63ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over provider_failure returned while aborting repair [129.70ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over completed returned while aborting repair [132.49ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over throw returned while aborting repair [129.39ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over provider_failure returned while aborting trial_plan [132.82ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over completed returned while aborting trial_plan [129.54ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Host Stop wins over throw returned while aborting trial_plan [130.29ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > cancellation waits for the runtime drain before restoring or discarding the stage [155.39ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > Stop during Trial execution wins over a late successful verification result [132.36ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > honors an explicit discard before commit without publishing the reserved target [127.69ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > reconstructs durable stage authority so Discard still terminalizes after a Host restart [130.52ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > atomically consumes a pending interactive request when Stop wins the race [130.77ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > seals permission and question waits and forwards only each first CAS winner [136.48ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > persists a lost question drain, denies stale forwarding after restart, and retries with a distinct relocated session [142.05ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > explicit terminal interactive recovery never starts another provider invocation [165.82ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > keeps a first-wins decision durable when live forwarding is indeterminate [129.92ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > fails closed on a relocation identity mismatch before any authoring invocation [123.23ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > builds stable crash descriptors and rejects stale or forged resume descriptors [127.80ms]
+(pass) ChatTurn Operation V2 authoring lifecycle > keeps phase and repair counters monotonic across adversarial repair schedules [206.30ms]
+(pass) Host stage creation failure diagnostic events > source unavailability keeps its existing failure event without a creation-fault claim [124.30ms]
+(pass) Host stage creation failure diagnostic events > projects only trusted finite observations and preserves discard with no invocation [155.77ms]
+(pass) explicit provider Retry requires exact definitive planner history > does not dispatch another planner for unknown [131.58ms]
+(pass) explicit provider Retry requires exact definitive planner history > does not dispatch another planner for missing-carrier [129.41ms]
+(pass) explicit provider Retry requires exact definitive planner history > does not dispatch another planner for wrong-generation [128.18ms]
+(pass) Host engine bounded complete-feedback integration > validation-only no-change invokes slot two with the full NEW error and reaches verified commit handoff [139.12ms]
+(pass) Host engine bounded complete-feedback integration > two validation-only zero-commit rejections still exhaust two planning slots and retain the LAST error [135.51ms]
+(pass) Host engine bounded complete-feedback integration > a committed blocked-core plan requests a typed plan-only correction and never artifact repair [134.85ms]
+(pass) Host completed-planner no-progress handoff > settled no-change planner gets only slot2 with all original806 bytes and independent metadata [136.48ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for owner [128.87ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for digest [130.34ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for snapshot [129.16ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for read-error [128.42ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for live [130.08ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for unknown [128.26ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for no-proof [129.10ms]
+(pass) Host completed-planner no-progress handoff > retains the draft without a second planner for nonmissing [128.57ms]
+(pass) Host completed-planner no-progress handoff > a second no-progress completion cannot reset or refund the frozen two-slot budget [132.17ms]
+(pass) mandatory authoring capability contract survives omitted optional skills and explicit edit mechanics [128.51ms]
+(pass) mandatory repair capability contract preserves boundary without changing frozen repair authority [131.31ms]
+
+ 137 pass
+ 0 fail
+ 958 expect() calls
+Ran 137 tests across 1 file. [18.82s]
+::endgroup::
+
+::group::tests/chat-operation-v2-opencode-adapter.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-operation-v2-opencode-adapter.test.ts:
+(pass) provider HTTP 403 failure categories > classifies authentication code using bounded machine evidence [1.83ms]
+(pass) provider HTTP 403 failure categories > classifies billing code using bounded machine evidence [0.03ms]
+(pass) provider HTTP 403 failure categories > classifies rate code using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies JSON authentication code using bounded machine evidence [0.07ms]
+(pass) provider HTTP 403 failure categories > classifies JSON billing code using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies JSON rate code using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies free-tier rejection using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies unknown category using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies malformed JSON using bounded machine evidence [0.23ms]
+(pass) provider HTTP 403 failure categories > classifies conflicting prose using bounded machine evidence [0.08ms]
+(pass) provider HTTP 403 failure categories > classifies 401 over billing code using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies 402 over rate code using bounded machine evidence [0.02ms]
+(pass) provider HTTP 403 failure categories > classifies structured billing code over 429 using bounded machine evidence [0.23ms]
+(pass) provider HTTP 403 failure categories > ignores oversized, nested, and unrecognized response-body signals [0.51ms]
+(pass) provider HTTP 403 failure categories > does not invoke provider accessors or interpret a body on an unknown error [0.15ms]
+(pass) provider HTTP 403 failure categories > keeps a free-tier rejection content-free through classifier response and outbox [4.30ms]
+(pass) provider HTTP 429 structured billing evidence > classifies corroborated resource billing and standard quota categories without exposing bodies [1.19ms]
+(pass) provider HTTP 429 structured billing evidence > keeps uncorroborated codes, prose, malformed bodies and ordinary throttling as rate limits [0.36ms]
+(pass) Chat Operation V2 OpenCode adapter > interrupts both the provider execution and native admission channels for the same session [0.27ms]
+(pass) Chat Operation V2 OpenCode adapter > preserves a native session-not-found response instead of reporting transport ambiguity [957.74ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a malformed successful native response in bounded history ambiguity [1912.80ms]
+(pass) Chat Operation V2 OpenCode adapter > does not label an unrelated native 404 as a missing session [955.13ms]
+(pass) Chat Operation V2 OpenCode adapter > writes the durable outbox before resolving or calling any SDK client [1.31ms]
+(pass) Chat Operation V2 OpenCode adapter > waits for a newly admitted history event without resubmitting the native prompt [102.24ms]
+(pass) Chat Operation V2 OpenCode adapter > reports bounded history unavailability without claiming response loss [1.98ms]
+(pass) Chat Operation V2 OpenCode adapter > admits natively, then sends one tool-free text classifier message [0.84ms]
+(pass) Chat Operation V2 OpenCode adapter > implements the orchestrator runner with authenticated bytes and a safe Host decision [1.33ms]
+(pass) Chat Operation V2 OpenCode adapter > runs discussion as native admission followed by one tool-free compatibility text message [1.96ms]
+(pass) Chat Operation V2 OpenCode adapter > preserves a specific safe provider failure for discussion without requiring text parts [0.61ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive read-only SDK rejection distinct from response loss [0.79ms]
+(pass) Chat Operation V2 OpenCode adapter > derives a restart-stable execution message id from Host invocation identity [0.39ms]
+(pass) Chat Operation V2 OpenCode adapter > runs diagnosis with only the sealed snapshot context and no provider-facing tools [0.47ms]
+(pass) Chat Operation V2 OpenCode adapter > runs diagnosis without a canvas snapshot as authenticated request-only context [0.40ms]
+(pass) Chat Operation V2 OpenCode adapter > rejects diagnosis when the caller snapshot differs from the authenticated canonical bytes [0.26ms]
+(pass) Chat Operation V2 OpenCode adapter > recovers a lost text response by replaying the identical Host message id once [0.36ms]
+(pass) Chat Operation V2 OpenCode adapter > restart reconcile recovers cached text with the same Host id and no provider reinvocation [1.35ms]
+(pass) Chat Operation V2 OpenCode adapter > reconcile rejects changed caller bytes before replaying the cached text id [0.47ms]
+(pass) Chat Operation V2 OpenCode adapter > rejects classifier text with provider-authored extra fields [0.80ms]
+(pass) Chat Operation V2 OpenCode adapter > rejects non-canonical orchestrator bytes before outbox or SDK access [1.58ms]
+(pass) Chat Operation V2 OpenCode adapter > strictly resolves a successful discussion result [0.44ms]
+(pass) Chat Operation V2 OpenCode adapter > strictly resolves a successful diagnosis result [0.39ms]
+(pass) Chat Operation V2 OpenCode adapter > strictly resolves a successful clarify result [0.54ms]
+(pass) Chat Operation V2 OpenCode adapter > continues text classification after recovering a native 409 from history [0.49ms]
+(pass) Chat Operation V2 OpenCode adapter > continues text classification after a lost native admission response [0.45ms]
+(pass) Chat Operation V2 OpenCode adapter > recovers one classifier transport loss through the identical cached text id [0.74ms]
+(pass) Chat Operation V2 OpenCode adapter > coalesces concurrent calls for the same Host invocation and execution id [0.56ms]
+(pass) Chat Operation V2 OpenCode adapter > restart run recovers cached classifier text with the same execution id [0.84ms]
+(pass) Chat Operation V2 OpenCode adapter > orchestrator reconciliation recovers cached classifier text after restart [1.32ms]
+(pass) Chat Operation V2 OpenCode adapter > reconciliation starts text classification from a proven native admission [0.48ms]
+(pass) Chat Operation V2 OpenCode adapter > fails closed on malformed classifier text [0.43ms]
+(pass) Chat Operation V2 OpenCode adapter > orchestrator runner rejects malformed classifier text before settling completion [0.54ms]
+(pass) Chat Operation V2 OpenCode adapter > returns a typed provider failure for unknown errors without leaking the provider payload [0.68ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider authentication without persisting provider content [0.51ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich unknown provider failure without persisting provider content [0.35ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich malformed scalar provider failure without persisting provider content [0.32ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich model output length without persisting provider content [0.28ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich aborted provider message without persisting provider content [0.27ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich model context overflow without persisting provider content [0.29ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider content filter without persisting provider content [0.28ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider billing without persisting provider content [0.30ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider rate limit without persisting provider content [0.38ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich retryable provider outage without persisting provider content [0.26ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich authentication status over conflicting model text without persisting provider content [0.33ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich authentication status over conflicting structured-output text without persisting provider content [0.25ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich billing status over conflicting rate-limit text without persisting provider content [0.21ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich rate-limit status over conflicting billing text without persisting provider content [0.20ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich rate-limit status over conflicting content-policy text without persisting provider content [0.21ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich provider request rejection without persisting provider content [0.20ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies a rich retryable API error without status without persisting provider content [0.27ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies bounded APIError signal unknown model without returning the message [0.41ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies bounded APIError signal unsupported structured output without returning the message [0.23ms]
+(pass) Chat Operation V2 OpenCode adapter > classifies bounded APIError signal billing without status without returning the message [0.26ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive missing model SDK rejection distinct from response loss [0.32ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive unsupported structured tool SDK rejection distinct from response loss [0.21ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive provider authentication SDK rejection distinct from response loss [0.18ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive provider rate limit SDK rejection distinct from response loss [0.30ms]
+(pass) Chat Operation V2 OpenCode adapter > keeps a definitive bounded provider rejection SDK rejection distinct from response loss [0.25ms]
+(pass) Chat Operation V2 OpenCode adapter > does not retry a legacy pinned StructuredOutputError response [0.54ms]
+(pass) Chat Operation V2 OpenCode adapter > aborts without reusing or replacing the rich execution message id [0.55ms]
+(pass) Chat Operation V2 OpenCode adapter > native request marker carries exactly the durable request digest [0.34ms]
+
+ 80 pass
+ 0 fail
+ 234 expect() calls
+Ran 80 tests across 1 file. [4.05s]
+::endgroup::
+
+::group::tests/chat-trial-json-collection.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+(pass) JSON collection Host admission supports unknown members without granting core content authority [18.88ms]
+(pass) JSON collection real Plugin preflight and commit preserve explicit kind state and finite counters [59.25ms]
+23:46:18.140 [pipeline] start "Randomized measurement collection" run_id=run_mvbm9cig_0c22621ca3f8
+23:46:18.147 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:46:18.174 [task:measure.sample] success (0.0s)
+23:46:18.175 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:46:18.192 [task:present.render] success (0.0s)
+23:46:18.193 [pipeline] completed "Randomized measurement collection"
+23:46:18.193 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:18.193 [pipeline] Duration: 0.1s
+23:46:18.193 [pipeline] Log: /tmp/tagma-coll-fElUaS/.tagma/.chat-staging/e61f1f58-cda4-4cec-8133-2aa6146f59e6/.trial-cases/normal-dL4xm1/workspace/.tagma/logs/run_mvbm9cig_0c22621ca3f8/pipeline.log
+23:46:18.333 [pipeline] start "Randomized measurement collection" run_id=run_mvbm9cnw_6fc3391a8bdf
+23:46:18.334 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:46:18.358 [task:measure.sample] success (0.0s)
+23:46:18.359 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:46:18.378 [task:present.render] success (0.0s)
+23:46:18.378 [pipeline] completed "Randomized measurement collection"
+23:46:18.378 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:18.378 [pipeline] Duration: 0.0s
+23:46:18.378 [pipeline] Log: /tmp/tagma-coll-fElUaS/.tagma/.chat-staging/e61f1f58-cda4-4cec-8133-2aa6146f59e6/.trial-cases/empty-EWPHVf/workspace/.tagma/logs/run_mvbm9cnw_6fc3391a8bdf/pipeline.log
+(pass) actual isolated Trial contrasts randomized array collection with Host-injected empty result [612.44ms]
+23:46:18.709 [pipeline] start "Randomized measurement collection" run_id=run_mvbm9cyc_de2795ebc3e1
+23:46:18.709 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:46:18.734 [task:measure.sample] success (0.0s)
+23:46:18.734 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:46:18.752 [task:present.render] success (0.0s)
+23:46:18.752 [pipeline] completed "Randomized measurement collection"
+23:46:18.752 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:18.752 [pipeline] Duration: 0.0s
+23:46:18.752 [pipeline] Log: /tmp/tagma-coll-QNzydQ/.tagma/.chat-staging/2d3ead94-6d07-4f52-8daa-47806042ac4b/.trial-cases/normal-cRbeHR/workspace/.tagma/logs/run_mvbm9cyc_de2795ebc3e1/pipeline.log
+23:46:18.885 [pipeline] start "Randomized measurement collection" run_id=run_mvbm9d38_89f6b4d4aae7
+23:46:18.885 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+23:46:18.910 [task:measure.sample] success (0.0s)
+23:46:18.910 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+23:46:18.927 [task:present.render] success (0.0s)
+23:46:18.928 [pipeline] completed "Randomized measurement collection"
+23:46:18.928 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:18.928 [pipeline] Duration: 0.0s
+23:46:18.928 [pipeline] Log: /tmp/tagma-coll-QNzydQ/.tagma/.chat-staging/2d3ead94-6d07-4f52-8daa-47806042ac4b/.trial-cases/empty-c39rjp/workspace/.tagma/logs/run_mvbm9d38_89f6b4d4aae7/pipeline.log
+(pass) actual isolated Trial contrasts randomized object collection with Host-injected empty result [547.54ms]
+(pass) JSON collection runtime rejects wrong types missing pointers malformed JSON and oversized reads [3.31ms]
+
+ 5 pass
+ 0 fail
+ 82 expect() calls
+Ran 5 tests across 1 file. [1403.00ms]
+::endgroup::
+
+::group::tests/chat-trial-semantic-review-runtime.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review-runtime.test.ts:
+23:46:19.445 [pipeline] start "Actual dynamic report" run_id=run_mvbm9diq_4bc16f89c1ab
+23:46:19.451 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:19.474 [task:flow.inspect] success (0.0s)
+23:46:19.474 [pipeline] completed "Actual dynamic report"
+23:46:19.474 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:19.474 [pipeline] Duration: 0.0s
+23:46:19.474 [pipeline] Log: /tmp/tagma-actual-semantic-trial-JBxtFg/.tagma/.chat-staging/dc9db7f7-631b-4a9a-8a9c-431c56667529/.trial-cases/normal-6syxQy/workspace/.tagma/logs/run_mvbm9diq_4bc16f89c1ab/pipeline.log
+23:46:19.481 [pipeline] start "Actual dynamic report" run_id=run_mvbm9djs_91e391df457d
+23:46:19.482 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:19.499 [task:flow.inspect] success (0.0s)
+23:46:19.499 [pipeline] completed "Actual dynamic report"
+23:46:19.499 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:19.499 [pipeline] Duration: 0.0s
+23:46:19.499 [pipeline] Log: /tmp/tagma-actual-semantic-trial-JBxtFg/.tagma/.chat-staging/dc9db7f7-631b-4a9a-8a9c-431c56667529/.trial-cases/normal-6syxQy/workspace/.tagma/logs/run_mvbm9djs_91e391df457d/pipeline.log
+(pass) actual Sandbox semantic review runs after task execution for every repeat [426.66ms]
+23:46:19.831 [pipeline] start "Actual dynamic report" run_id=run_mvbm9dti_ae0524a22dcf
+23:46:19.831 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:19.850 [task:flow.inspect] success (0.0s)
+23:46:19.851 [pipeline] completed "Actual dynamic report"
+23:46:19.851 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:19.851 [pipeline] Duration: 0.0s
+23:46:19.851 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BKhSAT/.tagma/.chat-staging/e7f8af61-e123-43bd-868c-5cf5a994ad6f/.trial-cases/normal-g3BuKk/workspace/.tagma/logs/run_mvbm9dti_ae0524a22dcf/pipeline.log
+23:46:19.854 [pipeline] start "Actual dynamic report" run_id=run_mvbm9du6_fdc5584fcd02
+23:46:19.855 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:19.872 [task:flow.inspect] success (0.0s)
+23:46:19.872 [pipeline] completed "Actual dynamic report"
+23:46:19.872 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:19.872 [pipeline] Duration: 0.0s
+23:46:19.872 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BKhSAT/.tagma/.chat-staging/e7f8af61-e123-43bd-868c-5cf5a994ad6f/.trial-cases/normal-g3BuKk/workspace/.tagma/logs/run_mvbm9du6_fdc5584fcd02/pipeline.log
+(pass) a failed earlier semantic repeat cannot be hidden and retains complete private repair evidence [372.37ms]
+23:46:20.227 [pipeline] start "Actual dynamic report" run_id=run_mvbm9e4i_92ddfc427cb9
+23:46:20.227 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"no production\")"]
+23:46:20.250 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+23:46:20.251 [pipeline] failed "Actual dynamic report"
+23:46:20.251 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:20.251 [pipeline] Duration: 0.0s
+23:46:20.251 [pipeline] Log: /tmp/tagma-actual-semantic-trial-MqaOP1/.tagma/.chat-staging/1d7278a7-4409-4847-a0c9-9a81b6c63a28/.trial-cases/normal-IG8CIu/workspace/.tagma/logs/run_mvbm9e4i_92ddfc427cb9/pipeline.log
+23:46:20.253 [pipeline] start "Actual dynamic report" run_id=run_mvbm9e58_1aaac4bb957e
+23:46:20.253 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"no production\")"]
+23:46:20.274 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+23:46:20.275 [pipeline] failed "Actual dynamic report"
+23:46:20.275 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:20.275 [pipeline] Duration: 0.0s
+23:46:20.275 [pipeline] Log: /tmp/tagma-actual-semantic-trial-MqaOP1/.tagma/.chat-staging/1d7278a7-4409-4847-a0c9-9a81b6c63a28/.trial-cases/normal-IG8CIu/workspace/.tagma/logs/run_mvbm9e58_1aaac4bb957e/pipeline.log
+23:46:20.606 [pipeline] start "Actual dynamic report" run_id=run_mvbm9ef2_4acc3b6eaaf5
+23:46:20.607 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));if(n===1)fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:20.628 [task:flow.inspect] success (0.0s)
+23:46:20.628 [pipeline] completed "Actual dynamic report"
+23:46:20.628 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:20.628 [pipeline] Duration: 0.0s
+23:46:20.628 [pipeline] Log: /tmp/tagma-actual-semantic-trial-ntpdIe/.tagma/.chat-staging/3077f748-6db4-4d88-a795-b3c1026611fe/.trial-cases/normal-tQ3BW9/workspace/.tagma/logs/run_mvbm9ef2_4acc3b6eaaf5/pipeline.log
+23:46:20.630 [pipeline] start "Actual dynamic report" run_id=run_mvbm9efq_c3eb58575100
+23:46:20.631 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));if(n===1)fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:20.650 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+23:46:20.651 [pipeline] failed "Actual dynamic report"
+23:46:20.651 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:20.651 [pipeline] Duration: 0.0s
+23:46:20.651 [pipeline] Log: /tmp/tagma-actual-semantic-trial-ntpdIe/.tagma/.chat-staging/3077f748-6db4-4d88-a795-b3c1026611fe/.trial-cases/normal-tQ3BW9/workspace/.tagma/logs/run_mvbm9efq_c3eb58575100/pipeline.log
+23:46:20.989 [pipeline] start "Actual dynamic report" run_id=run_mvbm9epp_84f4addff45f
+23:46:20.990 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.exit(7)"]
+23:46:21.003 [task:flow.inspect] ERROR: failed exit=7 duration=0.0s
+23:46:21.003 [pipeline] failed "Actual dynamic report"
+23:46:21.003 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.003 [pipeline] Duration: 0.0s
+23:46:21.003 [pipeline] Log: /tmp/tagma-actual-semantic-trial-hLECNm/.tagma/.chat-staging/9d0125bb-2136-4c9b-83d2-922be38f1597/.trial-cases/normal-9Bi2u8/workspace/.tagma/logs/run_mvbm9epp_84f4addff45f/pipeline.log
+23:46:21.004 [pipeline] start "Actual dynamic report" run_id=run_mvbm9eq4_5cb12e5ed008
+23:46:21.005 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.exit(7)"]
+23:46:21.017 [task:flow.inspect] ERROR: failed exit=7 duration=0.0s
+23:46:21.018 [pipeline] failed "Actual dynamic report"
+23:46:21.018 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.018 [pipeline] Duration: 0.0s
+23:46:21.018 [pipeline] Log: /tmp/tagma-actual-semantic-trial-hLECNm/.tagma/.chat-staging/9d0125bb-2136-4c9b-83d2-922be38f1597/.trial-cases/normal-9Bi2u8/workspace/.tagma/logs/run_mvbm9eq4_5cb12e5ed008/pipeline.log
+(pass) semantic outputs must be freshly produced rather than staged or inherited from a previous repeat [1146.42ms]
+(pass) semantic invocation is unavailable to legacy callers and missing Host model contexts [12.71ms]
+23:46:21.367 [pipeline] start "Actual dynamic report" run_id=run_mvbm9f07_0cf36c40997a
+23:46:21.367 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:21.389 [task:flow.inspect] success (0.0s)
+23:46:21.390 [pipeline] completed "Actual dynamic report"
+23:46:21.390 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.390 [pipeline] Duration: 0.0s
+23:46:21.390 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BkGzRs/.tagma/.chat-staging/ab57024b-02ff-4772-9095-13a14dbffbeb/.trial-cases/normal-XPwioZ/workspace/.tagma/logs/run_mvbm9f07_0cf36c40997a/pipeline.log
+23:46:21.391 [pipeline] start "Actual dynamic report" run_id=run_mvbm9f0v_211cbd8de762
+23:46:21.391 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:21.408 [task:flow.inspect] success (0.0s)
+23:46:21.408 [pipeline] completed "Actual dynamic report"
+23:46:21.408 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.408 [pipeline] Duration: 0.0s
+23:46:21.409 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BkGzRs/.tagma/.chat-staging/ab57024b-02ff-4772-9095-13a14dbffbeb/.trial-cases/normal-XPwioZ/workspace/.tagma/logs/run_mvbm9f0v_211cbd8de762/pipeline.log
+23:46:21.659 [pipeline] start "Actual dynamic report" run_id=run_mvbm9f8b_c546da16d8d2
+23:46:21.660 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:21.679 [task:flow.inspect] success (0.0s)
+23:46:21.680 [pipeline] completed "Actual dynamic report"
+23:46:21.680 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.680 [pipeline] Duration: 0.0s
+23:46:21.680 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BkGzRs/.tagma/.chat-staging/ab57024b-02ff-4772-9095-13a14dbffbeb/.trial-cases/normal-r8fyFM/workspace/.tagma/logs/run_mvbm9f8b_c546da16d8d2/pipeline.log
+23:46:21.681 [pipeline] start "Actual dynamic report" run_id=run_mvbm9f8x_bccadf96af86
+23:46:21.681 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:21.700 [task:flow.inspect] success (0.0s)
+23:46:21.700 [pipeline] completed "Actual dynamic report"
+23:46:21.700 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.700 [pipeline] Duration: 0.0s
+23:46:21.700 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BkGzRs/.tagma/.chat-staging/ab57024b-02ff-4772-9095-13a14dbffbeb/.trial-cases/normal-r8fyFM/workspace/.tagma/logs/run_mvbm9f8x_bccadf96af86/pipeline.log
+23:46:21.950 [pipeline] start "Actual dynamic report" run_id=run_mvbm9fge_e65d0f156fb6
+23:46:21.951 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:21.970 [task:flow.inspect] success (0.0s)
+23:46:21.970 [pipeline] completed "Actual dynamic report"
+23:46:21.970 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.970 [pipeline] Duration: 0.0s
+23:46:21.970 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BkGzRs/.tagma/.chat-staging/ab57024b-02ff-4772-9095-13a14dbffbeb/.trial-cases/normal-EMleQF/workspace/.tagma/logs/run_mvbm9fge_e65d0f156fb6/pipeline.log
+23:46:21.971 [pipeline] start "Actual dynamic report" run_id=run_mvbm9fgz_53c33fc62ac0
+23:46:21.972 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:21.989 [task:flow.inspect] success (0.0s)
+23:46:21.990 [pipeline] completed "Actual dynamic report"
+23:46:21.990 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:21.990 [pipeline] Duration: 0.0s
+23:46:21.990 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BkGzRs/.tagma/.chat-staging/ab57024b-02ff-4772-9095-13a14dbffbeb/.trial-cases/normal-EMleQF/workspace/.tagma/logs/run_mvbm9fgz_53c33fc62ac0/pipeline.log
+(pass) semantic same-attempt replay is exact but new trials and model configs require fresh execution [955.92ms]
+23:46:22.321 [pipeline] start "Actual dynamic report" run_id=run_mvbm9fqo_34cfc92ccc82
+23:46:22.321 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:22.341 [task:flow.inspect] success (0.0s)
+23:46:22.342 [pipeline] completed "Actual dynamic report"
+23:46:22.342 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:22.342 [pipeline] Duration: 0.0s
+23:46:22.342 [pipeline] Log: /tmp/tagma-actual-semantic-trial-bmZGNS/.tagma/.chat-staging/c23895eb-cb9f-4642-8566-44216d32764d/.trial-cases/normal-Yb0Wqd/workspace/.tagma/logs/run_mvbm9fqo_34cfc92ccc82/pipeline.log
+23:46:22.343 [pipeline] start "Actual dynamic report" run_id=run_mvbm9frb_ca6a3c1b106e
+23:46:22.344 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:22.361 [task:flow.inspect] success (0.0s)
+23:46:22.361 [pipeline] completed "Actual dynamic report"
+23:46:22.361 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:22.361 [pipeline] Duration: 0.0s
+23:46:22.361 [pipeline] Log: /tmp/tagma-actual-semantic-trial-bmZGNS/.tagma/.chat-staging/c23895eb-cb9f-4642-8566-44216d32764d/.trial-cases/normal-Yb0Wqd/workspace/.tagma/logs/run_mvbm9frb_ca6a3c1b106e/pipeline.log
+(pass) semantic receipt validation rejects missing shifted or tampered current-run proofs [371.32ms]
+23:46:22.695 [pipeline] start "Actual dynamic report" run_id=run_mvbm9g12_c5688b98dc8d
+23:46:22.695 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:22.716 [task:flow.inspect] success (0.0s)
+23:46:22.716 [pipeline] completed "Actual dynamic report"
+23:46:22.716 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:22.716 [pipeline] Duration: 0.0s
+23:46:22.717 [pipeline] Log: /tmp/tagma-actual-semantic-trial-QdVqSm/.tagma/.chat-staging/c864809a-6d2e-432e-afa5-7ffb29916157/.trial-cases/normal-RmJCvi/workspace/.tagma/logs/run_mvbm9g12_c5688b98dc8d/pipeline.log
+23:46:22.718 [pipeline] start "Actual dynamic report" run_id=run_mvbm9g1q_edb98b2770e7
+23:46:22.718 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:22.736 [task:flow.inspect] success (0.0s)
+23:46:22.736 [pipeline] completed "Actual dynamic report"
+23:46:22.736 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:22.736 [pipeline] Duration: 0.0s
+23:46:22.736 [pipeline] Log: /tmp/tagma-actual-semantic-trial-QdVqSm/.tagma/.chat-staging/c864809a-6d2e-432e-afa5-7ffb29916157/.trial-cases/normal-RmJCvi/workspace/.tagma/logs/run_mvbm9g1q_edb98b2770e7/pipeline.log
+(pass) finalize requires the complete semantic receipts even in an otherwise correctly signed cache [386.20ms]
+23:46:23.074 [pipeline] start "Actual dynamic report" run_id=run_mvbm9gbm_2bf8ded39aff
+23:46:23.075 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:23.093 [task:flow.inspect] success (0.0s)
+23:46:23.094 [pipeline] completed "Actual dynamic report"
+23:46:23.094 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:23.094 [pipeline] Duration: 0.0s
+23:46:23.094 [pipeline] Log: /tmp/tagma-actual-semantic-trial-7zYYq4/.tagma/.chat-staging/b44176fe-c093-49bb-963f-b7636a4cfd5c/.trial-cases/normal-A95nWK/workspace/.tagma/logs/run_mvbm9gbm_2bf8ded39aff/pipeline.log
+23:46:23.095 [pipeline] start "Actual dynamic report" run_id=run_mvbm9gc7_8f47cefe17d1
+23:46:23.096 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:23.115 [task:flow.inspect] success (0.0s)
+23:46:23.115 [pipeline] completed "Actual dynamic report"
+23:46:23.115 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:23.115 [pipeline] Duration: 0.0s
+23:46:23.115 [pipeline] Log: /tmp/tagma-actual-semantic-trial-7zYYq4/.tagma/.chat-staging/b44176fe-c093-49bb-963f-b7636a4cfd5c/.trial-cases/normal-A95nWK/workspace/.tagma/logs/run_mvbm9gc7_8f47cefe17d1/pipeline.log
+(pass) finalize accepts current semantic execution receipts without changing the input-hash contract [378.47ms]
+23:46:23.455 [pipeline] start "Actual dynamic report" run_id=run_mvbm9gm7_bd019b6e5182
+23:46:23.456 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:23.475 [task:flow.inspect] success (0.0s)
+23:46:23.475 [pipeline] completed "Actual dynamic report"
+23:46:23.475 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:23.475 [pipeline] Duration: 0.0s
+23:46:23.475 [pipeline] Log: /tmp/tagma-actual-semantic-trial-0NFYJV/.tagma/.chat-staging/083a0ec1-a727-4fb4-a0d9-a30150a0c44c/.trial-cases/normal-UOEefp/workspace/.tagma/logs/run_mvbm9gm7_bd019b6e5182/pipeline.log
+23:46:23.816 [pipeline] start "Actual dynamic report" run_id=run_mvbm9gw7_a83c12362fae
+23:46:23.816 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');fs.writeFileSync('report.md',fs.readFileSync('input.md'))"]
+23:46:23.832 [task:flow.inspect] success (0.0s)
+23:46:23.833 [pipeline] completed "Actual dynamic report"
+23:46:23.833 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:23.833 [pipeline] Duration: 0.0s
+23:46:23.833 [pipeline] Log: /tmp/tagma-actual-semantic-trial-N2PnrC/.tagma/.chat-staging/39278cbb-9354-46b6-b5c6-f4672ce07815/.trial-cases/normal-kVq31W/workspace/.tagma/logs/run_mvbm9gw7_a83c12362fae/pipeline.log
+(pass) deterministic input identity blocks a passing critic until actual producer bytes are repaired [717.90ms]
+23:46:24.178 [pipeline] start "Actual dynamic report" run_id=run_mvbm9h6a_7b2b1402cf85
+23:46:24.178 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:24.196 [task:flow.inspect] success (0.0s)
+23:46:24.197 [pipeline] completed "Actual dynamic report"
+23:46:24.197 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:24.197 [pipeline] Duration: 0.0s
+23:46:24.197 [pipeline] Log: /tmp/tagma-actual-semantic-trial-c1z6La/.tagma/.chat-staging/7c624cd0-eaeb-427f-aeff-20d8f12f8b9c/.trial-cases/normal-gaUiXE/workspace/.tagma/logs/run_mvbm9h6a_7b2b1402cf85/pipeline.log
+23:46:24.327 [pipeline] start "Actual dynamic report" run_id=run_mvbm9haf_509603f819e5
+23:46:24.328 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+23:46:24.345 [task:flow.inspect] success (0.0s)
+23:46:24.345 [pipeline] completed "Actual dynamic report"
+23:46:24.345 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:24.345 [pipeline] Duration: 0.0s
+23:46:24.345 [pipeline] Log: /tmp/tagma-actual-semantic-trial-c1z6La/.tagma/.chat-staging/7c624cd0-eaeb-427f-aeff-20d8f12f8b9c/.trial-cases/valid-empty-RyoGCw/workspace/.tagma/logs/run_mvbm9haf_509603f819e5/pipeline.log
+(pass) normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses [501.32ms]
+
+ 10 pass
+ 0 fail
+ 90 expect() calls
+Ran 10 tests across 1 file. [5.40s]
+::endgroup::
+
+::group::tests/opencode-command-env.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-command-env.test.ts:
+(pass) broker managed CLI commands > inherits provider authentication, proxy routing and configured CA trust [3.59ms]
+(pass) broker managed CLI commands > keeps authored overrides authoritative and ordinary command environments minimal [0.89ms]
+(pass) broker managed CLI commands > supports Core secret-command spawns with task secret precedence and sealed isolation [0.57ms]
+(pass) broker managed CLI commands > redacts inherited and task credentials across stdout/stderr chunk boundaries [2.03ms]
+(pass) broker managed CLI commands > redacts malformed authenticated proxy values and separately reported credentials [1.00ms]
+(pass) legacy managed CLI commands > inherits provider authentication, proxy routing and configured CA trust [0.58ms]
+(pass) legacy managed CLI commands > keeps authored overrides authoritative and ordinary command environments minimal [0.44ms]
+(pass) legacy managed CLI commands > supports Core secret-command spawns with task secret precedence and sealed isolation [0.41ms]
+(pass) legacy managed CLI commands > redacts inherited and task credentials across stdout/stderr chunk boundaries [0.92ms]
+(pass) legacy managed CLI commands > redacts malformed authenticated proxy values and separately reported credentials [0.54ms]
+(pass) managed CLI credentials stay redacted in live chunks, result tails and persisted files [51.30ms]
+
+ 11 pass
+ 0 fail
+ 91 expect() calls
+Ran 11 tests across 1 file. [163.00ms]
+::endgroup::
+
+::group::tests/opencode-deterministic-content-contract.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-deterministic-content-contract.test.ts:
+(pass) seeded author contract assigns exact bytes and digests to deterministic commands without expanding prompt authority [5.59ms]
+(pass) seeded author contract distinguishes managed web routing from ordinary command environments [1.43ms]
+23:46:24.774 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_preserved
+23:46:24.779 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=source;fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+23:46:24.803 [task:files.materialize] success (0.0s)
+23:46:24.803 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-hG3Sgb/verify.cjs"]
+23:46:24.823 [task:files.verify] success (0.0s)
+23:46:24.824 [pipeline] completed "Exact source bytes with deterministic digest"
+23:46:24.824 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:24.824 [pipeline] Duration: 0.1s
+23:46:24.824 [pipeline] Log: /tmp/tagma-content-contract-hG3Sgb/.tagma/logs/run_content_contract_preserved/pipeline.log
+(pass) actual SDK deterministic commands preserve multiline Unicode source bytes before hashing [63.73ms]
+23:46:24.827 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_truncated
+23:46:24.827 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=Buffer.from('# Independent sample');fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+23:46:24.848 [task:files.materialize] success (0.0s)
+23:46:24.848 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-ML3nUR/verify.cjs"]
+23:46:24.868 [task:files.verify] ERROR: failed exit=1 duration=0.0s
+23:46:24.868 [task:files.verify] ERROR: stderr tail:
+1 | const fs=require('node:fs'),c=require('node:crypto');const a=fs.readFileSync('captured.txt'),b=fs.readFileSync('saved.txt');const validDigest=c.createHash('sha256').update(b).digest('hex')===fs.readFileSync('digest.txt','utf8');if(!validDigest)throw Error('Digest mismatch');if(!a.equals(b))throw Error('Complete source bytes not preserved');console.log('Complete bytes and digest verified');
+                                                                                                                                                                                                                                                                                                             ^
+error: Complete source bytes not preserved
+      at <anonymous> (/tmp/tagma-content-contract-ML3nUR/verify.cjs:1:298)
+Bun v1.3.14 (Linux x64)
+23:46:24.868 [pipeline] failed "Exact source bytes with deterministic digest"
+23:46:24.868 [pipeline] Total: 2 | Success: 1 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+23:46:24.868 [pipeline] Duration: 0.0s
+23:46:24.868 [pipeline] Log: /tmp/tagma-content-contract-ML3nUR/.tagma/logs/run_content_contract_truncated/pipeline.log
+(pass) actual SDK source-byte check rejects truncated content even with a correct digest [43.63ms]
+
+ 4 pass
+ 0 fail
+ 27 expect() calls
+Ran 4 tests across 1 file. [200.00ms]
+::endgroup::
+
+::group::tests/opencode-host-env.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-host-env.test.ts:
+(pass) managed OpenCode inherits configured provider authentication and network trust [0.60ms]
+(pass) managed OpenCode does not inherit unrelated process authority or weaken TLS [0.31ms]
+(pass) managed OpenCode inherits non-enumerable fixed host network keys [0.23ms]
+(pass) managed OpenCode keeps non-enumerable private authority and inherited settings outside its host boundary [0.13ms]
+
+ 4 pass
+ 0 fail
+ 8 expect() calls
+Ran 4 tests across 1 file. [14.00ms]
+::endgroup::
+
+::group::tests/opencode-seed-document-budget.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-seed-document-budget.test.ts:
+(pass) final seeded pipeline guidance includes all managed policies in every host budget [4.92ms]
+
+ 1 pass
+ 0 fail
+ 49 expect() calls
+Ran 1 test across 1 file. [59.00ms]
+::endgroup::

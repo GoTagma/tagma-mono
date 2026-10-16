@@ -1,0 +1,11 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-operation-v2-authoring.test.ts:
+(pass) mandatory authoring capability contract survives omitted optional skills and explicit edit mechanics [166.18ms]
+(pass) mandatory repair capability contract preserves boundary without changing frozen repair authority [145.76ms]
+
+ 2 pass
+ 135 filtered out
+ 0 fail
+ 58 expect() calls
+Ran 2 tests across 1 file. [458.00ms]
