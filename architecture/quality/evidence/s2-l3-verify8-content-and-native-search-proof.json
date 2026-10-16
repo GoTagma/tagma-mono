@@ -1,0 +1,87 @@
+[
+  {
+    "identity": {
+      "stageId": "2807e48c-124f-4b9a-bf89-d89f2d13e7b5",
+      "trialId": "trial-43dac448bad525a2f8875442ff4cb7f455f2d768",
+      "yamlHash": "998d69d46b9fa4299f2d9d074977c8b80e87c31c",
+      "planHash": "1ad28f4773b0b69921727642ac56da9deefac01bbcf2169540615fcc24410190",
+      "intentDigest": "88f0cb604a6aef9ae5dad2c67765c4224c05170d236060be6d6df8e1f4fe8074",
+      "caseId": "e2e",
+      "runId": "run_mvba7d3t_75864e6630fe",
+      "runNumber": 1
+    },
+    "sourceSha256": "c834d0e3124e5c3fbb821bcd4b884ee93238569b6693edb97a1d5311695fbe5c",
+    "reportSha256": "3d6574e40d44f648c50dc4e4ca8c21df0650bec533ec86c1a1d312a413f4e8a7",
+    "originalAllLinesBlankLinesUnicodeOrderPreservedAfterRemovingOnlyInlineComments": true,
+    "actualSearchAndFetchCalls": 3,
+    "nativeTaskStdoutSha256": "37f0d9f1f6b95d7cac2155f7c2f3b808cedbd64b498eed9467b5a468950081c5",
+    "citationURLsInActualWebResponses": {
+      "https://en.wikipedia.org/wiki/Eiffel_Tower": true,
+      "https://www.britannica.com/topic/Eiffel-Tower-Paris-France": true,
+      "https://www.toureiffel.paris/en/the-monument/history": true
+    },
+    "actualResponseEvidenceCounts": [
+      3,
+      3,
+      4
+    ],
+    "responseNoEvidenceDiscarded": true,
+    "responseContract": {
+      "maxReasonCodeUnits": 1600,
+      "maxEvidenceItems": 4,
+      "maxQuoteCodeUnits": 512,
+      "maxResponseBytes": 65536
+    },
+    "sourceBytesPreservedExactlyAfterRemovingOnlyAnnotationsAndSectionSeparators": true,
+    "sectionSeparatorsRemoved": {
+      "leadingNewlines": 1,
+      "trailingNewlines": 1
+    },
+    "callsByTool": {
+      "websearch": 3
+    }
+  },
+  {
+    "identity": {
+      "stageId": "2807e48c-124f-4b9a-bf89-d89f2d13e7b5",
+      "trialId": "trial-43dac448bad525a2f8875442ff4cb7f455f2d768",
+      "yamlHash": "998d69d46b9fa4299f2d9d074977c8b80e87c31c",
+      "planHash": "1ad28f4773b0b69921727642ac56da9deefac01bbcf2169540615fcc24410190",
+      "intentDigest": "88f0cb604a6aef9ae5dad2c67765c4224c05170d236060be6d6df8e1f4fe8074",
+      "caseId": "e2e",
+      "runId": "run_mvba8grk_65b627bf16eb",
+      "runNumber": 2
+    },
+    "sourceSha256": "c834d0e3124e5c3fbb821bcd4b884ee93238569b6693edb97a1d5311695fbe5c",
+    "reportSha256": "d0b75750e9cba7bc0b0ccba9ed3d9e020b9f32cdbefb39d41d776dd3fc7b42f4",
+    "originalAllLinesBlankLinesUnicodeOrderPreservedAfterRemovingOnlyInlineComments": true,
+    "actualSearchAndFetchCalls": 4,
+    "nativeTaskStdoutSha256": "c998255d08b2138ffe36ddae15be8f1b497d34eefa0b6fef5c721a312560570f",
+    "citationURLsInActualWebResponses": {
+      "https://www.toureiffel.paris/en/news/history-and-culture/300-330-meters-story-towers-height": true,
+      "https://en.wikipedia.org/wiki/Eiffel_Tower": true,
+      "https://www.toureiffel.paris/fr/le-monument/chiffres-cle": true,
+      "https://www.toureiffel.paris/en/the-monument/history": true
+    },
+    "actualResponseEvidenceCounts": [
+      1,
+      1,
+      1
+    ],
+    "responseNoEvidenceDiscarded": true,
+    "responseContract": {
+      "maxReasonCodeUnits": 1600,
+      "maxEvidenceItems": 4,
+      "maxQuoteCodeUnits": 512,
+      "maxResponseBytes": 65536
+    },
+    "sourceBytesPreservedExactlyAfterRemovingOnlyAnnotationsAndSectionSeparators": true,
+    "sectionSeparatorsRemoved": {
+      "leadingNewlines": 1,
+      "trailingNewlines": 1
+    },
+    "callsByTool": {
+      "websearch": 4
+    }
+  }
+]

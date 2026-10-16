@@ -1,0 +1,27 @@
+{
+  "scope": "actual Host sealed result joined to production artifact-set projection and published file hashes; read-only",
+  "operationId": "operation-97db61e2-3bc1-4549-a84d-bfbd305a4bfa",
+  "resultId": "result_8546d02c6669720d4acd29fde76cc798309d2d5f7e6f662d",
+  "resultHash": "e6ab3a2af0eda7a1a1226f2891aa856c748f8ccdc8b019c2330cd4d0592fc6c1",
+  "artifactSetHash": "e83a8fc3a479b829710f04e71cb0393dcb67809c10509c88871ca39f5aac2a0e",
+  "artifacts": [
+    {
+      "artifactId": "artifact_17caefc9e315c809ba853e64970f00e71dde7c3c37165a00",
+      "kind": "requirements",
+      "path": "chat-ea7a35bc92b22caca60999ec/chat-ea7a35bc92b22caca60999ec.requirements.md",
+      "sha256": "9e19dcb876b9380a08448a645e93baf1404dc91c3a078629430c13f785def78f"
+    },
+    {
+      "artifactId": "artifact_3ff512ecdb35bb5f7154565b89c601360c8ac07b1a76b9cb",
+      "kind": "yaml",
+      "path": "chat-ea7a35bc92b22caca60999ec/chat-ea7a35bc92b22caca60999ec.yaml",
+      "sha256": "7d055de14d83dc3816cb25fcbb9efb5bb73d4e26b12ea50fa51f8c31148cb43c"
+    },
+    {
+      "artifactId": "artifact_70a7545fb3e4f543c1cfeef7d38b0bce6cb913d5af0062ac",
+      "kind": "layout",
+      "path": "chat-ea7a35bc92b22caca60999ec/chat-ea7a35bc92b22caca60999ec.layout.json",
+      "sha256": "7e3725b7d5027dc0ffc554d8392d958b3696fa3a5870db2370f85019b2c9cc7c"
+    }
+  ]
+}

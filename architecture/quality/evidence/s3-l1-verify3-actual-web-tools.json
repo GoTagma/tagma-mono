@@ -1,0 +1,80 @@
+{
+  "counts": {
+    "webfetch": 8
+  },
+  "facts": [
+    {
+      "caseId": "trial-site-monitor-normal",
+      "runId": "run_mvbarfla_9dc221fe6b57",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://example.com/",
+      "error": ""
+    },
+    {
+      "caseId": "trial-site-monitor-normal",
+      "runId": "run_mvbarfla_9dc221fe6b57",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://www.iana.org/help/example-domains",
+      "error": ""
+    },
+    {
+      "caseId": "trial-site-monitor-normal",
+      "runId": "run_mvbarfla_9dc221fe6b57",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "error",
+      "url": "https://example.com/caf%C3%A9?q=a&b=1",
+      "error": "StatusCode: non 2xx status code (404 GET https://example.com/caf%C3%A9?q=a&b=1)"
+    },
+    {
+      "caseId": "trial-site-monitor-empty",
+      "runId": "run_mvbasb3y_173daae329c3",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "error",
+      "url": "https://monitor-target.invalid/page",
+      "error": "StatusCode: non 2xx status code (403 GET https://monitor-target.invalid/page)"
+    },
+    {
+      "caseId": "trial-site-monitor-repeat",
+      "runId": "run_mvbasxqd_28b7904246ee",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://example.com/",
+      "error": ""
+    },
+    {
+      "caseId": "trial-site-monitor-repeat",
+      "runId": "run_mvbasxqd_28b7904246ee",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://www.iana.org/help/example-domains",
+      "error": ""
+    },
+    {
+      "caseId": "trial-site-monitor-repeat",
+      "runId": "run_mvbatl93_af98880a3a69",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://example.com/",
+      "error": ""
+    },
+    {
+      "caseId": "trial-site-monitor-repeat",
+      "runId": "run_mvbatl93_af98880a3a69",
+      "taskId": "monitor.scrape_targets",
+      "tool": "webfetch",
+      "status": "completed",
+      "url": "https://www.iana.org/help/example-domains",
+      "error": ""
+    }
+  ],
+  "scope": "Read-only actual native tool-use projection from42 complete SHA-verified task streams; completed webfetch is not independent factual validation. No full fetched page bodies."
+}

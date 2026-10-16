@@ -1,0 +1,607 @@
+{
+  "trials": [
+    {
+      "success": true,
+      "kind": "passed-with-warnings",
+      "cases": [
+        {
+          "id": "e2e",
+          "success": true,
+          "runIds": [
+            "run_mvba7d3t_75864e6630fe",
+            "run_mvba8grk_65b627bf16eb"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: claims.json records draft_path \"draft.md\" (matching the supplied input), extracts externally verifiable claims C1-C5 with id, exact verbatim quote, normalized claim, 1-based location and kind, and includes numeric/date fields where stated (metric/value/unit/period for C3-C5). Quotes match the draft character-for-character, including the Zürich umlaut and em dash, and the subjective final sentence is correctly excluded. Valid JSON at the required path.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "factcheck.extract",
+                "path": "fact-check/claims.json",
+                "runNumber": 1,
+                "requestSha256": "d9996419cea9dba7696f73ea959c9c8fef8ed995ff8deb81df896e1a2c7d89ce"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: verified.json contains exactly one entry for every claims.json id in the same order (C1-C5), each with a single allowed verdict and an evidence array (empty for unknown). Supported verdicts for the Eiffel Tower height (C3) and completion year (C4) cite independent authoritative sources with verbatim source quotes and URLs (Wikipedia, Britannica, toureiffel.paris) that substantiate the same entity/metric/unit and year. Placeholder-entity claims (C1, C2, C5) are marked unknown with recorded search rationale rather than refuted, matching the required handling of inadequate evidence.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "factcheck.verify",
+                "path": "fact-check/verified.json",
+                "runNumber": 1,
+                "requestSha256": "d9996419cea9dba7696f73ea959c9c8fef8ed995ff8deb81df896e1a2c7d89ce"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 1: Independent semantic review pass: report.md has the required structure: \"# Fact-check report\" heading, a summary paragraph and verdict-count table (supported 2 / refuted 0 / partial 0 / unknown 3), a \"## Annotated draft\" section reproducing the entire draft line-for-line with annotations appended at end of each claim-bearing line while preserving the original text (including Zürich, em dash and straight-quoted \"record\"), a \"## Claim details\" subsection per claim C1-C5 with quote, normalized claim, verdict and evidence/reason, and a deduplicated \"## Sources\" list. Verdicts and evidence are consistent with verified.json, with no upgraded or invented verdicts.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "factcheck.report",
+                "path": "fact-check/report.md",
+                "runNumber": 1,
+                "requestSha256": "d9996419cea9dba7696f73ea959c9c8fef8ed995ff8deb81df896e1a2c7d89ce"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: Claims.json records draft_path and 5 claims (C1–C5) with id, exact verbatim quote, normalized claim, 1-based line location, and kind. All quotes are literal substrings of draft.md (e.g. C3 'The Eiffel Tower is 330 metres tall', C5 'Our revenue grew 25% year over year'); the numeric C3/C5 carry metric/value/unit and C1/C4 carry period. The subjective line 9 ('We believe the future looks bright...') is correctly excluded, and the stage does not verify claims.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "factcheck.extract",
+                "path": "fact-check/claims.json",
+                "runNumber": 2,
+                "requestSha256": "cc7949e4bff0e6a15de3481897ce39583aca2d75cae565f54a3c695e79b4dcee"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: verified.json contains exactly one entry per claims.json id (C1–C5) in the same order, each with a verdict from the allowed set and an evidence array. C3 (330 m) and C4 (1889 completion) are supported with consistent source quotes/URLs; C1/C2/C5 concern an unidentifiable 'Acme Corporation' and are marked unknown with empty evidence and explanatory notes, matching the rule that unresolved/absent-independent-evidence claims become unknown rather than refuted. No verdict is upgraded or invented.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "factcheck.verify",
+                "path": "fact-check/verified.json",
+                "runNumber": 2,
+                "requestSha256": "cc7949e4bff0e6a15de3481897ce39583aca2d75cae565f54a3c695e79b4dcee"
+              }
+            },
+            {
+              "type": "artifact-semantic-review",
+              "passed": true,
+              "detail": "Run 2: Independent semantic review pass: report.md has the required '# Fact-check report' heading, one-paragraph summary, and a verdict-count table (2 supported / 0 refuted / 0 partial / 3 unknown). The '## Annotated draft' section reproduces the entire draft line for line, preserving the heading, blank lines, Unicode 'Zürich', em dash and quotes; annotations '<!-- fact-check <id>: <verdict> -->' are appended at end of the same claim lines (C1/C2 on line 3, C3/C4 on line 5, C5 on line 7) with the original text intact. '## Claim details' gives one subsection per C1–C5 with quote, normalized claim, verdict and evidence-or-unknown reason, and '## Sources' lists deduplicated URLs. Verdicts match verified.json with no upgrade or added claim.",
+              "repairScope": "pipeline-artifact",
+              "semanticReview": {
+                "taskId": "factcheck.report",
+                "path": "fact-check/report.md",
+                "runNumber": 2,
+                "requestSha256": "cc7949e4bff0e6a15de3481897ce39583aca2d75cae565f54a3c695e79b4dcee"
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.extract expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.verify expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.report expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "fact-check/claims.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "fact-check/claims.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "fact-check/verified.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/verified.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "fact-check/verified.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/verified.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "fact-check/report.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/report.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "file-preserves-lines",
+              "passed": true,
+              "detail": "fact-check/report.md preserves all 5 nonempty source lines in order.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/report.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "run-artifact-freshness",
+              "passed": true,
+              "detail": "fact-check/report.md was created or rewritten by every one of 2 runs.",
+              "repairScope": "pipeline-artifact"
+            }
+          ]
+        },
+        {
+          "id": "empty-draft",
+          "success": true,
+          "runIds": [
+            "run_mvba9qsf_9d0b0a6fa502"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "file-equals",
+              "passed": true,
+              "detail": "draft.md exactly matches the expected text.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "draft.md",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.extract expected failed, received failed.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.verify expected skipped, received skipped.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.report expected skipped, received skipped.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-not-exists",
+              "passed": true,
+              "detail": "fact-check/report.md does not exist.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/report.md",
+                "regularFile": false
+              }
+            }
+          ]
+        },
+        {
+          "id": "no-claims",
+          "success": true,
+          "runIds": [
+            "run_mvba9v9n_aa6042f183eb"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.extract expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.verify expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.report expected success, received success.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "fact-check/claims.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "fact-check/claims.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-equals",
+              "passed": true,
+              "detail": "fact-check/claims.json JSON Pointer /claims matches the expected JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/claims.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "fact-check/verified.json exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/verified.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-valid",
+              "passed": true,
+              "detail": "fact-check/verified.json contains one valid JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/verified.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "json-pointer-equals",
+              "passed": true,
+              "detail": "fact-check/verified.json JSON Pointer /claims matches the expected JSON value.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/verified.json",
+                "regularFile": true
+              }
+            },
+            {
+              "type": "path-exists",
+              "passed": true,
+              "detail": "fact-check/report.md exists.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/report.md",
+                "regularFile": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "missing-draft",
+          "success": true,
+          "runIds": [
+            "run_mvbaad6x_4f03121e4b8c"
+          ],
+          "executionSource": "current-trial",
+          "expectations": [
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.extract expected failed, received failed.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.verify expected skipped, received skipped.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "task-status",
+              "passed": true,
+              "detail": "factcheck.report expected skipped, received skipped.",
+              "repairScope": "pipeline-artifact"
+            },
+            {
+              "type": "path-not-exists",
+              "passed": true,
+              "detail": "fact-check/report.md does not exist.",
+              "repairScope": "pipeline-artifact",
+              "fileObservation": {
+                "path": "fact-check/report.md",
+                "regularFile": false
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "streams": [
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba7d3t_75864e6630fe",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stdout",
+      "sha256": "02e4ed3b457480d0a0438b9627bffe7ed940d6e958fd27b2346c88a61d83f370",
+      "complete": true,
+      "bytes": 6932,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba7d3t_75864e6630fe",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba7d3t_75864e6630fe",
+      "runNumber": 1,
+      "taskId": "factcheck.verify",
+      "stream": "stdout",
+      "sha256": "37f0d9f1f6b95d7cac2155f7c2f3b808cedbd64b498eed9467b5a468950081c5",
+      "complete": true,
+      "bytes": 45877,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba7d3t_75864e6630fe",
+      "runNumber": 1,
+      "taskId": "factcheck.verify",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba7d3t_75864e6630fe",
+      "runNumber": 1,
+      "taskId": "factcheck.report",
+      "stream": "stdout",
+      "sha256": "2aff967db710ae75521c4d39b7acd3237d79576c09483402175a107f9990b43c",
+      "complete": true,
+      "bytes": 24814,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba7d3t_75864e6630fe",
+      "runNumber": 1,
+      "taskId": "factcheck.report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba8grk_65b627bf16eb",
+      "runNumber": 2,
+      "taskId": "factcheck.extract",
+      "stream": "stdout",
+      "sha256": "fe42d887cf28fb406f4dfad82a37461ea9e4fa5acad951546bd4e0cff31bfcee",
+      "complete": true,
+      "bytes": 7070,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba8grk_65b627bf16eb",
+      "runNumber": 2,
+      "taskId": "factcheck.extract",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba8grk_65b627bf16eb",
+      "runNumber": 2,
+      "taskId": "factcheck.verify",
+      "stream": "stdout",
+      "sha256": "c998255d08b2138ffe36ddae15be8f1b497d34eefa0b6fef5c721a312560570f",
+      "complete": true,
+      "bytes": 63320,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba8grk_65b627bf16eb",
+      "runNumber": 2,
+      "taskId": "factcheck.verify",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba8grk_65b627bf16eb",
+      "runNumber": 2,
+      "taskId": "factcheck.report",
+      "stream": "stdout",
+      "sha256": "d78d36c4f82a8af8f8d3ac1f39d6a40bf74f6bf8f58e5b3db1580d0eae1ed787",
+      "complete": true,
+      "bytes": 23447,
+      "redacted": false
+    },
+    {
+      "caseId": "e2e",
+      "runId": "run_mvba8grk_65b627bf16eb",
+      "runNumber": 2,
+      "taskId": "factcheck.report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-draft",
+      "runId": "run_mvba9qsf_9d0b0a6fa502",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stdout",
+      "sha256": "73457cdb4633c5282237ca2c831d02c378a38f90d21a21dff058bcf17fb482ec",
+      "complete": true,
+      "bytes": 3092,
+      "redacted": false
+    },
+    {
+      "caseId": "empty-draft",
+      "runId": "run_mvba9qsf_9d0b0a6fa502",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "no-claims",
+      "runId": "run_mvba9v9n_aa6042f183eb",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stdout",
+      "sha256": "9753b441bb232a1ff285fcbfba3c195cc00f2cea2d6e7fbb02cff2cd019045c4",
+      "complete": true,
+      "bytes": 5142,
+      "redacted": false
+    },
+    {
+      "caseId": "no-claims",
+      "runId": "run_mvba9v9n_aa6042f183eb",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "no-claims",
+      "runId": "run_mvba9v9n_aa6042f183eb",
+      "runNumber": 1,
+      "taskId": "factcheck.verify",
+      "stream": "stdout",
+      "sha256": "d7b6fccaee26a42891ca350ddbea0b175eaade1a2d5f7d6566247d1d1a3cca41",
+      "complete": true,
+      "bytes": 5379,
+      "redacted": false
+    },
+    {
+      "caseId": "no-claims",
+      "runId": "run_mvba9v9n_aa6042f183eb",
+      "runNumber": 1,
+      "taskId": "factcheck.verify",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "no-claims",
+      "runId": "run_mvba9v9n_aa6042f183eb",
+      "runNumber": 1,
+      "taskId": "factcheck.report",
+      "stream": "stdout",
+      "sha256": "90994998cf183874e653160f16ce05e1826266bd220ad8488df73ac60779b157",
+      "complete": true,
+      "bytes": 9487,
+      "redacted": false
+    },
+    {
+      "caseId": "no-claims",
+      "runId": "run_mvba9v9n_aa6042f183eb",
+      "runNumber": 1,
+      "taskId": "factcheck.report",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    },
+    {
+      "caseId": "missing-draft",
+      "runId": "run_mvbaad6x_4f03121e4b8c",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stdout",
+      "sha256": "3138180811875d9deffdccfdd13ae5d57903d7bef306245bf1243b719e851bf4",
+      "complete": true,
+      "bytes": 4438,
+      "redacted": false
+    },
+    {
+      "caseId": "missing-draft",
+      "runId": "run_mvbaad6x_4f03121e4b8c",
+      "runNumber": 1,
+      "taskId": "factcheck.extract",
+      "stream": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "complete": true,
+      "bytes": 0,
+      "redacted": false
+    }
+  ],
+  "unavailable": [],
+  "scope": "22 complete SHA-verified streams from11 actual executed children;4 expected skipped tasks have no child streams."
+}

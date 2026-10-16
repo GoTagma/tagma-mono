@@ -1,0 +1,215 @@
+{
+  "case": "S2-L3",
+  "attempt": "s2-l3-verify7",
+  "sourceRevision": "0d76d91152a93fc596d592257d1163683c4e2b4a",
+  "round": 1,
+  "originalSubmissions": 1,
+  "hostActionClarifications": 1,
+  "model": "deepseek/deepseek-flash/off",
+  "freshWorkspace": true,
+  "editorRestarted": true,
+  "accepted": false,
+  "published": false,
+  "actualPipelineExecutionRecorded": false,
+  "operation": {
+    "operationId": "operation-05ebf794-c586-475a-b2f2-2a490eb40570",
+    "conversationId": "conversation-9930558a-75e3-4213-9973-7572759bea5a",
+    "rendererInstanceId": "renderer-184a2f8a-7892-4a60-a057-0051faae4351",
+    "generation": 1,
+    "version": 21,
+    "phase": "trial-running",
+    "waitReason": "user_retry",
+    "executionState": "retryable_failure",
+    "terminalOutcome": null,
+    "createdAt": 1792173025778,
+    "updatedAt": 1792173422114,
+    "hasResult": false,
+    "pendingInputKind": null,
+    "terminalReasonCode": null,
+    "terminalDiagnosticCodes": []
+  },
+  "failure": {
+    "projection": {
+      "stage": "verification",
+      "code": "trial_verification_paused",
+      "invocationId": null,
+      "outboxStatus": null,
+      "recordedAt": 1792173422114
+    },
+    "verificationFeedback": {
+      "details": "The trial plan targets an older YAML revision.  The trial plan targets an older YAML revision.  Targeted trial plan required: The trial plan targets an older YAML revision.",
+      "failedTaskIds": [],
+      "omittedFailedTaskCount": 0,
+      "schemaVersion": 1,
+      "stage": "trial_plan"
+    }
+  },
+  "nativeToolIdentityTimeline": [
+    {
+      "at": 1792173224939,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "begin",
+      "inputAttemptId": "trial-6622ca05d98ae843eec8fad10291e6c35cbcac8c",
+      "status": "completed",
+      "returnedAttemptId": "trial-6622ca05d98ae843eec8fad10291e6c35cbcac8c",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173343237,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-6622ca05d98ae843eec8fad10291e6c35cac8c",
+      "status": "error",
+      "error": "attempt_id was not issued by the host for this staged YAML revision. Do not change pipeline_path, reset, or attempt_id, and do not retry; end this planner turn so the Host can issue an attempt for the current revision."
+    },
+    {
+      "at": 1792173344463,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-6622ca05d98ae843eec8fad10291e6c35cac8c",
+      "status": "error",
+      "error": "attempt_id was not issued by the host for this staged YAML revision. Do not change pipeline_path, reset, or attempt_id, and do not retry; end this planner turn so the Host can issue an attempt for the current revision."
+    },
+    {
+      "at": 1792173351923,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "begin",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173356618,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173359431,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173363549,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "set-coverage",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173367240,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "set-findings",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173372896,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "set-evidence-review",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173374537,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "validate",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "error",
+      "error": "Case missing-draft omits a file input controlled by positive case positive-factcheck. Omission keeps the staged file; it does not construct absence. Explicitly fixture the negative input (content: null for missing, a string for present bytes) before testing a contradictory task outcome. Correct the plan, not the pipeline."
+    },
+    {
+      "at": 1792173377422,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173379311,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "validate",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "error",
+      "error": "Case missing-draft omits a file input controlled by positive case positive-factcheck. Omission keeps the staged file; it does not construct absence. Explicitly fixture the negative input (content: null for missing, a string for present bytes) before testing a contradictory task outcome. Correct the plan, not the pipeline."
+    },
+    {
+      "at": 1792173384291,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "error",
+      "error": "cases[1].generatedInputPaths requires file-equals or present:true file-source-text-occurrence sourcePath evidence for chat-40087bf26defa64886499427/work/claims.json."
+    },
+    {
+      "at": 1792173387378,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "error",
+      "error": "Case missing-draft must change exactly one prerequisite from its positive baseline: remove one declared environment input or deny one manual trigger. For file removal, omit baselineCaseId and use an independent case with fixtures: [{ path, content: null }]."
+    },
+    {
+      "at": 1792173391625,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "upsert-case",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    },
+    {
+      "at": 1792173393611,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "validate",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed"
+    },
+    {
+      "at": 1792173395639,
+      "sessionId": "ses_tagma_authoring_aa5c751787b3481ab14612296549f863",
+      "operation": "commit",
+      "inputAttemptId": "trial-aca1db7d25685a74be9f1add35ed98f7d3bc9b06",
+      "status": "completed",
+      "returnedYamlHash": "3d2af5c21464a6682d01e09533042846c2ff423c"
+    }
+  ],
+  "committedPlanHash": "3d2af5c21464a6682d01e09533042846c2ff423c",
+  "finalCounter": {
+    "at": "2026-10-16T17:58:08.982424+00:00",
+    "currentYamlHash": "ca5da404153ae421def44f8f8d18fdb9c65c6f24",
+    "hostIssuedYamlHash": "ca5da404153ae421def44f8f8d18fdb9c65c6f24",
+    "telemetryAvailable": false,
+    "telemetry": null
+  },
+  "blockingFindings": [
+    {
+      "severity": "blocking",
+      "repairScope": "pipeline-artifact",
+      "summary": "The deterministic claims gate invents a minimum claim count and fails a legitimate empty result.",
+      "evidence": "tools/validate_factcheck.py:93 in load_claims asserts _require(claims, 'claims list is empty; at least one claim is required'). A draft with no externally verifiable facts yields a valid {\"draft_path\": ..., \"claims\": []} (the claims.schema.json claims array has no minItems), but both io.validate_claims and io.validate_verification call load_claims and therefore fail on empty claims. This turns a legitimate zero-result into a hard failure and blocks the empty-content coverage dimension. Repair: drop the non-empty assertion in load_claims so an empty claim list flows to a report that states no verifiable claims were found; keep the id, uniqueness and identity checks."
+    }
+  ],
+  "fix": "Same-operation authoring removed the generated nonempty-claims assertion while preserving other id/identity checks and clarified empty-result report behavior. First planner slot had been spent after model copied an unissued truncated opaque ID; final rewritten source correctly invalidates the old plan. No new product defect confirmed.",
+  "limits": [
+    "Do not fuzzy-match opaque ids, refund planning slots or publish stale/blocked plans.",
+    "CSR48 critic response contract was not exercised live in this attempt because no actual Trial ran.",
+    "Next fresh original request uses existing supported Flash/low; no implementation hints or preseeded input, no source change."
+  ],
+  "priorRegressionGuards": [
+    "CSR25 exact Host attempt/counted commit and stale plan fences",
+    "CSR41 actual positive core and no fabricated empty substitute",
+    "Existing structured empty-result/source checks identified the generated helper defect; does not guarantee arbitrary model code never has a bad predicate.",
+    "CSR47 coordinate feedback present and no unobservable-artifact finding.",
+    "CSR48 strict advertised response contract still awaits fresh actual critic evaluation."
+  ]
+}

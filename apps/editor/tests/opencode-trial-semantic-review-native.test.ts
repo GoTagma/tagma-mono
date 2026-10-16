@@ -269,6 +269,7 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
           yamlText: yaml,
           targets: [{ taskId: 'flow.inspect', path: 'flow/report.md' }],
           referencePaths: [],
+          normalCoreWitness: { normalCaseId: 'normal', contentTaskIds: ['flow.inspect'] },
           runSucceeded: true,
           taskStatuses: { 'flow.inspect': 'success' },
           workDir: root,
@@ -302,6 +303,8 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         expect(body.model).toBe('deepseek-v4-pro');
         expect(body.thinking).toEqual({ type: 'disabled' });
         expect(body.reasoning_effort).toBe('none');
+        expect(JSON.stringify(body.messages)).toContain('normalCoreWitness');
+        expect(JSON.stringify(body.messages)).toContain('normal positive case');
       }
       expect(JSON.stringify(requests[1]!.messages)).not.toContain('Provisional observation ONE');
       expect(JSON.stringify(requests[1]!.messages)).toContain('Provisional observation TWO');

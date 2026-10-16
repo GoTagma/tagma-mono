@@ -1,0 +1,68 @@
+{
+  "case": "S2-L3",
+  "attempt": "s2-l3-verify8",
+  "sourceRevision": "0d76d91152a93fc596d592257d1163683c4e2b4a",
+  "operationId": "operation-97db61e2-3bc1-4549-a84d-bfbd305a4bfa",
+  "round": 1,
+  "originalSubmissions": 1,
+  "hostActionClarifications": 1,
+  "clarificationReply": "Create a reusable pipeline in the editor.",
+  "freshWorkspace": true,
+  "editorRestarted": true,
+  "model": "deepseek/deepseek-flash/low",
+  "terminal": "completed_published",
+  "accepted": true,
+  "trialKind": "passed-with-warnings",
+  "actualPipelineRuns": 5,
+  "cases": 4,
+  "taskStatusCounts": {
+    "success": 9,
+    "failed": 2,
+    "skipped": 4
+  },
+  "expectedFailuresOnly": true,
+  "totalTasks": 15,
+  "taskProjectionOmitted": 0,
+  "completeSHAChildStreams": 22,
+  "nativeWebSearchCallsPerNormalRun": [
+    3,
+    4
+  ],
+  "independentReviews": 2,
+  "gradedTargetsPerReview": [
+    3,
+    3
+  ],
+  "capturedArtifactsPerReview": [
+    4,
+    4
+  ],
+  "nativeRequestResponseBytesVerified": true,
+  "actualResponseEvidenceCounts": [
+    [
+      3,
+      3,
+      4
+    ],
+    [
+      1,
+      1,
+      1
+    ]
+  ],
+  "noEvidenceDiscarded": true,
+  "publishedSourceFiles": 3,
+  "allPublishedBytesMatch": true,
+  "content": "Both actual normal reports preserve the complete original document bytes after removing only inline status comments and two section separator newlines. Headings, paragraphs, blank lines, Zürich, quoted text, em dash and subjective final paragraph remain. Eiffel330m/1889 supported with official sources; unidentifiable Acme founding/location and25% revenue growth remain unknown, without invented public-company data.",
+  "emptyBehavior": "No-factual-claims input succeeds with both JSON claim arrays empty and readable report. Empty/missing source fails the owning extractor and skips its two dependents as explicitly expected.",
+  "architecture": "Three native OpenCode prompt tasks form extract->webverify->completeannotatedreport, file completion contracts, no Python/subprocess model wrapper. Built-in prompt tasks invoke headless CLI.",
+  "sameRoundRepairs": "Initial draft/target correction before the one valid Trial plan; construction/mapping validation errors corrected without counted commit rejection. No new product defect confirmed.",
+  "responseProtocolFixLiveProof": "Both native reviewer requests carry unchanged1600/4/512/65536 responseContract; original raw responses contain per-verdict evidence counts3/3/4 and1/1/1, with exact byte hashes and no truncation or additional reviewer retry.",
+  "citations": "All5 unique cited URLs independentlyHTTP200; each is present in that actual run websearch responses (3/3 and4/4 URLs). Wikipedia read capped512KiB. No webfetch calls recorded; search tools satisfy this level.",
+  "regressions": "CSR46/47/48 installed before this retest; current48 issues/274 exact executions+full13+exactmainCI38942604146 all required jobs PASS on unchanged product code. Existing exact-ID/stale-plan/empty-result/JSON/source/receipt fences retained.",
+  "limits": [
+    "Independent semantic review is a fallible model assessment, not deterministic external truth.",
+    "Actual output export is from isolated Trial, not a manual real-workspace Run or promotion of runtime artifacts.",
+    "Historical missing original archives remain RED; current product qualification and live acceptance are separate evidence."
+  ]
+}

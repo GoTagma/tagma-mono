@@ -2387,3 +2387,9 @@
   unrelated required/string input constraints to hide generated-data errors. The real SDK
   scalar-contract regression must also prove failed completion blocks downstream execution,
   and runs in the Windows/macOS/Linux managed-runtime unit CI step.
+
+- Independent normal-core content review must receive the validated plan's normal case ID and
+  content-task IDs. A valid empty/unknown collection can satisfy an empty-result contract while
+  leaving a normal positive operation unexercised; treat that evidence gap as uncertain, never
+  invent data or tighten a valid empty contract to manufacture a witness. Keep deterministic
+  empty probes separate; the parser still limits semantic review to the normal core case.

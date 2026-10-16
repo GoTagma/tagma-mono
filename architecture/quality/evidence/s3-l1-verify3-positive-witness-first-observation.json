@@ -1,0 +1,97 @@
+{
+  "case": "S3-L1",
+  "attempt": "s3-l1-verify3",
+  "accepted": false,
+  "status": "blocked-substantive-evidence-gap",
+  "operationId": "operation-96e601c7-8c66-4a7e-8412-8fb07c3069ac",
+  "identity": {
+    "stageId": "5a5cb7ab-ee94-43fc-852c-7b7d96d7eed7",
+    "trialId": "trial-f4503af1f6c9cd8c6e3577cbbff2635ab57b90e9",
+    "yamlHash": "6340c518f2d4d1c89b9ee9c32f427d23db09e377",
+    "planHash": "0c0ee2d898e5d155fc86af6155f755e1b62ae9a6180177288343f82faf376dc9",
+    "intentDigest": "cdf6f56b6ae5bccc1e04195f3542565dafd5d80e75ae7b76aa59a10d1c94d65b",
+    "caseId": "trial-site-monitor-normal",
+    "runId": "run_mvbarfla_9dc221fe6b57",
+    "runNumber": 1
+  },
+  "terminalOutcome": "completed_published",
+  "actualTaskStatuses": {
+    "success": 20,
+    "failedExpected": 1,
+    "skipped": 4
+  },
+  "actualCompleteShaVerifiedStreams": 42,
+  "nativeWebsearchRuns": 0,
+  "normalArtifacts": [
+    {
+      "path": "artifacts/MONITOR_REPORT.md",
+      "role": "produced",
+      "sha256": "df3839c178d210f6ea9022b1452b008b61b268ffc4af6f4d840c708d97496152",
+      "bytes": 597
+    },
+    {
+      "path": "artifacts/cross_check_results.json",
+      "role": "produced",
+      "sha256": "cd5cb418e5abc7fd3080c737062bba266f1af7ec61b19076a24f26fdaddb416a",
+      "bytes": 20
+    },
+    {
+      "path": "artifacts/monitored_claims.json",
+      "role": "produced",
+      "sha256": "6a3801a542abf8cd917c226f560b82bca5adc200e86050a90950c331ea755fd8",
+      "bytes": 19
+    },
+    {
+      "path": "artifacts/scraped_sites.json",
+      "role": "produced",
+      "sha256": "48589eadb108d2e6ce8f4cbfa696308b84af6ea50037ef61c79c52b3e920b532",
+      "bytes": 3221
+    },
+    {
+      "path": "config/sites.json",
+      "role": "input",
+      "sha256": "35b3e0d8611c9ef5fa47671b29d72355aa84341400c62899bc7b7f0dd5ba91ca",
+      "bytes": 214
+    }
+  ],
+  "emptyClaims": true,
+  "emptyCrossChecks": true,
+  "reviewerRequestHasCoreWitnessContext": false,
+  "reviewRequestSha256": "430c94323534febc1c9d92778fc4ac3cdaae0f1dc9eb7729b24b3c8e28c20f9a",
+  "reviewResponseSha256": "f92a9459c014dcc06d30c3d8f3bc008c5ad937c7aa984656c54eb8b206b7a6e9",
+  "exactNativeRequestAndResponseVerified": true,
+  "reviewConclusions": [
+    {
+      "taskId": "monitor.extract_bold_claims",
+      "path": "artifacts/monitored_claims.json",
+      "verdict": "pass",
+      "reason": "Artifact is valid JSON with an empty claims array. The successfully scraped text (example.com boilerplate and the IANA example-domains page) contains no statistical claims, benchmarks, or product comparisons; RFC references and a revision date are not such claims. The task prompt expressly permits an empty claims array when no qualifying claims are found, so this is a valid requested result rather than a skipped extraction.",
+      "evidence": [
+        {
+          "path": "artifacts/monitored_claims.json",
+          "quote": "\"claims\": []"
+        }
+      ]
+    },
+    {
+      "taskId": "monitor.cross_check",
+      "path": "artifacts/cross_check_results.json",
+      "verdict": "pass",
+      "reason": "Artifact is valid JSON with an empty results array. Since monitored_claims.json contains zero claims, the requirement to include one result per claim is satisfied vacuously; there are no claims to search or to mark unverified, and no unchecked claim was recorded as false. Empty output is the correct consistent result given the empty claim set.",
+      "evidence": [
+        {
+          "path": "artifacts/cross_check_results.json",
+          "quote": "\"results\": []"
+        }
+      ]
+    }
+  ],
+  "sealedArtifactSetHash": "e93d9ee1484c08b05ef6a7ee8ca6c471791f07254b85b03a0dd6cc1bf439777f",
+  "publishedFileCount": 7,
+  "allPublishedBytesMatchSeal": true,
+  "otherObservations": [
+    "Unreachable-target case continued after actual HTTP403, but report summary incorrectly said1 succeeded plus1 failed for1 target; generated reporting mistake retained.",
+    "Only schedule gate authored; immediate manual and recurring-launcher semantics not established by virtualized Trial."
+  ],
+  "diagnosis": "Reviewer receives artifact contracts but not the Host-selected normal core witness or content-role mapping. Valid empty behavior is treated as sufficient positive normal evidence, leaving external cross-check unexercised. Qualify a general missing-context repair with structurally different actual-runtime tests before changing source. No test-specific paths or empty JSON heuristic."
+}

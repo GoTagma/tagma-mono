@@ -40,7 +40,11 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function fixture(mode: 'write' | 'staged-only' | 'first-only' | 'fail' = 'write', verdictRun = 0) {
+function fixture(
+  mode: 'write' | 'staged-only' | 'first-only' | 'fail' = 'write',
+  verdictRun = 0,
+  emptyQualificationCases = false,
+) {
   const root = mkdtempSync(join(tmpdir(), 'tagma-actual-semantic-trial-'));
   roots.push(root);
   const sourcePath = pipelineYamlPath(root, 'semantic');
@@ -102,6 +106,21 @@ function fixture(mode: 'write' | 'staged-only' | 'first-only' | 'fail' = 'write'
       .join(`${namespace}/input.md`),
   );
   raw.cases[0].runs = 2;
+  if (emptyQualificationCases) {
+    raw.cases[0].runs = 1;
+    raw.cases[0].fixtures[0].content = 'No observations supplied.';
+    const emptyCase = { ...structuredClone(raw.cases[0]), id: 'valid-empty' };
+    emptyCase.expectations = [
+      { type: 'task-status', taskId: 'flow.inspect', status: 'success' },
+      {
+        type: 'file-equals',
+        path: `${namespace}/report.md`,
+        text: 'Run 1: No observations supplied.',
+      },
+    ];
+    raw.cases.push(emptyCase);
+  }
+
   raw.yamlHash = createHash('sha1').update(readFileSync(entry.stagedPath)).digest('hex');
   writeFileSync(entry.stagedPath.replace(/\.ya?ml$/iu, '.trial-plan.json'), JSON.stringify(raw));
   writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
@@ -452,6 +471,71 @@ test('deterministic input identity blocks a passing critic until actual producer
     } finally {
       good.cleanup();
     }
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses', async () => {
+  const f = fixture('write', 0, true);
+  const requests: Array<{
+    identity: TrialSemanticReviewIdentity;
+    normalCoreWitness?: { normalCaseId: string; contentTaskIds: string[] } | null;
+    targets: Array<{ taskId: string; path: string }>;
+    artifacts: Array<{ path: string; content: string }>;
+  }> = [];
+  try {
+    const result = await f.run('semantic_empty_positive_qualification', {
+      ...f.runtime,
+      invoke: async ({ user }) => {
+        const bundle = JSON.parse(user) as (typeof requests)[number];
+        requests.push(bundle);
+        // Models can correctly allow empty behavior yet miss its distinct qualification role.
+        const normal = bundle.normalCoreWitness?.normalCaseId === bundle.identity.caseId;
+        return {
+          sessionId: 'ses_context_qualification_' + requests.length,
+          finishCode: 'stop',
+          failureCode: null,
+          text: JSON.stringify({
+            version: 1,
+            reviews: bundle.targets.map((target) => ({
+              ...target,
+              verdict: normal ? 'uncertain' : 'pass',
+              reason: normal
+                ? 'Valid empty behavior does not exercise the promised positive observation explanation.'
+                : 'No observations were supplied, so the requested empty behavior is correct.',
+              evidence: [
+                {
+                  path: target.path,
+                  quote: bundle.artifacts.find((a) => a.path === target.path)!.content,
+                },
+              ],
+            })),
+          }),
+        };
+      },
+    });
+    expect(result.ran).toBe(true);
+    expect(result.success).toBe(false);
+    expect(requests).toHaveLength(1);
+    for (const request of requests) {
+      expect(request.normalCoreWitness).toEqual({
+        normalCaseId: 'normal',
+        contentTaskIds: ['flow.inspect'],
+      });
+      expect(request.artifacts.some((a) => a.content.includes('No observations supplied.'))).toBe(
+        true,
+      );
+    }
+    expect(result.cases.map((c) => c.success)).toEqual([false, true]);
+    expect(result.cases.map((c) => c.semanticReviews?.[0]?.outcome)).toEqual([
+      'uncertain',
+      undefined,
+    ]);
+    expect(
+      result.cases[0]!.expectations.some((e) => !e.passed && e.repairScope === 'diagnostic-only'),
+    ).toBe(true);
+    expect(result.tasks.filter((t) => t.status === 'success')).toHaveLength(2);
   } finally {
     f.cleanup();
   }

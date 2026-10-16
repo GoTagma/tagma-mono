@@ -3561,6 +3561,7 @@ async function executeTargetedTrialCase(
     testCase: ChatPipelineTrialPlanCase;
     targetTaskIds?: string[];
     coreContentExpectationIndices: readonly number[];
+    normalCoreWitness: import('./chat-trial-semantic-review').TrialSemanticReviewInput['normalCoreWitness'];
     coreGeneratedInputPaths: readonly string[];
     semanticReview?: TrialSemanticExecutionContext;
     verifyRepeatedFileOutputs: boolean;
@@ -3766,6 +3767,7 @@ async function executeTargetedTrialCase(
           intentText: input.semanticReview?.intentText ?? '',
           yamlText: stagedYaml,
           targets: semanticTargets,
+          normalCoreWitness: input.normalCoreWitness,
           referencePaths: [
             ...input.testCase.fixtures
               .filter((item) => item.content !== null)
@@ -4721,6 +4723,15 @@ async function executeTrial(
         relativeYamlPath: entry.relativePath,
         testCase: { ...testCase, environment: [...caseEnvironment.values()] },
         targetTaskIds,
+        normalCoreWitness:
+          plan.evidenceReview?.coreWitness?.status === 'covered'
+            ? {
+                normalCaseId: plan.evidenceReview.coreWitness.normalCaseId,
+                contentTaskIds: plan.evidenceReview.coreWitness.taskRoles
+                  .filter((role) => role.role === 'content')
+                  .map((role) => role.taskId),
+              }
+            : null,
         coreGeneratedInputPaths:
           plan.evidenceReview?.coreWitness?.status === 'covered' &&
           plan.evidenceReview.coreWitness.normalCaseId === testCase.id

@@ -1,0 +1,25 @@
+{
+  "sourceRevision": "0d76d91152a93fc596d592257d1163683c4e2b4a",
+  "run": 38942604146,
+  "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38942604146",
+  "requiredJobs": [
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "full-check",
+      "conclusion": "success"
+    }
+  ],
+  "newGuards": "chat-trial-semantic-review.test.ts including two response-boundary regressions selected by managed runtime unit contracts on all three native OS; real native reviewer fixture also passes.",
+  "liveAcceptance": false
+}

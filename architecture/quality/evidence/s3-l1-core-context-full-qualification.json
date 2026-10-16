@@ -1,0 +1,24 @@
+{
+  "scope": "Local final-source full qualification; not live case acceptance or remote CI",
+  "command": "bun run verify:full",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "63892c9cde90d5b31cd93201986ae44b8483257f600df307c6b07c7c263433b3",
+  "summary": [
+    "PASS text 106ms ok",
+    "PASS deps 256ms ok",
+    "PASS focus 230ms ok",
+    "PASS imports 53ms ok",
+    "PASS cycles 37ms ok",
+    "PASS secrets 302ms ok",
+    "PASS format 21.4s ok",
+    "PASS types 46.0s ok",
+    "PASS lint 17.0s ok",
+    "PASS tests 212.5s ok",
+    "PASS scripts 2.9s ok",
+    "PASS build 19.5s ok",
+    "PASS publish 9.8s ok"
+  ],
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0
+}

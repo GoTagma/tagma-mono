@@ -1,0 +1,47 @@
+[
+  {
+    "url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 524288,
+    "boundedAt512KiB": true,
+    "sha256": "4d6edc6e3ed7216c12faef76044447bc48473025ed1397103e00fed1b63f3929",
+    "title": "Eiffel Tower - Wikipedia"
+  },
+  {
+    "url": "https://www.britannica.com/topic/Eiffel-Tower-Paris-France",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 118390,
+    "boundedAt512KiB": false,
+    "sha256": "c27c45812262772e5623af2edf6da601f9490b499d418520cb60cee8bcd5aa77",
+    "title": "Eiffel Tower | History, Height, & Facts | Britannica"
+  },
+  {
+    "url": "https://www.toureiffel.paris/en/news/history-and-culture/300-330-meters-story-towers-height",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 63466,
+    "boundedAt512KiB": false,
+    "sha256": "06d67ad31a10f588e294b28505e626bf81ff26e49f1bb721a844dccdefa038f8",
+    "title": "From 300 to 330 meters : the story of the Tower’s height - The Eiffel Tower"
+  },
+  {
+    "url": "https://www.toureiffel.paris/en/the-monument/history",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 76885,
+    "boundedAt512KiB": false,
+    "sha256": "b375a5edd232a63bce7b21c31af7129ce922c3f69bd6e664f82640c30547e31b",
+    "title": "Eiffel Tower history, architecture, design &amp; construction"
+  },
+  {
+    "url": "https://www.toureiffel.paris/fr/le-monument/chiffres-cle",
+    "scope": "independent read-only public citation check, not a business request/model call",
+    "status": 200,
+    "bytesRead": 56281,
+    "boundedAt512KiB": false,
+    "sha256": "941fa7b744e16fc82be855f1897804792ce7dae1a302fb2a8402a5c65bf4b9ae",
+    "title": "Hauteur, poids, construction - La Tour Eiffel OFFICIEL"
+  }
+]

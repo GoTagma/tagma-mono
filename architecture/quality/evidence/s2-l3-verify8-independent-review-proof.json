@@ -1,0 +1,277 @@
+[
+  {
+    "receipt": {
+      "version": 1,
+      "grading": "independent-model",
+      "outcome": "passed",
+      "identity": {
+        "stageId": "2807e48c-124f-4b9a-bf89-d89f2d13e7b5",
+        "trialId": "trial-43dac448bad525a2f8875442ff4cb7f455f2d768",
+        "yamlHash": "998d69d46b9fa4299f2d9d074977c8b80e87c31c",
+        "planHash": "1ad28f4773b0b69921727642ac56da9deefac01bbcf2169540615fcc24410190",
+        "intentDigest": "88f0cb604a6aef9ae5dad2c67765c4224c05170d236060be6d6df8e1f4fe8074",
+        "caseId": "e2e",
+        "runId": "run_mvba7d3t_75864e6630fe",
+        "runNumber": 1
+      },
+      "model": {
+        "providerID": "deepseek",
+        "modelID": "deepseek-flash",
+        "variant": "low"
+      },
+      "configurationDigest": "8d9858f005cb1df8b3dd4431371535e7e95789245400db9b30f69af06c60c4a6",
+      "requestSha256": "d9996419cea9dba7696f73ea959c9c8fef8ed995ff8deb81df896e1a2c7d89ce",
+      "responseSha256": "ebdb3c45f04d1732f69f4d8c4b409fc91c03331a70f2f3aef21f6d14f5b96f1e",
+      "reviewerSessionId": "ses_tagma_content_review_e2b7dc3bb254420db2c9698e4ad42645",
+      "artifacts": [
+        {
+          "path": "draft.md",
+          "role": "input",
+          "sha256": "c834d0e3124e5c3fbb821bcd4b884ee93238569b6693edb97a1d5311695fbe5c",
+          "bytes": 287
+        },
+        {
+          "path": "fact-check/claims.json",
+          "role": "produced",
+          "sha256": "6a9e355335ee5805aef2849006db98df4faf948e4e484331b925bff5c9db8b34",
+          "bytes": 1659
+        },
+        {
+          "path": "fact-check/report.md",
+          "role": "produced",
+          "sha256": "3d6574e40d44f648c50dc4e4ca8c21df0650bec533ec86c1a1d312a413f4e8a7",
+          "bytes": 4403
+        },
+        {
+          "path": "fact-check/verified.json",
+          "role": "produced",
+          "sha256": "3d68ee0be91df9f699ad9bcefcb642ac5a2ae1755cae8510dd31975d13e258eb",
+          "bytes": 2937
+        }
+      ],
+      "verdicts": [
+        {
+          "taskId": "factcheck.extract",
+          "path": "fact-check/claims.json",
+          "verdict": "pass",
+          "reason": "claims.json records draft_path \"draft.md\" (matching the supplied input), extracts externally verifiable claims C1-C5 with id, exact verbatim quote, normalized claim, 1-based location and kind, and includes numeric/date fields where stated (metric/value/unit/period for C3-C5). Quotes match the draft character-for-character, including the Zürich umlaut and em dash, and the subjective final sentence is correctly excluded. Valid JSON at the required path.",
+          "evidence": [
+            {
+              "path": "fact-check/claims.json",
+              "quote": "\"draft_path\": \"draft.md\",",
+              "quoteSha256": "06dcd75eb40d78e85eceb434211d5eb440e16f5034ca118a54ea82079703c7cf",
+              "offset": 4,
+              "length": 25
+            },
+            {
+              "path": "fact-check/claims.json",
+              "quote": "\"quote\": \"Acme Corporation was founded in 1995 in Zürich, Switzerland.\",",
+              "quoteSha256": "ac3d972caf53b73eeb628164937f38aabc58af49e08d2dcb782603d66b876757",
+              "offset": 74,
+              "length": 72
+            },
+            {
+              "path": "fact-check/claims.json",
+              "quote": "\"quote\": \"Our revenue grew 25% year over year — a \\\"record\\\" result.\",",
+              "quoteSha256": "3b6244d88adaff8047b01db03e5fd5c5ca04e9ebc0b8424ec732af6554a2cf4a",
+              "offset": 1291,
+              "length": 70
+            }
+          ]
+        },
+        {
+          "taskId": "factcheck.verify",
+          "path": "fact-check/verified.json",
+          "verdict": "pass",
+          "reason": "verified.json contains exactly one entry for every claims.json id in the same order (C1-C5), each with a single allowed verdict and an evidence array (empty for unknown). Supported verdicts for the Eiffel Tower height (C3) and completion year (C4) cite independent authoritative sources with verbatim source quotes and URLs (Wikipedia, Britannica, toureiffel.paris) that substantiate the same entity/metric/unit and year. Placeholder-entity claims (C1, C2, C5) are marked unknown with recorded search rationale rather than refuted, matching the required handling of inadequate evidence.",
+          "evidence": [
+            {
+              "path": "fact-check/verified.json",
+              "quote": "\"id\": \"C5\",\n      \"verdict\": \"unknown\",",
+              "quoteSha256": "030edf6b0f27d33c6228f623c8c8b0bfc0889e57fe4bb5a230067071f04f8b5c",
+              "offset": 2354,
+              "length": 39
+            },
+            {
+              "path": "fact-check/verified.json",
+              "quote": "\"quote\": \"Tip | 330 m (1,083 ft)\",\n          \"url\": \"https://en.wikipedia.org/wiki/Eiffel_Tower\",",
+              "quoteSha256": "ae412c92e1311db87f45d2faed3be992b21fce2afced210b4a7763c9398da711",
+              "offset": 1143,
+              "length": 97
+            },
+            {
+              "path": "fact-check/verified.json",
+              "quote": "\"quote\": \"Completed | 31 March 1889; 137 years ago\",",
+              "quoteSha256": "ca4ff3e99c9b4adb8a638b383e055a428f5b9d0c7b99fa4630d40c7ce7d4db85",
+              "offset": 1788,
+              "length": 52
+            }
+          ]
+        },
+        {
+          "taskId": "factcheck.report",
+          "path": "fact-check/report.md",
+          "verdict": "pass",
+          "reason": "report.md has the required structure: \"# Fact-check report\" heading, a summary paragraph and verdict-count table (supported 2 / refuted 0 / partial 0 / unknown 3), a \"## Annotated draft\" section reproducing the entire draft line-for-line with annotations appended at end of each claim-bearing line while preserving the original text (including Zürich, em dash and straight-quoted \"record\"), a \"## Claim details\" subsection per claim C1-C5 with quote, normalized claim, verdict and evidence/reason, and a deduplicated \"## Sources\" list. Verdicts and evidence are consistent with verified.json, with no upgraded or invented verdicts.",
+          "evidence": [
+            {
+              "path": "fact-check/report.md",
+              "quote": "## Annotated draft",
+              "quoteSha256": "7a59c7d14c4fbfdc4760f62fe85d064152767d4606c723c84c14b2feb81f0c03",
+              "offset": 622,
+              "length": 18
+            },
+            {
+              "path": "fact-check/report.md",
+              "quote": "Acme Corporation was founded in 1995 in Zürich, Switzerland. <!-- fact-check C1: unknown --><!-- fact-check C2: unknown -->",
+              "quoteSha256": "bf2bb5389a8faf70513382192e68c452ee99904aa1626d25a9cbbbdc7f642e72",
+              "offset": 669,
+              "length": 123
+            },
+            {
+              "path": "fact-check/report.md",
+              "quote": "Our revenue grew 25% year over year — a \"record\" result. <!-- fact-check C5: unknown -->",
+              "quoteSha256": "a054f43f06df9b1af76e0c93a14a69715753dd18e7c1d4b31bb39dfa8b8baaae",
+              "offset": 925,
+              "length": 88
+            },
+            {
+              "path": "fact-check/report.md",
+              "quote": "## Sources",
+              "quoteSha256": "ad2af7425caf26f8e901cad40a4f6e6a983dbbdd707725cdd2439ecaa1779f28",
+              "offset": 4212,
+              "length": 10
+            }
+          ]
+        }
+      ]
+    },
+    "requestBytesVerified": true,
+    "responseBytesVerified": true,
+    "responseContract": {
+      "maxReasonCodeUnits": 1600,
+      "maxEvidenceItems": 4,
+      "maxQuoteCodeUnits": 512,
+      "maxResponseBytes": 65536
+    },
+    "actualResponseEvidenceCounts": [
+      3,
+      3,
+      4
+    ],
+    "noEvidenceDiscarded": true
+  },
+  {
+    "receipt": {
+      "version": 1,
+      "grading": "independent-model",
+      "outcome": "passed",
+      "identity": {
+        "stageId": "2807e48c-124f-4b9a-bf89-d89f2d13e7b5",
+        "trialId": "trial-43dac448bad525a2f8875442ff4cb7f455f2d768",
+        "yamlHash": "998d69d46b9fa4299f2d9d074977c8b80e87c31c",
+        "planHash": "1ad28f4773b0b69921727642ac56da9deefac01bbcf2169540615fcc24410190",
+        "intentDigest": "88f0cb604a6aef9ae5dad2c67765c4224c05170d236060be6d6df8e1f4fe8074",
+        "caseId": "e2e",
+        "runId": "run_mvba8grk_65b627bf16eb",
+        "runNumber": 2
+      },
+      "model": {
+        "providerID": "deepseek",
+        "modelID": "deepseek-flash",
+        "variant": "low"
+      },
+      "configurationDigest": "8d9858f005cb1df8b3dd4431371535e7e95789245400db9b30f69af06c60c4a6",
+      "requestSha256": "cc7949e4bff0e6a15de3481897ce39583aca2d75cae565f54a3c695e79b4dcee",
+      "responseSha256": "b5ba7cfa9e92aa552b0cd06d167c1f89d7ec44f994d612a3a9ce2e0287b7c799",
+      "reviewerSessionId": "ses_tagma_content_review_f4a64b9d7360485ea9ead63aa6d2c7d3",
+      "artifacts": [
+        {
+          "path": "draft.md",
+          "role": "input",
+          "sha256": "c834d0e3124e5c3fbb821bcd4b884ee93238569b6693edb97a1d5311695fbe5c",
+          "bytes": 287
+        },
+        {
+          "path": "fact-check/claims.json",
+          "role": "produced",
+          "sha256": "946243f029e46d04bbdabaece315d5a3c88566a58925f413bce4dba5c60e295a",
+          "bytes": 1481
+        },
+        {
+          "path": "fact-check/report.md",
+          "role": "produced",
+          "sha256": "d0b75750e9cba7bc0b0ccba9ed3d9e020b9f32cdbefb39d41d776dd3fc7b42f4",
+          "bytes": 4111
+        },
+        {
+          "path": "fact-check/verified.json",
+          "role": "produced",
+          "sha256": "add514834c7d2287510d5acd8a222a7b5e1049f480e4ad5c1c7e4c012ca3b311",
+          "bytes": 2770
+        }
+      ],
+      "verdicts": [
+        {
+          "taskId": "factcheck.extract",
+          "path": "fact-check/claims.json",
+          "verdict": "pass",
+          "reason": "Claims.json records draft_path and 5 claims (C1–C5) with id, exact verbatim quote, normalized claim, 1-based line location, and kind. All quotes are literal substrings of draft.md (e.g. C3 'The Eiffel Tower is 330 metres tall', C5 'Our revenue grew 25% year over year'); the numeric C3/C5 carry metric/value/unit and C1/C4 carry period. The subjective line 9 ('We believe the future looks bright...') is correctly excluded, and the stage does not verify claims.",
+          "evidence": [
+            {
+              "path": "fact-check/claims.json",
+              "quote": "\"quote\": \"Acme Corporation was founded in 1995\"",
+              "quoteSha256": "347b6e9a7012a25d2f756ccd8407dba5351dee5418e8543991df4d9e31ee871b",
+              "offset": 74,
+              "length": 47
+            }
+          ]
+        },
+        {
+          "taskId": "factcheck.verify",
+          "path": "fact-check/verified.json",
+          "verdict": "pass",
+          "reason": "verified.json contains exactly one entry per claims.json id (C1–C5) in the same order, each with a verdict from the allowed set and an evidence array. C3 (330 m) and C4 (1889 completion) are supported with consistent source quotes/URLs; C1/C2/C5 concern an unidentifiable 'Acme Corporation' and are marked unknown with empty evidence and explanatory notes, matching the rule that unresolved/absent-independent-evidence claims become unknown rather than refuted. No verdict is upgraded or invented.",
+          "evidence": [
+            {
+              "path": "fact-check/verified.json",
+              "quote": "\"id\": \"C5\",\n      \"verdict\": \"unknown\",",
+              "quoteSha256": "030edf6b0f27d33c6228f623c8c8b0bfc0889e57fe4bb5a230067071f04f8b5c",
+              "offset": 2360,
+              "length": 39
+            }
+          ]
+        },
+        {
+          "taskId": "factcheck.report",
+          "path": "fact-check/report.md",
+          "verdict": "pass",
+          "reason": "report.md has the required '# Fact-check report' heading, one-paragraph summary, and a verdict-count table (2 supported / 0 refuted / 0 partial / 3 unknown). The '## Annotated draft' section reproduces the entire draft line for line, preserving the heading, blank lines, Unicode 'Zürich', em dash and quotes; annotations '<!-- fact-check <id>: <verdict> -->' are appended at end of the same claim lines (C1/C2 on line 3, C3/C4 on line 5, C5 on line 7) with the original text intact. '## Claim details' gives one subsection per C1–C5 with quote, normalized claim, verdict and evidence-or-unknown reason, and '## Sources' lists deduplicated URLs. Verdicts match verified.json with no upgrade or added claim.",
+          "evidence": [
+            {
+              "path": "fact-check/report.md",
+              "quote": "Our revenue grew 25% year over year — a \"record\" result. <!-- fact-check C5: unknown -->",
+              "quoteSha256": "a054f43f06df9b1af76e0c93a14a69715753dd18e7c1d4b31bb39dfa8b8baaae",
+              "offset": 925,
+              "length": 88
+            }
+          ]
+        }
+      ]
+    },
+    "requestBytesVerified": true,
+    "responseBytesVerified": true,
+    "responseContract": {
+      "maxReasonCodeUnits": 1600,
+      "maxEvidenceItems": 4,
+      "maxQuoteCodeUnits": 512,
+      "maxResponseBytes": 65536
+    },
+    "actualResponseEvidenceCounts": [
+      1,
+      1,
+      1
+    ],
+    "noEvidenceDiscarded": true
+  }
+]

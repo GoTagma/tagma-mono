@@ -1,0 +1,37 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:
+18:29:32.096 [pipeline] start "Actual dynamic report" run_id=run_mvbaxzcr_d409b13d2bed
+18:29:32.102 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:29:32.129 [task:flow.inspect] success (0.0s)
+18:29:32.129 [pipeline] completed "Actual dynamic report"
+18:29:32.129 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:29:32.130 [pipeline] Duration: 0.0s
+18:29:32.130 [pipeline] Log: /tmp/tagma-actual-semantic-trial-UD1UFn/.tagma/.chat-staging/03ec8d4b-9229-4f7f-9f71-ca90e095812e/.trial-cases/normal-gxA39K/workspace/.tagma/logs/run_mvbaxzcr_d409b13d2bed/pipeline.log
+18:29:32.266 [pipeline] start "Actual dynamic report" run_id=run_mvbaxzhl_240e6270b5b2
+18:29:32.267 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:29:32.293 [task:flow.inspect] success (0.0s)
+18:29:32.293 [pipeline] completed "Actual dynamic report"
+18:29:32.293 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:29:32.293 [pipeline] Duration: 0.0s
+18:29:32.293 [pipeline] Log: /tmp/tagma-actual-semantic-trial-UD1UFn/.tagma/.chat-staging/03ec8d4b-9229-4f7f-9f71-ca90e095812e/.trial-cases/valid-empty-GNBojf/workspace/.tagma/logs/run_mvbaxzhl_240e6270b5b2/pipeline.log
+503 |           })) }),
+504 |         };
+505 |       },
+506 |     });
+507 |     expect(result.ran).toBe(true);
+508 |     expect(result.success).toBe(false);
+                                 ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:508:28)
+(fail) normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses [596.04ms]
+
+ 0 pass
+ 9 filtered out
+ 1 fail
+ 3 expect() calls
+Ran 1 test across 1 file. [769.00ms]

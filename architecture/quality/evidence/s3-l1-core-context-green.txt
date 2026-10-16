@@ -1,0 +1,24 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:
+18:29:58.304 [pipeline] start "Actual dynamic report" run_id=run_mvbayjks_e4fc9e5d8d26
+18:29:58.310 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:29:58.345 [task:flow.inspect] success (0.0s)
+18:29:58.346 [pipeline] completed "Actual dynamic report"
+18:29:58.346 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:29:58.346 [pipeline] Duration: 0.0s
+18:29:58.346 [pipeline] Log: /tmp/tagma-actual-semantic-trial-OFWW9w/.tagma/.chat-staging/3326e117-773d-4a5a-9f40-db82fd50a28c/.trial-cases/normal-J3UXXI/workspace/.tagma/logs/run_mvbayjks_e4fc9e5d8d26/pipeline.log
+18:29:58.485 [pipeline] start "Actual dynamic report" run_id=run_mvbayjpw_436f707d046f
+18:29:58.486 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:29:58.505 [task:flow.inspect] success (0.0s)
+18:29:58.506 [pipeline] completed "Actual dynamic report"
+18:29:58.506 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:29:58.506 [pipeline] Duration: 0.0s
+18:29:58.506 [pipeline] Log: /tmp/tagma-actual-semantic-trial-OFWW9w/.tagma/.chat-staging/3326e117-773d-4a5a-9f40-db82fd50a28c/.trial-cases/valid-empty-g2dy51/workspace/.tagma/logs/run_mvbayjpw_436f707d046f/pipeline.log
+(pass) normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses [631.52ms]
+
+ 1 pass
+ 9 filtered out
+ 0 fail
+ 10 expect() calls
+Ran 1 test across 1 file. [828.00ms]

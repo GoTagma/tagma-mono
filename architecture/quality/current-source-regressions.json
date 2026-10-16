@@ -549,6 +549,36 @@
       "path": "architecture/quality/evidence/s2-l3-verify6-semantic-protocol-first-failure.json",
       "sha256": "bc3dfcf8ee924aaae8e886b64c5d64719e4ca045512592ecc6ad51b37c7a1b18",
       "role": "immutable-native-five-valid-quotes-hidden-four-item-limit"
+    },
+    {
+      "id": "s3-l1-core-context-first-red",
+      "path": "architecture/quality/evidence/s3-l1-core-context-first-red.txt",
+      "sha256": "14986019632bcd9efc165cd558728126a82c679783043bd0f4e9939d179750e6",
+      "role": "actual-runtime-missing-normal-context-red"
+    },
+    {
+      "id": "s3-l1-core-context-green",
+      "path": "architecture/quality/evidence/s3-l1-core-context-green.txt",
+      "sha256": "8d96b283d557b55414ad1a7f7220d8bb996ef86cf1565961d9cf9a64a62c39b5",
+      "role": "actual-runtime-normal-uncertain-valid-empty-pass"
+    },
+    {
+      "id": "s3-l1-core-context-related-green",
+      "path": "architecture/quality/evidence/s3-l1-core-context-related-green.txt",
+      "sha256": "df939c815d549952b6c902980ea09e0432db4d372d9e14584c025caf6c2a79db",
+      "role": "serial-related32-tests286-assertions"
+    },
+    {
+      "id": "s3-l1-core-context-native-green",
+      "path": "architecture/quality/evidence/s3-l1-core-context-native-green.txt",
+      "sha256": "fc79454557a3314be7291ddf4c0095836a0b71c875169832bd1db04a10e94966",
+      "role": "pinned-native1-test26-assertions"
+    },
+    {
+      "id": "s3-l1-core-context-live-observation",
+      "path": "architecture/quality/evidence/s3-l1-verify3-positive-witness-first-observation.json",
+      "sha256": "a3af2037075e67a17f1fd0155f2d991e5619ee95ebd37fd2fd5c86f475e3075a",
+      "role": "sealed-normal-empty-evidence-and-no-search"
     }
   ],
   "issues": [
@@ -7339,7 +7369,7 @@
           "summary": "Exact leading recognized read-only route refusal requests existing bounded Host clarification; never infer mutation or target. Explicit reply and fresh classifier required. Preserve original request, CAS, thread/inventory authority, Stop and no provider retry. Recover settled prior mains only from authenticated finite refusal thread plus exact canonical request and settled usage; no duplicate invocation per round."
         }
       ],
-      "status": "local-contract-guarded-awaiting-fresh-live-verification",
+      "status": "guarded-and-fresh-S2-L3-verify8-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -7504,7 +7534,7 @@
           "summary": "Real Plugin/Zod begin->bad literal prefix rejection->correct public assertion->one valid commit plus actual SDK producer/runtime file assertion across root cwd, pipeline cwd and Unicode/large YAML. Bound/omission and absent/stale context counterexamples. Added explicit six-test native OS matrix CI selection."
         }
       ],
-      "status": "local-feedback-contract-guarded-awaiting-fresh-S2-L3-retest",
+      "status": "guarded-and-fresh-S2-L3-verify8-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -7609,7 +7639,7 @@
           "summary": "One protocol-aware reviewer invocation consumes advertised limits; nine strict boundary/counterexample vectors preserve rejection, full response/artifact hashes and no truncation/coercion/retry. Existing managed-runtime unit selection runs new tests on all OS; pinned native transport still one call per review."
         }
       ],
-      "status": "local-contract-and-native-guarded-awaiting-fresh-S2-L3-retest",
+      "status": "guarded-and-fresh-S2-L3-verify8-passed",
       "regressions": [
         {
           "cwd": "apps/editor",
@@ -7629,6 +7659,75 @@
       "realTestSelectors": [],
       "contract": "Do not leave response bounds hidden from the tool-free reviewer. Keep literal quote membership, exact target coverage, response limits, one call/no retry, frozen model/inputs,90s deadline and fail-closed diagnostic-only unavailable outcomes. Never silently discard an optional fifth quote or normalize a response into passing.",
       "claimLimit": "The original live Trial remains failed/unpublished. Initial escaping suspicion was disproved before source changes; all original literal quote memberships and snapshot hashes verify. Local protocol/native checks are not live case acceptance or a model accuracy guarantee."
+    },
+    {
+      "id": "CSR-0049",
+      "lineage": [
+        "CSR-0025",
+        "CSR-0038",
+        "CSR-0041",
+        "CSR-0048"
+      ],
+      "title": "Normal semantic qualification must carry the positive core role instead of accepting only valid empty behavior",
+      "category": "product-reviewer-context-contract",
+      "mechanism": "validated-normal-core-content-task-context",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l1-core-context-live-observation",
+        "path": "architecture/quality/evidence/s3-l1-verify3-positive-witness-first-observation.json",
+        "sha256": "a3af2037075e67a17f1fd0155f2d991e5619ee95ebd37fd2fd5c86f475e3075a",
+        "sourceRevision": "0d76d91152a93fc596d592257d1163683c4e2b4a",
+        "round": "S3-L1-verify3-original-round-1",
+        "acceptancePolicy": "Published bytes remain preserved but case rejected for missing substantive core evidence; no retroactive regrade. Fresh original round required."
+      },
+      "history": [
+        {
+          "kind": "actual-runtime-missing-normal-context-red",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-first-red.txt",
+          "evidenceSha256": "14986019632bcd9efc165cd558728126a82c679783043bd0f4e9939d179750e6",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "actual-runtime-normal-uncertain-valid-empty-pass",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-green.txt",
+          "evidenceSha256": "8d96b283d557b55414ad1a7f7220d8bb996ef86cf1565961d9cf9a64a62c39b5",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "serial-related32-tests286-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-related-green.txt",
+          "evidenceSha256": "df939c815d549952b6c902980ea09e0432db4d372d9e14584c025caf6c2a79db",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "pinned-native1-test26-assertions",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-native-green.txt",
+          "evidenceSha256": "fc79454557a3314be7291ddf4c0095836a0b71c875169832bd1db04a10e94966",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Forward validated normal core case ID and content task IDs into the immutable bounded reviewer request, and explain positive qualification independently of valid empty behavior. Uncertain remains diagnostic-only; do not manufacture data, tighten empty contracts, add model calls or refund planning budgets."
+        },
+        {
+          "summary": "Real local Sandbox counterexample executes both commands. Context-aware reviewer rejects insufficient normal evidence while separate deterministic valid-empty case still passes. Real native fixture transports context with tools disabled and exact one call per review; OS CI selects the actual-runtime qualification test."
+        }
+      ],
+      "status": "locally-guarded-awaiting-fresh-S3-L1",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses",
+          "namePattern": "^normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "A normal core witness must exercise the promised positive content operations. Valid empty behavior can pass its own contract without proving an unexercised operation. Keep one independent fallible reviewer, actual execution/strict literal evidence/current hashes/sealed publication, fixed budgets and no case-specific dispatch.",
+      "claimLimit": "Transport and synthetic reviewer guards do not guarantee live model accuracy; prior sealed S3-L1 attempt remains not accepted."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",
