@@ -1,0 +1,42 @@
+{
+  "commit": "1279ffea8cb94680e2827ef6eb41c893b73ac701",
+  "runId": 38949029023,
+  "runStatus": "completed",
+  "jobs": [
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "status": "completed",
+      "conclusion": "failure",
+      "failedSteps": [
+        "Trial positive core qualification"
+      ]
+    },
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "failedSteps": []
+    },
+    {
+      "name": "full-check",
+      "status": "completed",
+      "conclusion": "success",
+      "failedSteps": []
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "status": "completed",
+      "conclusion": "failure",
+      "failedSteps": [
+        "Trial positive core qualification"
+      ]
+    },
+    {
+      "name": "public-check-fork",
+      "status": "completed",
+      "conclusion": "skipped",
+      "failedSteps": []
+    }
+  ],
+  "diagnosis": "Newly selected fixture fails strict key-path fence through macOS /var; Windows fails cache lexical containment for alternate temporary path spelling. Linux and full-check succeed. Fixture canonical root/key repair awaits next exact CI; production auth fences unchanged."
+}

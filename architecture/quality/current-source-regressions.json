@@ -579,6 +579,30 @@
       "path": "architecture/quality/evidence/s3-l1-verify3-positive-witness-first-observation.json",
       "sha256": "a3af2037075e67a17f1fd0155f2d991e5619ee95ebd37fd2fd5c86f475e3075a",
       "role": "sealed-normal-empty-evidence-and-no-search"
+    },
+    {
+      "id": "s3-l1-core-context-ci-key-symlink-green",
+      "path": "architecture/quality/evidence/s3-l1-core-context-ci-key-symlink-green.txt",
+      "sha256": "5383ce5b46f34f814f466122c9b479571e69445e298464c8807f218c3f613033",
+      "role": "ci-key-symlink-green"
+    },
+    {
+      "id": "s3-l1-core-context-ci-key-related20-green",
+      "path": "architecture/quality/evidence/s3-l1-core-context-ci-key-related20-green.txt",
+      "sha256": "cc3bc1e71906449048cd3d37e539a2e65b1644752ad20897268eeb7fed96e40a",
+      "role": "ci-key-related20-green"
+    },
+    {
+      "id": "s3-l1-core-context-ci-key-path-first-red",
+      "path": "architecture/quality/evidence/s3-l1-core-context-ci-key-path-first-red.txt",
+      "sha256": "ab4f03b26e46d4b4cb3bdb556e095b04658cf1b74c2e97ca599dae60916604f0",
+      "role": "canonical-key-fixture-local-red"
+    },
+    {
+      "id": "s3-l1-core-context-first-main-ci",
+      "path": "architecture/quality/evidence/s3-l1-core-context-first-main-ci.json",
+      "sha256": "796391227956c699f20cde877c3b54b8139bd6c55a06d9ed0ca32959e0fd4d1b",
+      "role": "first-native-matrix-fixture-portability-red"
     }
   ],
   "issues": [
@@ -7705,6 +7729,30 @@
           "evidencePath": "architecture/quality/evidence/s3-l1-core-context-native-green.txt",
           "evidenceSha256": "fc79454557a3314be7291ddf4c0095836a0b71c875169832bd1db04a10e94966",
           "liveAcceptance": false
+        },
+        {
+          "kind": "ci-key-symlink-green",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-ci-key-symlink-green.txt",
+          "evidenceSha256": "5383ce5b46f34f814f466122c9b479571e69445e298464c8807f218c3f613033",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "ci-key-related20-green",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-ci-key-related20-green.txt",
+          "evidenceSha256": "cc3bc1e71906449048cd3d37e539a2e65b1644752ad20897268eeb7fed96e40a",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "canonical-key-fixture-local-red",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-ci-key-path-first-red.txt",
+          "evidenceSha256": "ab4f03b26e46d4b4cb3bdb556e095b04658cf1b74c2e97ca599dae60916604f0",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "first-native-matrix-fixture-portability-red",
+          "evidencePath": "architecture/quality/evidence/s3-l1-core-context-first-main-ci.json",
+          "evidenceSha256": "796391227956c699f20cde877c3b54b8139bd6c55a06d9ed0ca32959e0fd4d1b",
+          "liveAcceptance": false
         }
       ],
       "fixes": [
@@ -7713,6 +7761,9 @@
         },
         {
           "summary": "Real local Sandbox counterexample executes both commands. Context-aware reviewer rejects insufficient normal evidence while separate deterministic valid-empty case still passes. Real native fixture transports context with tools disabled and exact one call per review; OS CI selects the actual-runtime qualification test."
+        },
+        {
+          "summary": "Newly enabled OS test fixture isolates a canonical temporary persistent auth-key file, restores prior environment after the suite, and uses realpathSync.native workspace paths consistently with staging. Production symlink/containment fences remain unchanged; final local20tests113assertions and test types pass. Await exact Windows/macOS CI."
         }
       ],
       "status": "locally-guarded-awaiting-fresh-S3-L1",

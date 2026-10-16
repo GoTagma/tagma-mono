@@ -1,0 +1,212 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/server-record-auth.test.ts:
+(pass) server-authenticated control records > keeps signatures valid across key reloads and rejects a different persistent key [3.28ms]
+(pass) server-authenticated control records > publishes one complete key under concurrent creators and leaves no partial public file [32.09ms]
+(pass) server-authenticated control records > stores the production key beside the editor layer, not inside its release directory [0.68ms]
+(pass) server-authenticated control records > uses the stable Chat control root when no stage-specific key is configured [0.78ms]
+(pass) server-authenticated control records > round-trips a signed record while preserving the existing top-level payload [0.81ms]
+(pass) server-authenticated control records > rejects a payload bit flip and an unsigned forged success [1.26ms]
+(pass) server-authenticated control records > binds authentication to record kind, stage id, and canonical path [0.74ms]
+(pass) server-authenticated control records > rejects a symbolic-link control directory before writing outside the stage [0.54ms]
+(pass) authenticated chat YAML stage records > rejects tampered stage metadata [10.55ms]
+(pass) authenticated chat YAML stage records > rejects a tampered finalized result instead of trusting forged idempotency [21.93ms]
+
+apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:
+18:47:46.617 [pipeline] start "Actual dynamic report" run_id=run_mvbblfw5_000644d42280
+18:47:46.623 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:46.646 [task:flow.inspect] success (0.0s)
+18:47:46.647 [pipeline] completed "Actual dynamic report"
+18:47:46.647 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:46.647 [pipeline] Duration: 0.0s
+18:47:46.647 [pipeline] Log: /tmp/tagma-actual-semantic-trial-LriZZR/.tagma/.chat-staging/24b05262-fc85-49e5-8982-e4c781061032/.trial-cases/normal-cXxEgM/workspace/.tagma/logs/run_mvbblfw5_000644d42280/pipeline.log
+18:47:46.653 [pipeline] start "Actual dynamic report" run_id=run_mvbblfx9_f96a1f5eea74
+18:47:46.654 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:46.677 [task:flow.inspect] success (0.0s)
+18:47:46.678 [pipeline] completed "Actual dynamic report"
+18:47:46.678 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:46.678 [pipeline] Duration: 0.0s
+18:47:46.678 [pipeline] Log: /tmp/tagma-actual-semantic-trial-LriZZR/.tagma/.chat-staging/24b05262-fc85-49e5-8982-e4c781061032/.trial-cases/normal-cXxEgM/workspace/.tagma/logs/run_mvbblfx9_f96a1f5eea74/pipeline.log
+(pass) actual Sandbox semantic review runs after task execution for every repeat [425.88ms]
+18:47:47.016 [pipeline] start "Actual dynamic report" run_id=run_mvbblg7c_36591597c488
+18:47:47.016 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:47.036 [task:flow.inspect] success (0.0s)
+18:47:47.036 [pipeline] completed "Actual dynamic report"
+18:47:47.036 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:47.036 [pipeline] Duration: 0.0s
+18:47:47.036 [pipeline] Log: /tmp/tagma-actual-semantic-trial-7ie9Pf/.tagma/.chat-staging/03b39ab2-4ffa-421f-acf2-b96e77871b04/.trial-cases/normal-RHzol7/workspace/.tagma/logs/run_mvbblg7c_36591597c488/pipeline.log
+18:47:47.040 [pipeline] start "Actual dynamic report" run_id=run_mvbblg80_c07bf760489a
+18:47:47.041 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:47.059 [task:flow.inspect] success (0.0s)
+18:47:47.060 [pipeline] completed "Actual dynamic report"
+18:47:47.060 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:47.060 [pipeline] Duration: 0.0s
+18:47:47.060 [pipeline] Log: /tmp/tagma-actual-semantic-trial-7ie9Pf/.tagma/.chat-staging/03b39ab2-4ffa-421f-acf2-b96e77871b04/.trial-cases/normal-RHzol7/workspace/.tagma/logs/run_mvbblg80_c07bf760489a/pipeline.log
+(pass) a failed earlier semantic repeat cannot be hidden and retains complete private repair evidence [382.17ms]
+18:47:47.397 [pipeline] start "Actual dynamic report" run_id=run_mvbblghw_e698361a725a
+18:47:47.397 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"no production\")"]
+18:47:47.422 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+18:47:47.423 [pipeline] failed "Actual dynamic report"
+18:47:47.423 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:47.423 [pipeline] Duration: 0.0s
+18:47:47.423 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BY5RG1/.tagma/.chat-staging/37c7416e-b6c1-4745-9efa-93fa12c8d99c/.trial-cases/normal-u3bSVK/workspace/.tagma/logs/run_mvbblghw_e698361a725a/pipeline.log
+18:47:47.424 [pipeline] start "Actual dynamic report" run_id=run_mvbblgio_33c9240ed785
+18:47:47.425 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"no production\")"]
+18:47:47.450 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+18:47:47.450 [pipeline] failed "Actual dynamic report"
+18:47:47.450 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:47.450 [pipeline] Duration: 0.0s
+18:47:47.450 [pipeline] Log: /tmp/tagma-actual-semantic-trial-BY5RG1/.tagma/.chat-staging/37c7416e-b6c1-4745-9efa-93fa12c8d99c/.trial-cases/normal-u3bSVK/workspace/.tagma/logs/run_mvbblgio_33c9240ed785/pipeline.log
+18:47:47.789 [pipeline] start "Actual dynamic report" run_id=run_mvbblgss_82ae5d32e607
+18:47:47.789 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));if(n===1)fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:47.809 [task:flow.inspect] success (0.0s)
+18:47:47.809 [pipeline] completed "Actual dynamic report"
+18:47:47.809 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:47.809 [pipeline] Duration: 0.0s
+18:47:47.809 [pipeline] Log: /tmp/tagma-actual-semantic-trial-01HR3n/.tagma/.chat-staging/0a2cbf26-ccba-4bcc-809e-49bd095b629f/.trial-cases/normal-m6dCEf/workspace/.tagma/logs/run_mvbblgss_82ae5d32e607/pipeline.log
+18:47:47.812 [pipeline] start "Actual dynamic report" run_id=run_mvbblgtf_d90915647c54
+18:47:47.812 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));if(n===1)fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:47.828 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+18:47:47.829 [pipeline] failed "Actual dynamic report"
+18:47:47.829 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:47.829 [pipeline] Duration: 0.0s
+18:47:47.829 [pipeline] Log: /tmp/tagma-actual-semantic-trial-01HR3n/.tagma/.chat-staging/0a2cbf26-ccba-4bcc-809e-49bd095b629f/.trial-cases/normal-m6dCEf/workspace/.tagma/logs/run_mvbblgtf_d90915647c54/pipeline.log
+18:47:48.157 [pipeline] start "Actual dynamic report" run_id=run_mvbblh31_def7f08edfca
+18:47:48.158 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.exit(7)"]
+18:47:48.172 [task:flow.inspect] ERROR: failed exit=7 duration=0.0s
+18:47:48.172 [pipeline] failed "Actual dynamic report"
+18:47:48.172 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:48.172 [pipeline] Duration: 0.0s
+18:47:48.172 [pipeline] Log: /tmp/tagma-actual-semantic-trial-Y02iTt/.tagma/.chat-staging/d15ab127-5bc0-422d-8861-b07d53e906d6/.trial-cases/normal-vOxq7C/workspace/.tagma/logs/run_mvbblh31_def7f08edfca/pipeline.log
+18:47:48.173 [pipeline] start "Actual dynamic report" run_id=run_mvbblh3h_ac58fb807a12
+18:47:48.174 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.exit(7)"]
+18:47:48.187 [task:flow.inspect] ERROR: failed exit=7 duration=0.0s
+18:47:48.188 [pipeline] failed "Actual dynamic report"
+18:47:48.188 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:48.188 [pipeline] Duration: 0.0s
+18:47:48.188 [pipeline] Log: /tmp/tagma-actual-semantic-trial-Y02iTt/.tagma/.chat-staging/d15ab127-5bc0-422d-8861-b07d53e906d6/.trial-cases/normal-vOxq7C/workspace/.tagma/logs/run_mvbblh3h_ac58fb807a12/pipeline.log
+(pass) semantic outputs must be freshly produced rather than staged or inherited from a previous repeat [1124.84ms]
+(pass) semantic invocation is unavailable to legacy callers and missing Host model contexts [12.16ms]
+18:47:48.544 [pipeline] start "Actual dynamic report" run_id=run_mvbblhds_533085925889
+18:47:48.545 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:48.563 [task:flow.inspect] success (0.0s)
+18:47:48.563 [pipeline] completed "Actual dynamic report"
+18:47:48.563 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:48.563 [pipeline] Duration: 0.0s
+18:47:48.563 [pipeline] Log: /tmp/tagma-actual-semantic-trial-DqzG25/.tagma/.chat-staging/ffcfd427-7292-45f3-b790-b964fe2104ed/.trial-cases/normal-JxE1YM/workspace/.tagma/logs/run_mvbblhds_533085925889/pipeline.log
+18:47:48.565 [pipeline] start "Actual dynamic report" run_id=run_mvbblhec_7a042af30866
+18:47:48.565 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:48.585 [task:flow.inspect] success (0.0s)
+18:47:48.585 [pipeline] completed "Actual dynamic report"
+18:47:48.585 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:48.585 [pipeline] Duration: 0.0s
+18:47:48.585 [pipeline] Log: /tmp/tagma-actual-semantic-trial-DqzG25/.tagma/.chat-staging/ffcfd427-7292-45f3-b790-b964fe2104ed/.trial-cases/normal-JxE1YM/workspace/.tagma/logs/run_mvbblhec_7a042af30866/pipeline.log
+18:47:48.842 [pipeline] start "Actual dynamic report" run_id=run_mvbblhm2_101b80335321
+18:47:48.843 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:48.859 [task:flow.inspect] success (0.0s)
+18:47:48.859 [pipeline] completed "Actual dynamic report"
+18:47:48.859 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:48.859 [pipeline] Duration: 0.0s
+18:47:48.859 [pipeline] Log: /tmp/tagma-actual-semantic-trial-DqzG25/.tagma/.chat-staging/ffcfd427-7292-45f3-b790-b964fe2104ed/.trial-cases/normal-xiwQcE/workspace/.tagma/logs/run_mvbblhm2_101b80335321/pipeline.log
+18:47:48.863 [pipeline] start "Actual dynamic report" run_id=run_mvbblhmm_3369f8df1f5d
+18:47:48.863 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:48.880 [task:flow.inspect] success (0.0s)
+18:47:48.881 [pipeline] completed "Actual dynamic report"
+18:47:48.881 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:48.881 [pipeline] Duration: 0.0s
+18:47:48.881 [pipeline] Log: /tmp/tagma-actual-semantic-trial-DqzG25/.tagma/.chat-staging/ffcfd427-7292-45f3-b790-b964fe2104ed/.trial-cases/normal-xiwQcE/workspace/.tagma/logs/run_mvbblhmm_3369f8df1f5d/pipeline.log
+18:47:49.132 [pipeline] start "Actual dynamic report" run_id=run_mvbblhu3_4c183d7d5fb5
+18:47:49.132 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:49.151 [task:flow.inspect] success (0.0s)
+18:47:49.151 [pipeline] completed "Actual dynamic report"
+18:47:49.151 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:49.151 [pipeline] Duration: 0.0s
+18:47:49.151 [pipeline] Log: /tmp/tagma-actual-semantic-trial-DqzG25/.tagma/.chat-staging/ffcfd427-7292-45f3-b790-b964fe2104ed/.trial-cases/normal-xxez8I/workspace/.tagma/logs/run_mvbblhu3_4c183d7d5fb5/pipeline.log
+18:47:49.153 [pipeline] start "Actual dynamic report" run_id=run_mvbblhup_3ba091afce12
+18:47:49.153 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:49.171 [task:flow.inspect] success (0.0s)
+18:47:49.171 [pipeline] completed "Actual dynamic report"
+18:47:49.171 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:49.171 [pipeline] Duration: 0.0s
+18:47:49.171 [pipeline] Log: /tmp/tagma-actual-semantic-trial-DqzG25/.tagma/.chat-staging/ffcfd427-7292-45f3-b790-b964fe2104ed/.trial-cases/normal-xxez8I/workspace/.tagma/logs/run_mvbblhup_3ba091afce12/pipeline.log
+(pass) semantic same-attempt replay is exact but new trials and model configs require fresh execution [969.24ms]
+18:47:49.506 [pipeline] start "Actual dynamic report" run_id=run_mvbbli4h_ba94b88d84d5
+18:47:49.507 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:49.525 [task:flow.inspect] success (0.0s)
+18:47:49.526 [pipeline] completed "Actual dynamic report"
+18:47:49.526 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:49.526 [pipeline] Duration: 0.0s
+18:47:49.526 [pipeline] Log: /tmp/tagma-actual-semantic-trial-iIjgTc/.tagma/.chat-staging/3e973af5-4154-4978-9ef8-d870a8378b5b/.trial-cases/normal-vgECKZ/workspace/.tagma/logs/run_mvbbli4h_ba94b88d84d5/pipeline.log
+18:47:49.528 [pipeline] start "Actual dynamic report" run_id=run_mvbbli53_113cb0ae1092
+18:47:49.531 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:49.550 [task:flow.inspect] success (0.0s)
+18:47:49.550 [pipeline] completed "Actual dynamic report"
+18:47:49.550 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:49.550 [pipeline] Duration: 0.0s
+18:47:49.550 [pipeline] Log: /tmp/tagma-actual-semantic-trial-iIjgTc/.tagma/.chat-staging/3e973af5-4154-4978-9ef8-d870a8378b5b/.trial-cases/normal-vgECKZ/workspace/.tagma/logs/run_mvbbli53_113cb0ae1092/pipeline.log
+(pass) semantic receipt validation rejects missing shifted or tampered current-run proofs [382.10ms]
+18:47:49.886 [pipeline] start "Actual dynamic report" run_id=run_mvbblif1_567f19919a8e
+18:47:49.886 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:49.906 [task:flow.inspect] success (0.0s)
+18:47:49.907 [pipeline] completed "Actual dynamic report"
+18:47:49.907 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:49.907 [pipeline] Duration: 0.0s
+18:47:49.907 [pipeline] Log: /tmp/tagma-actual-semantic-trial-lsG0Wn/.tagma/.chat-staging/018527bd-6da6-4c77-b7db-86035c973541/.trial-cases/normal-q2dtK4/workspace/.tagma/logs/run_mvbblif1_567f19919a8e/pipeline.log
+18:47:49.908 [pipeline] start "Actual dynamic report" run_id=run_mvbblifo_d3e797ca85e1
+18:47:49.908 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:49.926 [task:flow.inspect] success (0.0s)
+18:47:49.926 [pipeline] completed "Actual dynamic report"
+18:47:49.926 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:49.926 [pipeline] Duration: 0.0s
+18:47:49.926 [pipeline] Log: /tmp/tagma-actual-semantic-trial-lsG0Wn/.tagma/.chat-staging/018527bd-6da6-4c77-b7db-86035c973541/.trial-cases/normal-q2dtK4/workspace/.tagma/logs/run_mvbblifo_d3e797ca85e1/pipeline.log
+(pass) finalize requires the complete semantic receipts even in an otherwise correctly signed cache [393.28ms]
+18:47:50.289 [pipeline] start "Actual dynamic report" run_id=run_mvbbliq8_f9d680be7b57
+18:47:50.289 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:50.314 [task:flow.inspect] success (0.0s)
+18:47:50.314 [pipeline] completed "Actual dynamic report"
+18:47:50.314 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:50.314 [pipeline] Duration: 0.0s
+18:47:50.314 [pipeline] Log: /tmp/tagma-actual-semantic-trial-1dyFQM/.tagma/.chat-staging/63a3015d-8440-4824-ba56-579bd920eb83/.trial-cases/normal-ThXADw/workspace/.tagma/logs/run_mvbbliq8_f9d680be7b57/pipeline.log
+18:47:50.319 [pipeline] start "Actual dynamic report" run_id=run_mvbblir1_f962e8b443c7
+18:47:50.320 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:50.342 [task:flow.inspect] success (0.0s)
+18:47:50.342 [pipeline] completed "Actual dynamic report"
+18:47:50.342 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:50.342 [pipeline] Duration: 0.0s
+18:47:50.342 [pipeline] Log: /tmp/tagma-actual-semantic-trial-1dyFQM/.tagma/.chat-staging/63a3015d-8440-4824-ba56-579bd920eb83/.trial-cases/normal-ThXADw/workspace/.tagma/logs/run_mvbblir1_f962e8b443c7/pipeline.log
+(pass) finalize accepts current semantic execution receipts without changing the input-hash contract [408.24ms]
+18:47:50.701 [pipeline] start "Actual dynamic report" run_id=run_mvbblj1o_ebe19cd58f35
+18:47:50.701 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:50.725 [task:flow.inspect] success (0.0s)
+18:47:50.725 [pipeline] completed "Actual dynamic report"
+18:47:50.725 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:50.725 [pipeline] Duration: 0.0s
+18:47:50.725 [pipeline] Log: /tmp/tagma-actual-semantic-trial-XzwE1q/.tagma/.chat-staging/652d8526-9d4c-43cd-86cf-b6555fdca664/.trial-cases/normal-bjAxfT/workspace/.tagma/logs/run_mvbblj1o_ebe19cd58f35/pipeline.log
+18:47:51.086 [pipeline] start "Actual dynamic report" run_id=run_mvbbljce_7670582a9737
+18:47:51.087 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');fs.writeFileSync('report.md',fs.readFileSync('input.md'))"]
+18:47:51.107 [task:flow.inspect] success (0.0s)
+18:47:51.107 [pipeline] completed "Actual dynamic report"
+18:47:51.107 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:51.107 [pipeline] Duration: 0.0s
+18:47:51.107 [pipeline] Log: /tmp/tagma-actual-semantic-trial-mDBwuG/.tagma/.chat-staging/390ddde5-7ee6-428c-b47c-b8004ba8dc8e/.trial-cases/normal-N7vE7O/workspace/.tagma/logs/run_mvbbljce_7670582a9737/pipeline.log
+(pass) deterministic input identity blocks a passing critic until actual producer bytes are repaired [766.81ms]
+18:47:51.468 [pipeline] start "Actual dynamic report" run_id=run_mvbbljn0_f3ecd0587c3a
+18:47:51.469 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:51.490 [task:flow.inspect] success (0.0s)
+18:47:51.491 [pipeline] completed "Actual dynamic report"
+18:47:51.491 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:51.491 [pipeline] Duration: 0.0s
+18:47:51.491 [pipeline] Log: /tmp/tagma-actual-semantic-trial-2nbOyO/.tagma/.chat-staging/a381cfec-db0f-4b00-819f-0ce48d792626/.trial-cases/normal-DcIhmk/workspace/.tagma/logs/run_mvbbljn0_f3ecd0587c3a/pipeline.log
+18:47:51.625 [pipeline] start "Actual dynamic report" run_id=run_mvbbljrd_f6d453b90f21
+18:47:51.626 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+18:47:51.647 [task:flow.inspect] success (0.0s)
+18:47:51.647 [pipeline] completed "Actual dynamic report"
+18:47:51.647 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+18:47:51.647 [pipeline] Duration: 0.0s
+18:47:51.647 [pipeline] Log: /tmp/tagma-actual-semantic-trial-2nbOyO/.tagma/.chat-staging/a381cfec-db0f-4b00-819f-0ce48d792626/.trial-cases/valid-empty-oSGGPU/workspace/.tagma/logs/run_mvbbljrd_f6d453b90f21/pipeline.log
+(pass) normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses [528.17ms]
+
+ 20 pass
+ 0 fail
+ 113 expect() calls
+Ran 20 tests across 2 files. [5.64s]

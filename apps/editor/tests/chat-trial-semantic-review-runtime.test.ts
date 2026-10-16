@@ -1,6 +1,14 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
@@ -35,6 +43,19 @@ import {
   semanticReviewPlanInput,
 } from './helpers/trial-semantic-review-fixture';
 
+const savedStageRecordKeyFile = process.env.TAGMA_STAGE_RECORD_KEY_FILE;
+let isolatedKeyRoot: string;
+beforeAll(() => {
+  // macOS tmpdir may start with /var -> /private/var. Keep the production fence strict.
+  isolatedKeyRoot = realpathSync.native(mkdtempSync(join(tmpdir(), 'tagma-semantic-test-key-')));
+  process.env.TAGMA_STAGE_RECORD_KEY_FILE = join(isolatedKeyRoot, 'record.key');
+});
+afterAll(() => {
+  if (savedStageRecordKeyFile === undefined) delete process.env.TAGMA_STAGE_RECORD_KEY_FILE;
+  else process.env.TAGMA_STAGE_RECORD_KEY_FILE = savedStageRecordKeyFile;
+  rmSync(isolatedKeyRoot, { recursive: true, force: true });
+});
+
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -45,7 +66,7 @@ function fixture(
   verdictRun = 0,
   emptyQualificationCases = false,
 ) {
-  const root = mkdtempSync(join(tmpdir(), 'tagma-actual-semantic-trial-'));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'tagma-actual-semantic-trial-')));
   roots.push(root);
   const sourcePath = pipelineYamlPath(root, 'semantic');
   const sourceYaml = 'pipeline:\n  name: Base\n  tracks: []\n';

@@ -1,0 +1,27 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:
+93 |   for (let index = 0; index < parts.length; index += 1) {
+94 |     current = join(current, parts[index]!);
+95 |     if (!existsSync(current)) continue;
+96 |     const stat = lstatSync(current);
+97 |     if (stat.isSymbolicLink()) {
+98 |       throw new Error(`Refusing ${label} through symbolic link: ${current}`);
+                     ^
+error: Refusing server record key path through symbolic link: /tmp/tagma-qa-key-path-cx5nunog/alias
+      at assertNoSymlinksFromFilesystemRoot (/workspace/tagma-mono/apps/editor/server/server-record-auth.ts:98:17)
+      at canonicalPersistentKeyPath (/workspace/tagma-mono/apps/editor/server/server-record-auth.ts:144:3)
+      at loadOrCreatePersistentKey (/workspace/tagma-mono/apps/editor/server/server-record-auth.ts:170:25)
+      at getServerRecordAuthKey (/workspace/tagma-mono/apps/editor/server/server-record-auth.ts:243:15)
+      at sign (/workspace/tagma-mono/apps/editor/server/server-record-auth.ts:383:31)
+      at writeAuthenticatedServerRecordSync (/workspace/tagma-mono/apps/editor/server/server-record-auth.ts:411:18)
+      at writeMetadata (/workspace/tagma-mono/apps/editor/server/chat-yaml-staging.ts:2201:3)
+      at createChatYamlStage (/workspace/tagma-mono/apps/editor/server/chat-yaml-staging.ts:2839:5)
+      at fixture (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:66:17)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:480:13)
+(fail) normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses [9.87ms]
+
+ 0 pass
+ 9 filtered out
+ 1 fail
+Ran 1 test across 1 file. [179.00ms]
