@@ -1,0 +1,144 @@
+{
+  "case": "S2-L3",
+  "attempt": "s2-l3-verify5",
+  "sourceRevision": "c958aa88842192d39ef73d42ad779d554f25b3d3",
+  "round": 1,
+  "originalSubmissions": 1,
+  "hostActionClarifications": 1,
+  "model": "deepseek/deepseek-flash/off",
+  "freshWorkspace": true,
+  "editorRestarted": true,
+  "accepted": false,
+  "operation": {
+    "operationId": "operation-08dc3c2a-8ff3-4d90-ad3d-2345a569fa5b",
+    "conversationId": "conversation-dd4777e7-2c83-4d53-99f5-edf95cbe0267",
+    "rendererInstanceId": "renderer-7f383e02-04a7-4e39-90cb-d4d4869fe508",
+    "generation": 1,
+    "version": 21,
+    "phase": "trial-running",
+    "waitReason": "user_retry",
+    "executionState": "retryable_failure",
+    "terminalOutcome": null,
+    "createdAt": 1792169743231,
+    "updatedAt": 1792170134881,
+    "hasResult": false,
+    "pendingInputKind": null,
+    "terminalReasonCode": null,
+    "terminalDiagnosticCodes": []
+  },
+  "failure": {
+    "projection": {
+      "stage": "verification",
+      "code": "trial_verification_paused",
+      "invocationId": null,
+      "outboxStatus": null,
+      "recordedAt": 1792170134881
+    },
+    "verificationFeedback": {
+      "details": "The trial plan targets an older YAML revision.  The trial plan targets an older YAML revision.  Targeted trial plan required: The trial plan targets an older YAML revision.",
+      "failedTaskIds": [],
+      "omittedFailedTaskCount": 0,
+      "schemaVersion": 1,
+      "stage": "trial_plan"
+    }
+  },
+  "initialYamlHash": "5486c0302d6f48586a850dc05c98e1ab831ca6be",
+  "finalYamlHash": "b2b9628c8fdc5320cf2a687b91f6dd2f1848e47d",
+  "blockedFindings": [
+    {
+      "severity": "blocking",
+      "repairScope": "pipeline-artifact",
+      "summary": "Intermediate claims.json and verdicts.json are written under .tagma, so their content cannot be witnessed by the Trial harness.",
+      "evidence": "extract_claims and verify_claims declare output artifacts at .tagma/chat-51f778c556a0e4ca57469f7b/claims.json and verdicts.json with json_schema completion, and check_verdicts reads those exact paths. The harness rejects any expectation path or sourcePath under .tagma (observed: 'must stay inside the isolated case workspace and outside .tagma'), so a declared output artifact has no possible content witness and the core witness cannot be green. Repair: write the intermediates to a workspace-visible path such as .fact-check/claims.json and .fact-check/verdicts.json, updating the two prompts, the two json_schema completion paths, and the check_verdicts command; then the producers can be witnessed directly and the report remains fully observable."
+    }
+  ],
+  "coreWitness": {
+    "status": "blocked",
+    "taskIds": [
+      "fact_check.extract_claims",
+      "fact_check.verify_claims"
+    ],
+    "code": "intermediate-artifacts-under-tagma",
+    "rationale": "extract_claims and verify_claims declare output artifacts (.tagma/chat-51f778c556a0e4ca57469f7b/claims.json and verdicts.json via json_schema completion), but the Trial harness refuses any assertion path or sourcePath under .tagma (validated: 'must stay inside the isolated case workspace and outside .tagma'). Their substantive content therefore cannot be witnessed as required. A permitted pipeline repair can expose them: write these intermediate artifacts to a harness-observable workspace path (for example .fact-check/claims.json and .fact-check/verdicts.json) and update the two prompts, the json_schema completion paths, and the check_verdicts command accordingly. The human-facing deliverable fact-check-report.md is already observable and is covered by write_report content evidence; only the internal producers remain unwitnessable."
+  },
+  "committedBlockedPlanSha256": "a7d8f3c4c9f7c4810e832525f455f108ebe8f8e6ffaddf0b8c3a1462386e774f",
+  "firstAndFinalSourceHashes": [
+    [
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.layout.json",
+        "sha256": "c12d51cdcecc4851a2073bed49f927ea59f884bf220f12df665205f0553c6729"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.manifest.json",
+        "sha256": "81dfe0c42c0d33a16b69c989e402529ff4a01c10ea1d74327c1fc13d7f3e0cf7"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.requirements.md",
+        "sha256": "7ff438ead97762b4903cb5ff2216c6971a2b821579e09c44967cee0a2f116866"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.yaml",
+        "sha256": "b2843050b396ce22bf415c82c457c4e2c464621415c946e2e42bb3c78e0f9b7e"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/check_verdicts.py",
+        "sha256": "48aec8ab2ee9ed472104764f2d5d9e064159b8127726551b64bdac4e883f1504"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/claims.schema.json",
+        "sha256": "f554f04819f75fb9a533a76d59551fa634c54fdf14a0ee98b77029dfbf5f9269"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/verdicts.schema.json",
+        "sha256": "f96a45bba24570cd7a77293554aa42eb5dc1f5fec9195f6422794602bf55eff4"
+      }
+    ],
+    [
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.layout.json",
+        "sha256": "c12d51cdcecc4851a2073bed49f927ea59f884bf220f12df665205f0553c6729"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.manifest.json",
+        "sha256": "81dfe0c42c0d33a16b69c989e402529ff4a01c10ea1d74327c1fc13d7f3e0cf7"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.requirements.md",
+        "sha256": "7ff438ead97762b4903cb5ff2216c6971a2b821579e09c44967cee0a2f116866"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/chat-51f778c556a0e4ca57469f7b.yaml",
+        "sha256": "b2fbd92d9f91424e214c2353620d3f4dca26123ae76682872840952f8d85dfa6"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/check_verdicts.py",
+        "sha256": "48aec8ab2ee9ed472104764f2d5d9e064159b8127726551b64bdac4e883f1504"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/claims.schema.json",
+        "sha256": "f554f04819f75fb9a533a76d59551fa634c54fdf14a0ee98b77029dfbf5f9269"
+      },
+      {
+        "path": "chat-51f778c556a0e4ca57469f7b/verdicts.schema.json",
+        "sha256": "f96a45bba24570cd7a77293554aa42eb5dc1f5fec9195f6422794602bf55eff4"
+      }
+    ]
+  ],
+  "actualPipelineExecutionRecorded": false,
+  "published": false,
+  "findingScope": "Planner interprets literal .tagma syntax rejection as absence of an artifact observation capability. Runtime public namespace mapping exists; verify across effective cwd variants before any feedback repair. No runtime output visibility bug or failed child execution is claimed.",
+  "priorRecordsReviewed": [
+    "CSR13 stable errors/fingerprints and finite feedback",
+    "CSR14 stale/blocked plan fences and repair authority",
+    "CSR25 counted native commit and no budget refund",
+    "CSR26 generated-input ownership/mapping",
+    "CSR37/38 role hints and bounded graph feedback",
+    "CSR39 action grounding and CSR42 bound rejection coordinates",
+    "CSR41 semantic receipt/core/schema fences",
+    "CSR43 post-model scope handling",
+    "CSR44 actual workspace/cwd/input semantics",
+    "CSR45 strict JSON types",
+    "CSR46 route-refusal finite authenticated clarification"
+  ],
+  "proposal": "Supply bounded revision-bound public path-coordinate guidance at begin for current pipeline namespace and both workspace-root and pipeline cwd spellings; do not normalize accepted inputs, move outputs or alter old rejection strings/counts/guards. Real Plugin boundary plus actual downstream file resolver must show canonical paths work with unchanged YAML. Then fresh original-case retest."
+}

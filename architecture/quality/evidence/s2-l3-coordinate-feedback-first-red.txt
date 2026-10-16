@@ -1,0 +1,70 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+17:09:33.474 [pipeline] start "Coordinate interoperability" run_id=run_mvb834pr_ef9b89a715bb
+17:09:33.479 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/ledger-review/produce.cjs
+17:09:33.501 [task:main.run] success (0.0s)
+17:09:33.501 [pipeline] completed "Coordinate interoperability"
+17:09:33.501 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:09:33.501 [pipeline] Duration: 0.0s
+17:09:33.501 [pipeline] Log: /tmp/tagma-real-plan-boundary-7s1cdq/case-workspace/.tagma/logs/run_mvb834pr_ef9b89a715bb/pipeline.log
+17:09:33.515 [pipeline] start "Coordinate interoperability" run_id=run_mvb834qy_12810bb49ee6
+17:09:33.515 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' produce.cjs
+17:09:33.535 [task:main.run] success (0.0s)
+17:09:33.535 [pipeline] completed "Coordinate interoperability"
+17:09:33.535 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:09:33.535 [pipeline] Duration: 0.0s
+17:09:33.535 [pipeline] Log: /tmp/tagma-real-plan-boundary-rhEvms/case-workspace/.tagma/logs/run_mvb834qy_12810bb49ee6/pipeline.log
+17:09:33.545 [pipeline] start "Coordinate interoperability" run_id=run_mvb834rt_ae5711cc6224
+17:09:33.546 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/账册/produce.cjs
+17:09:33.567 [task:main.run] success (0.0s)
+17:09:33.567 [pipeline] completed "Coordinate interoperability"
+17:09:33.567 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:09:33.567 [pipeline] Duration: 0.0s
+17:09:33.567 [pipeline] Log: /tmp/tagma-real-plan-boundary-WWGQdO/case-workspace/.tagma/logs/run_mvb834rt_ae5711cc6224/pipeline.log
+(pass) existing namespace mapping observes real root and pipeline cwd outputs without relocating them [130.18ms]
+1074 |   const h = await fixture(yaml, context as unknown as Record<string, unknown>, relativeYamlPath);
+1075 |   try {
+1076 |     const call = h.issue('coordinate-boundary');
+1077 |     const raw = validPayload();
+1078 |     const begin = JSON.parse(await call('begin', { summary: raw.summary, goals: raw.goals }));
+1079 |     expect(begin.casePathCoordinates).toMatchObject({ version: 1, yamlHash: h.yamlHash, relativeYamlPath, attemptId: 'coordinate-boundary', namespace: vector.namespace });
+                                             ^
+error: expect(received).toMatchObject(expected)
+
+Matcher error: received value must be a non-null object
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:1079:39)
+(fail) begin coordinate inventory preserves real artifact observation: workspace cwd explicit internal path [16.08ms]
+1074 |   const h = await fixture(yaml, context as unknown as Record<string, unknown>, relativeYamlPath);
+1075 |   try {
+1076 |     const call = h.issue('coordinate-boundary');
+1077 |     const raw = validPayload();
+1078 |     const begin = JSON.parse(await call('begin', { summary: raw.summary, goals: raw.goals }));
+1079 |     expect(begin.casePathCoordinates).toMatchObject({ version: 1, yamlHash: h.yamlHash, relativeYamlPath, attemptId: 'coordinate-boundary', namespace: vector.namespace });
+                                             ^
+error: expect(received).toMatchObject(expected)
+
+Matcher error: received value must be a non-null object
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:1079:39)
+(fail) begin coordinate inventory preserves real artifact observation: pipeline cwd relative output [12.94ms]
+1074 |   const h = await fixture(yaml, context as unknown as Record<string, unknown>, relativeYamlPath);
+1075 |   try {
+1076 |     const call = h.issue('coordinate-boundary');
+1077 |     const raw = validPayload();
+1078 |     const begin = JSON.parse(await call('begin', { summary: raw.summary, goals: raw.goals }));
+1079 |     expect(begin.casePathCoordinates).toMatchObject({ version: 1, yamlHash: h.yamlHash, relativeYamlPath, attemptId: 'coordinate-boundary', namespace: vector.namespace });
+                                             ^
+error: expect(received).toMatchObject(expected)
+
+Matcher error: received value must be a non-null object
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:1079:39)
+(fail) begin coordinate inventory preserves real artifact observation: Unicode namespace and large YAML [8.67ms]
+
+ 1 pass
+ 19 filtered out
+ 3 fail
+ 21 expect() calls
+Ran 4 tests across 1 file. [355.00ms]

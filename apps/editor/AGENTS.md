@@ -2,6 +2,13 @@
 
 ## Shared Chat Product Actions
 
+- Trial public paths alias only the current pipeline namespace: physical workspace
+  `.tagma/<pipeline>/out.json` uses `<pipeline>/out.json`, for both workspace-root
+  tasks with explicit paths and pipeline-cwd tasks with relative paths. Native begin's
+  `casePathCoordinates` describes that existing alias (at most32 entries/4KiB), not
+  artifact content or execution proof. Preserve explicit omissions/unknown legacy
+  metadata, private-path rejection, original errors/counters and business output locations.
+
 - A leading recognized read-only `ROUTE_MISMATCH` is a refusal, not a completed answer or
   mutation grant. Ask the normal finite Host action clarification; explicit reply and fresh
   classification must precede authoring. Preserve original request, inventory/CAS and Stop.

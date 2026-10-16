@@ -22,6 +22,10 @@ import {
   readChatPipelineTrialPlanToolTelemetry,
 } from '../server/chat-pipeline-trial-plan';
 import { buildTagmaTrialPlanTool } from '../server/opencode-trial-plan-tool';
+import { createTagma, type PipelineConfig } from '@tagma/sdk';
+import { serializePipeline } from '@tagma/sdk/yaml';
+import { buildTrialPlanValidationContext } from '../server/chat-trial-intent-coverage';
+import { evaluateTrialExpectation } from '../server/chat-pipeline-trial-run';
 import {
   createTrialResilienceRules,
   TRIAL_EVIDENCE_KINDS,
@@ -1002,6 +1006,284 @@ test('generated-input guidance names both supported witnesses without weakening 
       'file-equals or present:true file-source-text-occurrence',
     );
     expect(h.telemetry().toolAttemptCount).toBe(0);
+    h.assertUnlocked();
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+function parseCoordinateToolResult(result: Awaited<ReturnType<ToolDefinition['execute']>>) {
+  return JSON.parse(typeof result === 'string' ? result : result.output);
+}
+
+const coordinateVectors = [
+  { label: 'workspace cwd explicit internal path', namespace: 'ledger-review', nested: false },
+  { label: 'pipeline cwd relative output', namespace: 'batch-check', nested: true },
+  { label: 'Unicode namespace and large YAML', namespace: '账册', nested: false, large: true },
+] as const;
+
+function coordinateFixtureConfig(vector: (typeof coordinateVectors)[number]): PipelineConfig {
+  const output = vector.nested ? 'out/proof.json' : `.tagma/${vector.namespace}/out/proof.json`;
+  const executable =
+    process.platform === 'win32'
+      ? `'${process.execPath.replace(/'/g, "''")}'`
+      : `'${process.execPath.replace(/'/g, "'\\''")}'`;
+  return {
+    name: 'Coordinate interoperability',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        ...(vector.nested ? { cwd: `.tagma/${vector.namespace}` } : {}),
+        tasks: [
+          {
+            id: 'run',
+            name: 'Produce proof',
+            command: `${process.platform === 'win32' ? '& ' : ''}${executable} ${vector.nested ? 'produce.cjs' : `.tagma/${vector.namespace}/produce.cjs`}`,
+            completion: { type: 'file_exists', path: output },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+async function runCoordinateProducer(
+  h: Awaited<ReturnType<typeof fixture>>,
+  vector: (typeof coordinateVectors)[number],
+  yaml: string,
+) {
+  const workDir = join(h.root, 'case-workspace');
+  const folder = join(workDir, '.tagma', vector.namespace);
+  mkdirSync(folder, { recursive: true });
+  const output = vector.nested ? 'out/proof.json' : `.tagma/${vector.namespace}/out/proof.json`;
+  writeFileSync(
+    join(folder, 'produce.cjs'),
+    `const fs=require('node:fs');const path=require('node:path');const output=${JSON.stringify(output)};fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,'{"proof":"direct"}\\n');`,
+  );
+  const result = await createTagma().runYaml(yaml, { cwd: workDir, skipPluginLoading: true });
+  expect(result.kind).toBe('pipeline');
+  if (result.kind !== 'pipeline') throw new Error('Expected real local producer');
+  expect(result.result.success).toBe(true);
+  return { workDir, result: result.result };
+}
+
+test('existing namespace mapping observes real root and pipeline cwd outputs without relocating them', async () => {
+  for (const vector of coordinateVectors) {
+    const config = coordinateFixtureConfig(vector);
+    const yaml = serializePipeline(config);
+    const relativeYamlPath = `${vector.namespace}/${vector.namespace}.yaml`;
+    const context = buildTrialPlanValidationContext(config, [], {
+      workDir: tmpdir(),
+      relativeYamlPath,
+    });
+    expect(context.tasks['main.run']?.artifactPaths).toEqual([
+      `${vector.namespace}/out/proof.json`,
+    ]);
+    const h = await fixture(yaml, context as unknown as Record<string, unknown>, relativeYamlPath);
+    try {
+      const actual = await runCoordinateProducer(h, vector, yaml);
+      expect(
+        evaluateTrialExpectation(
+          actual.workDir,
+          relativeYamlPath,
+          {
+            type: 'file-equals',
+            path: `${vector.namespace}/out/proof.json`,
+            text: '{"proof":"direct"}\n',
+          },
+          actual.result,
+        ).passed,
+      ).toBe(true);
+      expect(
+        existsSync(join(actual.workDir, '.tagma', vector.namespace, 'out', 'proof.json')),
+      ).toBe(true);
+      expect(readFileSync(h.yamlPath, 'utf8')).toBe(yaml);
+    } finally {
+      rmSync(h.root, { recursive: true, force: true });
+    }
+  }
+});
+
+for (const vector of coordinateVectors) {
+  test(
+    'begin coordinate inventory preserves real artifact observation: ' + vector.label,
+    async () => {
+      const config = coordinateFixtureConfig(vector);
+      const yaml =
+        serializePipeline(config) + ('large' in vector ? `\n# ${'x'.repeat(20000)}\n` : '');
+      const relativeYamlPath = `${vector.namespace}/${vector.namespace}.yaml`;
+      const context = buildTrialPlanValidationContext(config, [], {
+        workDir: tmpdir(),
+        relativeYamlPath,
+      });
+      const h = await fixture(
+        yaml,
+        context as unknown as Record<string, unknown>,
+        relativeYamlPath,
+      );
+      try {
+        const call = h.issue('coordinate-boundary');
+        const raw = validPayload();
+        const begin = parseCoordinateToolResult(
+          await call('begin', { summary: raw.summary, goals: raw.goals }),
+        );
+        expect(begin.casePathCoordinates).toMatchObject({
+          version: 1,
+          yamlHash: h.yamlHash,
+          relativeYamlPath,
+          attemptId: 'coordinate-boundary',
+          namespace: vector.namespace,
+        });
+        expect(begin.casePathCoordinates.entries).toEqual([
+          {
+            taskId: 'main.run',
+            casePath: `${vector.namespace}/out/proof.json`,
+            runtimeWorkspacePath: `.tagma/${vector.namespace}/out/proof.json`,
+          },
+        ]);
+        expect(begin.pipelineEvidence.kind).toBe('large' in vector ? 'too_large' : 'included');
+        expect(
+          Buffer.byteLength(JSON.stringify(begin.casePathCoordinates), 'utf8'),
+        ).toBeLessThanOrEqual(4096);
+        const contentExpectation = {
+          type: 'file-equals',
+          path: '.tagma/' + vector.namespace + '/out/proof.json',
+          text: '{"proof":"direct"}\n',
+        };
+        const testCase = {
+          ...raw.cases[0],
+          expectations: [
+            ...raw.cases[0]!.expectations,
+            contentExpectation,
+            { type: 'json-valid', path: vector.namespace + '/out/proof.json' },
+          ],
+        };
+        await expect(call('upsert-case', { case: testCase })).rejects.toThrow(
+          'must stay inside the isolated case workspace and outside .tagma.',
+        );
+        expect(h.telemetry().toolAttemptCount).toBe(0);
+        contentExpectation.path = begin.casePathCoordinates.entries[0].casePath;
+        await call('upsert-case', { case: testCase });
+        await call('set-coverage', { coverage: raw.coverage });
+        await call('validate');
+        await call('commit');
+        expect(h.telemetry()).toMatchObject({
+          toolAttemptCount: 1,
+          validationRejectionCount: 0,
+          successfulWriteCount: 1,
+        });
+        const actual = await runCoordinateProducer(h, vector, yaml);
+        expect(
+          evaluateTrialExpectation(
+            actual.workDir,
+            relativeYamlPath,
+            {
+              type: 'file-equals',
+              path: begin.casePathCoordinates.entries[0].casePath,
+              text: '{"proof":"direct"}\n',
+            },
+            actual.result,
+          ).passed,
+        ).toBe(true);
+        expect(readFileSync(h.yamlPath, 'utf8')).toBe(yaml);
+      } finally {
+        rmSync(h.root, { recursive: true, force: true });
+      }
+    },
+  );
+}
+
+test('begin coordinate bounds disclose omissions without exposing other namespace paths', async () => {
+  const config: PipelineConfig = {
+    name: 'Wide coordinate inventory',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [
+          ...Array.from({ length: 80 }, (_, index) => ({
+            id: `run${index}`,
+            name: `Output ${index}`,
+            command: 'echo not-executed',
+            completion: {
+              type: 'file_exists',
+              path: `.tagma/flow/out/${'资料'.repeat(32)}-${index}.json`,
+            },
+          })),
+          {
+            id: 'public',
+            name: 'Public output',
+            command: 'echo not-executed',
+            completion: { type: 'file_exists', path: 'exports/report.md' },
+          },
+          {
+            id: 'private',
+            name: 'Private counterexample',
+            command: 'echo not-executed',
+            completion: { type: 'file_exists', path: '.tagma/logs/private-leak.json' },
+          },
+        ],
+      },
+    ],
+  };
+  const yaml = serializePipeline(config);
+  const context = buildTrialPlanValidationContext(config, [], {
+    workDir: tmpdir(),
+    relativeYamlPath: 'flow/flow.yaml',
+  });
+  const h = await fixture(yaml, context as unknown as Record<string, unknown>);
+  try {
+    const call = h.issue('wide-coordinate-boundary');
+    const result = parseCoordinateToolResult(
+      await call('begin', {
+        summary: 'Inspect bounded coordinates.',
+        goals: ['Preserve the existing namespace and private path boundaries.'],
+      }),
+    );
+    const inventory = result.casePathCoordinates;
+    expect(inventory.availability).toBe('included');
+    expect(inventory.entries.length).toBeGreaterThan(0);
+    expect(inventory.entries.length).toBeLessThanOrEqual(32);
+    expect(inventory.unlistedArtifactCount).toBe(82 - inventory.entries.length);
+    expect(Buffer.byteLength(JSON.stringify(inventory), 'utf8')).toBeLessThanOrEqual(4096);
+    expect(
+      inventory.entries.every(
+        (entry: { casePath: string; runtimeWorkspacePath: string }) =>
+          entry.casePath.startsWith('flow/') &&
+          entry.runtimeWorkspacePath === '.tagma/' + entry.casePath,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(inventory)).not.toContain('private-leak');
+    expect(JSON.stringify(inventory)).not.toContain('exports/report.md');
+    expect(inventory.guidance).toContain('Unlisted artifacts may still be observable');
+    expect(h.telemetry().toolAttemptCount).toBe(0);
+    expect(readFileSync(h.yamlPath, 'utf8')).toBe(yaml);
+  } finally {
+    rmSync(h.root, { recursive: true, force: true });
+  }
+});
+
+test('begin coordinates keep absent context unavailable and reject a stale revision', async () => {
+  const h = await fixture();
+  try {
+    const call = h.issue('legacy-coordinate-boundary');
+    const payload = {
+      summary: 'Inspect without invented coordinates.',
+      goals: ['Keep authority and compatibility.'],
+    };
+    const first = parseCoordinateToolResult(await call('begin', payload));
+    expect(first.casePathCoordinates).toMatchObject({
+      availability: 'unavailable',
+      entries: [],
+      unlistedArtifactCount: null,
+      attemptId: 'legacy-coordinate-boundary',
+      yamlHash: h.yamlHash,
+    });
+    writeFileSync(h.yamlPath, h.yaml + '\n# independent source revision\n');
+    await expect(call('begin', payload)).rejects.toThrow(
+      'attempt_id was not issued by the host for this staged YAML revision',
+    );
     h.assertUnlocked();
   } finally {
     rmSync(h.root, { recursive: true, force: true });

@@ -495,6 +495,36 @@
       "path": "architecture/quality/evidence/s2-l3-route-refusal-final62-green.txt",
       "sha256": "a1e959dba0f9a14b40eb4fa85d8eeedd078d0d0abec4551039b6b82ba5e814f8",
       "role": "real-store-final62-tests447-assertions-green"
+    },
+    {
+      "id": "s2-l3-coordinate-begin-first-red",
+      "path": "architecture/quality/evidence/s2-l3-coordinate-feedback-first-red.txt",
+      "sha256": "a16e86721777c1151ec93ab59951143699544f9b212b6110ea34b7656a17853c",
+      "role": "immutable-three-missing-guidance-red-with-real-runtime-counterproof"
+    },
+    {
+      "id": "s2-l3-coordinate-fixture-json-red",
+      "path": "architecture/quality/evidence/s2-l3-coordinate-fixture-json-first-red.txt",
+      "sha256": "270c9cc03b07d17231bcf3f7e15f2313f5ea55b5cdc022103a165af10261f59c",
+      "role": "fixture-missing-required-json-assertion-not-product-fault"
+    },
+    {
+      "id": "s2-l3-coordinate-fixture-types-red",
+      "path": "architecture/quality/evidence/s2-l3-coordinate-fixture-types-first-red.txt",
+      "sha256": "c8d20a159ebe0b0b57b4b5e13ab8e79bbad2b0c7c80edd39fa09bf4830a5fc32",
+      "role": "fixture-pinned-types-compatibility-not-product-fault"
+    },
+    {
+      "id": "s2-l3-coordinate-related-green",
+      "path": "architecture/quality/evidence/s2-l3-coordinate-related189-green.txt",
+      "sha256": "84755f4cdfbd2075fb6b44db6649bea514e5c70c3ed2c0e9240f3eede652f8b5",
+      "role": "related189-tests2064-assertions-green"
+    },
+    {
+      "id": "s2-l3-coordinate-first-live-observation",
+      "path": "architecture/quality/evidence/s2-l3-verify5-path-coordinate-first-observation.json",
+      "sha256": "506b3200566e6f2027e55741eacc596631da51165dcf9b367a0af5e5843e6ff5",
+      "role": "immutable-live-false-observability-claim-and-retained-stale-plan"
     }
   ],
   "issues": [
@@ -7382,6 +7412,122 @@
       "realTestSelectors": [],
       "contract": "A route refusal is not a normal completed answer or write authorization. Embedded/quoted/code examples remain ordinary text. Clarification consumes the original finite3-round budget; exhaustion fails without publication. Restart at pending clarification/authoring handoff must not replay a settled refused main. A recognized leading marker may include its explanation on the same line; lookalike route identifiers do not match.",
       "claimLimit": "Local controlled invocation results exercise real store/orchestrator, not a model accuracy guarantee. S2-L3 fresh original-round actual Trial/publication remains required; matrix5/12."
+    },
+    {
+      "id": "CSR-0047",
+      "lineage": [
+        "CSR-0013",
+        "CSR-0014",
+        "CSR-0026",
+        "CSR-0037",
+        "CSR-0038",
+        "CSR-0041",
+        "CSR-0042",
+        "CSR-0044",
+        "CSR-0046"
+      ],
+      "title": "Expose bounded revision-bound public artifact coordinates before Trial assertion authoring",
+      "category": "qualified-planner-feedback-improvement-not-runtime-mapping-fault",
+      "mechanism": "native-begin-public-namespace-coordinate-inventory",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "causeScope": "Confirmed missing explicit begin coordinates and planner false unobservability claim. Existing runtime mapping works in three real local command layouts; model improvement remains subject to fresh live retest.",
+      "firstEvidence": {
+        "sourceId": "s2-l3-coordinate-first-live-observation",
+        "path": "architecture/quality/evidence/s2-l3-verify5-path-coordinate-first-observation.json",
+        "sha256": "506b3200566e6f2027e55741eacc596631da51165dcf9b367a0af5e5843e6ff5",
+        "sourceRevision": "c958aa88842192d39ef73d42ad779d554f25b3d3",
+        "round": "S2-L3-verify5-original-round-1",
+        "acceptancePolicy": "Preserve failed stale/blocked plan, no Trial/pub. Retain original source/identity/schema/finite-budget guards; fresh restarted workspace original case required."
+      },
+      "history": [
+        {
+          "kind": "immutable-three-missing-guidance-red-with-real-runtime-counterproof",
+          "evidencePath": "architecture/quality/evidence/s2-l3-coordinate-feedback-first-red.txt",
+          "evidenceSha256": "a16e86721777c1151ec93ab59951143699544f9b212b6110ea34b7656a17853c",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "fixture-missing-required-json-assertion-not-product-fault",
+          "evidencePath": "architecture/quality/evidence/s2-l3-coordinate-fixture-json-first-red.txt",
+          "evidenceSha256": "270c9cc03b07d17231bcf3f7e15f2313f5ea55b5cdc022103a165af10261f59c",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "fixture-pinned-types-compatibility-not-product-fault",
+          "evidencePath": "architecture/quality/evidence/s2-l3-coordinate-fixture-types-first-red.txt",
+          "evidenceSha256": "c8d20a159ebe0b0b57b4b5e13ab8e79bbad2b0c7c80edd39fa09bf4830a5fc32",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "related189-tests2064-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s2-l3-coordinate-related189-green.txt",
+          "evidenceSha256": "84755f4cdfbd2075fb6b44db6649bea514e5c70c3ed2c0e9240f3eede652f8b5",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "immutable-live-false-observability-claim-and-retained-stale-plan",
+          "evidencePath": "architecture/quality/evidence/s2-l3-verify5-path-coordinate-first-observation.json",
+          "evidenceSha256": "506b3200566e6f2027e55741eacc596631da51165dcf9b367a0af5e5843e6ff5",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Native begin adds declared public namespace casePath/runtimeWorkspacePath pairs bound to current attempt, YAML hash and target. At most32 entries/4KiB, explicit omissions and unknown legacy context, no private or unrelated namespace promotion. Planner guidance covers root-cwd explicit .tagma paths and pipeline-cwd relative paths. Keep original path rejection messages, all guards/counters and business bytes unchanged."
+        },
+        {
+          "summary": "Real Plugin/Zod begin->bad literal prefix rejection->correct public assertion->one valid commit plus actual SDK producer/runtime file assertion across root cwd, pipeline cwd and Unicode/large YAML. Bound/omission and absent/stale context counterexamples. Added explicit six-test native OS matrix CI selection."
+        }
+      ],
+      "status": "local-feedback-contract-guarded-awaiting-fresh-S2-L3-retest",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "existing namespace mapping observes real root and pipeline cwd outputs without relocating them",
+          "namePattern": "^existing namespace mapping observes real root and pipeline cwd outputs without relocating them$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "begin coordinate inventory preserves real artifact observation: workspace cwd explicit internal path",
+          "namePattern": "^begin coordinate inventory preserves real artifact observation: workspace cwd explicit internal path$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "begin coordinate inventory preserves real artifact observation: pipeline cwd relative output",
+          "namePattern": "^begin coordinate inventory preserves real artifact observation: pipeline cwd relative output$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "begin coordinate inventory preserves real artifact observation: Unicode namespace and large YAML",
+          "namePattern": "^begin coordinate inventory preserves real artifact observation: Unicode namespace and large YAML$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "begin coordinate bounds disclose omissions without exposing other namespace paths",
+          "namePattern": "^begin coordinate bounds disclose omissions without exposing other namespace paths$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-pipeline-trial-plan-tool-boundary.test.ts",
+          "fullName": "begin coordinates keep absent context unavailable and reject a stale revision",
+          "namePattern": "^begin coordinates keep absent context unavailable and reject a stale revision$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Physical workspace/.tagma/<pipeline>/... artifacts can be observed through public <pipeline>/... Trial paths. Metadata describes coordinates, never execution/content truth or write authority; do not relocate outputs solely for assertion spelling. Preserve literal .tagma/private-path rejection, stale plan fences, schema/ownership and frozen planning budget.",
+      "claimLimit": "Real local path interoperability and available guidance are verified; no native model accuracy or latency guarantee. S2-L3 actual fresh normal Trial/publication and final source CI remain required; historical archive gaps remain RED."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

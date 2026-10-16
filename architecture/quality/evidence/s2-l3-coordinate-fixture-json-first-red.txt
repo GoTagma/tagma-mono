@@ -1,0 +1,58 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+17:10:23.295 [pipeline] start "Coordinate interoperability" run_id=run_mvb8475n_6cda9db5de9a
+17:10:23.301 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/ledger-review/produce.cjs
+17:10:23.325 [task:main.run] success (0.0s)
+17:10:23.326 [pipeline] completed "Coordinate interoperability"
+17:10:23.326 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:10:23.326 [pipeline] Duration: 0.0s
+17:10:23.326 [pipeline] Log: /tmp/tagma-real-plan-boundary-5sKOFd/case-workspace/.tagma/logs/run_mvb8475n_6cda9db5de9a/pipeline.log
+17:10:23.341 [pipeline] start "Coordinate interoperability" run_id=run_mvb84770_99f60be6d955
+17:10:23.341 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' produce.cjs
+17:10:23.372 [task:main.run] success (0.0s)
+17:10:23.372 [pipeline] completed "Coordinate interoperability"
+17:10:23.372 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:10:23.372 [pipeline] Duration: 0.0s
+17:10:23.372 [pipeline] Log: /tmp/tagma-real-plan-boundary-lKW95m/case-workspace/.tagma/logs/run_mvb84770_99f60be6d955/pipeline.log
+17:10:23.385 [pipeline] start "Coordinate interoperability" run_id=run_mvb84789_7c216fa52c5a
+17:10:23.386 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/账册/produce.cjs
+17:10:23.412 [task:main.run] success (0.0s)
+17:10:23.412 [pipeline] completed "Coordinate interoperability"
+17:10:23.412 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:10:23.412 [pipeline] Duration: 0.0s
+17:10:23.412 [pipeline] Log: /tmp/tagma-real-plan-boundary-aDlNz8/case-workspace/.tagma/logs/run_mvb84789_7c216fa52c5a/pipeline.log
+(pass) existing namespace mapping observes real root and pipeline cwd outputs without relocating them [167.55ms]
+error: JSON artifact ledger-review/out/proof.json requires a json-valid or json-pointer-equals expectation in the same case.
+      at validateCase (/tmp/tagma-real-plan-boundary-cig4kL/tagma_trial_plan.mjs:1150:16)
+      at map (1:11)
+      at validateCaseEntries (/tmp/tagma-real-plan-boundary-cig4kL/tagma_trial_plan.mjs:1174:78)
+      at <anonymous> (/tmp/tagma-real-plan-boundary-cig4kL/tagma_trial_plan.mjs:2134:49)
+      at withTrialPlanDraftLock (/tmp/tagma-real-plan-boundary-cig4kL/tagma_trial_plan.mjs:1446:20)
+      at execute (/tmp/tagma-real-plan-boundary-cig4kL/tagma_trial_plan.mjs:2221:37)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:981:15)
+(fail) begin coordinate inventory preserves real artifact observation: workspace cwd explicit internal path [16.07ms]
+error: JSON artifact batch-check/out/proof.json requires a json-valid or json-pointer-equals expectation in the same case.
+      at validateCase (/tmp/tagma-real-plan-boundary-8CL0EG/tagma_trial_plan.mjs:1150:16)
+      at map (1:11)
+      at validateCaseEntries (/tmp/tagma-real-plan-boundary-8CL0EG/tagma_trial_plan.mjs:1174:78)
+      at <anonymous> (/tmp/tagma-real-plan-boundary-8CL0EG/tagma_trial_plan.mjs:2134:49)
+      at withTrialPlanDraftLock (/tmp/tagma-real-plan-boundary-8CL0EG/tagma_trial_plan.mjs:1446:20)
+      at execute (/tmp/tagma-real-plan-boundary-8CL0EG/tagma_trial_plan.mjs:2221:37)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:981:15)
+(fail) begin coordinate inventory preserves real artifact observation: pipeline cwd relative output [13.70ms]
+error: JSON artifact 账册/out/proof.json requires a json-valid or json-pointer-equals expectation in the same case.
+      at validateCase (/tmp/tagma-real-plan-boundary-jVCjsb/tagma_trial_plan.mjs:1150:16)
+      at map (1:11)
+      at validateCaseEntries (/tmp/tagma-real-plan-boundary-jVCjsb/tagma_trial_plan.mjs:1174:78)
+      at <anonymous> (/tmp/tagma-real-plan-boundary-jVCjsb/tagma_trial_plan.mjs:2134:49)
+      at withTrialPlanDraftLock (/tmp/tagma-real-plan-boundary-jVCjsb/tagma_trial_plan.mjs:1446:20)
+      at execute (/tmp/tagma-real-plan-boundary-jVCjsb/tagma_trial_plan.mjs:2221:37)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:981:15)
+(fail) begin coordinate inventory preserves real artifact observation: Unicode namespace and large YAML [21.02ms]
+
+ 1 pass
+ 19 filtered out
+ 3 fail
+ 36 expect() calls
+Ran 4 tests across 1 file. [419.00ms]

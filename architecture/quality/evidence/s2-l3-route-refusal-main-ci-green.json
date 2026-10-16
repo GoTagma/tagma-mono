@@ -1,0 +1,25 @@
+{
+  "sourceRevision": "c958aa88842192d39ef73d42ad779d554f25b3d3",
+  "run": 38934151908,
+  "url": "https://github.com/GoTagma/tagma-mono/actions/runs/38934151908",
+  "requiredJobs": [
+    {
+      "name": "managed-opencode-runtime (ubuntu-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (macos-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "full-check",
+      "conclusion": "success"
+    },
+    {
+      "name": "managed-opencode-runtime (windows-latest)",
+      "conclusion": "success"
+    }
+  ],
+  "guardExecutionScope": "New routing regressions execute in full-check; platform managed-runtime jobs run their explicit native/unit selections, not every routing regression.",
+  "liveAcceptance": false
+}

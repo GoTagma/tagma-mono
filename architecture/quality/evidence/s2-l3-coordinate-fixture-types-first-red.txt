@@ -1,0 +1,30 @@
+$ node node_modules/typescript/bin/tsc -p apps/editor/tsconfig.test.json --noEmit
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1104,11): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(table: readonly (readonly [unknown, ...unknown[]])[]): Test<readonly [unknown, ...unknown[]]>', gave the following error.
+    Argument of type 'readonly [{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; }, { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; }, { ...; }]' is not assignable to parameter of type 'readonly (readonly [unknown, ...unknown[]])[]'.
+      Type '{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; } | { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; } | { ...; }' is not assignable to type 'readonly [unknown, ...unknown[]]'.
+        Type '{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; }' is not assignable to type 'readonly [unknown, ...unknown[]]'.
+  Overload 2 of 3, '(table: readonly unknown[][]): Test<unknown[]>', gave the following error.
+    Argument of type 'readonly [{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; }, { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; }, { ...; }]' is not assignable to parameter of type 'readonly unknown[][]'.
+      Type '{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; } | { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; } | { ...; }' is not assignable to type 'unknown[]'.
+        Type '{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; }' is missing the following properties from type 'unknown[]': length, pop, push, concat, and 29 more.
+  Overload 3 of 3, '(table: unknown[]): Test<[unknown]>', gave the following error.
+    Argument of type 'readonly [{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; }, { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; }, { ...; }]' is not assignable to parameter of type 'unknown[]'.
+      The type 'readonly [{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; }, { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; }, { ...; }]' is 'readonly' and cannot be assigned to the mutable type 'unknown[]'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1107,44): error TS2345: Argument of type 'unknown' is not assignable to parameter of type '{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; } | { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; } | { ...; }'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1109,47): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1110,33): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1110,53): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1119,32): error TS2345: Argument of type 'ToolResult' is not assignable to parameter of type 'string'.
+  Type '{ title?: string | undefined; output: string; metadata?: { [key: string]: any; } | undefined; attachments?: ToolAttachment[] | undefined; }' is not assignable to type 'string'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1125,20): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1130,24): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1131,43): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1134,59): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1140,27): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1148,39): error TS18046: 'vector' is of type 'unknown'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1165,53): error TS2345: Argument of type 'unknown' is not assignable to parameter of type '{ readonly label: "workspace cwd explicit internal path"; readonly namespace: "ledger-review"; readonly nested: false; } | { readonly label: "pipeline cwd relative output"; readonly namespace: "batch-check"; readonly nested: true; } | { ...; }'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1227,7): error TS2345: Argument of type 'ToolResult' is not assignable to parameter of type 'string'.
+  Type '{ title?: string | undefined; output: string; metadata?: { [key: string]: any; } | undefined; attachments?: ToolAttachment[] | undefined; }' is not assignable to type 'string'.
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts(1263,30): error TS2345: Argument of type 'ToolResult' is not assignable to parameter of type 'string'.
+  Type '{ title?: string | undefined; output: string; metadata?: { [key: string]: any; } | undefined; attachments?: ToolAttachment[] | undefined; }' is not assignable to type 'string'.

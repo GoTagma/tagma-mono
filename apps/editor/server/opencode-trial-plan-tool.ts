@@ -984,7 +984,50 @@ function trialPlanDraftCaseInventory(testCase) {
   };
 }
 
-function trialPlanDraftResult(operation, draft, pipelineEvidence, changedCase) {
+// Describe the existing public namespace alias; this grants no read or write authority.
+function beginCasePathCoordinates(paths, yamlHash, attemptId) {
+  const namespace = dirname(paths.relativeYamlPath).replace(/\\\\/g, '/');
+  const result = {
+    version: 1, yamlHash, attemptId, relativeYamlPath: paths.relativeYamlPath, namespace,
+    scope: 'Declared namespace coordinates, not observed artifact content or execution proof.',
+    guidance: 'Use casePath in Trial assertions. A workspace-root task writing explicit .tagma/<namespace>/... and a task in cwd .tagma/<namespace> writing a relative file use the same public namespace alias. Literal .tagma paths and Host-private files remain forbidden. Correct plan spelling, not business output locations. Unlisted artifacts may still be observable.',
+    entries: [], unlistedArtifactCount: 0,
+  };
+  if (Buffer.byteLength(JSON.stringify({ ...result, availability: 'included',
+      unlistedArtifactCount: Number.MAX_SAFE_INTEGER }), 'utf8') > 4096) {
+    return { version: 1, yamlHash, attemptId, availability: 'unavailable',
+      reason: 'coordinate_metadata_limit',
+      relativeYamlPathSha256: createHash('sha256').update(paths.relativeYamlPath).digest('hex'),
+      entries: [], unlistedArtifactCount: null };
+  }
+  const raw = paths.hostAttempt?.validationContext;
+  if (raw === undefined) return { ...result, availability: 'unavailable', unlistedArtifactCount: null };
+  const context = resilienceRules.parseValidationContext(raw);
+  const seen = new Set();
+  let count = 0;
+  for (const taskId of Object.keys(context.tasks).sort()) {
+    for (const candidate of [...(context.tasks[taskId].artifactPaths || [])].sort()) {
+      if (typeof candidate !== 'string') continue;
+      const key = taskId + String.fromCharCode(0) + candidate;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      count += 1;
+      if (namespace === '.' || !candidate.startsWith(namespace + '/') || result.entries.length >= 32) continue;
+      let casePath;
+      try { casePath = normalizeRelativeCasePath(candidate, 'Declared artifact'); }
+      catch { continue; }
+      const entry = { taskId, casePath, runtimeWorkspacePath: '.tagma/' + casePath };
+      // Reserve room for the final availability and explicit omission count.
+      if (Buffer.byteLength(JSON.stringify({ ...result, availability: 'included',
+          entries: [...result.entries, entry], unlistedArtifactCount: Number.MAX_SAFE_INTEGER }), 'utf8') <= 4096) {
+        result.entries.push(entry);
+      }
+    }
+  }
+  return { ...result, availability: 'included', unlistedArtifactCount: count - result.entries.length };
+}
+
+function trialPlanDraftResult(operation, draft, pipelineEvidence, changedCase, casePathCoordinates) {
   return JSON.stringify(
     {
       operation,
@@ -1006,6 +1049,7 @@ function trialPlanDraftResult(operation, draft, pipelineEvidence, changedCase) {
         changedCase: trialPlanDraftCaseInventory(changedCase),
       }),
       ...(pipelineEvidence ? { pipelineEvidence } : {}),
+      ...(casePathCoordinates ? { casePathCoordinates } : {}),
       ...(draft.intentDigest ? { intentDigest: draft.intentDigest } : {}),
       ...(draft.seededFromYamlHash
         ? { seededFromYamlHash: draft.seededFromYamlHash }
@@ -1807,7 +1851,8 @@ function executeTrialPlanOperation(args, context) {
       return trialPlanDraftResult(operation, draft,
         byteCount <= BEGIN_YAML_EVIDENCE_LIMIT
           ? { kind: 'included', yamlHash, byteCount, yaml: yamlText }
-          : { kind: 'too_large', yamlHash, byteCount, limitBytes: BEGIN_YAML_EVIDENCE_LIMIT });
+          : { kind: 'too_large', yamlHash, byteCount, limitBytes: BEGIN_YAML_EVIDENCE_LIMIT },
+        undefined, beginCasePathCoordinates(paths, yamlHash, attemptId));
     });
   }
 

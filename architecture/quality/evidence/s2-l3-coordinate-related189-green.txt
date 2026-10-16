@@ -1,0 +1,245 @@
+bun test v1.3.14 (0d9b296a)
+
+apps/editor/tests/chat-operation-v2-orchestrator.test.ts:
+(pass) Host derives one explicit safe YAML filename as a create target hint [30.93ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > freezes the Host-supplied workspace repair budget in operation state [90.25ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > discussion runs one classifier and one read-only main invocation before one terminal event [56.90ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > diagnosis without a canvas snapshot runs with explicit request-only authority [55.60ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > a terminal CAS winner cannot leave a read-only result message orphaned [52.23ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > dirty diagnosis reads the exact persisted sealed snapshot and never gives it to classifier [57.48ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > clarification atomically appends one pending thread and waits without writable resources [62.32ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Stop on a pending clarification reaches a readable terminal operation [53.46ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Discard on a pending clarification terminalizes its durable thread [59.56ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > a clarification reply stays in the operation, reruns a fresh classifier, and seals all reply context [75.58ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > concurrent clarification windows are first-wins before the winning classifier settles [63.42ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > multi-round clarification appends to one durable thread and carries every accepted reply forward [75.41ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > clarification inventory drift atomically records the reply and supersedes before rerun [61.28ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > clarification supersedes if the trusted classifier candidate projection no longer matches its frozen first prompt [59.54ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > an expired clarification records one terminal disposition without invoking another classifier [62.23ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > create and edit stay inside V2 as explicit authoring_deferred waits with no renderer handoff [60.41ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Stop during classifier terminalizes cancelled_precommit before any main invocation [50.49ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > a provider completion arriving after Stop cannot correct cancelled usage or outbox evidence [57.33ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > provider unavailability waits for explicit retry and allocates a new classifier identity [66.96ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > malformed classifier text gets one Host-owned repair invocation before routing [59.31ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > two malformed classifier results fail closed without an unbounded retry loop [48.45ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > an explicit retry gets a fresh bounded classifier repair cycle [61.08ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > read-only main provider retry allocates a new session/input without reclassifying [53.37ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > persists a bounded transport code when a provider runner throws [50.06ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > does not persist an arbitrary provider exception code even when it matches the wire format [45.91ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > dispatch continues from Host-owned evidence after the renderer input disappears [53.41ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > generation/version CAS makes concurrent Stop first-wins and writes terminal exactly once [47.88ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > terminal usage gate is satisfied by explicit unavailable dispositions when metrics are absent [50.26ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > concurrent exact create retries coalesce by client request before allocating another invocation [47.79ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > reopened exact create retry returns the existing operation while conflicting bytes fail closed [58.58ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > reopened nonterminal create retry recovers the existing operation instead of creating or prompting [51.94ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > reopened exact retry dispatches a persisted created operation that has no outbox [58.25ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > the same client request id remains independent across workspace scopes [66.03ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart recovers classifier text and continues without a new classifier identity [60.97ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart reconciles the durable classifier repair attempt without repeating either prompt [58.71ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart preserves an exhausted classifier protocol failure for an explicit fresh retry [58.70ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > explicit retry after unrecoverable classifier text allocates a new Host invocation [55.91ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart restores pending clarification without invoking or reconciling OpenCode [58.65ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart reconstructs a post-reply classifier from the durable clarification thread [72.08ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart safely starts the fresh classifier if a crash followed the atomic reply transition before outbox prepare [74.48ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart returns an immutable completed terminal without duplicate invocation or terminal event [70.91ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart reconciles dirty diagnosis against the exact persisted sealed snapshot [59.78ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart supersedes nonterminal work when current Host inventory no longer matches admission [53.33ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart preserves authoring_deferred until an explicit retry allocates a new classifier invocation [54.13ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart projects reconciled in-progress classifier with its existing durable invocation id [53.61ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart rejects duplicate durable classifier authority instead of guessing an invocation [49.86ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart supersedes when candidate ids do not exactly match the sealed Host inventory [47.64ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > restart terminalizes a durably reconciled read-only main without another provider prompt [56.31ms]
+(pass) ChatTurn Operation V2 internal read-only orchestrator > Stop wins over an in-flight restart reconciliation and interrupts its unresolved outbox [55.14ms]
+(pass) read-only route refusal authority > discussion refusal to pipeline_work asks without granting writes [50.36ms]
+(pass) read-only route refusal authority > diagnosis refusal to general_discussion asks without granting writes [49.91ms]
+(pass) read-only route refusal authority > discussion refusal to pipeline_diagnosis asks without granting writes [49.77ms]
+(pass) read-only route refusal authority > discussion refusal to pipeline_work-with-explanation asks without granting writes [58.06ms]
+(pass) read-only route refusal authority > diagnosis refusal to general_discussion-with-explanation asks without granting writes [48.87ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: embedded [55.32ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: quoted [51.90ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: code example [59.01ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: unknown [56.08ms]
+(pass) read-only route refusal authority > embedded or unknown marker remains an ordinary read-only answer: lookalike [50.96ms]
+(pass) read-only route refusal authority > refusal clarification survives restart and requires an explicit reply plus fresh classification [64.75ms]
+(pass) read-only refusal repeated across restarts exhausts the original finite clarification budget [126.90ms]
+(pass) read-only refusal clarification remains cancellable and does not replay its settled main [52.60ms]
+
+apps/editor/tests/chat-pipeline-trial-plan-tool-boundary.test.ts:
+(pass) generated core feedback binds missing artifact coordinates without changing counted rejection fingerprints [37.22ms]
+(pass) wide semantic ownership coordinates retain bound identities and explicit omissions within 2048 bytes [18.93ms]
+(pass) generated semantic review schema and handler preserve ownership and finite commit counting [19.73ms]
+(pass) generated tool commits blocked artifact feedback with the same Host core rules and finite counter [16.64ms]
+(pass) model schema distinguishes repairable core gaps from intrinsic observation limits [12.13ms]
+(pass) model role indices schema separates concrete consumer content from task success [7.23ms]
+(pass) model review task scope schema explains required and not-required dispositions [10.24ms]
+(pass) review scope corrections preserve draft and counted commit boundaries [12.41ms]
+(pass) pinned Plugin/Zod advertises typed business payloads while keeping strict identity schemas [12.58ms]
+(pass) malformed known commit-plan reaches the handler and retains every Zod issue in one counted full rejection [12.28ms]
+(pass) semantic evidenceReview construction rejection is counted once, complete, and unlocks the next Host attempt [14.07ms]
+(pass) known commit preserves unknown review keys for the existing strict semantic rejection [15.49ms]
+(pass) known commit preserves unknown decision keys for the existing strict semantic rejection [12.54ms]
+(pass) invalid identity, target, and YAML revision cannot consume a malformed commit [13.80ms]
+(pass) malformed draft preflight preserves draft bytes and never consumes a submission [14.19ms]
+(pass) explicit draft commit counts malformed supplied payload and records no duplicate rejection [11.75ms]
+(pass) two malformed complete commits exhaust the original budget without overwriting evidence on a third or duplicate call [15.26ms]
+(pass) semantic plan validation remains one counted rejection outside the construction catch [9.54ms]
+(pass) generated-input guidance names both supported witnesses without weakening case validation [12.49ms]
+17:16:53.092 [pipeline] start "Coordinate interoperability" run_id=run_mvb8cjxd_5c720ab22d71
+17:16:53.097 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/ledger-review/produce.cjs
+17:16:53.125 [task:main.run] success (0.0s)
+17:16:53.125 [pipeline] completed "Coordinate interoperability"
+17:16:53.125 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:16:53.125 [pipeline] Duration: 0.0s
+17:16:53.125 [pipeline] Log: /tmp/tagma-real-plan-boundary-ftE5Ra/case-workspace/.tagma/logs/run_mvb8cjxd_5c720ab22d71/pipeline.log
+17:16:53.154 [pipeline] start "Coordinate interoperability" run_id=run_mvb8cjz5_565ec3a71227
+17:16:53.154 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' produce.cjs
+17:16:53.179 [task:main.run] success (0.0s)
+17:16:53.179 [pipeline] completed "Coordinate interoperability"
+17:16:53.179 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:16:53.179 [pipeline] Duration: 0.0s
+17:16:53.179 [pipeline] Log: /tmp/tagma-real-plan-boundary-KMhvjL/case-workspace/.tagma/logs/run_mvb8cjz5_565ec3a71227/pipeline.log
+17:16:53.187 [pipeline] start "Coordinate interoperability" run_id=run_mvb8ck03_f7cc636acd67
+17:16:53.188 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/账册/produce.cjs
+17:16:53.213 [task:main.run] success (0.0s)
+17:16:53.213 [pipeline] completed "Coordinate interoperability"
+17:16:53.213 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:16:53.213 [pipeline] Duration: 0.0s
+17:16:53.213 [pipeline] Log: /tmp/tagma-real-plan-boundary-eSKHTm/case-workspace/.tagma/logs/run_mvb8ck03_f7cc636acd67/pipeline.log
+(pass) existing namespace mapping observes real root and pipeline cwd outputs without relocating them [140.79ms]
+17:16:53.226 [pipeline] start "Coordinate interoperability" run_id=run_mvb8ck15_246e214204a5
+17:16:53.226 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/ledger-review/produce.cjs
+17:16:53.247 [task:main.run] success (0.0s)
+17:16:53.247 [pipeline] completed "Coordinate interoperability"
+17:16:53.247 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:16:53.247 [pipeline] Duration: 0.0s
+17:16:53.247 [pipeline] Log: /tmp/tagma-real-plan-boundary-ayvwmA/case-workspace/.tagma/logs/run_mvb8ck15_246e214204a5/pipeline.log
+(pass) begin coordinate inventory preserves real artifact observation: workspace cwd explicit internal path [34.08ms]
+17:16:53.259 [pipeline] start "Coordinate interoperability" run_id=run_mvb8ck23_d4df66c83c68
+17:16:53.259 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' produce.cjs
+17:16:53.282 [task:main.run] success (0.0s)
+17:16:53.282 [pipeline] completed "Coordinate interoperability"
+17:16:53.282 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:16:53.282 [pipeline] Duration: 0.0s
+17:16:53.282 [pipeline] Log: /tmp/tagma-real-plan-boundary-pcXmmg/case-workspace/.tagma/logs/run_mvb8ck23_d4df66c83c68/pipeline.log
+(pass) begin coordinate inventory preserves real artifact observation: pipeline cwd relative output [37.02ms]
+17:16:53.298 [pipeline] start "Coordinate interoperability" run_id=run_mvb8ck36_7954b7dd3bf1
+17:16:53.298 [task:main.run] running: '/workspace/.cloud-tools/node_modules/bun/bin/bun.exe' .tagma/账册/produce.cjs
+17:16:53.320 [task:main.run] success (0.0s)
+17:16:53.321 [pipeline] completed "Coordinate interoperability"
+17:16:53.321 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+17:16:53.321 [pipeline] Duration: 0.0s
+17:16:53.321 [pipeline] Log: /tmp/tagma-real-plan-boundary-0CGTzq/case-workspace/.tagma/logs/run_mvb8ck36_7954b7dd3bf1/pipeline.log
+(pass) begin coordinate inventory preserves real artifact observation: Unicode namespace and large YAML [36.53ms]
+(pass) begin coordinate bounds disclose omissions without exposing other namespace paths [13.82ms]
+(pass) begin coordinates keep absent context unavailable and reject a stale revision [12.40ms]
+
+apps/editor/tests/opencode-seed-agent.test.ts:
+(pass) native command guidance enables Exa only for explicitly requested headless web search [0.11ms]
+(pass) headless OpenCode command guidance selects Tagma CLI and isolates its database [0.21ms]
+(pass) command guidance keeps PowerShell data literals distinct from native arguments [0.06ms]
+(pass) PowerShell path inputs stay variable without executing their quoted values [0.05ms]
+(pass) pipeline agent writes large YAML and support files in bounded chunks [0.05ms]
+(pass) authoring declares intermediate file ownership before read-only Trial planning [0.08ms]
+(pass) headless artifact guidance requires file contracts instead of stdout JSON guesses [0.02ms]
+(pass) Trial planner recommits a plan whenever the staged YAML revision changes [0.24ms]
+(pass) Trial planner uses bounded tool output and resumes a truncated draft without weakening checks [0.07ms]
+(pass) Trial planner checks requested architecture and launch semantics beyond passing output cases [0.09ms]
+(pass) Trial planner treats a schedule trigger as satisfied by the virtualized Sandbox clock [0.06ms]
+(pass) pipeline creation and repair receive schedule strategy guidance [0.03ms]
+(pass) tagma-router delegates history comparisons without read/edit powers [0.14ms]
+(pass) tagma-router separates concrete read-only diagnosis from authorized pipeline mutation [0.02ms]
+(pass) tagma-router keeps external workspace data writes out of pipeline authoring [0.02ms]
+(pass) tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts and compile logs [0.13ms]
+(pass) every staged file-reading specialist denies unscoped discovery [0.40ms]
+(pass) pipeline intent classifier is hidden, tool-free, and Host-validated text only [0.06ms]
+(pass) router prompt stays compact with the read-only diagnosis lane [0.04ms]
+(pass) router keeps one bounded implementation handoff before result synthesis [0.10ms]
+(pass) router recovery never instructs task_id reuse that the context-window plugin blocks [0.03ms]
+(pass) tagma-pipeline agent stays compact and keeps schema detail out of the base prompt [0.09ms]
+(pass) routine pipeline authoring stays in one worker model without nested task fanout [0.10ms]
+(pass) merged tagma-pipeline agent is a hidden subagent handling create + edit [0.14ms]
+(pass) tagma-pipeline requires explicit mutation authorization before any write [0.07ms]
+(pass) tagma-pipeline agent documents edit/create modes and mandatory compile loop [0.24ms]
+(pass) tagma-pipeline completes a design gate before generating a new pipeline [0.12ms]
+(pass) tagma-pipeline requires independently diagnosable task boundaries and track rationale [0.13ms]
+(pass) pipeline authoring uses native prompt outputs without inventing duplicate files [1.05ms]
+(pass) reusable human-facing analysis pipelines have one durable deliverable [0.09ms]
+(pass) all authoring routes distinguish file parsing, semantic comparisons, and representative core coverage [0.83ms]
+(pass) authoring guidance shares machine contracts while preserving optional and native dataflow [0.49ms]
+(pass) factual guidance admits scoped evidence and comparable quantities without fabricating certainty [0.96ms]
+(pass) document and Trial guidance preserve source lines and trace representative core evidence [0.34ms]
+(pass) pipeline guidance stays within budget after step frontmatter normalization [0.26ms]
+(pass) multi-step planning keeps new-pipeline companions Host-owned [0.04ms]
+(pass) tagma-yaml-contract distinguishes preflight availability from version guidance [0.20ms]
+(pass) schema-driven YAML generation emits least-authority prompt tasks and rejects ambiguous result contracts [60.73ms]
+(pass) schema-driven YAML generation rejects task ids outside the runtime grammar [2.52ms]
+(pass) schema-driven YAML generation rejects track ids outside the runtime grammar [1.83ms]
+(pass) schema-driven YAML generation rejects empty ids instead of manufacturing defaults [1.59ms]
+(pass) schema-driven YAML generation accepts canonical id boundary characters [1.80ms]
+(pass) schema-driven YAML generation round-trips a schedule trigger cron and rejects cron misuse [1.98ms]
+(pass) schema-driven YAML generation requires reviewable task and track rationale [2.05ms]
+(pass) schema-driven YAML generation fails closed instead of dropping sections or tasks [1.47ms]
+(pass) seed prompts require a scope-aware edge-case review after pipeline creation [0.16ms]
+(pass) Trial prompts prioritize a complete positive path and explicit prerequisite probes [0.35ms]
+(pass) Trial planner repairs invalid missing-file cases instead of returning no-change [0.08ms]
+(pass) tagma-pipeline agent cooperates with optional host trial-run repair before the logical turn ends [0.21ms]
+(pass) dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring [3.41ms]
+(pass) tagma-pipeline agent treats explicit creation as higher priority than existing name matches [0.30ms]
+(pass) tagma-pipeline applies Chat AI defaults only while creating a new pipeline [0.10ms]
+(pass) tagma-pipeline keeps generated companions Host-owned while enforcing edit isolation [0.19ms]
+(pass) tagma-pipeline agent honors protected current pipeline context [0.12ms]
+(pass) tagma-pipeline agent allows workspace reads while restricting writes to .tagma [0.04ms]
+(pass) tagma-pipeline agent treats chat staging as the only readable and writable pipeline root [0.09ms]
+(pass) tagma-pipeline agent allows external file and directory trigger watch paths [0.27ms]
+(pass) trigger strategy keeps exact trigger paths aligned with advertised input variants [0.02ms]
+(pass) tagma authoring contracts define one effective cwd coordinate for built-in paths [0.28ms]
+(pass) tagma-yaml-contract requires one direct producer for each unresolved binding [0.55ms]
+(pass) tagma-pipeline agent exposes direct tools and focused skills without advisor fanout [0.20ms]
+(pass) specialized Tagma advisor subagents are hidden, read-only, and task-focused [0.12ms]
+(pass) tagma-pipeline agent self-reviews once without another model turn [0.05ms]
+(pass) tagma-pipeline agent authors YAML sections without rewriting generated manifests [0.06ms]
+(pass) tagma-pipeline-section-builder is a write-capable bounded implementer, not a reviewer [0.04ms]
+(pass) write-capable delegated agents force host permission checks [0.03ms]
+(pass) tagma-pipeline agent delegates mechanical layout to the placement tool [0.05ms]
+(pass) placement tool is generated as an OpenCode custom tool module [0.02ms]
+(pass) trial-plan tool binds structured edge cases to the final YAML hash [5.65ms]
+(pass) trial-plan tool atomically commits a complete bounded plan in one authenticated call [23.64ms]
+(pass) bundled trial-plan tool validates and commits structurally different plans [45.96ms]
+(pass) source trial-plan fixture rules retain rejection evidence and copied-file removal [19.49ms]
+(pass) bundled trial-plan fixture rules retain rejection evidence and copied-file removal [17.80ms]
+(pass) trial-plan tool assembles a large plan in bounded draft calls before one commit [18.52ms]
+(pass) trial-plan tool preserves observable pipeline-generated inputs without pre-seeding fixtures [29.50ms]
+(pass) trial-plan draft feedback names the required operation field without consuming a submission [9.95ms]
+(pass) trial-plan upsert rejects undeclared environment controls before submission and preserves its draft [8.83ms]
+(pass) command file-contract feedback identifies completion.type and its supported spelling [2.08ms]
+(pass) skeleton preserves the JSON schema file barrier and requires its schema path [1.83ms]
+(pass) trial-plan begin resumes the same revision unless reset is explicit [12.31ms]
+(pass) trial-plan tool rejects host-invalid plans before writing any file [8.50ms]
+(pass) trial-plan tool rejects text-only checks for JSON artifacts [6.81ms]
+(pass) trial-plan tool rejects checks against staged YAML and companion files [8.11ms]
+(pass) trial-plan tool requires every case to include non-empty target task ids before writing [8.64ms]
+(pass) trial-plan tool rejects semantic coverage gaps and unsupported findings before writing [11.08ms]
+(pass) trial-plan coverage setter reports unsupported covered dimensions before commit [7.87ms]
+(pass) trial-plan tool writes plans that the authoritative host parser accepts [8.99ms]
+(pass) trial-plan tool uses an exact staged target and refuses live .tagma writes [10.44ms]
+(pass) trial-plan tool resolves paths from the host-provided workspace root [0.42ms]
+(pass) tagma-trial-planner instructs host trial-plan failure handling for live .tagma safety [1.77ms]
+(pass) tagma-pipeline agent scopes Python helper setup to authoring and separates math from glue [0.09ms]
+(pass) Windows pipeline authoring uses PowerShell unless CMD is explicit argv [0.12ms]
+(pass) Windows pipeline authoring explicitly decodes BOM-less UTF-8 text and JSON [0.04ms]
+(pass) tagma-pipeline agent grants python tools only when workspace settings enable them [0.08ms]
+(pass) tagma-python-tools refuses to run without configured Python handoff [0.03ms]
+(pass) tagma-pipeline agent codifies track design as agent identity vs layout lane [0.05ms]
+(pass) tagma-pipeline agent forbids inconsistent prompt personas and inert command-track AI fields [0.03ms]
+(pass) seedOpencodeArtifacts writes only the plural agents dir and focused skills [4.18ms]
+(pass) seedOpencodeArtifacts applies repeated global step-limit changes to every managed agent [3.66ms]
+(pass) seedOpencodeArtifacts rewrites the pipeline agent when Python tools are enabled [2.95ms]
+(pass) seedOpencodeArtifacts prunes stale agents left by an older editor [1.22ms]
+
+apps/editor/tests/opencode-seed-document-budget.test.ts:
+(pass) final seeded pipeline guidance includes all managed policies in every host budget [5.06ms]
+
+ 189 pass
+ 0 fail
+ 2064 expect() calls
+Ran 189 tests across 4 files. [4.78s]
