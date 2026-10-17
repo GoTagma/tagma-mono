@@ -305,6 +305,10 @@ if (process.env.TAGMA_OPENCODE_NATIVE_SMOKE === '1') {
         expect(body.reasoning_effort).toBe('none');
         expect(JSON.stringify(body.messages)).toContain('normalCoreWitness');
         expect(JSON.stringify(body.messages)).toContain('normal positive case');
+        expect(JSON.stringify(body.messages)).toContain(
+          'including whitespace, indentation and line breaks',
+        );
+        expect(JSON.stringify(body.messages)).toContain('Never join JSON fields or separate lines');
       }
       expect(JSON.stringify(requests[1]!.messages)).not.toContain('Provisional observation ONE');
       expect(JSON.stringify(requests[1]!.messages)).toContain('Provisional observation TWO');

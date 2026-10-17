@@ -731,6 +731,12 @@
       "id": "s3-l3-absence-fixture-controlled-fault-composition",
       "path": "architecture/quality/evidence/s3-l3-verify7-absence-fixture-first-observation.json",
       "sha256": "6afb09a16adba600faa742d9e4f68fb4cefb2ac13c84e7615633cea3ae759e8b"
+    },
+    {
+      "id": "s3-l3-reviewer-literal-quote-format-guidance",
+      "path": "architecture/quality/evidence/s3-l3-verify8-review-quote-first-observation.json",
+      "sha256": "15df741290679c2b47392691c2439cf81e2fcf737029e79d096dcc3efe2b0c7e",
+      "role": "actual-native-output-error-and-strict-validation-proof-not-runtime-defect"
     }
   ],
   "issues": [
@@ -8582,6 +8588,90 @@
       "realTestSelectors": [],
       "contract": "Absence is not original source content, and permits no manufactured producer result. Normal/source-provenance and controlled empty-data evidence must compose while all nonnull original fixtures stay protected. Missing producer artifact stops the failed positive baseline before dependent fault probes.",
       "claimLimit": "No fresh live acceptance. Postfix negative test initially expected a second case, then corrected to the stronger existing positive-baseline stop policy with actual producer stdout/SHA and no fault run. No production relaxation for that correction. Still8/12."
+    },
+    {
+      "id": "CSR-0058",
+      "lineage": [
+        "CSR-0041",
+        "CSR-0048",
+        "CSR-0049",
+        "CSR-0052",
+        "CSR-0055",
+        "CSR-0057"
+      ],
+      "title": "Reviewer quote guidance must preserve literal artifact formatting and strict fail-closed checks",
+      "category": "model-protocol-guidance-hardening",
+      "mechanism": "explicit-decoded-literal-quote-copying-without-response-normalization",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l3-reviewer-literal-quote-format-guidance",
+        "path": "architecture/quality/evidence/s3-l3-verify8-review-quote-first-observation.json",
+        "sha256": "15df741290679c2b47392691c2439cf81e2fcf737029e79d096dcc3efe2b0c7e",
+        "sourceRevision": "edaa81884c06ade538ded6e262ad6bdde158567b",
+        "round": "S3-L3-verify8-original-round-1",
+        "acceptancePolicy": "Actual second Trial tasks and five other cases pass, but two reformatted JSON reviewer quotes are not literal. Host correctly returns unavailable and retains unpublished draft. No old receipt regrading."
+      },
+      "history": [
+        {
+          "kind": "one-missing-guidance-red-one-existing-strictness-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-review-quote-first-red.txt",
+          "evidenceSha256": "3efcc65302f72bbf4ee8cb754baa1ce1ad425a8aad6d5470ddeec136cd1045b8",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "two-tests68-assertions-green-eight-format-vectors",
+          "evidencePath": "architecture/quality/evidence/s3-l3-review-quote-green.txt",
+          "evidenceSha256": "a6847cf12b1953f4793936ec3652980f49bb0233a489a9ff85b05ca67661991f",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "four-files34-tests354-assertions-related-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-review-quote-related-green.txt",
+          "evidenceSha256": "044fb7fea97ef0908112ed5990ab0ce527888e8b72158d1870dfee70c69fb165",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "actual-pinned-native-request-missing-guidance-red",
+          "evidencePath": "architecture/quality/evidence/s3-l3-review-quote-native-first-red.txt",
+          "evidenceSha256": "3fb0cbe1e1567bd25f6b7631153af53037f7db470b195582f7f1821c43df20c6",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "actual-pinned-native-one-test30-assertions-two-isolated-provider-calls-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-review-quote-native-green.txt",
+          "evidenceSha256": "5d817ba0bbc6e783b0de1f4ceb9a4333cd096cdc29706652ae5cf192a18fb23e",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Clarify source-decoded characters versus surrounding JSON transport encoding. Preserve whitespace/indentation/line breaks/Unicode; prefer short contiguous source sentences or field values and never join JSON fields/lines. Existing system configuration digest covers the new guidance, so stale receipts cannot authorize a current result."
+        },
+        {
+          "summary": "Actual evaluator delivery RED/GREEN and eight structurally distinct JSON/Markdown literal, joined-field, newline and Unicode controls preserve exact snapshots/response hashes, one call/no retry and diagnostic-only unavailable. Real pinned-native transport proves the guidance reaches both isolated actual provider requests; unchanged no-tools/history/frozen variant fences. This is instruction availability/strictness proof, not a model accuracy guarantee."
+        }
+      ],
+      "status": "full-local-qualified-fresh-live-S3-L3-required",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "reviewer quote guidance preserves decoded source whitespace on the actual invocation",
+          "namePattern": "^reviewer quote guidance preserves decoded source whitespace on the actual invocation$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review.test.ts",
+          "fullName": "reviewer quote copying rejects reflowed JSON and Markdown without normalizing evidence",
+          "namePattern": "^reviewer quote copying rejects reflowed JSON and Markdown without normalizing evidence$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Never compact, join, escape, normalize or truncate reviewer quotes into passing. Keep exact decoded artifact substring membership, hashes, existing1600/4/512/65536 response bounds, one call/no retry, frozen model/90s and uncertainty. Failed older native opinions remain failed.",
+      "claimLimit": "Model produced nonliteral evidence while Host behaved correctly. Guidance does not guarantee model compliance or prove a performance/accuracy improvement. Actual fresh normal Trial+sealed publication and source CI remain required before S4; still8/12. Historical gaps remain RED."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

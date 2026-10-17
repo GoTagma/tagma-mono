@@ -2448,3 +2448,10 @@
   successful fresh production before Host injection. Every nonnull string fixture, including
   empty text, remains protected; control/support paths remain forbidden. Shared Host/Plugin
   admission uses cache53, plan12 and generated-input freshness semantics unchanged.
+
+- Semantic reviewer quotes copy decoded artifact characters, including whitespace, line breaks,
+  indentation and Unicode, rather than compacting JSON or copying transport escapes. Prefer
+  short contiguous sentences/field values; do not join fields or lines. Keep literal membership,
+  original snapshot/response hashes, existing limits, one-call/no retry and diagnostic-only
+  unavailable outcomes. Model compliance remains fallible; a failed old vote is never regraded.
+  The system text already participates in the configuration digest, invalidating stale receipts.

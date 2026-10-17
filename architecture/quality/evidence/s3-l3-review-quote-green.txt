@@ -1,0 +1,11 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review.test.ts:
+(pass) reviewer quote guidance preserves decoded source whitespace on the actual invocation [3.57ms]
+(pass) reviewer quote copying rejects reflowed JSON and Markdown without normalizing evidence [4.51ms]
+
+ 2 pass
+ 12 filtered out
+ 0 fail
+ 68 expect() calls
+Ran 2 tests across 1 file. [66.00ms]

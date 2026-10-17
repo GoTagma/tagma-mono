@@ -1,0 +1,95 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify8",
+  "accepted": false,
+  "acceptedCountRemains": 8,
+  "sourceRevision": "edaa81884c06ade538ded6e262ad6bdde158567b",
+  "sourceCI": 38989020113,
+  "sourceCIStatus": "all-required-success",
+  "originalRequests": 1,
+  "actionClarifications": 0,
+  "editorRestarted": true,
+  "freshWorkspace": true,
+  "operationId": "operation-68e1f172-bb09-4ea6-9110-ae37a6ec595e",
+  "stageId": "fbd6ef11-ecc9-4220-9f84-659c26574ad3",
+  "finalWait": "trial_verification_paused/user_retry",
+  "published": false,
+  "actualTrials": [
+    {
+      "yamlHash": "48e8dd09ba926b1f7018090b2325a612d5678929",
+      "cases": 6,
+      "runs": 7,
+      "taskCounts": {
+        "success": 19,
+        "failed": 4,
+        "skipped": 19
+      },
+      "expectedNegativeFailures": 3,
+      "unexpectedFailure": "First repeat collector produced invalid JSON; schema completion correctly failed and dependents skipped.",
+      "review": "passed, exact native request/response hashes verified"
+    },
+    {
+      "yamlHash": "7479fba7f536e5aa927da8976547c7c09e4cbfe6",
+      "planHash": "079508208f340b233d61b9c4a8fc1bc0cfb2a171c79702b6c60d12a1761b1e9a",
+      "cases": 6,
+      "runs": 7,
+      "taskCounts": {
+        "success": 24,
+        "failed": 3,
+        "skipped": 15
+      },
+      "expectedNegativeFailures": 3,
+      "unexpectedTaskFailures": 0,
+      "deterministicCases": "repeat-freshness, partial-failure, invalid-url-config, duplicate-ids, empty-config all passed",
+      "review": "unavailable/invented_reviewer_quote; two nonliteral reformatted quotes; correct fail-closed/no additional evaluator call"
+    }
+  ],
+  "completeShaVerifiedChildStreams": 100,
+  "unavailableChildStreams": 0,
+  "reviewIdentity": {
+    "stageId": "fbd6ef11-ecc9-4220-9f84-659c26574ad3",
+    "trialId": "trial-fc00670fd0d5e79ccfd79658c6b6729609777dcb",
+    "yamlHash": "7479fba7f536e5aa927da8976547c7c09e4cbfe6",
+    "planHash": "079508208f340b233d61b9c4a8fc1bc0cfb2a171c79702b6c60d12a1761b1e9a",
+    "intentDigest": "4c95d0e64f5ed4bc192985ae6ab1526870552675ac4f19a9b10837e886c35695",
+    "caseId": "positive-core",
+    "runId": "run_mvbq4gix_85cfcd70696c",
+    "runNumber": 1
+  },
+  "reviewRequestSha256": "eb068082ce60cbdeabfd9046791730cfce288073055e8ac20b6e9508e182b5d5",
+  "reviewResponseSha256": "afecd6d3452081e50f9d28b7d3b4b08508ee63a25610006a4de0a91aacf20337",
+  "badEvidence": [
+    {
+      "taskId": "web_research.verify_claims",
+      "path": "chat-6ed25b5b750605a19de8d847/runs/current/verifications.json",
+      "quote": "\"verdict\": \"supported\", \"evidence_quote\": \"With its summit at 8,848.86 m (29,031 ft 8 in) above sea level, Everest (aka Sagarmāthā or Chomolungma) is the highest mountain on Earth.\",",
+      "artifactKnown": true
+    },
+    {
+      "taskId": "web_research.verify_claims",
+      "path": "chat-6ed25b5b750605a19de8d847/runs/current/verifications.json",
+      "quote": "\"claim_id\": \"ww2-002\", \"verdict\": \"unresolved\",",
+      "artifactKnown": true
+    }
+  ],
+  "classification": "Model protocol output mistake, not a confirmed Host validation/runtime defect. General whitespace-copy guidance hardening and durable strictness regression; model compliance cannot be guaranteed.",
+  "repairPlan": "Teach copying exact decoded artifact characters including newlines and indentation; prefer short contiguous prose or single JSON value fragments, never join fields. Preserve literal membership, limits, one-call/no retry, hashes, uncertainty and frozen model. Prove real evaluator invocation delivery and structured positive/negative quote variants; require fresh restarted original case.",
+  "priorRecordsReviewed": {
+    "catalogSha256": "ed9073125b3b4b96f50364195d3853381b51a9915be96363955be93f03470663",
+    "issueIdentities": 57,
+    "relevant": [
+      "CSR-0041",
+      "CSR-0048",
+      "CSR-0049",
+      "CSR-0052",
+      "CSR-0054",
+      "CSR-0055",
+      "CSR-0056",
+      "CSR-0057"
+    ]
+  },
+  "sourceCaptureScope": "First Trial sampled body excerpts; automatic repair explicitly capped each body at6000chars and used one complete write. No whole-page/exhaustive claim.",
+  "packagesChanged": false,
+  "versionPatchInvocations": 0,
+  "historicalCoverageComplete": false
+}

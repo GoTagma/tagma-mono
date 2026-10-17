@@ -451,3 +451,91 @@ test('reviewer response limits keep complete literal evidence strict without tru
     }
   }
 });
+
+test('reviewer quote guidance preserves decoded source whitespace on the actual invocation', async () => {
+  const f = fixture();
+  let calls = 0;
+  let deliveredSystem = '';
+  const result = await evaluateTrialSemanticReview({
+    ...f.input,
+    runtime: {
+      ...f.runtime,
+      invoke: async (request) => {
+        calls += 1;
+        deliveredSystem = request.system;
+        return f.response();
+      },
+    },
+  });
+  expect(calls).toBe(1);
+  expect(deliveredSystem).toContain('Preserve the decoded artifact characters exactly');
+  expect(deliveredSystem).toContain('including whitespace, indentation and line breaks');
+  expect(deliveredSystem).toContain('Never join JSON fields or separate lines');
+  expect(deliveredSystem).toContain('one short contiguous source sentence or JSON field value');
+  expect(result.success).toBe(true);
+  expect(result.receipt?.responseSha256).toBe(sha(f.response().text));
+  expect(result.receipt?.model).toEqual(f.runtime.model);
+});
+
+test('reviewer quote copying rejects reflowed JSON and Markdown without normalizing evidence', async () => {
+  const jsonArtifact = '{\n  "sensor": "Café-日本",\n  "status": "pending"\n}\n';
+  const markdownArtifact =
+    '# Observation\r\n\r\nThe observation is provisional;\r\nits scope remains limited.\r\n';
+  const vectors = [
+    { artifact: jsonArtifact, quote: '"sensor": "Café-日本",\n  "status": "pending"', pass: true },
+    { artifact: jsonArtifact, quote: 'Café-日本', pass: true },
+    { artifact: jsonArtifact, quote: '"sensor": "Café-日本", "status": "pending"', pass: false },
+    { artifact: jsonArtifact, quote: '"sensor": "Cafe\u0301-日本"', pass: false },
+    {
+      artifact: markdownArtifact,
+      quote: 'The observation is provisional;\r\nits scope remains limited.',
+      pass: true,
+    },
+    { artifact: markdownArtifact, quote: 'its scope remains limited.', pass: true },
+    {
+      artifact: markdownArtifact,
+      quote: 'The observation is provisional; its scope remains limited.',
+      pass: false,
+    },
+    {
+      artifact: markdownArtifact,
+      quote: 'The observation is provisional;\nits scope remains limited.',
+      pass: false,
+    },
+  ];
+  for (const vector of vectors) {
+    const f = fixture();
+    writeFileSync(join(f.directory, 'report.md'), vector.artifact);
+    const response = JSON.parse(f.response().text);
+    response.reviews[0].evidence = [{ path: 'flow/report.md', quote: vector.quote }];
+    const text = JSON.stringify(response);
+    let calls = 0;
+    const result = await evaluateTrialSemanticReview({
+      ...f.input,
+      runtime: {
+        ...f.runtime,
+        invoke: async () => {
+          calls += 1;
+          return { ...f.response(), text };
+        },
+      },
+    });
+    expect(calls).toBe(1);
+    expect(result.success).toBe(vector.pass);
+    expect(result.receipt?.responseSha256).toBe(sha(text));
+    expect(result.receipt?.artifacts.find((a) => a.path === 'flow/report.md')?.sha256).toBe(
+      sha(vector.artifact),
+    );
+    if (vector.pass) {
+      const quote = result.receipt?.verdicts[0]?.evidence[0];
+      expect(quote?.quote).toBe(vector.quote);
+      expect(quote?.offset).toBe(vector.artifact.indexOf(vector.quote));
+      expect(quote?.quoteSha256).toBe(sha(vector.quote));
+    } else {
+      expect(result.receipt?.outcome).toBe('unavailable');
+      expect(result.receipt?.verdicts).toEqual([]);
+      expect(result.expectations[0]?.detail).toContain('invented_reviewer_quote');
+      expect(result.expectations[0]?.repairScope).toBe('diagnostic-only');
+    }
+  }
+});

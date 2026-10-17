@@ -1,0 +1,63 @@
+{
+  "scope": "CSR58 literal-review guidance and fail-closed protocol qualification; not live S3-L3 acceptance",
+  "command": "bun run verify:full",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "8f57660306e8402de17686b23fa552ba4fc5a31e39d4b006423dae3da2650a85",
+  "summary": [
+    "PASS text 88ms ok",
+    "PASS deps 266ms ok",
+    "PASS focus 205ms ok",
+    "PASS imports 52ms ok",
+    "PASS cycles 35ms ok",
+    "PASS secrets 273ms ok",
+    "PASS format 19.4s ok",
+    "PASS types 43.4s ok",
+    "PASS lint 15.7s ok",
+    "PASS tests 204.4s ok",
+    "PASS scripts 2.3s ok",
+    "PASS build 17.2s ok",
+    "PASS publish 9.0s ok"
+  ],
+  "focused": {
+    "tests": 2,
+    "assertions": 68,
+    "passed": true,
+    "vectors": 8
+  },
+  "related": {
+    "files": 4,
+    "tests": 34,
+    "assertions": 354,
+    "passed": true
+  },
+  "actualPinnedNative": {
+    "tests": 1,
+    "assertions": 30,
+    "providerCalls": 2,
+    "isolatedEvaluations": 2,
+    "noToolsOrInheritedHistory": true,
+    "frozenVariant": true,
+    "firstMissingGuidanceFailed": true,
+    "syntheticLoopbackProvider": true,
+    "notLiveAcceptance": true
+  },
+  "historicalGate": {
+    "passed": false,
+    "failures": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    },
+    "logSha256": "56e5b361a76b06773f350da19400aeea879d56c7faeaf934067ade0133716c76"
+  },
+  "configurationDigestIncludesSystem": true,
+  "cacheVersion": 53,
+  "planVersion": 12,
+  "parserAndBudgetSemanticsChanged": false,
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0,
+  "liveAcceptedCases": 8,
+  "totalCases": 12
+}
