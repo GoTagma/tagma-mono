@@ -1,0 +1,447 @@
+
+::group::tests/chat-pipeline-trial-cache.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-pipeline-trial-cache.test.ts:
+(pass) chat pipeline trial cache protocol > cache version is pinned [0.04ms]
+
+ 1 pass
+ 0 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [13.00ms]
+::endgroup::
+
+::group::tests/chat-repair-error-evidence.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-repair-error-evidence.test.ts:
+(pass) private repair redaction preserves nonsecret nested JSON bytes while still removing credentials [7.79ms]
+(pass) private repair byte preservation never revives credentials hidden by duplicate JSON keys [0.65ms]
+(pass) private model repair error evidence > keeps concrete blocked input errors in private repair evidence [1.23ms]
+(pass) private model repair error evidence > recovers complete errors from the Host-owned persisted output instead of a runtime memory tail [3.68ms]
+02:53:34.066 [pipeline] start "Capture" run_id=run_mvbsy67j_a6e15e3e4ca3
+02:53:34.072 [task:work.failed] running: ["node","-e","const fs = require(\"node:fs\"); fs.writeSync(1, \"business output\"); fs.writeSync(2, \"CHILD_FIRST\\nchild context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ \\nCHILD_LAST\");"]
+02:53:34.119 [task:work.failed] ERROR: failed exit=0 duration=0.0s
+02:53:34.120 [task:work.failed] ERROR: stderr tail:
+[17895 bytes truncated from head; full output at: /tmp/tagma-repair-full-completion-tnlM9U/.tagma/logs/run_mvbsy67j_a6e15e3e4ca3/work_failed.stderr]
+text ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ child context ☃ 
+CHILD_LAST
+[completion]  ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ completion context ☃ 
+LAST_COMPLETION
+02:53:34.120 [pipeline] failed "Capture"
+02:53:34.120 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:34.120 [pipeline] Duration: 0.1s
+02:53:34.120 [pipeline] Log: /tmp/tagma-repair-full-completion-tnlM9U/.tagma/logs/run_mvbsy67j_a6e15e3e4ca3/pipeline.log
+(pass) private model repair error evidence > restores stored child errors and appends full completion feedback once into the repair prompt [75.78ms]
+(pass) private model repair error evidence > preserves typed diagnostics after restoring a child stream ([runner] parse failed) [0.67ms]
+(pass) private model repair error evidence > preserves typed diagnostics after restoring a child stream ([driver] rejected output) [0.40ms]
+(pass) private model repair error evidence > preserves typed diagnostics after restoring a child stream ([engine] invalid binding) [0.50ms]
+(pass) private model repair error evidence > rejects known missing captured bytes (short-file) [0.23ms]
+(pass) private model repair error evidence > rejects known missing captured bytes (missing-file) [0.08ms]
+(pass) private model repair error evidence > keeps redaction byte shrinkage valid and legacy raw byte gaps unknown [0.43ms]
+(pass) private model repair error evidence > does not infer diagnostics from child text and rejects a mismatched typed suffix [0.29ms]
+(pass) private model repair error evidence > refuses foreign log paths and hardlinked output files [0.23ms]
+(pass) private model repair error evidence > redacts credential syntax in mixed output while preserving diagnostic token-limit text [0.07ms]
+(pass) private model repair error evidence > captures error streams before display clipping and task selection (failed) [134.71ms]
+(pass) private model repair error evidence > captures error streams before display clipping and task selection (success) [127.03ms]
+(pass) private model repair error evidence > retains long errors, stdout-only errors and credential-free structured context [14.46ms]
+(pass) private model repair error evidence > shares repeated full streams losslessly while preserving independent errors and case identities [19.64ms]
+(pass) private model repair error evidence > does not turn a passing expected rejection or a harness failure into artifact repair [0.46ms]
+(pass) complete native planner rejection survives private redaction, resealing and actual planner input [9.21ms]
+
+ 20 pass
+ 0 fail
+ 162 expect() calls
+Ran 20 tests across 1 file. [602.00ms]
+::endgroup::
+
+::group::tests/chat-repair-evidence-storage.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-repair-evidence-storage.test.ts:
+(pass) durable complete repair evidence storage > large independent stdout and errors preserve readable authority, drafts and restart recovery [2660.01ms]
+(pass) durable complete repair evidence storage > oversized authenticated control writes preserve the existing readable bytes [48.67ms]
+(pass) durable complete repair evidence storage > missing evidence fails closed while the draft remains readable [23.43ms]
+(pass) durable complete repair evidence storage > tampered evidence fails closed while the draft remains readable [9.15ms]
+(pass) durable complete repair evidence storage > symlink evidence fails closed while the draft remains readable [9.16ms]
+(pass) durable complete repair evidence storage > small persisted inline evidence remains readable and migrates on the next authority write [6.32ms]
+(pass) durable complete repair evidence storage > an authenticated oversized legacy inline authority migrates before draft and evidence recovery [2329.38ms]
+(pass) durable complete repair evidence storage > failed legacy migration preserves authenticated draft reads and retries when storage recovers [7345.97ms]
+(pass) durable complete repair evidence storage > interrupted pre-pointer blob publication is cleaned before storing new complete evidence [8.56ms]
+(pass) durable complete repair evidence storage > a crash after linking the blob recovers on same-hash retry [7.22ms]
+(pass) durable complete repair evidence storage > a crash after linking the blob recovers on new-hash retry [6.62ms]
+(pass) durable complete repair evidence storage > a failed pointer replacement leaves the old evidence readable and reclaims the orphan on retry [39.81ms]
+(pass) durable complete repair evidence storage > the new pointer file and directory are flushed before the old blob is reclaimed [5.22ms]
+(pass) durable complete repair evidence storage > a pointer flush failure keeps the before-image blob until a successful retry [8.92ms]
+(pass) durable complete repair evidence storage > temporary cleanup errors remain observable without replacing the primary publication failure [8.79ms]
+(pass) durable complete repair evidence storage > oversized legacy bad-hmac is never migrated or replaced [206.32ms]
+(pass) durable complete repair evidence storage > oversized legacy future-authority is never migrated or replaced [222.19ms]
+(pass) durable complete repair evidence storage > oversized legacy future-evidence is never migrated or replaced [216.14ms]
+(pass) durable complete repair evidence storage > evidence storage write failures retain the draft and prior small authority without blind repair [15.00ms]
+(pass) durable complete repair evidence storage > the total evidence bound refuses oversized bytes before touching the authority [31.96ms]
+
+ 20 pass
+ 0 fail
+ 73 expect() calls
+Ran 20 tests across 1 file. [13.42s]
+::endgroup::
+
+::group::tests/chat-trial-semantic-review-contract.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review-contract.test.ts:
+(pass) dynamic content can request independent Host review while retaining real core ownership [3.33ms]
+(pass) semantic review rejects seeded outputs and mismatched or omitted owning roles [1.92ms]
+(pass) semantic review cannot grade negative cases or accept model-authored pass flags [0.32ms]
+(pass) semantic JSON review keeps structural validation and cannot pass synchronously [0.95ms]
+
+ 4 pass
+ 0 fail
+ 11 expect() calls
+Ran 4 tests across 1 file. [169.00ms]
+::endgroup::
+
+::group::tests/chat-trial-semantic-review-runtime.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review-runtime.test.ts:
+02:53:48.515 [pipeline] start "Actual dynamic report" run_id=run_mvbsyhcv_b9a19169328c
+02:53:48.521 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:48.543 [task:flow.inspect] success (0.0s)
+02:53:48.544 [pipeline] completed "Actual dynamic report"
+02:53:48.544 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:48.544 [pipeline] Duration: 0.0s
+02:53:48.544 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KJxyh5/.tagma/.chat-staging/1fbd60b2-db0e-46f8-ae19-248b7680dd4e/.trial-cases/normal-7qypzp/workspace/.tagma/logs/run_mvbsyhcv_b9a19169328c/pipeline.log
+02:53:48.549 [pipeline] start "Actual dynamic report" run_id=run_mvbsyhdx_8b5ad01daf46
+02:53:48.550 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:48.569 [task:flow.inspect] success (0.0s)
+02:53:48.570 [pipeline] completed "Actual dynamic report"
+02:53:48.570 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:48.570 [pipeline] Duration: 0.0s
+02:53:48.570 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KJxyh5/.tagma/.chat-staging/1fbd60b2-db0e-46f8-ae19-248b7680dd4e/.trial-cases/normal-7qypzp/workspace/.tagma/logs/run_mvbsyhdx_8b5ad01daf46/pipeline.log
+(pass) actual Sandbox semantic review runs after task execution for every repeat [466.64ms]
+02:53:48.946 [pipeline] start "Actual dynamic report" run_id=run_mvbsyhoy_367e9979097b
+02:53:48.947 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:48.965 [task:flow.inspect] success (0.0s)
+02:53:48.969 [pipeline] completed "Actual dynamic report"
+02:53:48.969 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:48.969 [pipeline] Duration: 0.0s
+02:53:48.969 [pipeline] Log: /tmp/tagma-actual-semantic-trial-iMDXR6/.tagma/.chat-staging/351fca04-52c3-4cdd-a3b9-b43c179d9e95/.trial-cases/normal-8uxiRB/workspace/.tagma/logs/run_mvbsyhoy_367e9979097b/pipeline.log
+02:53:48.974 [pipeline] start "Actual dynamic report" run_id=run_mvbsyhpp_3e8e6c788e5b
+02:53:48.974 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:48.992 [task:flow.inspect] success (0.0s)
+02:53:48.992 [pipeline] completed "Actual dynamic report"
+02:53:48.992 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:48.992 [pipeline] Duration: 0.0s
+02:53:48.992 [pipeline] Log: /tmp/tagma-actual-semantic-trial-iMDXR6/.tagma/.chat-staging/351fca04-52c3-4cdd-a3b9-b43c179d9e95/.trial-cases/normal-8uxiRB/workspace/.tagma/logs/run_mvbsyhpp_3e8e6c788e5b/pipeline.log
+(pass) a failed earlier semantic repeat cannot be hidden and retains complete private repair evidence [424.14ms]
+02:53:49.326 [pipeline] start "Actual dynamic report" run_id=run_mvbsyhzh_be0a6f221c60
+02:53:49.326 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:49.373 [task:flow.inspect] success (0.0s)
+02:53:49.374 [pipeline] completed "Actual dynamic report"
+02:53:49.374 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:49.374 [pipeline] Duration: 0.0s
+02:53:49.374 [pipeline] Log: /tmp/tagma-actual-semantic-trial-3OSoVM/.tagma/.chat-staging/f24f916a-39f5-4eb6-93ea-d62f151d1a07/.trial-cases/normal-lUOnYh/workspace/.tagma/logs/run_mvbsyhzh_be0a6f221c60/pipeline.log
+02:53:49.572 [pipeline] start "Actual dynamic report" run_id=run_mvbsyi6b_f78532ac3a44
+02:53:49.572 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:49.611 [task:flow.inspect] success (0.0s)
+02:53:49.611 [pipeline] completed "Actual dynamic report"
+02:53:49.611 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:49.611 [pipeline] Duration: 0.0s
+02:53:49.611 [pipeline] Log: /tmp/tagma-actual-semantic-trial-3OSoVM/.tagma/.chat-staging/f24f916a-39f5-4eb6-93ea-d62f151d1a07/.trial-cases/normal-lUOnYh/workspace/.tagma/logs/run_mvbsyi6b_f78532ac3a44/pipeline.log
+(pass) semantic-only repair context bounds archived successful jsonl streams without changing review evidence [1012.02ms]
+02:53:50.344 [pipeline] start "Actual dynamic report" run_id=run_mvbsyirs_6bf174749314
+02:53:50.345 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:50.377 [task:flow.inspect] success (0.0s)
+02:53:50.378 [pipeline] completed "Actual dynamic report"
+02:53:50.378 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:50.378 [pipeline] Duration: 0.0s
+02:53:50.378 [pipeline] Log: /tmp/tagma-actual-semantic-trial-EOp5og/.tagma/.chat-staging/36d775ea-9f31-40a6-8dc9-8a9ac3caeceb/.trial-cases/normal-JdyH5J/workspace/.tagma/logs/run_mvbsyirs_6bf174749314/pipeline.log
+02:53:50.442 [pipeline] start "Actual dynamic report" run_id=run_mvbsyiui_d0d43ec9fae4
+02:53:50.443 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:50.474 [task:flow.inspect] success (0.0s)
+02:53:50.475 [pipeline] completed "Actual dynamic report"
+02:53:50.475 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:50.475 [pipeline] Duration: 0.0s
+02:53:50.475 [pipeline] Log: /tmp/tagma-actual-semantic-trial-EOp5og/.tagma/.chat-staging/36d775ea-9f31-40a6-8dc9-8a9ac3caeceb/.trial-cases/normal-JdyH5J/workspace/.tagma/logs/run_mvbsyiui_d0d43ec9fae4/pipeline.log
+(pass) semantic-only repair context bounds archived successful unicode streams without changing review evidence [610.30ms]
+02:53:50.952 [pipeline] start "Actual dynamic report" run_id=run_mvbsyj8n_1395308de1fe
+02:53:50.952 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:50.993 [task:flow.inspect] success (0.0s)
+02:53:50.994 [pipeline] completed "Actual dynamic report"
+02:53:50.994 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:50.994 [pipeline] Duration: 0.0s
+02:53:50.994 [pipeline] Log: /tmp/tagma-actual-semantic-trial-iDjnI1/.tagma/.chat-staging/e678c978-9f0a-41b8-89fe-ff619c4a7397/.trial-cases/normal-4mvBpl/workspace/.tagma/logs/run_mvbsyj8n_1395308de1fe/pipeline.log
+02:53:51.188 [pipeline] start "Actual dynamic report" run_id=run_mvbsyjf8_fdfde279593d
+02:53:51.189 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:51.226 [task:flow.inspect] success (0.0s)
+02:53:51.227 [pipeline] completed "Actual dynamic report"
+02:53:51.227 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:51.227 [pipeline] Duration: 0.0s
+02:53:51.227 [pipeline] Log: /tmp/tagma-actual-semantic-trial-iDjnI1/.tagma/.chat-staging/e678c978-9f0a-41b8-89fe-ff619c4a7397/.trial-cases/normal-4mvBpl/workspace/.tagma/logs/run_mvbsyjf8_fdfde279593d/pipeline.log
+(pass) semantic-only repair context preserves complete streams for missing proofs other assertions and real errors [5705.79ms]
+02:53:56.650 [pipeline] start "Actual dynamic report" run_id=run_mvbsynmx_e2aa05beb74c
+02:53:56.651 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:56.697 [task:flow.inspect] success (0.0s)
+02:53:56.698 [pipeline] completed "Actual dynamic report"
+02:53:56.698 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:56.698 [pipeline] Duration: 0.0s
+02:53:56.699 [pipeline] Log: /tmp/tagma-actual-semantic-trial-klETsy/.tagma/.chat-staging/d34a1ecd-dc31-4c41-a6b8-8fc716a71aa5/.trial-cases/normal-71fsVx/workspace/.tagma/logs/run_mvbsynmx_e2aa05beb74c/pipeline.log
+02:53:56.868 [pipeline] start "Actual dynamic report" run_id=run_mvbsynt0_d87624c513fc
+02:53:56.869 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:53:56.907 [task:flow.inspect] success (0.0s)
+02:53:56.907 [pipeline] completed "Actual dynamic report"
+02:53:56.907 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:56.907 [pipeline] Duration: 0.0s
+02:53:56.907 [pipeline] Log: /tmp/tagma-actual-semantic-trial-klETsy/.tagma/.chat-staging/d34a1ecd-dc31-4c41-a6b8-8fc716a71aa5/.trial-cases/normal-71fsVx/workspace/.tagma/logs/run_mvbsynt0_d87624c513fc/pipeline.log
+(pass) semantic-only repair context reaches the sealed repair prompt with explicit excerpt scope [973.65ms]
+02:53:57.630 [pipeline] start "Actual dynamic report" run_id=run_mvbsyoe6_1862ad51fbd9
+02:53:57.631 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"no production\")"]
+02:53:57.653 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+02:53:57.654 [pipeline] failed "Actual dynamic report"
+02:53:57.654 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:57.654 [pipeline] Duration: 0.0s
+02:53:57.654 [pipeline] Log: /tmp/tagma-actual-semantic-trial-ly9PoV/.tagma/.chat-staging/4b3a668c-74d5-49d6-a168-125c5ec20c08/.trial-cases/normal-QJ5ZRy/workspace/.tagma/logs/run_mvbsyoe6_1862ad51fbd9/pipeline.log
+02:53:57.655 [pipeline] start "Actual dynamic report" run_id=run_mvbsyoev_b2ce314b4977
+02:53:57.655 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.stdout.write(\"no production\")"]
+02:53:57.677 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+02:53:57.677 [pipeline] failed "Actual dynamic report"
+02:53:57.677 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:57.677 [pipeline] Duration: 0.0s
+02:53:57.677 [pipeline] Log: /tmp/tagma-actual-semantic-trial-ly9PoV/.tagma/.chat-staging/4b3a668c-74d5-49d6-a168-125c5ec20c08/.trial-cases/normal-QJ5ZRy/workspace/.tagma/logs/run_mvbsyoev_b2ce314b4977/pipeline.log
+02:53:58.007 [pipeline] start "Actual dynamic report" run_id=run_mvbsyoon_fcb09f914db4
+02:53:58.008 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));if(n===1)fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:58.027 [task:flow.inspect] success (0.0s)
+02:53:58.027 [pipeline] completed "Actual dynamic report"
+02:53:58.027 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:58.027 [pipeline] Duration: 0.0s
+02:53:58.027 [pipeline] Log: /tmp/tagma-actual-semantic-trial-XaxRsB/.tagma/.chat-staging/de73965d-7ec6-446a-bcf8-d565f02c9b1e/.trial-cases/normal-psEVIS/workspace/.tagma/logs/run_mvbsyoon_fcb09f914db4/pipeline.log
+02:53:58.029 [pipeline] start "Actual dynamic report" run_id=run_mvbsyop9_1464893b892a
+02:53:58.030 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));if(n===1)fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:58.051 [task:flow.inspect] ERROR: failed exit=0 duration=0.0s
+02:53:58.051 [pipeline] failed "Actual dynamic report"
+02:53:58.051 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:58.051 [pipeline] Duration: 0.0s
+02:53:58.051 [pipeline] Log: /tmp/tagma-actual-semantic-trial-XaxRsB/.tagma/.chat-staging/de73965d-7ec6-446a-bcf8-d565f02c9b1e/.trial-cases/normal-psEVIS/workspace/.tagma/logs/run_mvbsyop9_1464893b892a/pipeline.log
+02:53:58.389 [pipeline] start "Actual dynamic report" run_id=run_mvbsyoz9_4b65ba611b32
+02:53:58.390 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.exit(7)"]
+02:53:58.402 [task:flow.inspect] ERROR: failed exit=7 duration=0.0s
+02:53:58.402 [pipeline] failed "Actual dynamic report"
+02:53:58.402 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:58.402 [pipeline] Duration: 0.0s
+02:53:58.402 [pipeline] Log: /tmp/tagma-actual-semantic-trial-555i83/.tagma/.chat-staging/1aec802b-d07e-4bc5-af0f-7d7b84ea8ef8/.trial-cases/normal-OFCcQM/workspace/.tagma/logs/run_mvbsyoz9_4b65ba611b32/pipeline.log
+02:53:58.403 [pipeline] start "Actual dynamic report" run_id=run_mvbsyozn_45aca955dc2f
+02:53:58.404 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","process.exit(7)"]
+02:53:58.416 [task:flow.inspect] ERROR: failed exit=7 duration=0.0s
+02:53:58.416 [pipeline] failed "Actual dynamic report"
+02:53:58.416 [pipeline] Total: 1 | Success: 0 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:58.416 [pipeline] Duration: 0.0s
+02:53:58.416 [pipeline] Log: /tmp/tagma-actual-semantic-trial-555i83/.tagma/.chat-staging/1aec802b-d07e-4bc5-af0f-7d7b84ea8ef8/.trial-cases/normal-OFCcQM/workspace/.tagma/logs/run_mvbsyozn_45aca955dc2f/pipeline.log
+(pass) semantic outputs must be freshly produced rather than staged or inherited from a previous repeat [1118.36ms]
+(pass) semantic invocation is unavailable to legacy callers and missing Host model contexts [11.71ms]
+02:53:58.750 [pipeline] start "Actual dynamic report" run_id=run_mvbsyp9a_6c19e4e2352d
+02:53:58.751 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:58.767 [task:flow.inspect] success (0.0s)
+02:53:58.768 [pipeline] completed "Actual dynamic report"
+02:53:58.768 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:58.768 [pipeline] Duration: 0.0s
+02:53:58.768 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KH9yau/.tagma/.chat-staging/c3f92aa5-ece1-4bd3-bcd4-83f48267a752/.trial-cases/normal-Q5439W/workspace/.tagma/logs/run_mvbsyp9a_6c19e4e2352d/pipeline.log
+02:53:58.772 [pipeline] start "Actual dynamic report" run_id=run_mvbsyp9v_17809be8819d
+02:53:58.772 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:58.788 [task:flow.inspect] success (0.0s)
+02:53:58.789 [pipeline] completed "Actual dynamic report"
+02:53:58.789 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:58.789 [pipeline] Duration: 0.0s
+02:53:58.789 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KH9yau/.tagma/.chat-staging/c3f92aa5-ece1-4bd3-bcd4-83f48267a752/.trial-cases/normal-Q5439W/workspace/.tagma/logs/run_mvbsyp9v_17809be8819d/pipeline.log
+02:53:59.041 [pipeline] start "Actual dynamic report" run_id=run_mvbsyphd_118921f031fd
+02:53:59.042 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:59.059 [task:flow.inspect] success (0.0s)
+02:53:59.059 [pipeline] completed "Actual dynamic report"
+02:53:59.059 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:59.059 [pipeline] Duration: 0.0s
+02:53:59.059 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KH9yau/.tagma/.chat-staging/c3f92aa5-ece1-4bd3-bcd4-83f48267a752/.trial-cases/normal-msLdcq/workspace/.tagma/logs/run_mvbsyphd_118921f031fd/pipeline.log
+02:53:59.063 [pipeline] start "Actual dynamic report" run_id=run_mvbsyphy_72e00ea245f7
+02:53:59.063 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:59.079 [task:flow.inspect] success (0.0s)
+02:53:59.080 [pipeline] completed "Actual dynamic report"
+02:53:59.080 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:59.080 [pipeline] Duration: 0.0s
+02:53:59.080 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KH9yau/.tagma/.chat-staging/c3f92aa5-ece1-4bd3-bcd4-83f48267a752/.trial-cases/normal-msLdcq/workspace/.tagma/logs/run_mvbsyphy_72e00ea245f7/pipeline.log
+02:53:59.327 [pipeline] start "Actual dynamic report" run_id=run_mvbsyppb_b609282cae6a
+02:53:59.328 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:59.344 [task:flow.inspect] success (0.0s)
+02:53:59.344 [pipeline] completed "Actual dynamic report"
+02:53:59.344 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:59.344 [pipeline] Duration: 0.0s
+02:53:59.344 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KH9yau/.tagma/.chat-staging/c3f92aa5-ece1-4bd3-bcd4-83f48267a752/.trial-cases/normal-qw07ZD/workspace/.tagma/logs/run_mvbsyppb_b609282cae6a/pipeline.log
+02:53:59.346 [pipeline] start "Actual dynamic report" run_id=run_mvbsyppu_b1a0c99cf762
+02:53:59.347 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:59.365 [task:flow.inspect] success (0.0s)
+02:53:59.365 [pipeline] completed "Actual dynamic report"
+02:53:59.365 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:59.365 [pipeline] Duration: 0.0s
+02:53:59.365 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KH9yau/.tagma/.chat-staging/c3f92aa5-ece1-4bd3-bcd4-83f48267a752/.trial-cases/normal-qw07ZD/workspace/.tagma/logs/run_mvbsyppu_b1a0c99cf762/pipeline.log
+(pass) semantic same-attempt replay is exact but new trials and model configs require fresh execution [936.64ms]
+02:53:59.698 [pipeline] start "Actual dynamic report" run_id=run_mvbsypzl_1ef77d05b95c
+02:53:59.699 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:59.715 [task:flow.inspect] success (0.0s)
+02:53:59.716 [pipeline] completed "Actual dynamic report"
+02:53:59.716 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:59.716 [pipeline] Duration: 0.0s
+02:53:59.716 [pipeline] Log: /tmp/tagma-actual-semantic-trial-9LtRyf/.tagma/.chat-staging/d18a0505-9cd4-4f0a-93d4-e34bf1855578/.trial-cases/normal-lrAoR9/workspace/.tagma/logs/run_mvbsypzl_1ef77d05b95c/pipeline.log
+02:53:59.718 [pipeline] start "Actual dynamic report" run_id=run_mvbsyq05_a448778cae93
+02:53:59.718 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:53:59.736 [task:flow.inspect] success (0.0s)
+02:53:59.737 [pipeline] completed "Actual dynamic report"
+02:53:59.737 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:53:59.737 [pipeline] Duration: 0.0s
+02:53:59.737 [pipeline] Log: /tmp/tagma-actual-semantic-trial-9LtRyf/.tagma/.chat-staging/d18a0505-9cd4-4f0a-93d4-e34bf1855578/.trial-cases/normal-lrAoR9/workspace/.tagma/logs/run_mvbsyq05_a448778cae93/pipeline.log
+(pass) semantic receipt validation rejects missing shifted or tampered current-run proofs [371.96ms]
+02:54:00.063 [pipeline] start "Actual dynamic report" run_id=run_mvbsyq9r_8ddab95ae80e
+02:54:00.063 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:54:00.080 [task:flow.inspect] success (0.0s)
+02:54:00.080 [pipeline] completed "Actual dynamic report"
+02:54:00.080 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:00.080 [pipeline] Duration: 0.0s
+02:54:00.080 [pipeline] Log: /tmp/tagma-actual-semantic-trial-a3bCrP/.tagma/.chat-staging/344d138c-e100-4721-b42a-0f09d781075c/.trial-cases/normal-7Jm9gl/workspace/.tagma/logs/run_mvbsyq9r_8ddab95ae80e/pipeline.log
+02:54:00.084 [pipeline] start "Actual dynamic report" run_id=run_mvbsyqab_ab97e3ac5642
+02:54:00.084 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:54:00.100 [task:flow.inspect] success (0.0s)
+02:54:00.101 [pipeline] completed "Actual dynamic report"
+02:54:00.101 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:00.101 [pipeline] Duration: 0.0s
+02:54:00.101 [pipeline] Log: /tmp/tagma-actual-semantic-trial-a3bCrP/.tagma/.chat-staging/344d138c-e100-4721-b42a-0f09d781075c/.trial-cases/normal-7Jm9gl/workspace/.tagma/logs/run_mvbsyqab_ab97e3ac5642/pipeline.log
+(pass) finalize requires the complete semantic receipts even in an otherwise correctly signed cache [378.45ms]
+02:54:00.448 [pipeline] start "Actual dynamic report" run_id=run_mvbsyqkf_cffe9f8b8610
+02:54:00.448 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:54:00.468 [task:flow.inspect] success (0.0s)
+02:54:00.469 [pipeline] completed "Actual dynamic report"
+02:54:00.469 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:00.469 [pipeline] Duration: 0.0s
+02:54:00.469 [pipeline] Log: /tmp/tagma-actual-semantic-trial-bOpiwL/.tagma/.chat-staging/9e9dfbb6-d67f-40f0-90da-25ac61544ea7/.trial-cases/normal-DsqmEi/workspace/.tagma/logs/run_mvbsyqkf_cffe9f8b8610/pipeline.log
+02:54:00.470 [pipeline] start "Actual dynamic report" run_id=run_mvbsyql2_ea30cce89679
+02:54:00.471 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:54:00.487 [task:flow.inspect] success (0.0s)
+02:54:00.488 [pipeline] completed "Actual dynamic report"
+02:54:00.488 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:00.488 [pipeline] Duration: 0.0s
+02:54:00.488 [pipeline] Log: /tmp/tagma-actual-semantic-trial-bOpiwL/.tagma/.chat-staging/9e9dfbb6-d67f-40f0-90da-25ac61544ea7/.trial-cases/normal-DsqmEi/workspace/.tagma/logs/run_mvbsyql2_ea30cce89679/pipeline.log
+(pass) finalize accepts current semantic execution receipts without changing the input-hash contract [385.32ms]
+02:54:00.829 [pipeline] start "Actual dynamic report" run_id=run_mvbsyqv1_ce96cdee9374
+02:54:00.830 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:54:00.848 [task:flow.inspect] success (0.0s)
+02:54:00.848 [pipeline] completed "Actual dynamic report"
+02:54:00.848 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:00.848 [pipeline] Duration: 0.0s
+02:54:00.848 [pipeline] Log: /tmp/tagma-actual-semantic-trial-GoZoWL/.tagma/.chat-staging/c6115d44-1b39-404f-a180-9fa3f5db6646/.trial-cases/normal-Pe1ZIT/workspace/.tagma/logs/run_mvbsyqv1_ce96cdee9374/pipeline.log
+02:54:01.184 [pipeline] start "Actual dynamic report" run_id=run_mvbsyr4v_4c6ad26d8f7f
+02:54:01.184 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');fs.writeFileSync('report.md',fs.readFileSync('input.md'))"]
+02:54:01.201 [task:flow.inspect] success (0.0s)
+02:54:01.201 [pipeline] completed "Actual dynamic report"
+02:54:01.201 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:01.201 [pipeline] Duration: 0.0s
+02:54:01.201 [pipeline] Log: /tmp/tagma-actual-semantic-trial-yJqPv1/.tagma/.chat-staging/bf156f16-cb93-4695-8de7-783d429bd469/.trial-cases/normal-rWXulF/workspace/.tagma/logs/run_mvbsyr4v_4c6ad26d8f7f/pipeline.log
+(pass) deterministic input identity blocks a passing critic until actual producer bytes are repaired [712.31ms]
+02:54:01.545 [pipeline] start "Actual dynamic report" run_id=run_mvbsyrex_ebd4fd412820
+02:54:01.546 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:54:01.565 [task:flow.inspect] success (0.0s)
+02:54:01.565 [pipeline] completed "Actual dynamic report"
+02:54:01.565 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:01.565 [pipeline] Duration: 0.0s
+02:54:01.565 [pipeline] Log: /tmp/tagma-actual-semantic-trial-n1qR16/.tagma/.chat-staging/c418a576-a4c8-4b56-97e2-fb5f6a7e4720/.trial-cases/normal-Qs0ewY/workspace/.tagma/logs/run_mvbsyrex_ebd4fd412820/pipeline.log
+02:54:01.697 [pipeline] start "Actual dynamic report" run_id=run_mvbsyrj5_b65a598bfb5b
+02:54:01.698 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));"]
+02:54:01.717 [task:flow.inspect] success (0.0s)
+02:54:01.718 [pipeline] completed "Actual dynamic report"
+02:54:01.718 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:54:01.718 [pipeline] Duration: 0.0s
+02:54:01.718 [pipeline] Log: /tmp/tagma-actual-semantic-trial-n1qR16/.tagma/.chat-staging/c418a576-a4c8-4b56-97e2-fb5f6a7e4720/.trial-cases/valid-empty-heV1lq/workspace/.tagma/logs/run_mvbsyrj5_b65a598bfb5b/pipeline.log
+(pass) normal core qualification reaches the real reviewer without turning valid empty cases into positive witnesses [505.19ms]
+
+ 14 pass
+ 0 fail
+ 220 expect() calls
+Ran 14 tests across 1 file. [13.78s]
+::endgroup::
+
+::group::tests/chat-trial-semantic-review.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review.test.ts:
+(pass) independent semantic review binds actual artifact bytes and frozen execution identities [3.89ms]
+(pass) semantic votes distinguish an evidenced artifact defect from an uncertain observation [1.55ms]
+(pass) semantic review never calls a model without actual success and a Host runtime [0.43ms]
+(pass) semantic evidence rejects escaped paths, ancestor links and hardlinks before model access [1.39ms]
+(pass) semantic evidence never transmits partial binary oversized or secret-bearing artifacts [1.26ms]
+(pass) semantic review fails closed on incomplete invented or extra model verdicts [2.31ms]
+(pass) semantic review requires complete provider output and preserves unknown billing outcomes [1.01ms]
+(pass) semantic review rechecks produced and input evidence after the model returns [0.83ms]
+(pass) semantic reviewer deadline aborts the one invocation even when it never settles [11.96ms]
+(pass) semantic reviewer cancellation and caller mutation cannot turn an in-flight review green [0.98ms]
+(pass) reviewer receives the unchanged response limits before one bounded invocation [0.73ms]
+(pass) reviewer response limits keep complete literal evidence strict without truncation coercion or retries [4.01ms]
+(pass) reviewer quote guidance preserves decoded source whitespace on the actual invocation [0.49ms]
+(pass) reviewer quote copying rejects reflowed JSON and Markdown without normalizing evidence [2.93ms]
+
+ 14 pass
+ 0 fail
+ 217 expect() calls
+Ran 14 tests across 1 file. [91.00ms]
+::endgroup::
+
+::group::tests/chat-trial-stream-evidence-integration.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-stream-evidence-integration.test.ts:
+(pass) successful task producer is archived independently of the unchanged UI tail [5.91ms]
+(pass) an archive sink failure stays UNKNOWN without changing task success or repair evidence [1.05ms]
+(pass) repeat runs preserve distinct actual identities and capture-error provenance [0.27ms]
+(pass) an engine run identity mismatch never reaches the archive sink [0.07ms]
+(pass) known capture diagnostics stay scoped to their own stream without changing results [2.09ms]
+
+ 5 pass
+ 0 fail
+ 26 expect() calls
+Ran 5 tests across 1 file. [141.00ms]
+::endgroup::
+
+::group::tests/chat-trial-stream-evidence-storage.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-stream-evidence-storage.test.ts:
+(pass) Host-owned completed Trial task stream archives > retains more than the display limit and a legitimate empty stderr after case cleanup [8.38ms]
+(pass) Host-owned completed Trial task stream archives > keeps produced, captured and redacted byte counts and digests separate [1.66ms]
+(pass) Host-owned completed Trial task stream archives > rejects owner/context mismatches before Trial and wrong owners on authenticated reads [1.74ms]
+(pass) Host-owned completed Trial task stream archives > detects manifest tampering and never accepts an unsigned changed status [1.59ms]
+(pass) Host-owned completed Trial task stream archives > a legal owner with an unavailable archive directory gets an unavailable sink [0.44ms]
+(pass) Host-owned completed Trial task stream archives > ENOSPC during legal archive setup returns unavailable and never retries publication [0.42ms]
+(pass) Host-owned completed Trial task stream archives > detects modified blob bytes and rejects non-private archive files [1.80ms]
+(pass) Host-owned completed Trial task stream archives > rejects a different run coordinate and symlink or hardlink source grafts [2.30ms]
+(pass) Host-owned completed Trial task stream archives > does not accept a non-private source stream as complete evidence [1.12ms]
+(pass) Host-owned completed Trial task stream archives > preserves missing, unknown counts, count mismatches and capture errors as safe outcomes [2.18ms]
+(pass) Host-owned completed Trial task stream archives > reports the existing stream read bound and invalid UTF-8 without clipping or throwing [5.21ms]
+(pass) Host-owned completed Trial task stream archives > retains independent repeated run identities and never replaces a sealed tuple [3.86ms]
+(pass) Host-owned completed Trial task stream archives > fails closed on stale publication claims and counts orphan bytes in archive quota [2.13ms]
+
+ 13 pass
+ 0 fail
+ 76 expect() calls
+Ran 13 tests across 1 file. [87.00ms]
+::endgroup::
+
+::group::tests/opencode-trial-semantic-review.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-trial-semantic-review.test.ts:
+(pass) semantic transport uses distinct fresh tool-free sessions and the exact frozen model variant [3.42ms]
+(pass) semantic transport preserves definitive billing rejection without a second model call [0.99ms]
+(pass) semantic transport cancels only its reviewer session through both native drains [0.53ms]
+(pass) semantic transport rejects session conflicts and mismatched response identities [0.21ms]
+(pass) semantic transport does not create an aborted session or expose raw transport errors [0.24ms]
+(pass) semantic transport fails closed before a model call when fixed session metadata cannot be established [0.25ms]
+
+ 6 pass
+ 0 fail
+ 36 expect() calls
+Ran 6 tests across 1 file. [70.00ms]
+::endgroup::

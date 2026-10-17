@@ -1,0 +1,80 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify9",
+  "accepted": false,
+  "acceptedCountRemains": 8,
+  "sourceRevision": "edc7dd15ddf596733d14d1a06639fe85f190d068",
+  "sourceCI": 38993216607,
+  "sourceCIStatus": "all-required-success",
+  "originalRequests": 1,
+  "actionClarifications": 0,
+  "editorRestarted": true,
+  "freshWorkspace": true,
+  "operationId": "operation-30d1789f-a2c0-4656-9cbb-1be30cd82b33",
+  "stageId": "7462fdf6-ad75-4270-ba9d-ee352ac5d580",
+  "finalFailure": {
+    "code": "model_context_overflow",
+    "stage": "repair",
+    "wait": "provider_unavailable",
+    "nativeError": "ContextOverflowError",
+    "nativeMessageChars": 3841194
+  },
+  "actualTrials": [
+    {
+      "cases": 3,
+      "runs": 4,
+      "taskCounts": {
+        "success": 9,
+        "failed": 2,
+        "skipped": 17
+      },
+      "unexpectedFailure": "Collector missed schema required approximation field; existing validator blocked dependents.",
+      "nativeReviews": 0,
+      "additionalReviewBoundary": "Second normal verdict34261bytes exceeds existing32768 byte artifact limit."
+    },
+    {
+      "cases": 3,
+      "runs": 4,
+      "taskCounts": {
+        "success": 15,
+        "failed": 1,
+        "skipped": 12
+      },
+      "expectedNegativeFailures": 1,
+      "unexpectedTaskFailures": 0,
+      "normalReview": "Actual native failed content verdict for unsupported hosting clause; exact request/response hashes verified and all6quotes literal; CSR58 guidance actually delivered.",
+      "laterReviewBoundary": "Second normal verdict59357bytes, unreviewable under existing per-file bound; no opinion invented."
+    }
+  ],
+  "actualCompleteShaVerifiedChildStreams": 54,
+  "unavailableChildStreams": 0,
+  "repairAssemblyObservation": {
+    "successfulTaskContextChars": 3027273,
+    "privateTaskCount": 15,
+    "pipelineDiagnosticChars": 124322,
+    "fullSemanticDiagnosticChars": 117067,
+    "largeSuccessfulStreams": 6,
+    "allSixStreamsHaveCompleteMatchingShaArchives": true,
+    "causalObservation": "Second failed Trial has no unexpected executed task failure; complete failed-review request/response already supplies actual artifact content. Full successful task process transcripts are also copied into repair input, causing multi-megabyte model context and observed overflow."
+  },
+  "classification": "Candidate narrow repair-context assembly problem; typed provider failure/retention and review capacity checks behave correctly. Independent actual-SDK/semantic/archive counterexamples must qualify repair before source changes.",
+  "plannedScope": "Only current-trial semantic-only failed cases with complete hash-bound failed-review request/response, all actual tasks successful, no nonsemantic failed assertion, and complete matching immutable stdout archives. Deliver explicit bounded literal context excerpts plus hashes/byte/omission metadata; retain complete archive and complete semantic details. Preserve complete true task failures/stderr/other assertion contexts, no review or model budget increase, no replay/Retry or claim regrading.",
+  "priorRecordsReviewed": {
+    "count": 58,
+    "catalogSha256": "6c26be26bdb52d4a1cd84b00599663b619c7d285ed3af06419e9da72767f5ea6",
+    "relevant": [
+      "CSR-0011",
+      "CSR-0014",
+      "CSR-0018",
+      "CSR-0019",
+      "CSR-0025",
+      "CSR-0041",
+      "CSR-0048",
+      "CSR-0049",
+      "CSR-0058"
+    ]
+  },
+  "packagesChanged": false,
+  "versionPatchInvocations": 0,
+  "historicalCoverageComplete": false
+}

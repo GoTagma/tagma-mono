@@ -1,0 +1,86 @@
+
+::group::tests/chat-repair-error-evidence.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-repair-error-evidence.test.ts:
+(pass) private repair redaction preserves nonsecret nested JSON bytes while still removing credentials [2.65ms]
+(pass) private repair byte preservation never revives credentials hidden by duplicate JSON keys [0.79ms]
+
+ 2 pass
+ 18 filtered out
+ 0 fail
+ 22 expect() calls
+Ran 2 tests across 1 file. [158.00ms]
+::endgroup::
+
+::group::tests/chat-trial-semantic-review-runtime.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review-runtime.test.ts:
+02:55:20.733 [pipeline] start "Actual dynamic report" run_id=run_mvbt0gih_fe13171bee02
+02:55:20.739 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:20.787 [task:flow.inspect] success (0.0s)
+02:55:20.789 [pipeline] completed "Actual dynamic report"
+02:55:20.789 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:20.789 [pipeline] Duration: 0.1s
+02:55:20.789 [pipeline] Log: /tmp/tagma-actual-semantic-trial-JNPNU2/.tagma/.chat-staging/123a4dcb-c2a4-46f1-82fb-4c7452e5054b/.trial-cases/normal-lOZSns/workspace/.tagma/logs/run_mvbt0gih_fe13171bee02/pipeline.log
+02:55:20.991 [pipeline] start "Actual dynamic report" run_id=run_mvbt0gpq_776c0530e8d5
+02:55:20.992 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:21.028 [task:flow.inspect] success (0.0s)
+02:55:21.028 [pipeline] completed "Actual dynamic report"
+02:55:21.028 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:21.028 [pipeline] Duration: 0.0s
+02:55:21.028 [pipeline] Log: /tmp/tagma-actual-semantic-trial-JNPNU2/.tagma/.chat-staging/123a4dcb-c2a4-46f1-82fb-4c7452e5054b/.trial-cases/normal-lOZSns/workspace/.tagma/logs/run_mvbt0gpq_776c0530e8d5/pipeline.log
+(pass) semantic-only repair context bounds archived successful jsonl streams without changing review evidence [1092.56ms]
+02:55:21.783 [pipeline] start "Actual dynamic report" run_id=run_mvbt0hbq_5161482fd169
+02:55:21.783 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:21.818 [task:flow.inspect] success (0.0s)
+02:55:21.820 [pipeline] completed "Actual dynamic report"
+02:55:21.820 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:21.820 [pipeline] Duration: 0.0s
+02:55:21.820 [pipeline] Log: /tmp/tagma-actual-semantic-trial-7oQh2V/.tagma/.chat-staging/e12c33ba-42e9-4092-a8d7-98ce6745bdcf/.trial-cases/normal-BRAFh3/workspace/.tagma/logs/run_mvbt0hbq_5161482fd169/pipeline.log
+02:55:21.883 [pipeline] start "Actual dynamic report" run_id=run_mvbt0hei_a678972b0d79
+02:55:21.883 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:21.912 [task:flow.inspect] success (0.0s)
+02:55:21.913 [pipeline] completed "Actual dynamic report"
+02:55:21.913 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:21.913 [pipeline] Duration: 0.0s
+02:55:21.913 [pipeline] Log: /tmp/tagma-actual-semantic-trial-7oQh2V/.tagma/.chat-staging/e12c33ba-42e9-4092-a8d7-98ce6745bdcf/.trial-cases/normal-BRAFh3/workspace/.tagma/logs/run_mvbt0hei_a678972b0d79/pipeline.log
+(pass) semantic-only repair context bounds archived successful unicode streams without changing review evidence [617.69ms]
+02:55:22.389 [pipeline] start "Actual dynamic report" run_id=run_mvbt0hsl_e44c5d76b5d9
+02:55:22.389 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:22.429 [task:flow.inspect] success (0.0s)
+02:55:22.430 [pipeline] completed "Actual dynamic report"
+02:55:22.430 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:22.430 [pipeline] Duration: 0.0s
+02:55:22.430 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KNFYi0/.tagma/.chat-staging/d88f8393-86e2-4db7-9299-ce8657c26d4d/.trial-cases/normal-AfJC9L/workspace/.tagma/logs/run_mvbt0hsl_e44c5d76b5d9/pipeline.log
+02:55:22.628 [pipeline] start "Actual dynamic report" run_id=run_mvbt0hz7_7594053ef698
+02:55:22.628 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:22.666 [task:flow.inspect] success (0.0s)
+02:55:22.667 [pipeline] completed "Actual dynamic report"
+02:55:22.667 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:22.667 [pipeline] Duration: 0.0s
+02:55:22.667 [pipeline] Log: /tmp/tagma-actual-semantic-trial-KNFYi0/.tagma/.chat-staging/d88f8393-86e2-4db7-9299-ce8657c26d4d/.trial-cases/normal-AfJC9L/workspace/.tagma/logs/run_mvbt0hz7_7594053ef698/pipeline.log
+(pass) semantic-only repair context preserves complete streams for missing proofs other assertions and real errors [5824.05ms]
+02:55:28.216 [pipeline] start "Actual dynamic report" run_id=run_mvbt0maf_8635de2ec751
+02:55:28.218 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:28.254 [task:flow.inspect] success (0.0s)
+02:55:28.256 [pipeline] completed "Actual dynamic report"
+02:55:28.256 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:28.256 [pipeline] Duration: 0.0s
+02:55:28.256 [pipeline] Log: /tmp/tagma-actual-semantic-trial-LehztC/.tagma/.chat-staging/8a707417-28f0-4c18-85f0-965aa663c556/.trial-cases/normal-vct97Z/workspace/.tagma/logs/run_mvbt0maf_8635de2ec751/pipeline.log
+02:55:28.436 [pipeline] start "Actual dynamic report" run_id=run_mvbt0mgj_86af4c8fef94
+02:55:28.437 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:55:28.479 [task:flow.inspect] success (0.0s)
+02:55:28.480 [pipeline] completed "Actual dynamic report"
+02:55:28.480 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:55:28.480 [pipeline] Duration: 0.0s
+02:55:28.480 [pipeline] Log: /tmp/tagma-actual-semantic-trial-LehztC/.tagma/.chat-staging/8a707417-28f0-4c18-85f0-965aa663c556/.trial-cases/normal-vct97Z/workspace/.tagma/logs/run_mvbt0mgj_86af4c8fef94/pipeline.log
+(pass) semantic-only repair context reaches the sealed repair prompt with explicit excerpt scope [977.81ms]
+
+ 4 pass
+ 10 filtered out
+ 0 fail
+ 130 expect() calls
+Ran 4 tests across 1 file. [8.65s]
+::endgroup::

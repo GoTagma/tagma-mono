@@ -1,0 +1,65 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review-runtime.test.ts:
+02:44:06.001 [pipeline] start "Actual dynamic report" run_id=run_mvbslzvy_6b5b80ef8141
+02:44:06.008 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:44:06.050 [task:flow.inspect] success (0.0s)
+02:44:06.052 [pipeline] completed "Actual dynamic report"
+02:44:06.052 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:44:06.052 [pipeline] Duration: 0.1s
+02:44:06.052 [pipeline] Log: /tmp/tagma-actual-semantic-trial-4Nbxzr/.tagma/.chat-staging/f87c4881-d3e1-49c3-98e5-bd8f3e68c72e/.trial-cases/normal-na9qMN/workspace/.tagma/logs/run_mvbslzvy_6b5b80ef8141/pipeline.log
+02:44:06.218 [pipeline] start "Actual dynamic report" run_id=run_mvbsm021_984ef8d62776
+02:44:06.218 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:44:06.252 [task:flow.inspect] success (0.0s)
+02:44:06.253 [pipeline] completed "Actual dynamic report"
+02:44:06.253 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:44:06.253 [pipeline] Duration: 0.0s
+02:44:06.253 [pipeline] Log: /tmp/tagma-actual-semantic-trial-4Nbxzr/.tagma/.chat-staging/f87c4881-d3e1-49c3-98e5-bd8f3e68c72e/.trial-cases/normal-na9qMN/workspace/.tagma/logs/run_mvbsm021_984ef8d62776/pipeline.log
+332 |         originals.every(
+333 |           (t) => t.stdout.length > 500000 && t.stdout.endsWith('COMPLETE_CONTEXT_END'),
+334 |         ),
+335 |       ).toBe(true);
+336 |       const evidence = buildChatRepairErrorEvidence(trialId, result);
+337 |       expect(Buffer.byteLength(evidence.text)).toBeLessThan(128 * 1024);
+                                                     ^
+error: expect(received).toBeLessThan(expected)
+
+Expected: < 131072
+Received: 2904547
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:337:48)
+(fail) semantic-only repair context bounds archived successful jsonl streams without changing review evidence [1122.16ms]
+02:44:07.073 [pipeline] start "Actual dynamic report" run_id=run_mvbsm0ps_8a7976bcb945
+02:44:07.073 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:44:07.103 [task:flow.inspect] success (0.0s)
+02:44:07.104 [pipeline] completed "Actual dynamic report"
+02:44:07.104 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:44:07.104 [pipeline] Duration: 0.0s
+02:44:07.104 [pipeline] Log: /tmp/tagma-actual-semantic-trial-YYyq7m/.tagma/.chat-staging/d68d05b9-3e3c-444a-86cd-a4df817542d9/.trial-cases/normal-y6YVKA/workspace/.tagma/logs/run_mvbsm0ps_8a7976bcb945/pipeline.log
+02:44:07.170 [pipeline] start "Actual dynamic report" run_id=run_mvbsm0si_7f85922cec06
+02:44:07.171 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:44:07.200 [task:flow.inspect] success (0.0s)
+02:44:07.202 [pipeline] completed "Actual dynamic report"
+02:44:07.202 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:44:07.202 [pipeline] Duration: 0.0s
+02:44:07.202 [pipeline] Log: /tmp/tagma-actual-semantic-trial-YYyq7m/.tagma/.chat-staging/d68d05b9-3e3c-444a-86cd-a4df817542d9/.trial-cases/normal-y6YVKA/workspace/.tagma/logs/run_mvbsm0si_7f85922cec06/pipeline.log
+332 |         originals.every(
+333 |           (t) => t.stdout.length > 500000 && t.stdout.endsWith('COMPLETE_CONTEXT_END'),
+334 |         ),
+335 |       ).toBe(true);
+336 |       const evidence = buildChatRepairErrorEvidence(trialId, result);
+337 |       expect(Buffer.byteLength(evidence.text)).toBeLessThan(128 * 1024);
+                                                     ^
+error: expect(received).toBeLessThan(expected)
+
+Expected: < 131072
+Received: 2178005
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:337:48)
+(fail) semantic-only repair context bounds archived successful unicode streams without changing review evidence [724.04ms]
+
+ 0 pass
+ 11 filtered out
+ 2 fail
+ 18 expect() calls
+Ran 2 tests across 1 file. [1.99s]

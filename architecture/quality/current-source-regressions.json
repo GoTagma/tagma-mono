@@ -737,6 +737,18 @@
       "path": "architecture/quality/evidence/s3-l3-verify8-review-quote-first-observation.json",
       "sha256": "15df741290679c2b47392691c2439cf81e2fcf737029e79d096dcc3efe2b0c7e",
       "role": "actual-native-output-error-and-strict-validation-proof-not-runtime-defect"
+    },
+    {
+      "id": "s3-l3-semantic-repair-context-overflow",
+      "path": "architecture/quality/evidence/s3-l3-verify9-repair-context-first-observation.json",
+      "sha256": "5a81adab913b325c4e06b93818fedfda267f15e3bdfa27dc3ddd42a03eb5e00f",
+      "role": "actual-live-first-observation-and-independent-local-regression"
+    },
+    {
+      "id": "s3-l3-repair-nonsecret-json-byte-integrity",
+      "path": "architecture/quality/evidence/s3-l3-verify9-repair-json-bytes-first-observation.json",
+      "sha256": "d785ab7b28bcee59a70cc88ed7f5a1edc18634222a877f5a453d5ee2fb75be89",
+      "role": "actual-live-first-observation-and-independent-local-regression"
     }
   ],
   "issues": [
@@ -8672,6 +8684,207 @@
       "realTestSelectors": [],
       "contract": "Never compact, join, escape, normalize or truncate reviewer quotes into passing. Keep exact decoded artifact substring membership, hashes, existing1600/4/512/65536 response bounds, one call/no retry, frozen model/90s and uncertainty. Failed older native opinions remain failed.",
       "claimLimit": "Model produced nonliteral evidence while Host behaved correctly. Guidance does not guarantee model compliance or prove a performance/accuracy improvement. Actual fresh normal Trial+sealed publication and source CI remain required before S4; still8/12. Historical gaps remain RED."
+    },
+    {
+      "id": "CSR-0059",
+      "lineage": [
+        "CSR-0011",
+        "CSR-0014",
+        "CSR-0018",
+        "CSR-0019",
+        "CSR-0041",
+        "CSR-0048",
+        "CSR-0058"
+      ],
+      "title": "Semantic-only repair must not replay megabytes of successful process context over complete review evidence",
+      "category": "private-repair-context-assembly",
+      "mechanism": "hash-bound-semantic-failure-and-immutable-successful-stream-context-projection",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "status": "local-qualified-user-stopped-before-live",
+      "realTestSelectors": [],
+      "firstEvidence": {
+        "sourceId": "s3-l3-semantic-repair-context-overflow",
+        "path": "architecture/quality/evidence/s3-l3-verify9-repair-context-first-observation.json",
+        "sha256": "5a81adab913b325c4e06b93818fedfda267f15e3bdfa27dc3ddd42a03eb5e00f",
+        "sourceRevision": "edc7dd15ddf596733d14d1a06639fe85f190d068",
+        "round": "S3-L3-verify9-original-round-1",
+        "acceptancePolicy": "Old failed round remains unpublished; no replay/regrading. User stopped further live acceptance before fresh verification."
+      },
+      "history": [
+        {
+          "kind": "two-real-SDK-repeated-command-review-archive-size-reds",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-context-first-red.txt",
+          "evidenceSha256": "f127078be773cb220260f75f6b1c8dc6220b43583b48c167a484e9fefeac5471",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "pretty-JSON-interaction-remains-closed-before-byte-integrity-fix",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-json-interaction-red.txt",
+          "evidenceSha256": "6f403cb3dbde760e680e5b3f9386eb75e40719eebabc97a39ec60ea803c5a18a",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "native-repair-prompt-contract-delivery-red",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-prompt-first-red.txt",
+          "evidenceSha256": "e7d6f2edf252b6f368c28833b3359e95072271c35c8af5f2e96c9738d50931f5",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "six-focused-tests152-assertions-green-with-byte-integrity",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-focused-green.txt",
+          "evidenceSha256": "b7b01d105063707888a746e9971d21ad9f3ab14188979e0687eebe539c907139",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "nine-related-files97-tests822-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-related-green.txt",
+          "evidenceSha256": "71de3e55eb731de1736e1d7a5a005f56a5114c5257d7390cb60be9d95b048627",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "actual-pinned-native-one-test30-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-native-green.txt",
+          "evidenceSha256": "474b0b63131cec3f9862a94cf7aeace9acf14c9575c699f0082d061c51ba0594",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "read-only-actual-data-shadow-capture-projection-not-old-result-regrading",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-projection-proof.json",
+          "evidenceSha256": "5ef1091b7da37969582cc376ec9d6fbaa64d42a3cff1dab25293412063f1cc55",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "final-full13-local-qualification-user-stopped-before-live",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-local-qualification.json",
+          "evidenceSha256": "ad62d8d979487d144f961d864d85ce9e261d6d333dffdc31a8bdfaaf41c78eaa",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Only current-trial semantic-only failed cases with complete current-system/request/response/artifact hash bindings and all actual tasks successful may project large stdout. Require complete matching immutable archive tuples/digests and empty stderr; retain explicit2048-code-unit literal excerpts, complete digest/byte/omission metadata and archive references, never permission."
+        },
+        {
+          "summary": "Full semantic review/artifact/response/assertion evidence and true task errors/stderr/other assertion contexts remain complete. Missing/stale/tampered proof falls back to prior full input. New actual SDK JSONL/Unicode fixtures, twelve nearby controls and actual sealed repair prompt prove this boundary without extra provider calls, changed repair authority or budgets. Cache54 invalidates older repair diagnostics; plan12 unchanged."
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic-only repair context bounds archived successful jsonl streams without changing review evidence",
+          "namePattern": "^semantic-only repair context bounds archived successful jsonl streams without changing review evidence$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic-only repair context bounds archived successful unicode streams without changing review evidence",
+          "namePattern": "^semantic-only repair context bounds archived successful unicode streams without changing review evidence$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic-only repair context preserves complete streams for missing proofs other assertions and real errors",
+          "namePattern": "^semantic-only repair context preserves complete streams for missing proofs other assertions and real errors$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-semantic-review-runtime.test.ts",
+          "fullName": "semantic-only repair context reaches the sealed repair prompt with explicit excerpt scope",
+          "namePattern": "^semantic-only repair context reaches the sealed repair prompt with explicit excerpt scope$",
+          "expectedTests": 1
+        }
+      ],
+      "contract": "Project only successful nonerror context with complete current Host semantic failure and immutable archive proofs. Never abbreviate actual error/stderr or other failed assertion evidence. Keep complete semantic snapshots, original response, all case/run identities, authority and budgets; archive references grant no private access.",
+      "claimLimit": "Read-only shadow reconstruction using exact original native bytes reduces actual model error evidence3412852 to220994bytes; old damaged cache stays unprojected/unchanged. This is not a new live model success or acceptance; user stopped at8/12."
+    },
+    {
+      "id": "CSR-0060",
+      "lineage": [
+        "CSR-0018",
+        "CSR-0019",
+        "CSR-0041",
+        "CSR-0048",
+        "CSR-0058",
+        "CSR-0059"
+      ],
+      "title": "Private repair redaction must preserve safe unchanged nested JSON evidence bytes",
+      "category": "private-evidence-byte-integrity",
+      "mechanism": "preserve-unambiguous-nonsecret-structured-text-without-restoring-shadowed-credentials",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "status": "local-qualified-user-stopped-before-live",
+      "realTestSelectors": [],
+      "firstEvidence": {
+        "sourceId": "s3-l3-repair-nonsecret-json-byte-integrity",
+        "path": "architecture/quality/evidence/s3-l3-verify9-repair-json-bytes-first-observation.json",
+        "sha256": "d785ab7b28bcee59a70cc88ed7f5a1edc18634222a877f5a453d5ee2fb75be89",
+        "sourceRevision": "edc7dd15ddf596733d14d1a06639fe85f190d068",
+        "round": "S3-L3-verify9-original-round-1",
+        "acceptancePolicy": "Old failed round remains unpublished; no replay/regrading. User stopped further live acceptance before fresh verification."
+      },
+      "history": [
+        {
+          "kind": "formatting-only-JSON-evidence-mutation-red",
+          "evidencePath": "architecture/quality/evidence/s3-l3-repair-json-bytes-first-red.txt",
+          "evidenceSha256": "9b6ecfb1119915207bb5b02ab2d7df37a983d420701a34d02f92f8849d8a55f7",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "implementation-safety-counterexample-for-shadowed-duplicate-key-credentials",
+          "evidencePath": "architecture/quality/evidence/s3-l3-repair-json-duplicate-safety-first-red.txt",
+          "evidenceSha256": "4854b6bc6e25cf94735bc6ee324e3036062a7e49d32ae092c1f920218f63264b",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "two-redaction-integrity-and-duplicate-security-tests22-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-repair-json-bytes-green.txt",
+          "evidenceSha256": "31574334f1360c544a2e336b084bde096750c4ae6bf309a4319abec5e4aa8b44",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "combined-six-tests152-assertions-and-full-evidence-context-guard-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-focused-green.txt",
+          "evidenceSha256": "b7b01d105063707888a746e9971d21ad9f3ab14188979e0687eebe539c907139",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "final-full13-local-qualification-user-stopped-before-live",
+          "evidencePath": "architecture/quality/evidence/s3-l3-semantic-repair-local-qualification.json",
+          "evidenceSha256": "ad62d8d979487d144f961d864d85ce9e261d6d333dffdc31a8bdfaaf41c78eaa",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Preserve exact JSON/JSONL/nested structured-string bytes when recursive redaction makes no semantic change and object keys are unambiguous. Sanitize and serialize changed credential values and duplicate-key JSON; never revive discarded credential values, including escaped keys/Bearer strings and nested payloads."
+        },
+        {
+          "summary": "Real complete semantic capture now retains original artifact byte counts/hashes, enabling strict source59 proof matching. Keep credential redaction and fixed points, receipt hashes, parser/publication semantics and stale-result refusal. Duplicate-key regression protects the old canonicalization security behavior. Cache54 covers older repair diagnostic bytes."
+        }
+      ],
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-repair-error-evidence.test.ts",
+          "fullName": "private repair redaction preserves nonsecret nested JSON bytes while still removing credentials",
+          "namePattern": "^private repair redaction preserves nonsecret nested JSON bytes while still removing credentials$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-repair-error-evidence.test.ts",
+          "fullName": "private repair byte preservation never revives credentials hidden by duplicate JSON keys",
+          "namePattern": "^private repair byte preservation never revives credentials hidden by duplicate JSON keys$",
+          "expectedTests": 1
+        }
+      ],
+      "contract": "Do not format or normalize unchanged nonsecret evidence strings and retain stale original metadata. Preserve actual credential scrubbing, duplicate-key safety and idempotence; do not regrade old votes or rewrite old caches.",
+      "claimLimit": "Old live diagnostic remains damaged and correctly cannot qualify source59 projection. Original native evidence is independently byte verified; shadow reconstruction is explicitly counterfactual new-source capture. No fresh live verification after user stop."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

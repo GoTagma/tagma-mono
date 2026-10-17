@@ -1,0 +1,73 @@
+{
+  "scope": "Read-only replay of actual failed Trial result; strict old damaged repair diagnostic remains unqualified. Shadow new-source capture uses exact original native bytes, then bounded projection; no model call, cache rewrite or old-result regrading",
+  "candidateSourceSha256": "d42ca14c43dfb60982c3850784781fa8011861d0cea665e615b1a65e08f976b8",
+  "sourceCacheSha256": "8bbfae78c921f55b0d795740731fbc9edcc4bc741a8aae40aae84bedcc79a2f3",
+  "trialId": "trial-feb182cc2cdac2dc9fb84dfac1f08529f5a0e958",
+  "before": {
+    "chars": 3402694,
+    "bytes": 3412852,
+    "hash": "2e8a651e12d8b247cfad338107c3f376d5c514a444ec80138549d2c2afd80fc5",
+    "tasks": 15
+  },
+  "after": {
+    "chars": 220656,
+    "bytes": 220994,
+    "hash": "c4ff9d0b8bba95da0288e839d4c97c3c530e6fdcc5d17ff529624f8ad7fe427b",
+    "tasks": 9,
+    "contextCount": 6
+  },
+  "fullCorrectlyCapturedSemanticDiagnosticsAndCasesEqual": true,
+  "oldCacheStillUnprojected": true,
+  "oldCacheBytesUnchanged": true,
+  "captureScope": "Counterfactual new-source capture reconstructed only from already byte-verified original native request/response; old persisted cache and failure outcome remain unchanged",
+  "archivedContext": [
+    {
+      "taskId": "analyze.fetch_claims",
+      "runNumber": 1,
+      "fullByteLength": 290589,
+      "fullSha256": "7c0f8ba42e0af09472a302aa95cda21e0cf0de243be5a61011df9f0fb80c8479",
+      "omittedCodeUnits": 288465,
+      "archiveHash": "7c0f8ba42e0af09472a302aa95cda21e0cf0de243be5a61011df9f0fb80c8479"
+    },
+    {
+      "taskId": "analyze.fact_check",
+      "runNumber": 1,
+      "fullByteLength": 1085896,
+      "fullSha256": "c079c66121affd90035195314fda5e2e74db12ddea75f95f5848ec22ee5d5228",
+      "omittedCodeUnits": 1079805,
+      "archiveHash": "c079c66121affd90035195314fda5e2e74db12ddea75f95f5848ec22ee5d5228"
+    },
+    {
+      "taskId": "report.write_report",
+      "runNumber": 1,
+      "fullByteLength": 121871,
+      "fullSha256": "7fd9eb435d5fc6493652f1d57d1a83ff964385aa1b76ec1c4ae99ff29a7e5b97",
+      "omittedCodeUnits": 119689,
+      "archiveHash": "7fd9eb435d5fc6493652f1d57d1a83ff964385aa1b76ec1c4ae99ff29a7e5b97"
+    },
+    {
+      "taskId": "analyze.fetch_claims",
+      "runNumber": 2,
+      "fullByteLength": 257636,
+      "fullSha256": "ccec6b437c076b44616a8ad600acb2286d6cf78e2ad916c3f761fa7dec930683",
+      "omittedCodeUnits": 255513,
+      "archiveHash": "ccec6b437c076b44616a8ad600acb2286d6cf78e2ad916c3f761fa7dec930683"
+    },
+    {
+      "taskId": "analyze.fact_check",
+      "runNumber": 2,
+      "fullByteLength": 1019469,
+      "fullSha256": "e8538e69d3c6e662916aa275fffd31bd8a10f5929183706a824c61bf707c4cd1",
+      "omittedCodeUnits": 1012181,
+      "archiveHash": "e8538e69d3c6e662916aa275fffd31bd8a10f5929183706a824c61bf707c4cd1"
+    },
+    {
+      "taskId": "report.write_report",
+      "runNumber": 2,
+      "fullByteLength": 261241,
+      "fullSha256": "9ccbd342880ccb41bdfe9543ffeffe757b3ea437214db9574476f6708d65aa7c",
+      "omittedCodeUnits": 258937,
+      "archiveHash": "9ccbd342880ccb41bdfe9543ffeffe757b3ea437214db9574476f6708d65aa7c"
+    }
+  ]
+}

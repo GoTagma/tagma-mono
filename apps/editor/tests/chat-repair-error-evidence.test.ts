@@ -25,6 +25,58 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+test('private repair redaction preserves nonsecret nested JSON bytes while still removing credentials', () => {
+  const artifact = '{\r\n  "observation": "Café-日本 🧭",\r\n  "amount": 13\r\n}\r\n';
+  const request = JSON.stringify({
+    artifacts: [
+      {
+        path: 'work/result.json',
+        content: artifact,
+        sha256: createHash('sha256').update(artifact).digest('hex'),
+        bytes: Buffer.byteLength(artifact),
+      },
+    ],
+  });
+  const envelope = JSON.stringify({
+    kind: 'independent-semantic-review',
+    request,
+    response: '{ "verdict": "fail" }',
+  });
+  expect(redactChatRepairErrorOutput(artifact)).toBe(artifact);
+  expect(redactChatRepairErrorOutput(envelope)).toBe(envelope);
+  const jsonl = '  { "type": "start", "index": 1 }\n' + envelope + '\n';
+  expect(redactChatRepairErrorOutput(jsonl)).toBe(jsonl);
+  const protectedText = JSON.stringify({
+    request: JSON.stringify({
+      headers: { authorization: 'Bearer private-review-token' },
+      artifact,
+    }),
+    apiKey: 'private-api-key',
+  });
+  const redacted = redactChatRepairErrorOutput(protectedText);
+  expect(redacted).not.toContain('private-review-token');
+  expect(redacted).not.toContain('private-api-key');
+  expect(JSON.parse(JSON.parse(redacted).request).artifact).toBe(artifact);
+  expect(redactChatRepairErrorOutput(redacted)).toBe(redacted);
+});
+
+test('private repair byte preservation never revives credentials hidden by duplicate JSON keys', () => {
+  const documents = [
+    '{ "apiKey": "duplicate-hidden-key", "apiKey": "[REDACTED]" }',
+    '{ "api\\u004bey": "escaped-hidden-key", "apiKey": "[REDACTED]" }',
+    '{ "message": "\\u0042earer duplicate-hidden-token", "message": "safe" }',
+    '{ "message": "https://user:duplicate-hidden-password@example.invalid/", "message": "safe" }',
+    JSON.stringify({ request: '{ "apiKey": "nested-hidden-key", "apiKey": "[REDACTED]" }' }),
+  ];
+  for (const document of documents) {
+    const result = redactChatRepairErrorOutput(document);
+    expect(result).not.toContain('hidden-');
+    expect(redactChatRepairErrorOutput(result)).toBe(result);
+    const lines = redactChatRepairErrorOutput('{ "event": "start" }\n' + document + '\n');
+    expect(lines).not.toContain('hidden-');
+  }
+});
+
 function streamEvidence(result: Partial<TaskResult>, persisted?: string) {
   const root = mkdtempSync(join(tmpdir(), 'tagma-repair-stream-'));
   roots.push(root);

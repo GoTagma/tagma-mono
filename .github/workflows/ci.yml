@@ -77,6 +77,10 @@ jobs:
         working-directory: apps/editor
         run: bun test tests/chat-trial-semantic-review-runtime.test.ts --test-name-pattern "normal core qualification"
 
+      - name: Semantic repair context and evidence byte integrity
+        working-directory: apps/editor
+        run: bun scripts/test-serial.mjs --file tests/chat-trial-semantic-review-runtime.test.ts --file tests/chat-repair-error-evidence.test.ts
+
       - name: Trial public path coordinate contracts
         working-directory: apps/editor
         run: bun test tests/chat-pipeline-trial-plan-tool-boundary.test.ts --test-name-pattern "existing namespace mapping|begin coordinate"

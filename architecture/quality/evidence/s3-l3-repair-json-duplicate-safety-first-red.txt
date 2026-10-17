@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-repair-error-evidence.test.ts:
+68 |     '{ "message": "https://user:duplicate-hidden-password@example.invalid/", "message": "safe" }',
+69 |     JSON.stringify({request:'{ "apiKey": "nested-hidden-key", "apiKey": "[REDACTED]" }'}),
+70 |   ];
+71 |   for (const document of documents) {
+72 |     const result=redactChatRepairErrorOutput(document);
+73 |     expect(result).not.toContain('hidden-');
+                            ^
+error: expect(received).not.toContain(expected)
+
+Expected to not contain: "hidden-"
+Received: "{ \"apiKey\": \"duplicate-hidden-key\", \"apiKey\": \"[REDACTED]\" }"
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-repair-error-evidence.test.ts:73:24)
+(fail) private repair byte preservation never revives credentials hidden by duplicate JSON keys [1.24ms]
+
+ 0 pass
+ 19 filtered out
+ 1 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [165.00ms]

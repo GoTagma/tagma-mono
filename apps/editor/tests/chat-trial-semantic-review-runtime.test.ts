@@ -39,6 +39,13 @@ import { validateTrialSemanticReviewReceipts } from '../server/chat-trial-semant
 import { parseChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
 import { writeAuthenticatedTrialPlanTelemetry } from './helpers/trial-plan-fixture';
 import {
+  buildChatRepairErrorEvidence,
+  isChatRepairErrorEvidence,
+} from '../server/chat-operations/repair-error-evidence';
+import { createTrialTaskStreamEvidenceSink } from '../server/chat-operations/trial-stream-evidence-store';
+import { buildManagedChatOperationV2ExecutionPrompt } from '../server/chat-operations/authoring-runtime';
+import { sealChatOperationV2Admission } from '../server/chat-operations/admission';
+import {
   semanticReviewIntent,
   semanticReviewPlanInput,
 } from './helpers/trial-semantic-review-fixture';
@@ -65,6 +72,7 @@ function fixture(
   mode: 'write' | 'staged-only' | 'first-only' | 'fail' = 'write',
   verdictRun = 0,
   emptyQualificationCases = false,
+  archivedOutput?: 'jsonl' | 'unicode',
 ) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'tagma-actual-semantic-trial-')));
   roots.push(root);
@@ -93,6 +101,16 @@ function fixture(
       : mode === 'staged-only'
         ? 'process.stdout.write("no production")'
         : `const fs=require('node:fs');const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));${mode === 'first-only' ? 'if(n===1)' : ''}fs.writeFileSync('report.md','Run '+n+': '+fs.readFileSync('input.md','utf8'));`;
+  if (archivedOutput) {
+    const emit =
+      archivedOutput === 'jsonl'
+        ? `for(let i=0;i<7000;i++)console.log(JSON.stringify({type:'tool_use',run:n,index:i,output:'ordinary successful context '.repeat(5)}));`
+        : `process.stdout.write(('Run '+n+' café-日本 🧭 complete source context\\n').repeat(22000));`;
+    writeFileSync(
+      join(dirname(entry.stagedPath), 'semantic-context.js'),
+      command + emit + "process.stdout.write('COMPLETE_CONTEXT_END');",
+    );
+  }
   writeFileSync(
     entry.stagedPath,
     serializePipeline({
@@ -105,7 +123,11 @@ function fixture(
           tasks: [
             {
               id: 'inspect',
-              command: { argv: [process.execPath, '-e', command] },
+              command: {
+                argv: archivedOutput
+                  ? [process.execPath, 'semantic-context.js']
+                  : [process.execPath, '-e', command],
+              },
               completion: { type: 'file_exists', path: 'report.md' },
             },
           ],
@@ -127,6 +149,9 @@ function fixture(
       .join(`${namespace}/input.md`),
   );
   raw.cases[0].runs = 2;
+  if (archivedOutput)
+    raw.cases[0].fixtures[0].content =
+      '{\n  "observation": "A café-日本 reading remains provisional",\n  "status": "uncertain"\n}\n';
   if (emptyQualificationCases) {
     raw.cases[0].runs = 1;
     raw.cases[0].fixtures[0].content = 'No observations supplied.';
@@ -178,12 +203,31 @@ function fixture(
       };
     },
   };
+  const archiveRoot = join(root, '.tagma', '.chat-staging', stage.id, '.trial-streams');
+  const taskStreamEvidenceSink = archivedOutput
+    ? createTrialTaskStreamEvidenceSink(
+        {
+          workspaceTagmaDir: join(root, '.tagma'),
+          controlRoot: dirname(archiveRoot),
+          stageId: stage.id,
+          kind: 'stage-metadata',
+        },
+        {
+          workspaceScopeId: 'semantic-context-workspace',
+          operationId: 'semantic-context-operation',
+          operationGeneration: 1,
+          stageId: stage.id,
+        },
+      )
+    : undefined;
   return {
+    root,
     ws,
     stage,
     entry,
     runtime,
     reviewed,
+    archiveRoot,
     plan: parseChatPipelineTrialPlan(raw),
     cleanup: () => discardChatYamlStage(ws, stage.id),
     run: (
@@ -197,6 +241,7 @@ function fixture(
         trialId,
         trustedOperationV2,
         intentText: semanticReviewIntent,
+        ...(taskStreamEvidenceSink ? { taskStreamEvidenceSink } : {}),
         ...(semanticReview ? { semanticReview } : {}),
       }),
   };
@@ -260,6 +305,315 @@ test('a failed earlier semantic repeat cannot be hidden and retains complete pri
     f.cleanup();
   }
 });
+
+function expandRepairReferences(value: unknown, shared: Record<string, string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => expandRepairReferences(item, shared));
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (Object.keys(record).length === 1 && typeof record.textRef === 'string')
+      return shared[record.textRef];
+    return Object.fromEntries(
+      Object.entries(record).map(([key, item]) => [key, expandRepairReferences(item, shared)]),
+    );
+  }
+  return value;
+}
+
+for (const shape of ['jsonl', 'unicode'] as const) {
+  test(`semantic-only repair context bounds archived successful ${shape} streams without changing review evidence`, async () => {
+    const f = fixture('write', 1, false, shape);
+    const trialId = `semantic_context_${shape}`;
+    try {
+      const result = await f.run(trialId);
+      expect(result.success).toBe(false);
+      expect(result.repairAuthorization).toBe('pipeline-change-allowed');
+      expect(result.cases[0]!.taskStatusCounts).toEqual({ success: 2 });
+      expect(result.cases[0]!.semanticReviews?.map((r) => r.outcome)).toEqual(['failed', 'passed']);
+      expect(f.reviewed).toHaveLength(2);
+      const originals = result.repairErrorTasks!;
+      expect(originals).toHaveLength(2);
+      expect(
+        originals.every(
+          (t) => t.stdout.length > 500000 && t.stdout.endsWith('COMPLETE_CONTEXT_END'),
+        ),
+      ).toBe(true);
+      const evidence = buildChatRepairErrorEvidence(trialId, result);
+      expect(Buffer.byteLength(evidence.text)).toBeLessThan(128 * 1024);
+      expect(isChatRepairErrorEvidence(evidence)).toBe(true);
+      expect(evidence.hash).toBe(createHash('sha256').update(evidence.text).digest('hex'));
+      const encoded = JSON.parse(evidence.text);
+      const parsed = expandRepairReferences(encoded, encoded.sharedTexts) as {
+        tasks: unknown[];
+        successfulExecutionContext: Array<{
+          caseId: string;
+          runNumber: number;
+          taskId: string;
+          stdoutExcerpt: {
+            prefix: string;
+            suffix: string;
+            fullSha256: string;
+            fullByteLength: number;
+            omittedCodeUnits: number;
+          };
+          archive: { streams: Array<{ stream: string; hash: string; state: string }> };
+        }>;
+        pipelineDiagnostics: Array<
+          NonNullable<typeof result.repairPipelineDiagnostics>[number] & {
+            expectedCaseOutcome: boolean;
+          }
+        >;
+        cases: typeof result.cases;
+      };
+      expect(parsed.tasks).toHaveLength(0);
+      expect(parsed.successfulExecutionContext).toHaveLength(2);
+      for (const context of parsed.successfulExecutionContext) {
+        const original = originals.find(
+          (t) =>
+            t.caseId === context.caseId &&
+            t.runNumber === context.runNumber &&
+            t.taskId === context.taskId,
+        )!;
+        const excerpt = context.stdoutExcerpt;
+        expect(excerpt.prefix.length + excerpt.suffix.length).toBeLessThanOrEqual(2048);
+        expect(original.stdout.startsWith(excerpt.prefix)).toBe(true);
+        expect(original.stdout.endsWith(excerpt.suffix)).toBe(true);
+        expect(excerpt.omittedCodeUnits).toBe(
+          original.stdout.length - excerpt.prefix.length - excerpt.suffix.length,
+        );
+        expect(excerpt.fullByteLength).toBe(Buffer.byteLength(original.stdout));
+        expect(excerpt.fullSha256).toBe(createHash('sha256').update(original.stdout).digest('hex'));
+        const stream = context.archive.streams.find((s) => s.stream === 'stdout')!;
+        expect(stream.state).toBe('complete');
+        expect(stream.hash).toBe(excerpt.fullSha256);
+        expect(readFileSync(join(f.archiveRoot, stream.hash + '.utf8'), 'utf8')).toBe(
+          original.stdout,
+        );
+      }
+      const semantic = result.repairPipelineDiagnostics!.filter((d) =>
+        d.text.includes('independent-semantic-review'),
+      );
+      expect(semantic.length).toBeGreaterThan(0);
+      for (const original of semantic)
+        expect(parsed.pipelineDiagnostics?.find((d) => d.text === original.text)).toEqual({
+          ...original,
+          expectedCaseOutcome: false,
+        });
+      expect(parsed.cases[0]!.expectations).toEqual(result.cases[0]!.expectations);
+      expect(result.success).toBe(false);
+      expect(originals.every((t) => t.stdout.endsWith('COMPLETE_CONTEXT_END'))).toBe(true);
+    } finally {
+      f.cleanup();
+    }
+  }, 30000);
+}
+
+test('semantic-only repair context preserves complete streams for missing proofs other assertions and real errors', async () => {
+  const f = fixture('write', 1, false, 'jsonl');
+  const trialId = 'semantic_context_controls';
+  try {
+    const original = await f.run(trialId);
+    const vectors: Array<{ label: string; change: (trial: ChatPipelineTrialRunResult) => void }> = [
+      {
+        label: 'no archive',
+        change: (trial) => {
+          delete trial.taskStreamEvidence;
+        },
+      },
+      {
+        label: 'partial archive',
+        change: (trial) => {
+          trial.taskStreamEvidence![0] = { ...trial.taskStreamEvidence![0]!, status: 'partial' };
+        },
+      },
+      {
+        label: 'wrong archive hash',
+        change: (trial) => {
+          const item = trial.taskStreamEvidence![0]!;
+          trial.taskStreamEvidence![0] = {
+            ...item,
+            streams: item.streams!.map((s) =>
+              s.stream === 'stdout' ? { ...s, hash: '0'.repeat(64) } : s,
+            ),
+          };
+        },
+      },
+      {
+        label: 'missing receipt',
+        change: (trial) => {
+          trial.cases[0]!.semanticReviews = [];
+        },
+      },
+      {
+        label: 'missing complete review details',
+        change: (trial) => {
+          trial.repairPipelineDiagnostics = trial.repairPipelineDiagnostics!.filter(
+            (d) => !d.text.includes('independent-semantic-review'),
+          );
+        },
+      },
+      {
+        label: 'foreign review identity',
+        change: (trial) => {
+          const receipt = trial.cases[0]!.semanticReviews![0]!;
+          trial.cases[0]!.semanticReviews![0] = {
+            ...receipt,
+            identity: { ...receipt.identity, trialId: 'foreign_trial' },
+          };
+        },
+      },
+      {
+        label: 'unbound review request',
+        change: (trial) => {
+          trial.cases[0]!.semanticReviews![0]!.requestSha256 = '0'.repeat(64);
+        },
+      },
+      {
+        label: 'unbound review response',
+        change: (trial) => {
+          trial.cases[0]!.semanticReviews![0]!.responseSha256 = '0'.repeat(64);
+        },
+      },
+      {
+        label: 'stale reviewer configuration',
+        change: (trial) => {
+          trial.cases[0]!.semanticReviews![0]!.configurationDigest = '0'.repeat(64);
+        },
+      },
+      {
+        label: 'other assertion failed',
+        change: (trial) => {
+          trial.cases[0]!.expectations.push({
+            type: 'file-contains',
+            passed: false,
+            detail: 'A concrete source span is missing.',
+            repairScope: 'pipeline-artifact',
+          });
+        },
+      },
+      {
+        label: 'actual task failure',
+        change: (trial) => {
+          trial.repairErrorTasks![0]!.status = 'failed';
+          trial.repairErrorTasks![0]!.stderr =
+            'REAL_FAILURE_FIRST\n' + 'complete error context '.repeat(4000) + 'REAL_FAILURE_LAST';
+          trial.cases[0]!.taskStatusCounts = { success: 1, failed: 1 };
+        },
+      },
+      {
+        label: 'successful stderr',
+        change: (trial) => {
+          trial.repairErrorTasks![0]!.stderr =
+            'SUCCESS_DIAGNOSTIC_FIRST\n' +
+            'complete warning context '.repeat(4000) +
+            'SUCCESS_DIAGNOSTIC_LAST';
+        },
+      },
+    ];
+    for (const vector of vectors) {
+      const trial = structuredClone(original);
+      vector.change(trial);
+      const evidence = buildChatRepairErrorEvidence(trialId, trial);
+      const encoded = JSON.parse(evidence.text);
+      const parsed = expandRepairReferences(encoded, encoded.sharedTexts) as {
+        tasks: Array<{
+          caseId: string;
+          taskId: string;
+          runNumber: number;
+          stdout: string;
+          stderr: string;
+        }>;
+      };
+      const source = trial.repairErrorTasks![0]!;
+      const task = parsed.tasks.find(
+        (t) =>
+          t.caseId === source.caseId &&
+          t.runNumber === source.runNumber &&
+          t.taskId === source.taskId,
+      );
+      expect(task, vector.label).toBeDefined();
+      expect(task!.stdout, vector.label).toBe(source.stdout);
+      expect(task!.stderr, vector.label).toBe(source.stderr);
+      expect(isChatRepairErrorEvidence(evidence), vector.label).toBe(true);
+    }
+  } finally {
+    f.cleanup();
+  }
+}, 30000);
+
+test('semantic-only repair context reaches the sealed repair prompt with explicit excerpt scope', async () => {
+  const f = fixture('write', 1, false, 'jsonl');
+  try {
+    const result = await f.run('semantic_context_prompt');
+    const evidence = buildChatRepairErrorEvidence('semantic_context_prompt', result);
+    const request = {
+      purpose: 'repair',
+      repairAttempt: 1,
+      repairEvidence: {
+        feedback: {
+          schemaVersion: 1,
+          stage: 'trial',
+          details: 'Independent content review failed.',
+          failedTaskIds: ['flow.inspect'],
+          omittedFailedTaskCount: 0,
+        },
+        diagnosticCodes: ['trial_failed'],
+        errors: evidence.text,
+        errorEvidenceHash: evidence.hash,
+      },
+    };
+    const prompt = buildManagedChatOperationV2ExecutionPrompt({
+      invocationId: 'semantic-repair',
+      sessionId: 'semantic-repair-session',
+      executionMessageId: 'semantic-repair-input',
+      purpose: 'repair',
+      intent: 'create',
+      stageDirectory: f.root,
+      targetRelativePath: f.entry.relativePath,
+      trialPlanRequest: null,
+      admission: sealChatOperationV2Admission({
+        schemaVersion: 1,
+        request: { schemaVersion: 1, text: semanticReviewIntent, attachments: [] },
+        provider: 'test',
+        model: 'offline-fixture',
+        variant: null,
+        agentPolicyHash: '1'.repeat(64),
+        settingsHash: '2'.repeat(64),
+        capabilityHash: '3'.repeat(64),
+        featureHash: '4'.repeat(64),
+        rendererInstanceId: 'semantic-renderer',
+        conversationId: 'semantic-conversation',
+        inventoryRevision: 1,
+        inventoryDigest: '5'.repeat(64),
+        readSnapshotHash: null,
+        purpose: 'authoring',
+        admittedAt: 1,
+      }),
+      clarificationThread: null,
+      signal: new AbortController().signal,
+      requestInteractive: async () => undefined,
+      canonicalRequestBytes: new TextEncoder().encode(JSON.stringify(request)),
+    });
+    expect(prompt.system).toContain('successfulExecutionContext');
+    expect(prompt.system).toContain('not complete stdout');
+    expect(prompt.system).toContain('grant no private-file access');
+    expect(Buffer.byteLength(prompt.text)).toBeLessThan(512 * 1024);
+    const encoded = prompt.text.match(
+      /<repair-error-evidence>([\s\S]*?)<\/repair-error-evidence>/u,
+    )![1]!;
+    const decoded = encoded
+      .replace(/&quot;/gu, '"')
+      .replace(/&apos;/gu, "'")
+      .replace(/&lt;/gu, '<')
+      .replace(/&gt;/gu, '>')
+      .replace(/&amp;/gu, '&');
+    expect(decoded).toBe(evidence.text);
+    expect(createHash('sha256').update(decoded).digest('hex')).toBe(evidence.hash);
+    expect(f.reviewed).toHaveLength(2);
+    expect(result.success).toBe(false);
+  } finally {
+    f.cleanup();
+  }
+}, 30000);
 
 test('semantic outputs must be freshly produced rather than staged or inherited from a previous repeat', async () => {
   for (const mode of ['staged-only', 'first-only', 'fail'] as const) {

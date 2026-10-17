@@ -27,4 +27,7 @@
 // v50: dynamic artifact content may use a separate bounded tool-free Host model
 // review after actual execution. Every repeat needs fresh model-graded receipts;
 // semantic cases cannot reuse equivalent executions and finalize verifies receipts.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 53 as const;
+// v54: private semantic repair evidence preserves unchanged JSON snapshot bytes;
+// only proven archived successful context may use explicit excerpts. Older repair
+// diagnostics cannot supply the required original snapshot/hash correspondence.
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 54 as const;

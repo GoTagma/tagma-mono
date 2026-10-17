@@ -1,0 +1,65 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review-runtime.test.ts:
+02:37:25.637 [pipeline] start "Actual dynamic report" run_id=run_mvbsdeyp_e25716baffbf
+02:37:25.647 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:37:25.698 [task:flow.inspect] success (0.0s)
+02:37:25.700 [pipeline] completed "Actual dynamic report"
+02:37:25.700 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:37:25.700 [pipeline] Duration: 0.1s
+02:37:25.700 [pipeline] Log: /tmp/tagma-actual-semantic-trial-ZWkKe7/.tagma/.chat-staging/07a300a0-e47e-4655-bf13-e077398e9c63/.trial-cases/normal-ZAinXc/workspace/.tagma/logs/run_mvbsdeyp_e25716baffbf/pipeline.log
+02:37:25.877 [pipeline] start "Actual dynamic report" run_id=run_mvbsdf5g_9efc91be6808
+02:37:25.877 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:37:25.914 [task:flow.inspect] success (0.0s)
+02:37:25.914 [pipeline] completed "Actual dynamic report"
+02:37:25.915 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:37:25.915 [pipeline] Duration: 0.0s
+02:37:25.915 [pipeline] Log: /tmp/tagma-actual-semantic-trial-ZWkKe7/.tagma/.chat-staging/07a300a0-e47e-4655-bf13-e077398e9c63/.trial-cases/normal-ZAinXc/workspace/.tagma/logs/run_mvbsdf5g_9efc91be6808/pipeline.log
+300 |       expect(f.reviewed).toHaveLength(2);
+301 |       const originals = result.repairErrorTasks!;
+302 |       expect(originals).toHaveLength(2);
+303 |       expect(originals.every(t => t.stdout.length > 500000 && t.stdout.endsWith('COMPLETE_CONTEXT_END'))).toBe(true);
+304 |       const evidence = buildChatRepairErrorEvidence(trialId, result);
+305 |       expect(Buffer.byteLength(evidence.text)).toBeLessThan(128 * 1024);
+                                                     ^
+error: expect(received).toBeLessThan(expected)
+
+Expected: < 131072
+Received: 2904137
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:305:48)
+(fail) semantic-only repair context bounds archived successful jsonl streams without changing review evidence [1183.54ms]
+02:37:26.763 [pipeline] start "Actual dynamic report" run_id=run_mvbsdfu2_188b59791e66
+02:37:26.763 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:37:26.795 [task:flow.inspect] success (0.0s)
+02:37:26.796 [pipeline] completed "Actual dynamic report"
+02:37:26.796 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:37:26.796 [pipeline] Duration: 0.0s
+02:37:26.796 [pipeline] Log: /tmp/tagma-actual-semantic-trial-bPHelH/.tagma/.chat-staging/dd447ff2-63d2-4cc2-ad98-224a522b1846/.trial-cases/normal-5YDZ5A/workspace/.tagma/logs/run_mvbsdfu2_188b59791e66/pipeline.log
+02:37:26.863 [pipeline] start "Actual dynamic report" run_id=run_mvbsdfwu_aa254eaf665f
+02:37:26.863 [task:flow.inspect] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","semantic-context.js"]
+02:37:26.893 [task:flow.inspect] success (0.0s)
+02:37:26.894 [pipeline] completed "Actual dynamic report"
+02:37:26.894 [pipeline] Total: 1 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+02:37:26.894 [pipeline] Duration: 0.0s
+02:37:26.894 [pipeline] Log: /tmp/tagma-actual-semantic-trial-bPHelH/.tagma/.chat-staging/dd447ff2-63d2-4cc2-ad98-224a522b1846/.trial-cases/normal-5YDZ5A/workspace/.tagma/logs/run_mvbsdfwu_aa254eaf665f/pipeline.log
+300 |       expect(f.reviewed).toHaveLength(2);
+301 |       const originals = result.repairErrorTasks!;
+302 |       expect(originals).toHaveLength(2);
+303 |       expect(originals.every(t => t.stdout.length > 500000 && t.stdout.endsWith('COMPLETE_CONTEXT_END'))).toBe(true);
+304 |       const evidence = buildChatRepairErrorEvidence(trialId, result);
+305 |       expect(Buffer.byteLength(evidence.text)).toBeLessThan(128 * 1024);
+                                                     ^
+error: expect(received).toBeLessThan(expected)
+
+Expected: < 131072
+Received: 2177595
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-semantic-review-runtime.test.ts:305:48)
+(fail) semantic-only repair context bounds archived successful unicode streams without changing review evidence [750.04ms]
+
+ 0 pass
+ 10 filtered out
+ 2 fail
+ 18 expect() calls
+Ran 2 tests across 1 file. [2.07s]

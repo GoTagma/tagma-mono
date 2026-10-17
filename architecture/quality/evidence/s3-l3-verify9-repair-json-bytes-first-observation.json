@@ -1,0 +1,58 @@
+{
+  "scope": "Actual exact native reviewer request/response already SHA-verified, compared with retained Host repair diagnostic; no extra model invocation or regrading",
+  "sourceRevision": "edc7dd15ddf596733d14d1a06639fe85f190d068",
+  "operationId": "operation-30d1789f-a2c0-4656-9cbb-1be30cd82b33",
+  "case": "S3-L3 verify9",
+  "reviewRequestSha256": "94485c6585e8433e6f57109455206d6485f3d8cc3c887699ee0c2366bad8ccb3",
+  "nativeRequestBytesVerified": true,
+  "repairRequestBytesChanged": true,
+  "artifacts": [
+    {
+      "path": "chat-22596b549358ce9266b66862/targets.txt",
+      "originalBytes": 64,
+      "repairBytes": 64,
+      "originalSha256": "b088fb4cb79bd4a082b850473c0abf779d235d4a6c35fff4c9e8463ef85008b9",
+      "repairSha256": "b088fb4cb79bd4a082b850473c0abf779d235d4a6c35fff4c9e8463ef85008b9",
+      "exactBytesPreserved": true,
+      "typedJsonEquivalent": null
+    },
+    {
+      "path": "chat-22596b549358ce9266b66862/work/claims.json",
+      "originalBytes": 12104,
+      "repairBytes": 10346,
+      "originalSha256": "ff17d1ce4902d01dd179119f988dce40448ce743644ea6e5070f521456473842",
+      "repairSha256": "42096644fa4965a02dc61a64618a6e7227b38380a65787ddc3e7fb4df52ad2c9",
+      "exactBytesPreserved": false,
+      "typedJsonEquivalent": true
+    },
+    {
+      "path": "chat-22596b549358ce9266b66862/work/report.md",
+      "originalBytes": 31264,
+      "repairBytes": 31264,
+      "originalSha256": "3948a40d6547a55454a74acdb78b4e27b05d2162b289784b0f4d5b989d39c33e",
+      "repairSha256": "3948a40d6547a55454a74acdb78b4e27b05d2162b289784b0f4d5b989d39c33e",
+      "exactBytesPreserved": true,
+      "typedJsonEquivalent": null
+    },
+    {
+      "path": "chat-22596b549358ce9266b66862/work/targets.json",
+      "originalBytes": 150,
+      "repairBytes": 123,
+      "originalSha256": "79bea1bbecf218f3e5f6922bb8079a247a4c2098cb62e3021c3ec04a669fdc8a",
+      "repairSha256": "daa0a1afec3c11166c1602ea8392126e2e939f2e39c242adcf08f522b1684802",
+      "exactBytesPreserved": false,
+      "typedJsonEquivalent": true
+    },
+    {
+      "path": "chat-22596b549358ce9266b66862/work/verdicts.json",
+      "originalBytes": 27684,
+      "repairBytes": 23334,
+      "originalSha256": "9a6efe2554c979bf67c8869c2e9a47feee7aa3977ece3f678e8d86d1b2a38e86",
+      "repairSha256": "f8b7761ccb9c8e2d8f8793847b7a13b990672779efa426932476e9383bee99c1",
+      "exactBytesPreserved": false,
+      "typedJsonEquivalent": true
+    }
+  ],
+  "mechanism": "Private redaction recursively parses and JSON.stringify serializes structured strings even when no credential changes exist. Three nonsecret JSON artifact strings retain stale original sha/bytes metadata after formatting-only mutation.",
+  "plannedFix": "Preserve exact original structured-string bytes when recursive credential redaction makes no semantic change. Continue redacting actual secrets and canonicalizing changed secret-bearing objects as before. Add plain and nested JSON/JSONL preservation plus secret-redaction counterexamples; source59 projection must require intact hash-bound review material."
+}

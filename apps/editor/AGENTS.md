@@ -2455,3 +2455,14 @@
   original snapshot/response hashes, existing limits, one-call/no retry and diagnostic-only
   unavailable outcomes. Model compliance remains fallible; a failed old vote is never regraded.
   The system text already participates in the configuration digest, invalidating stale receipts.
+
+- In a current-trial case whose only failed assertions are semantic review, bound complete
+  failed-review request/response hashes and immutable matching stream archives before
+  projecting large successful stdout as explicit literal context excerpts. Keep complete
+  semantic snapshots, responses, assertions, actual errors/stderr and nonsemantic failure
+  contexts; absent/stale/tampered proof preserves full evidence. Archive references grant
+  no private-file access or new repair authority. Cache54 invalidates older repair diagnostics.
+- Repair redaction must preserve untouched JSON/JSONL and nested structured-string bytes,
+  including whitespace/Unicode. Use sanitized serialization for changed credentials or duplicate-key JSON; never
+  restore shadowed credential values. Retain redaction and its fixed point. Reformatting a nonsecret artifact invalidates its original
+  SHA/byte metadata and must never qualify as exact native review evidence.

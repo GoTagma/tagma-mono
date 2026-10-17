@@ -1,0 +1,59 @@
+{
+  "scope": "CSR59/60 final local qualification; user stopped before fresh live acceptance",
+  "command": "bun run verify:full",
+  "passedGates": 13,
+  "failedGates": 0,
+  "logSha256": "728e471899ea5bd0a641f6ea71730ef9ae5a0f346eb22d2fb2b6bc0760359a2d",
+  "summary": [
+    "PASS text 114ms ok",
+    "PASS deps 267ms ok",
+    "PASS focus 187ms ok",
+    "PASS imports 52ms ok",
+    "PASS cycles 40ms ok",
+    "PASS secrets 292ms ok",
+    "PASS format 19.4s ok",
+    "PASS types 43.3s ok",
+    "PASS lint 16.4s ok",
+    "PASS tests 216.3s ok",
+    "PASS scripts 2.5s ok",
+    "PASS build 18.5s ok",
+    "PASS publish 9.7s ok"
+  ],
+  "focused": {
+    "tests": 6,
+    "assertions": 152,
+    "passed": true
+  },
+  "related": {
+    "files": 9,
+    "tests": 97,
+    "assertions": 822,
+    "passed": true
+  },
+  "actualPinnedNative": {
+    "tests": 1,
+    "assertions": 30,
+    "providerCalls": 2,
+    "syntheticLoopbackProvider": true,
+    "notLiveAcceptance": true
+  },
+  "historicalGate": {
+    "passed": false,
+    "failures": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    },
+    "logSha256": "689b5ec94d208ee0d0b2e43a8ddc6c7e1efaca073c68c3dc3c7ac40bf713d9a5"
+  },
+  "cacheVersion": 54,
+  "planVersion": 12,
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0,
+  "liveAcceptedCases": 8,
+  "totalCases": 12,
+  "liveAcceptanceStoppedByUser": true,
+  "S3L3": "failed; new source not live retested",
+  "S4": "untested"
+}

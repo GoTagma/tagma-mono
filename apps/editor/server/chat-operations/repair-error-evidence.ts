@@ -2,12 +2,36 @@ import { createHash } from 'node:crypto';
 
 import type { ChatPipelineTrialRunResult } from '../chat-pipeline-trial-run.js';
 import { redactDiagnosticText, sanitizeDiagnosticValue } from '../../shared/diagnostics';
+import {
+  TRIAL_SEMANTIC_REVIEW_SYSTEM,
+  trialSemanticReviewConfigurationDigest,
+} from '../chat-trial-semantic-review';
 
 /** Private model input. Public notices and diagnostics keep their separate compact contract. */
 export interface ChatRepairErrorEvidence {
   readonly trialId: string;
   readonly hash: string;
   readonly text: string;
+}
+
+/** JSON.parse discards shadowed values; they must never return through a formatting fast path. */
+function duplicateJsonKeys(text: string): boolean {
+  const objects: Set<string>[] = [];
+  for (const token of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"(\s*:)?|[{}]/g)) {
+    if (token[0] === '{') objects.push(new Set());
+    else if (token[0] === '}') objects.pop();
+    else if (token[1]) {
+      const key = JSON.parse(token[0].slice(0, -token[1].length)) as string;
+      const keys = objects.at(-1);
+      if (!keys || keys.has(key)) return true;
+      keys.add(key);
+    }
+  }
+  return false;
+}
+
+function unchangedStructuredText(text: string, original: unknown, redacted: unknown): boolean {
+  return JSON.stringify(original) === JSON.stringify(redacted) && !duplicateJsonKeys(text);
 }
 
 function redactModelValue(value: unknown): unknown {
@@ -29,9 +53,10 @@ function redactModelValue(value: unknown): unknown {
     } catch {
       return redactErrorText(item);
     }
-    return parsed && typeof parsed === 'object'
-      ? JSON.stringify(redactModelValue(parsed))
-      : redactErrorText(item);
+    if (!parsed || typeof parsed !== 'object') return redactErrorText(item);
+    const redacted = redactModelValue(parsed);
+    // Formatting is evidence too. Only rewrite structured strings when redaction changed data.
+    return unchangedStructuredText(item, parsed, redacted) ? item : JSON.stringify(redacted);
   };
   return embedded(sanitized);
 }
@@ -67,7 +92,10 @@ export function redactChatRepairErrorOutput(text: string | undefined): string {
   } catch {
     document = undefined;
   }
-  if (document !== undefined) return JSON.stringify(redactModelValue(document));
+  if (document !== undefined) {
+    const redacted = redactModelValue(document);
+    return unchangedStructuredText(text, document, redacted) ? text : JSON.stringify(redacted);
+  }
   return text
     .split('\n')
     .map((line) => {
@@ -78,7 +106,8 @@ export function redactChatRepairErrorOutput(text: string | undefined): string {
       } catch {
         return redactErrorText(line);
       }
-      return JSON.stringify(redactModelValue(value));
+      const redacted = redactModelValue(value);
+      return unchangedStructuredText(line, value, redacted) ? line : JSON.stringify(redacted);
     })
     .join('\n');
 }
@@ -109,6 +138,201 @@ function shareRepeatedStreams(details: Record<string, unknown>): Record<string, 
     return value;
   };
   return { ...(encode(details) as Record<string, unknown>), sharedTexts };
+}
+
+const SUCCESSFUL_CONTEXT_CODE_UNITS = 2048;
+const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+
+/** Only a complete, current Host review can replace successful process context in model input. */
+function semanticContextCases(trialId: string, trial: ChatPipelineTrialRunResult) {
+  const eligible = new Map<string, { stageId: string; runIds: string[] }>();
+  if (!trial.repairErrorTasks || trial.repairAuthorization !== 'pipeline-change-allowed')
+    return eligible;
+  for (const testCase of trial.cases ?? []) {
+    const failures = testCase.expectations.filter((item) => !item.passed);
+    if (
+      testCase.success ||
+      testCase.executionSource !== 'current-trial' ||
+      !failures.length ||
+      failures.some((item) => item.type !== 'artifact-semantic-review') ||
+      !testCase.taskStatusCounts?.success ||
+      Object.entries(testCase.taskStatusCounts).some(
+        ([status, count]) => status !== 'success' && status !== 'skipped' && count > 0,
+      ) ||
+      trial.repairErrorTasks.some(
+        (task) => task.caseId === testCase.id && task.status !== 'success',
+      )
+    )
+      continue;
+    for (const receipt of testCase.semanticReviews ?? []) {
+      try {
+        if (
+          receipt.version !== 1 ||
+          receipt.grading !== 'independent-model' ||
+          receipt.outcome !== 'failed' ||
+          receipt.identity.trialId !== trialId ||
+          receipt.identity.caseId !== testCase.id ||
+          testCase.runIds[receipt.identity.runNumber - 1] !== receipt.identity.runId ||
+          receipt.configurationDigest !== trialSemanticReviewConfigurationDigest(receipt.model) ||
+          !receipt.verdicts.some((v) => v.verdict === 'fail') ||
+          !failures.some(
+            (item) =>
+              item.repairScope === 'pipeline-artifact' &&
+              item.semanticReview?.requestSha256 === receipt.requestSha256 &&
+              item.semanticReview.runNumber === receipt.identity.runNumber,
+          )
+        )
+          continue;
+        const complete = (trial.repairPipelineDiagnostics ?? []).some((diagnostic) => {
+          if (
+            diagnostic.caseId !== testCase.id ||
+            diagnostic.runNumber !== receipt.identity.runNumber ||
+            diagnostic.runId !== receipt.identity.runId
+          )
+            return false;
+          try {
+            const details = JSON.parse(diagnostic.text);
+            if (
+              details.kind !== 'independent-semantic-review' ||
+              details.grading !== 'fallible-model-assessment' ||
+              JSON.stringify(details.receipt) !== JSON.stringify(receipt) ||
+              typeof details.request !== 'string' ||
+              typeof details.response !== 'string' ||
+              sha(TRIAL_SEMANTIC_REVIEW_SYSTEM + '\0' + details.request) !==
+                receipt.requestSha256 ||
+              sha(details.response) !== receipt.responseSha256
+            )
+              return false;
+            const request = JSON.parse(details.request);
+            const response = JSON.parse(details.response);
+            if (
+              !request.identity ||
+              Object.entries(receipt.identity).some(
+                ([key, value]) => request.identity[key] !== value,
+              ) ||
+              !Array.isArray(request.artifacts) ||
+              !Array.isArray(response.reviews)
+            )
+              return false;
+            if (
+              request.artifacts.length !== receipt.artifacts.length ||
+              !request.artifacts.every(
+                (artifact: {
+                  path: string;
+                  role: string;
+                  content: string;
+                  sha256: string;
+                  bytes: number;
+                }) =>
+                  typeof artifact.content === 'string' &&
+                  sha(artifact.content) === artifact.sha256 &&
+                  Buffer.byteLength(artifact.content) === artifact.bytes &&
+                  receipt.artifacts.some(
+                    (a) =>
+                      a.path === artifact.path &&
+                      a.role === artifact.role &&
+                      a.sha256 === artifact.sha256 &&
+                      a.bytes === artifact.bytes,
+                  ),
+              )
+            )
+              return false;
+            return receipt.verdicts.some(
+              (v) =>
+                v.verdict === 'fail' &&
+                response.reviews.some(
+                  (review: { taskId: string; path: string; verdict: string }) =>
+                    review.taskId === v.taskId &&
+                    review.path === v.path &&
+                    review.verdict === 'fail',
+                ),
+            );
+          } catch {
+            return false;
+          }
+        });
+        if (complete) {
+          eligible.set(testCase.id, { stageId: receipt.identity.stageId, runIds: testCase.runIds });
+          break;
+        }
+      } catch {
+        /* Missing, stale or malformed proof preserves the full previous context. */
+      }
+    }
+  }
+  return eligible;
+}
+
+function successfulContext(
+  trialId: string,
+  trial: ChatPipelineTrialRunResult,
+  task: NonNullable<ChatPipelineTrialRunResult['repairErrorTasks']>[number],
+  scopes: ReturnType<typeof semanticContextCases>,
+) {
+  const scope = task.caseId == null ? undefined : scopes.get(task.caseId);
+  if (
+    !scope ||
+    task.status !== 'success' ||
+    task.stderr ||
+    task.stdout.length <= SUCCESSFUL_CONTEXT_CODE_UNITS ||
+    task.runNumber == null
+  )
+    return null;
+  const runId = scope.runIds[task.runNumber - 1];
+  const archives = (trial.taskStreamEvidence ?? []).filter(
+    (a) =>
+      a.trialId === trialId &&
+      a.caseId === task.caseId &&
+      a.runNumber === task.runNumber &&
+      a.runId === runId &&
+      a.taskId === task.taskId,
+  );
+  if (archives.length !== 1) return null;
+  const archive = archives[0]!;
+  const stdout = archive.streams?.find((s) => s.stream === 'stdout');
+  const stderr = archive.streams?.find((s) => s.stream === 'stderr');
+  const digest = sha(task.stdout);
+  if (
+    archive.status !== 'complete' ||
+    !archive.manifest ||
+    archive.manifest.stageId !== scope.stageId ||
+    !/^[a-f0-9]{64}$/.test(archive.manifest.hash) ||
+    stdout?.state !== 'complete' ||
+    stdout.hash !== digest ||
+    stdout.byteLength !== Buffer.byteLength(task.stdout) ||
+    stderr?.state !== 'complete' ||
+    stderr.hash !== sha('') ||
+    stderr.byteLength !== 0 ||
+    redactChatRepairErrorOutput(task.stdout) !== task.stdout
+  )
+    return null;
+  let prefixEnd = SUCCESSFUL_CONTEXT_CODE_UNITS / 2;
+  let suffixStart = task.stdout.length - SUCCESSFUL_CONTEXT_CODE_UNITS / 2;
+  // Excerpts remain literal strings even when the boundary meets an astral character.
+  if (/[\uD800-\uDBFF]/u.test(task.stdout[prefixEnd - 1]!)) prefixEnd -= 1;
+  if (/[\uDC00-\uDFFF]/u.test(task.stdout[suffixStart]!)) suffixStart += 1;
+  const prefix = task.stdout.slice(0, prefixEnd);
+  const suffix = task.stdout.slice(suffixStart);
+  if (
+    redactChatRepairErrorOutput(prefix) !== prefix ||
+    redactChatRepairErrorOutput(suffix) !== suffix
+  )
+    return null;
+  return {
+    caseId: task.caseId,
+    runId,
+    runNumber: task.runNumber,
+    taskId: task.taskId,
+    status: 'success',
+    stdoutExcerpt: {
+      prefix,
+      suffix,
+      fullSha256: digest,
+      fullByteLength: Buffer.byteLength(task.stdout),
+      omittedCodeUnits: task.stdout.length - prefix.length - suffix.length,
+    },
+    archive,
+  };
 }
 
 export function buildChatRepairErrorEvidence(
@@ -149,6 +373,15 @@ export function buildChatRepairErrorEvidence(
       continue;
     tasks.set(JSON.stringify([task.caseId, task.runNumber, task.taskId]), task);
   }
+  const scopes = semanticContextCases(trialId, trial);
+  const successfulExecutionContext = [];
+  for (const [key, task] of tasks) {
+    const context = successfulContext(trialId, trial, task, scopes);
+    if (context) {
+      successfulExecutionContext.push(context);
+      tasks.delete(key);
+    }
+  }
   return sealChatRepairErrorEvidence(
     trialId,
     shareRepeatedStreams(
@@ -184,6 +417,18 @@ export function buildChatRepairErrorEvidence(
           stdout: redactChatRepairErrorOutput(task.stdout),
           stderr: redactChatRepairErrorOutput(task.stderr),
         })),
+        ...(successfulExecutionContext.length
+          ? {
+              successfulExecutionContext,
+              successfulExecutionContextPolicy: {
+                scope: 'successful-process-context-for-semantic-only-failure',
+                maxExcerptCodeUnits: SUCCESSFUL_CONTEXT_CODE_UNITS,
+                fullStreamsRetained: true,
+                notice:
+                  'These are explicit literal context excerpts, not complete stdout. Full matching streams remain in immutable Host-private archives; references grant no file access. The complete independent review request, artifact snapshots and response below are authoritative for the semantic failure. Real task errors, stderr and other failed assertion contexts are not abbreviated by this policy.',
+              },
+            }
+          : {}),
         cases: (trial.cases ?? []).map((testCase) => ({
           id: testCase.id,
           success: testCase.success,

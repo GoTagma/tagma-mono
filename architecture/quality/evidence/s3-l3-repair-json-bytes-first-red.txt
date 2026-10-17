@@ -1,0 +1,30 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-repair-error-evidence.test.ts:
+27 | 
+28 | test('private repair redaction preserves nonsecret nested JSON bytes while still removing credentials', () => {
+29 |   const artifact = '{\r\n  "observation": "Café-日本 🧭",\r\n  "amount": 13\r\n}\r\n';
+30 |   const request = JSON.stringify({artifacts:[{path:'work/result.json',content:artifact,sha256:createHash('sha256').update(artifact).digest('hex'),bytes:Buffer.byteLength(artifact)}]});
+31 |   const envelope = JSON.stringify({kind:'independent-semantic-review',request,response:'{ "verdict": "fail" }'});
+32 |   expect(redactChatRepairErrorOutput(artifact)).toBe(artifact);
+                                                     ^
+error: expect(received).toBe(expected)
+
+- "{
+-   "observation": "Café-日本 🧭",
+-   "amount": 13
+- }
+- "
++ "{"observation":"Café-日本 🧭","amount":13}"
+
+- Expected  - 5
++ Received  + 1
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-repair-error-evidence.test.ts:32:49)
+(fail) private repair redaction preserves nonsecret nested JSON bytes while still removing credentials [1.23ms]
+
+ 0 pass
+ 18 filtered out
+ 1 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [148.00ms]
