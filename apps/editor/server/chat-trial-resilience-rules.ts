@@ -522,13 +522,29 @@ export function createTrialResilienceRules() {
         )
       );
     if (expectation.type === 'json-pointer-equals')
-      return normal.expectations.some(
-        (e) =>
-          e.type === 'json-pointer-equals' &&
-          e.path === expectation.path &&
-          e.pointer === expectation.pointer &&
-          !sameJson(JSON.parse(e.expectedJson), JSON.parse(expectation.expectedJson)),
-      );
+      return normal.expectations.some((e) => {
+        if (e.type === 'json-pointer-equals')
+          return (
+            e.path === expectation.path &&
+            e.pointer === expectation.pointer &&
+            !sameJson(JSON.parse(e.expectedJson), JSON.parse(expectation.expectedJson))
+          );
+        if (
+          e.type !== 'json-pointer-collection' ||
+          e.nonempty !== true ||
+          e.path !== expectation.path ||
+          e.pointer !== expectation.pointer
+        )
+          return false;
+        const empty = JSON.parse(expectation.expectedJson);
+        return e.kind === 'array'
+          ? Array.isArray(empty) && empty.length === 0
+          : e.kind === 'object' &&
+              empty !== null &&
+              typeof empty === 'object' &&
+              !Array.isArray(empty) &&
+              Object.keys(empty).length === 0;
+      });
     return false;
   }
   function preservedSource(testCase: ChatPipelineTrialPlanCase, sourcePath: string): boolean {

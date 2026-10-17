@@ -27,4 +27,4 @@
 // v50: dynamic artifact content may use a separate bounded tool-free Host model
 // review after actual execution. Every repeat needs fresh model-graded receipts;
 // semantic cases cannot reuse equivalent executions and finalize verifies receipts.
-export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 51 as const;
+export const CHAT_PIPELINE_TRIAL_CACHE_VERSION = 52 as const;

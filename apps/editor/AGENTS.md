@@ -2434,3 +2434,10 @@
   hide managed-web versus ordinary-command environment isolation, explicit CLI preservation, or
   deterministic complete-byte/hash responsibilities. Never copy Host credentials/routing into
   commands or qualify local-only substitutes as website retrieval; keep runtime fences and budgets.
+
+- A typed normal nonempty JSON collection can contrast a literal empty downstream recovery
+  outcome only at the exact same path/pointer and explicit matching array/object kind. Wrong
+  kind, empty normal predicates, other pointers/paths and nonempty/scalar controlled values
+  confer no contrast. This never qualifies core content or replaces actual successful execution
+  and Host fault evidence. Shared Host/Plugin semantics use cache protocol52; plan12 and all
+  generated-input, source ownership, fixture, freshness and finite-budget contracts stay intact.

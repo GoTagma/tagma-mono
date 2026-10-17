@@ -1,0 +1,67 @@
+{
+  "scope": "CSR56 final local qualification across complete13-gate run and test-type-only lint/types rerun; not live acceptance",
+  "allDistinctRequiredGatesQualified": true,
+  "firstFullRun": {
+    "passed": 12,
+    "failed": 1,
+    "failedGate": "lint: test fixture explicit any",
+    "exitCode": 1,
+    "summary": [
+      "PASS text 87ms ok",
+      "PASS deps 241ms ok",
+      "PASS focus 211ms ok",
+      "PASS imports 57ms ok",
+      "PASS cycles 34ms ok",
+      "PASS secrets 329ms ok",
+      "PASS format 18.8s ok",
+      "PASS types 43.1s ok",
+      "FAIL lint 15.7s exit 1",
+      "PASS tests 205.6s ok",
+      "PASS scripts 2.4s ok",
+      "PASS build 17.4s ok",
+      "PASS publish 8.9s ok"
+    ],
+    "logSha256": "1f46d3ebce8e8d3fe21dc6e7d70faff20912a7371c754846558ec7f027d05639"
+  },
+  "correction": "Replace test-only any with explicit Reading/Readings types and erased casts; production code unchanged.",
+  "rerun": {
+    "command": "bun run verify:full --only=lint,types",
+    "passed": 2,
+    "failed": 0,
+    "exitCode": 0,
+    "summary": [
+      "types 43.2s ok",
+      "lint 15.6s ok"
+    ],
+    "logSha256": "4a7043103c70585031e4647896b843baa26933d57acab7b7739be8d14bb5c9f6"
+  },
+  "finalFocused": {
+    "tests": 4,
+    "assertions": 122,
+    "passed": true,
+    "evidencePath": "architecture/quality/evidence/s3-l3-outcome-contrast-final-green.txt"
+  },
+  "related": {
+    "files": 9,
+    "tests": 64,
+    "assertions": 768,
+    "passed": true
+  },
+  "historicalGate": {
+    "passed": false,
+    "failures": {
+      "import_incomplete": 1,
+      "source_unavailable": 4,
+      "first_evidence_missing": 11,
+      "regression_mapping_missing": 11
+    },
+    "logSha256": "40ef3c42419758591a2b438fc73d8d26ebe134180064de5706a3701c4a46bef7"
+  },
+  "cacheVersion": 52,
+  "planVersion": 12,
+  "generatedInputSemanticsChanged": false,
+  "packagesSourceChanged": false,
+  "versionPatchInvocations": 0,
+  "liveAcceptedCases": 8,
+  "totalCases": 12
+}

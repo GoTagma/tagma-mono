@@ -721,6 +721,11 @@
       "id": "s3-l3-optional-author-capability-guide-not-consumed",
       "path": "architecture/quality/evidence/s3-l3-verify5-author-contract-first-observation.json",
       "sha256": "2dca17f5a3bbe7c9857b027e29364d950e1af07ce7c14e4f8c1dea52ebfaa325"
+    },
+    {
+      "id": "s3-l3-downstream-collection-outcome-contrast",
+      "path": "architecture/quality/evidence/s3-l3-verify6-collection-outcome-first-observation.json",
+      "sha256": "978ca6903ffc182b3978fe7517d34e901198b35f475defdc0602c174e13e838f"
     }
   ],
   "issues": [
@@ -8380,6 +8385,101 @@
       "realTestSelectors": [],
       "contract": "Material execution boundaries must be present on actual Host authoring and repair requests for create/edit paths even when no optional capability skill is consumed. Preserve canonical requests, target authority and finite repair dispatch.",
       "claimLimit": "Instruction delivery is deterministic, model compliance is not. No SDK/network runtime defect, false semantic verdict, freshness false positive or live pass is claimed. Same original S3-L3 must pass after restart/newworkspace."
+    },
+    {
+      "id": "CSR-0056",
+      "lineage": [
+        "CSR-0014",
+        "CSR-0025",
+        "CSR-0026",
+        "CSR-0038",
+        "CSR-0041",
+        "CSR-0049",
+        "CSR-0051",
+        "CSR-0054",
+        "CSR-0055"
+      ],
+      "title": "Compose typed nonempty normal collections with literal empty downstream recovery outputs",
+      "category": "trial-evidence-contract",
+      "mechanism": "strict-typed-collection-inequality-for-controlled-output-contrast",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l3-downstream-collection-outcome-contrast",
+        "path": "architecture/quality/evidence/s3-l3-verify6-collection-outcome-first-observation.json",
+        "sha256": "978ca6903ffc182b3978fe7517d34e901198b35f475defdc0602c174e13e838f",
+        "sourceRevision": "50fa5a8b70e6a209a488f2aa2cbacaa3a1954fe2",
+        "round": "S3-L3-verify6-original-round-1",
+        "acceptancePolicy": "Tester stopped after independently confirmed intrinsic contrast gap; cancelled_precommit, not natural pause or acceptance. Actual retained native session47 plan-tool calls confirms no commit call; unavailable signed telemetry is not a zero counter."
+      },
+      "history": [
+        {
+          "kind": "four-real-host-plugin-sdk-tests-red",
+          "evidencePath": "architecture/quality/evidence/s3-l3-outcome-contrast-first-red.txt",
+          "evidenceSha256": "f672be6abd30279c9babdddea7e9ee6d8bcd7218847d743085b19dc2cf68c8b9",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "four-tests122-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-outcome-contrast-green.txt",
+          "evidenceSha256": "0dcec8d0c2aa3f893d3e7191891eb4820430216358f84f78d01f40aa583ca3f1",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "nine-related-files64-tests768-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-outcome-contrast-related-green.txt",
+          "evidenceSha256": "9f6175b220a1d35c4bc8ffe38d45b1f3708e5f52cbb67591d4c41e6b87377847",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "final-test-types-explicit-four-tests122-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-outcome-contrast-final-green.txt",
+          "evidenceSha256": "188bf5abf48061204e1d7ff2dbcbef9d0bfbcb16d973d7a7d6f75001fc311080",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Shared Host/generated Plugin contrast accepts normal json-pointer-collection nonempty:true only against a literal empty collection at the exact same path/pointer with explicit matching array/object kind. Existing literal inequality and inverse text semantics remain unchanged."
+        },
+        {
+          "summary": "Keep predicate structural-only, independent concrete/semantic normal core, actual successful production/consumer execution and signed Host injection, fixture/environment/ownership/freshness fences and finite budgets. Increment cache51 to52 for changed verdict semantics; plan12/generated-input semantics unchanged. Advertise exact downstream contrast in tool and planner guidance."
+        }
+      ],
+      "status": "local-qualified-live-S3-L3-verification-required",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "downstream collection Host contrast requires exact kind pointer path and independent core content",
+          "namePattern": "^downstream collection Host contrast requires exact kind pointer path and independent core content$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "downstream collection real Plugin contrast preserves core authority and finite commit counters",
+          "namePattern": "^downstream collection real Plugin contrast preserves core authority and finite commit counters$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "actual isolated Trial contrasts randomized array downstream collection with Host-injected empty result",
+          "namePattern": "^actual isolated Trial contrasts randomized array downstream collection with Host-injected empty result$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "actual isolated Trial contrasts randomized object downstream collection with Host-injected empty result",
+          "namePattern": "^actual isolated Trial contrasts randomized object downstream collection with Host-injected empty result$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Typed nonemptiness can prove inequality to matching-kind emptiness, never substantive content. Reject wrong kind/path/pointer, empty normal predicates, nonempty/scalar controlled values and structural-only core roles. Require actual successful execution and actual controlled fault.",
+      "claimLimit": "Independent probe isolates owning contrast gap, not every generated planning error or sole cause. Original tester-stopped round remains failed; zero business execution or publication. Fresh original S3-L3 still required."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

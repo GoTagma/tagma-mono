@@ -1,0 +1,49 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+(pass) downstream collection Host contrast requires exact kind pointer path and independent core content [19.80ms]
+(pass) downstream collection real Plugin contrast preserves core authority and finite commit counters [101.22ms]
+00:14:52.298 [pipeline] start "Randomized measurement collection" run_id=run_mvbna35y_428fa3d90402
+00:14:52.304 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:14:52.333 [task:measure.sample] success (0.0s)
+00:14:52.333 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:14:52.357 [task:present.render] success (0.0s)
+00:14:52.358 [pipeline] completed "Randomized measurement collection"
+00:14:52.358 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:14:52.358 [pipeline] Duration: 0.1s
+00:14:52.358 [pipeline] Log: /tmp/tagma-coll-CpYJlR/.tagma/.chat-staging/ff527b9e-1977-42ae-872e-652361881b25/.trial-cases/normal-PaVIw7/workspace/.tagma/logs/run_mvbna35y_428fa3d90402/pipeline.log
+00:14:52.498 [pipeline] start "Randomized measurement collection" run_id=run_mvbna3bl_bb2c23567ea1
+00:14:52.499 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:14:52.523 [task:measure.sample] success (0.0s)
+00:14:52.523 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:14:52.547 [task:present.render] success (0.0s)
+00:14:52.548 [pipeline] completed "Randomized measurement collection"
+00:14:52.548 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:14:52.548 [pipeline] Duration: 0.1s
+00:14:52.548 [pipeline] Log: /tmp/tagma-coll-CpYJlR/.tagma/.chat-staging/ff527b9e-1977-42ae-872e-652361881b25/.trial-cases/empty-ouBuot/workspace/.tagma/logs/run_mvbna3bl_bb2c23567ea1/pipeline.log
+(pass) actual isolated Trial contrasts randomized array downstream collection with Host-injected empty result [612.40ms]
+00:14:52.878 [pipeline] start "Randomized measurement collection" run_id=run_mvbna3m6_3b73e765bf41
+00:14:52.879 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:14:52.907 [task:measure.sample] success (0.0s)
+00:14:52.907 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:14:52.931 [task:present.render] success (0.0s)
+00:14:52.932 [pipeline] completed "Randomized measurement collection"
+00:14:52.932 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:14:52.932 [pipeline] Duration: 0.1s
+00:14:52.932 [pipeline] Log: /tmp/tagma-coll-gLWMfw/.tagma/.chat-staging/dfa4f005-d0a7-43af-8e6b-d4429a312fdb/.trial-cases/normal-XmUcsz/workspace/.tagma/logs/run_mvbna3m6_3b73e765bf41/pipeline.log
+00:14:53.065 [pipeline] start "Randomized measurement collection" run_id=run_mvbna3rc_c9e557ba740c
+00:14:53.066 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:14:53.088 [task:measure.sample] success (0.0s)
+00:14:53.089 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:14:53.114 [task:present.render] success (0.0s)
+00:14:53.114 [pipeline] completed "Randomized measurement collection"
+00:14:53.114 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:14:53.114 [pipeline] Duration: 0.0s
+00:14:53.114 [pipeline] Log: /tmp/tagma-coll-gLWMfw/.tagma/.chat-staging/dfa4f005-d0a7-43af-8e6b-d4429a312fdb/.trial-cases/empty-RyndlR/workspace/.tagma/logs/run_mvbna3rc_c9e557ba740c/pipeline.log
+(pass) actual isolated Trial contrasts randomized object downstream collection with Host-injected empty result [567.28ms]
+
+ 4 pass
+ 5 filtered out
+ 0 fail
+ 122 expect() calls
+Ran 4 tests across 1 file. [1479.00ms]

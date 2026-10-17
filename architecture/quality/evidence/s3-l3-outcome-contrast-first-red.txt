@@ -1,0 +1,93 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+580 | 
+581 | test('downstream collection Host contrast requires exact kind pointer path and independent core content', () => {
+582 |   for (const kind of ['array', 'object'] as const) {
+583 |     const h = downstreamCollectionFixture(kind);
+584 |     const plan = parseChatPipelineTrialPlan(h.plan);
+585 |     expect(inspectTrialEvidence(['empty-result'], plan, h.config, h.coordinates, true)).toEqual({
+                                                                                              ^
+error: expect(received).toEqual(expected)
+
+  {
+-   "issues": [],
+-   "missing": [],
++   "issues": [
++     {
++       "caseId": "empty",
++       "code": "normal-outcome-contrast-missing",
++       "field": "outcomeExpectationIndices",
++       "message": "Add the exact inverse text assertion or a different value at the same JSON pointer in the normal case.",
++       "repairScope": "diagnostic-only",
++       "type": "empty-result",
++     },
++   ],
++   "missing": [
++     "empty-result",
++   ],
+  }
+
+- Expected  - 2
++ Received  + 13
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:585:89)
+(fail) downstream collection Host contrast requires exact kind pointer path and independent core content [12.73ms]
+2242 |   const diagnostic = {
+2243 |     message: 'Required structured Trial evidence is incomplete.',
+2244 |     missingEvidence: inspection.missing,
+2245 |     issues: inspection.issues,
+2246 |   };
+2247 |   const error = new Error(JSON.stringify(diagnostic));
+                           ^
+error: {"message":"Required structured Trial evidence is incomplete.","missingEvidence":["empty-result"],"issues":[{"type":"empty-result","caseId":"empty","code":"normal-outcome-contrast-missing","field":"outcomeExpectationIndices","message":"Add the exact inverse text assertion or a different value at the same JSON pointer in the normal case.","repairScope":"diagnostic-only"}]}
+ trialPlanDiagnostic: {
+  message: "Required structured Trial evidence is incomplete.",
+  missingEvidence: [ "empty-result" ],
+  issues: [
+    [Object ...]
+  ],
+},
+
+      at incompleteTrialEvidenceError (/tmp/tagma-coll-jOumm7/collection-tool.mjs:2247:21)
+      at assertExecutableTrialPlan (/tmp/tagma-coll-jOumm7/collection-tool.mjs:2573:13)
+      at <anonymous> (/tmp/tagma-coll-jOumm7/collection-tool.mjs:2678:22)
+      at withTrialPlanDraftLock (/tmp/tagma-coll-jOumm7/collection-tool.mjs:1779:12)
+      at execute (/tmp/tagma-coll-jOumm7/collection-tool.mjs:2842:12)
+      at call (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:688:17)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:702:36)
+(fail) downstream collection real Plugin contrast preserves core authority and finite commit counters [52.79ms]
+776 |           trialId: 'downstream-collection',
+777 |           taskStreamEvidenceSink: sink,
+778 |           trustedOperationV2: true,
+779 |           intentText: intent,
+780 |         });
+781 |         expect(result.ran).toBe(true);
+                                 ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:781:28)
+(fail) actual isolated Trial contrasts randomized array downstream collection with Host-injected empty result [28.85ms]
+776 |           trialId: 'downstream-collection',
+777 |           taskStreamEvidenceSink: sink,
+778 |           trustedOperationV2: true,
+779 |           intentText: intent,
+780 |         });
+781 |         expect(result.ran).toBe(true);
+                                 ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:781:28)
+(fail) actual isolated Trial contrasts randomized object downstream collection with Host-injected empty result [10.36ms]
+
+ 0 pass
+ 5 filtered out
+ 4 fail
+ 3 expect() calls
+Ran 4 tests across 1 file. [254.00ms]

@@ -1,0 +1,113 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify6",
+  "accepted": false,
+  "sourceRevision": "50fa5a8b70e6a209a488f2aa2cbacaa3a1954fe2",
+  "exactCi": {
+    "run": 38983809343,
+    "all4RequiredJobs": "success",
+    "newMandatory2TestsAll3Os": "success"
+  },
+  "operationId": "operation-18e7c034-b3de-468e-a5b4-b56471dc9afb",
+  "stageId": "eec98d8b-3603-457b-9474-ec759127909f",
+  "yamlSha1": "fb2f210467c34f06cc7010e879fc4f7e6efa3d78",
+  "originalRequests": 1,
+  "actionClarifications": 0,
+  "published": false,
+  "actualPipelineRuns": 0,
+  "actualBusinessTasks": 0,
+  "independentSemanticReviews": 0,
+  "completePlanCommits": 0,
+  "planCommitClaim": "No commit observed in native tool timeline; telemetry unavailable, not interpreted as an authenticated zero counter.",
+  "hostPlanningOpportunitiesUsed": 2,
+  "outcome": "tester stopped after confirmed intrinsic evidence gap; cancelled_precommit, not natural pause",
+  "stopCommandId": "fbcdb48a-86d4-43cf-a6d1-c00beb7b04b4",
+  "stopReceiptStatus": "executed",
+  "mandatorySystemDelivery": [
+    {
+      "sessionId": "ses_tagma_authoring_d19ca36ff26740a0975d70b2c92cce9d",
+      "messageId": "msg_tagma_author_803c0a08997de42b49ec16c19c7368a6131b4d94",
+      "agent": "tagma-pipeline",
+      "role": "user",
+      "systemPresent": true,
+      "systemBytes": 6649,
+      "systemSha256": "47b9e6da26cdc2c4cdfe5692e7575d01864f04b4dd88dd38856cadd423e3ca18",
+      "containsMandatoryEnvironmentBoundary": true,
+      "containsManagedWebDefault": true,
+      "containsCompleteByteResponsibility": true,
+      "containsNoHashTruncation": true,
+      "containsExplicitCliPreservation": true
+    }
+  ],
+  "generatedArchitecture": "2 native managed web tasks plus3 deterministic local commands; no ordinary curl/HTTP actor. No actual network success claim.",
+  "newCollectionPredicateUse": "Positive draft successfully upserts typed nonempty claims/factcheck predicates while retaining independent semantic content and source relations; this is preflight evidence, not a live execution pass.",
+  "liveEvidenceIssue": "normal-outcome-contrast-missing for controlled empty downstream collection versus matching nonempty normal predicate. Earlier generated JSON/coverage/input/source-map mistakes were separate and corrected; no sole-cause claim.",
+  "independentHostCounterexample": {
+    "scope": "Independent structurally different Host outcome-contrast counterexample. No provider/model/network/actual pipeline execution. Literal predicts unknown nonce only as an admission control; concrete source/report label anchors remain distinct from collection shape.",
+    "modes": [
+      {
+        "mode": "complete-literal-control",
+        "result": {
+          "missing": [],
+          "issues": []
+        }
+      },
+      {
+        "mode": "typed-nonempty-contrast",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "normal-outcome-contrast-missing",
+              "field": "outcomeExpectationIndices",
+              "message": "Add the exact inverse text assertion or a different value at the same JSON pointer in the normal case.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      },
+      {
+        "mode": "typed-empty-negative",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "normal-outcome-contrast-missing",
+              "field": "outcomeExpectationIndices",
+              "message": "Add the exact inverse text assertion or a different value at the same JSON pointer in the normal case.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      },
+      {
+        "mode": "wrong-kind-negative",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "normal-outcome-contrast-missing",
+              "field": "outcomeExpectationIndices",
+              "message": "Add the exact inverse text assertion or a different value at the same JSON pointer in the normal case.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "nextRepair": "Candidate CSR56: accept only exact path/pointer + same array/object kind + normal nonempty:true against controlled literal empty collection as downstream output contrast. Preserve literal inequality/text inverses, real content/core, same inputs, ownership, controlled injection and all budgets. Cache protocol must increment, plan/generated-input semantics unchanged.",
+  "claimLimit": "Tester-stopped original stays failed. CSR55 mandatory delivery and managed authoring choice observed; not proof of successful business execution. Still8/12; S4locked."
+}
